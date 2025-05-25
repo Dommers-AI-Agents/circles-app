@@ -1,0 +1,391 @@
+// backend/controllers/firebaseCircleController.js
+const { getFirestore } = require('../config/firebase');
+const { 
+  COLLECTIONS, 
+  createCircle, 
+  validateCircle,
+  serializeDoc,
+  serializeQuerySnapshot 
+} = require('../models/FirestoreModels');
+
+const db = getFirestore();
+
+// @desc    Get all circles for current user
+// @route   GET /api/circles
+// @access  Private
+exports.getMyCircles = async (req, res, next) => {
+  try {
+    console.log('🔍 DEBUG getMyCircles:', {
+      userUid: req.user.uid,
+      userObject: req.user
+    });
+    
+    if (!req.user.uid) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID is missing'
+      });
+    }
+    
+    const circlesRef = db.collection(COLLECTIONS.CIRCLES);
+    // Simplified query - just filter by owner, no ordering for now
+    const snapshot = await circlesRef
+      .where('owner', '==', req.user.uid)
+      .get();
+
+    const circles = serializeQuerySnapshot(snapshot);
+    
+    // Sort in memory for now
+    circles.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    res.status(200).json({
+      success: true,
+      count: circles.length,
+      circles: circles
+    });
+  } catch (error) {
+    console.error('Error fetching user circles:', error);
+    next(error);
+  }
+};
+
+// @desc    Get circles shared with me
+// @route   GET /api/circles/shared  
+// @access  Private
+exports.getSharedCircles = async (req, res, next) => {
+  try {
+    const circlesRef = db.collection(COLLECTIONS.CIRCLES);
+    
+    // Get public circles and circles shared with me
+    const publicCirclesPromise = circlesRef
+      .where('privacy', '==', 'public')
+      .where('owner', '!=', req.user.uid)
+      .orderBy('owner') // Required for != queries
+      .orderBy('updatedAt', 'desc')
+      .get();
+      
+    const sharedCirclesPromise = circlesRef
+      .where('sharedWith', 'array-contains', req.user.uid)
+      .orderBy('updatedAt', 'desc')
+      .get();
+
+    const [publicSnapshot, sharedSnapshot] = await Promise.all([
+      publicCirclesPromise,
+      sharedCirclesPromise
+    ]);
+
+    const publicCircles = serializeQuerySnapshot(publicSnapshot);
+    const sharedCircles = serializeQuerySnapshot(sharedSnapshot);
+    
+    // Combine and deduplicate
+    const allCircles = [...publicCircles, ...sharedCircles];
+    const uniqueCircles = allCircles.filter((circle, index, self) => 
+      index === self.findIndex(c => c.id === circle.id)
+    );
+
+    res.status(200).json({
+      success: true,
+      count: uniqueCircles.length,
+      circles: uniqueCircles
+    });
+  } catch (error) {
+    console.error('Error fetching shared circles:', error);
+    next(error);
+  }
+};
+
+// @desc    Get single circle
+// @route   GET /api/circles/:id
+// @access  Private
+exports.getCircle = async (req, res, next) => {
+  try {
+    const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(req.params.id).get();
+    
+    if (!circleDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Circle not found'
+      });
+    }
+
+    const circle = serializeDoc(circleDoc);
+    
+    // Check permissions
+    const isOwner = circle.owner === req.user.uid;
+    const isSharedWith = circle.sharedWith.includes(req.user.uid);
+    const isPublic = circle.privacy === 'public';
+    
+    // For friends privacy, we'd need to check if users are friends
+    // For now, allow if user is owner, shared with, or circle is public
+    if (!isOwner && !isSharedWith && !isPublic) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to access this circle'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      circle: circle
+    });
+  } catch (error) {
+    console.error('Error fetching circle:', error);
+    next(error);
+  }
+};
+
+// @desc    Create new circle
+// @route   POST /api/circles
+// @access  Private
+exports.createCircle = async (req, res, next) => {
+  try {
+    console.log('🔍 DEBUG createCircle:', {
+      userUid: req.user.uid,
+      requestBody: req.body,
+      userObject: req.user
+    });
+    
+    if (!req.user.uid) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID is missing'
+      });
+    }
+    
+    // Validate input
+    const validationErrors = validateCircle(req.body);
+    if (validationErrors.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation error',
+        errors: validationErrors
+      });
+    }
+
+    // Create circle data
+    const circleData = createCircle(req.body, req.user.uid);
+    
+    // Add to Firestore
+    const circleRef = await db.collection(COLLECTIONS.CIRCLES).add(circleData);
+    
+    // Get the created circle with ID
+    const createdCircle = await circleRef.get();
+    const circle = serializeDoc(createdCircle);
+
+    res.status(201).json({
+      success: true,
+      circle: circle
+    });
+  } catch (error) {
+    console.error('Error creating circle:', error);
+    next(error);
+  }
+};
+
+// @desc    Update circle
+// @route   PUT /api/circles/:id
+// @access  Private
+exports.updateCircle = async (req, res, next) => {
+  try {
+    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(req.params.id);
+    const circleDoc = await circleRef.get();
+
+    if (!circleDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Circle not found'
+      });
+    }
+
+    const circle = serializeDoc(circleDoc);
+
+    // Make sure user is circle owner
+    if (circle.owner !== req.user.uid) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to update this circle'
+      });
+    }
+
+    // Validate updates
+    const validationErrors = validateCircle(req.body);
+    if (validationErrors.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation error',
+        errors: validationErrors
+      });
+    }
+
+    // Don't allow ownership transfer
+    const { owner, ...updateData } = req.body;
+    updateData.updatedAt = new Date().toISOString();
+
+    await circleRef.update(updateData);
+    
+    // Get updated circle
+    const updatedCircleDoc = await circleRef.get();
+    const updatedCircle = serializeDoc(updatedCircleDoc);
+
+    res.status(200).json({
+      success: true,
+      circle: updatedCircle
+    });
+  } catch (error) {
+    console.error('Error updating circle:', error);
+    next(error);
+  }
+};
+
+// @desc    Delete circle
+// @route   DELETE /api/circles/:id
+// @access  Private
+exports.deleteCircle = async (req, res, next) => {
+  try {
+    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(req.params.id);
+    const circleDoc = await circleRef.get();
+
+    if (!circleDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Circle not found'
+      });
+    }
+
+    const circle = serializeDoc(circleDoc);
+
+    // Make sure user is circle owner
+    if (circle.owner !== req.user.uid) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to delete this circle'
+      });
+    }
+
+    // Delete all places in this circle first
+    const placesSnapshot = await db.collection(COLLECTIONS.PLACES)
+      .where('circleId', '==', req.params.id)
+      .get();
+    
+    const batch = db.batch();
+    placesSnapshot.docs.forEach(doc => {
+      batch.delete(doc.ref);
+    });
+    
+    // Delete the circle
+    batch.delete(circleRef);
+    
+    await batch.commit();
+
+    res.status(200).json({
+      success: true,
+      message: 'Circle deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting circle:', error);
+    next(error);
+  }
+};
+
+// @desc    Share circle with users
+// @route   POST /api/circles/:id/share
+// @access  Private
+exports.shareCircle = async (req, res, next) => {
+  try {
+    const { userIds } = req.body;
+    
+    if (!userIds || !Array.isArray(userIds)) {
+      return res.status(400).json({
+        success: false,
+        message: 'User IDs array is required'
+      });
+    }
+
+    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(req.params.id);
+    const circleDoc = await circleRef.get();
+
+    if (!circleDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Circle not found'
+      });
+    }
+
+    const circle = serializeDoc(circleDoc);
+
+    // Make sure user is circle owner
+    if (circle.owner !== req.user.uid) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to share this circle'
+      });
+    }
+
+    // Add users to sharedWith array (avoid duplicates)
+    const currentSharedWith = circle.sharedWith || [];
+    const newSharedWith = [...new Set([...currentSharedWith, ...userIds])];
+
+    await circleRef.update({
+      sharedWith: newSharedWith,
+      updatedAt: new Date().toISOString()
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Circle shared successfully'
+    });
+  } catch (error) {
+    console.error('Error sharing circle:', error);
+    next(error);
+  }
+};
+
+// @desc    Follow/unfollow circle
+// @route   POST /api/circles/:id/follow
+// @route   POST /api/circles/:id/unfollow
+// @access  Private
+exports.followCircle = async (req, res, next) => {
+  try {
+    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(req.params.id);
+    const circleDoc = await circleRef.get();
+
+    if (!circleDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Circle not found'
+      });
+    }
+
+    const circle = serializeDoc(circleDoc);
+    const followers = circle.followers || [];
+    const isFollowing = followers.includes(req.user.uid);
+    const action = req.path.endsWith('/follow') ? 'follow' : 'unfollow';
+
+    let newFollowers;
+    if (action === 'follow' && !isFollowing) {
+      newFollowers = [...followers, req.user.uid];
+    } else if (action === 'unfollow' && isFollowing) {
+      newFollowers = followers.filter(id => id !== req.user.uid);
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: `Already ${action}ing this circle`
+      });
+    }
+
+    await circleRef.update({
+      followers: newFollowers,
+      updatedAt: new Date().toISOString()
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Successfully ${action}ed circle`
+    });
+  } catch (error) {
+    console.error(`Error ${req.path.endsWith('/follow') ? 'following' : 'unfollowing'} circle:`, error);
+    next(error);
+  }
+};
+
+exports.unfollowCircle = exports.followCircle; // Same handler, different action
