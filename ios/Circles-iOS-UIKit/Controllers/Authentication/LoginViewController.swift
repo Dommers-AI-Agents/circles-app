@@ -13,17 +13,6 @@ class LoginViewController: UIViewController {
         return imageView
     }()
     
-    private let customAppleButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Custom Apple Sign In", for: .normal)
-        button.setTitleColor(.white, for: .normal)
-        button.backgroundColor = .black
-        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .medium)
-        button.layer.cornerRadius = 8
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.isHidden = true  // Hide by default, we'll show if needed for testing
-        return button
-    }()
     
     private let titleLabel: UILabel = {
         let label = UILabel()
@@ -171,7 +160,6 @@ class LoginViewController: UIViewController {
         setupActions()
         
         // Show the custom button for testing
-        customAppleButton.isHidden = false
         
         // For development purposes, pre-fill email
         #if DEBUG
@@ -207,7 +195,6 @@ class LoginViewController: UIViewController {
         view.addSubview(loginButton)
         view.addSubview(orLabel)
         view.addSubview(socialStackView)
-        view.addSubview(customAppleButton)  // Add our custom button
         view.addSubview(guestModeButton)
         view.addSubview(registerButton)
         view.addSubview(activityIndicator)
@@ -258,14 +245,9 @@ class LoginViewController: UIViewController {
             socialStackView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.large),
             socialStackView.heightAnchor.constraint(equalToConstant: 50),
             
-            // Custom Apple button (for testing)
-            customAppleButton.topAnchor.constraint(equalTo: socialStackView.bottomAnchor, constant: Constants.Spacing.small),
-            customAppleButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            customAppleButton.widthAnchor.constraint(equalToConstant: 200),
-            customAppleButton.heightAnchor.constraint(equalToConstant: 44),
             
             // Guest mode button
-            guestModeButton.topAnchor.constraint(equalTo: customAppleButton.bottomAnchor, constant: Constants.Spacing.medium),
+            guestModeButton.topAnchor.constraint(equalTo: socialStackView.bottomAnchor, constant: Constants.Spacing.medium),
             guestModeButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             
             // Register button
@@ -292,8 +274,6 @@ class LoginViewController: UIViewController {
         appleSignInButton.addTarget(self, action: #selector(appleSignInButtonTapped), for: .touchUpInside)
         googleSignInButton.addTarget(self, action: #selector(googleSignInButtonTapped), for: .touchUpInside)
         
-        // Custom test button
-        customAppleButton.addTarget(self, action: #selector(appleSignInButtonTapped), for: .touchUpInside)
         
         // Add tap gesture recognizer specifically for appleSignInButton to debug
         let appleTapGesture = UITapGestureRecognizer(target: self, action: #selector(appleSignInGestureTapped))

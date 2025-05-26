@@ -37,6 +37,20 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             ])
             activityIndicator.startAnimating()
             window?.rootViewController = loadingVC
+            
+            // Try to restore Google Sign-In session if user previously signed in with Google
+            if AuthService.shared.getAuthProvider() == "google" {
+                print("🎬 User previously signed in with Google, attempting to restore session")
+                SocialAuthService.shared.restoreGoogleSignInSession { result in
+                    switch result {
+                    case .success:
+                        print("🎬 Google session restored successfully")
+                    case .failure(let error):
+                        print("🎬 Google session restoration failed: \(error)")
+                        // The backend token might still be valid even if Google session expired
+                    }
+                }
+            }
         }
         
         // Add authentication state listener

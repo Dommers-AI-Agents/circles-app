@@ -305,8 +305,6 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
     }
     
     func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
-        let circle = circles[indexPath.row]
-        
         // Edit action
         let editAction = UIContextualAction(style: .normal, title: "Edit") { [weak self] _, _, completion in
             self?.editCircle(at: indexPath)
@@ -429,6 +427,18 @@ class CircleTableViewCell: UITableViewCell {
         fatalError("init(coder:) has not been implemented")
     }
     
+    // MARK: - Reuse
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        coverImageView.image = nil
+        nameLabel.text = nil
+        descriptionLabel.text = nil
+        placeCountLabel.text = nil
+        privacyImageView.image = nil
+        categoryLabel.text = nil
+        categoryLabel.backgroundColor = nil
+    }
+    
     // MARK: - Setup
     private func setupCell() {
         backgroundColor = Constants.Colors.background
@@ -520,10 +530,14 @@ class CircleTableViewCell: UITableViewCell {
             categoryLabel.backgroundColor = UIColor(hex: "#718096") // Gray
         }
         
-        // Cover image (would be loaded from URL in real app)
-        if let _ = circle.coverImage {
-            // Would load image from URL here
-            coverImageView.image = UIImage(systemName: "photo")
+        // Cover image
+        if let coverImageUrl = circle.coverImage {
+            // Load image from URL
+            ImageService.shared.loadImage(from: coverImageUrl) { [weak self] image in
+                DispatchQueue.main.async {
+                    self?.coverImageView.image = image
+                }
+            }
         } else {
             // Default image based on category
             switch circle.category {
@@ -544,16 +558,6 @@ class CircleTableViewCell: UITableViewCell {
             }
             coverImageView.tintColor = Constants.Colors.primary
         }
-    }
-    
-    override func prepareForReuse() {
-        super.prepareForReuse()
-        nameLabel.text = nil
-        descriptionLabel.text = nil
-        placeCountLabel.text = nil
-        privacyImageView.image = nil
-        coverImageView.image = nil
-        categoryLabel.text = nil
     }
 }
 

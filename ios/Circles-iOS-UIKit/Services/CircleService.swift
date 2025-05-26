@@ -232,6 +232,7 @@ class CircleService {
         
         if let coverImageUrl = coverImageUrl {
             body["coverImage"] = coverImageUrl
+            print("Updating circle with cover image URL: \(coverImageUrl)")
         }
         
         // Only proceed if there are changes to make
@@ -239,6 +240,8 @@ class CircleService {
             completion(.failure(CircleError.invalidData))
             return
         }
+        
+        print("Updating circle \(id) with body: \(body)")
         
         APIService.shared.request(
             endpoint: "circles/\(id)",
@@ -248,8 +251,10 @@ class CircleService {
         ) { [weak self] (result: Result<CircleResponse, APIError>) in
             switch result {
             case .success(let response):
+                print("Circle updated successfully with coverImage: \(response.circle.coverImage ?? "nil")")
                 completion(.success(response.circle))
             case .failure(let error):
+                print("Circle update failed: \(error)")
                 let mappedError = self?.mapAPIErrorToCircleError(error)
                 completion(.failure(mappedError ?? CircleError.updateFailed))
             }
@@ -328,14 +333,30 @@ class CircleService {
     // MARK: - Helper Methods
     
     private func uploadImage(_ imageData: Data, completion: @escaping (Result<String, Error>) -> Void) {
-        // In a real app, this would upload the image to a cloud storage service
-        // For now, we'll simulate it with a mock URL
+        // Convert image data to base64
+        let base64String = imageData.base64EncodedString()
         
-        // Simulate network delay
-        DispatchQueue.global().asyncAfter(deadline: .now() + 1.0) {
-            // Generate a mock image URL
-            let mockImageUrl = "https://storage.circles-app.com/images/\(UUID().uuidString).jpg"
-            completion(.success(mockImageUrl))
+        print("Uploading image - size: \(imageData.count) bytes, base64 length: \(base64String.count)")
+        
+        let body: [String: Any] = [
+            "image": base64String,
+            "filename": "circle-image.jpg"
+        ]
+        
+        APIService.shared.request(
+            endpoint: "upload/image",
+            method: .post,
+            body: body,
+            requiresAuth: true
+        ) { (result: Result<ImageUploadResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                print("Image uploaded successfully: \(response.url)")
+                completion(.success(response.url))
+            case .failure(let error):
+                print("Image upload failed: \(error)")
+                completion(.failure(error))
+            }
         }
     }
     
@@ -377,4 +398,9 @@ struct CirclesResponse: Decodable {
 struct CircleResponse: Decodable {
     let success: Bool
     let circle: Circle
+}
+
+struct ImageUploadResponse: Decodable {
+    let success: Bool
+    let url: String
 }

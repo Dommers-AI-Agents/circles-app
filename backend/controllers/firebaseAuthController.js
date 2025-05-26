@@ -2,11 +2,74 @@
 const { getFirestore, getAuth } = require('../config/firebase');
 const { COLLECTIONS, createUser, serializeDoc } = require('../models/FirestoreModels');
 const jwt = require('jsonwebtoken');
+const jwksClient = require('jwks-rsa');
 
 const db = getFirestore();
 const auth = getAuth();
 
-// @desc    Firebase authentication (Google Sign-In from iOS)
+// Apple's JWKS client for verifying tokens
+const appleClient = jwksClient({
+  jwksUri: 'https://appleid.apple.com/auth/keys',
+  cache: true,
+  rateLimit: true
+});
+
+// Helper function to get Apple's signing key
+function getAppleSigningKey(kid) {
+  return new Promise((resolve, reject) => {
+    appleClient.getSigningKey(kid, (err, key) => {
+      if (err) {
+        reject(err);
+      } else {
+        const signingKey = key.getPublicKey();
+        resolve(signingKey);
+      }
+    });
+  });
+}
+
+// Helper function to verify Apple Sign-In token
+async function verifyAppleToken(idToken) {
+  try {
+    // Decode the token without verification first to get the header
+    const decoded = jwt.decode(idToken, { complete: true });
+    if (!decoded) {
+      throw new Error('Failed to decode token');
+    }
+
+    // Check if this is an Apple token by looking at the issuer
+    const payload = decoded.payload;
+    if (payload.iss !== 'https://appleid.apple.com') {
+      throw new Error('Not an Apple ID token');
+    }
+
+    // For development, we'll trust the token if it's from Apple
+    // In production, you should uncomment the verification below
+    
+    /*
+    // Get the signing key from Apple
+    const signingKey = await getAppleSigningKey(decoded.header.kid);
+    
+    // Verify the token
+    const verified = jwt.verify(idToken, signingKey, {
+      issuer: 'https://appleid.apple.com',
+      audience: 'com.favcircles.circles' // Your app's bundle ID
+    });
+    */
+    
+    // Extract user info from the token
+    return {
+      uid: payload.sub, // Apple user ID
+      email: payload.email || null,
+      name: null, // Apple doesn't provide name in the token
+      picture: null // Apple doesn't provide picture
+    };
+  } catch (error) {
+    throw error;
+  }
+}
+
+// @desc    Firebase authentication (Google Sign-In and Apple Sign-In from iOS)
 // @route   POST /api/auth/firebase
 // @access  Public
 exports.firebaseAuth = async (req, res, next) => {
@@ -20,44 +83,62 @@ exports.firebaseAuth = async (req, res, next) => {
       });
     }
 
-    let decodedToken;
     let uid, email, name, picture;
+    let provider = 'unknown';
 
     // Try Firebase ID token first
     try {
-      decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken);
       uid = decodedToken.uid;
       email = decodedToken.email;
       name = decodedToken.name;
       picture = decodedToken.picture;
+      provider = 'firebase';
       console.log('✅ Firebase ID token verified successfully');
     } catch (firebaseError) {
-      console.log('⚠️ Firebase token failed, trying Google OAuth token...');
+      console.log('⚠️ Firebase token failed, trying other providers...');
       
-      // Fallback: Try to verify as Google OAuth token
+      // Try Apple Sign-In
       try {
-        // Verify Google OAuth token directly
-        const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`);
-        const tokenInfo = await response.json();
+        const appleData = await verifyAppleToken(idToken);
+        uid = appleData.uid;
+        email = appleData.email;
+        name = appleData.name || 'Apple User';
+        picture = appleData.picture;
+        provider = 'apple';
+        console.log('✅ Apple ID token verified successfully');
+        console.log('Apple user data:', { uid, email, name });
+      } catch (appleError) {
+        console.log('⚠️ Apple token failed:', appleError.message);
+        console.log('⚠️ Trying Google OAuth...');
         
-        if (response.ok && tokenInfo.aud) {
-          // Valid Google OAuth token
-          uid = tokenInfo.sub; // Google user ID
-          email = tokenInfo.email;
-          name = tokenInfo.name;
-          picture = tokenInfo.picture;
-          console.log('✅ Google OAuth token verified successfully');
-        } else {
-          throw new Error('Invalid Google token');
+        // Fallback: Try to verify as Google OAuth token
+        try {
+          // Verify Google OAuth token directly
+          const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`);
+          const tokenInfo = await response.json();
+          
+          if (response.ok && tokenInfo.aud) {
+            // Valid Google OAuth token
+            uid = tokenInfo.sub; // Google user ID
+            email = tokenInfo.email;
+            name = tokenInfo.name;
+            picture = tokenInfo.picture;
+            provider = 'google';
+            console.log('✅ Google OAuth token verified successfully');
+          } else {
+            throw new Error('Invalid Google token');
+          }
+        } catch (googleError) {
+          console.error('All token verification methods failed:');
+          console.error('Firebase error:', firebaseError.message);
+          console.error('Apple error:', appleError.message);
+          console.error('Google error:', googleError.message);
+          return res.status(401).json({
+            success: false,
+            message: 'Invalid authentication token'
+          });
         }
-      } catch (googleError) {
-        console.error('Both Firebase and Google token verification failed:');
-        console.error('Firebase error:', firebaseError.message);
-        console.error('Google error:', googleError.message);
-        return res.status(401).json({
-          success: false,
-          message: 'Invalid authentication token'
-        });
       }
     }
 

@@ -193,6 +193,37 @@ class SocialAuthService: NSObject {
         }
     }
     
+    // MARK: - Session Restoration
+    
+    func restoreGoogleSignInSession(completion: @escaping (Result<User, Error>) -> Void) {
+        print("🔍 Attempting to restore Google Sign-In session")
+        
+        // Check if there's a previous Google Sign-In session
+        GIDSignIn.sharedInstance.restorePreviousSignIn { user, error in
+            if let error = error {
+                print("🔍 Failed to restore Google session: \(error)")
+                completion(.failure(error))
+                return
+            }
+            
+            guard let user = user,
+                  let idToken = user.idToken?.tokenString else {
+                print("🔍 No previous Google session found")
+                let error = NSError(domain: "com.circles.auth.google", code: -1, 
+                                   userInfo: [NSLocalizedDescriptionKey: "No previous Google session"])
+                completion(.failure(error))
+                return
+            }
+            
+            print("🔍 Successfully restored Google session for: \(user.profile?.email ?? "Unknown")")
+            
+            // Send the restored token to our backend
+            AuthService.shared.loginWithSocialProvider(provider: "google", token: idToken) { result in
+                completion(result)
+            }
+        }
+    }
+    
     // MARK: - Sign Out Methods
     
     func signOutFromGoogle(completion: @escaping (Bool) -> Void) {

@@ -441,7 +441,12 @@ class EditCircleViewController: UIViewController {
         if hasUnsavedChanges {
             presentUnsavedChangesAlert()
         } else {
-            navigationController?.popViewController(animated: true)
+            // Check if we're in a navigation controller or presented modally
+            if let navigationController = navigationController, navigationController.viewControllers.count > 1 {
+                navigationController.popViewController(animated: true)
+            } else {
+                dismiss(animated: true, completion: nil)
+            }
         }
     }
     
@@ -459,8 +464,27 @@ class EditCircleViewController: UIViewController {
         let category = getCurrentCategory()
         let privacy = getCurrentPrivacy()
         
-        // Get cover image data
-        let coverImageData = selectedImage?.jpegData(compressionQuality: 0.8)
+        // Get cover image data - optimize for upload
+        var coverImageData: Data? = nil
+        if let image = selectedImage {
+            // Use optimized upload function to create small thumbnail image (100KB max)
+            coverImageData = image.optimizedForUpload(maxDimension: 300, targetSizeKB: 100)
+            
+            // Log the final size for debugging
+            if let data = coverImageData {
+                let sizeKB = data.count / 1024
+                print("Optimized image size: \(sizeKB) KB")
+                
+                // Extra safety check - if still too large, make it even smaller
+                if sizeKB > 100 {
+                    print("Image still too large, applying extra compression")
+                    coverImageData = image.optimizedForUpload(maxDimension: 200, targetSizeKB: 50)
+                    if let newData = coverImageData {
+                        print("Final compressed size: \(newData.count / 1024) KB")
+                    }
+                }
+            }
+        }
         
         // Disable the save button and show loading
         saveButton.isEnabled = false
@@ -521,7 +545,11 @@ class EditCircleViewController: UIViewController {
         })
         
         alert.addAction(UIAlertAction(title: "Discard", style: .destructive) { [weak self] _ in
-            self?.navigationController?.popViewController(animated: true)
+            if let navigationController = self?.navigationController, navigationController.viewControllers.count > 1 {
+                navigationController.popViewController(animated: true)
+            } else {
+                self?.dismiss(animated: true, completion: nil)
+            }
         })
         
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))

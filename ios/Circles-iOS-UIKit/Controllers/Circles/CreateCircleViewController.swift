@@ -373,37 +373,107 @@ class CreateCircleViewController: UIViewController {
             tags = tagsText.split(separator: ",").map { String($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
         }
         
-        // Get cover image data
-        let coverImageData = selectedImage?.jpegData(compressionQuality: 0.8)
+        // Get cover image data - optimize for upload
+        var coverImageData: Data? = nil
+        var defaultImageUrl: String? = nil
+        
+        if let image = selectedImage {
+            // Use optimized upload function to create small thumbnail image (100KB max)
+            coverImageData = image.optimizedForUpload(maxDimension: 300, targetSizeKB: 100)
+            
+            // Log the final size for debugging
+            if let data = coverImageData {
+                let sizeKB = data.count / 1024
+                print("Optimized image size: \(sizeKB) KB")
+                
+                // Extra safety check - if still too large, make it even smaller
+                if sizeKB > 100 {
+                    print("Image still too large, applying extra compression")
+                    coverImageData = image.optimizedForUpload(maxDimension: 200, targetSizeKB: 50)
+                    if let newData = coverImageData {
+                        print("Final compressed size: \(newData.count / 1024) KB")
+                    }
+                }
+            }
+        } else if let location = location?.lowercased() {
+            // Set default image based on location
+            defaultImageUrl = getDefaultImageUrl(for: location)
+        }
         
         // Disable the create button and show loading
         createButton.isEnabled = false
         createButton.setTitle("Creating...", for: .normal)
         
-        // Create the circle using CircleService
-        CircleService.shared.createCircle(
-            name: name,
-            description: description,
-            privacy: privacy,
-            category: category,
-            location: location,
-            tags: tags,
-            coverImage: coverImageData
-        ) { [weak self] result in
-            DispatchQueue.main.async {
-                self?.createButton.isEnabled = true
-                self?.createButton.setTitle("Create Circle", for: .normal)
-                
-                switch result {
-                case .success(let circle):
-                    self?.delegate?.didCreateCircle(circle)
-                    self?.navigationController?.popViewController(animated: true)
+        // If we have a default image URL and no custom image, pass it directly
+        if defaultImageUrl != nil && coverImageData == nil {
+            // Create circle with default image URL
+            var body: [String: Any] = [
+                "name": name,
+                "privacy": privacy.rawValue,
+                "category": category.rawValue
+            ]
+            
+            if let description = description {
+                body["description"] = description
+            }
+            if let location = location {
+                body["location"] = location
+            }
+            if let tags = tags {
+                body["tags"] = tags
+            }
+            if let coverImage = defaultImageUrl {
+                body["coverImage"] = coverImage
+            }
+            
+            APIService.shared.request(
+                endpoint: "circles",
+                method: .post,
+                body: body,
+                requiresAuth: true
+            ) { [weak self] (result: Result<CircleResponse, APIError>) in
+                DispatchQueue.main.async {
+                    self?.createButton.isEnabled = true
+                    self?.createButton.setTitle("Create Circle", for: .normal)
                     
-                case .failure(let error):
-                    self?.presentAlert(
-                        title: "Error",
-                        message: "Failed to create circle: \(error.localizedDescription)"
-                    )
+                    switch result {
+                    case .success(let response):
+                        self?.delegate?.didCreateCircle(response.circle)
+                        self?.navigationController?.popViewController(animated: true)
+                    case .failure(let error):
+                        self?.presentAlert(
+                            title: "Error",
+                            message: "Failed to create circle: \(error.localizedDescription)"
+                        )
+                    }
+                }
+            }
+        } else {
+            // Create the circle using CircleService with image upload
+            CircleService.shared.createCircle(
+                name: name,
+                description: description,
+                privacy: privacy,
+                category: category,
+                location: location,
+                tags: tags,
+                coverImage: coverImageData
+            ) { [weak self] result in
+                DispatchQueue.main.async {
+                    self?.createButton.isEnabled = true
+                    self?.createButton.setTitle("Create Circle", for: .normal)
+                    
+                    switch result {
+                    case .success(let circle):
+                        self?.delegate?.didCreateCircle(circle)
+                        self?.navigationController?.popViewController(animated: true)
+                        
+                    case .failure(let error):
+                        self?.presentAlert(
+                            title: "Error",
+                            message: "Failed to create circle: \(error.localizedDescription)"
+                        )
+                    }
                 }
             }
         }
@@ -464,6 +534,65 @@ class CreateCircleViewController: UIViewController {
         let alertController = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alertController.addAction(UIAlertAction(title: "OK", style: .default, handler: completion))
         present(alertController, animated: true)
+    }
+    
+    private func getDefaultImageUrl(for location: String) -> String? {
+        // Map of locations to famous landmark image URLs
+        let locationImages: [String: String] = [
+            // US Cities
+            "new york": "https://images.unsplash.com/photo-1485871981521-5b1fd3805eee?w=800&h=800&fit=crop", // Statue of Liberty
+            "nyc": "https://images.unsplash.com/photo-1485871981521-5b1fd3805eee?w=800&h=800&fit=crop",
+            "manhattan": "https://images.unsplash.com/photo-1485871981521-5b1fd3805eee?w=800&h=800&fit=crop",
+            "san francisco": "https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=800&h=800&fit=crop", // Golden Gate
+            "sf": "https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=800&h=800&fit=crop",
+            "los angeles": "https://images.unsplash.com/photo-1534190760961-74e8c1c5c3da?w=800&h=800&fit=crop", // Hollywood Sign
+            "la": "https://images.unsplash.com/photo-1534190760961-74e8c1c5c3da?w=800&h=800&fit=crop",
+            "chicago": "https://images.unsplash.com/photo-1494522855154-9297ac14b55f?w=800&h=800&fit=crop", // Chicago Skyline
+            "miami": "https://images.unsplash.com/photo-1514214246283-d427a95c5d2f?w=800&h=800&fit=crop", // Miami Beach
+            "seattle": "https://images.unsplash.com/photo-1502175353174-a7a70e73b362?w=800&h=800&fit=crop", // Space Needle
+            "boston": "https://images.unsplash.com/photo-1491168034976-6d24c7c0835f?w=800&h=800&fit=crop", // Boston Harbor
+            "washington dc": "https://images.unsplash.com/photo-1463839346397-8e9946845e6d?w=800&h=800&fit=crop", // Capitol
+            "dc": "https://images.unsplash.com/photo-1463839346397-8e9946845e6d?w=800&h=800&fit=crop",
+            
+            // International Cities
+            "paris": "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=800&h=800&fit=crop", // Eiffel Tower
+            "london": "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=800&h=800&fit=crop", // Tower Bridge
+            "tokyo": "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=800&h=800&fit=crop", // Tokyo Tower
+            "sydney": "https://images.unsplash.com/photo-1523059623039-a9ed027e7fad?w=800&h=800&fit=crop", // Opera House
+            "rome": "https://images.unsplash.com/photo-1552832230-c0197dd311b5?w=800&h=800&fit=crop", // Colosseum
+            "barcelona": "https://images.unsplash.com/photo-1539037116277-4db20889f2d4?w=800&h=800&fit=crop", // Sagrada Familia
+            "dubai": "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?w=800&h=800&fit=crop", // Burj Khalifa
+            "singapore": "https://images.unsplash.com/photo-1508964942454-1a56651d54ac?w=800&h=800&fit=crop", // Marina Bay
+            
+            // US States
+            "california": "https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=800&h=800&fit=crop",
+            "new jersey": "https://images.unsplash.com/photo-1579876570508-d2a5b5e6c5d3?w=800&h=800&fit=crop", // Atlantic City
+            "nj": "https://images.unsplash.com/photo-1579876570508-d2a5b5e6c5d3?w=800&h=800&fit=crop",
+            "florida": "https://images.unsplash.com/photo-1514214246283-d427a95c5d2f?w=800&h=800&fit=crop",
+            "texas": "https://images.unsplash.com/photo-1531218150217-54595bc2b934?w=800&h=800&fit=crop", // Austin
+            "hawaii": "https://images.unsplash.com/photo-1542259009477-d625272157b7?w=800&h=800&fit=crop", // Hawaii Beach
+            
+            // Generic/Default
+            "beach": "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&h=800&fit=crop",
+            "mountain": "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=800&fit=crop",
+            "city": "https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=800&h=800&fit=crop",
+            "travel": "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=800&h=800&fit=crop"
+        ]
+        
+        // Check for exact match
+        if let imageUrl = locationImages[location] {
+            return imageUrl
+        }
+        
+        // Check if location contains any of the keys
+        for (key, imageUrl) in locationImages {
+            if location.contains(key) {
+                return imageUrl
+            }
+        }
+        
+        // Return a default travel image if no match found
+        return "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=800&h=800&fit=crop"
     }
 }
 

@@ -35,6 +35,7 @@ class AuthService {
     private let tokenKey = "authToken"
     private let refreshTokenKey = "refreshToken"
     private let userIdKey = "userId"
+    private let authProviderKey = "authProvider"
     
     // Authentication state
     private var _currentUser: User?
@@ -101,6 +102,8 @@ class AuthService {
         ) { [weak self] (result: Result<AuthResponse, APIError>) in
             switch result {
             case .success(let response):
+                // Save auth provider as "email" for email/password login
+                self?.saveAuthProvider("email")
                 self?.handleAuthResponse(response, completion: completion)
             case .failure(let error):
                 let authError = self?.mapAPIErrorToAuthError(error, context: .login)
@@ -127,6 +130,8 @@ class AuthService {
             switch result {
             case .success(let response):
                 print("🔐 Social login successful, handling auth response")
+                // Save the auth provider for session restoration
+                self?.saveAuthProvider(provider)
                 self?.handleAuthResponse(response, completion: completion)
             case .failure(let error):
                 print("🔐 Social login failed with error: \(error)")
@@ -264,6 +269,7 @@ class AuthService {
         clearToken()
         clearRefreshToken()
         clearUserId()
+        clearAuthProvider()
         _currentUser = nil
         APIService.shared.clearTokens()
     }
@@ -324,6 +330,18 @@ class AuthService {
     
     private func clearUserId() {
         userDefaults.removeObject(forKey: userIdKey)
+    }
+    
+    private func saveAuthProvider(_ provider: String) {
+        userDefaults.set(provider, forKey: authProviderKey)
+    }
+    
+    func getAuthProvider() -> String? {
+        return userDefaults.string(forKey: authProviderKey)
+    }
+    
+    private func clearAuthProvider() {
+        userDefaults.removeObject(forKey: authProviderKey)
     }
     
     // MARK: - Error Mapping

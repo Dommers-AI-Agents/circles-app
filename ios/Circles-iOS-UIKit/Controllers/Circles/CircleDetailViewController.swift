@@ -4,7 +4,7 @@ import MapKit
 class CircleDetailViewController: UIViewController {
     
     // MARK: - Properties
-    private let circle: Circle
+    private var circle: Circle
     private var places: [Place] = []
     
     // MARK: - UI Elements
@@ -287,9 +287,13 @@ class CircleDetailViewController: UIViewController {
         navigationItem.rightBarButtonItems = [shareButton, editButton]
         
         // Cover image
-        if circle.coverImage != nil {
-            // In a real app, you would load the image from the URL
-            coverImageView.image = UIImage(systemName: "photo")
+        if let coverImageUrl = circle.coverImage {
+            // Load image from URL
+            ImageService.shared.loadImage(from: coverImageUrl) { [weak self] image in
+                DispatchQueue.main.async {
+                    self?.coverImageView.image = image
+                }
+            }
         } else {
             // Default image based on category
             switch circle.category {
@@ -689,6 +693,7 @@ class CircleDetailViewController: UIViewController {
     
     @objc private func editButtonTapped() {
         let editCircleVC = EditCircleViewController(circle: circle)
+        editCircleVC.delegate = self
         let navController = UINavigationController(rootViewController: editCircleVC)
         present(navController, animated: true)
     }
@@ -972,5 +977,17 @@ extension CLLocationCoordinate2D {
             latitude: self.latitude * multiplier,
             longitude: self.longitude * multiplier
         )
+    }
+}
+
+// MARK: - EditCircleDelegate
+extension CircleDetailViewController: EditCircleDelegate {
+    func didUpdateCircle(_ updatedCircle: Circle) {
+        self.circle = updatedCircle
+        configureUI()
+    }
+    
+    func didDeleteCircle(_ circleId: String) {
+        navigationController?.popViewController(animated: true)
     }
 }

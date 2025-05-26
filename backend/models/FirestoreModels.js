@@ -155,9 +155,16 @@ const serializeDoc = (doc) => {
   if (!doc.exists) return null;
   
   const data = doc.data();
+  // Ensure we always have an id field
+  const id = doc.id || data.uid || data.id;
+  
+  // Remove uid from data to avoid duplication
+  const { uid, ...restData } = data;
+  
   return {
-    _id: doc.id, // Use _id for consistency with iOS models
-    ...data
+    _id: id, // Use _id for consistency with iOS models
+    id: id, // Also include id for backward compatibility
+    ...restData
   };
 };
 

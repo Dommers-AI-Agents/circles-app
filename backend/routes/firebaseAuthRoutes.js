@@ -18,4 +18,14 @@ router.post('/refresh-token', refreshToken);
 router.get('/me', protect, getMe);
 router.put('/me', protect, updateProfile);
 
+// Logout route (doesn't need protection as it just returns success)
+router.post('/logout', (req, res) => {
+  // In a JWT-based system, logout is handled client-side
+  // The server just acknowledges the request
+  res.status(200).json({
+    success: true,
+    message: 'Logged out successfully'
+  });
+});
+
 module.exports = router;
