@@ -74,7 +74,7 @@ async function verifyAppleToken(idToken) {
 // @access  Public
 exports.firebaseAuth = async (req, res, next) => {
   try {
-    const { idToken } = req.body;
+    const { idToken, name: providedName, email: providedEmail } = req.body;
 
     if (!idToken) {
       return res.status(400).json({
@@ -102,8 +102,9 @@ exports.firebaseAuth = async (req, res, next) => {
       try {
         const appleData = await verifyAppleToken(idToken);
         uid = appleData.uid;
-        email = appleData.email;
-        name = appleData.name || 'Apple User';
+        // Use provided email/name from client if available (Apple only provides on first sign-in)
+        email = providedEmail || appleData.email;
+        name = providedName || appleData.name || 'Apple User';
         picture = appleData.picture;
         provider = 'apple';
         console.log('✅ Apple ID token verified successfully');
@@ -148,11 +149,20 @@ exports.firebaseAuth = async (req, res, next) => {
 
     let user;
     if (userDoc.exists) {
-      // Existing user - update last login
-      await userRef.update({
+      // Existing user - update last login and name if provided
+      const updateData = {
         updatedAt: new Date().toISOString()
-      });
-      user = serializeDoc(userDoc);
+      };
+      
+      // Update name if provided and different from current
+      const existingUser = serializeDoc(userDoc);
+      if (name && name !== 'Apple User' && (!existingUser.displayName || existingUser.displayName === 'Apple User')) {
+        updateData.displayName = name;
+        console.log(`Updating user ${uid} display name to: ${name}`);
+      }
+      
+      await userRef.update(updateData);
+      user = serializeDoc(await userRef.get());
     } else {
       // New user - create profile
       const userData = createUser({

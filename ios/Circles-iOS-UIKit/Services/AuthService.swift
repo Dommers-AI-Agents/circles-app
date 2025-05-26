@@ -112,12 +112,20 @@ class AuthService {
         }
     }
     
-    func loginWithSocialProvider(provider: String, token: String, completion: @escaping (Result<User, Error>) -> Void) {
+    func loginWithSocialProvider(provider: String, token: String, name: String? = nil, email: String? = nil, completion: @escaping (Result<User, Error>) -> Void) {
         print("🔐 AuthService.loginWithSocialProvider called with provider: \(provider)")
         
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "idToken": token
         ]
+        
+        // Add name and email if provided (for Apple Sign-In)
+        if let name = name {
+            body["name"] = name
+        }
+        if let email = email {
+            body["email"] = email
+        }
         
         APIService.shared.request(
             endpoint: "auth/firebase",

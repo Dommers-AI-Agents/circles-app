@@ -438,8 +438,19 @@ class CreateCircleViewController: UIViewController {
                     
                     switch result {
                     case .success(let response):
+                        print("✅ Circle created successfully with default image: \(response.circle.name)")
+                        print("📍 Navigation controller exists: \(self?.navigationController != nil)")
+                        print("📍 Navigation stack count: \(self?.navigationController?.viewControllers.count ?? 0)")
+                        
                         self?.delegate?.didCreateCircle(response.circle)
-                        self?.navigationController?.popViewController(animated: true)
+                        
+                        if let navController = self?.navigationController {
+                            print("📍 Popping view controller...")
+                            navController.popViewController(animated: true)
+                        } else {
+                            print("❌ No navigation controller found!")
+                            self?.dismiss(animated: true, completion: nil)
+                        }
                     case .failure(let error):
                         self?.presentAlert(
                             title: "Error",
@@ -465,8 +476,19 @@ class CreateCircleViewController: UIViewController {
                     
                     switch result {
                     case .success(let circle):
+                        print("✅ Circle created successfully: \(circle.name)")
+                        print("📍 Navigation controller exists: \(self?.navigationController != nil)")
+                        print("📍 Navigation stack count: \(self?.navigationController?.viewControllers.count ?? 0)")
+                        
                         self?.delegate?.didCreateCircle(circle)
-                        self?.navigationController?.popViewController(animated: true)
+                        
+                        if let navController = self?.navigationController {
+                            print("📍 Popping view controller...")
+                            navController.popViewController(animated: true)
+                        } else {
+                            print("❌ No navigation controller found!")
+                            self?.dismiss(animated: true, completion: nil)
+                        }
                         
                     case .failure(let error):
                         self?.presentAlert(

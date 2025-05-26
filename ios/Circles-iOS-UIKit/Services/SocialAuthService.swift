@@ -302,8 +302,7 @@ extension SocialAuthService: ASAuthorizationControllerDelegate {
             print("🍎 Email: \(email ?? "nil")")
             
             // Create a display name from the full name components
-            // This is only for UI display - the actual user profile will come from the server
-            var displayName = "Apple User"
+            var displayName: String? = nil
             if let givenName = fullName?.givenName, let familyName = fullName?.familyName {
                 displayName = "\(givenName) \(familyName)"
             } else if let givenName = fullName?.givenName {
@@ -312,7 +311,11 @@ extension SocialAuthService: ASAuthorizationControllerDelegate {
                 displayName = familyName
             }
             
-            print("🍎 Signing in with Apple as: \(displayName)")
+            if let name = displayName {
+                print("🍎 Signing in with Apple as: \(name)")
+            } else {
+                print("🍎 No name provided by Apple Sign-In")
+            }
             
             // Clean up strong references 
             authorizationController = nil
@@ -320,9 +323,9 @@ extension SocialAuthService: ASAuthorizationControllerDelegate {
                 appDelegate.authorizationController = nil
             }
             
-            // Send the token to our backend via the AuthService
-            print("🍎 Calling AuthService.loginWithSocialProvider with token")
-            AuthService.shared.loginWithSocialProvider(provider: "apple", token: tokenString) { [weak self] result in
+            // Send the token to our backend via the AuthService with name and email
+            print("🍎 Calling AuthService.loginWithSocialProvider with token, name: \(displayName ?? "nil"), email: \(email ?? "nil")")
+            AuthService.shared.loginWithSocialProvider(provider: "apple", token: tokenString, name: displayName, email: email) { [weak self] result in
                 print("🍎 AuthService.loginWithSocialProvider completed")
                 self?.completionHandler?(result)
             }

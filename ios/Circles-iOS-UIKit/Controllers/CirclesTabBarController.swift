@@ -15,13 +15,10 @@ class CirclesTabBarController: UITabBarController {
         let discoverVC = UINavigationController(rootViewController: DiscoverViewController())
         discoverVC.tabBarItem = UITabBarItem(title: "Discover", image: UIImage(systemName: "magnifyingglass"), tag: 1)
         
-        let createVC = UINavigationController(rootViewController: CreateCircleViewController())
-        createVC.tabBarItem = UITabBarItem(title: "Create", image: UIImage(systemName: "plus.circle"), tag: 2)
-        
         let profileVC = UINavigationController(rootViewController: ProfileViewController())
-        profileVC.tabBarItem = UITabBarItem(title: "Profile", image: UIImage(systemName: "person"), tag: 3)
+        profileVC.tabBarItem = UITabBarItem(title: "Profile", image: UIImage(systemName: "person"), tag: 2)
         
-        // Set view controllers to tab bar
-        self.viewControllers = [circlesVC, discoverVC, createVC, profileVC]
+        // Set view controllers to tab bar (removed the Create tab)
+        self.viewControllers = [circlesVC, discoverVC, profileVC]
     }
 }
