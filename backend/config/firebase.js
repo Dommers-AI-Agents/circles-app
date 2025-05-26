@@ -35,7 +35,7 @@ const initializeFirebase = () => {
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccount),
           projectId: serviceAccount.project_id,
-          storageBucket: `${serviceAccount.project_id}.appspot.com`
+          storageBucket: process.env.FIREBASE_STORAGE_BUCKET || `${serviceAccount.project_id}.appspot.com`
         });
         console.log('🔥 Firebase initialized with service account');
       } catch (error) {

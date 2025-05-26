@@ -14,6 +14,7 @@ const firebaseAuthRoutes = require('./routes/firebaseAuthRoutes');
 const firebaseUserRoutes = require('./routes/firebaseUserRoutes');
 const firebaseCircleRoutes = require('./routes/firebaseCircleRoutes');
 const firebasePlaceRoutes = require('./routes/firebasePlaceRoutes');
+const uploadRoutes = require('./routes/uploadRoutes');
 
 // Import Firebase Place controller for circle-specific routes
 const { getPlacesByCircleId } = require('./controllers/firebasePlaceController');
@@ -26,8 +27,10 @@ app.use(cors({
   origin: true, // Allow all origins in development
   credentials: true
 }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' })); // Increase limit for image uploads
 app.use(morgan('combined'));
+
+// Images are now served from Firebase Storage, not local filesystem
 
 // Health check
 app.get('/', (req, res) => {
@@ -44,6 +47,7 @@ app.use('/api/auth', firebaseAuthRoutes);
 app.use('/api/users', firebaseUserRoutes);
 app.use('/api/circles', firebaseCircleRoutes);
 app.use('/api/places', firebasePlaceRoutes);
+app.use('/api/upload', uploadRoutes);
 
 // Special route for circle-specific places
 app.get('/api/circles/:circleId/places', protect, getPlacesByCircleId);

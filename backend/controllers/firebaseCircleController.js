@@ -207,19 +207,73 @@ exports.updateCircle = async (req, res, next) => {
       });
     }
 
-    // Validate updates
-    const validationErrors = validateCircle(req.body);
-    if (validationErrors.length > 0) {
+    // Validate only the fields that are being updated
+    const updateData = {};
+    
+    // Only validate and add fields that are present in the request
+    if (req.body.name !== undefined) {
+      if (!req.body.name || req.body.name.trim().length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Circle name cannot be empty'
+        });
+      }
+      if (req.body.name.length > 50) {
+        return res.status(400).json({
+          success: false,
+          message: 'Circle name must be 50 characters or less'
+        });
+      }
+      updateData.name = req.body.name;
+    }
+    
+    if (req.body.description !== undefined) {
+      if (req.body.description && req.body.description.length > 500) {
+        return res.status(400).json({
+          success: false,
+          message: 'Description must be 500 characters or less'
+        });
+      }
+      updateData.description = req.body.description;
+    }
+    
+    if (req.body.privacy !== undefined) {
+      const validPrivacyLevels = ['public', 'friends', 'private'];
+      if (!validPrivacyLevels.includes(req.body.privacy)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Privacy must be public, friends, or private'
+        });
+      }
+      updateData.privacy = req.body.privacy;
+    }
+    
+    if (req.body.category !== undefined) {
+      const validCategories = ['travel', 'food', 'services', 'shopping', 'healthcare', 'entertainment', 'other'];
+      if (!validCategories.includes(req.body.category)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid category'
+        });
+      }
+      updateData.category = req.body.category;
+    }
+    
+    // Add other fields without validation
+    if (req.body.coverImage !== undefined) updateData.coverImage = req.body.coverImage;
+    if (req.body.location !== undefined) updateData.location = req.body.location;
+    if (req.body.tags !== undefined) updateData.tags = req.body.tags;
+
+    // Add timestamp
+    updateData.updatedAt = new Date().toISOString();
+    
+    // Make sure we have something to update
+    if (Object.keys(updateData).length === 1) { // Only updatedAt
       return res.status(400).json({
         success: false,
-        message: 'Validation error',
-        errors: validationErrors
+        message: 'No fields to update'
       });
     }
-
-    // Don't allow ownership transfer
-    const { owner, ...updateData } = req.body;
-    updateData.updatedAt = new Date().toISOString();
 
     await circleRef.update(updateData);
     
