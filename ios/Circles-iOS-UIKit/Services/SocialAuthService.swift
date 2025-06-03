@@ -5,6 +5,10 @@ import CryptoKit
 import SafariServices
 // Import GoogleSignIn
 import GoogleSignIn
+// Import FBSDKLoginKit for Facebook
+import FBSDKLoginKit
+// Import for LinkedIn OAuth
+import WebKit
 
 // Social Authentication Service for handling Apple & Google Sign-In
 class SocialAuthService: NSObject {
@@ -224,11 +228,139 @@ class SocialAuthService: NSObject {
         }
     }
     
+    // MARK: - Facebook Sign-In
+    
+    func signInWithFacebook(from viewController: UIViewController, completion: @escaping (Result<User, Error>) -> Void) {
+        self.completionHandler = completion
+        
+        print("📘 Starting Facebook Sign-In process")
+        
+        let loginManager = LoginManager()
+        loginManager.logOut() // Clear any existing session
+        
+        // Note: "email" permission requires app to be in live mode or user to be a test user
+        // For development, you can use just "public_profile" or add test users in Facebook App Dashboard
+        loginManager.logIn(permissions: ["public_profile", "email"], from: viewController) { [weak self] result, error in
+            if let error = error {
+                print("📘 Facebook Sign-In error: \(error)")
+                completion(.failure(error))
+                return
+            }
+            
+            guard let result = result, !result.isCancelled else {
+                print("📘 Facebook Sign-In cancelled")
+                let error = NSError(domain: "com.circles.auth.facebook", code: -1, 
+                                   userInfo: [NSLocalizedDescriptionKey: "Facebook sign-in was cancelled"])
+                completion(.failure(error))
+                return
+            }
+            
+            // Get the access token
+            guard let token = AccessToken.current?.tokenString else {
+                print("📘 Failed to get Facebook access token")
+                let error = NSError(domain: "com.circles.auth.facebook", code: -1, 
+                                   userInfo: [NSLocalizedDescriptionKey: "Failed to get Facebook access token"])
+                completion(.failure(error))
+                return
+            }
+            
+            print("📘 Successfully authenticated with Facebook, token: \(token)")
+            
+            // Fetch user profile data
+            let request = GraphRequest(graphPath: "me", parameters: ["fields": "id,name,email,picture.type(large)"])
+            request.start { _, graphResult, error in
+                if let error = error {
+                    print("📘 Failed to fetch Facebook profile: \(error)")
+                    completion(.failure(error))
+                    return
+                }
+                
+                guard let userData = graphResult as? [String: Any] else {
+                    let error = NSError(domain: "com.circles.auth.facebook", code: -1, 
+                                       userInfo: [NSLocalizedDescriptionKey: "Failed to parse Facebook user data"])
+                    completion(.failure(error))
+                    return
+                }
+                
+                let name = userData["name"] as? String
+                let email = userData["email"] as? String
+                var picture: String?
+                
+                if let pictureData = userData["picture"] as? [String: Any],
+                   let data = pictureData["data"] as? [String: Any],
+                   let url = data["url"] as? String {
+                    picture = url
+                }
+                
+                print("📘 Facebook User: \(name ?? "Unknown"), \(email ?? "No email")")
+                
+                // Send the token to our backend
+                AuthService.shared.loginWithSocialProvider(provider: "facebook", token: token, name: name, email: email) { result in
+                    completion(result)
+                }
+            }
+        }
+    }
+    
+    // MARK: - LinkedIn Sign-In
+    
+    func signInWithLinkedIn(from viewController: UIViewController, completion: @escaping (Result<User, Error>) -> Void) {
+        self.completionHandler = completion
+        self.presentingViewController = viewController
+        
+        print("🔗 Starting LinkedIn Sign-In process")
+        
+        // LinkedIn OAuth 2.0 configuration
+        guard let clientId = Bundle.main.object(forInfoDictionaryKey: "LinkedInClientID") as? String,
+              clientId != "YOUR_LINKEDIN_CLIENT_ID" else {
+            print("🔗 LinkedIn Client ID not configured in Info.plist")
+            let error = NSError(domain: "com.circles.auth.linkedin", code: -10,
+                               userInfo: [NSLocalizedDescriptionKey: "LinkedIn Client ID not configured"])
+            completion(.failure(error))
+            return
+        }
+        
+        let redirectUri = "com.favcircles.circles://linkedin-callback"
+        let state = UUID().uuidString
+        let scope = "openid profile email"
+        
+        // Store state for verification
+        UserDefaults.standard.set(state, forKey: "linkedInAuthState")
+        
+        // Build authorization URL
+        var components = URLComponents(string: "https://www.linkedin.com/oauth/v2/authorization")!
+        components.queryItems = [
+            URLQueryItem(name: "response_type", value: "code"),
+            URLQueryItem(name: "client_id", value: clientId),
+            URLQueryItem(name: "redirect_uri", value: redirectUri),
+            URLQueryItem(name: "state", value: state),
+            URLQueryItem(name: "scope", value: scope)
+        ]
+        
+        guard let authURL = components.url else {
+            let error = NSError(domain: "com.circles.auth.linkedin", code: -1, 
+                               userInfo: [NSLocalizedDescriptionKey: "Failed to create LinkedIn authorization URL"])
+            completion(.failure(error))
+            return
+        }
+        
+        // Present Safari view controller for OAuth flow
+        let safariViewController = SFSafariViewController(url: authURL)
+        safariViewController.delegate = self
+        viewController.present(safariViewController, animated: true)
+    }
+    
     // MARK: - Sign Out Methods
     
     func signOutFromGoogle(completion: @escaping (Bool) -> Void) {
         GIDSignIn.sharedInstance.signOut()
         print("🔍 Signed out from Google")
+        completion(true)
+    }
+    
+    func signOutFromFacebook(completion: @escaping (Bool) -> Void) {
+        LoginManager().logOut()
+        print("📘 Signed out from Facebook")
         completion(true)
     }
     
@@ -450,5 +582,142 @@ extension SocialAuthService: ASAuthorizationControllerPresentationContextProvidi
         
         // If everything else fails
         fatalError("🍎 Failed to find a valid window for Apple Sign-In")
+    }
+}
+
+// MARK: - SFSafariViewControllerDelegate
+
+extension SocialAuthService: SFSafariViewControllerDelegate {
+    func safariViewControllerDidFinish(_ controller: SFSafariViewController) {
+        print("🔗 LinkedIn Safari view controller dismissed")
+        let error = NSError(domain: "com.circles.auth.linkedin", code: -1, 
+                           userInfo: [NSLocalizedDescriptionKey: "LinkedIn sign-in was cancelled"])
+        completionHandler?(.failure(error))
+        presentingViewController = nil
+    }
+}
+
+// MARK: - LinkedIn OAuth Callback Handler
+
+extension SocialAuthService {
+    func handleLinkedInCallback(url: URL) -> Bool {
+        guard url.scheme == "com.favcircles.circles",
+              url.host == "linkedin",
+              url.path == "/callback" else {
+            return false
+        }
+        
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let code = components?.queryItems?.first(where: { $0.name == "code" })?.value
+        let state = components?.queryItems?.first(where: { $0.name == "state" })?.value
+        let error = components?.queryItems?.first(where: { $0.name == "error" })?.value
+        
+        // Verify state
+        let savedState = UserDefaults.standard.string(forKey: "linkedInAuthState")
+        UserDefaults.standard.removeObject(forKey: "linkedInAuthState")
+        
+        if state != savedState {
+            print("🔗 LinkedIn state mismatch")
+            let error = NSError(domain: "com.circles.auth.linkedin", code: -1, 
+                               userInfo: [NSLocalizedDescriptionKey: "LinkedIn authentication state mismatch"])
+            completionHandler?(.failure(error))
+            return true
+        }
+        
+        if let error = error {
+            print("🔗 LinkedIn OAuth error: \(error)")
+            let authError = NSError(domain: "com.circles.auth.linkedin", code: -1, 
+                                   userInfo: [NSLocalizedDescriptionKey: "LinkedIn authentication failed: \(error)"])
+            completionHandler?(.failure(authError))
+            return true
+        }
+        
+        guard let authCode = code else {
+            print("🔗 No authorization code received from LinkedIn")
+            let error = NSError(domain: "com.circles.auth.linkedin", code: -1, 
+                               userInfo: [NSLocalizedDescriptionKey: "No authorization code received from LinkedIn"])
+            completionHandler?(.failure(error))
+            return true
+        }
+        
+        // Send authorization code to backend for secure token exchange
+        print("🔗 Sending authorization code to backend for token exchange")
+        
+        // The backend will handle the client secret securely
+        AuthService.shared.loginWithSocialProvider(
+            provider: "linkedin",
+            token: authCode, // Send authorization code, not access token
+            name: nil,
+            email: nil
+        ) { [weak self] result in
+            self?.completionHandler?(result)
+        }
+        
+        return true
+    }
+    
+    private func fetchLinkedInProfile(accessToken: String) {
+        var request = URLRequest(url: URL(string: "https://api.linkedin.com/v2/me")!)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            if let error = error {
+                print("🔗 LinkedIn profile fetch error: \(error)")
+                self?.completionHandler?(.failure(error))
+                return
+            }
+            
+            guard let data = data,
+                  let profile = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                let error = NSError(domain: "com.circles.auth.linkedin", code: -1, 
+                                   userInfo: [NSLocalizedDescriptionKey: "Failed to parse LinkedIn profile"])
+                self?.completionHandler?(.failure(error))
+                return
+            }
+            
+            // Extract user info from LinkedIn profile
+            let firstName = profile["localizedFirstName"] as? String ?? ""
+            let lastName = profile["localizedLastName"] as? String ?? ""
+            let name = "\(firstName) \(lastName)".trimmingCharacters(in: .whitespaces)
+            
+            print("🔗 LinkedIn User: \(name)")
+            
+            // Fetch email separately (requires different endpoint)
+            self?.fetchLinkedInEmail(accessToken: accessToken, name: name)
+        }.resume()
+    }
+    
+    private func fetchLinkedInEmail(accessToken: String, name: String) {
+        var request = URLRequest(url: URL(string: "https://api.linkedin.com/v2/emailAddress?q=members&projection=(elements*(handle~))")!)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            var email: String?
+            
+            if let data = data,
+               let emailResponse = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let elements = emailResponse["elements"] as? [[String: Any]],
+               let firstElement = elements.first,
+               let handle = firstElement["handle~"] as? [String: Any],
+               let emailAddress = handle["emailAddress"] as? String {
+                email = emailAddress
+            }
+            
+            print("🔗 LinkedIn Email: \(email ?? "No email")")
+            
+            // Send the token to our backend
+            DispatchQueue.main.async {
+                // Dismiss Safari view controller if it's still presented
+                if let viewController = self?.presentingViewController {
+                    viewController.dismiss(animated: true) {
+                        self?.presentingViewController = nil
+                    }
+                }
+                
+                AuthService.shared.loginWithSocialProvider(provider: "linkedin", token: accessToken, name: name.isEmpty ? nil : name, email: email) { result in
+                    self?.completionHandler?(result)
+                }
+            }
+        }.resume()
     }
 }

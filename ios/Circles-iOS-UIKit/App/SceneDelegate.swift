@@ -1,4 +1,5 @@
 import UIKit
+import FBSDKCoreKit
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
@@ -65,6 +66,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
         // Handle deep links when the app is already running
         if let url = URLContexts.first?.url {
+            // First check if it's a Facebook callback
+            if ApplicationDelegate.shared.application(UIApplication.shared, open: url, sourceApplication: nil, annotation: nil) {
+                return
+            }
+            
+            // Handle other deep links
             handleDeepLink(url)
         }
     }

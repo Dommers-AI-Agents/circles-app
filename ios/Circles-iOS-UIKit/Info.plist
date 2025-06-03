@@ -34,9 +34,47 @@
 				<string>com.googleusercontent.apps.778088177220-7ddtorl0um8te3s5dmv14fs4d2kirukt</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>facebook-sign-in</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>fb971348948407685</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>linkedin-sign-in</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.favcircles.circles</string>
+			</array>
+		</dict>
 	</array>
 	<key>CFBundleIdentifier</key>
 	<string>com.favcircles.circles</string>
+	<key>FacebookAppID</key>
+	<string>971348948407685</string>
+	<key>FacebookClientToken</key>
+	<string>dac11cb53951c6c7d44f4ab3351451f6</string>
+	<key>FacebookDisplayName</key>
+	<string>Circles</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>fbapi</string>
+		<string>fb-messenger-api</string>
+		<string>fb-messenger-share-api</string>
+		<string>fbauth2</string>
+		<string>fbshareextension</string>
+		<string>linkedin</string>
+		<string>linkedin-sdk</string>
+	</array>
+	<key>LinkedInClientID</key>
+	<string>YOUR_LINKEDIN_CLIENT_ID</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

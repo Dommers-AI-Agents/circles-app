@@ -127,6 +127,24 @@ class RegisterViewController: UIViewController {
     
     private let socialStackView: UIStackView = {
         let stackView = UIStackView()
+        stackView.axis = .vertical
+        stackView.distribution = .fillEqually
+        stackView.spacing = Constants.Spacing.medium
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        return stackView
+    }()
+    
+    private let topSocialStackView: UIStackView = {
+        let stackView = UIStackView()
+        stackView.axis = .horizontal
+        stackView.distribution = .fillEqually
+        stackView.spacing = Constants.Spacing.medium
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        return stackView
+    }()
+    
+    private let bottomSocialStackView: UIStackView = {
+        let stackView = UIStackView()
         stackView.axis = .horizontal
         stackView.distribution = .fillEqually
         stackView.spacing = Constants.Spacing.medium
@@ -152,6 +170,28 @@ class RegisterViewController: UIViewController {
         return button
     }()
     
+    private let facebookSignInButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Sign up with Facebook", for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = UIColor(red: 24/255, green: 119/255, blue: 242/255, alpha: 1.0) // Facebook Blue
+        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .medium)
+        button.layer.cornerRadius = 8
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let linkedInSignInButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Sign up with LinkedIn", for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = UIColor(red: 0/255, green: 119/255, blue: 181/255, alpha: 1.0) // LinkedIn Blue
+        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .medium)
+        button.layer.cornerRadius = 8
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
     private let activityIndicator: UIActivityIndicatorView = {
         let indicator = UIActivityIndicatorView(style: .medium)
         indicator.hidesWhenStopped = true
@@ -165,6 +205,8 @@ class RegisterViewController: UIViewController {
             registerButton.isEnabled = !isRegistering
             appleSignInButton.isEnabled = !isRegistering
             googleSignInButton.isEnabled = !isRegistering
+            facebookSignInButton.isEnabled = !isRegistering
+            linkedInSignInButton.isEnabled = !isRegistering
             displayNameTextField.isEnabled = !isRegistering
             emailTextField.isEnabled = !isRegistering
             passwordTextField.isEnabled = !isRegistering
@@ -197,9 +239,15 @@ class RegisterViewController: UIViewController {
     private func setupUI() {
         view.backgroundColor = Constants.Colors.background
         
-        // Configure social stack view
-        socialStackView.addArrangedSubview(appleSignInButton)
-        socialStackView.addArrangedSubview(googleSignInButton)
+        // Configure social stack views
+        topSocialStackView.addArrangedSubview(appleSignInButton)
+        topSocialStackView.addArrangedSubview(googleSignInButton)
+        
+        bottomSocialStackView.addArrangedSubview(facebookSignInButton)
+        bottomSocialStackView.addArrangedSubview(linkedInSignInButton)
+        
+        socialStackView.addArrangedSubview(topSocialStackView)
+        socialStackView.addArrangedSubview(bottomSocialStackView)
         
         // Add subviews
         view.addSubview(scrollView)
@@ -296,7 +344,7 @@ class RegisterViewController: UIViewController {
             socialStackView.topAnchor.constraint(equalTo: orLabel.bottomAnchor, constant: Constants.Spacing.medium),
             socialStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             socialStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            socialStackView.heightAnchor.constraint(equalToConstant: 50),
+            socialStackView.heightAnchor.constraint(equalToConstant: 110), // Height for 2 rows of buttons
             
             // Activity indicator
             activityIndicator.topAnchor.constraint(equalTo: socialStackView.bottomAnchor, constant: Constants.Spacing.medium),
@@ -319,6 +367,8 @@ class RegisterViewController: UIViewController {
         // Social login buttons
         appleSignInButton.addTarget(self, action: #selector(appleSignInButtonTapped), for: .touchUpInside)
         googleSignInButton.addTarget(self, action: #selector(googleSignInButtonTapped), for: .touchUpInside)
+        facebookSignInButton.addTarget(self, action: #selector(facebookSignInButtonTapped), for: .touchUpInside)
+        linkedInSignInButton.addTarget(self, action: #selector(linkedInSignInButtonTapped), for: .touchUpInside)
         
         // Add gesture recognizer to dismiss keyboard when tapping on the view
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
@@ -442,6 +492,44 @@ class RegisterViewController: UIViewController {
                     self?.showSuccessMessage()
                 case .failure(let error):
                     self?.presentAlert(title: "Google Sign-In Failed", message: error.localizedDescription)
+                }
+            }
+        }
+    }
+    
+    @objc private func facebookSignInButtonTapped() {
+        isRegistering = true
+        
+        SocialAuthService.shared.signInWithFacebook(from: self) { [weak self] result in
+            DispatchQueue.main.async {
+                self?.isRegistering = false
+                
+                switch result {
+                case .success(let user):
+                    print("Successfully registered with Facebook: \(user.displayName)")
+                    // Show success message and return to login
+                    self?.showSuccessMessage()
+                case .failure(let error):
+                    self?.presentAlert(title: "Facebook Sign-In Failed", message: error.localizedDescription)
+                }
+            }
+        }
+    }
+    
+    @objc private func linkedInSignInButtonTapped() {
+        isRegistering = true
+        
+        SocialAuthService.shared.signInWithLinkedIn(from: self) { [weak self] result in
+            DispatchQueue.main.async {
+                self?.isRegistering = false
+                
+                switch result {
+                case .success(let user):
+                    print("Successfully registered with LinkedIn: \(user.displayName)")
+                    // Show success message and return to login
+                    self?.showSuccessMessage()
+                case .failure(let error):
+                    self?.presentAlert(title: "LinkedIn Sign-In Failed", message: error.localizedDescription)
                 }
             }
         }

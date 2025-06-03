@@ -307,7 +307,8 @@ class PlaceDetailViewController: UIViewController {
         // Add navigation bar button
         let shareButton = UIBarButtonItem(barButtonSystemItem: .action, target: self, action: #selector(shareButtonTapped))
         let directionButton = UIBarButtonItem(image: UIImage(systemName: "map"), style: .plain, target: self, action: #selector(directionsButtonTapped))
-        navigationItem.rightBarButtonItems = [shareButton, directionButton]
+        let editButton = UIBarButtonItem(barButtonSystemItem: .edit, target: self, action: #selector(editButtonTapped))
+        navigationItem.rightBarButtonItems = [editButton, shareButton, directionButton]
         
         // Layout constraints
         NSLayoutConstraint.activate([
@@ -679,5 +680,26 @@ class PlaceDetailViewController: UIViewController {
             alert.addAction(UIAlertAction(title: "OK", style: .default))
             present(alert, animated: true)
         }
+    }
+    
+    @objc private func editButtonTapped() {
+        let editPlaceVC = EditPlaceViewController(place: place)
+        editPlaceVC.delegate = self
+        let navController = UINavigationController(rootViewController: editPlaceVC)
+        present(navController, animated: true)
+    }
+}
+
+// MARK: - EditPlaceDelegate
+extension PlaceDetailViewController: EditPlaceDelegate {
+    func didUpdatePlace(_ updatedPlace: Place) {
+        // Update the current place with the updated one
+        // Since place is a let constant, we need to navigate back and refresh
+        navigationController?.popViewController(animated: true)
+    }
+    
+    func didDeletePlace(_ placeId: String) {
+        // Navigate back to the circle detail view after deletion
+        navigationController?.popViewController(animated: true)
     }
 }

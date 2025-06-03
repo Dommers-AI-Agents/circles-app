@@ -8,6 +8,7 @@
 import UIKit
 import AuthenticationServices
 import GoogleSignIn
+import FBSDKCoreKit
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -81,6 +82,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             // The SDK automatically manages session persistence
         }
         
+        // Initialize Facebook SDK
+        print("📘 Initializing Facebook SDK")
+        ApplicationDelegate.shared.application(application, didFinishLaunchingWithOptions: launchOptions)
+        
         return true
     }
 
@@ -128,8 +133,22 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         if googleHandled {
             print("🔍 Google Sign-In successfully handled URL")
             return true
-        } else {
-            print("🔍 Google Sign-In did not handle URL, passing to other handlers")
+        }
+        
+        // Handle Facebook SDK
+        let facebookHandled = ApplicationDelegate.shared.application(app, open: url, options: options)
+        print("📘 Facebook SDK handling result: \(facebookHandled)")
+        
+        if facebookHandled {
+            print("📘 Facebook SDK successfully handled URL")
+            return true
+        }
+        
+        // Handle LinkedIn OAuth callback
+        if url.scheme == "com.favcircles.circles" && url.host == "linkedin" {
+            print("🔗 LinkedIn OAuth callback received")
+            let handled = SocialAuthService.shared.handleLinkedInCallback(url: url)
+            return handled
         }
         
         // Handle other URL schemes your app may use

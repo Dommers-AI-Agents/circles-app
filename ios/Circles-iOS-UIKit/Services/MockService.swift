@@ -356,6 +356,7 @@ class MockService {
             priceLevel: priceLevel,
             circleId: circleId,
             addedBy: "user_1001",
+            privacy: .followCirclePrivacy,
             createdAt: Date().addingTimeInterval(Double.random(in: -86400 * 30 ... -86400 * 5)),
             updatedAt: Date().addingTimeInterval(Double.random(in: -86400 * 5 ... -3600))
         )

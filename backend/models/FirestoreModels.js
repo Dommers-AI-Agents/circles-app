@@ -15,13 +15,14 @@ const COLLECTIONS = {
 const createUser = (userData) => {
   const now = new Date().toISOString();
   return {
-    email: userData.email,
+    email: userData.email || null,
     displayName: userData.displayName || userData.name,
     profilePicture: userData.profilePicture || userData.picture || null,
     bio: userData.bio || null,
     location: userData.location || null,
     friends: userData.friends || [],
     friendRequests: userData.friendRequests || [],
+    linkedProviders: userData.linkedProviders || {},
     createdAt: now,
     updatedAt: now,
     // Firebase UID from authentication
@@ -73,6 +74,7 @@ const createPlace = (placeData, circleId, addedBy) => {
     priceLevel: placeData.priceLevel || null,
     circleId: circleId,
     addedBy: addedBy,
+    privacy: placeData.privacy || 'followCircle', // followCircle, public, friends, private
     createdAt: now,
     updatedAt: now
   };

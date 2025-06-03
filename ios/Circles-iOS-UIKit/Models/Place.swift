@@ -21,6 +21,7 @@ struct Place: Codable, Identifiable {
     let priceLevel: PriceLevel?
     let circleId: String
     let addedBy: String
+    let privacy: PlacePrivacy
     let createdAt: Date
     let updatedAt: Date
     
@@ -28,7 +29,7 @@ struct Place: Codable, Identifiable {
         case id = "_id"
         case name, description, address, location, website, phone, googlePlaceId
         case photos, category, rating, notes, tags, reviews, openingHours
-        case priceLevel, circleId, addedBy, createdAt, updatedAt
+        case priceLevel, circleId, addedBy, privacy, createdAt, updatedAt
     }
 }
 
@@ -135,6 +136,31 @@ enum PriceLevel: Int, Codable, CaseIterable {
         case .moderate: return "$$"
         case .expensive: return "$$$"
         case .veryExpensive: return "$$$$"
+        }
+    }
+}
+
+enum PlacePrivacy: String, Codable, CaseIterable {
+    case followCirclePrivacy = "followCircle"
+    case `public` = "public"
+    case friends = "friends"
+    case `private` = "private"
+    
+    var displayName: String {
+        switch self {
+        case .followCirclePrivacy: return "Follow Circle Privacy"
+        case .`public`: return "Public"
+        case .friends: return "Friends Only"
+        case .`private`: return "Private"
+        }
+    }
+    
+    var systemIconName: String {
+        switch self {
+        case .followCirclePrivacy: return "circle"
+        case .`public`: return "globe"
+        case .friends: return "person.2"
+        case .`private`: return "lock"
         }
     }
 }

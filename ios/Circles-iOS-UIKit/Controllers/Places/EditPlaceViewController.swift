@@ -2,13 +2,18 @@ import UIKit
 import MapKit
 import CoreLocation
 
-class AddPlaceViewController: UIViewController {
+protocol EditPlaceDelegate: AnyObject {
+    func didUpdatePlace(_ updatedPlace: Place)
+    func didDeletePlace(_ placeId: String)
+}
+
+class EditPlaceViewController: UIViewController {
     
     // MARK: - Properties
-    private let circleId: String
+    private var place: Place
     private let locationManager = CLLocationManager()
-    private var userLocation: CLLocation?
     private var selectedLocation: CLLocationCoordinate2D?
+    weak var delegate: EditPlaceDelegate?
     
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
@@ -241,12 +246,10 @@ class AddPlaceViewController: UIViewController {
         return textField
     }()
     
-    private let addPlaceButton: UIButton = {
+    private let deleteButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setTitle("Add Place", for: .normal)
-        button.setTitleColor(.white, for: .normal)
-        button.backgroundColor = Constants.Colors.primary
-        button.layer.cornerRadius = 8
+        button.setTitle("Delete Place", for: .normal)
+        button.setTitleColor(.red, for: .normal)
         button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.large, weight: .semibold)
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
@@ -254,8 +257,8 @@ class AddPlaceViewController: UIViewController {
     
     // MARK: - Lifecycle
     
-    init(circleId: String) {
-        self.circleId = circleId
+    init(place: Place) {
+        self.place = place
         super.init(nibName: nil, bundle: nil)
     }
     
@@ -268,13 +271,18 @@ class AddPlaceViewController: UIViewController {
         setupUI()
         setupLocationManager()
         setupActions()
+        populateFields()
     }
     
     // MARK: - UI Setup
     
     private func setupUI() {
         view.backgroundColor = Constants.Colors.background
-        title = "Add Place"
+        title = "Edit Place"
+        
+        // Navigation bar buttons
+        navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .cancel, target: self, action: #selector(cancelButtonTapped))
+        navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .save, target: self, action: #selector(saveButtonTapped))
         
         // Add subviews
         view.addSubview(scrollView)
@@ -305,7 +313,7 @@ class AddPlaceViewController: UIViewController {
         contentView.addSubview(websiteTextField)
         contentView.addSubview(phoneLabel)
         contentView.addSubview(phoneTextField)
-        contentView.addSubview(addPlaceButton)
+        contentView.addSubview(deleteButton)
         
         // Layout constraints
         NSLayoutConstraint.activate([
@@ -433,12 +441,10 @@ class AddPlaceViewController: UIViewController {
             phoneTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             phoneTextField.heightAnchor.constraint(equalToConstant: 40),
             
-            // Add place button
-            addPlaceButton.topAnchor.constraint(equalTo: phoneTextField.bottomAnchor, constant: Constants.Spacing.large),
-            addPlaceButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            addPlaceButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            addPlaceButton.heightAnchor.constraint(equalToConstant: 50),
-            addPlaceButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
+            // Delete button
+            deleteButton.topAnchor.constraint(equalTo: phoneTextField.bottomAnchor, constant: Constants.Spacing.xlarge),
+            deleteButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            deleteButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
         ])
     }
     
@@ -446,13 +452,22 @@ class AddPlaceViewController: UIViewController {
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
         
-        // Center map on New York City initially
-        let initialLocation = CLLocation(latitude: 40.7128, longitude: -74.0060)
-        let region = MKCoordinateRegion(
-            center: initialLocation.coordinate,
-            span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
-        )
-        mapView.setRegion(region, animated: false)
+        // Show current place location on map
+        if let location = place.location?.clLocation {
+            selectedLocation = location.coordinate
+            
+            let region = MKCoordinateRegion(
+                center: location.coordinate,
+                span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+            )
+            mapView.setRegion(region, animated: false)
+            
+            // Add annotation
+            let annotation = MKPointAnnotation()
+            annotation.coordinate = location.coordinate
+            annotation.title = place.name
+            mapView.addAnnotation(annotation)
+        }
         
         // Add tap gesture recognizer to the map
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleMapTap(_:)))
@@ -462,7 +477,7 @@ class AddPlaceViewController: UIViewController {
     private func setupActions() {
         // Add button actions
         useCurrentLocationButton.addTarget(self, action: #selector(useCurrentLocationButtonTapped), for: .touchUpInside)
-        addPlaceButton.addTarget(self, action: #selector(addPlaceButtonTapped), for: .touchUpInside)
+        deleteButton.addTarget(self, action: #selector(deleteButtonTapped), for: .touchUpInside)
         
         // Add gesture recognizer to dismiss keyboard when tapping on the view
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
@@ -470,7 +485,136 @@ class AddPlaceViewController: UIViewController {
         view.addGestureRecognizer(tapGesture)
     }
     
+    private func populateFields() {
+        nameTextField.text = place.name
+        descriptionTextView.text = place.description
+        
+        // Set category
+        let categories = [PlaceCategory.restaurant, .cafe, .bar, .hotel, .retail, .service, .attraction, .other]
+        if let index = categories.firstIndex(of: place.category) {
+            categorySegmentedControl.selectedSegmentIndex = index
+        }
+        
+        // Parse address
+        let addressComponents = place.address.components(separatedBy: ", ")
+        if addressComponents.count > 0 {
+            streetTextField.text = addressComponents[0]
+        }
+        if addressComponents.count > 1 {
+            cityTextField.text = addressComponents[1]
+        }
+        if addressComponents.count > 2 {
+            stateTextField.text = addressComponents[2]
+        }
+        if addressComponents.count > 3 {
+            zipCodeTextField.text = addressComponents[3]
+        }
+        if addressComponents.count > 4 {
+            countryTextField.text = addressComponents[4]
+        }
+        
+        // Set privacy
+        let privacyOptions = [PlacePrivacy.followCirclePrivacy, .public, .friends, .private]
+        if let index = privacyOptions.firstIndex(of: place.privacy) {
+            privacySegmentedControl.selectedSegmentIndex = index
+        }
+        
+        notesTextView.text = place.notes
+        
+        // Tags
+        if let tags = place.tags {
+            tagsTextField.text = tags.joined(separator: ", ")
+        }
+        
+        websiteTextField.text = place.website
+        phoneTextField.text = place.phone
+    }
+    
     // MARK: - Actions
+    
+    @objc private func cancelButtonTapped() {
+        dismiss(animated: true)
+    }
+    
+    @objc private func saveButtonTapped() {
+        // Validate required fields
+        guard let name = nameTextField.text, !name.isEmpty else {
+            presentAlert(title: "Error", message: "Please enter a name for the place")
+            return
+        }
+        
+        // Check if any fields have changed
+        let hasChanges = checkForChanges()
+        
+        guard hasChanges else {
+            dismiss(animated: true)
+            return
+        }
+        
+        // Get updated values
+        let description = descriptionTextView.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : descriptionTextView.text
+        
+        // Get selected category
+        let categoryIndex = categorySegmentedControl.selectedSegmentIndex
+        let categories = [PlaceCategory.restaurant, .cafe, .bar, .hotel, .retail, .service, .attraction, .other]
+        let category = categories[categoryIndex]
+        
+        // Format the address string
+        let formattedAddress = [streetTextField.text, cityTextField.text, stateTextField.text, zipCodeTextField.text, countryTextField.text]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
+        
+        let address = formattedAddress.isEmpty ? nil : formattedAddress
+        
+        // Get optional fields
+        let notes = notesTextView.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : notesTextView.text
+        let website = websiteTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true ? nil : websiteTextField.text
+        let phone = phoneTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true ? nil : phoneTextField.text
+        
+        // Get tags
+        var tags: [String]?
+        if let tagsText = tagsTextField.text, !tagsText.isEmpty {
+            tags = tagsText.split(separator: ",").map { String($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        }
+        
+        // Get privacy setting
+        let privacyIndex = privacySegmentedControl.selectedSegmentIndex
+        let privacyOptions = [PlacePrivacy.followCirclePrivacy, .public, .friends, .private]
+        let privacy = privacyOptions[privacyIndex]
+        
+        // Show loading indicator
+        let loadingAlert = UIAlertController(title: "Updating Place", message: "Please wait...", preferredStyle: .alert)
+        present(loadingAlert, animated: true)
+        
+        // Call PlaceService to update the place
+        PlaceService.shared.updatePlace(
+            id: place.id,
+            name: name,
+            description: description,
+            address: address,
+            category: category,
+            privacy: privacy,
+            website: website,
+            phone: phone,
+            tags: tags
+        ) { [weak self] result in
+            // Dismiss loading indicator
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    switch result {
+                    case .success(let updatedPlace):
+                        self?.delegate?.didUpdatePlace(updatedPlace)
+                        self?.dismiss(animated: true)
+                        
+                    case .failure(let error):
+                        // Show error message
+                        self?.presentAlert(title: "Error", message: error.localizedDescription)
+                    }
+                }
+            }
+        }
+    }
     
     @objc private func useCurrentLocationButtonTapped() {
         // Request location authorization if not already granted
@@ -512,87 +656,19 @@ class AddPlaceViewController: UIViewController {
         }
     }
     
-    @objc private func addPlaceButtonTapped() {
-        // Validate required fields
-        guard let name = nameTextField.text, !name.isEmpty else {
-            presentAlert(title: "Error", message: "Please enter a name for the place")
-            return
-        }
+    @objc private func deleteButtonTapped() {
+        let alert = UIAlertController(
+            title: "Delete Place",
+            message: "Are you sure you want to delete \(place.name)? This action cannot be undone.",
+            preferredStyle: .alert
+        )
         
-        // Get description
-        let description = descriptionTextView.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : descriptionTextView.text
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+            self?.deletePlace()
+        })
         
-        // Get selected category
-        let categoryIndex = categorySegmentedControl.selectedSegmentIndex
-        let categories = [PlaceCategory.restaurant, .cafe, .bar, .hotel, .retail, .service, .attraction, .other]
-        let category = categories[categoryIndex]
-        
-        // Format the address string
-        let formattedAddress = [streetTextField.text, cityTextField.text, stateTextField.text, zipCodeTextField.text, countryTextField.text]
-            .compactMap { $0 }
-            .filter { !$0.isEmpty }
-            .joined(separator: ", ")
-        
-        guard !formattedAddress.isEmpty else {
-            presentAlert(title: "Error", message: "Please enter an address for the place")
-            return
-        }
-        
-        // Get optional fields
-        let notes = notesTextView.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : notesTextView.text
-        
-        // Get website
-        let website = websiteTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true ? nil : websiteTextField.text
-        
-        // Get phone
-        let phone = phoneTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true ? nil : phoneTextField.text
-        
-        // Get tags
-        var tags: [String]?
-        if let tagsText = tagsTextField.text, !tagsText.isEmpty {
-            tags = tagsText.split(separator: ",").map { String($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
-        }
-        
-        // Get privacy setting
-        let privacyIndex = privacySegmentedControl.selectedSegmentIndex
-        let privacyOptions = [PlacePrivacy.followCirclePrivacy, .public, .friends, .private]
-        let privacy = privacyOptions[privacyIndex]
-        
-        // Show loading indicator
-        let loadingAlert = UIAlertController(title: "Creating Place", message: "Please wait...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
-        
-        // Call PlaceService to create the place
-        PlaceService.shared.createPlace(
-            name: name,
-            description: description,
-            address: formattedAddress,
-            category: category,
-            circleId: circleId,
-            privacy: privacy,
-            website: website,
-            phone: phone,
-            tags: tags,
-            photos: nil // Not handling photos in this version, but could be added
-        ) { [weak self] result in
-            // Dismiss loading indicator
-            DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true) {
-                    switch result {
-                    case .success(let place):
-                        // Show success message
-                        let successMessage = "Successfully added \(place.name) to your circle"
-                        self?.presentAlert(title: "Success", message: successMessage) { _ in
-                            self?.navigationController?.popViewController(animated: true)
-                        }
-                        
-                    case .failure(let error):
-                        // Show error message
-                        self?.presentAlert(title: "Error", message: error.localizedDescription)
-                    }
-                }
-            }
-        }
+        present(alert, animated: true)
     }
     
     @objc private func dismissKeyboard() {
@@ -600,6 +676,76 @@ class AddPlaceViewController: UIViewController {
     }
     
     // MARK: - Helper Methods
+    
+    private func checkForChanges() -> Bool {
+        // Check name
+        if nameTextField.text != place.name { return true }
+        
+        // Check description
+        let currentDescription = descriptionTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let originalDescription = place.description ?? ""
+        if currentDescription != originalDescription { return true }
+        
+        // Check category
+        let categoryIndex = categorySegmentedControl.selectedSegmentIndex
+        let categories = [PlaceCategory.restaurant, .cafe, .bar, .hotel, .retail, .service, .attraction, .other]
+        if categories[categoryIndex] != place.category { return true }
+        
+        // Check address
+        let formattedAddress = [streetTextField.text, cityTextField.text, stateTextField.text, zipCodeTextField.text, countryTextField.text]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
+        if formattedAddress != place.address { return true }
+        
+        // Check privacy
+        let privacyIndex = privacySegmentedControl.selectedSegmentIndex
+        let privacyOptions = [PlacePrivacy.followCirclePrivacy, .public, .friends, .private]
+        if privacyOptions[privacyIndex] != place.privacy { return true }
+        
+        // Check notes
+        let currentNotes = notesTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let originalNotes = place.notes ?? ""
+        if currentNotes != originalNotes { return true }
+        
+        // Check tags
+        let currentTags = tagsTextField.text?.split(separator: ",").map { String($0.trimmingCharacters(in: .whitespacesAndNewlines)) } ?? []
+        let originalTags = place.tags ?? []
+        if currentTags != originalTags { return true }
+        
+        // Check website
+        let currentWebsite = websiteTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let originalWebsite = place.website ?? ""
+        if currentWebsite != originalWebsite { return true }
+        
+        // Check phone
+        let currentPhone = phoneTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let originalPhone = place.phone ?? ""
+        if currentPhone != originalPhone { return true }
+        
+        return false
+    }
+    
+    private func deletePlace() {
+        // Show loading indicator
+        let loadingAlert = UIAlertController(title: "Deleting Place", message: "Please wait...", preferredStyle: .alert)
+        present(loadingAlert, animated: true)
+        
+        PlaceService.shared.deletePlace(id: place.id) { [weak self] result in
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    switch result {
+                    case .success(_):
+                        self?.delegate?.didDeletePlace(self?.place.id ?? "")
+                        self?.dismiss(animated: true)
+                        
+                    case .failure(let error):
+                        self?.presentAlert(title: "Error", message: error.localizedDescription)
+                    }
+                }
+            }
+        }
+    }
     
     private func showLocationPermissionAlert() {
         let alert = UIAlertController(
@@ -649,7 +795,7 @@ class AddPlaceViewController: UIViewController {
 
 // MARK: - CLLocationManagerDelegate
 
-extension AddPlaceViewController: CLLocationManagerDelegate {
+extension EditPlaceViewController: CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
         
@@ -657,7 +803,6 @@ extension AddPlaceViewController: CLLocationManagerDelegate {
         manager.stopUpdatingLocation()
         
         // Store user's location
-        self.userLocation = location
         self.selectedLocation = location.coordinate
         
         // Center map on user's location
@@ -690,8 +835,8 @@ extension AddPlaceViewController: CLLocationManagerDelegate {
         print("Location manager failed with error: \(error.localizedDescription)")
     }
     
-    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
-        switch status {
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        switch manager.authorizationStatus {
         case .authorizedWhenInUse, .authorizedAlways:
             manager.startUpdatingLocation()
         case .denied, .restricted:

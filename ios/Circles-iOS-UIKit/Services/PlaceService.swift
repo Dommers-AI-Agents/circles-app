@@ -107,7 +107,7 @@ class PlaceService {
     
     // MARK: - Create, Update, Delete
     
-    func createPlace(name: String, description: String?, address: String, category: PlaceCategory, circleId: String, website: String? = nil, phone: String? = nil, tags: [String]? = nil, photos: [Data]? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
+    func createPlace(name: String, description: String?, address: String, category: PlaceCategory, circleId: String, privacy: PlacePrivacy = .followCirclePrivacy, website: String? = nil, phone: String? = nil, tags: [String]? = nil, photos: [Data]? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
         
         // First geocode the address to get coordinates
         geocodeAddress(address) { [weak self] result in
@@ -126,6 +126,7 @@ class PlaceService {
                                 location: location,
                                 category: category,
                                 circleId: circleId,
+                                privacy: privacy,
                                 website: website,
                                 phone: phone,
                                 tags: tags,
@@ -145,6 +146,7 @@ class PlaceService {
                         location: location,
                         category: category,
                         circleId: circleId,
+                        privacy: privacy,
                         website: website,
                         phone: phone,
                         tags: tags,
@@ -158,7 +160,7 @@ class PlaceService {
         }
     }
     
-    private func performCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, circleId: String, website: String?, phone: String?, tags: [String]?, photoUrls: [String]?, completion: @escaping (Result<Place, Error>) -> Void) {
+    private func performCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photoUrls: [String]?, completion: @escaping (Result<Place, Error>) -> Void) {
         
         var body: [String: Any] = [
             "name": name,
@@ -168,7 +170,8 @@ class PlaceService {
                 "coordinates": [location.longitude, location.latitude]
             ],
             "category": category.rawValue,
-            "circleId": circleId
+            "circleId": circleId,
+            "privacy": privacy.rawValue
         ]
         
         if let description = description {
@@ -207,7 +210,7 @@ class PlaceService {
         }
     }
     
-    func updatePlace(id: String, name: String? = nil, description: String? = nil, address: String? = nil, category: PlaceCategory? = nil, website: String? = nil, phone: String? = nil, tags: [String]? = nil, addPhotos: [Data]? = nil, removePhotoUrls: [String]? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
+    func updatePlace(id: String, name: String? = nil, description: String? = nil, address: String? = nil, category: PlaceCategory? = nil, privacy: PlacePrivacy? = nil, website: String? = nil, phone: String? = nil, tags: [String]? = nil, addPhotos: [Data]? = nil, removePhotoUrls: [String]? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
         
         var locationCoordinate: CLLocationCoordinate2D?
         var photosUrls: [String]?
@@ -282,6 +285,10 @@ class PlaceService {
             
             if let category = category {
                 body["category"] = category.rawValue
+            }
+            
+            if let privacy = privacy {
+                body["privacy"] = privacy.rawValue
             }
             
             if let website = website {

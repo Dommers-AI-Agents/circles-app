@@ -2,17 +2,23 @@
 const express = require('express');
 const {
   firebaseAuth,
+  register,
+  login,
   getMe,
   updateProfile,
-  refreshToken
+  refreshToken,
+  facebookDataDeletion
 } = require('../controllers/firebaseAuthController');
 const { protect } = require('../middleware/firebaseAuth');
 
 const router = express.Router();
 
 // Public routes
+router.post('/register', register);
+router.post('/login', login);
 router.post('/firebase', firebaseAuth);
 router.post('/refresh-token', refreshToken);
+router.post('/facebook-deauthorize', facebookDataDeletion);
 
 // Protected routes
 router.get('/me', protect, getMe);

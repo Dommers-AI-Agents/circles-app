@@ -79,11 +79,29 @@ class LoginViewController: UIViewController {
     
     private let socialStackView: UIStackView = {
         let stackView = UIStackView()
-        stackView.axis = .horizontal
+        stackView.axis = .vertical
         stackView.distribution = .fillEqually
         stackView.spacing = Constants.Spacing.medium
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.isUserInteractionEnabled = true
+        return stackView
+    }()
+    
+    private let topSocialStackView: UIStackView = {
+        let stackView = UIStackView()
+        stackView.axis = .horizontal
+        stackView.distribution = .fillEqually
+        stackView.spacing = Constants.Spacing.medium
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        return stackView
+    }()
+    
+    private let bottomSocialStackView: UIStackView = {
+        let stackView = UIStackView()
+        stackView.axis = .horizontal
+        stackView.distribution = .fillEqually
+        stackView.spacing = Constants.Spacing.medium
+        stackView.translatesAutoresizingMaskIntoConstraints = false
         return stackView
     }()
     
@@ -104,6 +122,28 @@ class LoginViewController: UIViewController {
         button.setTitle("Sign in with Google", for: .normal)
         button.setTitleColor(.white, for: .normal)
         button.backgroundColor = UIColor(red: 66/255, green: 133/255, blue: 244/255, alpha: 1.0)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .medium)
+        button.layer.cornerRadius = 8
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let facebookSignInButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Sign in with Facebook", for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = UIColor(red: 24/255, green: 119/255, blue: 242/255, alpha: 1.0)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .medium)
+        button.layer.cornerRadius = 8
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let linkedInSignInButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Sign in with LinkedIn", for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = UIColor(red: 0/255, green: 119/255, blue: 181/255, alpha: 1.0)
         button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .medium)
         button.layer.cornerRadius = 8
         button.translatesAutoresizingMaskIntoConstraints = false
@@ -140,6 +180,8 @@ class LoginViewController: UIViewController {
             loginButton.isEnabled = !isLoggingIn
             appleSignInButton.isEnabled = !isLoggingIn
             googleSignInButton.isEnabled = !isLoggingIn
+            facebookSignInButton.isEnabled = !isLoggingIn
+            linkedInSignInButton.isEnabled = !isLoggingIn
             guestModeButton.isEnabled = !isLoggingIn
             registerButton.isEnabled = !isLoggingIn
             emailTextField.isEnabled = !isLoggingIn
@@ -183,8 +225,12 @@ class LoginViewController: UIViewController {
         view.backgroundColor = Constants.Colors.background
         
         // Configure social stack view
-        socialStackView.addArrangedSubview(appleSignInButton)
-        socialStackView.addArrangedSubview(googleSignInButton)
+        topSocialStackView.addArrangedSubview(appleSignInButton)
+        topSocialStackView.addArrangedSubview(googleSignInButton)
+        bottomSocialStackView.addArrangedSubview(facebookSignInButton)
+        bottomSocialStackView.addArrangedSubview(linkedInSignInButton)
+        socialStackView.addArrangedSubview(topSocialStackView)
+        socialStackView.addArrangedSubview(bottomSocialStackView)
         
         // Add subviews
         view.addSubview(logoImageView)
@@ -243,7 +289,7 @@ class LoginViewController: UIViewController {
             socialStackView.topAnchor.constraint(equalTo: orLabel.bottomAnchor, constant: Constants.Spacing.medium),
             socialStackView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Constants.Spacing.large),
             socialStackView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.large),
-            socialStackView.heightAnchor.constraint(equalToConstant: 50),
+            socialStackView.heightAnchor.constraint(equalToConstant: 110), // Increased for two rows
             
             
             // Guest mode button
@@ -273,6 +319,8 @@ class LoginViewController: UIViewController {
         // Social login buttons
         appleSignInButton.addTarget(self, action: #selector(appleSignInButtonTapped), for: .touchUpInside)
         googleSignInButton.addTarget(self, action: #selector(googleSignInButtonTapped), for: .touchUpInside)
+        facebookSignInButton.addTarget(self, action: #selector(facebookSignInButtonTapped), for: .touchUpInside)
+        linkedInSignInButton.addTarget(self, action: #selector(linkedInSignInButtonTapped), for: .touchUpInside)
         
         
         // Add tap gesture recognizer specifically for appleSignInButton to debug
@@ -389,6 +437,48 @@ class LoginViewController: UIViewController {
         }
     }
     
+    @objc private func facebookSignInButtonTapped() {
+        isLoggingIn = true
+        
+        print("📘 Facebook Sign-In button tapped in LoginViewController")
+        
+        SocialAuthService.shared.signInWithFacebook(from: self) { [weak self] result in
+            DispatchQueue.main.async {
+                self?.isLoggingIn = false
+                
+                switch result {
+                case .success(let user):
+                    print("📘 Successfully logged in with Facebook: \(user.displayName)")
+                    // Authentication state listener in SceneDelegate will handle UI update
+                case .failure(let error):
+                    print("📘 Facebook Sign-In failed with error: \(error.localizedDescription)")
+                    self?.presentAlert(title: "Facebook Sign-In Failed", message: error.localizedDescription)
+                }
+            }
+        }
+    }
+    
+    @objc private func linkedInSignInButtonTapped() {
+        isLoggingIn = true
+        
+        print("🔗 LinkedIn Sign-In button tapped in LoginViewController")
+        
+        SocialAuthService.shared.signInWithLinkedIn(from: self) { [weak self] result in
+            DispatchQueue.main.async {
+                self?.isLoggingIn = false
+                
+                switch result {
+                case .success(let user):
+                    print("🔗 Successfully logged in with LinkedIn: \(user.displayName)")
+                    // Authentication state listener in SceneDelegate will handle UI update
+                case .failure(let error):
+                    print("🔗 LinkedIn Sign-In failed with error: \(error.localizedDescription)")
+                    self?.presentAlert(title: "LinkedIn Sign-In Failed", message: error.localizedDescription)
+                }
+            }
+        }
+    }
+    
     @objc private func dismissKeyboard() {
         view.endEditing(true)
     }
@@ -403,6 +493,15 @@ class LoginViewController: UIViewController {
 
 // MARK: - UITextFieldDelegate
 extension LoginViewController: UITextFieldDelegate {
+    func textFieldDidBeginEditing(_ textField: UITextField) {
+        // Clear the pre-filled debug text when user starts editing
+        if textField == emailTextField && textField.text == "user@example.com" {
+            textField.text = ""
+        } else if textField == passwordTextField && textField.text == "password" {
+            textField.text = ""
+        }
+    }
+    
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
         if textField == emailTextField {
             passwordTextField.becomeFirstResponder()

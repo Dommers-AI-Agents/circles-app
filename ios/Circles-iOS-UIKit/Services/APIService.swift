@@ -45,7 +45,7 @@ enum APIEnvironment {
     var baseURL: String {
         switch self {
         case .development:
-            return "http://localhost:3001/api"
+            return "http://192.168.0.120:3001/api"
         case .staging:
             return "https://api-staging.circles-app.com/api"
         case .production:

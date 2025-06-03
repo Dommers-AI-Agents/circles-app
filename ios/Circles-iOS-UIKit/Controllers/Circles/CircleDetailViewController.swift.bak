@@ -436,7 +436,6 @@ class CircleDetailViewController: UIViewController {
                 priceLevel: nil,
                 circleId: circle.id,
                 addedBy: userId,
-                privacy: .followCirclePrivacy,
                 createdAt: date.addingTimeInterval(-86400 * 4),
                 updatedAt: date
             )
@@ -460,7 +459,6 @@ class CircleDetailViewController: UIViewController {
                 priceLevel: nil,
                 circleId: circle.id,
                 addedBy: userId,
-                privacy: .followCirclePrivacy,
                 createdAt: date.addingTimeInterval(-86400 * 3),
                 updatedAt: date
             )
@@ -488,7 +486,6 @@ class CircleDetailViewController: UIViewController {
                 priceLevel: nil,
                 circleId: circle.id,
                 addedBy: userId,
-                privacy: .followCirclePrivacy,
                 createdAt: date.addingTimeInterval(-86400 * 5),
                 updatedAt: date
             )
@@ -512,7 +509,6 @@ class CircleDetailViewController: UIViewController {
                 priceLevel: nil,
                 circleId: circle.id,
                 addedBy: userId,
-                privacy: .followCirclePrivacy,
                 createdAt: date.addingTimeInterval(-86400 * 4),
                 updatedAt: date
             )
@@ -540,7 +536,6 @@ class CircleDetailViewController: UIViewController {
                 priceLevel: nil,
                 circleId: circle.id,
                 addedBy: userId,
-                privacy: .followCirclePrivacy,
                 createdAt: date.addingTimeInterval(-86400 * 5),
                 updatedAt: date
             )
@@ -564,7 +559,6 @@ class CircleDetailViewController: UIViewController {
                 priceLevel: nil,
                 circleId: circle.id,
                 addedBy: userId,
-                privacy: .followCirclePrivacy,
                 createdAt: date.addingTimeInterval(-86400 * 4),
                 updatedAt: date
             )
@@ -588,7 +582,6 @@ class CircleDetailViewController: UIViewController {
                 priceLevel: nil,
                 circleId: circle.id,
                 addedBy: userId,
-                privacy: .followCirclePrivacy,
                 createdAt: date.addingTimeInterval(-86400 * 3),
                 updatedAt: date
             )
@@ -612,7 +605,6 @@ class CircleDetailViewController: UIViewController {
                 priceLevel: nil,
                 circleId: circle.id,
                 addedBy: userId,
-                privacy: .followCirclePrivacy,
                 createdAt: date.addingTimeInterval(-86400 * 2),
                 updatedAt: date
             )
@@ -640,7 +632,6 @@ class CircleDetailViewController: UIViewController {
                 priceLevel: nil,
                 circleId: circle.id,
                 addedBy: userId,
-                privacy: .followCirclePrivacy,
                 createdAt: date.addingTimeInterval(-86400),
                 updatedAt: date
             )
