@@ -49,6 +49,10 @@ app.use('/api/circles', firebaseCircleRoutes);
 app.use('/api/places', firebasePlaceRoutes);
 app.use('/api/upload', uploadRoutes);
 
+// LinkedIn OAuth callback route (outside /api prefix)
+const linkedinCallback = require('./routes/linkedinCallback');
+app.use('/', linkedinCallback);
+
 // Special route for circle-specific places
 app.get('/api/circles/:circleId/places', protect, getPlacesByCircleId);
 

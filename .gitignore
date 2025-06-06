@@ -81,6 +81,7 @@ package-lock.json
 .continue/
 
 # Environment variables and secrets
+circles-private-data/
 .env
 .env.local
 .env.development.local

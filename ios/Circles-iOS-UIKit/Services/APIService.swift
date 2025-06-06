@@ -49,7 +49,7 @@ enum APIEnvironment {
         case .staging:
             return "https://api-staging.circles-app.com/api"
         case .production:
-            return "https://api.circles-app.com/api"
+            return "https://circles-backend-778088177220.us-central1.run.app/api"
         }
     }
 }
@@ -68,7 +68,11 @@ class APIService {
     static let shared = APIService()
     
     // Current environment
+    #if DEBUG
     private var environment: APIEnvironment = .development
+    #else
+    private var environment: APIEnvironment = .production
+    #endif
     
     // Session and configuration
     private let session: URLSession
