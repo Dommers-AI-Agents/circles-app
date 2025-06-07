@@ -117,7 +117,7 @@ class CircleDetailViewController: UIViewController {
     
     private let tableView: UITableView = {
         let tableView = UITableView()
-        tableView.backgroundColor = Constants.Colors.white
+        tableView.backgroundColor = .systemGroupedBackground
         tableView.separatorStyle = .none
         tableView.layer.cornerRadius = 12
         tableView.isScrollEnabled = false
@@ -652,7 +652,7 @@ class CircleDetailViewController: UIViewController {
     }
     
     private func updateTableViewHeight() {
-        let height = CGFloat(places.count * 100) // Assuming each cell is 100 points tall
+        let height = CGFloat(places.count * 110) // Each cell is 110 points tall
         
         // Update table view height constraint
         if let constraint = tableView.constraints.first(where: { $0.firstAttribute == .height }) {
@@ -738,7 +738,7 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
     }
     
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        return 100
+        return 110
     }
     
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
@@ -756,10 +756,10 @@ class PlaceTableViewCell: UITableViewCell {
     // MARK: - UI Elements
     private let containerView: UIView = {
         let view = UIView()
-        view.backgroundColor = Constants.Colors.white
+        view.backgroundColor = .white
         view.layer.cornerRadius = 8
         view.layer.borderWidth = 1
-        view.layer.borderColor = Constants.Colors.lightGray.cgColor
+        view.layer.borderColor = UIColor.systemGray4.cgColor
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -776,19 +776,26 @@ class PlaceTableViewCell: UITableViewCell {
     
     private let nameLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .bold)
-        label.textColor = Constants.Colors.darkGray
+        label.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+        label.textColor = .black
+        label.numberOfLines = 2
+        label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
+        label.isHidden = false
+        label.alpha = 1.0
+        label.backgroundColor = .clear
+        label.setContentHuggingPriority(.defaultHigh, for: .vertical)
+        label.setContentCompressionResistancePriority(.defaultHigh, for: .vertical)
         return label
     }()
     
     private let categoryLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.xsmall)
+        label.font = UIFont.systemFont(ofSize: 10, weight: .medium)
         label.textColor = Constants.Colors.white
         label.backgroundColor = Constants.Colors.primary
         label.textAlignment = .center
-        label.layer.cornerRadius = 4
+        label.layer.cornerRadius = 10
         label.clipsToBounds = true
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -796,9 +803,10 @@ class PlaceTableViewCell: UITableViewCell {
     
     private let addressLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        label.textColor = Constants.Colors.gray
-        label.numberOfLines = 2
+        label.font = UIFont.systemFont(ofSize: 13)
+        label.textColor = .darkGray
+        label.numberOfLines = 1
+        label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -823,7 +831,7 @@ class PlaceTableViewCell: UITableViewCell {
     private let ratingLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small, weight: .semibold)
-        label.textColor = Constants.Colors.darkGray
+        label.textColor = .black
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -840,7 +848,7 @@ class PlaceTableViewCell: UITableViewCell {
     
     // MARK: - Setup
     private func setupCell() {
-        backgroundColor = Constants.Colors.background
+        backgroundColor = .clear
         selectionStyle = .none
         
         contentView.addSubview(containerView)
@@ -871,16 +879,17 @@ class PlaceTableViewCell: UITableViewCell {
             // Name label
             nameLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: Constants.Spacing.small),
             nameLabel.leadingAnchor.constraint(equalTo: placeImageView.trailingAnchor, constant: Constants.Spacing.small),
-            nameLabel.trailingAnchor.constraint(equalTo: categoryLabel.leadingAnchor, constant: -Constants.Spacing.small),
+            nameLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Constants.Spacing.small),
+            nameLabel.heightAnchor.constraint(greaterThanOrEqualToConstant: 20),
             
             // Category label
-            categoryLabel.centerYAnchor.constraint(equalTo: nameLabel.centerYAnchor),
-            categoryLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Constants.Spacing.small),
-            categoryLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 70),
+            categoryLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
+            categoryLabel.leadingAnchor.constraint(equalTo: placeImageView.trailingAnchor, constant: Constants.Spacing.small),
+            categoryLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 100),
             categoryLabel.heightAnchor.constraint(equalToConstant: 20),
             
             // Address label
-            addressLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: Constants.Spacing.small),
+            addressLabel.topAnchor.constraint(equalTo: categoryLabel.bottomAnchor, constant: 4),
             addressLabel.leadingAnchor.constraint(equalTo: placeImageView.trailingAnchor, constant: Constants.Spacing.small),
             addressLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Constants.Spacing.small),
             
@@ -906,10 +915,10 @@ class PlaceTableViewCell: UITableViewCell {
     
     // MARK: - Configure
     func configure(with place: Place) {
-        nameLabel.text = place.name
+        nameLabel.text = place.name.isEmpty ? "Unnamed Place" : place.name
         
         // Category label
-        categoryLabel.text = place.category.rawValue.capitalized
+        categoryLabel.text = " \(place.category.rawValue.capitalized) "
         
         // Set category color
         switch place.category {
@@ -975,6 +984,10 @@ class PlaceTableViewCell: UITableViewCell {
         } else {
             ratingLabel.text = "N/A"
         }
+        
+        // Force layout update
+        self.setNeedsLayout()
+        self.layoutIfNeeded()
     }
     
     override func prepareForReuse() {

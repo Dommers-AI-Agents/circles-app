@@ -390,10 +390,19 @@ class EditCircleViewController: UIViewController {
     }
     
     private func loadCurrentCoverImage() {
-        if let _ = circle.coverImage {
-            // In a real app, would load image from URL
-            // For now, show default image based on category
-            setDefaultCategoryImage()
+        if let coverImageUrl = circle.coverImage {
+            // Load image from URL
+            ImageService.shared.loadImage(from: coverImageUrl) { [weak self] image in
+                DispatchQueue.main.async {
+                    if let image = image {
+                        self?.coverImageView.image = image
+                        self?.coverImageView.contentMode = .scaleAspectFill
+                    } else {
+                        // If image failed to load, show default
+                        self?.setDefaultCategoryImage()
+                    }
+                }
+            }
         } else {
             setDefaultCategoryImage()
         }

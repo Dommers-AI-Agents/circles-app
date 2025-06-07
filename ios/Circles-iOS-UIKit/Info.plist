@@ -80,6 +80,10 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Circles needs your location to show nearby places and help you add them to your circles.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Circles needs your location to show nearby places and help you add them to your circles.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
