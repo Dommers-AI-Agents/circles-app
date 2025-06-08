@@ -48,6 +48,7 @@ app.use('/api/users', firebaseUserRoutes);
 app.use('/api/circles', firebaseCircleRoutes);
 app.use('/api/places', firebasePlaceRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/app', require('./routes/appRoutes'));
 
 // LinkedIn OAuth callback route (outside /api prefix)
 const linkedinCallback = require('./routes/linkedinCallback');

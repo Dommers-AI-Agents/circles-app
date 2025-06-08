@@ -175,6 +175,8 @@ class LoginViewController: UIViewController {
     }()
     
     // MARK: - Properties
+    private let savedEmailKey = "savedUserEmail"
+    
     private var isLoggingIn = false {
         didSet {
             loginButton.isEnabled = !isLoggingIn
@@ -200,13 +202,17 @@ class LoginViewController: UIViewController {
         super.viewDidLoad()
         setupUI()
         setupActions()
+        loadSavedEmail()
         
         // Show the custom button for testing
         
         // For development purposes, pre-fill email
         #if DEBUG
-        emailTextField.text = "user@example.com"
-        passwordTextField.text = "password"
+        // Only pre-fill if there's no saved email
+        if emailTextField.text?.isEmpty ?? true {
+            emailTextField.text = "user@example.com"
+            passwordTextField.text = "password"
+        }
         #endif
     }
     
@@ -358,6 +364,8 @@ class LoginViewController: UIViewController {
                 switch result {
                 case .success(let user):
                     print("Successfully logged in user: \(user.displayName)")
+                    // Save the email for next time
+                    self?.saveEmail(email)
                     // Authentication state listener in SceneDelegate will handle UI update
                     
                 case .failure(let error):
@@ -489,17 +497,29 @@ class LoginViewController: UIViewController {
         alertController.addAction(UIAlertAction(title: "OK", style: .default))
         present(alertController, animated: true)
     }
+    
+    private func saveEmail(_ email: String) {
+        UserDefaults.standard.set(email, forKey: savedEmailKey)
+    }
+    
+    private func loadSavedEmail() {
+        if let savedEmail = UserDefaults.standard.string(forKey: savedEmailKey) {
+            emailTextField.text = savedEmail
+        }
+    }
 }
 
 // MARK: - UITextFieldDelegate
 extension LoginViewController: UITextFieldDelegate {
     func textFieldDidBeginEditing(_ textField: UITextField) {
         // Clear the pre-filled debug text when user starts editing
+        #if DEBUG
         if textField == emailTextField && textField.text == "user@example.com" {
             textField.text = ""
         } else if textField == passwordTextField && textField.text == "password" {
             textField.text = ""
         }
+        #endif
     }
     
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {

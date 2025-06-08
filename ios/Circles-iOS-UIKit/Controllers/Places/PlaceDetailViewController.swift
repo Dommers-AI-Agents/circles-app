@@ -255,6 +255,10 @@ class PlaceDetailViewController: UIViewController {
         view.backgroundColor = Constants.Colors.background
         title = place.name
         
+        // Add share button to navigation bar
+        let shareButton = UIBarButtonItem(barButtonSystemItem: .action, target: self, action: #selector(shareButtonTapped))
+        navigationItem.rightBarButtonItem = shareButton
+        
         // Add subviews
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
@@ -304,11 +308,11 @@ class PlaceDetailViewController: UIViewController {
         ratingView.addSubview(ratingImageView)
         ratingView.addSubview(ratingLabel)
         
-        // Add navigation bar button
-        let shareButton = UIBarButtonItem(barButtonSystemItem: .action, target: self, action: #selector(shareButtonTapped))
+        // Add navigation bar buttons
         let directionButton = UIBarButtonItem(image: UIImage(systemName: "map"), style: .plain, target: self, action: #selector(directionsButtonTapped))
         let editButton = UIBarButtonItem(barButtonSystemItem: .edit, target: self, action: #selector(editButtonTapped))
-        navigationItem.rightBarButtonItems = [editButton, shareButton, directionButton]
+        // shareButton already added to navigationItem.rightBarButtonItem above
+        navigationItem.rightBarButtonItems = [editButton, navigationItem.rightBarButtonItem!, directionButton]
         
         // Layout constraints
         NSLayoutConstraint.activate([
@@ -626,20 +630,54 @@ class PlaceDetailViewController: UIViewController {
     
     @objc private func shareButtonTapped() {
         // Create a formatted string with place details
-        var shareText = "\(place.name)"
+        var shareText = "📍 \(place.name)\n"
         
-        shareText += "\nAddress: \(place.address)"
-        
-        if let rating = place.rating {
-            shareText += "\nRating: \(rating)/5.0"
+        if let description = place.description, !description.isEmpty {
+            shareText += "\(description)\n"
         }
         
+        shareText += "\n📍 \(place.address)\n"
+        
+        if let phone = place.phone {
+            shareText += "📞 \(phone)\n"
+        }
+        
+        if let website = place.website {
+            shareText += "🌐 \(website)\n"
+        }
+        
+        if let rating = place.rating {
+            let stars = String(repeating: "⭐", count: Int(rating.rounded()))
+            shareText += "\(stars) \(rating)/5.0\n"
+        }
+        
+        shareText += "\n🔗 circles://place/\(place.id)"
         shareText += "\n\nShared from Circles App"
         
+        var activityItems: [Any] = [shareText]
+        
+        // Add location if available for better sharing to Maps apps
+        if let location = place.location?.clLocation {
+            let placemark = MKPlacemark(coordinate: location.coordinate)
+            let mapItem = MKMapItem(placemark: placemark)
+            mapItem.name = place.name
+            activityItems.append(mapItem)
+        }
+        
+        // Add website URL if available
+        if let websiteString = place.website, let url = URL(string: websiteString) {
+            activityItems.append(url)
+        }
+        
         let activityViewController = UIActivityViewController(
-            activityItems: [shareText],
+            activityItems: activityItems,
             applicationActivities: nil
         )
+        
+        // For iPad
+        if let popover = activityViewController.popoverPresentationController {
+            popover.barButtonItem = navigationItem.rightBarButtonItem
+        }
         
         present(activityViewController, animated: true)
     }

@@ -36,7 +36,7 @@ class AddPlaceViewController: UIViewController {
     // Hint label
     private let hintLabel: UILabel = {
         let label = UILabel()
-        label.text = "Search for a place or select a category below"
+        label.text = "Search for an address, place, or select a category"
         label.font = UIFont.systemFont(ofSize: 14, weight: .medium)
         label.textColor = .systemGray
         label.textAlignment = .center
@@ -60,7 +60,7 @@ class AddPlaceViewController: UIViewController {
     // Search bar at the top
     private let searchBar: UISearchBar = {
         let searchBar = UISearchBar()
-        searchBar.placeholder = "🔍 Search for a place"
+        searchBar.placeholder = "🔍 Search address or place name"
         searchBar.searchBarStyle = .minimal
         searchBar.searchTextField.backgroundColor = .clear
         searchBar.searchTextField.textColor = .darkGray
@@ -156,7 +156,7 @@ class AddPlaceViewController: UIViewController {
     
     private let nameTextField: UITextField = {
         let textField = UITextField()
-        textField.placeholder = "Enter place name"
+        textField.placeholder = "Enter a name for this place"
         textField.borderStyle = .none
         textField.backgroundColor = .white
         textField.textColor = .darkGray
@@ -242,6 +242,30 @@ class AddPlaceViewController: UIViewController {
         return textView
     }()
     
+    private let privacyLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Privacy"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
+        label.textColor = .darkGray
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let privacySegmentedControl: UISegmentedControl = {
+        let items = ["Follow Circle", "Private"]
+        let segmentedControl = UISegmentedControl(items: items)
+        segmentedControl.selectedSegmentIndex = 0
+        segmentedControl.selectedSegmentTintColor = UIColor.systemBlue
+        segmentedControl.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.1)
+        segmentedControl.setTitleTextAttributes([
+            NSAttributedString.Key.foregroundColor: UIColor.darkGray
+        ], for: .normal)
+        segmentedControl.setTitleTextAttributes([
+            NSAttributedString.Key.foregroundColor: UIColor.white
+        ], for: .selected)
+        segmentedControl.translatesAutoresizingMaskIntoConstraints = false
+        return segmentedControl
+    }()
     
     private let addPlaceButton: UIButton = {
         let button = UIButton(type: .system)
@@ -335,6 +359,8 @@ class AddPlaceViewController: UIViewController {
         formContainer.addSubview(descriptionTextView)
         formContainer.addSubview(addressLabel)
         formContainer.addSubview(addressTextView)
+        formContainer.addSubview(privacyLabel)
+        formContainer.addSubview(privacySegmentedControl)
         
         // Layout
         NSLayoutConstraint.activate([
@@ -433,7 +459,14 @@ class AddPlaceViewController: UIViewController {
             addressTextView.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
             addressTextView.trailingAnchor.constraint(equalTo: formContainer.trailingAnchor, constant: -Constants.Spacing.large),
             addressTextView.heightAnchor.constraint(equalToConstant: 60),
-            addressTextView.bottomAnchor.constraint(equalTo: formContainer.bottomAnchor),
+            
+            privacyLabel.topAnchor.constraint(equalTo: addressTextView.bottomAnchor, constant: Constants.Spacing.medium),
+            privacyLabel.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
+            
+            privacySegmentedControl.topAnchor.constraint(equalTo: privacyLabel.bottomAnchor, constant: Constants.Spacing.small),
+            privacySegmentedControl.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
+            privacySegmentedControl.trailingAnchor.constraint(equalTo: formContainer.trailingAnchor, constant: -Constants.Spacing.large),
+            privacySegmentedControl.bottomAnchor.constraint(equalTo: formContainer.bottomAnchor),
             
             // Add place button
             addPlaceButton.topAnchor.constraint(equalTo: formContainer.bottomAnchor, constant: Constants.Spacing.large),
@@ -514,12 +547,15 @@ class AddPlaceViewController: UIViewController {
     
     private func setupSearchCompleter() {
         searchCompleter.delegate = self
-        searchCompleter.resultTypes = .pointOfInterest
+        // Allow searching for both addresses and points of interest
+        searchCompleter.resultTypes = [.address, .pointOfInterest]
         
         // Table view setup
         searchResultsTableView.delegate = self
         searchResultsTableView.dataSource = self
-        searchResultsTableView.register(UITableViewCell.self, forCellReuseIdentifier: "SearchCell")
+        // Don't register cell - we'll create subtitle cells manually
+        searchResultsTableView.rowHeight = UITableView.automaticDimension
+        searchResultsTableView.estimatedRowHeight = 60
         
         // Search bar delegate
         searchBar.delegate = self
@@ -618,8 +654,8 @@ class AddPlaceViewController: UIViewController {
         
         let description = descriptionTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // Places always follow the circle's privacy setting
-        let privacy = PlacePrivacy.followCirclePrivacy
+        // Get privacy setting from segmented control
+        let privacy: PlacePrivacy = privacySegmentedControl.selectedSegmentIndex == 0 ? .followCirclePrivacy : .private
         
         // Create place
         let loadingAlert = UIAlertController(title: "Creating Place", message: "Please wait...", preferredStyle: .alert)
@@ -696,8 +732,18 @@ class AddPlaceViewController: UIViewController {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
-            // Fill name
-            self.nameTextField.text = mapItem.name ?? "Unknown Place"
+            // Check if this is likely a residential address (no business name)
+            let isResidentialAddress = mapItem.name == nil || mapItem.name?.isEmpty == true || 
+                                     mapItem.pointOfInterestCategory == nil
+            
+            if isResidentialAddress {
+                // For addresses, clear the name field so user must enter their own
+                self.nameTextField.text = ""
+                self.nameTextField.placeholder = "Enter a name for this place (e.g., \"Dad's House\")"
+            } else {
+                // For businesses, pre-fill with the business name
+                self.nameTextField.text = mapItem.name ?? ""
+            }
             
             // Fill address
             let placemark = mapItem.placemark
@@ -799,19 +845,12 @@ class AddPlaceViewController: UIViewController {
     }
     
     private func searchForCategory(_ category: String) {
-        guard let userLocation = userLocation else {
-            return
-        }
-        
-        // Save current map region before search
-        let currentRegion = mapView.region
+        // Use the current visible map region for search
+        let visibleRegion = mapView.region
         
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = category
-        request.region = MKCoordinateRegion(
-            center: userLocation.coordinate,
-            span: MKCoordinateSpan(latitudeDelta: 0.03, longitudeDelta: 0.03)
-        )
+        request.region = visibleRegion
         
         let search = MKLocalSearch(request: request)
         search.start { [weak self] response, error in
@@ -940,12 +979,8 @@ extension AddPlaceViewController: CLLocationManagerDelegate {
             }
         }
         
-        // Update search completer region
-        searchCompleter.region = MKCoordinateRegion(
-            center: location.coordinate,
-            latitudinalMeters: 5000,
-            longitudinalMeters: 5000
-        )
+        // Update search completer region to match the visible map
+        searchCompleter.region = mapView.region
         
         // Stop updating
         manager.stopUpdatingLocation()
@@ -1081,6 +1116,11 @@ extension AddPlaceViewController: MKMapViewDelegate {
         // This is called when the detail disclosure button is tapped
         // We're now handling selection directly in didSelect, so this is optional
     }
+    
+    func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+        // Update search completer region when user pans/zooms the map
+        searchCompleter.region = mapView.region
+    }
 }
 
 // MARK: - UISearchBarDelegate
@@ -1137,13 +1177,25 @@ extension AddPlaceViewController: UITableViewDataSource, UITableViewDelegate {
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "SearchCell", for: indexPath)
+        var cell = tableView.dequeueReusableCell(withIdentifier: "SearchCell")
+        if cell == nil {
+            cell = UITableViewCell(style: .subtitle, reuseIdentifier: "SearchCell")
+        }
+        
         let result = searchResults[indexPath.row]
         
-        cell.textLabel?.text = result.title
-        cell.detailTextLabel?.text = result.subtitle
+        // Configure cell for better display
+        cell?.textLabel?.text = result.title
+        cell?.textLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        cell?.textLabel?.numberOfLines = 2
         
-        return cell
+        // Show full address with city, state, country
+        cell?.detailTextLabel?.text = result.subtitle
+        cell?.detailTextLabel?.font = UIFont.systemFont(ofSize: 14)
+        cell?.detailTextLabel?.textColor = .systemGray
+        cell?.detailTextLabel?.numberOfLines = 2
+        
+        return cell!
     }
     
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {

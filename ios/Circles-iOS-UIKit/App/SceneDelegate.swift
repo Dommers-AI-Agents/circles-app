@@ -14,7 +14,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         
         // Configure API environment
         #if DEBUG
-        APIService.shared.configure(environment: .development)
+        // Use production environment even in DEBUG to connect to Firebase backend
+        APIService.shared.configure(environment: .production)
         #else
         APIService.shared.configure(environment: .production)
         #endif
@@ -241,6 +242,57 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Check for any pending notifications or updates
         if AuthService.shared.isLoggedIn {
             // Refresh data if needed
+        }
+        
+        // Check for app updates
+        checkForAppUpdates()
+    }
+    
+    private func checkForAppUpdates() {
+        UpdateService.shared.checkForUpdates { [weak self] isUpdateAvailable, releaseNotes, isRequired in
+            guard isUpdateAvailable else { return }
+            
+            // Find the topmost view controller
+            if let window = self?.window,
+               let rootViewController = window.rootViewController {
+                
+                var topController = rootViewController
+                
+                // Navigate through navigation controllers
+                if let navController = topController as? UINavigationController {
+                    topController = navController.visibleViewController ?? navController
+                }
+                
+                // Navigate through tab bar controllers
+                if let tabController = topController as? UITabBarController {
+                    if let selectedNav = tabController.selectedViewController as? UINavigationController {
+                        topController = selectedNav.visibleViewController ?? selectedNav
+                    } else if let selected = tabController.selectedViewController {
+                        topController = selected
+                    }
+                }
+                
+                // Navigate through presented view controllers
+                while let presented = topController.presentedViewController {
+                    topController = presented
+                }
+                
+                // Show update prompt
+                if isRequired {
+                    // For required updates, show alert immediately
+                    UpdateService.shared.showUpdatePrompt(
+                        in: topController,
+                        releaseNotes: releaseNotes,
+                        isRequired: true
+                    )
+                } else {
+                    // For optional updates, show banner
+                    UpdateService.shared.showUpdateBanner(
+                        in: topController,
+                        isRequired: false
+                    )
+                }
+            }
         }
     }
 

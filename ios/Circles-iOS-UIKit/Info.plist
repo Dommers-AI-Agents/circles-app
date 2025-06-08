@@ -107,5 +107,7 @@
 	<string>com.googleusercontent.apps.778088177220-7ddtorl0um8te3s5dmv14fs4d2kirukt</string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>

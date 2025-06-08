@@ -718,6 +718,62 @@ class CircleDetailViewController: UIViewController {
         let addPlaceVC = AddPlaceViewController(circleId: circle.id)
         navigationController?.pushViewController(addPlaceVC, animated: true)
     }
+    
+    private func sharePlace(_ place: Place) {
+        // Create a formatted string with place details
+        var shareText = "📍 \(place.name)\n"
+        
+        if let description = place.description, !description.isEmpty {
+            shareText += "\(description)\n"
+        }
+        
+        shareText += "\n📍 \(place.address)\n"
+        
+        if let phone = place.phone {
+            shareText += "📞 \(phone)\n"
+        }
+        
+        if let website = place.website {
+            shareText += "🌐 \(website)\n"
+        }
+        
+        if let rating = place.rating {
+            let stars = String(repeating: "⭐", count: Int(rating.rounded()))
+            shareText += "\(stars) \(rating)/5.0\n"
+        }
+        
+        shareText += "\n🔗 circles://place/\(place.id)"
+        shareText += "\n\nShared from Circles App"
+        
+        var activityItems: [Any] = [shareText]
+        
+        // Add location if available for better sharing to Maps apps
+        if let location = place.location?.clLocation {
+            let placemark = MKPlacemark(coordinate: location.coordinate)
+            let mapItem = MKMapItem(placemark: placemark)
+            mapItem.name = place.name
+            activityItems.append(mapItem)
+        }
+        
+        // Add website URL if available
+        if let websiteString = place.website, let url = URL(string: websiteString) {
+            activityItems.append(url)
+        }
+        
+        let activityViewController = UIActivityViewController(
+            activityItems: activityItems,
+            applicationActivities: nil
+        )
+        
+        // For iPad
+        if let popover = activityViewController.popoverPresentationController {
+            popover.sourceView = view
+            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
+        }
+        
+        present(activityViewController, animated: true)
+    }
 }
 
 // MARK: - UITableViewDelegate & UITableViewDataSource
@@ -733,6 +789,11 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
         
         let place = places[indexPath.row]
         cell.configure(with: place)
+        
+        // Set up share button action
+        cell.onShareTapped = { [weak self] place in
+            self?.sharePlace(place)
+        }
         
         return cell
     }
@@ -836,6 +897,19 @@ class PlaceTableViewCell: UITableViewCell {
         return label
     }()
     
+    private let shareButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "square.and.arrow.up"), for: .normal)
+        button.tintColor = Constants.Colors.primary
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.contentMode = .scaleAspectFit
+        return button
+    }()
+    
+    // Closure for share action
+    var onShareTapped: ((Place) -> Void)?
+    private var place: Place?
+    
     // MARK: - Init
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -858,9 +932,13 @@ class PlaceTableViewCell: UITableViewCell {
         containerView.addSubview(categoryLabel)
         containerView.addSubview(addressLabel)
         containerView.addSubview(ratingView)
+        containerView.addSubview(shareButton)
         
         ratingView.addSubview(ratingImageView)
         ratingView.addSubview(ratingLabel)
+        
+        // Add target for share button
+        shareButton.addTarget(self, action: #selector(shareButtonTapped), for: .touchUpInside)
         
         NSLayoutConstraint.activate([
             // Container view
@@ -879,8 +957,14 @@ class PlaceTableViewCell: UITableViewCell {
             // Name label
             nameLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: Constants.Spacing.small),
             nameLabel.leadingAnchor.constraint(equalTo: placeImageView.trailingAnchor, constant: Constants.Spacing.small),
-            nameLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Constants.Spacing.small),
+            nameLabel.trailingAnchor.constraint(equalTo: shareButton.leadingAnchor, constant: -Constants.Spacing.small),
             nameLabel.heightAnchor.constraint(greaterThanOrEqualToConstant: 20),
+            
+            // Share button
+            shareButton.topAnchor.constraint(equalTo: containerView.topAnchor, constant: Constants.Spacing.small),
+            shareButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Constants.Spacing.small),
+            shareButton.widthAnchor.constraint(equalToConstant: 30),
+            shareButton.heightAnchor.constraint(equalToConstant: 30),
             
             // Category label
             categoryLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
@@ -915,6 +999,7 @@ class PlaceTableViewCell: UITableViewCell {
     
     // MARK: - Configure
     func configure(with place: Place) {
+        self.place = place
         nameLabel.text = place.name.isEmpty ? "Unnamed Place" : place.name
         
         // Category label
@@ -988,6 +1073,12 @@ class PlaceTableViewCell: UITableViewCell {
         // Force layout update
         self.setNeedsLayout()
         self.layoutIfNeeded()
+    }
+    
+    // MARK: - Actions
+    @objc private func shareButtonTapped() {
+        guard let place = place else { return }
+        onShareTapped?(place)
     }
     
     override func prepareForReuse() {

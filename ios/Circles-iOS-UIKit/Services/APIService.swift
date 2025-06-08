@@ -69,7 +69,8 @@ class APIService {
     
     // Current environment
     #if DEBUG
-    private var environment: APIEnvironment = .development
+    // Use production environment even in DEBUG to connect to Firebase backend
+    private var environment: APIEnvironment = .production
     #else
     private var environment: APIEnvironment = .production
     #endif
