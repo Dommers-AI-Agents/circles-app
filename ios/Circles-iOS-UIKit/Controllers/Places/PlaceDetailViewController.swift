@@ -651,8 +651,15 @@ class PlaceDetailViewController: UIViewController {
             shareText += "\(stars) \(rating)/5.0\n"
         }
         
-        shareText += "\n🔗 circles://place/\(place.id)"
-        shareText += "\n\nShared from Circles App"
+        // Add deep link and web link
+        shareText += "\n\n📱 Open in Circles: circles://place/\(place.id)"
+        
+        // Add a web link that could redirect to App Store or open the app
+        // For now, use TestFlight link since app isn't on App Store yet
+        shareText += "\n\n🔗 Get Circles App: https://testflight.apple.com/join/YourTestFlightCode"
+        // TODO: Replace with App Store link when published: https://apps.apple.com/app/circles/idYOURAPPID
+        
+        shareText += "\n\nShared from Circles!"
         
         var activityItems: [Any] = [shareText]
         

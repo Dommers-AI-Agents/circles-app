@@ -698,11 +698,61 @@ class CircleDetailViewController: UIViewController {
     
     // MARK: - Actions
     @objc private func shareButtonTapped() {
-        // Share circle with others
+        // Create a formatted string with circle details
+        var shareText = "🔵 \(circle.name)\n"
+        
+        if let description = circle.description, !description.isEmpty {
+            shareText += "\(description)\n"
+        }
+        
+        // Calculate member count from sharedWith and followers
+        let memberCount = 1 + (circle.sharedWith?.count ?? 0) + (circle.followers?.count ?? 0)
+        shareText += "\n👥 \(memberCount) members"
+        shareText += "\n📍 \(places.count) places"
+        
+        // Add privacy info
+        switch circle.privacy {
+        case .public:
+            shareText += "\n🌐 Public Circle"
+        case .friends:
+            shareText += "\n👥 Friends Only"
+        case .private:
+            shareText += "\n🔒 Private Circle"
+        }
+        
+        // Add deep link and web link
+        shareText += "\n\n📱 Open in Circles: circles://circle/\(circle.id)"
+        
+        // Add a web link that could redirect to App Store or open the app
+        // For now, use TestFlight link since app isn't on App Store yet
+        shareText += "\n\n🔗 Get Circles App: https://testflight.apple.com/join/YourTestFlightCode"
+        // TODO: Replace with App Store link when published: https://apps.apple.com/app/circles/idYOURAPPID
+        
+        shareText += "\n\nJoin me on Circles!"
+        
+        var activityItems: [Any] = [shareText]
+        
+        // Add the first few place locations if available for map preview
+        let placeLocations = places.compactMap { $0.location?.clLocation }.prefix(3)
+        if !placeLocations.isEmpty {
+            // Create a map item for the circle area
+            if let firstLocation = placeLocations.first {
+                let placemark = MKPlacemark(coordinate: firstLocation.coordinate)
+                let mapItem = MKMapItem(placemark: placemark)
+                mapItem.name = circle.name
+                activityItems.append(mapItem)
+            }
+        }
+        
         let activityViewController = UIActivityViewController(
-            activityItems: ["Check out my circle \"\(circle.name)\" on Circles!"],
+            activityItems: activityItems,
             applicationActivities: nil
         )
+        
+        // For iPad
+        if let popover = activityViewController.popoverPresentationController {
+            popover.barButtonItem = navigationItem.rightBarButtonItems?.first { $0.action == #selector(shareButtonTapped) }
+        }
         
         present(activityViewController, animated: true)
     }
@@ -742,8 +792,15 @@ class CircleDetailViewController: UIViewController {
             shareText += "\(stars) \(rating)/5.0\n"
         }
         
-        shareText += "\n🔗 circles://place/\(place.id)"
-        shareText += "\n\nShared from Circles App"
+        // Add deep link and web link
+        shareText += "\n\n📱 Open in Circles: circles://place/\(place.id)"
+        
+        // Add a web link that could redirect to App Store or open the app
+        // For now, use TestFlight link since app isn't on App Store yet
+        shareText += "\n\n🔗 Get Circles App: https://testflight.apple.com/join/YourTestFlightCode"
+        // TODO: Replace with App Store link when published: https://apps.apple.com/app/circles/idYOURAPPID
+        
+        shareText += "\n\nShared from Circles!"
         
         var activityItems: [Any] = [shareText]
         

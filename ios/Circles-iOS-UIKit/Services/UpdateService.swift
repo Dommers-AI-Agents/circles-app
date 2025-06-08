@@ -18,12 +18,16 @@ class UpdateService {
         // Get current app version
         guard let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
               let currentBuild = Bundle.main.infoDictionary?["CFBundleVersion"] as? String else {
+            print("🔄 UpdateService: Failed to get current version info")
             completion(false, nil, false)
             return
         }
         
+        print("🔄 UpdateService: Current version: \(currentVersion) build: \(currentBuild)")
+        
         // Check if we should perform the check (rate limiting)
         if !shouldCheckForUpdate() {
+            print("🔄 UpdateService: Skipping check due to rate limiting")
             completion(false, nil, false)
             return
         }
@@ -33,10 +37,26 @@ class UpdateService {
         
         // Check if running in TestFlight or App Store
         let isTestFlight = isRunningInTestFlight()
+        print("🔄 UpdateService: Running in TestFlight: \(isTestFlight)")
         
         if isTestFlight {
-            // For TestFlight, check against your backend
-            checkTestFlightVersion(currentVersion: currentVersion, currentBuild: currentBuild, completion: completion)
+            // For TestFlight testing without backend, use hardcoded version check
+            // TODO: Update these values when you release a new TestFlight build
+            let latestTestFlightVersion = "1.0.1"  // Change this to your latest version
+            let latestTestFlightBuild = "2"       // Change this to your latest build number
+            
+            let isUpdateAvailable = compareVersions(
+                currentVersion: currentVersion,
+                currentBuild: currentBuild,
+                latestVersion: latestTestFlightVersion,
+                latestBuild: latestTestFlightBuild
+            )
+            
+            if isUpdateAvailable {
+                completion(true, "New features and bug fixes available!", false)
+            } else {
+                completion(false, nil, false)
+            }
         } else {
             // For App Store, check iTunes API
             checkAppStoreVersion(currentVersion: currentVersion, completion: completion)
@@ -147,10 +167,16 @@ class UpdateService {
     // MARK: - Helper Methods
     
     private func shouldCheckForUpdate() -> Bool {
+        // For testing, always check for updates
+        return true
+        
+        // Original code - uncomment for production
+        /*
         if let lastCheckDate = userDefaults.object(forKey: lastCheckDateKey) as? Date {
             return Date().timeIntervalSince(lastCheckDate) > checkInterval
         }
         return true
+        */
     }
     
     private func compareVersions(currentVersion: String, currentBuild: String, latestVersion: String, latestBuild: String) -> Bool {
