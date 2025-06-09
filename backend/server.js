@@ -15,6 +15,7 @@ const firebaseUserRoutes = require('./routes/firebaseUserRoutes');
 const firebaseCircleRoutes = require('./routes/firebaseCircleRoutes');
 const firebasePlaceRoutes = require('./routes/firebasePlaceRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
+const linkedinAuthRoutes = require('./routes/linkedinAuthRoutes');
 
 // Import Firebase Place controller for circle-specific routes
 const { getPlacesByCircleId } = require('./controllers/firebasePlaceController');
@@ -44,6 +45,7 @@ app.get('/', (req, res) => {
 
 // API Routes
 app.use('/api/auth', firebaseAuthRoutes);
+app.use('/api/auth', linkedinAuthRoutes); // LinkedIn auth routes
 app.use('/api/users', firebaseUserRoutes);
 app.use('/api/circles', firebaseCircleRoutes);
 app.use('/api/places', firebasePlaceRoutes);

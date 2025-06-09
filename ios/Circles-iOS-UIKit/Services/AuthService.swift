@@ -1,12 +1,13 @@
 import Foundation
 
 // Authentication-related errors
-enum AuthError: Error, LocalizedError {
+enum AuthError: Error, LocalizedError, Equatable {
     case invalidCredentials
     case accountExists
     case accountNotFound
     case tokenExpired
     case networkError(Error)
+    case emailNotVerified
     case unknown
     
     var errorDescription: String? {
@@ -21,8 +22,26 @@ enum AuthError: Error, LocalizedError {
             return "Your session has expired. Please log in again"
         case .networkError(let error):
             return "Network error: \(error.localizedDescription)"
+        case .emailNotVerified:
+            return "Please verify your email before logging in. Check your inbox for the verification link."
         case .unknown:
             return "An unknown error occurred"
+        }
+    }
+    
+    static func == (lhs: AuthError, rhs: AuthError) -> Bool {
+        switch (lhs, rhs) {
+        case (.invalidCredentials, .invalidCredentials),
+             (.accountExists, .accountExists),
+             (.accountNotFound, .accountNotFound),
+             (.tokenExpired, .tokenExpired),
+             (.emailNotVerified, .emailNotVerified),
+             (.unknown, .unknown):
+            return true
+        case (.networkError(let lhsError), .networkError(let rhsError)):
+            return (lhsError as NSError) == (rhsError as NSError)
+        default:
+            return false
         }
     }
 }
@@ -115,20 +134,35 @@ class AuthService {
     func loginWithSocialProvider(provider: String, token: String, name: String? = nil, email: String? = nil, completion: @escaping (Result<User, Error>) -> Void) {
         print("🔐 AuthService.loginWithSocialProvider called with provider: \(provider)")
         
-        var body: [String: Any] = [
-            "idToken": token
-        ]
+        // Use different endpoints for different providers
+        let endpoint: String
+        var body: [String: Any] = [:]
         
-        // Add name and email if provided (for Apple Sign-In)
-        if let name = name {
-            body["name"] = name
-        }
-        if let email = email {
-            body["email"] = email
+        switch provider {
+        case "linkedin":
+            // LinkedIn uses authorization code exchange
+            endpoint = "auth/linkedin"
+            body["code"] = token // LinkedIn sends authorization code, not token
+            if let name = name {
+                body["name"] = name
+            }
+            if let email = email {
+                body["email"] = email
+            }
+        default:
+            // Other providers (Apple, Google, Facebook) use Firebase
+            endpoint = "auth/firebase"
+            body["idToken"] = token
+            if let name = name {
+                body["name"] = name
+            }
+            if let email = email {
+                body["email"] = email
+            }
         }
         
         APIService.shared.request(
-            endpoint: "auth/firebase",
+            endpoint: endpoint,
             method: .post,
             body: body,
             requiresAuth: false
@@ -233,6 +267,38 @@ class AuthService {
                 print("🔐 Failed to fetch current user: \(error)")
                 let authError = self?.mapAPIErrorToAuthError(error, context: .fetchUser)
                 completion(.failure(authError ?? error))
+            }
+        }
+    }
+    
+    // MARK: - Email Verification Methods
+    
+    func sendVerificationEmail(completion: @escaping (Result<Void, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "auth/send-verification-email",
+            method: .post,
+            requiresAuth: true
+        ) { (result: Result<EmptyResponse, APIError>) in
+            switch result {
+            case .success(_):
+                completion(.success(()))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    func checkEmailVerificationStatus(completion: @escaping (Result<Bool, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "auth/verification-status",
+            method: .get,
+            requiresAuth: true
+        ) { (result: Result<VerificationStatusResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.isVerified))
+            case .failure(let error):
+                completion(.failure(error))
             }
         }
     }
@@ -366,12 +432,23 @@ class AuthService {
         case .httpError(let statusCode, let data):
             // Parse error message from response data if available
             if let data = data, let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
+                // Check for email verification error
+                if errorResponse.message.lowercased().contains("email") && errorResponse.message.lowercased().contains("verif") {
+                    return .emailNotVerified
+                }
+                
                 switch statusCode {
                 case 400:
                     // General validation error
                     return .unknown
                 case 401:
                     return .invalidCredentials
+                case 403:
+                    // Could be email not verified
+                    if context == .login {
+                        return .emailNotVerified
+                    }
+                    return .unknown
                 case 409:
                     if context == .register {
                         return .accountExists
@@ -418,4 +495,9 @@ struct ErrorResponse: Decodable {
 
 struct EmptyResponse: Decodable {
     let success: Bool
+}
+
+struct VerificationStatusResponse: Decodable {
+    let success: Bool
+    let isVerified: Bool
 }

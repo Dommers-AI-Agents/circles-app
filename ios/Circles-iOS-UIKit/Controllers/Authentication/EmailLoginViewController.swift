@@ -1,0 +1,246 @@
+import UIKit
+
+class EmailLoginViewController: UIViewController {
+    
+    // MARK: - UI Elements
+    private let titleLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Log in to Circles"
+        label.font = UIFont.systemFont(ofSize: 28, weight: .bold)
+        label.textColor = .darkGray
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let emailTextField: UITextField = {
+        let textField = UITextField()
+        textField.placeholder = "Email"
+        textField.borderStyle = .roundedRect
+        textField.autocapitalizationType = .none
+        textField.autocorrectionType = .no
+        textField.keyboardType = .emailAddress
+        textField.returnKeyType = .next
+        textField.translatesAutoresizingMaskIntoConstraints = false
+        return textField
+    }()
+    
+    private let passwordTextField: UITextField = {
+        let textField = UITextField()
+        textField.placeholder = "Password"
+        textField.borderStyle = .roundedRect
+        textField.isSecureTextEntry = true
+        textField.returnKeyType = .done
+        textField.translatesAutoresizingMaskIntoConstraints = false
+        return textField
+    }()
+    
+    private let loginButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Log in", for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = Constants.Colors.primary // Blue
+        button.layer.cornerRadius = 25
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let forgotPasswordButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Forgot password?", for: .normal)
+        button.setTitleColor(Constants.Colors.primary, for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 16)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let activityIndicator: UIActivityIndicatorView = {
+        let indicator = UIActivityIndicatorView(style: .medium)
+        indicator.hidesWhenStopped = true
+        indicator.translatesAutoresizingMaskIntoConstraints = false
+        return indicator
+    }()
+    
+    // MARK: - Properties
+    private let savedEmailKey = "savedUserEmail"
+    
+    private var isLoggingIn = false {
+        didSet {
+            loginButton.isEnabled = !isLoggingIn
+            emailTextField.isEnabled = !isLoggingIn
+            passwordTextField.isEnabled = !isLoggingIn
+            
+            if isLoggingIn {
+                activityIndicator.startAnimating()
+            } else {
+                activityIndicator.stopAnimating()
+            }
+        }
+    }
+    
+    // MARK: - Lifecycle
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        setupUI()
+        setupActions()
+        loadSavedEmail()
+    }
+    
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        navigationController?.setNavigationBarHidden(false, animated: animated)
+    }
+    
+    // MARK: - UI Setup
+    private func setupUI() {
+        view.backgroundColor = .systemBackground
+        
+        // Add subviews
+        view.addSubview(titleLabel)
+        view.addSubview(emailTextField)
+        view.addSubview(passwordTextField)
+        view.addSubview(loginButton)
+        view.addSubview(forgotPasswordButton)
+        view.addSubview(activityIndicator)
+        
+        // Layout constraints
+        NSLayoutConstraint.activate([
+            titleLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 40),
+            titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
+            titleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
+            
+            emailTextField.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 40),
+            emailTextField.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
+            emailTextField.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
+            emailTextField.heightAnchor.constraint(equalToConstant: 50),
+            
+            passwordTextField.topAnchor.constraint(equalTo: emailTextField.bottomAnchor, constant: 16),
+            passwordTextField.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
+            passwordTextField.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
+            passwordTextField.heightAnchor.constraint(equalToConstant: 50),
+            
+            loginButton.topAnchor.constraint(equalTo: passwordTextField.bottomAnchor, constant: 32),
+            loginButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
+            loginButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
+            loginButton.heightAnchor.constraint(equalToConstant: 50),
+            
+            forgotPasswordButton.topAnchor.constraint(equalTo: loginButton.bottomAnchor, constant: 16),
+            forgotPasswordButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            
+            activityIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            activityIndicator.topAnchor.constraint(equalTo: forgotPasswordButton.bottomAnchor, constant: 32)
+        ])
+        
+        // Setup text field delegates
+        emailTextField.delegate = self
+        passwordTextField.delegate = self
+    }
+    
+    private func setupActions() {
+        loginButton.addTarget(self, action: #selector(loginButtonTapped), for: .touchUpInside)
+        forgotPasswordButton.addTarget(self, action: #selector(forgotPasswordTapped), for: .touchUpInside)
+        
+        // Add tap gesture to dismiss keyboard
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
+        view.addGestureRecognizer(tapGesture)
+    }
+    
+    // MARK: - Actions
+    @objc private func loginButtonTapped() {
+        guard let email = emailTextField.text, !email.isEmpty,
+              let password = passwordTextField.text, !password.isEmpty else {
+            presentAlert(title: "Error", message: "Please enter both email and password")
+            return
+        }
+        
+        isLoggingIn = true
+        
+        AuthService.shared.login(email: email, password: password) { [weak self] result in
+            DispatchQueue.main.async {
+                self?.isLoggingIn = false
+                
+                switch result {
+                case .success(let user):
+                    print("Successfully logged in user: \(user.displayName)")
+                    self?.saveEmail(email)
+                    // Authentication state listener in SceneDelegate will handle UI update
+                    
+                case .failure(let error):
+                    if let authError = error as? AuthError, authError == .emailNotVerified {
+                        self?.showEmailVerificationAlert(email: email)
+                    } else {
+                        self?.presentAlert(title: "Login Failed", message: error.localizedDescription)
+                    }
+                }
+            }
+        }
+    }
+    
+    @objc private func forgotPasswordTapped() {
+        // TODO: Implement forgot password flow
+        presentAlert(title: "Coming Soon", message: "Password reset functionality will be available soon.")
+    }
+    
+    @objc private func dismissKeyboard() {
+        view.endEditing(true)
+    }
+    
+    // MARK: - Helper Methods
+    private func presentAlert(title: String, message: String) {
+        let alertController = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alertController.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alertController, animated: true)
+    }
+    
+    private func saveEmail(_ email: String) {
+        UserDefaults.standard.set(email, forKey: savedEmailKey)
+    }
+    
+    private func loadSavedEmail() {
+        if let savedEmail = UserDefaults.standard.string(forKey: savedEmailKey) {
+            emailTextField.text = savedEmail
+        }
+    }
+    
+    private func showEmailVerificationAlert(email: String) {
+        let alert = UIAlertController(
+            title: "Email Not Verified",
+            message: "Please verify your email address before logging in. Check your inbox for the verification link sent to \(email).",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "Resend Email", style: .default) { [weak self] _ in
+            self?.resendVerificationEmail(email: email)
+        })
+        
+        alert.addAction(UIAlertAction(title: "OK", style: .cancel))
+        
+        present(alert, animated: true)
+    }
+    
+    private func resendVerificationEmail(email: String) {
+        // Since we need to be authenticated to resend, we'll need to handle this differently
+        // For now, show a message that they should check their email
+        let alert = UIAlertController(
+            title: "Check Your Email",
+            message: "A verification email was sent when you registered. Please check your inbox and spam folder for the verification link.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+}
+
+// MARK: - UITextFieldDelegate
+extension EmailLoginViewController: UITextFieldDelegate {
+    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        if textField == emailTextField {
+            passwordTextField.becomeFirstResponder()
+        } else if textField == passwordTextField {
+            dismissKeyboard()
+            loginButtonTapped()
+        }
+        return true
+    }
+}

@@ -74,7 +74,7 @@
 		<string>linkedin-sdk</string>
 	</array>
 	<key>LinkedInClientID</key>
-	<string>YOUR_LINKEDIN_CLIENT_ID</string>
+	<string>86rx0d8w7xn8rq</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

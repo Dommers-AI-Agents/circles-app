@@ -40,23 +40,8 @@ class UpdateService {
         print("🔄 UpdateService: Running in TestFlight: \(isTestFlight)")
         
         if isTestFlight {
-            // For TestFlight testing without backend, use hardcoded version check
-            // TODO: Update these values when you release a new TestFlight build
-            let latestTestFlightVersion = "1.0.1"  // Change this to your latest version
-            let latestTestFlightBuild = "2"       // Change this to your latest build number
-            
-            let isUpdateAvailable = compareVersions(
-                currentVersion: currentVersion,
-                currentBuild: currentBuild,
-                latestVersion: latestTestFlightVersion,
-                latestBuild: latestTestFlightBuild
-            )
-            
-            if isUpdateAvailable {
-                completion(true, "New features and bug fixes available!", false)
-            } else {
-                completion(false, nil, false)
-            }
+            // Skip update checks for TestFlight builds
+            completion(false, nil, false)
         } else {
             // For App Store, check iTunes API
             checkAppStoreVersion(currentVersion: currentVersion, completion: completion)
@@ -167,16 +152,10 @@ class UpdateService {
     // MARK: - Helper Methods
     
     private func shouldCheckForUpdate() -> Bool {
-        // For testing, always check for updates
-        return true
-        
-        // Original code - uncomment for production
-        /*
         if let lastCheckDate = userDefaults.object(forKey: lastCheckDateKey) as? Date {
             return Date().timeIntervalSince(lastCheckDate) > checkInterval
         }
         return true
-        */
     }
     
     private func compareVersions(currentVersion: String, currentBuild: String, latestVersion: String, latestBuild: String) -> Bool {

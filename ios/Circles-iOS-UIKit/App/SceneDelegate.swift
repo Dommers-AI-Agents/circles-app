@@ -22,7 +22,18 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         
         // Check if there's a deep link to handle
         if let url = connectionOptions.urlContexts.first?.url {
-            handleDeepLink(url)
+            print("📱 SceneDelegate: URL received on launch: \(url.absoluteString)")
+            
+            // Check if it's a LinkedIn callback
+            if url.scheme == "com.favcircles.circles" && url.absoluteString.contains("linkedin") {
+                print("🔗 LinkedIn callback detected on app launch")
+                // Delay handling to ensure SocialAuthService is ready
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    _ = SocialAuthService.shared.handleLinkedInCallback(url: url)
+                }
+            } else {
+                handleDeepLink(url)
+            }
         }
         
         // Show a loading screen initially if user is logged in
@@ -65,11 +76,26 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
     
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+        print("📱 SceneDelegate: openURLContexts called with \(URLContexts.count) contexts")
+        
         // Handle deep links when the app is already running
         if let url = URLContexts.first?.url {
+            print("📱 SceneDelegate: Processing URL: \(url.absoluteString)")
+            
             // First check if it's a Facebook callback
             if ApplicationDelegate.shared.application(UIApplication.shared, open: url, sourceApplication: nil, annotation: nil) {
+                print("📘 Handled by Facebook SDK")
                 return
+            }
+            
+            // Check if it's a LinkedIn callback
+            if url.scheme == "com.favcircles.circles" && url.absoluteString.contains("linkedin") {
+                print("🔗 LinkedIn callback detected in SceneDelegate")
+                let handled = SocialAuthService.shared.handleLinkedInCallback(url: url)
+                if handled {
+                    print("🔗 LinkedIn callback handled successfully")
+                    return
+                }
             }
             
             // Handle other deep links

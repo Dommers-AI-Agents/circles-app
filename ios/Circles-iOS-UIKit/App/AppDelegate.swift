@@ -145,10 +145,17 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         }
         
         // Handle LinkedIn OAuth callback
-        if url.scheme == "com.favcircles.circles" && url.host == "linkedin" {
-            print("🔗 LinkedIn OAuth callback received")
-            let handled = SocialAuthService.shared.handleLinkedInCallback(url: url)
-            return handled
+        // URL format: com.favcircles.circles://linkedin/callback?code=xxx&state=yyy
+        if url.scheme == "com.favcircles.circles" {
+            print("🔗 Checking if LinkedIn callback - URL: \(url.absoluteString)")
+            print("🔗 URL host: \(url.host ?? "nil"), path: \(url.path)")
+            
+            // Check if this is a LinkedIn callback
+            if url.absoluteString.contains("linkedin") {
+                print("🔗 LinkedIn OAuth callback received")
+                let handled = SocialAuthService.shared.handleLinkedInCallback(url: url)
+                return handled
+            }
         }
         
         // Handle other URL schemes your app may use

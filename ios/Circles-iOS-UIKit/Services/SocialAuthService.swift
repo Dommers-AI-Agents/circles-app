@@ -320,7 +320,9 @@ class SocialAuthService: NSObject {
             return
         }
         
-        let redirectUri = "com.favcircles.circles://linkedin-callback"
+        // Use the backend URL for LinkedIn OAuth callback
+        // LinkedIn will redirect to backend, which then redirects to app
+        let redirectUri = "https://circles-backend-778088177220.us-central1.run.app/auth/linkedin/callback"
         let state = UUID().uuidString
         let scope = "openid profile email"
         
@@ -345,9 +347,14 @@ class SocialAuthService: NSObject {
         }
         
         // Present Safari view controller for OAuth flow
+        print("🔗 Opening LinkedIn authorization URL: \(authURL.absoluteString)")
         let safariViewController = SFSafariViewController(url: authURL)
         safariViewController.delegate = self
-        viewController.present(safariViewController, animated: true)
+        safariViewController.preferredBarTintColor = Constants.Colors.primary
+        safariViewController.preferredControlTintColor = .white
+        viewController.present(safariViewController, animated: true) {
+            print("🔗 Safari view controller presented successfully")
+        }
     }
     
     // MARK: - Sign Out Methods
@@ -589,10 +596,14 @@ extension SocialAuthService: ASAuthorizationControllerPresentationContextProvidi
 
 extension SocialAuthService: SFSafariViewControllerDelegate {
     func safariViewControllerDidFinish(_ controller: SFSafariViewController) {
-        print("🔗 LinkedIn Safari view controller dismissed")
-        let error = NSError(domain: "com.circles.auth.linkedin", code: -1, 
-                           userInfo: [NSLocalizedDescriptionKey: "LinkedIn sign-in was cancelled"])
-        completionHandler?(.failure(error))
+        print("🔗 LinkedIn Safari view controller dismissed by user")
+        // Only treat as cancellation if we haven't received a callback
+        if completionHandler != nil {
+            let error = NSError(domain: "com.circles.auth.linkedin", code: -1, 
+                               userInfo: [NSLocalizedDescriptionKey: "LinkedIn sign-in was cancelled"])
+            completionHandler?(.failure(error))
+            completionHandler = nil
+        }
         presentingViewController = nil
     }
 }
@@ -601,9 +612,18 @@ extension SocialAuthService: SFSafariViewControllerDelegate {
 
 extension SocialAuthService {
     func handleLinkedInCallback(url: URL) -> Bool {
-        guard url.scheme == "com.favcircles.circles",
-              url.host == "linkedin",
-              url.path == "/callback" else {
+        print("🔗 handleLinkedInCallback called with URL: \(url.absoluteString)")
+        
+        guard url.scheme == "com.favcircles.circles" else {
+            print("🔗 URL scheme doesn't match, expected: com.favcircles.circles, got: \(url.scheme ?? "nil")")
+            return false
+        }
+        
+        // LinkedIn callback can be in format: com.favcircles.circles://linkedin/callback
+        // So we need to check if the URL contains linkedin callback
+        let urlString = url.absoluteString
+        guard urlString.contains("linkedin") && urlString.contains("callback") else {
+            print("🔗 URL doesn't contain linkedin callback pattern")
             return false
         }
         
@@ -621,6 +641,9 @@ extension SocialAuthService {
             let error = NSError(domain: "com.circles.auth.linkedin", code: -1, 
                                userInfo: [NSLocalizedDescriptionKey: "LinkedIn authentication state mismatch"])
             completionHandler?(.failure(error))
+            // Dismiss Safari view controller
+            presentingViewController?.dismiss(animated: true)
+            presentingViewController = nil
             return true
         }
         
@@ -629,6 +652,9 @@ extension SocialAuthService {
             let authError = NSError(domain: "com.circles.auth.linkedin", code: -1, 
                                    userInfo: [NSLocalizedDescriptionKey: "LinkedIn authentication failed: \(error)"])
             completionHandler?(.failure(authError))
+            // Dismiss Safari view controller
+            presentingViewController?.dismiss(animated: true)
+            presentingViewController = nil
             return true
         }
         
@@ -637,7 +663,17 @@ extension SocialAuthService {
             let error = NSError(domain: "com.circles.auth.linkedin", code: -1, 
                                userInfo: [NSLocalizedDescriptionKey: "No authorization code received from LinkedIn"])
             completionHandler?(.failure(error))
+            // Dismiss Safari view controller
+            presentingViewController?.dismiss(animated: true)
+            presentingViewController = nil
             return true
+        }
+        
+        // Dismiss Safari view controller if it's still presented
+        if let viewController = self.presentingViewController {
+            viewController.dismiss(animated: true) {
+                print("🔗 Safari view controller dismissed after successful callback")
+            }
         }
         
         // Send authorization code to backend for secure token exchange
@@ -651,6 +687,7 @@ extension SocialAuthService {
             email: nil
         ) { [weak self] result in
             self?.completionHandler?(result)
+            self?.presentingViewController = nil
         }
         
         return true

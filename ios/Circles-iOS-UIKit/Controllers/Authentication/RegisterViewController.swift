@@ -26,13 +26,15 @@ class RegisterViewController: UIViewController {
         return label
     }()
     
-    private let displayNameTextField: UITextField = {
-        let textField = UITextField()
-        textField.placeholder = "Display Name"
-        textField.borderStyle = .roundedRect
-        textField.returnKeyType = .next
-        textField.translatesAutoresizingMaskIntoConstraints = false
-        return textField
+    private let subtitleLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Enter your email to get started"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
+        label.textColor = Constants.Colors.gray
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }()
     
     private let emailTextField: UITextField = {
@@ -62,51 +64,24 @@ class RegisterViewController: UIViewController {
         textField.placeholder = "Confirm Password"
         textField.borderStyle = .roundedRect
         textField.isSecureTextEntry = true
-        textField.returnKeyType = .next
+        textField.returnKeyType = .done
         textField.translatesAutoresizingMaskIntoConstraints = false
         return textField
     }()
     
-    private let locationTextField: UITextField = {
-        let textField = UITextField()
-        textField.placeholder = "Location (optional)"
-        textField.borderStyle = .roundedRect
-        textField.returnKeyType = .next
-        textField.translatesAutoresizingMaskIntoConstraints = false
-        return textField
-    }()
-    
-    private let bioTextView: UITextView = {
-        let textView = UITextView()
-        textView.layer.borderWidth = 0.5
-        textView.layer.borderColor = UIColor.lightGray.cgColor
-        textView.layer.cornerRadius = 5
-        textView.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
-        textView.translatesAutoresizingMaskIntoConstraints = false
-        return textView
-    }()
-    
-    private let bioLabel: UILabel = {
+    private let passwordRequirementLabel: UILabel = {
         let label = UILabel()
-        label.text = "Bio (optional)"
+        label.text = "Password must be at least 6 characters"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
         label.textColor = Constants.Colors.gray
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let bioPlaceholderLabel: UILabel = {
-        let label = UILabel()
-        label.text = "Tell us a bit about yourself..."
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
-        label.textColor = Constants.Colors.lightGray
+        label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
     
     private let registerButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setTitle("Register", for: .normal)
+        button.setTitle("Create Account", for: .normal)
         button.setTitleColor(.white, for: .normal)
         button.backgroundColor = Constants.Colors.primary
         button.layer.cornerRadius = 8
@@ -207,12 +182,9 @@ class RegisterViewController: UIViewController {
             googleSignInButton.isEnabled = !isRegistering
             facebookSignInButton.isEnabled = !isRegistering
             linkedInSignInButton.isEnabled = !isRegistering
-            displayNameTextField.isEnabled = !isRegistering
             emailTextField.isEnabled = !isRegistering
             passwordTextField.isEnabled = !isRegistering
             confirmPasswordTextField.isEnabled = !isRegistering
-            locationTextField.isEnabled = !isRegistering
-            bioTextView.isEditable = !isRegistering
             
             if isRegistering {
                 activityIndicator.startAnimating()
@@ -254,14 +226,11 @@ class RegisterViewController: UIViewController {
         scrollView.addSubview(contentView)
         
         contentView.addSubview(titleLabel)
-        contentView.addSubview(displayNameTextField)
+        contentView.addSubview(subtitleLabel)
         contentView.addSubview(emailTextField)
         contentView.addSubview(passwordTextField)
         contentView.addSubview(confirmPasswordTextField)
-        contentView.addSubview(locationTextField)
-        contentView.addSubview(bioLabel)
-        contentView.addSubview(bioTextView)
-        contentView.addSubview(bioPlaceholderLabel)
+        contentView.addSubview(passwordRequirementLabel)
         contentView.addSubview(registerButton)
         contentView.addSubview(orLabel)
         contentView.addSubview(socialStackView)
@@ -284,16 +253,16 @@ class RegisterViewController: UIViewController {
             
             // Title label
             titleLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Constants.Spacing.large),
-            titleLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             
-            // Display name text field
-            displayNameTextField.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: Constants.Spacing.xlarge),
-            displayNameTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            displayNameTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            displayNameTextField.heightAnchor.constraint(equalToConstant: 50),
+            // Subtitle label
+            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: Constants.Spacing.small),
+            subtitleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            subtitleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             
             // Email text field
-            emailTextField.topAnchor.constraint(equalTo: displayNameTextField.bottomAnchor, constant: Constants.Spacing.medium),
+            emailTextField.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: Constants.Spacing.xlarge),
             emailTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             emailTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             emailTextField.heightAnchor.constraint(equalToConstant: 50),
@@ -310,28 +279,13 @@ class RegisterViewController: UIViewController {
             confirmPasswordTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             confirmPasswordTextField.heightAnchor.constraint(equalToConstant: 50),
             
-            // Location text field
-            locationTextField.topAnchor.constraint(equalTo: confirmPasswordTextField.bottomAnchor, constant: Constants.Spacing.medium),
-            locationTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            locationTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            locationTextField.heightAnchor.constraint(equalToConstant: 50),
-            
-            // Bio label
-            bioLabel.topAnchor.constraint(equalTo: locationTextField.bottomAnchor, constant: Constants.Spacing.medium),
-            bioLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            
-            // Bio text view
-            bioTextView.topAnchor.constraint(equalTo: bioLabel.bottomAnchor, constant: Constants.Spacing.small),
-            bioTextView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            bioTextView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            bioTextView.heightAnchor.constraint(equalToConstant: 100),
-            
-            // Bio placeholder label
-            bioPlaceholderLabel.topAnchor.constraint(equalTo: bioTextView.topAnchor, constant: 8),
-            bioPlaceholderLabel.leadingAnchor.constraint(equalTo: bioTextView.leadingAnchor, constant: 4),
+            // Password requirement label
+            passwordRequirementLabel.topAnchor.constraint(equalTo: confirmPasswordTextField.bottomAnchor, constant: Constants.Spacing.small),
+            passwordRequirementLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            passwordRequirementLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             
             // Register button
-            registerButton.topAnchor.constraint(equalTo: bioTextView.bottomAnchor, constant: Constants.Spacing.large),
+            registerButton.topAnchor.constraint(equalTo: passwordRequirementLabel.bottomAnchor, constant: Constants.Spacing.large),
             registerButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             registerButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             registerButton.heightAnchor.constraint(equalToConstant: 50),
@@ -353,12 +307,9 @@ class RegisterViewController: UIViewController {
         ])
         
         // Setup text field delegates
-        displayNameTextField.delegate = self
         emailTextField.delegate = self
         passwordTextField.delegate = self
         confirmPasswordTextField.delegate = self
-        locationTextField.delegate = self
-        bioTextView.delegate = self
     }
     
     private func setupActions() {
@@ -382,11 +333,6 @@ class RegisterViewController: UIViewController {
     // MARK: - Actions
     @objc private func registerButtonTapped() {
         // Validate inputs
-        guard let displayName = displayNameTextField.text, !displayName.isEmpty else {
-            presentAlert(title: "Error", message: "Please enter a display name")
-            return
-        }
-        
         guard let email = emailTextField.text, !email.isEmpty, isValidEmail(email) else {
             presentAlert(title: "Error", message: "Please enter a valid email address")
             return
@@ -402,12 +348,11 @@ class RegisterViewController: UIViewController {
             return
         }
         
-        // Optional fields
-        let location = locationTextField.text
-        let bio = bioTextView.text != "Tell us a bit about yourself..." ? bioTextView.text : nil
-        
         // Start registration
         isRegistering = true
+        
+        // Create a default display name from email
+        let displayName = email.components(separatedBy: "@").first ?? "User"
         
         // Attempt registration
         AuthService.shared.register(email: email, password: password, displayName: displayName) { [weak self] result in
@@ -417,14 +362,8 @@ class RegisterViewController: UIViewController {
                 switch result {
                 case .success(let user):
                     print("Successfully registered user: \(user.displayName)")
-                    
-                    // Update profile with optional info if provided
-                    if location != nil && !location!.isEmpty || bio != nil && !bio!.isEmpty {
-                        self?.updateProfile(displayName: nil, bio: bio, location: location)
-                    } else {
-                        // Show success message
-                        self?.showSuccessMessage()
-                    }
+                    // Show email verification message
+                    self?.showEmailVerificationMessage(email: email)
                     
                 case .failure(let error):
                     self?.presentAlert(title: "Registration Failed", message: error.localizedDescription)
@@ -433,25 +372,25 @@ class RegisterViewController: UIViewController {
         }
     }
     
-    private func updateProfile(displayName: String?, bio: String?, location: String?) {
-        UserService.shared.updateUserProfile(displayName: displayName, bio: bio, location: location) { [weak self] result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(_):
-                    // Show success message
-                    self?.showSuccessMessage()
-                case .failure(let error):
-                    // Registration succeeded but profile update failed
-                    print("Profile update failed: \(error.localizedDescription)")
-                    // Still show success for registration
-                    self?.showSuccessMessage()
-                }
-            }
-        }
+    private func showEmailVerificationMessage(email: String) {
+        let alert = UIAlertController(
+            title: "Verify Your Email",
+            message: "A verification email has been sent to \(email). Please check your inbox and follow the link to verify your account before logging in.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
+            // Navigate back to login screen
+            self?.navigationController?.popViewController(animated: true)
+        })
+        present(alert, animated: true)
     }
     
     private func showSuccessMessage() {
-        let alert = UIAlertController(title: "Registration Successful", message: "Welcome to Circles!", preferredStyle: .alert)
+        let alert = UIAlertController(
+            title: "Registration Successful",
+            message: "Welcome to Circles! You can now log in with your account.",
+            preferredStyle: .alert
+        )
         alert.addAction(UIAlertAction(title: "Continue", style: .default) { [weak self] _ in
             // Navigate back to login screen
             self?.navigationController?.popViewController(animated: true)
@@ -578,7 +517,7 @@ class RegisterViewController: UIViewController {
     }
     
     private func findFirstResponder() -> UIView? {
-        let responders: [UIView] = [displayNameTextField, emailTextField, passwordTextField, confirmPasswordTextField, locationTextField, bioTextView]
+        let responders: [UIView] = [emailTextField, passwordTextField, confirmPasswordTextField]
         return responders.first { $0.isFirstResponder }
     }
     
@@ -591,42 +530,16 @@ class RegisterViewController: UIViewController {
 extension RegisterViewController: UITextFieldDelegate {
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
         switch textField {
-        case displayNameTextField:
-            emailTextField.becomeFirstResponder()
         case emailTextField:
             passwordTextField.becomeFirstResponder()
         case passwordTextField:
             confirmPasswordTextField.becomeFirstResponder()
         case confirmPasswordTextField:
-            locationTextField.becomeFirstResponder()
-        case locationTextField:
-            bioTextView.becomeFirstResponder()
+            textField.resignFirstResponder()
+            registerButtonTapped()
         default:
             textField.resignFirstResponder()
         }
         return true
-    }
-}
-
-// MARK: - UITextViewDelegate
-extension RegisterViewController: UITextViewDelegate {
-    func textViewDidBeginEditing(_ textView: UITextView) {
-        if textView.text == "Tell us a bit about yourself..." {
-            textView.text = ""
-            textView.textColor = Constants.Colors.darkGray
-            bioPlaceholderLabel.isHidden = true
-        }
-    }
-    
-    func textViewDidEndEditing(_ textView: UITextView) {
-        if textView.text.isEmpty {
-            textView.text = "Tell us a bit about yourself..."
-            textView.textColor = Constants.Colors.lightGray
-            bioPlaceholderLabel.isHidden = false
-        }
-    }
-    
-    func textViewDidChange(_ textView: UITextView) {
-        bioPlaceholderLabel.isHidden = !textView.text.isEmpty
     }
 }
