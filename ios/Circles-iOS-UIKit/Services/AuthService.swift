@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 // Authentication-related errors
 enum AuthError: Error, LocalizedError, Equatable {
@@ -8,7 +9,11 @@ enum AuthError: Error, LocalizedError, Equatable {
     case tokenExpired
     case networkError(Error)
     case emailNotVerified
-    case unknown
+    case invalidEmail
+    case emailAlreadyInUse
+    case weakPassword
+    case userNotFound
+    case unknown(String)
     
     var errorDescription: String? {
         switch self {
@@ -24,8 +29,16 @@ enum AuthError: Error, LocalizedError, Equatable {
             return "Network error: \(error.localizedDescription)"
         case .emailNotVerified:
             return "Please verify your email before logging in. Check your inbox for the verification link."
-        case .unknown:
-            return "An unknown error occurred"
+        case .invalidEmail:
+            return "Please enter a valid email address"
+        case .emailAlreadyInUse:
+            return "An account with this email already exists"
+        case .weakPassword:
+            return "Password must be at least 6 characters"
+        case .userNotFound:
+            return "No account found with this email"
+        case .unknown(let message):
+            return message
         }
     }
     
@@ -36,10 +49,15 @@ enum AuthError: Error, LocalizedError, Equatable {
              (.accountNotFound, .accountNotFound),
              (.tokenExpired, .tokenExpired),
              (.emailNotVerified, .emailNotVerified),
-             (.unknown, .unknown):
+             (.invalidEmail, .invalidEmail),
+             (.emailAlreadyInUse, .emailAlreadyInUse),
+             (.weakPassword, .weakPassword),
+             (.userNotFound, .userNotFound):
             return true
         case (.networkError(let lhsError), .networkError(let rhsError)):
             return (lhsError as NSError) == (rhsError as NSError)
+        case (.unknown(let lhsMsg), .unknown(let rhsMsg)):
+            return lhsMsg == rhsMsg
         default:
             return false
         }
@@ -303,6 +321,55 @@ class AuthService {
         }
     }
     
+    // MARK: - Firebase Integration
+    
+    func syncFirebaseUser(idToken: String, userData: [String: Any], completion: @escaping (Result<User, Error>) -> Void) {
+        var body = userData
+        body["firebaseIdToken"] = idToken
+        
+        APIService.shared.request(
+            endpoint: "auth/firebase/sync",
+            method: .post,
+            body: body,
+            requiresAuth: false
+        ) { [weak self] (result: Result<AuthResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                self?.handleAuthResponse(response) { _ in }
+                self?.saveAuthProvider("firebase")
+                completion(.success(response.user))
+                
+            case .failure(let error):
+                let authError = self?.mapAPIErrorToAuthError(error, context: .login) ?? .unknown("Unknown error")
+                completion(.failure(authError))
+            }
+        }
+    }
+    
+    func verifyFirebaseToken(_ token: String) -> AnyPublisher<User, Error> {
+        let body: [String: Any] = ["firebaseIdToken": token]
+        
+        return Future<User, Error> { promise in
+            APIService.shared.request(
+                endpoint: "auth/firebase/verify",
+                method: .post,
+                body: body,
+                requiresAuth: false
+            ) { [weak self] (result: Result<AuthResponse, APIError>) in
+                switch result {
+                case .success(let response):
+                    self?.handleAuthResponse(response) { _ in }
+                self?.saveAuthProvider("firebase")
+                    promise(.success(response.user))
+                    
+                case .failure(let error):
+                    let authError = self?.mapAPIErrorToAuthError(error, context: .login) ?? .unknown("Unknown error")
+                    promise(.failure(authError))
+                }
+            }
+        }.eraseToAnyPublisher()
+    }
+    
     // MARK: - Helper Methods
     
     private func handleAuthResponse(_ response: AuthResponse, completion: @escaping (Result<User, Error>) -> Void) {
@@ -335,7 +402,7 @@ class AuthService {
             completion(.success(response.user))
         } else {
             print("🔐 Auth response not successful")
-            completion(.failure(AuthError.unknown))
+            completion(.failure(AuthError.unknown("Authentication failed")))
         }
     }
     
@@ -440,7 +507,7 @@ class AuthService {
                 switch statusCode {
                 case 400:
                     // General validation error
-                    return .unknown
+                    return .unknown("Invalid request")
                 case 401:
                     return .invalidCredentials
                 case 403:
@@ -448,19 +515,19 @@ class AuthService {
                     if context == .login {
                         return .emailNotVerified
                     }
-                    return .unknown
+                    return .unknown("Forbidden")
                 case 409:
                     if context == .register {
                         return .accountExists
                     }
-                    return .unknown
+                    return .unknown("Conflict")
                 case 404:
                     return .accountNotFound
                 default:
-                    return .unknown
+                    return .unknown("HTTP error: \(statusCode)")
                 }
             }
-            return .unknown
+            return .unknown(error.localizedDescription)
             
         case .unauthorized:
             return .tokenExpired
@@ -469,7 +536,7 @@ class AuthService {
             return .networkError(error)
             
         case .serverError, .unknown:
-            return .unknown
+            return .unknown(error.localizedDescription)
         }
     }
 }

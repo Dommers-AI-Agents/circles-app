@@ -12,6 +12,8 @@
 		6F545FBB2DE6021A00EC377D /* FacebookLogin in Frameworks */ = {isa = PBXBuildFile; productRef = 6F545FBA2DE6021A00EC377D /* FacebookLogin */; };
 		6FD782322DDB603400443471 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 6FD782312DDB603400443471 /* GoogleSignIn */; };
 		6FD782342DDB603400443471 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 6FD782332DDB603400443471 /* GoogleSignInSwift */; };
+		6FE8F0B72DF7C276007CB88E /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 6FE8F0B62DF7C276007CB88E /* FirebaseAnalytics */; };
+		6FE8F0B92DF7C291007CB88E /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 6FE8F0B82DF7C291007CB88E /* FirebaseAuth */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -75,8 +77,10 @@
 			files = (
 				6F545FBB2DE6021A00EC377D /* FacebookLogin in Frameworks */,
 				6F545FB72DE6021A00EC377D /* FacebookBasics in Frameworks */,
+				6FE8F0B72DF7C276007CB88E /* FirebaseAnalytics in Frameworks */,
 				6FD782322DDB603400443471 /* GoogleSignIn in Frameworks */,
 				6FD782342DDB603400443471 /* GoogleSignInSwift in Frameworks */,
+				6FE8F0B92DF7C291007CB88E /* FirebaseAuth in Frameworks */,
 				6F545FB92DE6021A00EC377D /* FacebookCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -104,6 +108,7 @@
 				6F9360992DD9725A0065A440 /* Circles-iOS-UIKit */,
 				6F9360B02DD9725C0065A440 /* Circles-iOS-UIKitTests */,
 				6F9360BA2DD9725C0065A440 /* Circles-iOS-UIKitUITests */,
+				6FE8F0B52DF7C276007CB88E /* Frameworks */,
 				6F9360982DD9725A0065A440 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -116,6 +121,13 @@
 				6F9360B72DD9725C0065A440 /* Circles-iOSUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		6FE8F0B52DF7C276007CB88E /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -143,6 +155,8 @@
 				6F545FB62DE6021A00EC377D /* FacebookBasics */,
 				6F545FB82DE6021A00EC377D /* FacebookCore */,
 				6F545FBA2DE6021A00EC377D /* FacebookLogin */,
+				6FE8F0B62DF7C276007CB88E /* FirebaseAnalytics */,
+				6FE8F0B82DF7C291007CB88E /* FirebaseAuth */,
 			);
 			productName = "Circles-iOS-UIKit";
 			productReference = 6F9360972DD9725A0065A440 /* Circles-iOS.app */;
@@ -229,6 +243,7 @@
 			packageReferences = (
 				6FD782302DDB603400443471 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 				6F545FB52DE6021A00EC377D /* XCRemoteSwiftPackageReference "facebook-ios-sdk" */,
+				6FE8F0B42DF7BFA7007CB88E /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 6F9360982DD9725A0065A440 /* Products */;
@@ -637,6 +652,14 @@
 				minimumVersion = 8.0.0;
 			};
 		};
+		6FE8F0B42DF7BFA7007CB88E /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 11.14.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -664,6 +687,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 6FD782302DDB603400443471 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
 			productName = GoogleSignInSwift;
+		};
+		6FE8F0B62DF7C276007CB88E /* FirebaseAnalytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6FE8F0B42DF7BFA7007CB88E /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAnalytics;
+		};
+		6FE8F0B82DF7C291007CB88E /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6FE8F0B42DF7BFA7007CB88E /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -37,4 +37,16 @@ enum CircleCategory: String, Codable {
     case healthcare
     case entertainment
     case other
+    
+    var displayName: String {
+        switch self {
+        case .travel: return "Travel"
+        case .food: return "Food & Dining"
+        case .services: return "Services"
+        case .shopping: return "Shopping"
+        case .healthcare: return "Healthcare"
+        case .entertainment: return "Entertainment"
+        case .other: return "Other"
+        }
+    }
 }

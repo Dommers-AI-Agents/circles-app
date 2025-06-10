@@ -1,47 +1,38 @@
-import Foundation
+import SwiftUI
 import Network
+import Combine
 
-class NetworkMonitor {
+class NetworkMonitor: ObservableObject {
     static let shared = NetworkMonitor()
     
-    private let networkMonitor = NWPathMonitor()
-    private let queue = DispatchQueue(label: "NetworkMonitorQueue")
+    @Published var isConnected = true
+    @Published var connectionType: ConnectionType = .unknown
     
-    private(set) var isConnected = true
-    private(set) var connectionType: ConnectionType = .unknown
-    
-    // Observers that want to be notified of network status changes
+    private let monitor = NWPathMonitor()
+    private let queue = DispatchQueue(label: "NetworkMonitor")
     private var observers: [String: (Bool) -> Void] = [:]
     
-    private var lastNotificationTime: Date = Date()
-    private let notificationThrottle: TimeInterval = 1.0 // Minimum 1 second between notifications
-    
     private init() {
-        networkMonitor.pathUpdateHandler = { [weak self] path in
-            guard let self = self else { return }
-            
-            let newConnected = path.status == .satisfied
-            let connectionChanged = newConnected != self.isConnected
-            
-            self.isConnected = newConnected
-            self.getConnectionType(path)
-            
-            // Only notify if connection status actually changed or enough time has passed
-            let now = Date()
-            if connectionChanged || now.timeIntervalSince(self.lastNotificationTime) >= self.notificationThrottle {
-                self.lastNotificationTime = now
+        startMonitoring()
+    }
+    
+    private func startMonitoring() {
+        monitor.pathUpdateHandler = { [weak self] path in
+            DispatchQueue.main.async {
+                self?.isConnected = path.status == .satisfied
+                self?.updateConnectionType(path)
                 
-                // Notify observers on the main thread but with slight delay to avoid rapid updates
-                DispatchQueue.main.async {
-                    self.notifyObservers()
+                // Notify all observers
+                self?.observers.forEach { _, handler in
+                    handler(path.status == .satisfied)
                 }
             }
         }
         
-        networkMonitor.start(queue: queue)
+        monitor.start(queue: queue)
     }
     
-    private func getConnectionType(_ path: NWPath) {
+    private func updateConnectionType(_ path: NWPath) {
         if path.usesInterfaceType(.wifi) {
             connectionType = .wifi
         } else if path.usesInterfaceType(.cellular) {
@@ -53,26 +44,18 @@ class NetworkMonitor {
         }
     }
     
-    // MARK: - Public methods
-    
-    func addObserver(id: String, observer: @escaping (Bool) -> Void) {
-        observers[id] = observer
+    func addObserver(id: String, handler: @escaping (Bool) -> Void) {
+        observers[id] = handler
         // Immediately notify with current state
-        observer(isConnected)
+        handler(isConnected)
     }
     
     func removeObserver(id: String) {
         observers.removeValue(forKey: id)
     }
     
-    private func notifyObservers() {
-        for (_, observer) in observers {
-            observer(isConnected)
-        }
-    }
-    
-    func stopMonitoring() {
-        networkMonitor.cancel()
+    deinit {
+        monitor.cancel()
     }
 }
 
@@ -81,4 +64,32 @@ enum ConnectionType {
     case cellular
     case ethernet
     case unknown
+}
+
+// MARK: - Network Alert View Modifier
+struct NetworkAlertModifier: ViewModifier {
+    @ObservedObject var networkMonitor = NetworkMonitor.shared
+    @State private var showingAlert = false
+    
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: networkMonitor.isConnected) { _, newValue in
+                if !newValue {
+                    showingAlert = true
+                }
+            }
+            .alert("No Internet Connection", isPresented: $showingAlert) {
+                Button("OK") {
+                    showingAlert = false
+                }
+            } message: {
+                Text("Please check your internet connection and try again.")
+            }
+    }
+}
+
+extension View {
+    func networkAlert() -> some View {
+        modifier(NetworkAlertModifier())
+    }
 }

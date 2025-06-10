@@ -15,7 +15,7 @@ class SocialAuthService: NSObject {
     static let shared = SocialAuthService()
     
     // Retain the ASAuthorizationControllerDelegate strongly
-    private var currentNonce: String?
+    var currentNonce: String?
     private var completionHandler: ((Result<User, Error>) -> Void)?
     private var presentationAnchor: ASPresentationAnchor?
     
