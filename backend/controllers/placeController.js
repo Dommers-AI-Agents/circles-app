@@ -90,7 +90,7 @@ exports.createPlace = async (req, res, next) => {
           params: {
             place_id: req.body.googlePlaceId,
             key: googleMapsApiKey,
-            fields: ['name', 'formatted_address', 'geometry', 'photos', 'website', 'formatted_phone_number', 'opening_hours', 'types']
+            fields: ['name', 'formatted_address', 'geometry', 'photos', 'website', 'formatted_phone_number', 'opening_hours', 'types', 'rating', 'user_ratings_total', 'price_level', 'reviews', 'business_status']
           }
         });
         
@@ -98,9 +98,7 @@ exports.createPlace = async (req, res, next) => {
         
         // Enhance the request body with Google data
         req.body.name = req.body.name || placeDetails.name;
-        req.body.address = {
-          formattedAddress: placeDetails.formatted_address
-        };
+        req.body.address = placeDetails.formatted_address;
         req.body.location = {
           type: 'Point',
           coordinates: [
@@ -110,6 +108,48 @@ exports.createPlace = async (req, res, next) => {
         };
         req.body.website = placeDetails.website;
         req.body.phone = placeDetails.formatted_phone_number;
+        
+        // Add rating and review information
+        if (placeDetails.rating) req.body.rating = placeDetails.rating;
+        if (placeDetails.user_ratings_total) req.body.userRatingsTotal = placeDetails.user_ratings_total;
+        if (placeDetails.price_level !== undefined) req.body.priceLevel = placeDetails.price_level;
+        
+        // Process Google Places photos
+        if (placeDetails.photos && placeDetails.photos.length > 0) {
+          req.body.photos = placeDetails.photos.slice(0, 5).map(photo => {
+            return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${photo.photo_reference}&key=${googleMapsApiKey}`;
+          });
+          console.log('Generated photo URLs:', req.body.photos);
+        }
+        
+        // Add opening hours
+        if (placeDetails.opening_hours && placeDetails.opening_hours.periods) {
+          req.body.openingHours = placeDetails.opening_hours.periods.map(period => ({
+            day: period.open.day,
+            open: `${period.open.hours.padStart(2, '0')}:${period.open.minutes.padStart(2, '0')}`,
+            close: period.close ? `${period.close.hours.padStart(2, '0')}:${period.close.minutes.padStart(2, '0')}` : '23:59',
+            isClosed: false
+          }));
+        }
+        
+        // Add reviews
+        if (placeDetails.reviews && placeDetails.reviews.length > 0) {
+          req.body.reviews = placeDetails.reviews.map(review => ({
+            user: review.author_name,
+            rating: review.rating,
+            comment: review.text,
+            date: new Date(review.time * 1000)
+          }));
+        }
+        
+        // Process Google Places photos and convert to URLs
+        if (placeDetails.photos && placeDetails.photos.length > 0) {
+          // Generate photo URLs from photo references (max 5 photos)
+          req.body.photos = placeDetails.photos.slice(0, 5).map(photo => {
+            return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${photo.photo_reference}&key=${googleMapsApiKey}`;
+          });
+          console.log('Generated photo URLs from Google Places:', req.body.photos);
+        }
         
         // Determine category based on types
         if (placeDetails.types) {
@@ -136,6 +176,11 @@ exports.createPlace = async (req, res, next) => {
     // Add to circle if circleId is provided
     const { circleId, ...placeData } = req.body;
     
+    // Debug: Log if photos are present
+    if (placeData.photos) {
+      console.log('Creating place with photos:', placeData.photos);
+    }
+    
     const place = await Place.create(placeData);
     
     if (circleId) {
@@ -152,9 +197,14 @@ exports.createPlace = async (req, res, next) => {
       }
     }
 
+    // Return the populated place
+    const populatedPlace = await Place.findById(place._id)
+      .populate('addedBy', 'displayName profilePicture')
+      .populate('circles', 'name privacy');
+    
     res.status(201).json({
       success: true,
-      data: place
+      place: populatedPlace
     });
   } catch (error) {
     next(error);
@@ -417,7 +467,7 @@ exports.searchPlaces = async (req, res, next) => {
     if (query) {
       searchQuery.$or = [
         { name: { $regex: query, $options: 'i' } },
-        { 'address.formattedAddress': { $regex: query, $options: 'i' } },
+        { address: { $regex: query, $options: 'i' } },
         { description: { $regex: query, $options: 'i' } },
         { notes: { $regex: query, $options: 'i' } }
       ];
@@ -464,6 +514,258 @@ exports.searchPlaces = async (req, res, next) => {
       count: places.length,
       data: places
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Refresh place data from Google Places
+// @route   POST /api/places/:id/refresh-google
+// @access  Private
+exports.refreshPlaceFromGoogle = async (req, res, next) => {
+  try {
+    const place = await Place.findById(req.params.id);
+    
+    if (!place) {
+      return res.status(404).json({
+        success: false,
+        message: 'Place not found'
+      });
+    }
+    
+    // Check permissions
+    const isOwner = place.addedBy.toString() === req.user.id;
+    const circle = await Circle.findById(place.circleId);
+    const isCircleMember = circle && circle.members.includes(req.user.id);
+    
+    if (!isOwner && !isCircleMember) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to refresh this place'
+      });
+    }
+    
+    // Check if place has Google Place ID
+    if (!place.googlePlaceId) {
+      return res.status(400).json({
+        success: false,
+        message: 'This place does not have a Google Place ID'
+      });
+    }
+    
+    try {
+      // Fetch fresh data from Google Places API
+      const response = await googleMapsClient.placeDetails({
+        params: {
+          place_id: place.googlePlaceId,
+          fields: [
+            'name',
+            'formatted_address',
+            'formatted_phone_number',
+            'website',
+            'rating',
+            'user_ratings_total',
+            'price_level',
+            'types',
+            'opening_hours',
+            'photos',
+            'reviews',
+            'business_status'
+          ].join(','),
+          key: googleMapsApiKey
+        }
+      });
+      
+      const googleData = response.data.result;
+      
+      // Update place with fresh Google data
+      if (googleData.name) place.name = googleData.name;
+      if (googleData.formatted_address) place.address = googleData.formatted_address;
+      if (googleData.formatted_phone_number) place.phone = googleData.formatted_phone_number;
+      if (googleData.website) place.website = googleData.website;
+      if (googleData.rating) place.rating = googleData.rating;
+      if (googleData.user_ratings_total) place.userRatingsTotal = googleData.user_ratings_total;
+      
+      // Update price level
+      if (googleData.price_level !== undefined) {
+        place.priceLevel = googleData.price_level;
+      }
+      
+      // Update opening hours
+      if (googleData.opening_hours && googleData.opening_hours.periods) {
+        place.openingHours = googleData.opening_hours.periods.map(period => ({
+          day: period.open.day,
+          open: `${period.open.hours.padStart(2, '0')}:${period.open.minutes.padStart(2, '0')}`,
+          close: period.close ? `${period.close.hours.padStart(2, '0')}:${period.close.minutes.padStart(2, '0')}` : '23:59',
+          isClosed: false
+        }));
+      }
+      
+      // Update reviews from Google
+      if (googleData.reviews && googleData.reviews.length > 0) {
+        place.reviews = googleData.reviews.map(review => ({
+          user: review.author_name,
+          rating: review.rating,
+          comment: review.text,
+          date: new Date(review.time * 1000) // Convert Unix timestamp to Date
+        }));
+      }
+      
+      place.updatedAt = Date.now();
+      
+      await place.save();
+      
+      res.status(200).json({
+        success: true,
+        place: place
+      });
+      
+    } catch (googleError) {
+      console.error('Google Places API Error:', googleError);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to fetch data from Google Places'
+      });
+    }
+    
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Get places by circle ID
+// @route   GET /api/circles/:id/places
+// @access  Private
+exports.getPlacesByCircleId = async (req, res, next) => {
+  try {
+    const circleId = req.params.id;
+    
+    // First get the circle to check permissions and get the ordered place IDs
+    const circle = await Circle.findById(circleId);
+    
+    if (!circle) {
+      return res.status(404).json({
+        success: false,
+        message: 'Circle not found'
+      });
+    }
+    
+    // Check permissions
+    const isOwner = circle.owner.toString() === req.user.id;
+    const isSharedWith = circle.sharedWith.includes(req.user.id);
+    const isFriend = req.user.friends.includes(circle.owner.toString());
+    const isPublic = circle.privacy === 'public';
+    const isFriendsCircle = circle.privacy === 'friends' && isFriend;
+    
+    if (!isOwner && !isSharedWith && !isPublic && !isFriendsCircle) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to view this circle'
+      });
+    }
+    
+    // Fetch places and preserve the order from the circle's places array
+    const placesMap = new Map();
+    
+    // Fetch all places
+    const places = await Place.find({
+      _id: { $in: circle.places }
+    })
+      .populate('addedBy', 'displayName profilePicture')
+      .populate('circles', 'name privacy');
+    
+    // Create a map for quick lookup
+    places.forEach(place => {
+      placesMap.set(place._id.toString(), place);
+    });
+    
+    // Return places in the order specified in the circle's places array
+    const orderedPlaces = circle.places
+      .map(placeId => placesMap.get(placeId.toString()))
+      .filter(place => place !== undefined); // Filter out any deleted places
+    
+    console.log('Circle places order:', circle.places.map(id => id.toString()));
+    console.log('Returning places in order:', orderedPlaces.map(p => ({ id: p._id.toString(), name: p.name })));
+    
+    res.status(200).json({
+      success: true,
+      count: orderedPlaces.length,
+      places: orderedPlaces
+    });
+    
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Reorder places within a circle
+// @route   PUT /api/circles/:id/places/reorder
+// @access  Private
+exports.reorderPlacesInCircle = async (req, res, next) => {
+  try {
+    const { placeIds } = req.body;
+    const circleId = req.params.id;
+    
+    if (!placeIds || !Array.isArray(placeIds)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide an array of place IDs'
+      });
+    }
+    
+    const circle = await Circle.findById(circleId);
+    
+    if (!circle) {
+      return res.status(404).json({
+        success: false,
+        message: 'Circle not found'
+      });
+    }
+    
+    // Make sure user owns the circle
+    if (circle.owner.toString() !== req.user.id) {
+      return res.status(401).json({
+        success: false,
+        message: 'Not authorized to modify this circle'
+      });
+    }
+    
+    // Verify all place IDs exist in the circle
+    const existingPlaceIds = circle.places.map(id => id.toString());
+    const providedPlaceIds = placeIds.map(id => id.toString());
+    
+    // Check if all provided IDs exist in the circle
+    const allIdsExist = providedPlaceIds.every(id => existingPlaceIds.includes(id));
+    
+    if (!allIdsExist) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid place IDs - some places do not belong to this circle'
+      });
+    }
+    
+    // Check if all circle places are accounted for
+    if (providedPlaceIds.length !== existingPlaceIds.length) {
+      return res.status(400).json({
+        success: false,
+        message: 'All places in the circle must be included in the reorder'
+      });
+    }
+    
+    // Update the places array with the new order
+    console.log('Reordering places from:', circle.places.map(id => id.toString()));
+    console.log('Reordering places to:', placeIds);
+    
+    circle.places = placeIds;
+    await circle.save();
+    
+    console.log('Saved circle with new order:', circle.places.map(id => id.toString()));
+    
+    res.status(200).json({
+      success: true,
+      message: 'Places reordered successfully'
+    });
+    
   } catch (error) {
     next(error);
   }
