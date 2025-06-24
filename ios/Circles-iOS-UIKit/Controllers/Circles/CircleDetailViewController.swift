@@ -1,11 +1,19 @@
 import UIKit
+import GoogleMaps
+import GooglePlaces
+import SwiftUI
 import MapKit
+import UniformTypeIdentifiers
+import CoreLocation
 
-class CircleDetailViewController: UIViewController {
+class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocationManagerDelegate {
     
     // MARK: - Properties
     private var circle: Circle
     private var places: [Place] = []
+    private var markerPlaceMap: [GMSMarker: Place] = [:]
+    private let locationManager = CLLocationManager()
+    private var userLocation: CLLocation?
     
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
@@ -107,11 +115,25 @@ class CircleDetailViewController: UIViewController {
         return label
     }()
     
-    private let mapView: MKMapView = {
-        let mapView = MKMapView()
+    private let mapView: GMSMapView = {
+        let mapView = GMSMapView()
+        // Start with a wider view to show multiple places
+        mapView.camera = GMSCameraPosition.camera(withLatitude: 40.7128, longitude: -74.0060, zoom: 10.0)
         mapView.layer.cornerRadius = 12
         mapView.clipsToBounds = true
         mapView.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Enable map controls
+        mapView.settings.myLocationButton = true
+        mapView.settings.compassButton = true
+        mapView.settings.zoomGestures = true
+        mapView.settings.scrollGestures = true
+        mapView.settings.tiltGestures = true
+        mapView.settings.rotateGestures = true
+        
+        // Enable my location if permission granted
+        mapView.isMyLocationEnabled = true
+        
         return mapView
     }()
     
@@ -123,6 +145,9 @@ class CircleDetailViewController: UIViewController {
         tableView.isScrollEnabled = false
         tableView.register(PlaceTableViewCell.self, forCellReuseIdentifier: "PlaceCell")
         tableView.translatesAutoresizingMaskIntoConstraints = false
+        tableView.dragInteractionEnabled = true
+        tableView.estimatedRowHeight = 116
+        tableView.rowHeight = UITableView.automaticDimension
         return tableView
     }()
     
@@ -153,6 +178,7 @@ class CircleDetailViewController: UIViewController {
         super.viewDidLoad()
         setupUI()
         configureUI()
+        setupLocationManager()
         fetchPlaces()
     }
     
@@ -160,6 +186,26 @@ class CircleDetailViewController: UIViewController {
         super.viewWillAppear(animated)
         // Refresh places when returning to this view
         fetchPlaces()
+    }
+    
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        
+        // Force map to render properly
+        mapView.setNeedsDisplay()
+        
+        // Check current authorization status
+        switch locationManager.authorizationStatus {
+        case .authorizedWhenInUse, .authorizedAlways:
+            // Already authorized, start updating location
+            locationManager.startUpdatingLocation()
+        case .notDetermined:
+            // Request permission
+            locationManager.requestWhenInUseAuthorization()
+        default:
+            // Denied or restricted - keep default NYC location
+            break
+        }
     }
     
     // MARK: - UI Setup
@@ -276,12 +322,20 @@ class CircleDetailViewController: UIViewController {
             addPlaceButton.heightAnchor.constraint(equalToConstant: 50)
         ])
         
+        // Set initial table view height
+        tableView.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
+        
         // Setup button actions
         addPlaceButton.addTarget(self, action: #selector(addPlaceButtonTapped), for: .touchUpInside)
         
         // Setup table view
         tableView.delegate = self
         tableView.dataSource = self
+        tableView.dragDelegate = self
+        tableView.dropDelegate = self
+        
+        // Setup map view delegate
+        mapView.delegate = self
     }
     
     private func configureUI() {
@@ -304,7 +358,7 @@ class CircleDetailViewController: UIViewController {
             // Default image based on category
             switch circle.category {
             case .travel:
-                coverImageView.image = UIImage(systemName: "airplane")
+                coverImageView.image = UIImage(systemName: "airplane.departure")
             case .food:
                 coverImageView.image = UIImage(systemName: "fork.knife")
             case .services:
@@ -362,21 +416,35 @@ class CircleDetailViewController: UIViewController {
         }
     }
     
+    private func setupLocationManager() {
+        locationManager.delegate = self
+        locationManager.desiredAccuracy = kCLLocationAccuracyBest
+        mapView.delegate = self
+    }
+    
     // MARK: - Data Fetching
     private func fetchPlaces() {
         PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let places):
-                    self?.places = places
+                    // Sort places by createdAt date, most recent first
+                    self?.places = places.sorted { $0.createdAt > $1.createdAt }
                 case .failure(let error):
-                    print("Error fetching places: \(error.localizedDescription)")
-                    // Show sample places as fallback for now
-                    self?.places = self?.createSamplePlaces() ?? []
+                    print("❌ Error fetching places: \(error.localizedDescription)")
+                    print("❌ Full error: \(error)")
+                    // Don't use sample places - show empty state instead
+                    self?.places = []
                 }
                 
                 self?.tableView.reloadData()
-                self?.updateTableViewHeight()
+                
+                // Force layout update to calculate correct content size
+                DispatchQueue.main.async {
+                    self?.tableView.layoutIfNeeded()
+                    self?.updateTableViewHeight()
+                }
+                
                 self?.addAnnotationsToMap()
             }
         }
@@ -405,13 +473,17 @@ class CircleDetailViewController: UIViewController {
                 photos: nil,
                 category: .attraction,
                 rating: 4.8,
+                userRatingsTotal: 432,
                 notes: "Beautiful park to walk around",
+                privateNotes: nil,
+                publicNotes: nil,
                 tags: ["park", "nature", "walking"],
                 reviews: nil,
                 openingHours: nil,
                 priceLevel: nil,
                 circleId: circle.id,
                 addedBy: userId,
+                addedByUser: nil,
                 privacy: .followCirclePrivacy,
                 createdAt: date.addingTimeInterval(-86400 * 5),
                 updatedAt: date
@@ -429,13 +501,17 @@ class CircleDetailViewController: UIViewController {
                 photos: nil,
                 category: .attraction,
                 rating: 4.7,
+                userRatingsTotal: 289,
                 notes: "Great views from the observation deck",
+                privateNotes: nil,
+                publicNotes: nil,
                 tags: ["landmark", "skyscraper", "view"],
                 reviews: nil,
                 openingHours: nil,
                 priceLevel: nil,
                 circleId: circle.id,
                 addedBy: userId,
+                addedByUser: nil,
                 privacy: .followCirclePrivacy,
                 createdAt: date.addingTimeInterval(-86400 * 4),
                 updatedAt: date
@@ -453,13 +529,17 @@ class CircleDetailViewController: UIViewController {
                 photos: nil,
                 category: .attraction,
                 rating: 4.8,
+                userRatingsTotal: 376,
                 notes: "Amazing collection of art",
+                privateNotes: nil,
+                publicNotes: nil,
                 tags: ["museum", "art", "culture"],
                 reviews: nil,
                 openingHours: nil,
                 priceLevel: nil,
                 circleId: circle.id,
                 addedBy: userId,
+                addedByUser: nil,
                 privacy: .followCirclePrivacy,
                 createdAt: date.addingTimeInterval(-86400 * 3),
                 updatedAt: date
@@ -481,13 +561,17 @@ class CircleDetailViewController: UIViewController {
                 photos: nil,
                 category: .restaurant,
                 rating: 4.9,
+                userRatingsTotal: 156,
                 notes: "Amazing seafood, get the chef's tasting menu",
+                privateNotes: nil,
+                publicNotes: nil,
                 tags: ["seafood", "french", "fine dining"],
                 reviews: nil,
                 openingHours: nil,
                 priceLevel: nil,
                 circleId: circle.id,
                 addedBy: userId,
+                addedByUser: nil,
                 privacy: .followCirclePrivacy,
                 createdAt: date.addingTimeInterval(-86400 * 5),
                 updatedAt: date
@@ -505,13 +589,17 @@ class CircleDetailViewController: UIViewController {
                 photos: nil,
                 category: .restaurant,
                 rating: 4.8,
+                userRatingsTotal: 223,
                 notes: "Seasonal American cuisine, great atmosphere",
+                privateNotes: nil,
+                publicNotes: nil,
                 tags: ["american", "seasonal", "tavern"],
                 reviews: nil,
                 openingHours: nil,
                 priceLevel: nil,
                 circleId: circle.id,
                 addedBy: userId,
+                addedByUser: nil,
                 privacy: .followCirclePrivacy,
                 createdAt: date.addingTimeInterval(-86400 * 4),
                 updatedAt: date
@@ -533,13 +621,17 @@ class CircleDetailViewController: UIViewController {
                 photos: nil,
                 category: .retail,
                 rating: 4.7,
+                userRatingsTotal: 498,
                 notes: "Luxury shopping district",
+                privateNotes: nil,
+                publicNotes: nil,
                 tags: ["luxury", "fashion", "shopping district"],
                 reviews: nil,
                 openingHours: nil,
                 priceLevel: nil,
                 circleId: circle.id,
                 addedBy: userId,
+                addedByUser: nil,
                 privacy: .followCirclePrivacy,
                 createdAt: date.addingTimeInterval(-86400 * 5),
                 updatedAt: date
@@ -557,13 +649,17 @@ class CircleDetailViewController: UIViewController {
                 photos: nil,
                 category: .retail,
                 rating: 4.5,
+                userRatingsTotal: 187,
                 notes: "Great selection of designer clothes",
+                privateNotes: nil,
+                publicNotes: nil,
                 tags: ["department store", "fashion", "luxury"],
                 reviews: nil,
                 openingHours: nil,
                 priceLevel: nil,
                 circleId: circle.id,
                 addedBy: userId,
+                addedByUser: nil,
                 privacy: .followCirclePrivacy,
                 createdAt: date.addingTimeInterval(-86400 * 4),
                 updatedAt: date
@@ -581,13 +677,17 @@ class CircleDetailViewController: UIViewController {
                 photos: nil,
                 category: .retail,
                 rating: 4.7,
+                userRatingsTotal: 334,
                 notes: "Great mix of food vendors and shopping",
+                privateNotes: nil,
+                publicNotes: nil,
                 tags: ["market", "food hall", "shopping"],
                 reviews: nil,
                 openingHours: nil,
                 priceLevel: nil,
                 circleId: circle.id,
                 addedBy: userId,
+                addedByUser: nil,
                 privacy: .followCirclePrivacy,
                 createdAt: date.addingTimeInterval(-86400 * 3),
                 updatedAt: date
@@ -605,13 +705,17 @@ class CircleDetailViewController: UIViewController {
                 photos: nil,
                 category: .retail,
                 rating: 4.8,
+                userRatingsTotal: 421,
                 notes: "Trendy shops and boutiques",
+                privateNotes: nil,
+                publicNotes: nil,
                 tags: ["trendy", "boutiques", "shopping district"],
                 reviews: nil,
                 openingHours: nil,
                 priceLevel: nil,
                 circleId: circle.id,
                 addedBy: userId,
+                addedByUser: nil,
                 privacy: .followCirclePrivacy,
                 createdAt: date.addingTimeInterval(-86400 * 2),
                 updatedAt: date
@@ -633,13 +737,17 @@ class CircleDetailViewController: UIViewController {
                 photos: nil,
                 category: .other,
                 rating: 4.5,
+                userRatingsTotal: 92,
                 notes: "This is a sample place",
+                privateNotes: nil,
+                publicNotes: nil,
                 tags: ["sample"],
                 reviews: nil,
                 openingHours: nil,
                 priceLevel: nil,
                 circleId: circle.id,
                 addedBy: userId,
+                addedByUser: nil,
                 privacy: .followCirclePrivacy,
                 createdAt: date.addingTimeInterval(-86400),
                 updatedAt: date
@@ -648,11 +756,16 @@ class CircleDetailViewController: UIViewController {
             samplePlaces = [place]
         }
         
-        return samplePlaces
+        // Sort sample places by createdAt date, most recent first
+        return samplePlaces.sorted { $0.createdAt > $1.createdAt }
     }
     
     private func updateTableViewHeight() {
-        let height = CGFloat(places.count * 110) // Each cell is 110 points tall
+        // Force layout to calculate proper content size
+        tableView.layoutIfNeeded()
+        
+        // Use the table's content size for height
+        let height = tableView.contentSize.height
         
         // Update table view height constraint
         if let constraint = tableView.constraints.first(where: { $0.firstAttribute == .height }) {
@@ -663,98 +776,197 @@ class CircleDetailViewController: UIViewController {
     }
     
     private func addAnnotationsToMap() {
-        mapView.removeAnnotations(mapView.annotations)
+        mapView.clear()
+        markerPlaceMap.removeAll()
         
-        var annotations: [MKPointAnnotation] = []
-        var coordinates: [CLLocationCoordinate2D] = []
+        var bounds = GMSCoordinateBounds()
+        var hasMarkers = false
         
         for place in places {
             if let location = place.location?.clLocation {
-                let annotation = MKPointAnnotation()
-                annotation.coordinate = location.coordinate
-                annotation.title = place.name
-                annotation.subtitle = place.category.rawValue.capitalized
+                let marker = GMSMarker()
+                marker.position = location.coordinate
+                marker.title = place.name
+                marker.snippet = place.category.displayName
+                marker.map = mapView
                 
-                annotations.append(annotation)
-                coordinates.append(location.coordinate)
+                // Store the place associated with this marker
+                markerPlaceMap[marker] = place
+                
+                // Create custom marker view with category icon
+                if let customView = createMarkerView(for: place.category) {
+                    marker.iconView = customView
+                }
+                
+                bounds = bounds.includingCoordinate(location.coordinate)
+                hasMarkers = true
             }
         }
         
-        mapView.addAnnotations(annotations)
+        if hasMarkers {
+            let update = GMSCameraUpdate.fit(bounds, withPadding: 50.0)
+            mapView.animate(with: update)
+        }
+    }
+    
+    private func createMarkerView(for category: PlaceCategory) -> UIView? {
+        // Create a Google Maps style circle marker with category icon
+        let markerSize: CGFloat = 36
+        let view = UIView(frame: CGRect(x: 0, y: 0, width: markerSize, height: markerSize))
         
-        if coordinates.count > 0 {
-            let region = MKCoordinateRegion(
-                center: coordinates.reduce(CLLocationCoordinate2D(latitude: 0, longitude: 0)) { 
-                    CLLocationCoordinate2D(
-                        latitude: $0.latitude + $1.latitude,
-                        longitude: $0.longitude + $1.longitude
-                    )
-                }.applying(multiplier: 1.0 / Double(coordinates.count)),
-                span: MKCoordinateSpan(latitudeDelta: 0.1, longitudeDelta: 0.1)
-            )
-            mapView.setRegion(region, animated: true)
+        // Background circle
+        let circleView = UIView(frame: CGRect(x: 0, y: 0, width: markerSize, height: markerSize))
+        circleView.backgroundColor = .white
+        circleView.layer.cornerRadius = markerSize / 2
+        circleView.layer.shadowColor = UIColor.black.cgColor
+        circleView.layer.shadowOffset = CGSize(width: 0, height: 2)
+        circleView.layer.shadowRadius = 4
+        circleView.layer.shadowOpacity = 0.3
+        
+        // Inner colored circle
+        let innerCircle = UIView(frame: CGRect(x: 3, y: 3, width: markerSize - 6, height: markerSize - 6))
+        innerCircle.backgroundColor = categoryColor(for: category)
+        innerCircle.layer.cornerRadius = (markerSize - 6) / 2
+        
+        // Category icon
+        let iconView = UIImageView(frame: CGRect(x: 8, y: 8, width: 20, height: 20))
+        iconView.image = UIImage(systemName: categoryIcon(for: category))
+        iconView.tintColor = .white
+        iconView.contentMode = .scaleAspectFit
+        
+        view.addSubview(circleView)
+        circleView.addSubview(innerCircle)
+        circleView.addSubview(iconView)
+        
+        return view
+    }
+    
+    private func categoryColor(for category: PlaceCategory) -> UIColor {
+        switch category {
+        case .restaurant:
+            return UIColor(hex: "#E53E3E") // Red
+        case .cafe:
+            return UIColor(hex: "#DD6B20") // Orange
+        case .bar:
+            return UIColor(hex: "#7B341E") // Brown
+        case .hotel:
+            return UIColor(hex: "#3182CE") // Blue
+        case .retail:
+            return UIColor(hex: "#805AD5") // Purple
+        case .service:
+            return UIColor(hex: "#38A169") // Green
+        case .attraction:
+            return UIColor(hex: "#D69E2E") // Yellow
+        case .entertainment:
+            return UIColor(hex: "#9C4221") // Orange Brown
+        case .healthcare:
+            return UIColor(hex: "#319795") // Teal
+        case .fitness:
+            return UIColor(hex: "#2C7A7B") // Dark Teal
+        case .education:
+            return UIColor(hex: "#744210") // Dark Yellow
+        case .outdoor:
+            return UIColor(hex: "#2F855A") // Dark Green
+        case .transport:
+            return UIColor(hex: "#2B6CB0") // Dark Blue
+        case .finance:
+            return UIColor(hex: "#285E61") // Dark Teal
+        case .home:
+            return UIColor(hex: "#3182CE") // Blue
+        case .work:
+            return UIColor(hex: "#38A169") // Green
+        case .other:
+            return UIColor(hex: "#718096") // Gray
+        }
+    }
+    
+    private func categoryIcon(for category: PlaceCategory) -> String {
+        switch category {
+        case .restaurant: return "fork.knife"
+        case .cafe: return "cup.and.saucer"
+        case .bar: return "wineglass"
+        case .hotel: return "bed.double"
+        case .retail: return "bag"
+        case .service: return "wrench.and.screwdriver"
+        case .attraction: return "star"
+        case .entertainment: return "ticket"
+        case .healthcare: return "cross.case"
+        case .fitness: return "figure.run"
+        case .education: return "book"
+        case .outdoor: return "tree"
+        case .transport: return "car"
+        case .finance: return "dollarsign.circle"
+        case .home: return "house"
+        case .work: return "building.2"
+        case .other: return "mappin"
         }
     }
     
     // MARK: - Actions
     @objc private func shareButtonTapped() {
-        // Create a formatted string with circle details
-        var shareText = "🔵 \(circle.name)\n"
-        
-        if let description = circle.description, !description.isEmpty {
-            shareText += "\(description)\n"
+        // Create formatted text to share
+        var shareText = "🟦 \(circle.name)"
+        if let description = circle.description {
+            shareText += "\n\(description)"
         }
         
-        // Calculate member count from sharedWith and followers
-        let memberCount = 1 + (circle.sharedWith?.count ?? 0) + (circle.followers?.count ?? 0)
-        shareText += "\n👥 \(memberCount) members"
-        shareText += "\n📍 \(places.count) places"
+        let memberCount = (circle.sharedWith?.count ?? 0) + (circle.followers?.count ?? 0)
+        if memberCount > 0 {
+            shareText += "\n👥 \(memberCount) member\(memberCount != 1 ? "s" : "")"
+        }
         
-        // Add privacy info
+        let placeCount = places.count
+        shareText += "\n📍 \(placeCount) place\(placeCount != 1 ? "s" : "")"
+        
+        // Add privacy emoji
         switch circle.privacy {
         case .public:
-            shareText += "\n🌐 Public Circle"
+            shareText += " 🌐"
         case .friends:
-            shareText += "\n👥 Friends Only"
+            shareText += " 👥"
         case .private:
-            shareText += "\n🔒 Private Circle"
+            shareText += " 🔒"
         }
         
-        // Add deep link and web link
-        shareText += "\n\n📱 Open in Circles: circles://circle/\(circle.id)"
+        // Add deep link
+        let deepLink = "circles://circle/\(circle.id)"
+        shareText += "\n\nOpen in Circles: \(deepLink)"
         
-        // Add a web link that could redirect to App Store or open the app
-        // For now, use TestFlight link since app isn't on App Store yet
-        shareText += "\n\n🔗 Get Circles App: https://testflight.apple.com/join/YourTestFlightCode"
-        // TODO: Replace with App Store link when published: https://apps.apple.com/app/circles/idYOURAPPID
-        
-        shareText += "\n\nJoin me on Circles!"
+        // Add app download link
+        let appStoreLink = "https://testflight.apple.com/join/YourTestFlightLink" // Replace with actual link
+        shareText += "\n\nDon't have Circles? Download here: \(appStoreLink)"
         
         var activityItems: [Any] = [shareText]
         
-        // Add the first few place locations if available for map preview
-        let placeLocations = places.compactMap { $0.location?.clLocation }.prefix(3)
-        if !placeLocations.isEmpty {
-            // Create a map item for the circle area
-            if let firstLocation = placeLocations.first {
-                let placemark = MKPlacemark(coordinate: firstLocation.coordinate)
-                let mapItem = MKMapItem(placemark: placemark)
-                mapItem.name = circle.name
-                activityItems.append(mapItem)
+        // Function to present the share sheet
+        let presentShareSheet = { [weak self] in
+            let activityViewController = UIActivityViewController(
+                activityItems: activityItems,
+                applicationActivities: nil
+            )
+            
+            // For iPad
+            if let popover = activityViewController.popoverPresentationController {
+                popover.barButtonItem = self?.navigationItem.rightBarButtonItems?.first { $0.action == #selector(self?.shareButtonTapped) }
             }
+            
+            self?.present(activityViewController, animated: true)
         }
         
-        let activityViewController = UIActivityViewController(
-            activityItems: activityItems,
-            applicationActivities: nil
-        )
-        
-        // For iPad
-        if let popover = activityViewController.popoverPresentationController {
-            popover.barButtonItem = navigationItem.rightBarButtonItems?.first { $0.action == #selector(shareButtonTapped) }
+        // Add cover image if available (load asynchronously)
+        if let coverImageUrl = circle.coverImage,
+           let url = URL(string: coverImageUrl) {
+            URLSession.shared.dataTask(with: url) { data, _, _ in
+                DispatchQueue.main.async {
+                    if let data = data, let image = UIImage(data: data) {
+                        activityItems.append(image)
+                    }
+                    presentShareSheet()
+                }
+            }.resume()
+        } else {
+            presentShareSheet()
         }
-        
-        present(activityViewController, animated: true)
     }
     
     @objc private func editButtonTapped() {
@@ -765,56 +977,82 @@ class CircleDetailViewController: UIViewController {
     }
     
     @objc private func addPlaceButtonTapped() {
+        // Directly open the AddPlaceViewController with map and search functionality
         let addPlaceVC = AddPlaceViewController(circleId: circle.id)
         navigationController?.pushViewController(addPlaceVC, animated: true)
     }
     
+    private func presentGooglePlacesSearch() {
+        let autocompleteController = GMSAutocompleteViewController()
+        autocompleteController.delegate = self
+        
+        // Configure the filter
+        let filter = GMSAutocompleteFilter()
+        filter.types = ["establishment"]
+        autocompleteController.autocompleteFilter = filter
+        
+        // Set the location bias to the user's current location if available
+        if let location = LocationService.shared.lastKnownLocation {
+            let coordinate = location.coordinate
+            filter.locationBias = GMSPlaceRectangularLocationOption(
+                CLLocationCoordinate2D(latitude: coordinate.latitude - 0.1, longitude: coordinate.longitude - 0.1),
+                CLLocationCoordinate2D(latitude: coordinate.latitude + 0.1, longitude: coordinate.longitude + 0.1)
+            )
+        }
+        
+        present(autocompleteController, animated: true)
+    }
+    
     private func sharePlace(_ place: Place) {
-        // Create a formatted string with place details
-        var shareText = "📍 \(place.name)\n"
+        // Create a formatted string with place name prominently displayed
+        var shareText = "Check out \(place.name)!"
         
         if let description = place.description, !description.isEmpty {
-            shareText += "\(description)\n"
+            shareText += "\n\n\(description)"
         }
         
-        shareText += "\n📍 \(place.address)\n"
+        // Category
+        shareText += "\n\n🏷️ \(place.category.displayName)"
         
-        if let phone = place.phone {
-            shareText += "📞 \(phone)\n"
-        }
+        // Address
+        shareText += "\n📍 \(place.address)"
         
-        if let website = place.website {
-            shareText += "🌐 \(website)\n"
-        }
-        
+        // Rating if available
         if let rating = place.rating {
             let stars = String(repeating: "⭐", count: Int(rating.rounded()))
-            shareText += "\(stars) \(rating)/5.0\n"
+            shareText += "\n\(stars) \(rating)/5.0"
         }
         
-        // Add deep link and web link
-        shareText += "\n\n📱 Open in Circles: circles://place/\(place.id)"
+        // Contact info if available
+        if let phone = place.phone, !phone.isEmpty {
+            shareText += "\n📞 \(phone)"
+        }
         
-        // Add a web link that could redirect to App Store or open the app
-        // For now, use TestFlight link since app isn't on App Store yet
-        shareText += "\n\n🔗 Get Circles App: https://testflight.apple.com/join/YourTestFlightCode"
-        // TODO: Replace with App Store link when published: https://apps.apple.com/app/circles/idYOURAPPID
+        if let website = place.website, !website.isEmpty {
+            shareText += "\n🌐 \(website)"
+        }
         
-        shareText += "\n\nShared from Circles!"
+        // Add to your places message
+        shareText += "\n\n➕ Add this place to your Circles!"
+        
+        // Deep link to open/add the place in Circles
+        let deepLink = "circles://place/\(place.id)"
+        shareText += "\n📱 Open in Circles: \(deepLink)"
+        
+        // App Store link (use TestFlight for now)
+        let appStoreLink = "https://testflight.apple.com/join/YourTestFlightLink" // Replace with actual App Store link
+        shareText += "\n\nDon't have Circles? Download here: \(appStoreLink)"
         
         var activityItems: [Any] = [shareText]
         
-        // Add location if available for better sharing to Maps apps
+        // Add location as Apple Maps link with place name
         if let location = place.location?.clLocation {
-            let placemark = MKPlacemark(coordinate: location.coordinate)
-            let mapItem = MKMapItem(placemark: placemark)
-            mapItem.name = place.name
-            activityItems.append(mapItem)
-        }
-        
-        // Add website URL if available
-        if let websiteString = place.website, let url = URL(string: websiteString) {
-            activityItems.append(url)
+            // Create Apple Maps URL with place name
+            let escapedName = place.name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            let appleMapsURL = "https://maps.apple.com/?q=\(escapedName)&ll=\(location.coordinate.latitude),\(location.coordinate.longitude)"
+            if let url = URL(string: appleMapsURL) {
+                activityItems.append(url)
+            }
         }
         
         let activityViewController = UIActivityViewController(
@@ -831,10 +1069,36 @@ class CircleDetailViewController: UIViewController {
         
         present(activityViewController, animated: true)
     }
+    
+    private func openPlaceInMaps(_ place: Place) {
+        guard let location = place.location?.clLocation else { 
+            // Show alert if no location available
+            let alert = UIAlertController(
+                title: "No Location Available",
+                message: "This place doesn't have location information.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            present(alert, animated: true)
+            return 
+        }
+        
+        // Create the Apple Maps item with destination
+        let coordinate = location.coordinate
+        let mapItem = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
+        mapItem.name = place.name
+        
+        // Open in Apple Maps with directions
+        let launchOptions = [
+            MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving
+        ]
+        
+        mapItem.openInMaps(launchOptions: launchOptions)
+    }
 }
 
 // MARK: - UITableViewDelegate & UITableViewDataSource
-extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource {
+extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource, UITableViewDragDelegate, UITableViewDropDelegate {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         return places.count
     }
@@ -852,19 +1116,94 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
             self?.sharePlace(place)
         }
         
+        // Set up directions button action
+        cell.onDirectionsTapped = { [weak self] place in
+            self?.openPlaceInMaps(place)
+        }
+        
         return cell
     }
     
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        return 110
+        return UITableView.automaticDimension
     }
     
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         
         let place = places[indexPath.row]
-        let detailVC = PlaceDetailViewController(place: place)
-        navigationController?.pushViewController(detailVC, animated: true)
+        let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
+        navigationController?.pushViewController(placeDetailVC, animated: true)
+    }
+    
+    // MARK: - Drag Delegate
+    func tableView(_ tableView: UITableView, itemsForBeginning session: UIDragSession, at indexPath: IndexPath) -> [UIDragItem] {
+        let place = places[indexPath.row]
+        let itemProvider = NSItemProvider(object: place.id as NSString)
+        let dragItem = UIDragItem(itemProvider: itemProvider)
+        dragItem.localObject = place
+        return [dragItem]
+    }
+    
+    // MARK: - Drop Delegate
+    func tableView(_ tableView: UITableView, canHandle session: UIDropSession) -> Bool {
+        return session.hasItemsConforming(toTypeIdentifiers: [UTType.text.identifier])
+    }
+    
+    func tableView(_ tableView: UITableView, dropSessionDidUpdate session: UIDropSession, withDestinationIndexPath destinationIndexPath: IndexPath?) -> UITableViewDropProposal {
+        if tableView.hasActiveDrag {
+            if session.items.count > 1 {
+                return UITableViewDropProposal(operation: .cancel)
+            } else {
+                return UITableViewDropProposal(operation: .move, intent: .insertAtDestinationIndexPath)
+            }
+        } else {
+            return UITableViewDropProposal(operation: .forbidden)
+        }
+    }
+    
+    func tableView(_ tableView: UITableView, performDropWith coordinator: UITableViewDropCoordinator) {
+        guard let destinationIndexPath = coordinator.destinationIndexPath else { return }
+        
+        for item in coordinator.items {
+            guard let sourceIndexPath = item.sourceIndexPath else { continue }
+            
+            tableView.performBatchUpdates({
+                let movedPlace = places.remove(at: sourceIndexPath.row)
+                places.insert(movedPlace, at: destinationIndexPath.row)
+                tableView.moveRow(at: sourceIndexPath, to: destinationIndexPath)
+            })
+            
+            coordinator.drop(item.dragItem, toRowAt: destinationIndexPath)
+            
+            // Update the order in the backend
+            updatePlaceOrder()
+        }
+    }
+    
+    // MARK: - Helper method to update place order
+    private func updatePlaceOrder() {
+        // Update the order of places in the backend
+        Task {
+            do {
+                // Create an array of place IDs in the new order
+                let orderedPlaceIds = places.map { $0.id }
+                
+                // Call the API to update the order
+                try await PlaceService.shared.updatePlaceOrder(circleId: circle.id, placeIds: orderedPlaceIds)
+                
+                // Update map annotations to reflect new order if needed
+                await MainActor.run {
+                    self.addAnnotationsToMap()
+                }
+            } catch {
+                print("Failed to update place order: \(error)")
+                // Optionally, revert the changes if the API call fails
+                await MainActor.run {
+                    self.fetchPlaces()
+                }
+            }
+        }
     }
 }
 
@@ -887,9 +1226,33 @@ class PlaceTableViewCell: UITableViewCell {
         imageView.contentMode = .scaleAspectFill
         imageView.clipsToBounds = true
         imageView.backgroundColor = Constants.Colors.lightGray
-        imageView.layer.cornerRadius = 4
+        imageView.layer.cornerRadius = 8
         imageView.translatesAutoresizingMaskIntoConstraints = false
         return imageView
+    }()
+    
+    private let imageLoadingIndicator: UIActivityIndicatorView = {
+        let indicator = UIActivityIndicatorView(style: .medium)
+        indicator.hidesWhenStopped = true
+        indicator.translatesAutoresizingMaskIntoConstraints = false
+        return indicator
+    }()
+    
+    private let categoryIconView: UIImageView = {
+        let imageView = UIImageView()
+        imageView.contentMode = .scaleAspectFit
+        imageView.tintColor = Constants.Colors.primary
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        return imageView
+    }()
+    
+    private let imageGradientView: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.layer.cornerRadius = 8
+        view.clipsToBounds = true
+        view.isHidden = true
+        return view
     }()
     
     private let nameLabel: UILabel = {
@@ -903,7 +1266,7 @@ class PlaceTableViewCell: UITableViewCell {
         label.alpha = 1.0
         label.backgroundColor = .clear
         label.setContentHuggingPriority(.defaultHigh, for: .vertical)
-        label.setContentCompressionResistancePriority(.defaultHigh, for: .vertical)
+        label.setContentCompressionResistancePriority(.required, for: .vertical)
         return label
     }()
     
@@ -926,6 +1289,7 @@ class PlaceTableViewCell: UITableViewCell {
         label.numberOfLines = 1
         label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
+        label.setContentCompressionResistancePriority(.required, for: .vertical)
         return label
     }()
     
@@ -963,9 +1327,23 @@ class PlaceTableViewCell: UITableViewCell {
         return button
     }()
     
+    private let directionsButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "location.fill"), for: .normal)
+        button.tintColor = Constants.Colors.primary
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.contentMode = .scaleAspectFit
+        return button
+    }()
+    
     // Closure for share action
     var onShareTapped: ((Place) -> Void)?
+    var onDirectionsTapped: ((Place) -> Void)?
     private var place: Place?
+    private var photoLoadingTask: URLSessionDataTask?
+    
+    // Image cache specifically for Google Places photos
+    private static let googlePhotosCache = NSCache<NSString, UIImage>()
     
     // MARK: - Init
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
@@ -985,17 +1363,23 @@ class PlaceTableViewCell: UITableViewCell {
         contentView.addSubview(containerView)
         
         containerView.addSubview(placeImageView)
+        containerView.addSubview(imageGradientView)
+        containerView.addSubview(categoryIconView)
+        containerView.addSubview(imageLoadingIndicator)
         containerView.addSubview(nameLabel)
         containerView.addSubview(categoryLabel)
         containerView.addSubview(addressLabel)
         containerView.addSubview(ratingView)
         containerView.addSubview(shareButton)
+        containerView.addSubview(directionsButton)
         
         ratingView.addSubview(ratingImageView)
         ratingView.addSubview(ratingLabel)
         
         // Add target for share button
         shareButton.addTarget(self, action: #selector(shareButtonTapped), for: .touchUpInside)
+        // Add target for directions button
+        directionsButton.addTarget(self, action: #selector(directionsButtonTapped), for: .touchUpInside)
         
         NSLayoutConstraint.activate([
             // Container view
@@ -1007,15 +1391,35 @@ class PlaceTableViewCell: UITableViewCell {
             // Place image view
             placeImageView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: Constants.Spacing.small),
             placeImageView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: Constants.Spacing.small),
-            placeImageView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -Constants.Spacing.small),
             placeImageView.widthAnchor.constraint(equalToConstant: 80),
             placeImageView.heightAnchor.constraint(equalToConstant: 80),
+            
+            // Image gradient view (same as image view)
+            imageGradientView.topAnchor.constraint(equalTo: placeImageView.topAnchor),
+            imageGradientView.leadingAnchor.constraint(equalTo: placeImageView.leadingAnchor),
+            imageGradientView.trailingAnchor.constraint(equalTo: placeImageView.trailingAnchor),
+            imageGradientView.bottomAnchor.constraint(equalTo: placeImageView.bottomAnchor),
+            
+            // Category icon view (centered on top of image view)
+            categoryIconView.centerXAnchor.constraint(equalTo: placeImageView.centerXAnchor),
+            categoryIconView.centerYAnchor.constraint(equalTo: placeImageView.centerYAnchor),
+            categoryIconView.widthAnchor.constraint(equalToConstant: 40),
+            categoryIconView.heightAnchor.constraint(equalToConstant: 40),
+            
+            // Image loading indicator
+            imageLoadingIndicator.centerXAnchor.constraint(equalTo: placeImageView.centerXAnchor),
+            imageLoadingIndicator.centerYAnchor.constraint(equalTo: placeImageView.centerYAnchor),
             
             // Name label
             nameLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: Constants.Spacing.small),
             nameLabel.leadingAnchor.constraint(equalTo: placeImageView.trailingAnchor, constant: Constants.Spacing.small),
-            nameLabel.trailingAnchor.constraint(equalTo: shareButton.leadingAnchor, constant: -Constants.Spacing.small),
-            nameLabel.heightAnchor.constraint(greaterThanOrEqualToConstant: 20),
+            nameLabel.trailingAnchor.constraint(equalTo: directionsButton.leadingAnchor, constant: -Constants.Spacing.small),
+            
+            // Directions button
+            directionsButton.topAnchor.constraint(equalTo: containerView.topAnchor, constant: Constants.Spacing.small),
+            directionsButton.trailingAnchor.constraint(equalTo: shareButton.leadingAnchor, constant: -Constants.Spacing.tiny),
+            directionsButton.widthAnchor.constraint(equalToConstant: 30),
+            directionsButton.heightAnchor.constraint(equalToConstant: 30),
             
             // Share button
             shareButton.topAnchor.constraint(equalTo: containerView.topAnchor, constant: Constants.Spacing.small),
@@ -1037,7 +1441,7 @@ class PlaceTableViewCell: UITableViewCell {
             // Rating view
             ratingView.topAnchor.constraint(equalTo: addressLabel.bottomAnchor, constant: Constants.Spacing.small),
             ratingView.leadingAnchor.constraint(equalTo: placeImageView.trailingAnchor, constant: Constants.Spacing.small),
-            ratingView.bottomAnchor.constraint(lessThanOrEqualTo: containerView.bottomAnchor, constant: -Constants.Spacing.small),
+            ratingView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -Constants.Spacing.small),
             ratingView.widthAnchor.constraint(equalToConstant: 65),
             ratingView.heightAnchor.constraint(equalToConstant: 24),
             
@@ -1062,56 +1466,22 @@ class PlaceTableViewCell: UITableViewCell {
         // Category label
         categoryLabel.text = " \(place.category.rawValue.capitalized) "
         
-        // Set category color
-        switch place.category {
-        case .restaurant:
-            categoryLabel.backgroundColor = UIColor(hex: "#E53E3E") // Red
-            placeImageView.image = UIImage(systemName: "fork.knife")
-        case .cafe:
-            categoryLabel.backgroundColor = UIColor(hex: "#DD6B20") // Orange
-            placeImageView.image = UIImage(systemName: "cup.and.saucer")
-        case .bar:
-            categoryLabel.backgroundColor = UIColor(hex: "#7B341E") // Brown
-            placeImageView.image = UIImage(systemName: "wineglass")
-        case .hotel:
-            categoryLabel.backgroundColor = UIColor(hex: "#3182CE") // Blue
-            placeImageView.image = UIImage(systemName: "bed.double")
-        case .retail:
-            categoryLabel.backgroundColor = UIColor(hex: "#805AD5") // Purple
-            placeImageView.image = UIImage(systemName: "bag")
-        case .service:
-            categoryLabel.backgroundColor = UIColor(hex: "#38A169") // Green
-            placeImageView.image = UIImage(systemName: "wrench.and.screwdriver")
-        case .attraction:
-            categoryLabel.backgroundColor = UIColor(hex: "#D69E2E") // Yellow
-            placeImageView.image = UIImage(systemName: "star")
-        case .entertainment:
-            categoryLabel.backgroundColor = UIColor(hex: "#9C4221") // Orange Brown
-            placeImageView.image = UIImage(systemName: "ticket")
-        case .healthcare:
-            categoryLabel.backgroundColor = UIColor(hex: "#319795") // Teal
-            placeImageView.image = UIImage(systemName: "cross.case")
-        case .fitness:
-            categoryLabel.backgroundColor = UIColor(hex: "#2C7A7B") // Dark Teal
-            placeImageView.image = UIImage(systemName: "figure.run")
-        case .education:
-            categoryLabel.backgroundColor = UIColor(hex: "#744210") // Dark Yellow
-            placeImageView.image = UIImage(systemName: "book")
-        case .outdoor:
-            categoryLabel.backgroundColor = UIColor(hex: "#2F855A") // Dark Green
-            placeImageView.image = UIImage(systemName: "tree")
-        case .transport:
-            categoryLabel.backgroundColor = UIColor(hex: "#2B6CB0") // Dark Blue
-            placeImageView.image = UIImage(systemName: "car")
-        case .finance:
-            categoryLabel.backgroundColor = UIColor(hex: "#285E61") // Dark Teal
-            placeImageView.image = UIImage(systemName: "dollarsign.circle")
-        case .other:
-            categoryLabel.backgroundColor = UIColor(hex: "#718096") // Gray
-            placeImageView.image = UIImage(systemName: "mappin")
-        }
+        // Set category color and icon
+        setCategoryAppearance(for: place.category)
         
-        placeImageView.tintColor = Constants.Colors.primary
+        // Initially show category icon while loading photo
+        categoryIconView.isHidden = false
+        placeImageView.image = nil
+        imageGradientView.isHidden = true
+        
+        // Setup gradient layer
+        setupGradientLayer()
+        
+        // Cancel any previous photo loading task
+        photoLoadingTask?.cancel()
+        
+        // Load place photo
+        loadPlacePhoto(for: place)
         
         // Address
         if !place.address.isEmpty {
@@ -1127,15 +1497,191 @@ class PlaceTableViewCell: UITableViewCell {
             ratingLabel.text = "N/A"
         }
         
+        // Show/hide directions button based on location availability
+        directionsButton.isHidden = (place.location == nil)
+        
         // Force layout update
         self.setNeedsLayout()
         self.layoutIfNeeded()
+    }
+    
+    // MARK: - Photo Loading
+    private func loadPlacePhoto(for place: Place) {
+        // First check if we have stored photo URLs
+        if let photos = place.photos, !photos.isEmpty, let firstPhotoUrl = photos.first {
+            // Load from URL if available
+            loadPhotoFromURL(firstPhotoUrl)
+        } else if let googlePlaceId = place.googlePlaceId {
+            // Fall back to fetching from Google Places API
+            loadGooglePlacePhoto(googlePlaceId: googlePlaceId)
+        } else {
+            // No photo available, use category icon
+            showCategoryIcon()
+        }
+    }
+    
+    private func loadGooglePlacePhoto(googlePlaceId: String) {
+        // Show loading indicator
+        imageLoadingIndicator.startAnimating()
+        
+        // Check cache first
+        let cacheKey = NSString(string: googlePlaceId)
+        if let cachedImage = PlaceTableViewCell.googlePhotosCache.object(forKey: cacheKey) {
+            self.placeImageView.image = cachedImage
+            self.categoryIconView.isHidden = true
+            self.imageGradientView.isHidden = false
+            self.imageLoadingIndicator.stopAnimating()
+            return
+        }
+        
+        // Fetch place details to get photo metadata
+        GooglePlacesService.shared.fetchPlaceDetails(placeID: googlePlaceId) { [weak self] result in
+            guard let self = self else { return }
+            
+            switch result {
+            case .success(let gmsPlace):
+                if let photoMetadata = gmsPlace.photos?.first {
+                    // Load the first photo
+                    GooglePlacesService.shared.loadPhoto(from: photoMetadata, maxSize: CGSize(width: 160, height: 160)) { photoResult in
+                        DispatchQueue.main.async {
+                            switch photoResult {
+                            case .success(let image):
+                                // Cache the image
+                                PlaceTableViewCell.googlePhotosCache.setObject(image, forKey: cacheKey)
+                                
+                                // Set the image
+                                self.placeImageView.image = image
+                                self.categoryIconView.isHidden = true
+                                self.imageGradientView.isHidden = false
+                                self.imageLoadingIndicator.stopAnimating()
+                            case .failure:
+                                self.showCategoryIcon()
+                                self.imageLoadingIndicator.stopAnimating()
+                            }
+                        }
+                    }
+                } else {
+                    // No photos available
+                    DispatchQueue.main.async {
+                        self.showCategoryIcon()
+                        self.imageLoadingIndicator.stopAnimating()
+                    }
+                }
+            case .failure:
+                DispatchQueue.main.async {
+                    self.showCategoryIcon()
+                    self.imageLoadingIndicator.stopAnimating()
+                }
+            }
+        }
+    }
+    
+    private func loadPhotoFromURL(_ urlString: String) {
+        imageLoadingIndicator.startAnimating()
+        
+        ImageService.shared.loadImage(from: urlString) { [weak self] image in
+            guard let self = self else { return }
+            
+            if let image = image {
+                self.placeImageView.image = image
+                self.categoryIconView.isHidden = true
+                self.imageGradientView.isHidden = false
+            } else {
+                self.showCategoryIcon()
+            }
+            self.imageLoadingIndicator.stopAnimating()
+        }
+    }
+    
+    private func showCategoryIcon() {
+        categoryIconView.isHidden = false
+        placeImageView.image = nil
+        imageGradientView.isHidden = true
+    }
+    
+    private func setupGradientLayer() {
+        // Remove existing gradient layers
+        imageGradientView.layer.sublayers?.forEach { if $0 is CAGradientLayer { $0.removeFromSuperlayer() } }
+        
+        // Create gradient layer
+        let gradientLayer = CAGradientLayer()
+        gradientLayer.frame = CGRect(x: 0, y: 0, width: 80, height: 80)
+        gradientLayer.colors = [
+            UIColor.black.withAlphaComponent(0.0).cgColor,
+            UIColor.black.withAlphaComponent(0.3).cgColor
+        ]
+        gradientLayer.locations = [0.5, 1.0]
+        gradientLayer.cornerRadius = 8
+        
+        imageGradientView.layer.addSublayer(gradientLayer)
+    }
+    
+    private func setCategoryAppearance(for category: PlaceCategory) {
+        // Set category label color
+        switch category {
+        case .restaurant:
+            categoryLabel.backgroundColor = UIColor(hex: "#E53E3E") // Red
+            categoryIconView.image = UIImage(systemName: "fork.knife")
+        case .cafe:
+            categoryLabel.backgroundColor = UIColor(hex: "#DD6B20") // Orange
+            categoryIconView.image = UIImage(systemName: "cup.and.saucer")
+        case .bar:
+            categoryLabel.backgroundColor = UIColor(hex: "#7B341E") // Brown
+            categoryIconView.image = UIImage(systemName: "wineglass")
+        case .hotel:
+            categoryLabel.backgroundColor = UIColor(hex: "#3182CE") // Blue
+            categoryIconView.image = UIImage(systemName: "bed.double")
+        case .retail:
+            categoryLabel.backgroundColor = UIColor(hex: "#805AD5") // Purple
+            categoryIconView.image = UIImage(systemName: "bag")
+        case .service:
+            categoryLabel.backgroundColor = UIColor(hex: "#38A169") // Green
+            categoryIconView.image = UIImage(systemName: "wrench.and.screwdriver")
+        case .attraction:
+            categoryLabel.backgroundColor = UIColor(hex: "#D69E2E") // Yellow
+            categoryIconView.image = UIImage(systemName: "star")
+        case .entertainment:
+            categoryLabel.backgroundColor = UIColor(hex: "#9C4221") // Orange Brown
+            categoryIconView.image = UIImage(systemName: "ticket")
+        case .healthcare:
+            categoryLabel.backgroundColor = UIColor(hex: "#319795") // Teal
+            categoryIconView.image = UIImage(systemName: "cross.case")
+        case .fitness:
+            categoryLabel.backgroundColor = UIColor(hex: "#2C7A7B") // Dark Teal
+            categoryIconView.image = UIImage(systemName: "figure.run")
+        case .education:
+            categoryLabel.backgroundColor = UIColor(hex: "#744210") // Dark Yellow
+            categoryIconView.image = UIImage(systemName: "book")
+        case .outdoor:
+            categoryLabel.backgroundColor = UIColor(hex: "#2F855A") // Dark Green
+            categoryIconView.image = UIImage(systemName: "tree")
+        case .transport:
+            categoryLabel.backgroundColor = UIColor(hex: "#2B6CB0") // Dark Blue
+            categoryIconView.image = UIImage(systemName: "car")
+        case .finance:
+            categoryLabel.backgroundColor = UIColor(hex: "#285E61") // Dark Teal
+            categoryIconView.image = UIImage(systemName: "dollarsign.circle")
+        case .home:
+            categoryLabel.backgroundColor = UIColor(hex: "#3182CE") // Blue
+            categoryIconView.image = UIImage(systemName: "house")
+        case .work:
+            categoryLabel.backgroundColor = UIColor(hex: "#38A169") // Green
+            categoryIconView.image = UIImage(systemName: "building.2")
+        case .other:
+            categoryLabel.backgroundColor = UIColor(hex: "#718096") // Gray
+            categoryIconView.image = UIImage(systemName: "mappin")
+        }
     }
     
     // MARK: - Actions
     @objc private func shareButtonTapped() {
         guard let place = place else { return }
         onShareTapped?(place)
+    }
+    
+    @objc private func directionsButtonTapped() {
+        guard let place = place else { return }
+        onDirectionsTapped?(place)
     }
     
     override func prepareForReuse() {
@@ -1145,15 +1691,11 @@ class PlaceTableViewCell: UITableViewCell {
         addressLabel.text = nil
         ratingLabel.text = nil
         placeImageView.image = nil
-    }
-}
-
-extension CLLocationCoordinate2D {
-    func applying(multiplier: Double) -> CLLocationCoordinate2D {
-        return CLLocationCoordinate2D(
-            latitude: self.latitude * multiplier,
-            longitude: self.longitude * multiplier
-        )
+        categoryIconView.isHidden = false
+        imageGradientView.isHidden = true
+        directionsButton.isHidden = false
+        photoLoadingTask?.cancel()
+        imageLoadingIndicator.stopAnimating()
     }
 }
 
@@ -1166,5 +1708,561 @@ extension CircleDetailViewController: EditCircleDelegate {
     
     func didDeleteCircle(_ circleId: String) {
         navigationController?.popViewController(animated: true)
+    }
+}
+
+// MARK: - GMSAutocompleteViewControllerDelegate
+extension CircleDetailViewController: GMSAutocompleteViewControllerDelegate {
+    func viewController(_ viewController: GMSAutocompleteViewController, didAutocompleteWith place: GMSPlace) {
+        // Dismiss the autocomplete controller
+        dismiss(animated: true) { [weak self] in
+            guard let self = self else { return }
+            
+            // Show loading indicator
+            let loadingAlert = UIAlertController(title: "Adding Place", message: "Please wait...", preferredStyle: .alert)
+            self.present(loadingAlert, animated: true)
+            
+            // Extract place details
+            let name = place.name ?? "Unknown Place"
+            let address = place.formattedAddress ?? ""
+            
+            // Determine category based on place types
+            let category = self.determinePlaceCategory(from: place.types ?? [])
+            
+            // Create location object
+            var location: GeoLocation? = nil
+            let coordinate = place.coordinate
+            location = GeoLocation(type: "Point", coordinates: [coordinate.longitude, coordinate.latitude])
+            
+            // Add the place
+            PlaceService.shared.createPlace(
+                name: name,
+                description: nil,
+                address: address,
+                category: category,
+                circleId: self.circle.id,
+                privacy: PlacePrivacy.followCirclePrivacy,
+                website: place.website?.absoluteString,
+                phone: place.phoneNumber,
+                tags: nil,
+                photos: nil
+            ) { [weak self] (result: Result<Place, Error>) in
+                loadingAlert.dismiss(animated: true) {
+                    guard let self = self else { return }
+                    
+                    switch result {
+                    case .success(let newPlace):
+                        // Add the new place to our list
+                        self.places.insert(newPlace, at: 0)
+                        self.tableView.reloadData()
+                        self.updateTableViewHeight()
+                        self.addAnnotationsToMap()
+                        
+                        // Show success message
+                        let successAlert = UIAlertController(
+                            title: "Success",
+                            message: "\(name) has been added to \(self.circle.name)",
+                            preferredStyle: .alert
+                        )
+                        successAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                        self.present(successAlert, animated: true)
+                        
+                    case .failure(let error):
+                        let errorAlert = UIAlertController(
+                            title: "Error",
+                            message: "Failed to add place: \(error.localizedDescription)",
+                            preferredStyle: .alert
+                        )
+                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                        self.present(errorAlert, animated: true)
+                    }
+                }
+            }
+        }
+    }
+    
+    func viewController(_ viewController: GMSAutocompleteViewController, didFailAutocompleteWithError error: Error) {
+        // Handle the error
+        dismiss(animated: true) { [weak self] in
+            let alert = UIAlertController(
+                title: "Error",
+                message: "Place search failed: \(error.localizedDescription)",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            self?.present(alert, animated: true)
+        }
+    }
+    
+    func wasCancelled(_ viewController: GMSAutocompleteViewController) {
+        dismiss(animated: true)
+    }
+    
+    private func determinePlaceCategory(from types: [String]) -> PlaceCategory {
+        // Check for specific place types and map to our categories
+        if types.contains("restaurant") { return .restaurant }
+        if types.contains("cafe") { return .cafe }
+        if types.contains("bar") || types.contains("night_club") { return .bar }
+        if types.contains("lodging") || types.contains("hotel") { return .hotel }
+        if types.contains("store") || types.contains("shopping_mall") { return .retail }
+        if types.contains("hospital") || types.contains("doctor") || types.contains("pharmacy") { return .healthcare }
+        if types.contains("gym") || types.contains("health") { return .fitness }
+        if types.contains("school") || types.contains("university") { return .education }
+        if types.contains("park") || types.contains("campground") { return .outdoor }
+        if types.contains("movie_theater") || types.contains("museum") || types.contains("art_gallery") { return .entertainment }
+        if types.contains("bus_station") || types.contains("subway_station") || types.contains("train_station") { return .transport }
+        if types.contains("bank") || types.contains("atm") { return .finance }
+        if types.contains("tourist_attraction") || types.contains("point_of_interest") { return .attraction }
+        
+        // Default to service or other
+        if types.contains("establishment") { return .service }
+        return .other
+    }
+}
+
+// MARK: - Helper Methods
+extension CircleDetailViewController {
+    private func addGooglePlace(gmsPlace: GMSPlace, placeID: String) {
+        // Show loading
+        let loadingAlert = UIAlertController(title: "Adding Place", message: "Please wait...", preferredStyle: .alert)
+        present(loadingAlert, animated: true)
+        
+        // Determine category based on place types
+        let category = determinePlaceCategory(from: gmsPlace.types ?? [])
+        
+        // Format opening hours if available
+        var openingHoursArray: [[String: Any]] = []
+        if let openingHours = gmsPlace.openingHours {
+            // Convert GMSOpeningHours to our format
+            if let weekdayText = openingHours.weekdayText {
+                for (index, dayHours) in weekdayText.enumerated() {
+                    openingHoursArray.append([
+                        "day": index,
+                        "hours": dayHours
+                    ])
+                }
+            }
+        }
+        
+        // Create comprehensive place data from Google Place
+        var placeData: [String: Any] = [
+            "name": gmsPlace.name ?? "",
+            "address": gmsPlace.formattedAddress ?? "",
+            "googlePlaceId": placeID,
+            "circleId": circle.id,
+            "category": category.rawValue,
+            "rating": gmsPlace.rating,
+            "userRatingsTotal": gmsPlace.userRatingsTotal,
+            "website": gmsPlace.website?.absoluteString ?? "",
+            "phone": gmsPlace.phoneNumber ?? "",
+            "priceLevel": gmsPlace.priceLevel.rawValue,
+            "types": gmsPlace.types ?? [],
+            "location": [
+                "type": "Point",
+                "coordinates": [gmsPlace.coordinate.longitude, gmsPlace.coordinate.latitude]
+            ]
+        ]
+        
+        // Add opening hours if available
+        if !openingHoursArray.isEmpty {
+            placeData["openingHours"] = openingHoursArray
+        }
+        
+        // Add business status
+        switch gmsPlace.businessStatus {
+        case .operational:
+            placeData["businessStatus"] = "operational"
+        case .closedTemporarily:
+            placeData["businessStatus"] = "closed_temporarily"
+        case .closedPermanently:
+            placeData["businessStatus"] = "closed_permanently"
+        case .unknown:
+            placeData["businessStatus"] = "unknown"
+        @unknown default:
+            placeData["businessStatus"] = "unknown"
+        }
+        
+        // Add place description from rating and price info
+        var descriptionParts: [String] = []
+        if gmsPlace.rating > 0 {
+            descriptionParts.append("Rating: \(String(format: "%.1f", gmsPlace.rating))/5.0 (\(gmsPlace.userRatingsTotal) reviews)")
+        }
+        if gmsPlace.priceLevel.rawValue > 0 {
+            let priceString = String(repeating: "$", count: Int(gmsPlace.priceLevel.rawValue))
+            descriptionParts.append("Price: \(priceString)")
+        }
+        if !descriptionParts.isEmpty {
+            placeData["description"] = descriptionParts.joined(separator: " • ")
+        }
+        
+        // Handle Google Place photos
+        if let photos = gmsPlace.photos, !photos.isEmpty {
+            // Load the first photo and save it
+            print("📸 Loading photo from Google Places...")
+            GooglePlacesService.shared.loadPhoto(from: photos[0], maxSize: CGSize(width: 800, height: 800)) { [weak self] photoResult in
+                switch photoResult {
+                case .success(let image):
+                    print("📸 Successfully loaded Google photo")
+                    // Convert image to data and upload
+                    if let imageData = image.jpegData(compressionQuality: 0.8) {
+                        print("📸 Uploading photo to backend... Size: \(imageData.count / 1024)KB")
+                        self?.uploadImageAndCreatePlace(placeData: placeData, imageData: imageData, loadingAlert: loadingAlert)
+                    } else {
+                        print("📸 Failed to convert image to JPEG data")
+                        // Create place without photo if conversion fails
+                        self?.createPlaceWithData(placeData, loadingAlert: loadingAlert)
+                    }
+                case .failure(let error):
+                    print("📸 Failed to load Google photo: \(error)")
+                    // Create place without photo if loading fails
+                    self?.createPlaceWithData(placeData, loadingAlert: loadingAlert)
+                }
+            }
+        } else {
+            // No photos available, create place without photo
+            print("📸 No photos available from Google Places")
+            createPlaceWithData(placeData, loadingAlert: loadingAlert)
+        }
+    }
+    
+    private func uploadImageAndCreatePlace(placeData: [String: Any], imageData: Data, loadingAlert: UIAlertController) {
+        // Upload image to storage
+        PlaceService.shared.uploadMultipleImages([imageData]) { [weak self] result in
+            switch result {
+            case .success(let imageUrls):
+                print("📸 Photo uploaded successfully: \(imageUrls)")
+                // Add photo URLs to place data
+                var updatedPlaceData = placeData
+                updatedPlaceData["photos"] = imageUrls
+                self?.createPlaceWithData(updatedPlaceData, loadingAlert: loadingAlert)
+                
+            case .failure(let error):
+                print("📸 Failed to upload photo: \(error)")
+                // Create place without photo if upload fails
+                self?.createPlaceWithData(placeData, loadingAlert: loadingAlert)
+            }
+        }
+    }
+    
+    private func createPlaceWithData(_ placeData: [String: Any], loadingAlert: UIAlertController) {
+        // Debug: Log place data being sent
+        print("📍 Creating place with data:")
+        print("📍 Name: \(placeData["name"] ?? "No name")")
+        print("📍 Category: \(placeData["category"] ?? "No category")")
+        print("📍 Photos: \(placeData["photos"] ?? "No photos")")
+        print("📍 Rating: \(placeData["rating"] ?? "No rating")")
+        print("📍 Description: \(placeData["description"] ?? "No description")")
+        
+        PlaceService.shared.createPlaceFromGoogleData(placeData) { [weak self] result in
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    switch result {
+                    case .success(let newPlace):
+                        // Debug: Log created place
+                        print("✅ Place created successfully:")
+                        print("✅ ID: \(newPlace.id)")
+                        print("✅ Name: \(newPlace.name)")
+                        print("✅ Photos: \(newPlace.photos ?? [])")
+                        print("✅ Description: \(newPlace.description ?? "nil")")
+                        
+                        self?.places.append(newPlace)
+                        self?.tableView.reloadData()
+                        self?.updateTableViewHeight()
+                        self?.addAnnotationsToMap()
+                        
+                        // Show success message
+                        let successAlert = UIAlertController(
+                            title: "Success",
+                            message: "\(newPlace.name) has been added to the circle",
+                            preferredStyle: .alert
+                        )
+                        successAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                        self?.present(successAlert, animated: true)
+                        
+                    case .failure(let error):
+                        print("❌ Failed to create place: \(error)")
+                        let errorAlert = UIAlertController(
+                            title: "Error",
+                            message: "Failed to add place: \(error.localizedDescription)",
+                            preferredStyle: .alert
+                        )
+                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                        self?.present(errorAlert, animated: true)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func addPlaceWithCoordinates(name: String, location: CLLocationCoordinate2D, placeID: String) {
+        // Show loading
+        let loadingAlert = UIAlertController(title: "Adding Place", message: "Please wait...", preferredStyle: .alert)
+        present(loadingAlert, animated: true)
+        
+        // Reverse geocode to get address
+        let geocoder = CLGeocoder()
+        let clLocation = CLLocation(latitude: location.latitude, longitude: location.longitude)
+        
+        geocoder.reverseGeocodeLocation(clLocation) { [weak self] placemarks, error in
+            guard let self = self else { return }
+            
+            let placemark = placemarks?.first
+            let address = [
+                placemark?.subThoroughfare,
+                placemark?.thoroughfare,
+                placemark?.locality,
+                placemark?.administrativeArea,
+                placemark?.postalCode,
+                placemark?.country
+            ].compactMap { $0 }.joined(separator: ", ")
+            let finalAddress = address.isEmpty ? "Unknown Address" : address
+            
+            // Create place with geocoded address
+            PlaceService.shared.createPlace(
+                name: name,
+                description: nil,
+                address: finalAddress,
+                category: .other,
+                circleId: self.circle.id,
+                privacy: .followCirclePrivacy,
+                website: nil,
+                phone: nil,
+                tags: nil,
+                photos: nil
+            ) { result in
+                DispatchQueue.main.async {
+                    loadingAlert.dismiss(animated: true) {
+                        switch result {
+                        case .success(let newPlace):
+                            self.places.append(newPlace)
+                            self.tableView.reloadData()
+                            self.updateTableViewHeight()
+                            self.addAnnotationsToMap()
+                            
+                            // Show success message
+                            let successAlert = UIAlertController(
+                                title: "Success",
+                                message: "\(newPlace.name) has been added to the circle",
+                                preferredStyle: .alert
+                            )
+                            successAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                            self.present(successAlert, animated: true)
+                            
+                        case .failure(let error):
+                            let errorAlert = UIAlertController(
+                                title: "Error",
+                                message: "Failed to add place: \(error.localizedDescription)",
+                                preferredStyle: .alert
+                            )
+                            errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                            self.present(errorAlert, animated: true)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - CLLocationManagerDelegate
+extension CircleDetailViewController {
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let location = locations.last else { return }
+        
+        userLocation = location
+        
+        // Don't automatically center on user location - let the map show all places
+        // User can tap the my location button to zoom to their location
+        
+        // Stop updating to save battery
+        manager.stopUpdatingLocation()
+    }
+    
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        switch manager.authorizationStatus {
+        case .authorizedWhenInUse, .authorizedAlways:
+            manager.startUpdatingLocation()
+            // Also try to get current location immediately
+            if let location = manager.location {
+                locationManager(manager, didUpdateLocations: [location])
+            }
+        case .notDetermined:
+            manager.requestWhenInUseAuthorization()
+        default:
+            break
+        }
+    }
+    
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        // Location error occurred - map will stay at default NYC location
+        print("Location error: \(error.localizedDescription)")
+    }
+}
+
+// MARK: - GMSMapViewDelegate
+extension CircleDetailViewController {
+    
+    // Handle POI taps (Point of Interest taps on the map)
+    func mapView(_ mapView: GMSMapView, didTapPOIWithPlaceID placeID: String, name: String, location: CLLocationCoordinate2D) {
+        print("POI tapped: \(name) with placeID: \(placeID)")
+        
+        // Show loading indicator
+        let loadingAlert = UIAlertController(title: "Loading Place", message: "Please wait...", preferredStyle: .alert)
+        present(loadingAlert, animated: true)
+        
+        // Fetch full place details
+        GooglePlacesService.shared.fetchPlaceDetails(placeID: placeID) { [weak self] result in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    switch result {
+                    case .success(let gmsPlace):
+                        // Show confirmation alert
+                        let alert = UIAlertController(
+                            title: "Add Place",
+                            message: "Add '\(gmsPlace.name ?? name)' to \(self.circle.name)?",
+                            preferredStyle: .alert
+                        )
+                        
+                        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+                        alert.addAction(UIAlertAction(title: "Add", style: .default) { _ in
+                            self.addGooglePlace(gmsPlace: gmsPlace, placeID: placeID)
+                        })
+                        
+                        self.present(alert, animated: true)
+                        
+                    case .failure(let error):
+                        print("Failed to fetch place details: \(error)")
+                        // Fallback to basic info
+                        let alert = UIAlertController(
+                            title: "Add Place",
+                            message: "Add '\(name)' to \(self.circle.name)?",
+                            preferredStyle: .alert
+                        )
+                        
+                        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+                        alert.addAction(UIAlertAction(title: "Add", style: .default) { _ in
+                            // Use reverse geocoding to get address from coordinates
+                            self.addPlaceWithCoordinates(name: name, location: location, placeID: placeID)
+                        })
+                        
+                        self.present(alert, animated: true)
+                    }
+                }
+            }
+        }
+    }
+    
+    // Called when a marker info window is tapped
+    func mapView(_ mapView: GMSMapView, didTapInfoWindowOf marker: GMSMarker) {
+        guard let place = markerPlaceMap[marker] else { return }
+        
+        // Show action sheet with options
+        showPlaceActionSheet(for: place)
+    }
+    
+    // Customize info window content
+    func mapView(_ mapView: GMSMapView, markerInfoWindow marker: GMSMarker) -> UIView? {
+        guard let place = markerPlaceMap[marker] else { return nil }
+        
+        // Create custom info window
+        let infoWindow = UIView(frame: CGRect(x: 0, y: 0, width: 200, height: 70))
+        infoWindow.backgroundColor = .white
+        infoWindow.layer.cornerRadius = 8
+        infoWindow.layer.borderWidth = 1
+        infoWindow.layer.borderColor = UIColor.lightGray.cgColor
+        
+        // Name label
+        let nameLabel = UILabel(frame: CGRect(x: 8, y: 8, width: 184, height: 20))
+        nameLabel.text = place.name
+        nameLabel.font = .systemFont(ofSize: 14, weight: .semibold)
+        nameLabel.textColor = .black
+        infoWindow.addSubview(nameLabel)
+        
+        // Address label
+        let addressLabel = UILabel(frame: CGRect(x: 8, y: 28, width: 184, height: 16))
+        addressLabel.text = place.address
+        addressLabel.font = .systemFont(ofSize: 12)
+        addressLabel.textColor = .gray
+        addressLabel.lineBreakMode = .byTruncatingTail
+        infoWindow.addSubview(addressLabel)
+        
+        // Rating if available
+        if let rating = place.rating {
+            let ratingLabel = UILabel(frame: CGRect(x: 8, y: 46, width: 60, height: 16))
+            ratingLabel.text = "⭐ \(String(format: "%.1f", rating))"
+            ratingLabel.font = .systemFont(ofSize: 12)
+            ratingLabel.textColor = .orange
+            infoWindow.addSubview(ratingLabel)
+        }
+        
+        // "Tap for options" hint
+        let hintLabel = UILabel(frame: CGRect(x: 100, y: 46, width: 92, height: 16))
+        hintLabel.text = "Tap for options"
+        hintLabel.font = .systemFont(ofSize: 11)
+        hintLabel.textColor = Constants.Colors.primary
+        hintLabel.textAlignment = .right
+        infoWindow.addSubview(hintLabel)
+        
+        return infoWindow
+    }
+    
+    // Handle marker tap
+    func mapView(_ mapView: GMSMapView, didTap marker: GMSMarker) -> Bool {
+        // Center the map on the marker
+        mapView.animate(toLocation: marker.position)
+        
+        // Return false to show info window
+        return false
+    }
+    
+    // Handle my location button tap
+    func mapView(_ mapView: GMSMapView, didTapMyLocationButtonFor location: GMSMapView) -> Bool {
+        // Check if we have user location
+        if let userLocation = userLocation {
+            // Animate to user location with appropriate zoom
+            let camera = GMSCameraPosition.camera(withTarget: userLocation.coordinate, zoom: 15.0)
+            mapView.animate(to: camera)
+        }
+        
+        // Return false to allow default behavior
+        return false
+    }
+    
+    // Show action sheet with place options
+    private func showPlaceActionSheet(for place: Place) {
+        let actionSheet = UIAlertController(title: place.name, message: place.address, preferredStyle: .actionSheet)
+        
+        // View Details action
+        actionSheet.addAction(UIAlertAction(title: "View Details", style: .default) { [weak self] _ in
+            guard let self = self else { return }
+            let placeDetailVC = PlaceDetailViewController(place: place, circle: self.circle)
+            self.navigationController?.pushViewController(placeDetailVC, animated: true)
+        })
+        
+        // Get Directions action
+        if place.location != nil {
+            actionSheet.addAction(UIAlertAction(title: "Get Directions", style: .default) { [weak self] _ in
+                self?.openPlaceInMaps(place)
+            })
+        }
+        
+        // Share action
+        actionSheet.addAction(UIAlertAction(title: "Share", style: .default) { [weak self] _ in
+            self?.sharePlace(place)
+        })
+        
+        // Cancel action
+        actionSheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        
+        // For iPad
+        if let popover = actionSheet.popoverPresentationController {
+            popover.sourceView = view
+            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
+        }
+        
+        present(actionSheet, animated: true)
     }
 }
