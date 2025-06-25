@@ -11,6 +11,11 @@ const {
   followCircle,
   unfollowCircle
 } = require('../controllers/firebaseCircleController');
+const {
+  shareCircle: newShareCircle,
+  revokeShare,
+  getCircleShares
+} = require('../controllers/circleSharingController');
 const { protect } = require('../middleware/firebaseAuth');
 
 const router = express.Router();
@@ -34,8 +39,15 @@ router.route('/:id')
   .put(updateCircle)
   .delete(deleteCircle);
 
+// New sharing routes (replacing the old shareCircle)
 router.route('/:id/share')
-  .post(shareCircle);
+  .post(newShareCircle);
+
+router.route('/:id/share/:shareId')
+  .delete(revokeShare);
+
+router.route('/:id/shares')
+  .get(getCircleShares);
 
 router.route('/:id/follow')
   .post(followCircle);

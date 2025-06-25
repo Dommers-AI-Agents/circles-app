@@ -10,7 +10,8 @@ const {
   deletePlace,
   addPlaceToCircle,
   removePlaceFromCircle,
-  searchPlaces
+  searchPlaces,
+  refreshPlaceFromGoogle
 } = require('../controllers/placeController');
 const { protect } = require('../middleware/auth');
 
@@ -35,11 +36,7 @@ router.route('/')
 router.route('/search')
   .get(searchPlaces);
 
-router.route('/:id')
-  .get(getPlace)
-  .put(updatePlace)
-  .delete(deletePlace);
-
+// More specific routes before generic :id route
 router.route('/:id/upload-photos')
   .post(upload.array('photos', 10), uploadPlacePhotos);
 
@@ -48,5 +45,14 @@ router.route('/:id/add-to-circle/:circleId')
 
 router.route('/:id/remove-from-circle/:circleId')
   .delete(removePlaceFromCircle);
+
+router.route('/:id/refresh-google')
+  .post(refreshPlaceFromGoogle);
+
+// Generic :id route should be last
+router.route('/:id')
+  .get(getPlace)
+  .put(updatePlace)
+  .delete(deletePlace);
 
 module.exports = router;

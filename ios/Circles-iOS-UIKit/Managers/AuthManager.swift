@@ -14,9 +14,16 @@ class AuthManager: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private let authService = AuthService.shared
     private var authStateHandle: AuthStateDidChangeListenerHandle?
+    private var isFirebaseConfigured = false
     
     private init() {
         setupAuthStateListener()
+        // Firebase auth listener will be set up after Firebase is configured
+    }
+    
+    func configureFirebaseAuth() {
+        guard !isFirebaseConfigured else { return }
+        isFirebaseConfigured = true
         setupFirebaseAuthListener()
     }
     
@@ -206,6 +213,12 @@ class AuthManager: ObservableObject {
             case .failure(let error):
                 print("Failed to fetch current user: \(error)")
             }
+        }
+    }
+    
+    func updateCurrentUser(_ user: User) {
+        DispatchQueue.main.async {
+            self.currentUser = user
         }
     }
     

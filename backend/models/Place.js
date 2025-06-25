@@ -12,14 +12,7 @@ const PlaceSchema = new mongoose.Schema({
     type: String,
     maxlength: [1000, 'Description can not be more than 1000 characters']
   },
-  address: {
-    street: String,
-    city: String,
-    state: String,
-    zipCode: String,
-    country: String,
-    formattedAddress: String
-  },
+  address: String,
   location: {
     type: {
       type: String,
@@ -40,13 +33,21 @@ const PlaceSchema = new mongoose.Schema({
   }],
   category: {
     type: String,
-    enum: ['restaurant', 'cafe', 'hotel', 'store', 'service', 'attraction', 'healthcare', 'other'],
+    enum: ['restaurant', 'cafe', 'bar', 'hotel', 'retail', 'service', 'attraction', 'entertainment', 'healthcare', 'fitness', 'education', 'outdoor', 'transport', 'finance', 'other'],
     default: 'other'
   },
   rating: {
     type: Number,
     min: 1,
     max: 5
+  },
+  userRatingsTotal: {
+    type: Number,
+    default: 0
+  },
+  priceLevel: {
+    type: String,
+    enum: ['free', 'inexpensive', 'moderate', 'expensive', 'veryExpensive']
   },
   notes: {
     type: String,
@@ -57,8 +58,8 @@ const PlaceSchema = new mongoose.Schema({
   }],
   privacy: {
     type: String,
-    enum: ['public', 'friends', 'private'],
-    default: 'friends'
+    enum: ['public', 'friends', 'private', 'followCircle'],
+    default: 'followCircle'
   },
   addedBy: {
     type: mongoose.Schema.Types.ObjectId,

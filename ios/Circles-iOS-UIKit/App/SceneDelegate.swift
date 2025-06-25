@@ -119,9 +119,18 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                         if self.window?.rootViewController != nil {
                             UIView.transition(with: self.window!, duration: 0.3, options: .transitionCrossDissolve, animations: {
                                 self.window?.rootViewController = mainTabController
-                            }, completion: nil)
+                            }, completion: { _ in
+                                // Check for pending deep links after login
+                                self.handlePendingDeepLink()
+                                // Process any pending connection invites
+                                NetworkManager.shared.processPendingConnectionInvite()
+                            })
                         } else {
                             self.window?.rootViewController = mainTabController
+                            // Check for pending deep links after login
+                            self.handlePendingDeepLink()
+                            // Process any pending connection invites
+                            NetworkManager.shared.processPendingConnectionInvite()
                         }
                         
                     case .failure:
@@ -147,9 +156,20 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
     }
     
+    // Public method to handle URLs from AppDelegate
+    func handleURLContext(_ url: URL) {
+        print("📱 SceneDelegate: handleURLContext called with URL: \(url.absoluteString)")
+        handleDeepLink(url)
+    }
+    
     private func handleDeepLink(_ url: URL) {
         // Parse the URL and navigate to the appropriate screen
-        guard url.scheme == "circles" else { return }
+        guard url.scheme == "circles" else {
+            print("📱 SceneDelegate: URL scheme '\(url.scheme ?? "nil")' is not 'circles', returning")
+            return
+        }
+        
+        print("📱 SceneDelegate: Processing deep link with path: \(url.path)")
         
         // Handle different path components
         let components = url.pathComponents
@@ -161,6 +181,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     // Example: circles://circle/circle_123
                     let circleId = components[2]
                     self.navigateToCircle(circleId: circleId)
+                } else if components[1] == "share" && components.count >= 4 && components[2] == "circle" {
+                    // Example: circles://share/circle/shareId_123
+                    let shareId = components[3]
+                    self.handleSharedCircle(shareId: shareId)
                 } else if components[1] == "place" && components.count >= 3 {
                     // Example: circles://place/place_123
                     let placeId = components[2]
@@ -169,6 +193,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     // Example: circles://user/user_123
                     let userId = components[2]
                     self.navigateToUserProfile(userId: userId)
+                } else if components[1] == "connect" && components.count >= 3 {
+                    // Example: circles://connect/user_123
+                    let userId = components[2]
+                    print("📱 SceneDelegate: Handling connection invite from user: \(userId)")
+                    self.handleConnectionInvite(from: userId)
                 }
             }
         }
@@ -256,6 +285,92 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             }
         }
     }
+    
+    private func handleSharedCircle(shareId: String) {
+        // If user is not logged in, store the share ID and prompt login
+        guard AuthService.shared.isLoggedIn else {
+            UserDefaults.standard.set("share:\(shareId)", forKey: "pendingDeepLink")
+            
+            // Show alert prompting user to login
+            let alert = UIAlertController(
+                title: "Login Required",
+                message: "Please login to view the shared circle",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Login", style: .default) { _ in
+                // The auth state listener will handle showing login screen
+            })
+            
+            if let rootVC = window?.rootViewController {
+                rootVC.present(alert, animated: true)
+            }
+            return
+        }
+        
+        // Accept the shared circle
+        NetworkManager.shared.acceptSharedCircle(shareId: shareId) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let sharedCircle):
+                    // Navigate to the shared circle
+                    self?.navigateToCircle(circleId: sharedCircle.circleId)
+                    
+                    // Show success message
+                    if let tabBarController = self?.window?.rootViewController as? CirclesTabBarController,
+                       let currentVC = tabBarController.selectedViewController {
+                        let banner = UIView()
+                        banner.backgroundColor = .systemGreen
+                        banner.layer.cornerRadius = 10
+                        banner.translatesAutoresizingMaskIntoConstraints = false
+                        
+                        let label = UILabel()
+                        label.text = "Circle imported successfully!"
+                        label.textColor = .white
+                        label.translatesAutoresizingMaskIntoConstraints = false
+                        
+                        banner.addSubview(label)
+                        currentVC.view.addSubview(banner)
+                        
+                        NSLayoutConstraint.activate([
+                            banner.topAnchor.constraint(equalTo: currentVC.view.safeAreaLayoutGuide.topAnchor, constant: 20),
+                            banner.centerXAnchor.constraint(equalTo: currentVC.view.centerXAnchor),
+                            banner.heightAnchor.constraint(equalToConstant: 50),
+                            banner.widthAnchor.constraint(equalToConstant: 250),
+                            
+                            label.centerXAnchor.constraint(equalTo: banner.centerXAnchor),
+                            label.centerYAnchor.constraint(equalTo: banner.centerYAnchor)
+                        ])
+                        
+                        // Animate and remove after 3 seconds
+                        UIView.animate(withDuration: 0.3) {
+                            banner.alpha = 1.0
+                        }
+                        
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                            UIView.animate(withDuration: 0.3, animations: {
+                                banner.alpha = 0
+                            }) { _ in
+                                banner.removeFromSuperview()
+                            }
+                        }
+                    }
+                    
+                case .failure(let error):
+                    // Show error alert
+                    let alert = UIAlertController(
+                        title: "Import Failed",
+                        message: error.localizedDescription,
+                        preferredStyle: .alert
+                    )
+                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    
+                    if let rootVC = self?.window?.rootViewController {
+                        rootVC.present(alert, animated: true)
+                    }
+                }
+            }
+        }
+    }
 
     func sceneDidDisconnect(_ scene: UIScene) {
         // Called as the scene is being released by the system.
@@ -272,6 +387,140 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         
         // Check for app updates
         checkForAppUpdates()
+    }
+    
+    private func handleConnectionInvite(from userId: String) {
+        print("📱 SceneDelegate: handleConnectionInvite called with userId: \(userId)")
+        
+        // If user is not logged in, store the connection invite and prompt login
+        guard AuthService.shared.isLoggedIn else {
+            print("📱 SceneDelegate: User not logged in, storing pending connection invite")
+            // Store both as pending deep link and specific connection invite
+            UserDefaults.standard.set("connect:\(userId)", forKey: "pendingDeepLink")
+            NetworkManager.storePendingConnectionInvite(userId: userId)
+            
+            // Show alert prompting user to login
+            let alert = UIAlertController(
+                title: "Connection Invite",
+                message: "Please login to connect with this user",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Login", style: .default) { _ in
+                // The auth state listener will handle showing login screen
+            })
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            
+            if let rootVC = window?.rootViewController {
+                rootVC.present(alert, animated: true)
+            }
+            return
+        }
+        
+        // Handle the connection invite
+        NetworkManager.shared.handleConnectionInvite(from: userId) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let connection):
+                    // Refresh connections list to ensure UI is updated
+                    NetworkManager.shared.loadConnections()
+                    
+                    // Navigate to the network tab
+                    if let tabBarController = self?.window?.rootViewController as? CirclesTabBarController {
+                        tabBarController.selectedIndex = 2 // Network tab
+                        
+                        // Show success message
+                        let banner = UIView()
+                        banner.backgroundColor = .systemGreen
+                        banner.layer.cornerRadius = 10
+                        banner.translatesAutoresizingMaskIntoConstraints = false
+                        
+                        let label = UILabel()
+                        let labelText = connection.status == .accepted ? "Connected successfully!" : "Connection request sent!"
+                        label.text = labelText
+                        label.textColor = .white
+                        label.translatesAutoresizingMaskIntoConstraints = false
+                        
+                        banner.addSubview(label)
+                        tabBarController.view.addSubview(banner)
+                        
+                        NSLayoutConstraint.activate([
+                            banner.topAnchor.constraint(equalTo: tabBarController.view.safeAreaLayoutGuide.topAnchor, constant: 20),
+                            banner.centerXAnchor.constraint(equalTo: tabBarController.view.centerXAnchor),
+                            banner.heightAnchor.constraint(equalToConstant: 50),
+                            banner.widthAnchor.constraint(equalToConstant: 250),
+                            
+                            label.centerXAnchor.constraint(equalTo: banner.centerXAnchor),
+                            label.centerYAnchor.constraint(equalTo: banner.centerYAnchor)
+                        ])
+                        
+                        // Animate and remove after 3 seconds
+                        UIView.animate(withDuration: 0.3) {
+                            banner.alpha = 1.0
+                        }
+                        
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                            UIView.animate(withDuration: 0.3, animations: {
+                                banner.alpha = 0
+                            }) { _ in
+                                banner.removeFromSuperview()
+                            }
+                        }
+                    }
+                    
+                case .failure(let error):
+                    // Show error alert
+                    let errorMessage: String
+                    if error.localizedDescription.contains("Already connected") {
+                        errorMessage = "You are already connected to this user"
+                    } else {
+                        errorMessage = "Failed to send connection request"
+                    }
+                    
+                    let alert = UIAlertController(
+                        title: "Connection Failed",
+                        message: errorMessage,
+                        preferredStyle: .alert
+                    )
+                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    
+                    if let rootVC = self?.window?.rootViewController {
+                        rootVC.present(alert, animated: true)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func handlePendingDeepLink() {
+        guard let pendingLink = UserDefaults.standard.string(forKey: "pendingDeepLink") else { return }
+        
+        // Clear the pending link
+        UserDefaults.standard.removeObject(forKey: "pendingDeepLink")
+        
+        // Parse and handle the link
+        let components = pendingLink.split(separator: ":")
+        if components.count >= 2 {
+            let type = String(components[0])
+            let id = String(components[1])
+            
+            // Add a delay to ensure the UI is fully loaded
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                switch type {
+                case "circle":
+                    self.navigateToCircle(circleId: id)
+                case "place":
+                    self.navigateToPlace(placeId: id)
+                case "user":
+                    self.navigateToUserProfile(userId: id)
+                case "share":
+                    self.handleSharedCircle(shareId: id)
+                case "connect":
+                    self.handleConnectionInvite(from: id)
+                default:
+                    break
+                }
+            }
+        }
     }
     
     private func checkForAppUpdates() {

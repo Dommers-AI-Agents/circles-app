@@ -85,13 +85,20 @@ class MockService {
                 description: "My favorite restaurants in New York City",
                 coverImage: nil,
                 owner: "user_1001",
+                ownerDetails: nil,
                 places: ["place_1001", "place_1002", "place_1003"],
+                placesWithDetails: nil,
                 privacy: .public,
                 category: .food,
                 location: "New York, NY",
                 tags: ["food", "nyc", "restaurants"],
                 sharedWith: ["user_1002"],
                 followers: ["user_1003", "user_1004"],
+                activeShares: nil,
+                shareSettings: nil,
+                isSharedWithMe: false,
+                sharedBy: nil,
+                myAccessLevel: nil,
                 createdAt: Date().addingTimeInterval(-86400 * 10), // 10 days ago
                 updatedAt: Date().addingTimeInterval(-86400 * 2) // 2 days ago
             ),
@@ -101,13 +108,20 @@ class MockService {
                 description: "Best cafes in San Francisco",
                 coverImage: nil,
                 owner: "user_1001",
+                ownerDetails: nil,
                 places: ["place_1004", "place_1005"],
+                placesWithDetails: nil,
                 privacy: .friends,
                 category: .food,
                 location: "San Francisco, CA",
                 tags: ["coffee", "cafe", "sf"],
                 sharedWith: ["user_1003"],
                 followers: [],
+                activeShares: nil,
+                shareSettings: nil,
+                isSharedWithMe: false,
+                sharedBy: nil,
+                myAccessLevel: nil,
                 createdAt: Date().addingTimeInterval(-86400 * 20), // 20 days ago
                 updatedAt: Date().addingTimeInterval(-86400 * 5) // 5 days ago
             ),
@@ -117,13 +131,20 @@ class MockService {
                 description: "My favorite shopping spots in Los Angeles",
                 coverImage: nil,
                 owner: "user_1002",
+                ownerDetails: nil,
                 places: ["place_1006", "place_1007", "place_1008"],
+                placesWithDetails: nil,
                 privacy: .public,
                 category: .shopping,
                 location: "Los Angeles, CA",
                 tags: ["shopping", "la", "fashion"],
                 sharedWith: [],
                 followers: ["user_1001", "user_1005"],
+                activeShares: nil,
+                shareSettings: nil,
+                isSharedWithMe: false,
+                sharedBy: nil,
+                myAccessLevel: nil,
                 createdAt: Date().addingTimeInterval(-86400 * 15), // 15 days ago
                 updatedAt: Date().addingTimeInterval(-86400 * 3) // 3 days ago
             ),
@@ -133,13 +154,20 @@ class MockService {
                 description: "Best entertainment venues in Chicago",
                 coverImage: nil,
                 owner: "user_1004",
+                ownerDetails: nil,
                 places: ["place_1009", "place_1010", "place_1011"],
+                placesWithDetails: nil,
                 privacy: .public,
                 category: .entertainment,
                 location: "Chicago, IL",
                 tags: ["entertainment", "chicago", "music", "theater"],
                 sharedWith: [],
                 followers: ["user_1001", "user_1003"],
+                activeShares: nil,
+                shareSettings: nil,
+                isSharedWithMe: false,
+                sharedBy: nil,
+                myAccessLevel: nil,
                 createdAt: Date().addingTimeInterval(-86400 * 8), // 8 days ago
                 updatedAt: Date().addingTimeInterval(-86400 * 1) // 1 day ago
             ),
@@ -149,13 +177,20 @@ class MockService {
                 description: "The ultimate guide to Seattle's best coffee",
                 coverImage: nil,
                 owner: "user_1005",
+                ownerDetails: nil,
                 places: ["place_1012", "place_1013", "place_1014"],
+                placesWithDetails: nil,
                 privacy: .public,
                 category: .food,
                 location: "Seattle, WA",
                 tags: ["coffee", "seattle", "cafes"],
                 sharedWith: [],
                 followers: ["user_1002", "user_1003"],
+                activeShares: nil,
+                shareSettings: nil,
+                isSharedWithMe: false,
+                sharedBy: nil,
+                myAccessLevel: nil,
                 createdAt: Date().addingTimeInterval(-86400 * 5), // 5 days ago
                 updatedAt: Date() // today
             )
@@ -334,32 +369,35 @@ class MockService {
     }
     
     private func createPlace(id: String, name: String, description: String, address: String, lat: Double, lon: Double, category: PlaceCategory, circleId: String, priceLevel: PriceLevel) -> Place {
-        return Place(
-            id: id,
-            name: name,
-            description: description,
-            address: address,
-            location: GeoLocation(
-                type: "Point",
-                coordinates: [lon, lat] // GeoJSON format: [longitude, latitude]
-            ),
-            website: nil,
-            phone: nil,
-            googlePlaceId: nil,
-            photos: nil,
-            category: category,
-            rating: Double.random(in: 3.0...5.0),
-            notes: nil,
-            tags: nil,
-            reviews: nil,
-            openingHours: nil,
-            priceLevel: priceLevel,
-            circleId: circleId,
-            addedBy: "user_1001",
-            privacy: .followCirclePrivacy,
-            createdAt: Date().addingTimeInterval(Double.random(in: -86400 * 30 ... -86400 * 5)),
-            updatedAt: Date().addingTimeInterval(Double.random(in: -86400 * 5 ... -3600))
-        )
+        // Create a place using JSON decoding since Place only has a Decodable initializer
+        let placeData: [String: Any] = [
+            "_id": id,
+            "name": name,
+            "description": description,
+            "address": address,
+            "location": [
+                "type": "Point",
+                "coordinates": [lon, lat]
+            ],
+            "category": category.rawValue,
+            "rating": Double.random(in: 3.0...5.0),
+            "userRatingsTotal": Int.random(in: 10...200),
+            "priceLevel": priceLevel.rawValue,
+            "circleId": circleId,
+            "addedBy": "user_1001",
+            "privacy": "followCircle",
+            "createdAt": ISO8601DateFormatter().string(from: Date().addingTimeInterval(Double.random(in: -86400 * 30 ... -86400 * 5))),
+            "updatedAt": ISO8601DateFormatter().string(from: Date().addingTimeInterval(Double.random(in: -86400 * 5 ... -3600)))
+        ]
+        
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: placeData)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            return try decoder.decode(Place.self, from: jsonData)
+        } catch {
+            fatalError("Failed to create mock place: \(error)")
+        }
     }
     
     // MARK: - Mock Authentication
@@ -551,13 +589,20 @@ class MockService {
                 description: description,
                 coverImage: nil,
                 owner: self.currentUserId,
+                ownerDetails: nil,
                 places: [],
+                placesWithDetails: nil,
                 privacy: privacy,
                 category: category,
                 location: location,
                 tags: tags,
                 sharedWith: [],
                 followers: [],
+                activeShares: nil,
+                shareSettings: nil,
+                isSharedWithMe: false,
+                sharedBy: nil,
+                myAccessLevel: nil,
                 createdAt: Date(),
                 updatedAt: Date()
             )
@@ -653,13 +698,20 @@ class MockService {
                             description: updatedCircle.description,
                             coverImage: updatedCircle.coverImage,
                             owner: updatedCircle.owner,
+                            ownerDetails: updatedCircle.ownerDetails,
                             places: placesArray,
+                            placesWithDetails: updatedCircle.placesWithDetails,
                             privacy: updatedCircle.privacy,
                             category: updatedCircle.category,
                             location: updatedCircle.location,
                             tags: updatedCircle.tags,
                             sharedWith: updatedCircle.sharedWith,
                             followers: updatedCircle.followers,
+                            activeShares: updatedCircle.activeShares,
+                            shareSettings: updatedCircle.shareSettings,
+                            isSharedWithMe: updatedCircle.isSharedWithMe,
+                            sharedBy: updatedCircle.sharedBy,
+                            myAccessLevel: updatedCircle.myAccessLevel,
                             createdAt: updatedCircle.createdAt,
                             updatedAt: Date()
                         )

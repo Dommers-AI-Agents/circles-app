@@ -4,8 +4,53 @@ const Circle = require('../models/Circle');
 const { Client } = require('@googlemaps/google-maps-services-js');
 const { googleMapsApiKey } = require('../config/config');
 const { storage } = require('../config/firebase');
+const axios = require('axios');
 
 const googleMapsClient = new Client({});
+
+// Helper function to download Google Place photo and upload to Firebase
+async function downloadAndStoreGooglePlacePhoto(photoUrl, placeId, photoIndex) {
+  try {
+    // Download the image from Google
+    const response = await axios.get(photoUrl, {
+      responseType: 'arraybuffer'
+    });
+    
+    // Convert to buffer
+    const buffer = Buffer.from(response.data, 'binary');
+    
+    // Generate a unique filename
+    const fileName = `place-photos/${placeId}/google-photo-${photoIndex}-${Date.now()}.jpg`;
+    
+    // Upload to Firebase Storage
+    const bucket = storage.bucket();
+    const file = bucket.file(fileName);
+    
+    await new Promise((resolve, reject) => {
+      const stream = file.createWriteStream({
+        metadata: {
+          contentType: 'image/jpeg'
+        }
+      });
+      
+      stream.on('error', reject);
+      stream.on('finish', async () => {
+        // Make the file public
+        await file.makePublic();
+        resolve();
+      });
+      
+      stream.end(buffer);
+    });
+    
+    // Return the public URL
+    return `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+  } catch (error) {
+    console.error('Error downloading/storing Google Place photo:', error);
+    // Return the original URL as fallback
+    return photoUrl;
+  }
+}
 
 // @desc    Get all places for current user
 // @route   GET /api/places
@@ -114,14 +159,6 @@ exports.createPlace = async (req, res, next) => {
         if (placeDetails.user_ratings_total) req.body.userRatingsTotal = placeDetails.user_ratings_total;
         if (placeDetails.price_level !== undefined) req.body.priceLevel = placeDetails.price_level;
         
-        // Process Google Places photos
-        if (placeDetails.photos && placeDetails.photos.length > 0) {
-          req.body.photos = placeDetails.photos.slice(0, 5).map(photo => {
-            return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${photo.photo_reference}&key=${googleMapsApiKey}`;
-          });
-          console.log('Generated photo URLs:', req.body.photos);
-        }
-        
         // Add opening hours
         if (placeDetails.opening_hours && placeDetails.opening_hours.periods) {
           req.body.openingHours = placeDetails.opening_hours.periods.map(period => ({
@@ -142,13 +179,25 @@ exports.createPlace = async (req, res, next) => {
           }));
         }
         
-        // Process Google Places photos and convert to URLs
+        // Process Google Places photos - download and store in Firebase
         if (placeDetails.photos && placeDetails.photos.length > 0) {
-          // Generate photo URLs from photo references (max 5 photos)
-          req.body.photos = placeDetails.photos.slice(0, 5).map(photo => {
+          console.log('Processing Google Places photos...');
+          
+          // Generate Google photo URLs
+          const googlePhotoUrls = placeDetails.photos.slice(0, 5).map(photo => {
             return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${photo.photo_reference}&key=${googleMapsApiKey}`;
           });
-          console.log('Generated photo URLs from Google Places:', req.body.photos);
+          
+          // Download and store each photo in Firebase
+          const firebasePhotoUrls = await Promise.all(
+            googlePhotoUrls.map(async (url, index) => {
+              const firebaseUrl = await downloadAndStoreGooglePlacePhoto(url, req.body.googlePlaceId || Date.now().toString(), index);
+              return firebaseUrl;
+            })
+          );
+          
+          req.body.photos = firebasePhotoUrls;
+          console.log('Stored photos in Firebase:', req.body.photos);
         }
         
         // Determine category based on types

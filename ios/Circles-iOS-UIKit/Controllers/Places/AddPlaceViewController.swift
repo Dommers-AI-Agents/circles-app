@@ -3,6 +3,7 @@ import GoogleMaps
 import GooglePlaces
 import CoreLocation
 import MapKit
+import PhotosUI
 
 protocol PlaceSearchDelegate: AnyObject {
     func didSelectPlace(name: String, address: String, coordinate: CLLocationCoordinate2D, phone: String?, website: String?, category: String?, description: String?)
@@ -273,6 +274,61 @@ class AddPlaceViewController: UIViewController {
         return segmentedControl
     }()
     
+    // Photo selection elements
+    private let photoLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Photo"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
+        label.textColor = .darkGray
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let photoImageView: UIImageView = {
+        let imageView = UIImageView()
+        imageView.contentMode = .scaleAspectFill
+        imageView.clipsToBounds = true
+        imageView.backgroundColor = UIColor.systemGray6
+        imageView.layer.cornerRadius = 8
+        imageView.layer.borderWidth = 1
+        imageView.layer.borderColor = UIColor.systemBlue.withAlphaComponent(0.3).cgColor
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.isHidden = true
+        return imageView
+    }()
+    
+    private let addPhotoButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Add Photo", for: .normal)
+        button.setImage(UIImage(systemName: "camera.fill"), for: .normal)
+        button.tintColor = .systemBlue
+        button.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.1)
+        button.layer.cornerRadius = 8
+        button.layer.borderWidth = 1
+        button.layer.borderColor = UIColor.systemBlue.withAlphaComponent(0.3).cgColor
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        button.contentEdgeInsets = UIEdgeInsets(top: 12, left: 16, bottom: 12, right: 16)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let removePhotoButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
+        button.tintColor = .systemRed
+        button.backgroundColor = .white
+        button.layer.cornerRadius = 15
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOpacity = 0.2
+        button.layer.shadowOffset = CGSize(width: 0, height: 2)
+        button.layer.shadowRadius = 4
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isHidden = true
+        return button
+    }()
+    
+    private var selectedImage: UIImage?
+    
     private let addPlaceButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle("Add Place", for: .normal)
@@ -359,6 +415,10 @@ class AddPlaceViewController: UIViewController {
         // Add form fields
         formContainer.addSubview(nameLabel)
         formContainer.addSubview(nameTextField)
+        formContainer.addSubview(photoLabel)
+        formContainer.addSubview(photoImageView)
+        formContainer.addSubview(addPhotoButton)
+        formContainer.addSubview(removePhotoButton)
         formContainer.addSubview(categoryLabel)
         formContainer.addSubview(categorySegmentedControl)
         formContainer.addSubview(descriptionLabel)
@@ -443,7 +503,26 @@ class AddPlaceViewController: UIViewController {
             nameTextField.trailingAnchor.constraint(equalTo: formContainer.trailingAnchor, constant: -Constants.Spacing.large),
             nameTextField.heightAnchor.constraint(equalToConstant: 44),
             
-            categoryLabel.topAnchor.constraint(equalTo: nameTextField.bottomAnchor, constant: Constants.Spacing.medium),
+            // Photo UI (moved after name field)
+            photoLabel.topAnchor.constraint(equalTo: nameTextField.bottomAnchor, constant: Constants.Spacing.medium),
+            photoLabel.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
+            
+            addPhotoButton.topAnchor.constraint(equalTo: photoLabel.bottomAnchor, constant: Constants.Spacing.small),
+            addPhotoButton.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
+            addPhotoButton.trailingAnchor.constraint(equalTo: formContainer.trailingAnchor, constant: -Constants.Spacing.large),
+            addPhotoButton.heightAnchor.constraint(equalToConstant: 100),
+            
+            photoImageView.topAnchor.constraint(equalTo: photoLabel.bottomAnchor, constant: Constants.Spacing.small),
+            photoImageView.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
+            photoImageView.trailingAnchor.constraint(equalTo: formContainer.trailingAnchor, constant: -Constants.Spacing.large),
+            photoImageView.heightAnchor.constraint(equalToConstant: 200),
+            
+            removePhotoButton.topAnchor.constraint(equalTo: photoImageView.topAnchor, constant: 8),
+            removePhotoButton.trailingAnchor.constraint(equalTo: photoImageView.trailingAnchor, constant: -8),
+            removePhotoButton.widthAnchor.constraint(equalToConstant: 30),
+            removePhotoButton.heightAnchor.constraint(equalToConstant: 30),
+            
+            categoryLabel.topAnchor.constraint(equalTo: addPhotoButton.bottomAnchor, constant: Constants.Spacing.medium),
             categoryLabel.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
             
             categorySegmentedControl.topAnchor.constraint(equalTo: categoryLabel.bottomAnchor, constant: Constants.Spacing.small),
@@ -472,6 +551,7 @@ class AddPlaceViewController: UIViewController {
             privacySegmentedControl.topAnchor.constraint(equalTo: privacyLabel.bottomAnchor, constant: Constants.Spacing.small),
             privacySegmentedControl.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
             privacySegmentedControl.trailingAnchor.constraint(equalTo: formContainer.trailingAnchor, constant: -Constants.Spacing.large),
+            
             privacySegmentedControl.bottomAnchor.constraint(equalTo: formContainer.bottomAnchor),
             
             // Add place button
@@ -567,6 +647,8 @@ class AddPlaceViewController: UIViewController {
     private func setupActions() {
         addPlaceButton.addTarget(self, action: #selector(addPlaceButtonTapped), for: .touchUpInside)
         manualEntryButton.addTarget(self, action: #selector(manualEntryButtonTapped), for: .touchUpInside)
+        addPhotoButton.addTarget(self, action: #selector(addPhotoButtonTapped), for: .touchUpInside)
+        removePhotoButton.addTarget(self, action: #selector(removePhotoButtonTapped), for: .touchUpInside)
     }
     
     
@@ -632,6 +714,29 @@ class AddPlaceViewController: UIViewController {
         nameTextField.becomeFirstResponder()
     }
     
+    @objc private func addPhotoButtonTapped() {
+        var config = PHPickerConfiguration()
+        config.selectionLimit = 1
+        config.filter = .images
+        
+        let picker = PHPickerViewController(configuration: config)
+        picker.delegate = self
+        present(picker, animated: true)
+    }
+    
+    @objc private func removePhotoButtonTapped() {
+        selectedImage = nil
+        photoImageView.image = nil
+        photoImageView.isHidden = true
+        removePhotoButton.isHidden = true
+        addPhotoButton.isHidden = false
+        
+        // Update constraint for form container bottom
+        NSLayoutConstraint.activate([
+            addPhotoButton.bottomAnchor.constraint(equalTo: formContainer.bottomAnchor)
+        ])
+    }
+    
     @objc private func categoryButtonTapped(_ sender: UIButton) {
         guard let buttonTitle = sender.title(for: .normal) else { return }
         
@@ -668,6 +773,15 @@ class AddPlaceViewController: UIViewController {
         let loadingAlert = UIAlertController(title: "Creating Place", message: "Please wait...", preferredStyle: .alert)
         present(loadingAlert, animated: true)
         
+        // Prepare photo data if available
+        var photoData: [Data]? = nil
+        if let image = selectedImage {
+            if let imageData = image.jpegData(compressionQuality: 0.8) {
+                photoData = [imageData]
+                print("📸 Prepared photo for upload, size: \(imageData.count / 1024)KB")
+            }
+        }
+        
         PlaceService.shared.createPlace(
             name: name,
             description: description.isEmpty ? nil : description,
@@ -678,16 +792,18 @@ class AddPlaceViewController: UIViewController {
             website: nil,
             phone: nil,
             tags: nil,
-            photos: nil
+            photos: photoData
         ) { [weak self] result in
             DispatchQueue.main.async {
                 loadingAlert.dismiss(animated: true) {
                     switch result {
-                    case .success(_):
+                    case .success(let place):
+                        print("✅ Place created successfully with photos: \(place.photos ?? [])")
                         self?.presentAlert(title: "Success", message: "Place added successfully") { _ in
                             self?.navigationController?.popViewController(animated: true)
                         }
                     case .failure(let error):
+                        print("❌ Failed to create place: \(error)")
                         self?.presentAlert(title: "Error", message: error.localizedDescription)
                     }
                 }
@@ -713,21 +829,10 @@ class AddPlaceViewController: UIViewController {
         // Hide search results
         searchResultsTableView.isHidden = true
         searchBar.resignFirstResponder()
+        searchBar.text = result.attributedPrimaryText.string
         
-        // Show confirmation popup like when clicking a marker
-        let alert = UIAlertController(
-            title: "Add Place",
-            message: "Do you want to add \"\(result.attributedPrimaryText.string)\" to this circle?",
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "Add Place", style: .default) { [weak self] _ in
-            self?.addGooglePlace(placeId: result.placeID, markerTitle: result.attributedPrimaryText.string)
-        })
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        
-        present(alert, animated: true)
+        // Load and fill the form with place details
+        loadAndFillFormWithGooglePlace(placeId: result.placeID, markerTitle: result.attributedPrimaryText.string)
     }
     
     private func fillFormWithMapItem(_ mapItem: MKMapItem) {
@@ -845,6 +950,53 @@ class AddPlaceViewController: UIViewController {
         // Convert GMSPlace to GooglePlaceDetails
         let placeDetails = GooglePlaceDetails(from: place)
         fillFormWithGooglePlace(placeDetails)
+        
+        // Update map to show the selected place
+        updateMapForLocation(place.coordinate)
+        
+        // Calculate and show distance from current location
+        if let userLocation = locationManager.location {
+            let placeLocation = CLLocation(latitude: place.coordinate.latitude, longitude: place.coordinate.longitude)
+            let distance = userLocation.distance(from: placeLocation)
+            
+            // Convert to miles or kilometers based on locale
+            let formatter = MeasurementFormatter()
+            formatter.numberFormatter.maximumFractionDigits = 1
+            let measurement = Measurement(value: distance, unit: UnitLength.meters)
+            let distanceString = formatter.string(from: measurement)
+            
+            // Update the address text to include distance
+            if let currentAddress = addressTextView.text, !currentAddress.isEmpty {
+                addressTextView.text = "\(currentAddress)\n📍 \(distanceString) from current location"
+            }
+        }
+    }
+    
+    private func loadAndFillFormWithGooglePlace(placeId: String, markerTitle: String) {
+        // Show loading indicator
+        let loadingAlert = UIAlertController(title: "Loading Place Details", message: "Please wait...", preferredStyle: .alert)
+        present(loadingAlert, animated: true)
+        
+        // Fetch full place details
+        placesClient.fetchPlace(
+            fromPlaceID: placeId,
+            placeFields: [.name, .formattedAddress, .coordinate, .types, .phoneNumber, .website, .rating, .userRatingsTotal, .priceLevel, .photos, .openingHours, .businessStatus],
+            sessionToken: nil
+        ) { [weak self] (place, error) in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    if let place = place {
+                        // Fill the form with place details
+                        self.fillFormWithGMSPlace(place)
+                    } else {
+                        print("Failed to fetch place details: \(error?.localizedDescription ?? "unknown error")")
+                        self.presentAlert(title: "Error", message: "Failed to load place details")
+                    }
+                }
+            }
+        }
     }
     
     private func updateMapForLocation(_ coordinate: CLLocationCoordinate2D) {
@@ -957,6 +1109,26 @@ class AddPlaceViewController: UIViewController {
             
             // Update map
             self.updateMapForLocation(self.selectedLocation!)
+            
+            // Load Google Place photo if available
+            if !placeDetails.photos.isEmpty {
+                print("📸 Loading photo from Google Places for form display...")
+                GooglePlacesService.shared.loadPhoto(from: placeDetails.photos[0], maxSize: CGSize(width: 800, height: 800)) { [weak self] result in
+                    switch result {
+                    case .success(let image):
+                        print("📸 Successfully loaded Google photo for form")
+                        DispatchQueue.main.async {
+                            self?.selectedImage = image
+                            self?.photoImageView.image = image
+                            self?.photoImageView.isHidden = false
+                            self?.removePhotoButton.isHidden = false
+                            self?.addPhotoButton.isHidden = true
+                        }
+                    case .failure(let error):
+                        print("📸 Failed to load Google photo for form: \(error)")
+                    }
+                }
+            }
             
             // Scroll to form
             let formRect = self.formContainer.convert(self.formContainer.bounds, to: self.scrollView)
@@ -1136,13 +1308,10 @@ class AddPlaceViewController: UIViewController {
             // Format opening hours if available
             var openingHoursArray: [[String: Any]] = []
             if let openingHours = place.openingHours {
-                if let weekdayText = openingHours.weekdayText {
-                    for (index, dayHours) in weekdayText.enumerated() {
-                        openingHoursArray.append([
-                            "day": index,
-                            "hours": dayHours
-                        ])
-                    }
+                // Use the GooglePlaceDetails method to properly format opening hours
+                let placeDetails = GooglePlaceDetails(from: place)
+                if let formattedHours = placeDetails.toPlaceData(circleId: self.circleId)["openingHours"] as? [[String: Any]] {
+                    openingHoursArray = formattedHours
                 }
             }
             
@@ -1439,7 +1608,7 @@ extension AddPlaceViewController: GMSMapViewDelegate {
             )
             
             alert.addAction(UIAlertAction(title: "Add Place", style: .default) { [weak self] _ in
-                self?.addGooglePlace(placeId: placeId, markerTitle: name)
+                self?.loadAndFillFormWithGooglePlace(placeId: placeId, markerTitle: name)
             })
             
             alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
@@ -1457,7 +1626,7 @@ extension AddPlaceViewController: GMSMapViewDelegate {
             )
             
             alert.addAction(UIAlertAction(title: "Add Place", style: .default) { [weak self] _ in
-                self?.addGooglePlace(placeId: placeId, markerTitle: name)
+                self?.loadAndFillFormWithGooglePlace(placeId: placeId, markerTitle: name)
             })
             
             alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
@@ -1499,7 +1668,7 @@ extension AddPlaceViewController: GMSMapViewDelegate {
                         )
                         
                         alert.addAction(UIAlertAction(title: "Add Place", style: .default) { [weak self] _ in
-                            self?.addGooglePlace(placeId: storedPlaceId, markerTitle: name)
+                            self?.loadAndFillFormWithGooglePlace(placeId: storedPlaceId, markerTitle: name)
                         })
                         
                         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
@@ -1667,5 +1836,31 @@ extension AddPlaceViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         selectSearchResult(searchResults[indexPath.row])
+    }
+}
+
+// MARK: - PHPickerViewControllerDelegate
+
+extension AddPlaceViewController: PHPickerViewControllerDelegate {
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        dismiss(animated: true)
+        
+        guard let result = results.first else { return }
+        
+        if result.itemProvider.canLoadObject(ofClass: UIImage.self) {
+            result.itemProvider.loadObject(ofClass: UIImage.self) { [weak self] object, error in
+                if let image = object as? UIImage {
+                    DispatchQueue.main.async {
+                        self?.selectedImage = image
+                        self?.photoImageView.image = image
+                        self?.photoImageView.isHidden = false
+                        self?.removePhotoButton.isHidden = false
+                        self?.addPhotoButton.isHidden = true
+                        
+                        // No need to update constraints as they're already set up
+                    }
+                }
+            }
+        }
     }
 }

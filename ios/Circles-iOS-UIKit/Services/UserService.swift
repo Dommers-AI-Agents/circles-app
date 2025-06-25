@@ -296,6 +296,44 @@ class UserService {
             return .unknown
         }
     }
+    
+    func deleteAccount(completion: @escaping (Result<Void, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "users/me",
+            method: .delete,
+            requiresAuth: true
+        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
+            switch result {
+            case .success:
+                completion(.success(()))
+            case .failure(let error):
+                let userError = self?.mapAPIErrorToUserError(error)
+                completion(.failure(userError ?? error))
+            }
+        }
+    }
+    
+    func changePassword(currentPassword: String, newPassword: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        let body: [String: Any] = [
+            "currentPassword": currentPassword,
+            "newPassword": newPassword
+        ]
+        
+        APIService.shared.request(
+            endpoint: "users/change-password",
+            method: .post,
+            body: body,
+            requiresAuth: true
+        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
+            switch result {
+            case .success:
+                completion(.success(()))
+            case .failure(let error):
+                let userError = self?.mapAPIErrorToUserError(error)
+                completion(.failure(userError ?? error))
+            }
+        }
+    }
 }
 
 // MARK: - Response Types

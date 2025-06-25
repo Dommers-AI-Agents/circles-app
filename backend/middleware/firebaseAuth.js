@@ -27,10 +27,54 @@ exports.protect = async (req, res, next) => {
       // Verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-      // Get user from Firestore
-      const userDoc = await db.collection(COLLECTIONS.USERS).doc(decoded.uid).get();
+      // Parse the actual Firebase UID from complex format if needed
+      let firebaseUid = decoded.uid;
+      let parsedUid = null;
+      if (decoded.uid && decoded.uid.includes('.')) {
+        // Handle format like "000454.9b5eeac93282416c9bc6dcecbc49b40f.2127"
+        const parts = decoded.uid.split('.');
+        if (parts.length >= 2) {
+          parsedUid = parts[1]; // Use the middle part as potential Firebase UID
+          console.log(`🔐 Auth middleware: Complex ID detected: ${decoded.uid}, parsed UID: ${parsedUid}`);
+        }
+      }
 
-      if (!userDoc.exists) {
+      // Get user from Firestore - try multiple ID formats
+      let userDoc = null;
+      let actualUserId = null;
+      
+      // First try the original UID as-is
+      userDoc = await db.collection(COLLECTIONS.USERS).doc(firebaseUid).get();
+      
+      if (userDoc.exists) {
+        actualUserId = firebaseUid;
+      } else if (parsedUid) {
+        // If not found and we have a parsed UID, try that
+        const parsedUserDoc = await db.collection(COLLECTIONS.USERS).doc(parsedUid).get();
+        
+        if (parsedUserDoc.exists) {
+          userDoc = parsedUserDoc;
+          actualUserId = parsedUid;
+        }
+      }
+      
+      // If still not found, try to find by email if available
+      if (!userDoc || !userDoc.exists) {
+        if (decoded.email) {
+          const usersWithEmail = await db.collection(COLLECTIONS.USERS)
+            .where('email', '==', decoded.email)
+            .limit(1)
+            .get();
+          
+          if (!usersWithEmail.empty) {
+            userDoc = usersWithEmail.docs[0];
+            actualUserId = userDoc.id;
+          }
+        }
+      }
+
+      if (!userDoc || !userDoc.exists) {
+        console.error(`❌ User not found in auth middleware. Tried UIDs: ${firebaseUid}, ${parsedUid}, email: ${decoded.email}`);
         return res.status(401).json({
           success: false,
           message: 'User no longer exists'
@@ -40,7 +84,8 @@ exports.protect = async (req, res, next) => {
       // Add user to request object
       const userData = serializeDoc(userDoc);
       req.user = {
-        uid: decoded.uid, // Keep the original uid from JWT
+        uid: decoded.uid, // Always use the original complex ID from the token
+        firebaseDocId: actualUserId, // Keep the actual Firestore document ID
         email: decoded.email,
         ...userData
       };

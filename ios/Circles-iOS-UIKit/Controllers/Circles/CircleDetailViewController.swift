@@ -30,7 +30,7 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
     
     private let headerView: UIView = {
         let view = UIView()
-        view.backgroundColor = Constants.Colors.white
+        view.backgroundColor = Constants.Colors.background
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -39,14 +39,14 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
         let imageView = UIImageView()
         imageView.contentMode = .scaleAspectFill
         imageView.clipsToBounds = true
-        imageView.backgroundColor = Constants.Colors.lightGray
+        imageView.backgroundColor = Constants.Colors.tertiaryBackground
         imageView.translatesAutoresizingMaskIntoConstraints = false
         return imageView
     }()
     
     private let circleInfoView: UIView = {
         let view = UIView()
-        view.backgroundColor = Constants.Colors.white
+        view.backgroundColor = Constants.Colors.secondaryBackground
         view.layer.cornerRadius = 16
         view.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -56,7 +56,7 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
     private let nameLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.xxlarge, weight: .bold)
-        label.textColor = Constants.Colors.darkGray
+        label.textColor = Constants.Colors.label
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -65,7 +65,7 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
     private let descriptionLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
-        label.textColor = Constants.Colors.gray
+        label.textColor = Constants.Colors.secondaryLabel
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -73,7 +73,7 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
     
     private let privacyView: UIView = {
         let view = UIView()
-        view.backgroundColor = Constants.Colors.lightGray.withAlphaComponent(0.3)
+        view.backgroundColor = Constants.Colors.tertiaryBackground
         view.layer.cornerRadius = 8
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
@@ -82,7 +82,7 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
     private let privacyImageView: UIImageView = {
         let imageView = UIImageView()
         imageView.contentMode = .scaleAspectFit
-        imageView.tintColor = Constants.Colors.gray
+        imageView.tintColor = Constants.Colors.secondaryLabel
         imageView.translatesAutoresizingMaskIntoConstraints = false
         return imageView
     }()
@@ -90,7 +90,7 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
     private let privacyLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        label.textColor = Constants.Colors.darkGray
+        label.textColor = Constants.Colors.label
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -110,7 +110,7 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
         let label = UILabel()
         label.text = "Places"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.xlarge, weight: .bold)
-        label.textColor = Constants.Colors.darkGray
+        label.textColor = Constants.Colors.label
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -450,6 +450,9 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
         }
     }
     
+    // COMMENTED OUT: This method was creating test data but the Place struct no longer has a direct initializer
+    // If sample data is needed in the future, it should be created using proper JSON decoding
+    /*
     private func createSamplePlaces() -> [Place] {
         // Create sample places based on the circle's category
         
@@ -759,6 +762,7 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
         // Sort sample places by createdAt date, most recent first
         return samplePlaces.sorted { $0.createdAt > $1.createdAt }
     }
+    */
     
     private func updateTableViewHeight() {
         // Force layout to calculate proper content size
@@ -1213,10 +1217,10 @@ class PlaceTableViewCell: UITableViewCell {
     // MARK: - UI Elements
     private let containerView: UIView = {
         let view = UIView()
-        view.backgroundColor = .white
+        view.backgroundColor = Constants.Colors.secondaryBackground
         view.layer.cornerRadius = 8
         view.layer.borderWidth = 1
-        view.layer.borderColor = UIColor.systemGray4.cgColor
+        view.layer.borderColor = Constants.Colors.separator.cgColor
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -1225,7 +1229,7 @@ class PlaceTableViewCell: UITableViewCell {
         let imageView = UIImageView()
         imageView.contentMode = .scaleAspectFill
         imageView.clipsToBounds = true
-        imageView.backgroundColor = Constants.Colors.lightGray
+        imageView.backgroundColor = Constants.Colors.tertiaryBackground
         imageView.layer.cornerRadius = 8
         imageView.translatesAutoresizingMaskIntoConstraints = false
         return imageView
@@ -1258,7 +1262,7 @@ class PlaceTableViewCell: UITableViewCell {
     private let nameLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-        label.textColor = .black
+        label.textColor = Constants.Colors.label
         label.numberOfLines = 2
         label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -1285,7 +1289,7 @@ class PlaceTableViewCell: UITableViewCell {
     private let addressLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: 13)
-        label.textColor = .darkGray
+        label.textColor = Constants.Colors.secondaryLabel
         label.numberOfLines = 1
         label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -1295,7 +1299,7 @@ class PlaceTableViewCell: UITableViewCell {
     
     private let ratingView: UIView = {
         let view = UIView()
-        view.backgroundColor = Constants.Colors.lightGray.withAlphaComponent(0.3)
+        view.backgroundColor = Constants.Colors.tertiaryBackground
         view.layer.cornerRadius = 4
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
@@ -1313,7 +1317,7 @@ class PlaceTableViewCell: UITableViewCell {
     private let ratingLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small, weight: .semibold)
-        label.textColor = .black
+        label.textColor = Constants.Colors.label
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -1357,7 +1361,7 @@ class PlaceTableViewCell: UITableViewCell {
     
     // MARK: - Setup
     private func setupCell() {
-        backgroundColor = .clear
+        backgroundColor = Constants.Colors.background
         selectionStyle = .none
         
         contentView.addSubview(containerView)
@@ -1511,70 +1515,15 @@ class PlaceTableViewCell: UITableViewCell {
         if let photos = place.photos, !photos.isEmpty, let firstPhotoUrl = photos.first {
             // Load from URL if available
             loadPhotoFromURL(firstPhotoUrl)
-        } else if let googlePlaceId = place.googlePlaceId {
-            // Fall back to fetching from Google Places API
-            loadGooglePlacePhoto(googlePlaceId: googlePlaceId)
         } else {
             // No photo available, use category icon
+            // Don't call Google Places API to save costs
             showCategoryIcon()
         }
     }
     
-    private func loadGooglePlacePhoto(googlePlaceId: String) {
-        // Show loading indicator
-        imageLoadingIndicator.startAnimating()
-        
-        // Check cache first
-        let cacheKey = NSString(string: googlePlaceId)
-        if let cachedImage = PlaceTableViewCell.googlePhotosCache.object(forKey: cacheKey) {
-            self.placeImageView.image = cachedImage
-            self.categoryIconView.isHidden = true
-            self.imageGradientView.isHidden = false
-            self.imageLoadingIndicator.stopAnimating()
-            return
-        }
-        
-        // Fetch place details to get photo metadata
-        GooglePlacesService.shared.fetchPlaceDetails(placeID: googlePlaceId) { [weak self] result in
-            guard let self = self else { return }
-            
-            switch result {
-            case .success(let gmsPlace):
-                if let photoMetadata = gmsPlace.photos?.first {
-                    // Load the first photo
-                    GooglePlacesService.shared.loadPhoto(from: photoMetadata, maxSize: CGSize(width: 160, height: 160)) { photoResult in
-                        DispatchQueue.main.async {
-                            switch photoResult {
-                            case .success(let image):
-                                // Cache the image
-                                PlaceTableViewCell.googlePhotosCache.setObject(image, forKey: cacheKey)
-                                
-                                // Set the image
-                                self.placeImageView.image = image
-                                self.categoryIconView.isHidden = true
-                                self.imageGradientView.isHidden = false
-                                self.imageLoadingIndicator.stopAnimating()
-                            case .failure:
-                                self.showCategoryIcon()
-                                self.imageLoadingIndicator.stopAnimating()
-                            }
-                        }
-                    }
-                } else {
-                    // No photos available
-                    DispatchQueue.main.async {
-                        self.showCategoryIcon()
-                        self.imageLoadingIndicator.stopAnimating()
-                    }
-                }
-            case .failure:
-                DispatchQueue.main.async {
-                    self.showCategoryIcon()
-                    self.imageLoadingIndicator.stopAnimating()
-                }
-            }
-        }
-    }
+    // Removed loadGooglePlacePhoto to avoid unnecessary API calls
+    // All photos should be stored when the place is created
     
     private func loadPhotoFromURL(_ urlString: String) {
         imageLoadingIndicator.startAnimating()
@@ -1833,14 +1782,10 @@ extension CircleDetailViewController {
         // Format opening hours if available
         var openingHoursArray: [[String: Any]] = []
         if let openingHours = gmsPlace.openingHours {
-            // Convert GMSOpeningHours to our format
-            if let weekdayText = openingHours.weekdayText {
-                for (index, dayHours) in weekdayText.enumerated() {
-                    openingHoursArray.append([
-                        "day": index,
-                        "hours": dayHours
-                    ])
-                }
+            // Use the GooglePlaceDetails method to properly format opening hours
+            let placeDetails = GooglePlaceDetails(from: gmsPlace)
+            if let formattedHours = placeDetails.toPlaceData(circleId: self.circle.id)["openingHours"] as? [[String: Any]] {
+                openingHoursArray = formattedHours
             }
         }
         
@@ -2221,13 +2166,78 @@ extension CircleDetailViewController {
     func mapView(_ mapView: GMSMapView, didTapMyLocationButtonFor location: GMSMapView) -> Bool {
         // Check if we have user location
         if let userLocation = userLocation {
-            // Animate to user location with appropriate zoom
-            let camera = GMSCameraPosition.camera(withTarget: userLocation.coordinate, zoom: 15.0)
+            // Animate to user location with closer zoom to see nearby places
+            let camera = GMSCameraPosition.camera(withTarget: userLocation.coordinate, zoom: 16.0)
             mapView.animate(to: camera)
+            
+            // Calculate nearby places (within ~1km radius)
+            let nearbyPlaces = places.filter { place in
+                guard let placeLocation = place.location?.clLocation else { return false }
+                let distance = userLocation.distance(from: placeLocation)
+                return distance <= 1000 // 1km radius
+            }
+            
+            // If there are nearby places, adjust zoom to show them
+            if !nearbyPlaces.isEmpty {
+                var bounds = GMSCoordinateBounds(coordinate: userLocation.coordinate, coordinate: userLocation.coordinate)
+                
+                // Include all nearby places in bounds
+                for place in nearbyPlaces {
+                    if let coordinate = place.location?.clLocation?.coordinate {
+                        bounds = bounds.includingCoordinate(coordinate)
+                    }
+                }
+                
+                // Add some padding and animate to show all nearby places
+                let update = GMSCameraUpdate.fit(bounds, withPadding: 100.0)
+                mapView.animate(with: update)
+                
+                // Optionally show a toast or label indicating number of nearby places
+                showNearbyPlacesIndicator(count: nearbyPlaces.count)
+            }
         }
         
-        // Return false to allow default behavior
-        return false
+        // Return true to indicate we handled the tap
+        return true
+    }
+    
+    private func showNearbyPlacesIndicator(count: Int) {
+        let label = UILabel()
+        label.text = count > 0 ? "📍 \(count) place\(count == 1 ? "" : "s") nearby" : "No places nearby"
+        label.backgroundColor = UIColor.black.withAlphaComponent(0.8)
+        label.textColor = .white
+        label.font = .systemFont(ofSize: 14, weight: .medium)
+        label.textAlignment = .center
+        label.layer.cornerRadius = 8
+        label.clipsToBounds = true
+        label.translatesAutoresizingMaskIntoConstraints = false
+        
+        view.addSubview(label)
+        
+        NSLayoutConstraint.activate([
+            label.bottomAnchor.constraint(equalTo: mapView.topAnchor, constant: -8),
+            label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            label.heightAnchor.constraint(equalToConstant: 32),
+            label.widthAnchor.constraint(greaterThanOrEqualToConstant: 120)
+        ])
+        
+        // Add padding
+        label.layoutMargins = UIEdgeInsets(top: 0, left: 16, bottom: 0, right: 16)
+        
+        // Animate in
+        label.alpha = 0
+        UIView.animate(withDuration: 0.3) {
+            label.alpha = 1
+        }
+        
+        // Remove after 3 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            UIView.animate(withDuration: 0.3, animations: {
+                label.alpha = 0
+            }) { _ in
+                label.removeFromSuperview()
+            }
+        }
     }
     
     // Show action sheet with place options

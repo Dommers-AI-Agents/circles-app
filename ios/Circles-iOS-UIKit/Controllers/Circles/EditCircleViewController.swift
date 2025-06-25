@@ -411,19 +411,19 @@ class EditCircleViewController: UIViewController {
     private func setDefaultCategoryImage() {
         switch circle.category {
         case .travel:
-            coverImageView.image = UIImage(systemName: "airplane")
+            coverImageView.image = UIImage(systemName: "airplane.departure")
         case .food:
-            coverImageView.image = UIImage(systemName: "fork.knife")
+            coverImageView.image = UIImage(systemName: "fork.knife.circle.fill")
         case .services:
-            coverImageView.image = UIImage(systemName: "wrench.and.screwdriver")
+            coverImageView.image = UIImage(systemName: "wrench.and.screwdriver.fill")
         case .shopping:
-            coverImageView.image = UIImage(systemName: "bag")
+            coverImageView.image = UIImage(systemName: "bag.fill")
         case .healthcare:
-            coverImageView.image = UIImage(systemName: "heart.text.square")
+            coverImageView.image = UIImage(systemName: "heart.text.square.fill")
         case .entertainment:
-            coverImageView.image = UIImage(systemName: "ticket")
+            coverImageView.image = UIImage(systemName: "music.note.tv.fill")
         case .other:
-            coverImageView.image = UIImage(systemName: "square.grid.2x2")
+            coverImageView.image = UIImage(systemName: "square.stack.3d.up.fill")
         }
         coverImageView.tintColor = Constants.Colors.primary
         coverImageView.contentMode = .scaleAspectFit
@@ -517,7 +517,7 @@ class EditCircleViewController: UIViewController {
                 switch result {
                 case .success(let updatedCircle):
                     self?.delegate?.didUpdateCircle(updatedCircle)
-                    self?.navigationController?.popViewController(animated: true)
+                    self?.dismiss(animated: true, completion: nil)
                     
                 case .failure(let error):
                     self?.presentAlert(
@@ -592,7 +592,7 @@ class EditCircleViewController: UIViewController {
                 switch result {
                 case .success(_):
                     self?.delegate?.didDeleteCircle(self?.circle.id ?? "")
-                    self?.navigationController?.popViewController(animated: true)
+                    self?.dismiss(animated: true, completion: nil)
                     
                 case .failure(let error):
                     self?.deleteButton.isEnabled = true

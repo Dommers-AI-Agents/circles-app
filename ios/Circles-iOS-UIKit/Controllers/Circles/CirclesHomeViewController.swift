@@ -1,4 +1,6 @@
 import UIKit
+import SwiftUI
+import CoreLocation
 
 class CirclesHomeViewController: UIViewController {
     
@@ -7,6 +9,69 @@ class CirclesHomeViewController: UIViewController {
     private let refreshControl = UIRefreshControl()
     
     // MARK: - UI Elements
+    private let quickAccessContainer: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.white
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let homeCard: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.lightGray.withAlphaComponent(0.1)
+        view.layer.cornerRadius = 12
+        view.layer.borderWidth = 1
+        view.layer.borderColor = Constants.Colors.lightGray.cgColor
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let workCard: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.lightGray.withAlphaComponent(0.1)
+        view.layer.cornerRadius = 12
+        view.layer.borderWidth = 1
+        view.layer.borderColor = Constants.Colors.lightGray.cgColor
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let homeButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let workButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let homeNavigateButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "location.fill"), for: .normal)
+        button.tintColor = Constants.Colors.primary
+        button.backgroundColor = .white
+        button.layer.cornerRadius = 15
+        button.layer.borderWidth = 1
+        button.layer.borderColor = Constants.Colors.primary.cgColor
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let workNavigateButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "location.fill"), for: .normal)
+        button.tintColor = Constants.Colors.primary
+        button.backgroundColor = .white
+        button.layer.cornerRadius = 15
+        button.layer.borderWidth = 1
+        button.layer.borderColor = Constants.Colors.primary.cgColor
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
     private let tableView: UITableView = {
         let tableView = UITableView()
         tableView.backgroundColor = Constants.Colors.background
@@ -26,7 +91,7 @@ class CirclesHomeViewController: UIViewController {
     private let emptyStateImageView: UIImageView = {
         let imageView = UIImageView()
         imageView.image = UIImage(systemName: "circle.dashed")
-        imageView.tintColor = Constants.Colors.gray
+        imageView.tintColor = Constants.Colors.secondaryLabel
         imageView.contentMode = .scaleAspectFit
         imageView.translatesAutoresizingMaskIntoConstraints = false
         return imageView
@@ -36,7 +101,7 @@ class CirclesHomeViewController: UIViewController {
         let label = UILabel()
         label.text = "You don't have any circles yet"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.large)
-        label.textColor = Constants.Colors.gray
+        label.textColor = Constants.Colors.secondaryLabel
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -65,6 +130,22 @@ class CirclesHomeViewController: UIViewController {
         fetchCircles()
     }
     
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        
+        // Update colors when dark mode changes
+        if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
+            updateAppearance()
+        }
+    }
+    
+    private func updateAppearance() {
+        // Update border colors that don't automatically adapt
+        homeCard.layer.borderColor = Constants.Colors.separator.cgColor
+        workCard.layer.borderColor = Constants.Colors.separator.cgColor
+        quickAccessContainer.layer.shadowColor = Constants.Colors.label.cgColor
+    }
+    
     // MARK: - UI Setup
     private func setupUI() {
         view.backgroundColor = Constants.Colors.background
@@ -80,11 +161,64 @@ class CirclesHomeViewController: UIViewController {
         emptyStateView.addSubview(emptyStateLabel)
         emptyStateView.addSubview(createCircleButton)
         
+        // Setup quick access buttons
+        setupQuickAccessButtons()
+        
+        view.addSubview(quickAccessContainer)
+        quickAccessContainer.addSubview(homeCard)
+        quickAccessContainer.addSubview(workCard)
+        homeCard.addSubview(homeButton)
+        homeCard.addSubview(homeNavigateButton)
+        workCard.addSubview(workButton)
+        workCard.addSubview(workNavigateButton)
         view.addSubview(tableView)
         view.addSubview(emptyStateView)
         
         NSLayoutConstraint.activate([
-            tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            // Quick access container
+            quickAccessContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            quickAccessContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            quickAccessContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            quickAccessContainer.heightAnchor.constraint(equalToConstant: 80),
+            
+            // Home card
+            homeCard.leadingAnchor.constraint(equalTo: quickAccessContainer.leadingAnchor, constant: Constants.Spacing.large),
+            homeCard.centerYAnchor.constraint(equalTo: quickAccessContainer.centerYAnchor),
+            homeCard.widthAnchor.constraint(equalTo: quickAccessContainer.widthAnchor, multiplier: 0.42),
+            homeCard.heightAnchor.constraint(equalToConstant: 60),
+            
+            // Work card
+            workCard.trailingAnchor.constraint(equalTo: quickAccessContainer.trailingAnchor, constant: -Constants.Spacing.large),
+            workCard.centerYAnchor.constraint(equalTo: quickAccessContainer.centerYAnchor),
+            workCard.widthAnchor.constraint(equalTo: quickAccessContainer.widthAnchor, multiplier: 0.42),
+            workCard.heightAnchor.constraint(equalToConstant: 60),
+            
+            // Home button (inside home card)
+            homeButton.leadingAnchor.constraint(equalTo: homeCard.leadingAnchor),
+            homeButton.topAnchor.constraint(equalTo: homeCard.topAnchor),
+            homeButton.bottomAnchor.constraint(equalTo: homeCard.bottomAnchor),
+            homeButton.trailingAnchor.constraint(equalTo: homeNavigateButton.leadingAnchor, constant: -8),
+            
+            // Home navigate button
+            homeNavigateButton.centerYAnchor.constraint(equalTo: homeCard.centerYAnchor),
+            homeNavigateButton.trailingAnchor.constraint(equalTo: homeCard.trailingAnchor, constant: -8),
+            homeNavigateButton.widthAnchor.constraint(equalToConstant: 30),
+            homeNavigateButton.heightAnchor.constraint(equalToConstant: 30),
+            
+            // Work button (inside work card)
+            workButton.leadingAnchor.constraint(equalTo: workCard.leadingAnchor),
+            workButton.topAnchor.constraint(equalTo: workCard.topAnchor),
+            workButton.bottomAnchor.constraint(equalTo: workCard.bottomAnchor),
+            workButton.trailingAnchor.constraint(equalTo: workNavigateButton.leadingAnchor, constant: -8),
+            
+            // Work navigate button
+            workNavigateButton.centerYAnchor.constraint(equalTo: workCard.centerYAnchor),
+            workNavigateButton.trailingAnchor.constraint(equalTo: workCard.trailingAnchor, constant: -8),
+            workNavigateButton.widthAnchor.constraint(equalToConstant: 30),
+            workNavigateButton.heightAnchor.constraint(equalToConstant: 30),
+            
+            // Table view
+            tableView.topAnchor.constraint(equalTo: quickAccessContainer.bottomAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -121,17 +255,60 @@ class CirclesHomeViewController: UIViewController {
         tableView.refreshControl = refreshControl
     }
     
+    private func setupQuickAccessButtons() {
+        // Configure Home button
+        var homeConfig = UIButton.Configuration.filled()
+        homeConfig.image = UIImage(systemName: "house.fill")
+        homeConfig.title = "Home"
+        homeConfig.imagePlacement = .leading
+        homeConfig.imagePadding = 8
+        homeConfig.baseBackgroundColor = .clear
+        homeConfig.baseForegroundColor = Constants.Colors.primary
+        homeConfig.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 0)
+        homeButton.configuration = homeConfig
+        homeButton.addTarget(self, action: #selector(homeButtonTapped), for: .touchUpInside)
+        
+        // Configure Work button
+        var workConfig = UIButton.Configuration.filled()
+        workConfig.image = UIImage(systemName: "building.2.fill")
+        workConfig.title = "Work"
+        workConfig.imagePlacement = .leading
+        workConfig.imagePadding = 8
+        workConfig.baseBackgroundColor = .clear
+        workConfig.baseForegroundColor = Constants.Colors.secondary
+        workConfig.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 0)
+        workButton.configuration = workConfig
+        workButton.addTarget(self, action: #selector(workButtonTapped), for: .touchUpInside)
+        
+        // Add targets for navigate buttons
+        homeNavigateButton.addTarget(self, action: #selector(homeNavigateButtonTapped), for: .touchUpInside)
+        workNavigateButton.addTarget(self, action: #selector(workNavigateButtonTapped), for: .touchUpInside)
+        
+        // Add shadow to container
+        quickAccessContainer.layer.shadowOpacity = 0.05
+        quickAccessContainer.layer.shadowOffset = CGSize(width: 0, height: 2)
+        quickAccessContainer.layer.shadowRadius = 4
+        
+        // Apply appearance
+        updateAppearance()
+    }
+    
     // MARK: - Data Fetching
     private func fetchCircles() {
         CircleService.shared.fetchUserCircles { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let circles):
+                    print("✅ Successfully fetched \(circles.count) circles")
+                    for circle in circles {
+                        print("Circle: \(circle.name), coverImage: \(circle.coverImage ?? "nil")")
+                    }
                     self?.circles = circles
                 case .failure(let error):
-                    print("Error fetching circles: \(error.localizedDescription)")
-                    // Show sample circles as fallback for now
-                    self?.circles = self?.createSampleCircles() ?? []
+                    print("❌ Error fetching circles: \(error.localizedDescription)")
+                    print("❌ Full error: \(error)")
+                    // Don't use sample circles - show empty state instead
+                    self?.circles = []
                 }
                 
                 self?.tableView.reloadData()
@@ -153,13 +330,20 @@ class CirclesHomeViewController: UIViewController {
             description: "All my favorite places in NYC",
             coverImage: nil,
             owner: userId,
+            ownerDetails: nil,
             places: ["place1", "place2", "place3"],
+            placesWithDetails: nil,
             privacy: .private,
             category: .travel,
             location: "New York, NY",
             tags: ["travel", "nyc", "vacation"],
             sharedWith: ["friend1", "friend2"],
             followers: nil,
+            activeShares: nil,
+            shareSettings: nil,
+            isSharedWithMe: false,
+            sharedBy: nil,
+            myAccessLevel: nil,
             createdAt: date.addingTimeInterval(-86400 * 7), // 7 days ago
             updatedAt: date.addingTimeInterval(-3600) // 1 hour ago
         )
@@ -170,13 +354,20 @@ class CirclesHomeViewController: UIViewController {
             description: "My favorite places to eat",
             coverImage: nil,
             owner: userId,
+            ownerDetails: nil,
             places: ["place4", "place5"],
+            placesWithDetails: nil,
             privacy: .friends,
             category: .food,
             location: nil,
             tags: ["food", "restaurants", "dining"],
             sharedWith: nil,
             followers: ["friend3", "friend4"],
+            activeShares: nil,
+            shareSettings: nil,
+            isSharedWithMe: false,
+            sharedBy: nil,
+            myAccessLevel: nil,
             createdAt: date.addingTimeInterval(-86400 * 14), // 14 days ago
             updatedAt: date.addingTimeInterval(-86400) // 1 day ago
         )
@@ -187,13 +378,20 @@ class CirclesHomeViewController: UIViewController {
             description: "Best places to shop",
             coverImage: nil,
             owner: userId,
+            ownerDetails: nil,
             places: ["place6", "place7", "place8", "place9"],
+            placesWithDetails: nil,
             privacy: .public,
             category: .shopping,
             location: nil,
             tags: ["shopping", "retail", "fashion"],
             sharedWith: nil,
             followers: ["friend5", "friend6", "friend7"],
+            activeShares: nil,
+            shareSettings: nil,
+            isSharedWithMe: false,
+            sharedBy: nil,
+            myAccessLevel: nil,
             createdAt: date.addingTimeInterval(-86400 * 30), // 30 days ago
             updatedAt: date.addingTimeInterval(-43200) // 12 hours ago
         )
@@ -221,6 +419,283 @@ class CirclesHomeViewController: UIViewController {
     
     @objc private func refreshData() {
         fetchCircles()
+    }
+    
+    @objc private func homeButtonTapped() {
+        handleQuickAccessTapped(type: .home)
+    }
+    
+    @objc private func workButtonTapped() {
+        handleQuickAccessTapped(type: .work)
+    }
+    
+    @objc private func homeNavigateButtonTapped() {
+        navigateToQuickAccess(type: .home)
+    }
+    
+    @objc private func workNavigateButtonTapped() {
+        navigateToQuickAccess(type: .work)
+    }
+    
+    private func navigateToQuickAccess(type: QuickAccessType) {
+        let key = type == .home ? "userHomeAddress" : "userWorkAddress"
+        let savedAddress = UserDefaults.standard.string(forKey: key)
+        
+        if let address = savedAddress, !address.isEmpty {
+            // Create the same place object that would be created for viewing
+            // This ensures we use the same geocoded location
+            navigateToQuickAccessPlace(type: type, address: address, directNavigation: true)
+        } else {
+            // Show setup prompt
+            let alert = UIAlertController(
+                title: "Set \(type.rawValue) Address",
+                message: "You need to set your \(type.rawValue.lowercased()) address first.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Set Address", style: .default) { [weak self] _ in
+                self?.showAddressEntry(for: type)
+            })
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            present(alert, animated: true)
+        }
+    }
+    
+    private func handleQuickAccessTapped(type: QuickAccessType) {
+        // Check if address is already saved
+        let key = type == .home ? "userHomeAddress" : "userWorkAddress"
+        let savedAddress = UserDefaults.standard.string(forKey: key)
+        
+        if let address = savedAddress, !address.isEmpty {
+            // Create a place from saved address and navigate to detail view
+            navigateToQuickAccessPlace(type: type, address: address)
+        } else {
+            // Show address entry
+            showAddressEntry(for: type)
+        }
+    }
+    
+    private func showAddressEntry(for type: QuickAccessType) {
+        let alert = UIAlertController(
+            title: "Set \(type.rawValue) Address",
+            message: "Enter your \(type.rawValue.lowercased()) address",
+            preferredStyle: .alert
+        )
+        
+        alert.addTextField { textField in
+            textField.placeholder = "123 Main St, City, State"
+            textField.autocapitalizationType = .words
+        }
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Save", style: .default) { [weak self] _ in
+            if let address = alert.textFields?.first?.text, !address.isEmpty {
+                // Save address
+                let key = type == .home ? "userHomeAddress" : "userWorkAddress"
+                UserDefaults.standard.set(address, forKey: key)
+                
+                // Navigate to place detail
+                self?.navigateToQuickAccessPlace(type: type, address: address)
+            }
+        })
+        
+        present(alert, animated: true)
+    }
+    
+    private func navigateToQuickAccessPlace(type: QuickAccessType, address: String, directNavigation: Bool = false) {
+        // Show loading indicator
+        let loadingAlert = UIAlertController(title: "Loading", message: "Finding location...", preferredStyle: .alert)
+        present(loadingAlert, animated: true)
+        
+        // Geocode the address to get coordinates
+        let geocoder = CLGeocoder()
+        geocoder.geocodeAddressString(address) { [weak self] placemarks, error in
+            loadingAlert.dismiss(animated: true) {
+                guard let self = self else { return }
+                
+                var location: GeoLocation? = nil
+                if let placemark = placemarks?.first,
+                   let clLocation = placemark.location {
+                    // Convert to GeoLocation format (MongoDB uses [longitude, latitude])
+                    location = GeoLocation(type: "Point", coordinates: [clLocation.coordinate.longitude, clLocation.coordinate.latitude])
+                }
+                
+                if directNavigation {
+                    // Navigate directly using the geocoded location
+                    if let location = location?.clLocation {
+                        // Try Google Maps first
+                        let googleMapsURL = URL(string: "comgooglemaps://?daddr=\(location.coordinate.latitude),\(location.coordinate.longitude)&directionsmode=driving")
+                        
+                        if let url = googleMapsURL, UIApplication.shared.canOpenURL(url) {
+                            UIApplication.shared.open(url)
+                        } else {
+                            // Fallback to Apple Maps
+                            let appleMapsURL = URL(string: "maps://?daddr=\(location.coordinate.latitude),\(location.coordinate.longitude)&dirflg=d")
+                            if let url = appleMapsURL {
+                                UIApplication.shared.open(url)
+                            }
+                        }
+                    } else {
+                        let alert = UIAlertController(title: "Navigation Error", message: "Could not find location for this address.", preferredStyle: .alert)
+                        alert.addAction(UIAlertAction(title: "OK", style: .default))
+                        self.present(alert, animated: true)
+                    }
+                } else {
+                    // Show home/work address details
+                    self.showAddressDetails(type: type, address: address, location: location)
+                }
+            }
+        }
+    }
+    
+    private func showAddressDetails(type: QuickAccessType, address: String, location: GeoLocation?) {
+        let detailVC = UIViewController()
+        detailVC.view.backgroundColor = .systemBackground
+        detailVC.title = type.rawValue
+        
+        // Create content stack view
+        let stackView = UIStackView()
+        stackView.axis = .vertical
+        stackView.spacing = 20
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Address section
+        let addressContainer = UIView()
+        addressContainer.backgroundColor = Constants.Colors.lightGray.withAlphaComponent(0.1)
+        addressContainer.layer.cornerRadius = 12
+        
+        let addressLabel = UILabel()
+        addressLabel.text = "Address"
+        addressLabel.font = .systemFont(ofSize: 14, weight: .medium)
+        addressLabel.textColor = .secondaryLabel
+        
+        let addressValueLabel = UILabel()
+        addressValueLabel.text = address
+        addressValueLabel.font = .systemFont(ofSize: 16)
+        addressValueLabel.numberOfLines = 0
+        
+        let addressStack = UIStackView(arrangedSubviews: [addressLabel, addressValueLabel])
+        addressStack.axis = .vertical
+        addressStack.spacing = 4
+        addressStack.translatesAutoresizingMaskIntoConstraints = false
+        
+        addressContainer.addSubview(addressStack)
+        NSLayoutConstraint.activate([
+            addressStack.topAnchor.constraint(equalTo: addressContainer.topAnchor, constant: 16),
+            addressStack.leadingAnchor.constraint(equalTo: addressContainer.leadingAnchor, constant: 16),
+            addressStack.trailingAnchor.constraint(equalTo: addressContainer.trailingAnchor, constant: -16),
+            addressStack.bottomAnchor.constraint(equalTo: addressContainer.bottomAnchor, constant: -16)
+        ])
+        
+        stackView.addArrangedSubview(addressContainer)
+        
+        // Navigate button
+        let navigateButton = UIButton(type: .system)
+        navigateButton.setTitle("Navigate", for: .normal)
+        navigateButton.setImage(UIImage(systemName: "location.arrow"), for: .normal)
+        navigateButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .medium)
+        navigateButton.backgroundColor = Constants.Colors.primary
+        navigateButton.setTitleColor(.white, for: .normal)
+        navigateButton.tintColor = .white
+        navigateButton.layer.cornerRadius = 12
+        navigateButton.heightAnchor.constraint(equalToConstant: 50).isActive = true
+        
+        navigateButton.addAction(UIAction { [weak self] _ in
+            if let location = location?.clLocation {
+                // Try Google Maps first
+                let googleMapsURL = URL(string: "comgooglemaps://?daddr=\(location.coordinate.latitude),\(location.coordinate.longitude)&directionsmode=driving")
+                
+                if let url = googleMapsURL, UIApplication.shared.canOpenURL(url) {
+                    UIApplication.shared.open(url)
+                } else {
+                    // Fallback to Apple Maps
+                    let appleMapsURL = URL(string: "maps://?daddr=\(location.coordinate.latitude),\(location.coordinate.longitude)&dirflg=d")
+                    if let url = appleMapsURL {
+                        UIApplication.shared.open(url)
+                    }
+                }
+            }
+        }, for: .touchUpInside)
+        
+        stackView.addArrangedSubview(navigateButton)
+        
+        // Edit button
+        let editButton = UIButton(type: .system)
+        editButton.setTitle("Edit Address", for: .normal)
+        editButton.setImage(UIImage(systemName: "pencil"), for: .normal)
+        editButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .medium)
+        editButton.backgroundColor = Constants.Colors.lightGray.withAlphaComponent(0.2)
+        editButton.layer.cornerRadius = 12
+        editButton.heightAnchor.constraint(equalToConstant: 50).isActive = true
+        
+        editButton.addAction(UIAction { [weak self] _ in
+            self?.setupQuickAccess(forType: type)
+        }, for: .touchUpInside)
+        
+        stackView.addArrangedSubview(editButton)
+        
+        detailVC.view.addSubview(stackView)
+        NSLayoutConstraint.activate([
+            stackView.topAnchor.constraint(equalTo: detailVC.view.safeAreaLayoutGuide.topAnchor, constant: 20),
+            stackView.leadingAnchor.constraint(equalTo: detailVC.view.leadingAnchor, constant: 20),
+            stackView.trailingAnchor.constraint(equalTo: detailVC.view.trailingAnchor, constant: -20)
+        ])
+        
+        self.navigationController?.pushViewController(detailVC, animated: true)
+    }
+    
+    private enum QuickAccessType: String {
+        case home = "Home"
+        case work = "Work"
+    }
+    
+    private func setupQuickAccess(forType type: QuickAccessType) {
+        let alert = UIAlertController(title: "Set \(type.rawValue) Address", message: "Enter your \(type.rawValue.lowercased()) address", preferredStyle: .alert)
+        
+        alert.addTextField { textField in
+            textField.placeholder = "Enter address"
+            textField.autocapitalizationType = .words
+            textField.returnKeyType = .done
+            
+            // Load existing address if available
+            let key = type == .home ? "userHomeAddress" : "userWorkAddress"
+            if let existingAddress = UserDefaults.standard.string(forKey: key) {
+                textField.text = existingAddress
+            }
+        }
+        
+        let saveAction = UIAlertAction(title: "Save", style: .default) { [weak self] _ in
+            guard let address = alert.textFields?.first?.text, !address.isEmpty else { return }
+            
+            // Save to UserDefaults
+            let key = type == .home ? "userHomeAddress" : "userWorkAddress"
+            UserDefaults.standard.set(address, forKey: key)
+            
+            // Geocode the address
+            let geocoder = CLGeocoder()
+            geocoder.geocodeAddressString(address) { placemarks, error in
+                if let placemark = placemarks?.first, let location = placemark.location {
+                    // Save location
+                    let locationKey = type == .home ? "userHomeLocation" : "userWorkLocation"
+                    let locationData = [
+                        "latitude": location.coordinate.latitude,
+                        "longitude": location.coordinate.longitude
+                    ]
+                    UserDefaults.standard.set(locationData, forKey: locationKey)
+                    
+                    // Update UI
+                    DispatchQueue.main.async {
+                        self?.setupQuickAccessButtons()
+                    }
+                }
+            }
+        }
+        
+        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel)
+        
+        alert.addAction(saveAction)
+        alert.addAction(cancelAction)
+        
+        present(alert, animated: true)
     }
     
     // MARK: - Circle Management
@@ -288,6 +763,7 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
         
         let circle = circles[indexPath.row]
         cell.configure(with: circle)
+        cell.delegate = self
         
         return cell
     }
@@ -350,13 +826,21 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
     }
 }
 
+// MARK: - CircleTableViewCellDelegate
+protocol CircleTableViewCellDelegate: AnyObject {
+    func circleTableViewCell(_ cell: CircleTableViewCell, didTapShareForCircle circle: Circle)
+}
+
 // MARK: - CircleTableViewCell
 class CircleTableViewCell: UITableViewCell {
+    
+    weak var delegate: CircleTableViewCellDelegate?
+    private var circle: Circle?
     
     // MARK: - UI Elements
     private let containerView: UIView = {
         let view = UIView()
-        view.backgroundColor = Constants.Colors.white
+        view.backgroundColor = Constants.Colors.secondaryBackground
         view.layer.cornerRadius = 12
         view.translatesAutoresizingMaskIntoConstraints = false
         view.addShadow(opacity: 0.1, radius: 5, offset: CGSize(width: 0, height: 2))
@@ -367,7 +851,7 @@ class CircleTableViewCell: UITableViewCell {
         let imageView = UIImageView()
         imageView.contentMode = .scaleAspectFill
         imageView.clipsToBounds = true
-        imageView.backgroundColor = Constants.Colors.lightGray
+        imageView.backgroundColor = Constants.Colors.tertiaryBackground
         imageView.layer.cornerRadius = 8
         imageView.translatesAutoresizingMaskIntoConstraints = false
         return imageView
@@ -376,7 +860,7 @@ class CircleTableViewCell: UITableViewCell {
     private let nameLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.large, weight: .bold)
-        label.textColor = Constants.Colors.darkGray
+        label.textColor = Constants.Colors.label
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -384,7 +868,7 @@ class CircleTableViewCell: UITableViewCell {
     private let descriptionLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
-        label.textColor = Constants.Colors.gray
+        label.textColor = Constants.Colors.secondaryLabel
         label.numberOfLines = 2
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -401,7 +885,7 @@ class CircleTableViewCell: UITableViewCell {
     private let privacyImageView: UIImageView = {
         let imageView = UIImageView()
         imageView.contentMode = .scaleAspectFit
-        imageView.tintColor = Constants.Colors.gray
+        imageView.tintColor = Constants.Colors.secondaryLabel
         imageView.translatesAutoresizingMaskIntoConstraints = false
         return imageView
     }()
@@ -415,6 +899,19 @@ class CircleTableViewCell: UITableViewCell {
         label.clipsToBounds = true
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
+    }()
+    
+    private(set) var shareButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "square.and.arrow.up"), for: .normal)
+        button.setTitle(" Share", for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+        button.backgroundColor = Constants.Colors.primary
+        button.tintColor = .white
+        button.layer.cornerRadius = 15
+        button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
     }()
     
     // MARK: - Init
@@ -452,6 +949,10 @@ class CircleTableViewCell: UITableViewCell {
         containerView.addSubview(placeCountLabel)
         containerView.addSubview(privacyImageView)
         containerView.addSubview(categoryLabel)
+        containerView.addSubview(shareButton)
+        
+        // Add target for share button
+        shareButton.addTarget(self, action: #selector(shareButtonTapped), for: .touchUpInside)
         
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Constants.Spacing.small),
@@ -480,8 +981,12 @@ class CircleTableViewCell: UITableViewCell {
             placeCountLabel.leadingAnchor.constraint(equalTo: coverImageView.trailingAnchor, constant: Constants.Spacing.medium),
             placeCountLabel.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -Constants.Spacing.medium),
             
+            shareButton.centerYAnchor.constraint(equalTo: placeCountLabel.centerYAnchor),
+            shareButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Constants.Spacing.medium),
+            shareButton.heightAnchor.constraint(equalToConstant: 30),
+            
             privacyImageView.centerYAnchor.constraint(equalTo: placeCountLabel.centerYAnchor),
-            privacyImageView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Constants.Spacing.medium),
+            privacyImageView.trailingAnchor.constraint(equalTo: shareButton.leadingAnchor, constant: -Constants.Spacing.small),
             privacyImageView.widthAnchor.constraint(equalToConstant: 16),
             privacyImageView.heightAnchor.constraint(equalToConstant: 16)
         ])
@@ -489,6 +994,7 @@ class CircleTableViewCell: UITableViewCell {
     
     // MARK: - Configure
     func configure(with circle: Circle) {
+        self.circle = circle
         nameLabel.text = circle.name
         descriptionLabel.text = circle.description
         
@@ -508,6 +1014,7 @@ class CircleTableViewCell: UITableViewCell {
         case .private:
             privacyImageView.image = UIImage(systemName: "lock")
         }
+        
         
         // Category label
         categoryLabel.text = circle.category.rawValue.capitalized
@@ -532,32 +1039,53 @@ class CircleTableViewCell: UITableViewCell {
         
         // Cover image
         if let coverImageUrl = circle.coverImage {
+            print("📷 Loading image for circle '\(circle.name)' from URL: \(coverImageUrl)")
             // Load image from URL
             ImageService.shared.loadImage(from: coverImageUrl) { [weak self] image in
                 DispatchQueue.main.async {
-                    self?.coverImageView.image = image
+                    if let image = image {
+                        print("✅ Successfully loaded image for circle '\(circle.name)'")
+                        self?.coverImageView.image = image
+                        self?.coverImageView.contentMode = .scaleAspectFill
+                    } else {
+                        print("❌ Failed to load image for circle '\(circle.name)'")
+                        // Fall back to default icon
+                        self?.setDefaultIcon(for: circle.category)
+                    }
                 }
             }
         } else {
+            print("ℹ️ No cover image URL for circle '\(circle.name)'")
             // Default image based on category
-            switch circle.category {
-            case .travel:
-                coverImageView.image = UIImage(systemName: "airplane")
-            case .food:
-                coverImageView.image = UIImage(systemName: "fork.knife")
-            case .services:
-                coverImageView.image = UIImage(systemName: "wrench.and.screwdriver")
-            case .shopping:
-                coverImageView.image = UIImage(systemName: "bag")
-            case .healthcare:
-                coverImageView.image = UIImage(systemName: "heart.text.square")
-            case .entertainment:
-                coverImageView.image = UIImage(systemName: "ticket")
-            case .other:
-                coverImageView.image = UIImage(systemName: "square.grid.2x2")
-            }
-            coverImageView.tintColor = Constants.Colors.primary
+            setDefaultIcon(for: circle.category)
         }
+    }
+    
+    private func setDefaultIcon(for category: CircleCategory) {
+        switch category {
+        case .travel:
+            coverImageView.image = UIImage(systemName: "airplane.departure")
+        case .food:
+            coverImageView.image = UIImage(systemName: "fork.knife.circle.fill")
+        case .services:
+            coverImageView.image = UIImage(systemName: "wrench.and.screwdriver.fill")
+        case .shopping:
+            coverImageView.image = UIImage(systemName: "bag.fill")
+        case .healthcare:
+            coverImageView.image = UIImage(systemName: "heart.text.square.fill")
+        case .entertainment:
+            coverImageView.image = UIImage(systemName: "music.note.tv.fill")
+        case .other:
+            coverImageView.image = UIImage(systemName: "square.stack.3d.up.fill")
+        }
+        coverImageView.tintColor = Constants.Colors.primary
+        coverImageView.contentMode = .scaleAspectFit
+    }
+    
+    // MARK: - Actions
+    @objc private func shareButtonTapped() {
+        guard let circle = circle else { return }
+        delegate?.circleTableViewCell(self, didTapShareForCircle: circle)
     }
 }
 
@@ -590,6 +1118,76 @@ extension CirclesHomeViewController: EditCircleDelegate {
             circles.remove(at: index)
             tableView.deleteRows(at: [IndexPath(row: index, section: 0)], with: .fade)
             updateEmptyState()
+        }
+    }
+}
+
+// MARK: - CircleTableViewCellDelegate
+extension CirclesHomeViewController: CircleTableViewCellDelegate {
+    func circleTableViewCell(_ cell: CircleTableViewCell, didTapShareForCircle circle: Circle) {
+        // Create a formatted string with circle details
+        var shareText = "🔵 \(circle.name)\n"
+        
+        if let description = circle.description, !description.isEmpty {
+            shareText += "\(description)\n"
+        }
+        
+        // Calculate member count from sharedWith and followers
+        let memberCount = 1 + (circle.sharedWith?.count ?? 0) + (circle.followers?.count ?? 0)
+        shareText += "\n👥 \(memberCount) members"
+        shareText += "\n📍 \(circle.places?.count ?? 0) places"
+        
+        // Add privacy info
+        switch circle.privacy {
+        case .public:
+            shareText += "\n🌐 Public Circle"
+        case .friends:
+            shareText += "\n👥 Friends Only"
+        case .private:
+            shareText += "\n🔒 Private Circle"
+        }
+        
+        // Add deep link and web link
+        shareText += "\n\n📱 Open in Circles: circles://circle/\(circle.id)"
+        
+        // Add a web link that could redirect to App Store or open the app
+        // For now, use TestFlight link since app isn't on App Store yet
+        shareText += "\n\n🔗 Get Circles App: https://testflight.apple.com/join/YourTestFlightCode"
+        // TODO: Replace with App Store link when published: https://apps.apple.com/app/circles/idYOURAPPID
+        
+        shareText += "\n\nJoin me on Circles!"
+        
+        var activityItems: [Any] = [shareText]
+        
+        // Function to present the share sheet
+        let presentShareSheet = { [weak self] in
+            let activityViewController = UIActivityViewController(
+                activityItems: activityItems,
+                applicationActivities: nil
+            )
+            
+            // For iPad - set the source view for the popover
+            if let popover = activityViewController.popoverPresentationController {
+                popover.sourceView = cell.shareButton
+                popover.sourceRect = cell.shareButton.bounds
+            }
+            
+            self?.present(activityViewController, animated: true)
+        }
+        
+        // Add cover image if available (load asynchronously)
+        if let coverImageUrl = circle.coverImage,
+           let url = URL(string: coverImageUrl) {
+            URLSession.shared.dataTask(with: url) { data, _, _ in
+                DispatchQueue.main.async {
+                    if let data = data, let image = UIImage(data: data) {
+                        activityItems.append(image)
+                    }
+                    presentShareSheet()
+                }
+            }.resume()
+        } else {
+            presentShareSheet()
         }
     }
 }

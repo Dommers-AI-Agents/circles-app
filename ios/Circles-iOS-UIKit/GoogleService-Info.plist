@@ -3,12 +3,32 @@
 <plist version="1.0">
 <dict>
 	<key>CLIENT_ID</key>
-	<string>778088177220-7ddtorl0um8te3s5dmv14fs4d2kirukt.apps.googleusercontent.com</string>
+	<string>196924649787-rh9h60ndcfn6qes1tjde4ipo4tqlpko8.apps.googleusercontent.com</string>
 	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.778088177220-7ddtorl0um8te3s5dmv14fs4d2kirukt</string>
+	<string>com.googleusercontent.apps.196924649787-rh9h60ndcfn6qes1tjde4ipo4tqlpko8</string>
+	<key>API_KEY</key>
+	<string>AIzaSyAwcmtCmYmq5dbsBsYA1T3Fx949VeK0Cv8</string>
+	<key>GCM_SENDER_ID</key>
+	<string>196924649787</string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
 	<string>com.favcircles.circles</string>
+	<key>PROJECT_ID</key>
+	<string>circles-app-83b67</string>
+	<key>STORAGE_BUCKET</key>
+	<string>circles-app-83b67.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:196924649787:ios:095de06ba8052366cc871e</string>
 </dict>
 </plist>

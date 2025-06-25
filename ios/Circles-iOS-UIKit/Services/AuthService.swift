@@ -82,6 +82,13 @@ class AuthService {
         return _currentUser
     }
     
+    // Update current user
+    func updateCurrentUser(_ user: User) {
+        _currentUser = user
+        // Notify AuthManager about the update
+        AuthManager.shared.updateCurrentUser(user)
+    }
+    
     // Auth state change listeners
     private var authStateListeners: [String: (Bool) -> Void] = [:]
     
@@ -560,9 +567,6 @@ struct ErrorResponse: Decodable {
     let message: String
 }
 
-struct EmptyResponse: Decodable {
-    let success: Bool
-}
 
 struct VerificationStatusResponse: Decodable {
     let success: Bool

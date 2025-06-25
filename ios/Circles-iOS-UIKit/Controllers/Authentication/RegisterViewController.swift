@@ -20,7 +20,7 @@ class RegisterViewController: UIViewController {
         let label = UILabel()
         label.text = "Create an Account"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.xxlarge, weight: .bold)
-        label.textColor = Constants.Colors.darkGray
+        label.textColor = Constants.Colors.label
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -30,7 +30,7 @@ class RegisterViewController: UIViewController {
         let label = UILabel()
         label.text = "Enter your email to get started"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
-        label.textColor = Constants.Colors.gray
+        label.textColor = Constants.Colors.secondaryLabel
         label.textAlignment = .center
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -73,7 +73,7 @@ class RegisterViewController: UIViewController {
         let label = UILabel()
         label.text = "Password must be at least 6 characters"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        label.textColor = Constants.Colors.gray
+        label.textColor = Constants.Colors.secondaryLabel
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -94,7 +94,7 @@ class RegisterViewController: UIViewController {
         let label = UILabel()
         label.text = "OR"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small, weight: .medium)
-        label.textColor = Constants.Colors.gray
+        label.textColor = Constants.Colors.secondaryLabel
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label

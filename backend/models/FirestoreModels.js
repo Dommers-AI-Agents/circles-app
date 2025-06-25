@@ -8,7 +8,12 @@ const COLLECTIONS = {
   USERS: 'users',
   CIRCLES: 'circles', 
   PLACES: 'places',
-  FRIEND_REQUESTS: 'friendRequests'
+  FRIEND_REQUESTS: 'friendRequests',
+  CONNECTIONS: 'connections',
+  CIRCLE_SHARES: 'circleShares',
+  CONVERSATIONS: 'conversations',
+  MESSAGES: 'messages',
+  MESSAGE_READS: 'messageReads'
 };
 
 // User model structure
@@ -45,6 +50,14 @@ const createCircle = (circleData, ownerId) => {
     tags: circleData.tags || [],
     sharedWith: circleData.sharedWith || [],
     followers: circleData.followers || [],
+    activeShares: circleData.activeShares || [],
+    shareSettings: circleData.shareSettings || {
+      allowGuestShares: true,
+      defaultAccessLevel: 'view_only',
+      requireApproval: false,
+      maxShareDuration: null,
+      allowReshare: false
+    },
     createdAt: now,
     updatedAt: now
   };
@@ -87,6 +100,38 @@ const createFriendRequest = (fromUserId, toUserId) => {
     from: fromUserId,
     to: toUserId,
     status: 'pending', // pending, accepted, rejected
+    createdAt: now,
+    updatedAt: now
+  };
+};
+
+// Connection model
+const createConnection = (userId, connectedUserId, message = null) => {
+  const now = new Date().toISOString();
+  return {
+    userId: userId,
+    connectedUserId: connectedUserId,
+    status: 'pending', // pending, accepted, blocked
+    message: message,
+    sharedCircles: [],
+    createdAt: now,
+    acceptedAt: null,
+    updatedAt: now
+  };
+};
+
+// Circle share model
+const createCircleShare = (shareData) => {
+  const now = new Date().toISOString();
+  return {
+    circleId: shareData.circleId,
+    sharedBy: shareData.sharedBy,
+    sharedWith: shareData.sharedWith || null, // userId or email
+    shareType: shareData.shareType, // 'registered_user', 'email', 'link'
+    accessLevel: shareData.accessLevel || 'view_only', // 'view_only', 'can_add_places', 'can_edit'
+    shareLink: shareData.shareLink || null,
+    expiresAt: shareData.expiresAt || null,
+    lastAccessedAt: null,
     createdAt: now,
     updatedAt: now
   };
@@ -175,14 +220,156 @@ const serializeQuerySnapshot = (querySnapshot) => {
   return querySnapshot.docs.map(doc => serializeDoc(doc)).filter(doc => doc !== null);
 };
 
+// Validation functions for new models
+const validateConnection = (connectionData) => {
+  const errors = [];
+  
+  if (!connectionData.connectedUserId || connectionData.connectedUserId.trim().length === 0) {
+    errors.push('Connected user ID is required');
+  }
+  
+  return errors;
+};
+
+const validateCircleShare = (shareData) => {
+  const errors = [];
+  
+  if (!shareData.circleId || shareData.circleId.trim().length === 0) {
+    errors.push('Circle ID is required');
+  }
+  
+  if (!shareData.shareType || !['registered_user', 'email', 'link'].includes(shareData.shareType)) {
+    errors.push('Valid share type is required (registered_user, email, or link)');
+  }
+  
+  if (!shareData.accessLevel || !['view_only', 'can_add_places', 'can_edit'].includes(shareData.accessLevel)) {
+    errors.push('Valid access level is required (view_only, can_add_places, or can_edit)');
+  }
+  
+  if (shareData.shareType === 'registered_user' && (!shareData.sharedWith || shareData.sharedWith.trim().length === 0)) {
+    errors.push('User ID is required for registered user shares');
+  }
+  
+  if (shareData.shareType === 'email' && (!shareData.sharedWith || !shareData.sharedWith.includes('@'))) {
+    errors.push('Valid email is required for email shares');
+  }
+  
+  return errors;
+};
+
+// Conversation model structure
+const createConversation = (conversationData) => {
+  const now = new Date().toISOString();
+  return {
+    type: conversationData.type || 'direct', // direct or group
+    participants: conversationData.participants || [], // Array of user IDs
+    name: conversationData.name || null, // For group chats
+    avatar: conversationData.avatar || null, // For group chats
+    lastMessage: conversationData.lastMessage || null,
+    lastMessageTime: conversationData.lastMessageTime || null,
+    lastMessageSenderId: conversationData.lastMessageSenderId || null,
+    unreadCounts: conversationData.unreadCounts || {}, // Map of userId to unread count
+    createdAt: now,
+    updatedAt: now,
+    createdBy: conversationData.createdBy || null
+  };
+};
+
+// Message model structure
+const createMessage = (messageData, conversationId, senderId) => {
+  const now = new Date().toISOString();
+  return {
+    conversationId: conversationId,
+    senderId: senderId,
+    type: messageData.type || 'text', // text, image, location, circle_share, place_share
+    content: messageData.content || '',
+    mediaUrl: messageData.mediaUrl || null,
+    metadata: messageData.metadata || {}, // For attachments, shares, etc.
+    readBy: messageData.readBy || [senderId], // Array of user IDs who have read
+    deliveredTo: messageData.deliveredTo || [], // Array of user IDs
+    editedAt: messageData.editedAt || null,
+    deletedAt: messageData.deletedAt || null,
+    createdAt: now
+  };
+};
+
+// Message read receipt model
+const createMessageRead = (messageId, userId, conversationId) => {
+  const now = new Date().toISOString();
+  return {
+    messageId: messageId,
+    userId: userId,
+    conversationId: conversationId,
+    readAt: now
+  };
+};
+
+// Validation functions for messaging
+const validateConversation = (conversation) => {
+  const errors = [];
+  
+  if (!conversation.type || !['direct', 'group'].includes(conversation.type)) {
+    errors.push('Invalid conversation type');
+  }
+  
+  if (!conversation.participants || conversation.participants.length < 2) {
+    errors.push('Conversation must have at least 2 participants');
+  }
+  
+  if (conversation.type === 'direct' && conversation.participants.length > 2) {
+    errors.push('Direct conversation can only have 2 participants');
+  }
+  
+  if (conversation.type === 'group' && !conversation.name) {
+    errors.push('Group conversation must have a name');
+  }
+  
+  return errors;
+};
+
+const validateMessage = (message) => {
+  const errors = [];
+  
+  if (!message.conversationId) {
+    errors.push('Message must belong to a conversation');
+  }
+  
+  if (!message.senderId) {
+    errors.push('Message must have a sender');
+  }
+  
+  if (!message.type || !['text', 'image', 'location', 'circle_share', 'place_share'].includes(message.type)) {
+    errors.push('Invalid message type');
+  }
+  
+  if (message.type === 'text' && !message.content) {
+    errors.push('Text message must have content');
+  }
+  
+  if (['image', 'location'].includes(message.type) && !message.mediaUrl) {
+    errors.push(`${message.type} message must have mediaUrl`);
+  }
+  
+  return errors;
+};
+
 module.exports = {
   COLLECTIONS,
   createUser,
   createCircle,
   createPlace,
   createFriendRequest,
+  createConnection,
+  createCircleShare,
+  createConversation,
+  createMessage,
+  createMessageRead,
   validateCircle,
   validatePlace,
+  validateConnection,
+  validateCircleShare,
+  validateConversation,
+  validateMessage,
   serializeDoc,
   serializeQuerySnapshot
 };

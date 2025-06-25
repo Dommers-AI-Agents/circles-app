@@ -6,6 +6,7 @@ class LocationService: NSObject {
     
     private let locationManager = CLLocationManager()
     private var locationCompletion: ((CLLocation?) -> Void)?
+    private(set) var lastKnownLocation: CLLocation?
     
     override init() {
         super.init()
@@ -58,6 +59,7 @@ extension LocationService: CLLocationManagerDelegate {
             return
         }
         
+        lastKnownLocation = location
         locationCompletion?(location)
     }
     

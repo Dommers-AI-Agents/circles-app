@@ -55,4 +55,10 @@ router.route('/:id/follow')
 router.route('/:id/unfollow')
   .post(unfollowCircle);
 
+router.route('/:id/places')
+  .get(require('../controllers/placeController').getPlacesByCircleId);
+
+router.route('/:id/places/reorder')
+  .put(require('../controllers/placeController').reorderPlacesInCircle);
+
 module.exports = router;

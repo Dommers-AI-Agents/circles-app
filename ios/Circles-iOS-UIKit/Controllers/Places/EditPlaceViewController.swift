@@ -1,6 +1,7 @@
 import UIKit
 import MapKit
 import CoreLocation
+import PhotosUI
 
 protocol EditPlaceDelegate: AnyObject {
     func didUpdatePlace(_ updatedPlace: Place)
@@ -8,6 +9,33 @@ protocol EditPlaceDelegate: AnyObject {
 }
 
 class EditPlaceViewController: UIViewController {
+    
+    // MARK: - Constants
+    private enum Constants {
+        enum Spacing {
+            static let small: CGFloat = 8
+            static let medium: CGFloat = 16
+            static let large: CGFloat = 20
+            static let xlarge: CGFloat = 32
+        }
+        
+        enum FontSize {
+            static let small: CGFloat = 14
+            static let medium: CGFloat = 16
+            static let large: CGFloat = 18
+            static let xlarge: CGFloat = 20
+            static let xxlarge: CGFloat = 24
+        }
+        
+        enum Colors {
+            static let primary = UIColor.systemBlue
+            static let background = UIColor.systemBackground
+            static let secondaryBackground = UIColor.secondarySystemBackground
+            static let darkGray = UIColor.darkGray
+            static let lightGray = UIColor.lightGray
+            static let white = UIColor.white
+        }
+    }
     
     // MARK: - Properties
     private var place: Place
@@ -246,6 +274,60 @@ class EditPlaceViewController: UIViewController {
         return textField
     }()
     
+    // Photo UI elements
+    private let photoLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Photos"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .bold)
+        label.textColor = Constants.Colors.darkGray
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let photoScrollView: UIScrollView = {
+        let scrollView = UIScrollView()
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        return scrollView
+    }()
+    
+    private let photoStackView: UIStackView = {
+        let stackView = UIStackView()
+        stackView.axis = .horizontal
+        stackView.spacing = 10
+        stackView.alignment = .center
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        return stackView
+    }()
+    
+    private let addPhotoButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "plus"), for: .normal)
+        button.tintColor = .systemBlue
+        button.backgroundColor = UIColor.systemGray6
+        button.layer.cornerRadius = 8
+        button.layer.borderWidth = 2
+        button.layer.borderColor = UIColor.systemBlue.cgColor
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private var photoImageViews: [UIImageView] = []
+    private var selectedImages: [UIImage] = []
+    private var existingPhotoURLs: [String] = []
+    private var deletedPhotoURLs: [String] = []
+    
+    private let saveButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Save Changes", for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = Constants.Colors.primary
+        button.layer.cornerRadius = 10
+        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.large, weight: .semibold)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
     private let deleteButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle("Delete Place", for: .normal)
@@ -313,6 +395,13 @@ class EditPlaceViewController: UIViewController {
         contentView.addSubview(websiteTextField)
         contentView.addSubview(phoneLabel)
         contentView.addSubview(phoneTextField)
+        
+        // Add photo UI elements
+        contentView.addSubview(photoLabel)
+        contentView.addSubview(photoScrollView)
+        photoScrollView.addSubview(photoStackView)
+        photoStackView.addArrangedSubview(addPhotoButton)
+        
         contentView.addSubview(deleteButton)
         
         // Layout constraints
@@ -441,8 +530,26 @@ class EditPlaceViewController: UIViewController {
             phoneTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             phoneTextField.heightAnchor.constraint(equalToConstant: 40),
             
+            // Photo label and scroll view
+            photoLabel.topAnchor.constraint(equalTo: phoneTextField.bottomAnchor, constant: Constants.Spacing.medium),
+            photoLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            
+            photoScrollView.topAnchor.constraint(equalTo: photoLabel.bottomAnchor, constant: Constants.Spacing.small),
+            photoScrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            photoScrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            photoScrollView.heightAnchor.constraint(equalToConstant: 100),
+            
+            photoStackView.topAnchor.constraint(equalTo: photoScrollView.topAnchor),
+            photoStackView.leadingAnchor.constraint(equalTo: photoScrollView.leadingAnchor),
+            photoStackView.trailingAnchor.constraint(equalTo: photoScrollView.trailingAnchor),
+            photoStackView.bottomAnchor.constraint(equalTo: photoScrollView.bottomAnchor),
+            photoStackView.heightAnchor.constraint(equalTo: photoScrollView.heightAnchor),
+            
+            addPhotoButton.widthAnchor.constraint(equalToConstant: 100),
+            addPhotoButton.heightAnchor.constraint(equalToConstant: 100),
+            
             // Delete button
-            deleteButton.topAnchor.constraint(equalTo: phoneTextField.bottomAnchor, constant: Constants.Spacing.xlarge),
+            deleteButton.topAnchor.constraint(equalTo: photoScrollView.bottomAnchor, constant: Constants.Spacing.xlarge),
             deleteButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             deleteButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
         ])
@@ -478,6 +585,7 @@ class EditPlaceViewController: UIViewController {
         // Add button actions
         useCurrentLocationButton.addTarget(self, action: #selector(useCurrentLocationButtonTapped), for: .touchUpInside)
         deleteButton.addTarget(self, action: #selector(deleteButtonTapped), for: .touchUpInside)
+        addPhotoButton.addTarget(self, action: #selector(addPhotoButtonTapped), for: .touchUpInside)
         
         // Add gesture recognizer to dismiss keyboard when tapping on the view
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
@@ -528,6 +636,9 @@ class EditPlaceViewController: UIViewController {
         
         websiteTextField.text = place.website
         phoneTextField.text = place.phone
+        
+        // Load existing photos
+        loadExistingPhotos()
     }
     
     // MARK: - Actions
@@ -548,6 +659,12 @@ class EditPlaceViewController: UIViewController {
         
         guard hasChanges else {
             dismiss(animated: true)
+            return
+        }
+        
+        // Special handling for Home/Work places
+        if place.id == "home-place" || place.id == "work-place" {
+            saveHomeOrWorkPlace()
             return
         }
         
@@ -587,9 +704,8 @@ class EditPlaceViewController: UIViewController {
         let loadingAlert = UIAlertController(title: "Updating Place", message: "Please wait...", preferredStyle: .alert)
         present(loadingAlert, animated: true)
         
-        // Call PlaceService to update the place
-        PlaceService.shared.updatePlace(
-            id: place.id,
+        // Update place with photos (PlaceService handles upload internally)
+        updatePlaceWithPhotos(
             name: name,
             description: description,
             address: address,
@@ -597,23 +713,10 @@ class EditPlaceViewController: UIViewController {
             privacy: privacy,
             website: website,
             phone: phone,
-            tags: tags
-        ) { [weak self] result in
-            // Dismiss loading indicator
-            DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true) {
-                    switch result {
-                    case .success(let updatedPlace):
-                        self?.delegate?.didUpdatePlace(updatedPlace)
-                        self?.dismiss(animated: true)
-                        
-                    case .failure(let error):
-                        // Show error message
-                        self?.presentAlert(title: "Error", message: error.localizedDescription)
-                    }
-                }
-            }
-        }
+            tags: tags,
+            photos: nil, // Not used anymore since we're using addPhotos/removePhotoUrls
+            loadingAlert: loadingAlert
+        )
     }
     
     @objc private func useCurrentLocationButtonTapped() {
@@ -656,7 +759,81 @@ class EditPlaceViewController: UIViewController {
         }
     }
     
+    private func saveHomeOrWorkPlace() {
+        // Format the address string
+        let formattedAddress = [streetTextField.text, cityTextField.text, stateTextField.text, zipCodeTextField.text, countryTextField.text]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
+        
+        guard !formattedAddress.isEmpty else {
+            presentAlert(title: "Error", message: "Please enter an address")
+            return
+        }
+        
+        // Save to UserDefaults
+        let key = place.id == "home-place" ? "userHomeAddress" : "userWorkAddress"
+        UserDefaults.standard.set(formattedAddress, forKey: key)
+        
+        // FIXME: Need to update this to handle Place creation properly
+        // For now, just dismiss without updating since Place no longer has a direct initializer
+        // This only affects local home/work places which are a special case
+        dismiss(animated: true)
+        
+        /*
+        // Create updated place object
+        let updatedPlace = Place(
+            id: place.id,
+            name: nameTextField.text ?? place.name,
+            description: descriptionTextView.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : descriptionTextView.text,
+            address: formattedAddress,
+            location: place.location, // Keep existing location
+            website: websiteTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true ? nil : websiteTextField.text,
+            phone: phoneTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true ? nil : phoneTextField.text,
+            googlePlaceId: place.googlePlaceId,
+            photos: place.photos,
+            category: place.category,
+            rating: place.rating,
+            userRatingsTotal: place.userRatingsTotal,
+            notes: notesTextView.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : notesTextView.text,
+            privateNotes: place.privateNotes,
+            publicNotes: place.publicNotes,
+            tags: place.tags,
+            reviews: place.reviews,
+            openingHours: place.openingHours,
+            priceLevel: place.priceLevel,
+            circleId: place.circleId,
+            addedBy: place.addedBy,
+            addedByUser: place.addedByUser,
+            privacy: place.privacy,
+            createdAt: place.createdAt,
+            updatedAt: Date()
+        )
+        
+        // Notify delegate and dismiss
+        delegate?.didUpdatePlace(updatedPlace)
+        dismiss(animated: true)
+        */
+    }
+    
     @objc private func deleteButtonTapped() {
+        // Special handling for Home/Work places
+        if place.id == "home-place" || place.id == "work-place" {
+            let alert = UIAlertController(
+                title: "Clear \(place.name)",
+                message: "Are you sure you want to clear your \(place.name.lowercased()) address?",
+                preferredStyle: .alert
+            )
+            
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            alert.addAction(UIAlertAction(title: "Clear", style: .destructive) { [weak self] _ in
+                self?.clearHomeOrWorkPlace()
+            })
+            
+            present(alert, animated: true)
+            return
+        }
+        
         let alert = UIAlertController(
             title: "Delete Place",
             message: "Are you sure you want to delete \(place.name)? This action cannot be undone.",
@@ -673,6 +850,172 @@ class EditPlaceViewController: UIViewController {
     
     @objc private func dismissKeyboard() {
         view.endEditing(true)
+    }
+    
+    @objc private func addPhotoButtonTapped() {
+        var configuration = PHPickerConfiguration()
+        configuration.selectionLimit = 5 - (existingPhotoURLs.count + selectedImages.count)
+        configuration.filter = .images
+        
+        let picker = PHPickerViewController(configuration: configuration)
+        picker.delegate = self
+        present(picker, animated: true)
+    }
+    
+    // MARK: - Photo Methods
+    
+    private func updatePlaceWithPhotos(
+        name: String,
+        description: String?,
+        address: String?,
+        category: PlaceCategory,
+        privacy: PlacePrivacy,
+        website: String?,
+        phone: String?,
+        tags: [String]?,
+        photos: [String]?,
+        loadingAlert: UIAlertController
+    ) {
+        // Convert selected images to Data
+        let photosData = selectedImages.compactMap { $0.jpegData(compressionQuality: 0.8) }
+        
+        PlaceService.shared.updatePlace(
+            id: place.id,
+            name: name,
+            description: description,
+            address: address,
+            category: category,
+            privacy: privacy,
+            website: website,
+            phone: phone,
+            tags: tags,
+            addPhotos: photosData.isEmpty ? nil : photosData,
+            removePhotoUrls: deletedPhotoURLs.isEmpty ? nil : deletedPhotoURLs
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    switch result {
+                    case .success(let updatedPlace):
+                        self?.delegate?.didUpdatePlace(updatedPlace)
+                        self?.dismiss(animated: true)
+                        
+                    case .failure(let error):
+                        self?.presentAlert(title: "Error", message: error.localizedDescription)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func loadExistingPhotos() {
+        guard let photos = place.photos, !photos.isEmpty else { return }
+        
+        existingPhotoURLs = photos
+        
+        for (index, photoURL) in photos.enumerated() {
+            let containerView = createPhotoImageView(tag: index)
+            
+            // Add to stack view before add button
+            photoStackView.insertArrangedSubview(containerView, at: photoStackView.arrangedSubviews.count - 1)
+            
+            if let imageView = containerView.subviews.first(where: { $0 is UIImageView }) as? UIImageView {
+                photoImageViews.append(imageView)
+                
+                // Load image from URL
+                if let url = URL(string: photoURL) {
+                    URLSession.shared.dataTask(with: url) { [weak imageView] data, _, _ in
+                        if let data = data, let image = UIImage(data: data) {
+                            DispatchQueue.main.async {
+                                imageView?.image = image
+                            }
+                        }
+                    }.resume()
+                }
+            }
+        }
+        
+        // Update add button visibility
+        updateAddPhotoButtonVisibility()
+    }
+    
+    private func createPhotoImageView(tag: Int) -> UIView {
+        let containerView = UIView()
+        containerView.translatesAutoresizingMaskIntoConstraints = false
+        
+        let imageView = UIImageView()
+        imageView.contentMode = .scaleAspectFill
+        imageView.clipsToBounds = true
+        imageView.layer.cornerRadius = 8
+        imageView.backgroundColor = UIColor.systemGray6
+        imageView.tag = tag
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Add remove button
+        let removeButton = UIButton(type: .system)
+        removeButton.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
+        removeButton.tintColor = .white
+        removeButton.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+        removeButton.layer.cornerRadius = 12
+        removeButton.tag = tag
+        removeButton.addTarget(self, action: #selector(removePhotoTapped(_:)), for: .touchUpInside)
+        removeButton.translatesAutoresizingMaskIntoConstraints = false
+        
+        containerView.addSubview(imageView)
+        containerView.addSubview(removeButton)
+        
+        NSLayoutConstraint.activate([
+            imageView.topAnchor.constraint(equalTo: containerView.topAnchor),
+            imageView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            imageView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            imageView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+            imageView.widthAnchor.constraint(equalToConstant: 100),
+            imageView.heightAnchor.constraint(equalToConstant: 100),
+            
+            removeButton.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 4),
+            removeButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -4),
+            removeButton.widthAnchor.constraint(equalToConstant: 24),
+            removeButton.heightAnchor.constraint(equalToConstant: 24)
+        ])
+        
+        return containerView
+    }
+    
+    @objc private func removePhotoTapped(_ sender: UIButton) {
+        let index = sender.tag
+        
+        if index < existingPhotoURLs.count {
+            // Removing existing photo
+            let removedURL = existingPhotoURLs.remove(at: index)
+            deletedPhotoURLs.append(removedURL)
+        } else {
+            // Removing newly selected photo
+            let newPhotoIndex = index - existingPhotoURLs.count
+            selectedImages.remove(at: newPhotoIndex)
+        }
+        
+        // Remove from UI
+        if let containerView = sender.superview {
+            photoStackView.removeArrangedSubview(containerView)
+            containerView.removeFromSuperview()
+        }
+        
+        // Update photo image views array
+        photoImageViews.remove(at: index)
+        
+        // Re-tag remaining photos
+        for (newIndex, imageView) in photoImageViews.enumerated() {
+            imageView.tag = newIndex
+            if let removeButton = imageView.superview?.subviews.first(where: { $0 is UIButton }) as? UIButton {
+                removeButton.tag = newIndex
+            }
+        }
+        
+        updateAddPhotoButtonVisibility()
+    }
+    
+    private func updateAddPhotoButtonVisibility() {
+        let totalPhotos = existingPhotoURLs.count + selectedImages.count
+        addPhotoButton.isHidden = totalPhotos >= 5
     }
     
     // MARK: - Helper Methods
@@ -723,7 +1066,20 @@ class EditPlaceViewController: UIViewController {
         let originalPhone = place.phone ?? ""
         if currentPhone != originalPhone { return true }
         
+        // Check photos
+        if !selectedImages.isEmpty || !deletedPhotoURLs.isEmpty { return true }
+        
         return false
+    }
+    
+    private func clearHomeOrWorkPlace() {
+        // Clear from UserDefaults
+        let key = place.id == "home-place" ? "userHomeAddress" : "userWorkAddress"
+        UserDefaults.standard.removeObject(forKey: key)
+        
+        // Notify delegate and dismiss
+        delegate?.didDeletePlace(place.id)
+        dismiss(animated: true)
     }
     
     private func deletePlace() {
@@ -790,6 +1146,47 @@ class EditPlaceViewController: UIViewController {
         let alertController = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alertController.addAction(UIAlertAction(title: "OK", style: .default, handler: completion))
         present(alertController, animated: true)
+    }
+}
+
+// MARK: - CLLocationManagerDelegate
+
+// MARK: - PHPickerViewControllerDelegate
+
+extension EditPlaceViewController: PHPickerViewControllerDelegate {
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        picker.dismiss(animated: true)
+        
+        for result in results {
+            result.itemProvider.loadObject(ofClass: UIImage.self) { [weak self] object, error in
+                if let image = object as? UIImage {
+                    DispatchQueue.main.async {
+                        self?.addSelectedPhoto(image)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func addSelectedPhoto(_ image: UIImage) {
+        selectedImages.append(image)
+        
+        let tag = existingPhotoURLs.count + selectedImages.count - 1
+        let containerView = createPhotoImageView(tag: tag)
+        if let imageView = containerView.subviews.first(where: { $0 is UIImageView }) as? UIImageView {
+            imageView.image = image
+            photoImageViews.append(imageView)
+        }
+        
+        // Add to stack view before add button
+        photoStackView.insertArrangedSubview(containerView, at: photoStackView.arrangedSubviews.count - 1)
+        
+        updateAddPhotoButtonVisibility()
+        
+        // Scroll to show new photo
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.photoScrollView.scrollRectToVisible(containerView.frame, animated: true)
+        }
     }
 }
 

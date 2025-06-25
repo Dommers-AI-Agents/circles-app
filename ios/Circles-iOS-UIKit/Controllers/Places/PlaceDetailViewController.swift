@@ -1,5 +1,6 @@
 import UIKit
-import MapKit
+import GoogleMaps
+import PhotosUI
 
 class PlaceDetailViewController: UIViewController {
     
@@ -27,6 +28,44 @@ class PlaceDetailViewController: UIViewController {
         imageView.backgroundColor = Constants.Colors.lightGray
         imageView.translatesAutoresizingMaskIntoConstraints = false
         return imageView
+    }()
+    
+    private var streetViewImage: UIImage?
+    private var isStreetViewAvailable = false
+    private var showingStreetView = false
+    private var customImage: UIImage?
+    private var isHomeOrWorkPlace: Bool {
+        return place.circleId.isEmpty && (place.id == "home-place" || place.id == "work-place")
+    }
+    
+    private let streetViewToggleButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Street View", for: .normal)
+        button.setImage(UIImage(systemName: "person.and.arrow.left.and.arrow.right"), for: .normal)
+        button.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+        button.setTitleColor(.white, for: .normal)
+        button.tintColor = .white
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 12, weight: .medium)
+        button.layer.cornerRadius = 20
+        button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isHidden = true
+        return button
+    }()
+    
+    private let editImageButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Edit Photo", for: .normal)
+        button.setImage(UIImage(systemName: "camera.fill"), for: .normal)
+        button.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+        button.setTitleColor(.white, for: .normal)
+        button.tintColor = .white
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 12, weight: .medium)
+        button.layer.cornerRadius = 20
+        button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isHidden = true
+        return button
     }()
     
     private let infoContainerView: UIView = {
@@ -110,12 +149,27 @@ class PlaceDetailViewController: UIViewController {
         return label
     }()
     
-    private let mapView: MKMapView = {
-        let mapView = MKMapView()
+    private let mapView: GMSMapView = {
+        let mapView = GMSMapView()
+        mapView.camera = GMSCameraPosition.camera(withLatitude: 40.7128, longitude: -74.0060, zoom: 15.0)
         mapView.layer.cornerRadius = 12
         mapView.clipsToBounds = true
         mapView.translatesAutoresizingMaskIntoConstraints = false
         return mapView
+    }()
+    
+    private let navigateButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Navigate", for: .normal)
+        button.setImage(UIImage(systemName: "location.fill"), for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = Constants.Colors.primary
+        button.layer.cornerRadius = 25
+        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
+        button.contentEdgeInsets = UIEdgeInsets(top: 10, left: 20, bottom: 10, right: 20)
+        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 0)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
     }()
     
     private let notesTitleLabel: UILabel = {
@@ -127,6 +181,15 @@ class PlaceDetailViewController: UIViewController {
         return label
     }()
     
+    private let notesEditButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Edit", for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
+        button.setTitleColor(Constants.Colors.primary, for: .normal)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
     private let notesLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
@@ -134,6 +197,17 @@ class PlaceDetailViewController: UIViewController {
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
+    }()
+    
+    private let addNotesButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "plus"), for: .normal)
+        button.tintColor = .white
+        button.backgroundColor = Constants.Colors.primary
+        button.layer.cornerRadius = 20
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isHidden = true
+        return button
     }()
     
     private let tagsTitleLabel: UILabel = {
@@ -222,14 +296,20 @@ class PlaceDetailViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        // If circle is not provided, fetch it
-        if circle == nil {
+        // If circle is not provided and circleId is not empty, fetch it
+        if circle == nil && !place.circleId.isEmpty {
             fetchCircle()
         }
         
         setupUI()
         configureUI()
         setupMap()
+        checkStreetViewAvailability()
+        
+        // Auto-load street view for Home/Work places
+        if isHomeOrWorkPlace {
+            autoLoadStreetViewForHomeWork()
+        }
     }
     
     // MARK: - Data Fetching
@@ -264,6 +344,8 @@ class PlaceDetailViewController: UIViewController {
         scrollView.addSubview(contentView)
         
         contentView.addSubview(imageView)
+        contentView.addSubview(streetViewToggleButton)
+        contentView.addSubview(editImageButton)
         contentView.addSubview(infoContainerView)
         
         infoContainerView.addSubview(nameLabel)
@@ -273,11 +355,13 @@ class PlaceDetailViewController: UIViewController {
         infoContainerView.addSubview(addressTitleLabel)
         infoContainerView.addSubview(addressLabel)
         infoContainerView.addSubview(mapView)
+        infoContainerView.addSubview(navigateButton)
         
-        if let notes = place.notes, !notes.isEmpty {
-            infoContainerView.addSubview(notesTitleLabel)
-            infoContainerView.addSubview(notesLabel)
-        }
+        // Always add notes labels - visibility will be controlled in configureUI
+        infoContainerView.addSubview(notesTitleLabel)
+        infoContainerView.addSubview(notesEditButton)
+        infoContainerView.addSubview(notesLabel)
+        infoContainerView.addSubview(addNotesButton)
         
         if let tags = place.tags, !tags.isEmpty {
             infoContainerView.addSubview(tagsTitleLabel)
@@ -304,6 +388,21 @@ class PlaceDetailViewController: UIViewController {
         circleInfoView.addSubview(circleNameLabel)
         circleInfoView.addSubview(circleButton)
         circleButton.addTarget(self, action: #selector(circleButtonTapped), for: .touchUpInside)
+        
+        // Add target for street view toggle
+        streetViewToggleButton.addTarget(self, action: #selector(streetViewToggleButtonTapped), for: .touchUpInside)
+        
+        // Add target for edit image button
+        editImageButton.addTarget(self, action: #selector(editImageButtonTapped), for: .touchUpInside)
+        
+        // Add target for navigate button
+        navigateButton.addTarget(self, action: #selector(directionsButtonTapped), for: .touchUpInside)
+        
+        // Add target for notes edit button
+        notesEditButton.addTarget(self, action: #selector(notesEditButtonTapped), for: .touchUpInside)
+        
+        // Add target for add notes button
+        addNotesButton.addTarget(self, action: #selector(addNotesButtonTapped), for: .touchUpInside)
         
         ratingView.addSubview(ratingImageView)
         ratingView.addSubview(ratingLabel)
@@ -335,6 +434,16 @@ class PlaceDetailViewController: UIViewController {
             imageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             imageView.heightAnchor.constraint(equalToConstant: 250),
             
+            // Street View toggle button
+            streetViewToggleButton.topAnchor.constraint(equalTo: imageView.topAnchor, constant: 12),
+            streetViewToggleButton.trailingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: -12),
+            streetViewToggleButton.heightAnchor.constraint(equalToConstant: 32),
+            
+            // Edit Image button
+            editImageButton.bottomAnchor.constraint(equalTo: imageView.bottomAnchor, constant: -12),
+            editImageButton.trailingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: -12),
+            editImageButton.heightAnchor.constraint(equalToConstant: 32),
+            
             // Info container view
             infoContainerView.topAnchor.constraint(equalTo: imageView.bottomAnchor, constant: -20),
             infoContainerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
@@ -355,7 +464,6 @@ class PlaceDetailViewController: UIViewController {
             // Rating view
             ratingView.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: Constants.Spacing.medium),
             ratingView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
-            ratingView.widthAnchor.constraint(equalToConstant: 70),
             ratingView.heightAnchor.constraint(equalToConstant: 30),
             
             // Rating image view
@@ -368,6 +476,9 @@ class PlaceDetailViewController: UIViewController {
             ratingLabel.leadingAnchor.constraint(equalTo: ratingImageView.trailingAnchor, constant: Constants.Spacing.small),
             ratingLabel.trailingAnchor.constraint(equalTo: ratingView.trailingAnchor, constant: -Constants.Spacing.small),
             ratingLabel.centerYAnchor.constraint(equalTo: ratingView.centerYAnchor),
+            
+            // Rating view trailing constraint - let it size based on content
+            ratingView.trailingAnchor.constraint(equalTo: ratingLabel.trailingAnchor, constant: Constants.Spacing.small),
             
             // Description label
             descriptionLabel.topAnchor.constraint(equalTo: ratingView.bottomAnchor, constant: Constants.Spacing.medium),
@@ -387,26 +498,39 @@ class PlaceDetailViewController: UIViewController {
             mapView.topAnchor.constraint(equalTo: addressLabel.bottomAnchor, constant: Constants.Spacing.medium),
             mapView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
             mapView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.large),
-            mapView.heightAnchor.constraint(equalToConstant: 180)
+            mapView.heightAnchor.constraint(equalToConstant: 180),
+            
+            // Navigate button
+            navigateButton.topAnchor.constraint(equalTo: mapView.bottomAnchor, constant: Constants.Spacing.medium),
+            navigateButton.centerXAnchor.constraint(equalTo: infoContainerView.centerXAnchor),
+            navigateButton.heightAnchor.constraint(equalToConstant: 50),
+            navigateButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 150)
         ])
         
         // Dynamic constraints based on available data
-        var lastAnchor: NSLayoutYAxisAnchor = mapView.bottomAnchor
+        var lastAnchor: NSLayoutYAxisAnchor = navigateButton.bottomAnchor
         var additionalSpacing: CGFloat = Constants.Spacing.large
         
-        // Add notes if available
-        if let notes = place.notes, !notes.isEmpty {
-            NSLayoutConstraint.activate([
-                notesTitleLabel.topAnchor.constraint(equalTo: lastAnchor, constant: additionalSpacing),
-                notesTitleLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
-                
-                notesLabel.topAnchor.constraint(equalTo: notesTitleLabel.bottomAnchor, constant: Constants.Spacing.small),
-                notesLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
-                notesLabel.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.large)
-            ])
+        // Always set up notes constraints - visibility controlled in configureUI
+        NSLayoutConstraint.activate([
+            notesTitleLabel.topAnchor.constraint(equalTo: lastAnchor, constant: additionalSpacing),
+            notesTitleLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
             
-            lastAnchor = notesLabel.bottomAnchor
-        }
+            notesEditButton.centerYAnchor.constraint(equalTo: notesTitleLabel.centerYAnchor),
+            notesEditButton.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.large),
+            
+            notesLabel.topAnchor.constraint(equalTo: notesTitleLabel.bottomAnchor, constant: Constants.Spacing.small),
+            notesLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
+            notesLabel.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.large),
+            
+            // Add notes button (centered below title when there are no notes)
+            addNotesButton.topAnchor.constraint(equalTo: notesTitleLabel.bottomAnchor, constant: Constants.Spacing.medium),
+            addNotesButton.centerXAnchor.constraint(equalTo: infoContainerView.centerXAnchor),
+            addNotesButton.widthAnchor.constraint(equalToConstant: 40),
+            addNotesButton.heightAnchor.constraint(equalToConstant: 40)
+        ])
+        
+        lastAnchor = notesLabel.bottomAnchor
         
         // Add tags if available
         if let tags = place.tags, !tags.isEmpty {
@@ -457,21 +581,26 @@ class PlaceDetailViewController: UIViewController {
             lastAnchor = contactSectionView.bottomAnchor
         }
         
-        // Add circle info
-        NSLayoutConstraint.activate([
-            circleInfoView.topAnchor.constraint(equalTo: lastAnchor, constant: additionalSpacing),
-            circleInfoView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
-            circleInfoView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.large),
-            circleInfoView.heightAnchor.constraint(equalToConstant: 50),
-            
-            circleNameLabel.leadingAnchor.constraint(equalTo: circleInfoView.leadingAnchor, constant: Constants.Spacing.medium),
-            circleNameLabel.centerYAnchor.constraint(equalTo: circleInfoView.centerYAnchor),
-            
-            circleButton.trailingAnchor.constraint(equalTo: circleInfoView.trailingAnchor, constant: -Constants.Spacing.medium),
-            circleButton.centerYAnchor.constraint(equalTo: circleInfoView.centerYAnchor),
-            
-            circleInfoView.bottomAnchor.constraint(equalTo: infoContainerView.bottomAnchor, constant: -Constants.Spacing.large)
-        ])
+        // Add circle info only if we have a circle or circleId
+        if circle != nil || !place.circleId.isEmpty {
+            NSLayoutConstraint.activate([
+                circleInfoView.topAnchor.constraint(equalTo: lastAnchor, constant: additionalSpacing),
+                circleInfoView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
+                circleInfoView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.large),
+                circleInfoView.heightAnchor.constraint(equalToConstant: 50),
+                
+                circleNameLabel.leadingAnchor.constraint(equalTo: circleInfoView.leadingAnchor, constant: Constants.Spacing.medium),
+                circleNameLabel.centerYAnchor.constraint(equalTo: circleInfoView.centerYAnchor),
+                
+                circleButton.trailingAnchor.constraint(equalTo: circleInfoView.trailingAnchor, constant: -Constants.Spacing.medium),
+                circleButton.centerYAnchor.constraint(equalTo: circleInfoView.centerYAnchor),
+                
+                circleInfoView.bottomAnchor.constraint(equalTo: infoContainerView.bottomAnchor, constant: -Constants.Spacing.large)
+            ])
+        } else {
+            // No circle info, just add bottom constraint
+            lastAnchor.constraint(equalTo: infoContainerView.bottomAnchor, constant: -Constants.Spacing.large).isActive = true
+        }
     }
     
     private func configureUI() {
@@ -485,54 +614,42 @@ class PlaceDetailViewController: UIViewController {
         switch place.category {
         case .restaurant:
             categoryLabel.backgroundColor = UIColor(hex: "#E53E3E") // Red
-            imageView.image = UIImage(systemName: "fork.knife")
         case .cafe:
             categoryLabel.backgroundColor = UIColor(hex: "#DD6B20") // Orange
-            imageView.image = UIImage(systemName: "cup.and.saucer")
         case .bar:
             categoryLabel.backgroundColor = UIColor(hex: "#DD6B20") // Orange
-            imageView.image = UIImage(systemName: "wineglass")
         case .hotel:
             categoryLabel.backgroundColor = UIColor(hex: "#3182CE") // Blue
-            imageView.image = UIImage(systemName: "bed.double")
         case .retail:
             categoryLabel.backgroundColor = UIColor(hex: "#805AD5") // Purple
-            imageView.image = UIImage(systemName: "bag")
         case .service:
             categoryLabel.backgroundColor = UIColor(hex: "#38A169") // Green
-            imageView.image = UIImage(systemName: "wrench.and.screwdriver")
         case .attraction:
             categoryLabel.backgroundColor = UIColor(hex: "#D69E2E") // Yellow
-            imageView.image = UIImage(systemName: "star")
         case .entertainment:
             categoryLabel.backgroundColor = UIColor(hex: "#D69E2E") // Yellow
-            imageView.image = UIImage(systemName: "ticket")
         case .healthcare:
             categoryLabel.backgroundColor = UIColor(hex: "#319795") // Teal
-            imageView.image = UIImage(systemName: "cross.case")
         case .fitness:
             categoryLabel.backgroundColor = UIColor(hex: "#38A169") // Green
-            imageView.image = UIImage(systemName: "figure.run")
         case .education:
             categoryLabel.backgroundColor = UIColor(hex: "#3182CE") // Blue
-            imageView.image = UIImage(systemName: "book")
         case .outdoor:
             categoryLabel.backgroundColor = UIColor(hex: "#38A169") // Green
-            imageView.image = UIImage(systemName: "tree")
         case .transport:
             categoryLabel.backgroundColor = UIColor(hex: "#718096") // Gray
-            imageView.image = UIImage(systemName: "car")
         case .finance:
             categoryLabel.backgroundColor = UIColor(hex: "#805AD5") // Purple
-            imageView.image = UIImage(systemName: "dollarsign.circle")
+        case .home:
+            categoryLabel.backgroundColor = UIColor(hex: "#3182CE") // Blue
+        case .work:
+            categoryLabel.backgroundColor = UIColor(hex: "#38A169") // Green
         case .other:
             categoryLabel.backgroundColor = UIColor(hex: "#718096") // Gray
-            imageView.image = UIImage(systemName: "mappin")
         }
         
-        imageView.tintColor = Constants.Colors.primary
-        imageView.contentMode = .scaleAspectFit
-        imageView.backgroundColor = Constants.Colors.background
+        // Set default image
+        configureDefaultImage()
         
         // Description
         descriptionLabel.text = place.description ?? "No description available"
@@ -547,10 +664,43 @@ class PlaceDetailViewController: UIViewController {
         // Address
         addressLabel.text = place.address
         
-        // Notes
-        if let notes = place.notes {
-            notesLabel.text = notes
+        // Notes - combine all available notes
+        var notesText = ""
+        
+        // Add public notes first
+        if let publicNotes = place.publicNotes, !publicNotes.isEmpty {
+            notesText = publicNotes
+        } else if let notes = place.notes, !notes.isEmpty {
+            // Fall back to legacy notes field
+            notesText = notes
         }
+        
+        // Add private notes if the current user added this place
+        if place.isAddedByCurrentUser, let privateNotes = place.privateNotes, !privateNotes.isEmpty {
+            if !notesText.isEmpty {
+                notesText += "\n\nPrivate Notes:\n"
+            }
+            notesText += privateNotes
+        }
+        
+        if !notesText.isEmpty {
+            notesLabel.text = notesText
+            notesLabel.isHidden = false
+            addNotesButton.isHidden = true
+            notesEditButton.isHidden = false
+        } else {
+            notesLabel.isHidden = true
+            addNotesButton.isHidden = false
+            notesEditButton.isHidden = true
+        }
+        
+        // Always show notes section
+        notesTitleLabel.isHidden = false
+        
+        // Make notes tappable when they exist
+        notesLabel.isUserInteractionEnabled = true
+        let notesTapGesture = UITapGestureRecognizer(target: self, action: #selector(notesLabelTapped))
+        notesLabel.addGestureRecognizer(notesTapGesture)
         
         // Tags
         if let tags = place.tags, !tags.isEmpty {
@@ -566,15 +716,46 @@ class PlaceDetailViewController: UIViewController {
             phoneButton.setTitle("Call \(phone)", for: .normal)
         }
         
+        // Price Level
+        if let priceLevel = place.priceLevel {
+            let priceString = String(repeating: "$", count: priceLevel.rawValue + 1)
+            // Could add a price level label here if UI element exists
+        }
+        
+        // User ratings total
+        if let userRatingsTotal = place.userRatingsTotal, userRatingsTotal > 0 {
+            let ratingsText = " (\(userRatingsTotal) reviews)"
+            ratingLabel.text = (ratingLabel.text ?? "") + ratingsText
+        }
+        
+        // Opening Hours
+        if let openingHours = place.openingHours, !openingHours.isEmpty {
+            // Could add opening hours display here if UI element exists
+            print("Place has opening hours: \(openingHours.count) entries")
+        }
+        
         // Circle info
         updateCircleInfo()
+        
+        // Show edit image button for Home/Work places
+        if isHomeOrWorkPlace {
+            editImageButton.isHidden = false
+            // Load saved image if exists
+            loadSavedImage()
+        }
+        
+        // Hide navigate button if no location available
+        navigateButton.isHidden = (place.location == nil)
     }
     
     private func updateCircleInfo() {
         if let circle = self.circle {
             circleNameLabel.text = "In: \(circle.name)"
-        } else {
+        } else if !place.circleId.isEmpty {
             circleNameLabel.text = "Loading circle..."
+        } else {
+            // Hide circle info view for places without circles (e.g., Home/Work)
+            circleInfoView.isHidden = true
         }
     }
     
@@ -608,21 +789,24 @@ class PlaceDetailViewController: UIViewController {
     }
     
     private func setupMap() {
-        // Add annotation for the place location
+        // Add marker for the place location
         if let location = place.location?.clLocation {
-            let annotation = MKPointAnnotation()
-            annotation.coordinate = location.coordinate
-            annotation.title = place.name
-            annotation.subtitle = place.category.displayName
+            let marker = GMSMarker()
+            marker.position = location.coordinate
+            marker.title = place.name
+            marker.snippet = place.category.displayName
+            marker.map = mapView
             
-            mapView.addAnnotation(annotation)
+            // Custom marker color
+            marker.icon = GMSMarker.markerImage(with: UIColor(red: 0.0, green: 122.0/255.0, blue: 1.0, alpha: 1.0))
             
-            // Set map region centered on the place
-            let region = MKCoordinateRegion(
-                center: location.coordinate,
-                span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+            // Center camera on the place
+            let camera = GMSCameraPosition.camera(
+                withLatitude: location.coordinate.latitude,
+                longitude: location.coordinate.longitude,
+                zoom: 16.0
             )
-            mapView.setRegion(region, animated: true)
+            mapView.animate(to: camera)
         }
     }
     
@@ -663,12 +847,13 @@ class PlaceDetailViewController: UIViewController {
         
         var activityItems: [Any] = [shareText]
         
-        // Add location if available for better sharing to Maps apps
+        // Add location if available for sharing
         if let location = place.location?.clLocation {
-            let placemark = MKPlacemark(coordinate: location.coordinate)
-            let mapItem = MKMapItem(placemark: placemark)
-            mapItem.name = place.name
-            activityItems.append(mapItem)
+            // Create a Google Maps URL for sharing
+            let googleMapsURL = "https://maps.google.com/?q=\(location.coordinate.latitude),\(location.coordinate.longitude)"
+            if let url = URL(string: googleMapsURL) {
+                activityItems.append(url)
+            }
         }
         
         // Add website URL if available
@@ -692,11 +877,18 @@ class PlaceDetailViewController: UIViewController {
     @objc private func directionsButtonTapped() {
         // Open directions to the place in Maps app
         if let location = place.location?.clLocation {
-            let placemark = MKPlacemark(coordinate: location.coordinate)
-            let mapItem = MKMapItem(placemark: placemark)
-            mapItem.name = place.name
+            // Try Google Maps first
+            let googleMapsURL = URL(string: "comgooglemaps://?daddr=\(location.coordinate.latitude),\(location.coordinate.longitude)&directionsmode=driving")
             
-            mapItem.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
+            if let url = googleMapsURL, UIApplication.shared.canOpenURL(url) {
+                UIApplication.shared.open(url)
+            } else {
+                // Fallback to Apple Maps
+                let appleMapsURL = URL(string: "maps://?daddr=\(location.coordinate.latitude),\(location.coordinate.longitude)&dirflg=d")
+                if let url = appleMapsURL {
+                    UIApplication.shared.open(url)
+                }
+            }
         } else {
             let alert = UIAlertController(title: "No Location", message: "Location information is not available for this place.", preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "OK", style: .default))
@@ -733,6 +925,409 @@ class PlaceDetailViewController: UIViewController {
         let navController = UINavigationController(rootViewController: editPlaceVC)
         present(navController, animated: true)
     }
+    
+    @objc private func streetViewToggleButtonTapped() {
+        showingStreetView.toggle()
+        updateImageView()
+        
+        if showingStreetView && streetViewImage == nil {
+            loadStreetViewImage()
+        }
+    }
+    
+    private func checkStreetViewAvailability() {
+        guard let location = place.location?.clLocation else { return }
+        
+        GoogleStreetViewService.shared.checkStreetViewAvailability(at: location.coordinate) { [weak self] available in
+            DispatchQueue.main.async {
+                self?.isStreetViewAvailable = available
+                self?.streetViewToggleButton.isHidden = !available
+            }
+        }
+    }
+    
+    private func loadStreetViewImage() {
+        guard let location = place.location?.clLocation else { return }
+        
+        let imageSize = CGSize(width: UIScreen.main.bounds.width, height: 250)
+        let parameters = GoogleStreetViewService.StreetViewParameters(
+            location: location.coordinate,
+            size: imageSize
+        )
+        
+        GoogleStreetViewService.shared.downloadStreetViewImage(parameters: parameters) { [weak self] imageData in
+            guard let data = imageData, let image = UIImage(data: data) else { return }
+            
+            DispatchQueue.main.async {
+                self?.streetViewImage = image
+                if self?.showingStreetView == true {
+                    self?.updateImageView()
+                }
+            }
+        }
+    }
+    
+    private func autoLoadStreetViewForHomeWork() {
+        guard let location = place.location?.clLocation else { return }
+        
+        // Check if street view is available first
+        GoogleStreetViewService.shared.checkStreetViewAvailability(at: location.coordinate) { [weak self] available in
+            guard let self = self, available else { return }
+            
+            DispatchQueue.main.async {
+                // Load street view image
+                let imageSize = CGSize(width: UIScreen.main.bounds.width, height: 250)
+                let parameters = GoogleStreetViewService.StreetViewParameters(
+                    location: location.coordinate,
+                    size: imageSize
+                )
+                
+                GoogleStreetViewService.shared.downloadStreetViewImage(parameters: parameters) { [weak self] imageData in
+                    guard let data = imageData, let image = UIImage(data: data) else { return }
+                    
+                    DispatchQueue.main.async {
+                        self?.streetViewImage = image
+                        self?.showingStreetView = true
+                        self?.updateImageView()
+                        // Update button state
+                        self?.streetViewToggleButton.setTitle("Photos", for: .normal)
+                        self?.streetViewToggleButton.setImage(UIImage(systemName: "photo"), for: .normal)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func updateImageView() {
+        if showingStreetView, let streetViewImage = streetViewImage {
+            imageView.image = streetViewImage
+            imageView.contentMode = .scaleAspectFill
+            streetViewToggleButton.setTitle("Photos", for: .normal)
+            streetViewToggleButton.setImage(UIImage(systemName: "photo"), for: .normal)
+        } else {
+            // Reset to original photo or icon
+            configureDefaultImage()
+            streetViewToggleButton.setTitle("Street View", for: .normal)
+            streetViewToggleButton.setImage(UIImage(systemName: "person.and.arrow.left.and.arrow.right"), for: .normal)
+        }
+    }
+    
+    private func configureDefaultImage() {
+        // For Home/Work places, check if we already have street view loaded
+        if isHomeOrWorkPlace && showingStreetView && streetViewImage != nil {
+            imageView.image = streetViewImage
+            imageView.contentMode = .scaleAspectFill
+            return
+        }
+        
+        // Check if we have a custom image for Home/Work places
+        if isHomeOrWorkPlace && customImage != nil {
+            imageView.image = customImage
+            imageView.contentMode = .scaleAspectFill
+            return
+        }
+        
+        // First check if we have stored photo URLs
+        if let photos = place.photos, !photos.isEmpty, let firstPhotoUrl = photos.first {
+            // Load from URL if available
+            loadPhotoFromURL(firstPhotoUrl)
+            return
+        }
+        
+        // If no stored photos, use category icon instead of calling Google Places API
+        // This saves API costs since we already fetched all data when creating the place
+        switch place.category {
+        case .restaurant:
+            imageView.image = UIImage(systemName: "fork.knife")
+        case .cafe:
+            imageView.image = UIImage(systemName: "cup.and.saucer")
+        case .bar:
+            imageView.image = UIImage(systemName: "wineglass")
+        case .hotel:
+            imageView.image = UIImage(systemName: "bed.double")
+        case .retail:
+            imageView.image = UIImage(systemName: "bag")
+        case .service:
+            imageView.image = UIImage(systemName: "wrench.and.screwdriver")
+        case .attraction:
+            imageView.image = UIImage(systemName: "star")
+        case .entertainment:
+            imageView.image = UIImage(systemName: "ticket")
+        case .healthcare:
+            imageView.image = UIImage(systemName: "cross.case")
+        case .fitness:
+            imageView.image = UIImage(systemName: "figure.run")
+        case .education:
+            imageView.image = UIImage(systemName: "book")
+        case .outdoor:
+            imageView.image = UIImage(systemName: "tree")
+        case .transport:
+            imageView.image = UIImage(systemName: "car")
+        case .finance:
+            imageView.image = UIImage(systemName: "dollarsign.circle")
+        case .home:
+            imageView.image = UIImage(systemName: "house")
+        case .work:
+            imageView.image = UIImage(systemName: "building.2")
+        case .other:
+            imageView.image = UIImage(systemName: "mappin")
+        }
+        
+        imageView.tintColor = Constants.Colors.primary
+        imageView.contentMode = .scaleAspectFit
+        imageView.backgroundColor = Constants.Colors.background
+    }
+    
+    // MARK: - Notes Handling
+    
+    @objc private func notesLabelTapped() {
+        showNotesEditor()
+    }
+    
+    @objc private func notesEditButtonTapped() {
+        showNotesEditor()
+    }
+    
+    @objc private func addNotesButtonTapped() {
+        showNotesEditor()
+    }
+    
+    private func showNotesEditor() {
+        let notesEditorVC = NotesEditorViewController(
+            publicNotes: place.publicNotes ?? place.notes ?? "",
+            privateNotes: place.privateNotes ?? "",
+            isPrivateNotesEnabled: place.isAddedByCurrentUser
+        )
+        
+        notesEditorVC.onSave = { [weak self] publicNotes, privateNotes in
+            self?.updatePlaceNotes(publicNotes: publicNotes, privateNotes: privateNotes)
+        }
+        
+        let navController = UINavigationController(rootViewController: notesEditorVC)
+        present(navController, animated: true)
+    }
+    
+    private func updatePlaceNotes(publicNotes: String, privateNotes: String) {
+        // Show loading indicator
+        let loadingAlert = UIAlertController(title: "Saving Notes", message: "Please wait...", preferredStyle: .alert)
+        present(loadingAlert, animated: true)
+        
+        // Call PlaceService to update notes on Firebase
+        PlaceService.shared.updatePlace(
+            id: place.id,
+            privateNotes: place.isAddedByCurrentUser ? privateNotes : nil,
+            publicNotes: publicNotes
+        ) { [weak self] result in
+            guard let self = self else { return }
+            
+            loadingAlert.dismiss(animated: true) {
+                switch result {
+                case .success(_):
+                    // Update the UI with the new notes
+                    var notesText = ""
+                    
+                    if !publicNotes.isEmpty {
+                        notesText = publicNotes
+                    }
+                    
+                    if self.place.isAddedByCurrentUser && !privateNotes.isEmpty {
+                        if !notesText.isEmpty {
+                            notesText += "\n\nPrivate Notes:\n"
+                        }
+                        notesText += privateNotes
+                    }
+                    
+                    if !notesText.isEmpty {
+                        self.notesLabel.text = notesText
+                        self.notesLabel.textColor = Constants.Colors.gray
+                        self.notesLabel.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
+                        self.notesLabel.isHidden = false
+                        self.addNotesButton.isHidden = true
+                        self.notesEditButton.isHidden = false
+                    } else {
+                        self.notesLabel.isHidden = true
+                        self.addNotesButton.isHidden = false
+                        self.notesEditButton.isHidden = true
+                    }
+                    
+                case .failure(let error):
+                    // Show error alert
+                    let errorAlert = UIAlertController(
+                        title: "Error",
+                        message: "Failed to save notes: \(error.localizedDescription)",
+                        preferredStyle: .alert
+                    )
+                    errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                    self.present(errorAlert, animated: true)
+                }
+            }
+        }
+    }
+    
+    // MARK: - Photo Loading
+    
+    // Removed loadGooglePlacePhoto function to avoid unnecessary API calls
+    // All place data including photos should be stored when the place is created
+    
+    private func loadPhotoFromURL(_ urlString: String) {
+        ImageService.shared.loadImage(from: urlString) { [weak self] image in
+            guard let self = self else { return }
+            
+            if let image = image {
+                self.imageView.image = image
+                self.imageView.contentMode = .scaleAspectFill
+            } else {
+                self.setDefaultCategoryIcon()
+            }
+        }
+    }
+    
+    private func setDefaultCategoryIcon() {
+        switch place.category {
+        case .restaurant:
+            imageView.image = UIImage(systemName: "fork.knife")
+        case .cafe:
+            imageView.image = UIImage(systemName: "cup.and.saucer")
+        case .bar:
+            imageView.image = UIImage(systemName: "wineglass")
+        case .hotel:
+            imageView.image = UIImage(systemName: "bed.double")
+        case .retail:
+            imageView.image = UIImage(systemName: "bag")
+        case .service:
+            imageView.image = UIImage(systemName: "wrench.and.screwdriver")
+        case .attraction:
+            imageView.image = UIImage(systemName: "star")
+        case .entertainment:
+            imageView.image = UIImage(systemName: "ticket")
+        case .healthcare:
+            imageView.image = UIImage(systemName: "cross.case")
+        case .fitness:
+            imageView.image = UIImage(systemName: "figure.run")
+        case .education:
+            imageView.image = UIImage(systemName: "book")
+        case .outdoor:
+            imageView.image = UIImage(systemName: "tree")
+        case .transport:
+            imageView.image = UIImage(systemName: "car")
+        case .finance:
+            imageView.image = UIImage(systemName: "dollarsign.circle")
+        case .home:
+            imageView.image = UIImage(systemName: "house")
+        case .work:
+            imageView.image = UIImage(systemName: "building.2")
+        case .other:
+            imageView.image = UIImage(systemName: "mappin")
+        }
+        
+        imageView.tintColor = Constants.Colors.primary
+        imageView.contentMode = .scaleAspectFit
+        imageView.backgroundColor = Constants.Colors.background
+    }
+    
+    // MARK: - Image Handling for Home/Work
+    
+    @objc private func editImageButtonTapped() {
+        let actionSheet = UIAlertController(title: "Choose Photo", message: nil, preferredStyle: .actionSheet)
+        
+        actionSheet.addAction(UIAlertAction(title: "Camera", style: .default) { [weak self] _ in
+            self?.presentCamera()
+        })
+        
+        actionSheet.addAction(UIAlertAction(title: "Photo Library", style: .default) { [weak self] _ in
+            self?.presentPhotoPicker()
+        })
+        
+        // Add street view option if available
+        if isStreetViewAvailable && streetViewImage != nil {
+            actionSheet.addAction(UIAlertAction(title: "Use Street View", style: .default) { [weak self] _ in
+                self?.useStreetViewAsCustomImage()
+            })
+        }
+        
+        if customImage != nil {
+            actionSheet.addAction(UIAlertAction(title: "Remove Photo", style: .destructive) { [weak self] _ in
+                self?.removeCustomImage()
+            })
+        }
+        
+        actionSheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        
+        // For iPad
+        if let popover = actionSheet.popoverPresentationController {
+            popover.sourceView = editImageButton
+            popover.sourceRect = editImageButton.bounds
+        }
+        
+        present(actionSheet, animated: true)
+    }
+    
+    private func presentCamera() {
+        guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+            showAlert(title: "Camera Not Available", message: "Camera is not available on this device.")
+            return
+        }
+        
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.delegate = self
+        picker.allowsEditing = true
+        present(picker, animated: true)
+    }
+    
+    private func presentPhotoPicker() {
+        var config = PHPickerConfiguration()
+        config.selectionLimit = 1
+        config.filter = .images
+        
+        let picker = PHPickerViewController(configuration: config)
+        picker.delegate = self
+        present(picker, animated: true)
+    }
+    
+    private func removeCustomImage() {
+        customImage = nil
+        saveImage(nil)
+        configureDefaultImage()
+    }
+    
+    private func useStreetViewAsCustomImage() {
+        guard let streetViewImage = streetViewImage else { return }
+        customImage = streetViewImage
+        showingStreetView = false
+        saveImage(streetViewImage)
+        updateImageView()
+        
+        // Show success message
+        showAlert(title: "Success", message: "Street view image set as the place photo.")
+    }
+    
+    private func loadSavedImage() {
+        let imageKey = "place_image_\(place.id)"
+        if let imageData = UserDefaults.standard.data(forKey: imageKey),
+           let image = UIImage(data: imageData) {
+            customImage = image
+            imageView.image = image
+            imageView.contentMode = .scaleAspectFill
+        }
+    }
+    
+    private func saveImage(_ image: UIImage?) {
+        let imageKey = "place_image_\(place.id)"
+        
+        if let image = image,
+           let imageData = image.jpegData(compressionQuality: 0.8) {
+            UserDefaults.standard.set(imageData, forKey: imageKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: imageKey)
+        }
+    }
+    
+    private func showAlert(title: String, message: String) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
 }
 
 // MARK: - EditPlaceDelegate
@@ -746,5 +1341,48 @@ extension PlaceDetailViewController: EditPlaceDelegate {
     func didDeletePlace(_ placeId: String) {
         // Navigate back to the circle detail view after deletion
         navigationController?.popViewController(animated: true)
+    }
+}
+
+// MARK: - UIImagePickerControllerDelegate
+extension PlaceDetailViewController: UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+    func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+        picker.dismiss(animated: true)
+        
+        if let editedImage = info[.editedImage] as? UIImage {
+            customImage = editedImage
+            imageView.image = editedImage
+            imageView.contentMode = .scaleAspectFill
+            saveImage(editedImage)
+        } else if let originalImage = info[.originalImage] as? UIImage {
+            customImage = originalImage
+            imageView.image = originalImage
+            imageView.contentMode = .scaleAspectFill
+            saveImage(originalImage)
+        }
+    }
+    
+    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+        picker.dismiss(animated: true)
+    }
+}
+
+// MARK: - PHPickerViewControllerDelegate
+extension PlaceDetailViewController: PHPickerViewControllerDelegate {
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        picker.dismiss(animated: true)
+        
+        guard let result = results.first else { return }
+        
+        result.itemProvider.loadObject(ofClass: UIImage.self) { [weak self] object, error in
+            if let image = object as? UIImage {
+                DispatchQueue.main.async {
+                    self?.customImage = image
+                    self?.imageView.image = image
+                    self?.imageView.contentMode = .scaleAspectFill
+                    self?.saveImage(image)
+                }
+            }
+        }
     }
 }

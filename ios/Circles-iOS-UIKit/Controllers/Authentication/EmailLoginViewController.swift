@@ -7,7 +7,7 @@ class EmailLoginViewController: UIViewController {
         let label = UILabel()
         label.text = "Log in to Circles"
         label.font = UIFont.systemFont(ofSize: 28, weight: .bold)
-        label.textColor = .darkGray
+        label.textColor = Constants.Colors.label
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -44,6 +44,30 @@ class EmailLoginViewController: UIViewController {
         button.titleLabel?.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
+    }()
+    
+    private let rememberMeContainer: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let rememberMeCheckbox: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "square"), for: .normal)
+        button.setImage(UIImage(systemName: "checkmark.square.fill"), for: .selected)
+        button.tintColor = Constants.Colors.primary
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let rememberMeLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Remember me"
+        label.font = UIFont.systemFont(ofSize: 16)
+        label.textColor = Constants.Colors.label
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }()
     
     private let forgotPasswordButton: UIButton = {
@@ -84,7 +108,7 @@ class EmailLoginViewController: UIViewController {
         super.viewDidLoad()
         setupUI()
         setupActions()
-        loadSavedEmail()
+        loadSavedCredentials()
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -96,10 +120,15 @@ class EmailLoginViewController: UIViewController {
     private func setupUI() {
         view.backgroundColor = .systemBackground
         
+        // Setup remember me container
+        rememberMeContainer.addSubview(rememberMeCheckbox)
+        rememberMeContainer.addSubview(rememberMeLabel)
+        
         // Add subviews
         view.addSubview(titleLabel)
         view.addSubview(emailTextField)
         view.addSubview(passwordTextField)
+        view.addSubview(rememberMeContainer)
         view.addSubview(loginButton)
         view.addSubview(forgotPasswordButton)
         view.addSubview(activityIndicator)
@@ -120,7 +149,21 @@ class EmailLoginViewController: UIViewController {
             passwordTextField.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
             passwordTextField.heightAnchor.constraint(equalToConstant: 50),
             
-            loginButton.topAnchor.constraint(equalTo: passwordTextField.bottomAnchor, constant: 32),
+            rememberMeContainer.topAnchor.constraint(equalTo: passwordTextField.bottomAnchor, constant: 16),
+            rememberMeContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
+            rememberMeContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
+            rememberMeContainer.heightAnchor.constraint(equalToConstant: 30),
+            
+            rememberMeCheckbox.leadingAnchor.constraint(equalTo: rememberMeContainer.leadingAnchor),
+            rememberMeCheckbox.centerYAnchor.constraint(equalTo: rememberMeContainer.centerYAnchor),
+            rememberMeCheckbox.widthAnchor.constraint(equalToConstant: 24),
+            rememberMeCheckbox.heightAnchor.constraint(equalToConstant: 24),
+            
+            rememberMeLabel.leadingAnchor.constraint(equalTo: rememberMeCheckbox.trailingAnchor, constant: 8),
+            rememberMeLabel.centerYAnchor.constraint(equalTo: rememberMeContainer.centerYAnchor),
+            rememberMeLabel.trailingAnchor.constraint(equalTo: rememberMeContainer.trailingAnchor),
+            
+            loginButton.topAnchor.constraint(equalTo: rememberMeContainer.bottomAnchor, constant: 24),
             loginButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
             loginButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
             loginButton.heightAnchor.constraint(equalToConstant: 50),
@@ -140,10 +183,16 @@ class EmailLoginViewController: UIViewController {
     private func setupActions() {
         loginButton.addTarget(self, action: #selector(loginButtonTapped), for: .touchUpInside)
         forgotPasswordButton.addTarget(self, action: #selector(forgotPasswordTapped), for: .touchUpInside)
+        rememberMeCheckbox.addTarget(self, action: #selector(rememberMeToggled), for: .touchUpInside)
         
         // Add tap gesture to dismiss keyboard
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
         view.addGestureRecognizer(tapGesture)
+        
+        // Add tap gesture to remember me label
+        let rememberMeTap = UITapGestureRecognizer(target: self, action: #selector(rememberMeToggled))
+        rememberMeLabel.isUserInteractionEnabled = true
+        rememberMeLabel.addGestureRecognizer(rememberMeTap)
     }
     
     // MARK: - Actions
@@ -164,6 +213,15 @@ class EmailLoginViewController: UIViewController {
                 case .success(let user):
                     print("Successfully logged in user: \(user.displayName)")
                     self?.saveEmail(email)
+                    
+                    // Save credentials if remember me is checked
+                    if self?.rememberMeCheckbox.isSelected == true {
+                        KeychainManager.shared.saveCredentials(email: email, password: password)
+                    } else {
+                        // Clear any saved credentials if remember me is unchecked
+                        KeychainManager.shared.deleteCredentials()
+                    }
+                    
                     // Authentication state listener in SceneDelegate will handle UI update
                     
                 case .failure(let error):
@@ -186,6 +244,10 @@ class EmailLoginViewController: UIViewController {
         view.endEditing(true)
     }
     
+    @objc private func rememberMeToggled() {
+        rememberMeCheckbox.isSelected = !rememberMeCheckbox.isSelected
+    }
+    
     // MARK: - Helper Methods
     private func presentAlert(title: String, message: String) {
         let alertController = UIAlertController(title: title, message: message, preferredStyle: .alert)
@@ -197,9 +259,17 @@ class EmailLoginViewController: UIViewController {
         UserDefaults.standard.set(email, forKey: savedEmailKey)
     }
     
-    private func loadSavedEmail() {
-        if let savedEmail = UserDefaults.standard.string(forKey: savedEmailKey) {
-            emailTextField.text = savedEmail
+    private func loadSavedCredentials() {
+        // First try to load from keychain (if remember me was checked)
+        if let credentials = KeychainManager.shared.retrieveCredentials() {
+            emailTextField.text = credentials.email
+            passwordTextField.text = credentials.password
+            rememberMeCheckbox.isSelected = true
+        } else {
+            // Fall back to just loading saved email
+            if let savedEmail = UserDefaults.standard.string(forKey: savedEmailKey) {
+                emailTextField.text = savedEmail
+            }
         }
     }
     

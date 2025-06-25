@@ -91,3 +91,33 @@ circles-private-data/
 firebase-service-account.json
 
 **/.claude/settings.local.json
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Firebase
+.firebaserc
+firebase.json
+storage.rules
+cors.json
+
+# Documentation and temp files
+*.md.backup
+*.tmp
+*.temp
+
+# iOS specific
+ios/.build/
+ios/Package.swift
+ios/FIREBASE_*.md
+ios/add-firebase-dependencies.md
+ios/deploy-backend.md
+
+# Archived files
+Archived-SwiftUI-Views/
+
+# Backend deployment files
+backend/scripts/deploy-storage-rules.sh
+backend/scripts/migrate-storage-urls.js

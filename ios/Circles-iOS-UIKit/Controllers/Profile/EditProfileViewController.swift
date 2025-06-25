@@ -119,6 +119,8 @@ class EditProfileViewController: UIViewController {
     
     // MARK: - Properties
     private var selectedImage: UIImage?
+    private var currentUser: User?
+    private var isLoading = false
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
@@ -234,18 +236,47 @@ class EditProfileViewController: UIViewController {
     
     // MARK: - Data Loading
     private func loadUserProfile() {
-        // In a real app, this would load the user profile from the API
-        // For demo purposes, we'll create sample data
-        
-        // Profile image (using system image for demo)
-        profileImageView.image = UIImage(systemName: "person.circle.fill")
-        profileImageView.tintColor = Constants.Colors.primary
+        // Load current user profile
+        if let user = AuthService.shared.currentUser {
+            currentUser = user
+            displayUserProfile(user)
+        } else {
+            // Fetch current user if not cached
+            AuthService.shared.fetchCurrentUser { [weak self] result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(let user):
+                        self?.currentUser = user
+                        self?.displayUserProfile(user)
+                    case .failure:
+                        self?.navigationController?.popViewController(animated: true)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func displayUserProfile(_ user: User) {
+        // Profile image
+        if let profileImageUrl = user.profilePicture {
+            ImageService.shared.loadImage(from: profileImageUrl) { [weak self] image in
+                DispatchQueue.main.async {
+                    self?.profileImageView.image = image ?? UIImage(systemName: "person.circle.fill")
+                    if image == nil {
+                        self?.profileImageView.tintColor = Constants.Colors.primary
+                    }
+                }
+            }
+        } else {
+            profileImageView.image = UIImage(systemName: "person.circle.fill")
+            profileImageView.tintColor = Constants.Colors.primary
+        }
         
         // User info
-        displayNameTextField.text = "John Doe"
-        emailTextField.text = "john.doe@example.com"
-        locationTextField.text = "New York, NY"
-        bioTextView.text = "I love exploring new places and sharing them with friends. Food enthusiast and travel addict."
+        displayNameTextField.text = user.displayName
+        emailTextField.text = user.email
+        locationTextField.text = user.location ?? ""
+        bioTextView.text = user.bio ?? ""
     }
     
     // MARK: - Actions
@@ -260,10 +291,91 @@ class EditProfileViewController: UIViewController {
             return
         }
         
-        // In a real app, you would update the user profile on the server
-        // For this demo, we'll just show a success message
-        presentAlert(title: "Success", message: "Profile updated successfully") { [weak self] _ in
-            self?.navigationController?.popViewController(animated: true)
+        guard !isLoading else { return }
+        
+        isLoading = true
+        saveButton.isEnabled = false
+        saveButton.setTitle("Saving...", for: .normal)
+        
+        // Prepare update data
+        var updates: [String: Any] = [
+            "displayName": displayName
+        ]
+        
+        if let location = locationTextField.text, !location.isEmpty {
+            updates["location"] = location
+        }
+        
+        if let bio = bioTextView.text, !bio.isEmpty {
+            updates["bio"] = bio
+        }
+        
+        // Upload profile image if changed
+        if let image = selectedImage {
+            uploadProfileImage(image) { [weak self] imageUrl in
+                guard let self = self else { return }
+                
+                if let imageUrl = imageUrl {
+                    updates["profilePicture"] = imageUrl
+                }
+                
+                self.updateProfile(with: updates)
+            }
+        } else {
+            updateProfile(with: updates)
+        }
+    }
+    
+    private func uploadProfileImage(_ image: UIImage, completion: @escaping (String?) -> Void) {
+        // Convert image to data
+        guard let imageData = image.jpegData(compressionQuality: 0.8) else {
+            completion(nil)
+            return
+        }
+        
+        // In a real app, you would upload to a storage service
+        // For now, we'll simulate an upload
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            // Return a mock URL
+            completion("https://api.circles.app/images/profile_\(UUID().uuidString).jpg")
+        }
+    }
+    
+    private func updateProfile(with updates: [String: Any]) {
+        let displayName = updates["displayName"] as? String
+        let location = updates["location"] as? String
+        let bio = updates["bio"] as? String
+        
+        // Convert profile image URL to data if needed
+        var profileImageData: Data?
+        if let _ = updates["profilePicture"] as? String,
+           let image = selectedImage {
+            profileImageData = image.jpegData(compressionQuality: 0.8)
+        }
+        
+        UserService.shared.updateUserProfile(
+            displayName: displayName,
+            bio: bio,
+            location: location,
+            profilePicture: profileImageData
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                self?.isLoading = false
+                self?.saveButton.isEnabled = true
+                self?.saveButton.setTitle("Save Changes", for: .normal)
+                
+                switch result {
+                case .success(let updatedUser):
+                    // Update the cached user
+                    AuthService.shared.updateCurrentUser(updatedUser)
+                    
+                    self?.presentAlert(title: "Success", message: "Profile updated successfully") { _ in
+                        self?.navigationController?.popViewController(animated: true)
+                    }
+                case .failure(let error):
+                    self?.presentAlert(title: "Error", message: "Failed to update profile: \(error.localizedDescription)")
+                }
+            }
         }
     }
     

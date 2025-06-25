@@ -20,7 +20,7 @@ class ProfileViewController: UIViewController {
     
     private let profileHeaderView: UIView = {
         let view = UIView()
-        view.backgroundColor = Constants.Colors.white
+        view.backgroundColor = Constants.Colors.secondaryBackground
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -29,10 +29,10 @@ class ProfileViewController: UIViewController {
         let imageView = UIImageView()
         imageView.contentMode = .scaleAspectFill
         imageView.clipsToBounds = true
-        imageView.backgroundColor = Constants.Colors.lightGray
+        imageView.backgroundColor = Constants.Colors.tertiaryBackground
         imageView.layer.cornerRadius = 50
         imageView.layer.borderWidth = 3
-        imageView.layer.borderColor = Constants.Colors.white.cgColor
+        imageView.layer.borderColor = Constants.Colors.background.cgColor
         imageView.translatesAutoresizingMaskIntoConstraints = false
         return imageView
     }()
@@ -40,7 +40,7 @@ class ProfileViewController: UIViewController {
     private let displayNameLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.xxlarge, weight: .bold)
-        label.textColor = Constants.Colors.darkGray
+        label.textColor = Constants.Colors.label
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -49,7 +49,7 @@ class ProfileViewController: UIViewController {
     private let emailLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
-        label.textColor = Constants.Colors.gray
+        label.textColor = Constants.Colors.secondaryLabel
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -58,7 +58,7 @@ class ProfileViewController: UIViewController {
     private let locationLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
-        label.textColor = Constants.Colors.gray
+        label.textColor = Constants.Colors.secondaryLabel
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -67,7 +67,7 @@ class ProfileViewController: UIViewController {
     private let bioLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
-        label.textColor = Constants.Colors.darkGray
+        label.textColor = Constants.Colors.label
         label.textAlignment = .center
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -88,7 +88,7 @@ class ProfileViewController: UIViewController {
     
     private let statsView: UIView = {
         let view = UIView()
-        view.backgroundColor = Constants.Colors.white
+        view.backgroundColor = Constants.Colors.secondaryBackground
         view.layer.cornerRadius = 12
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
@@ -98,7 +98,7 @@ class ProfileViewController: UIViewController {
         let label = UILabel()
         label.text = "3"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.xlarge, weight: .bold)
-        label.textColor = Constants.Colors.darkGray
+        label.textColor = Constants.Colors.label
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -108,7 +108,7 @@ class ProfileViewController: UIViewController {
         let label = UILabel()
         label.text = "Circles"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        label.textColor = Constants.Colors.gray
+        label.textColor = Constants.Colors.secondaryLabel
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -118,7 +118,7 @@ class ProfileViewController: UIViewController {
         let label = UILabel()
         label.text = "12"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.xlarge, weight: .bold)
-        label.textColor = Constants.Colors.darkGray
+        label.textColor = Constants.Colors.label
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -128,7 +128,7 @@ class ProfileViewController: UIViewController {
         let label = UILabel()
         label.text = "Places"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        label.textColor = Constants.Colors.gray
+        label.textColor = Constants.Colors.secondaryLabel
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -138,7 +138,7 @@ class ProfileViewController: UIViewController {
         let label = UILabel()
         label.text = "42"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.xlarge, weight: .bold)
-        label.textColor = Constants.Colors.darkGray
+        label.textColor = Constants.Colors.label
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -148,7 +148,7 @@ class ProfileViewController: UIViewController {
         let label = UILabel()
         label.text = "Friends"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        label.textColor = Constants.Colors.gray
+        label.textColor = Constants.Colors.secondaryLabel
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -156,14 +156,14 @@ class ProfileViewController: UIViewController {
     
     private let divider1View: UIView = {
         let view = UIView()
-        view.backgroundColor = Constants.Colors.lightGray
+        view.backgroundColor = Constants.Colors.separator
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
     
     private let divider2View: UIView = {
         let view = UIView()
-        view.backgroundColor = Constants.Colors.lightGray
+        view.backgroundColor = Constants.Colors.separator
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -175,6 +175,15 @@ class ProfileViewController: UIViewController {
         button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
+    }()
+    
+    private let versionLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }()
     
     // MARK: - Lifecycle
@@ -193,6 +202,22 @@ class ProfileViewController: UIViewController {
         setupUI()
         setupActions()
         loadUserProfile()
+        displayAppVersion()
+    }
+    
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        
+        // Update colors when dark mode changes
+        if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
+            updateAppearance()
+        }
+    }
+    
+    private func updateAppearance() {
+        // Update border colors that don't automatically adapt
+        profileImageView.layer.borderColor = Constants.Colors.background.cgColor
+        editProfileButton.layer.borderColor = Constants.Colors.primary.cgColor
     }
     
     // MARK: - UI Setup
@@ -227,6 +252,7 @@ class ProfileViewController: UIViewController {
         statsView.addSubview(divider2View)
         
         contentView.addSubview(logoutButton)
+        contentView.addSubview(versionLabel)
         
         // Layout constraints
         NSLayoutConstraint.activate([
@@ -322,7 +348,13 @@ class ProfileViewController: UIViewController {
             logoutButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             logoutButton.widthAnchor.constraint(equalToConstant: 100),
             logoutButton.heightAnchor.constraint(equalToConstant: 40),
-            logoutButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
+            
+            // Version label
+            versionLabel.topAnchor.constraint(equalTo: logoutButton.bottomAnchor, constant: Constants.Spacing.medium),
+            versionLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            versionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
+            versionLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+            versionLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
         ])
         
         // Create constraints using proportional horizontal distribution
@@ -350,6 +382,9 @@ class ProfileViewController: UIViewController {
     private func setupActions() {
         editProfileButton.addTarget(self, action: #selector(editProfileButtonTapped), for: .touchUpInside)
         logoutButton.addTarget(self, action: #selector(logoutButtonTapped), for: .touchUpInside)
+        
+        // Apply initial appearance
+        updateAppearance()
     }
     
     // MARK: - Actions
@@ -370,9 +405,8 @@ class ProfileViewController: UIViewController {
     }
     
     @objc private func settingsButtonTapped() {
-        let alert = UIAlertController(title: "Settings", message: "This feature is coming soon!", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
+        let settingsVC = SettingsViewController()
+        navigationController?.pushViewController(settingsVC, animated: true)
     }
     
     // MARK: - Data Loading
@@ -438,11 +472,43 @@ class ProfileViewController: UIViewController {
     }
     
     private func fetchUserStats(userId: String) {
-        // Fetch circles count, places count, and friends count
-        // For demo purposes, we'll use placeholder data
-        circlesLabel.text = "3"
-        placesLabel.text = "12"
-        friendsLabel.text = "42"
+        // For current user, fetch their circles
+        if userId == AuthService.shared.getUserId() {
+            // Fetch circles count
+            CircleService.shared.fetchUserCircles { [weak self] result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(let circles):
+                        self?.circlesLabel.text = "\(circles.count)"
+                    case .failure:
+                        self?.circlesLabel.text = "0"
+                    }
+                }
+            }
+            
+            // Fetch places count from circles
+            CircleService.shared.fetchUserCircles { [weak self] result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(let circles):
+                        let totalPlaces = circles.reduce(0) { $0 + ($1.places?.count ?? 0) }
+                        self?.placesLabel.text = "\(totalPlaces)"
+                    case .failure:
+                        self?.placesLabel.text = "0"
+                    }
+                }
+            }
+            
+            // Fetch connections count
+            let connectionsCount = NetworkManager.shared.connections.count
+            friendsLabel.text = "\(connectionsCount)"
+        } else {
+            // For other users, show default stats
+            // In a real app, you might have an endpoint to fetch public stats
+            circlesLabel.text = "0"
+            placesLabel.text = "0"
+            friendsLabel.text = "0"
+        }
     }
     
     private func displayDefaultProfile() {
@@ -458,6 +524,14 @@ class ProfileViewController: UIViewController {
         circlesLabel.text = "0"
         placesLabel.text = "0"
         friendsLabel.text = "0"
+    }
+    
+    private func displayAppVersion() {
+        // Get app version from Info.plist
+        let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+        let buildNumber = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+        
+        versionLabel.text = "Version \(appVersion) (\(buildNumber))"
     }
     
     private func logout() {

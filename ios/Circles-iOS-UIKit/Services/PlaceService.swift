@@ -107,6 +107,23 @@ class PlaceService {
     
     // MARK: - Create, Update, Delete
     
+    func createPlaceFromGoogleData(_ googleData: [String: Any], completion: @escaping (Result<Place, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "places",
+            method: .post,
+            body: googleData,
+            requiresAuth: true
+        ) { [weak self] (result: Result<PlaceResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.place))
+            case .failure(let error):
+                let mappedError = self?.mapAPIErrorToPlaceError(error)
+                completion(.failure(mappedError ?? PlaceError.creationFailed))
+            }
+        }
+    }
+    
     func createPlace(name: String, description: String?, address: String, category: PlaceCategory, circleId: String, privacy: PlacePrivacy = .followCirclePrivacy, website: String? = nil, phone: String? = nil, tags: [String]? = nil, photos: [Data]? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
         
         // First geocode the address to get coordinates
@@ -206,6 +223,27 @@ class PlaceService {
             case .failure(let error):
                 let mappedError = self?.mapAPIErrorToPlaceError(error)
                 completion(.failure(mappedError ?? PlaceError.creationFailed))
+            }
+        }
+    }
+    
+    func updatePlace(id: String, privateNotes: String? = nil, publicNotes: String? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
+        var body: [String: Any] = [:]
+        if let privateNotes = privateNotes { body["privateNotes"] = privateNotes }
+        if let publicNotes = publicNotes { body["publicNotes"] = publicNotes }
+        
+        APIService.shared.request(
+            endpoint: "places/\(id)",
+            method: .put,
+            body: body,
+            requiresAuth: true
+        ) { [weak self] (result: Result<PlaceResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.place))
+            case .failure(let error):
+                let mappedError = self?.mapAPIErrorToPlaceError(error)
+                completion(.failure(mappedError ?? PlaceError.updateFailed))
             }
         }
     }
@@ -371,7 +409,7 @@ class PlaceService {
         }
     }
     
-    private func uploadMultipleImages(_ imagesData: [Data], completion: @escaping (Result<[String], Error>) -> Void) {
+    func uploadMultipleImages(_ imagesData: [Data], completion: @escaping (Result<[String], Error>) -> Void) {
         let uploadGroup = DispatchGroup()
         var uploadedUrls: [String] = []
         var uploadError: Error?
@@ -401,14 +439,52 @@ class PlaceService {
     }
     
     private func uploadImage(_ imageData: Data, completion: @escaping (Result<String, Error>) -> Void) {
-        // In a real app, this would upload the image to a cloud storage service
-        // For now, we'll simulate it with a mock URL
+        // Convert image data to base64
+        let base64String = imageData.base64EncodedString()
+        let filename = "place-\(UUID().uuidString).jpg"
         
-        // Simulate network delay
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
-            // Generate a mock image URL
-            let mockImageUrl = "https://storage.circles-app.com/images/\(UUID().uuidString).jpg"
-            completion(.success(mockImageUrl))
+        let body: [String: Any] = [
+            "image": "data:image/jpeg;base64,\(base64String)",
+            "filename": filename
+        ]
+        
+        APIService.shared.request(
+            endpoint: "upload/image",
+            method: .post,
+            body: body,
+            requiresAuth: true
+        ) { (result: Result<ImageUploadResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.url))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    // MARK: - Update Place Order
+    
+    func updatePlaceOrder(circleId: String, placeIds: [String]) async throws {
+        let body: [String: Any] = [
+            "placeIds": placeIds
+        ]
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            APIService.shared.request(
+                endpoint: "circles/\(circleId)/places/reorder",
+                method: .put,
+                body: body,
+                requiresAuth: true
+            ) { [weak self] (result: Result<EmptyResponse, APIError>) in
+                switch result {
+                case .success(_):
+                    continuation.resume()
+                case .failure(let error):
+                    let mappedError = self?.mapAPIErrorToPlaceError(error) ?? PlaceError.unknown
+                    continuation.resume(throwing: mappedError)
+                }
+            }
         }
     }
     

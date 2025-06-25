@@ -9,7 +9,9 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/firebase/firebase-ios-sdk.git", from: "11.2.0"),
         .package(url: "https://github.com/google/GoogleSignIn-iOS.git", from: "8.0.0"),
-        .package(url: "https://github.com/facebook/facebook-ios-sdk.git", from: "14.1.0")
+        .package(url: "https://github.com/facebook/facebook-ios-sdk.git", from: "14.1.0"),
+        .package(url: "https://github.com/googlemaps/ios-maps-sdk", from: "10.0.0"),
+        .package(url: "https://github.com/googlemaps/ios-places-sdk", from: "10.0.0")
     ],
     targets: [
         .target(
@@ -21,7 +23,13 @@ let package = Package(
                 .product(name: "FirebaseStorage", package: "firebase-ios-sdk"),
                 .product(name: "GoogleSignIn", package: "GoogleSignIn-iOS"),
                 .product(name: "FacebookCore", package: "facebook-ios-sdk"),
-                .product(name: "FacebookLogin", package: "facebook-ios-sdk")
+                .product(name: "FacebookLogin", package: "facebook-ios-sdk"),
+                .product(name: "FBSDKCoreKit", package: "facebook-ios-sdk"),
+                .product(name: "FBSDKLoginKit", package: "facebook-ios-sdk"),
+                .product(name: "GoogleMaps", package: "ios-maps-sdk"),
+                .product(name: "GoogleMapsCore", package: "ios-maps-sdk"),
+                .product(name: "GoogleMapsBase", package: "ios-maps-sdk"),
+                .product(name: "GooglePlaces", package: "ios-places-sdk")
             ]
         )
     ]

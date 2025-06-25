@@ -224,12 +224,13 @@ exports.firebaseAuth = async (req, res, next) => {
               
               if (response.ok && tokenInfo.aud) {
                 // Valid Google OAuth token
-                uid = tokenInfo.sub; // Google user ID
+                uid = tokenInfo.sub; // Google user ID - use as-is, don't modify
                 email = tokenInfo.email;
                 name = tokenInfo.name;
                 picture = tokenInfo.picture;
                 provider = 'google';
                 console.log('✅ Google OAuth token verified successfully');
+                console.log(`📝 Google user ID (sub): ${uid}`);
               } else {
                 throw new Error('Invalid Google token');
               }
@@ -297,6 +298,7 @@ exports.firebaseAuth = async (req, res, next) => {
     
     // If no existing user found by email, check by provider ID
     if (!user) {
+      console.log(`🔍 Checking for user by provider ID: ${uid}`);
       userRef = db.collection(COLLECTIONS.USERS).doc(uid);
       const userDoc = await userRef.get();
       
@@ -315,6 +317,7 @@ exports.firebaseAuth = async (req, res, next) => {
         user = serializeDoc(await userRef.get());
       } else {
         // Completely new user
+        console.log(`🆕 Creating new user with ID: ${uid}, provider: ${provider}`);
         const userData = createUser({
           uid,
           email,
@@ -325,13 +328,16 @@ exports.firebaseAuth = async (req, res, next) => {
         
         await userRef.set(userData);
         user = { id: uid, ...userData };
+        console.log(`✅ New user created successfully with ID: ${uid}`);
       }
     }
 
     // Create JWT token for API access
+    const tokenUid = user.id || user.uid;
+    console.log(`🆔 Creating JWT token with UID: ${tokenUid}`);
     const token = jwt.sign(
       { 
-        uid: user.id || user.uid,
+        uid: tokenUid,
         email: user.email 
       },
       process.env.JWT_SECRET,
@@ -737,21 +743,69 @@ exports.refreshToken = async (req, res, next) => {
       });
     }
 
-    // Check if user still exists
-    const userRef = db.collection(COLLECTIONS.USERS).doc(decoded.uid);
-    const userDoc = await userRef.get();
+    // Parse the actual Firebase UID from complex format if needed
+    let firebaseUid = decoded.uid;
+    let parsedUid = null;
+    if (decoded.uid && decoded.uid.includes('.')) {
+      // Handle format like "000454.9b5eeac93282416c9bc6dcecbc49b40f.2127"
+      const parts = decoded.uid.split('.');
+      if (parts.length >= 2) {
+        parsedUid = parts[1]; // Use the middle part as potential Firebase UID
+        console.log(`🔐 Refresh token: Complex ID detected: ${decoded.uid}, parsed UID: ${parsedUid}`);
+      }
+    }
 
-    if (!userDoc.exists) {
+    // Check if user still exists - try multiple ID formats
+    let userDoc = null;
+    let actualUserId = null;
+    
+    // First try the original UID as-is
+    const userRef = db.collection(COLLECTIONS.USERS).doc(firebaseUid);
+    userDoc = await userRef.get();
+    
+    if (userDoc.exists) {
+      actualUserId = firebaseUid;
+      console.log(`✅ Found user with original UID: ${actualUserId}`);
+    } else if (parsedUid) {
+      // If not found and we have a parsed UID, try that
+      const parsedUserRef = db.collection(COLLECTIONS.USERS).doc(parsedUid);
+      const parsedUserDoc = await parsedUserRef.get();
+      
+      if (parsedUserDoc.exists) {
+        userDoc = parsedUserDoc;
+        actualUserId = parsedUid;
+        console.log(`✅ Found user with parsed UID: ${actualUserId}`);
+      }
+    }
+    
+    // If still not found, try to find by email if available
+    if (!userDoc || !userDoc.exists) {
+      if (decoded.email) {
+        const usersWithEmail = await db.collection(COLLECTIONS.USERS)
+          .where('email', '==', decoded.email)
+          .limit(1)
+          .get();
+        
+        if (!usersWithEmail.empty) {
+          userDoc = usersWithEmail.docs[0];
+          actualUserId = userDoc.id;
+          console.log(`✅ Found user by email (${decoded.email}), ID: ${actualUserId}`);
+        }
+      }
+    }
+
+    if (!userDoc || !userDoc.exists) {
+      console.error(`❌ User not found for refresh token. Tried UIDs: ${firebaseUid}, ${parsedUid}, email: ${decoded.email}`);
       return res.status(401).json({
         success: false,
         message: 'User no longer exists'
       });
     }
 
-    // Create new JWT token
+    // Create new JWT token with the same format
     const token = jwt.sign(
       { 
-        uid: decoded.uid,
+        uid: decoded.uid, // Keep the original complex ID format for consistency
         email: decoded.email 
       },
       process.env.JWT_SECRET,

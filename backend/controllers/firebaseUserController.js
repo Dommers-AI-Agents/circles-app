@@ -14,7 +14,17 @@ const db = getFirestore();
 // @access  Private
 exports.getUser = async (req, res, next) => {
   try {
-    const userId = req.params.id === 'me' ? req.user.uid : req.params.id;
+    let userId = req.params.id === 'me' ? req.user.uid : req.params.id;
+    
+    // Parse the actual Firebase UID from complex format if needed
+    if (userId && userId.includes('.')) {
+      // Handle format like "000454.9b5eeac93282416c9bc6dcecbc49b40f.2127"
+      const parts = userId.split('.');
+      if (parts.length >= 2) {
+        userId = parts[1]; // Use the middle part as Firebase UID
+        console.log(`🔐 getUser: Parsed Firebase UID: ${userId} from complex ID: ${req.params.id}`);
+      }
+    }
     
     console.log('🔍 DEBUG getUser:', {
       paramId: req.params.id,
@@ -217,13 +227,23 @@ exports.getFriends = async (req, res, next) => {
 // @access  Private
 exports.sendFriendRequest = async (req, res, next) => {
   try {
-    const { userId } = req.body;
+    let { userId } = req.body;
 
     if (!userId) {
       return res.status(400).json({
         success: false,
         message: 'User ID is required'
       });
+    }
+
+    // Parse the actual Firebase UID from complex format if needed
+    if (userId && userId.includes('.')) {
+      // Handle format like "000454.9b5eeac93282416c9bc6dcecbc49b40f.2127"
+      const parts = userId.split('.');
+      if (parts.length >= 2) {
+        userId = parts[1]; // Use the middle part as Firebase UID
+        console.log(`🔐 sendFriendRequest: Parsed Firebase UID: ${userId} from complex ID: ${req.body.userId}`);
+      }
     }
 
     if (userId === req.user.uid) {
@@ -403,7 +423,17 @@ exports.respondToFriendRequest = async (req, res, next) => {
 // @access  Private
 exports.removeFriend = async (req, res, next) => {
   try {
-    const friendId = req.params.id;
+    let friendId = req.params.id;
+
+    // Parse the actual Firebase UID from complex format if needed
+    if (friendId && friendId.includes('.')) {
+      // Handle format like "000454.9b5eeac93282416c9bc6dcecbc49b40f.2127"
+      const parts = friendId.split('.');
+      if (parts.length >= 2) {
+        friendId = parts[1]; // Use the middle part as Firebase UID
+        console.log(`🔐 removeFriend: Parsed Firebase UID: ${friendId} from complex ID: ${req.params.id}`);
+      }
+    }
 
     if (friendId === req.user.uid) {
       return res.status(400).json({

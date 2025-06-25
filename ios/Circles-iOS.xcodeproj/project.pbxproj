@@ -7,9 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		6F0F2A8F2DFA8609005E3810 /* GoogleMaps in Frameworks */ = {isa = PBXBuildFile; productRef = 6F0F2A8E2DFA8609005E3810 /* GoogleMaps */; };
 		6F545FB72DE6021A00EC377D /* FacebookBasics in Frameworks */ = {isa = PBXBuildFile; productRef = 6F545FB62DE6021A00EC377D /* FacebookBasics */; };
 		6F545FB92DE6021A00EC377D /* FacebookCore in Frameworks */ = {isa = PBXBuildFile; productRef = 6F545FB82DE6021A00EC377D /* FacebookCore */; };
 		6F545FBB2DE6021A00EC377D /* FacebookLogin in Frameworks */ = {isa = PBXBuildFile; productRef = 6F545FBA2DE6021A00EC377D /* FacebookLogin */; };
+		6FD75B802DF917F60047CD9E /* GooglePlaces in Frameworks */ = {isa = PBXBuildFile; productRef = 6FD75B7F2DF917F60047CD9E /* GooglePlaces */; };
+		6FD75B822DF917F60047CD9E /* GooglePlacesSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 6FD75B812DF917F60047CD9E /* GooglePlacesSwift */; };
 		6FD782322DDB603400443471 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 6FD782312DDB603400443471 /* GoogleSignIn */; };
 		6FD782342DDB603400443471 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 6FD782332DDB603400443471 /* GoogleSignInSwift */; };
 		6FE8F0B72DF7C276007CB88E /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 6FE8F0B62DF7C276007CB88E /* FirebaseAnalytics */; };
@@ -76,9 +79,12 @@
 			buildActionMask = 2147483647;
 			files = (
 				6F545FBB2DE6021A00EC377D /* FacebookLogin in Frameworks */,
+				6FD75B802DF917F60047CD9E /* GooglePlaces in Frameworks */,
+				6F0F2A8F2DFA8609005E3810 /* GoogleMaps in Frameworks */,
 				6F545FB72DE6021A00EC377D /* FacebookBasics in Frameworks */,
 				6FE8F0B72DF7C276007CB88E /* FirebaseAnalytics in Frameworks */,
 				6FD782322DDB603400443471 /* GoogleSignIn in Frameworks */,
+				6FD75B822DF917F60047CD9E /* GooglePlacesSwift in Frameworks */,
 				6FD782342DDB603400443471 /* GoogleSignInSwift in Frameworks */,
 				6FE8F0B92DF7C291007CB88E /* FirebaseAuth in Frameworks */,
 				6F545FB92DE6021A00EC377D /* FacebookCore in Frameworks */,
@@ -157,6 +163,9 @@
 				6F545FBA2DE6021A00EC377D /* FacebookLogin */,
 				6FE8F0B62DF7C276007CB88E /* FirebaseAnalytics */,
 				6FE8F0B82DF7C291007CB88E /* FirebaseAuth */,
+				6FD75B7F2DF917F60047CD9E /* GooglePlaces */,
+				6FD75B812DF917F60047CD9E /* GooglePlacesSwift */,
+				6F0F2A8E2DFA8609005E3810 /* GoogleMaps */,
 			);
 			productName = "Circles-iOS-UIKit";
 			productReference = 6F9360972DD9725A0065A440 /* Circles-iOS.app */;
@@ -244,6 +253,8 @@
 				6FD782302DDB603400443471 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 				6F545FB52DE6021A00EC377D /* XCRemoteSwiftPackageReference "facebook-ios-sdk" */,
 				6FE8F0B42DF7BFA7007CB88E /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				6F2850052DF86D25006E99CA /* XCRemoteSwiftPackageReference "ios-places-sdk" */,
+				6F0F2A8D2DFA85E0005E3810 /* XCRemoteSwiftPackageReference "ios-maps-sdk" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 6F9360982DD9725A0065A440 /* Products */;
@@ -636,6 +647,22 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		6F0F2A8D2DFA85E0005E3810 /* XCRemoteSwiftPackageReference "ios-maps-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/googlemaps/ios-maps-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 10.0.0;
+			};
+		};
+		6F2850052DF86D25006E99CA /* XCRemoteSwiftPackageReference "ios-places-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/googlemaps/ios-places-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 10.0.0;
+			};
+		};
 		6F545FB52DE6021A00EC377D /* XCRemoteSwiftPackageReference "facebook-ios-sdk" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/facebook/facebook-ios-sdk";
@@ -663,6 +690,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		6F0F2A8E2DFA8609005E3810 /* GoogleMaps */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6F0F2A8D2DFA85E0005E3810 /* XCRemoteSwiftPackageReference "ios-maps-sdk" */;
+			productName = GoogleMaps;
+		};
 		6F545FB62DE6021A00EC377D /* FacebookBasics */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 6F545FB52DE6021A00EC377D /* XCRemoteSwiftPackageReference "facebook-ios-sdk" */;
@@ -677,6 +709,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 6F545FB52DE6021A00EC377D /* XCRemoteSwiftPackageReference "facebook-ios-sdk" */;
 			productName = FacebookLogin;
+		};
+		6FD75B7F2DF917F60047CD9E /* GooglePlaces */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6F2850052DF86D25006E99CA /* XCRemoteSwiftPackageReference "ios-places-sdk" */;
+			productName = GooglePlaces;
+		};
+		6FD75B812DF917F60047CD9E /* GooglePlacesSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6F2850052DF86D25006E99CA /* XCRemoteSwiftPackageReference "ios-places-sdk" */;
+			productName = GooglePlacesSwift;
 		};
 		6FD782312DDB603400443471 /* GoogleSignIn */ = {
 			isa = XCSwiftPackageProductDependency;

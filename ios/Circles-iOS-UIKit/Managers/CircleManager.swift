@@ -157,23 +157,42 @@ class CircleManager: ObservableObject {
     }
     
     func shareCircle(_ circle: Circle) -> [Any] {
-        var shareText = "Check out my circle '\(circle.name)' on Circles!"
-        
+        // Create formatted text to share
+        var shareText = "🟦 \(circle.name)"
         if let description = circle.description {
-            shareText += "\n\n\(description)"
+            shareText += "\n\(description)"
         }
         
-        shareText += "\n\n📱 Open in Circles: circles://circle/\(circle.id)"
-        shareText += "\n\n🔗 Get Circles App: https://testflight.apple.com/join/YourTestFlightCode"
+        let memberCount = (circle.sharedWith?.count ?? 0) + (circle.followers?.count ?? 0)
+        if memberCount > 0 {
+            shareText += "\n👥 \(memberCount) member\(memberCount != 1 ? "s" : "")"
+        }
+        
+        let placeCount = circle.places?.count ?? 0
+        shareText += "\n📍 \(placeCount) place\(placeCount != 1 ? "s" : "")"
+        
+        // Add privacy emoji
+        switch circle.privacy {
+        case .public:
+            shareText += " 🌐"
+        case .friends:
+            shareText += " 👥"
+        case .private:
+            shareText += " 🔒"
+        }
+        
+        // Add deep link
+        let deepLink = "circles://circle/\(circle.id)"
+        shareText += "\n\nOpen in Circles: \(deepLink)"
+        
+        // Add app download link
+        let appStoreLink = "https://testflight.apple.com/join/YourTestFlightLink" // Replace with actual link
+        shareText += "\n\nDon't have Circles? Download here: \(appStoreLink)"
         
         var items: [Any] = [shareText]
         
-        if let coverImageUrl = circle.coverImage,
-           let url = URL(string: coverImageUrl),
-           let data = try? Data(contentsOf: url),
-           let image = UIImage(data: data) {
-            items.append(image)
-        }
+        // Note: Image will be loaded asynchronously in the view
+        // Don't load it here to avoid blocking the UI
         
         return items
     }

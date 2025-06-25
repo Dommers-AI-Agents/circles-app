@@ -14,13 +14,17 @@ struct Place: Codable, Identifiable {
     let photos: [String]?
     let category: PlaceCategory
     let rating: Double?
-    let notes: String?
+    let userRatingsTotal: Int?
+    let notes: String? // Legacy field, will be migrated to publicNotes
+    let privateNotes: String? // Only visible to the user who added them
+    let publicNotes: String? // Visible to all users who can see the place
     let tags: [String]?
     let reviews: [PlaceReview]?
     let openingHours: [OpeningHour]?
     let priceLevel: PriceLevel?
     let circleId: String
     let addedBy: String
+    let addedByUser: User? // Populated when fetching places in shared circles
     let privacy: PlacePrivacy
     let createdAt: Date
     let updatedAt: Date
@@ -28,8 +32,97 @@ struct Place: Codable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id = "_id"
         case name, description, address, location, website, phone, googlePlaceId
-        case photos, category, rating, notes, tags, reviews, openingHours
-        case priceLevel, circleId, addedBy, privacy, createdAt, updatedAt
+        case photos, category, rating, userRatingsTotal, notes, privateNotes, publicNotes, tags, reviews, openingHours
+        case priceLevel, circleId, addedBy, addedByUser, privacy, createdAt, updatedAt
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        // Decode all required fields
+        self.id = try container.decode(String.self, forKey: .id)
+        self.name = try container.decode(String.self, forKey: .name)
+        self.description = try container.decodeIfPresent(String.self, forKey: .description)
+        self.address = try container.decode(String.self, forKey: .address)
+        self.location = try container.decodeIfPresent(GeoLocation.self, forKey: .location)
+        self.website = try container.decodeIfPresent(String.self, forKey: .website)
+        self.phone = try container.decodeIfPresent(String.self, forKey: .phone)
+        self.googlePlaceId = try container.decodeIfPresent(String.self, forKey: .googlePlaceId)
+        self.photos = try container.decodeIfPresent([String].self, forKey: .photos)
+        self.category = try container.decode(PlaceCategory.self, forKey: .category)
+        self.rating = try container.decodeIfPresent(Double.self, forKey: .rating)
+        self.userRatingsTotal = try container.decodeIfPresent(Int.self, forKey: .userRatingsTotal)
+        self.notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        self.privateNotes = try container.decodeIfPresent(String.self, forKey: .privateNotes)
+        self.publicNotes = try container.decodeIfPresent(String.self, forKey: .publicNotes)
+        self.tags = try container.decodeIfPresent([String].self, forKey: .tags)
+        self.reviews = try container.decodeIfPresent([PlaceReview].self, forKey: .reviews)
+        self.openingHours = try container.decodeIfPresent([OpeningHour].self, forKey: .openingHours)
+        
+        // Special handling for priceLevel to ignore invalid values like -1
+        if let priceLevelInt = try container.decodeIfPresent(Int.self, forKey: .priceLevel),
+           let priceLevel = PriceLevel(rawValue: priceLevelInt) {
+            self.priceLevel = priceLevel
+        } else {
+            self.priceLevel = nil
+        }
+        
+        self.circleId = try container.decode(String.self, forKey: .circleId)
+        self.addedBy = try container.decode(String.self, forKey: .addedBy)
+        self.addedByUser = try container.decodeIfPresent(User.self, forKey: .addedByUser)
+        self.privacy = try container.decode(PlacePrivacy.self, forKey: .privacy)
+        self.createdAt = try container.decode(Date.self, forKey: .createdAt)
+        self.updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+    }
+    
+    // Manual initializer for creating Place instances in code
+    init(id: String, name: String, description: String?, address: String,
+         location: GeoLocation?, website: String?, phone: String?,
+         googlePlaceId: String?, photos: [String]?, category: PlaceCategory,
+         rating: Double?, userRatingsTotal: Int?, notes: String?,
+         privateNotes: String?, publicNotes: String?, tags: [String]?,
+         reviews: [PlaceReview]?, openingHours: [OpeningHour]?,
+         priceLevel: PriceLevel?, circleId: String, addedBy: String,
+         addedByUser: User?, privacy: PlacePrivacy, createdAt: Date, updatedAt: Date) {
+        self.id = id
+        self.name = name
+        self.description = description
+        self.address = address
+        self.location = location
+        self.website = website
+        self.phone = phone
+        self.googlePlaceId = googlePlaceId
+        self.photos = photos
+        self.category = category
+        self.rating = rating
+        self.userRatingsTotal = userRatingsTotal
+        self.notes = notes
+        self.privateNotes = privateNotes
+        self.publicNotes = publicNotes
+        self.tags = tags
+        self.reviews = reviews
+        self.openingHours = openingHours
+        self.priceLevel = priceLevel
+        self.circleId = circleId
+        self.addedBy = addedBy
+        self.addedByUser = addedByUser
+        self.privacy = privacy
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+    
+    // Helper computed properties
+    var isAddedByCurrentUser: Bool {
+        return addedBy == AuthService.shared.getUserId()
+    }
+    
+    var addedByDisplayName: String {
+        if isAddedByCurrentUser {
+            return "You"
+        } else if let user = addedByUser {
+            return user.displayName
+        }
+        return "Unknown"
     }
 }
 
@@ -59,9 +152,53 @@ struct PlaceReview: Codable, Identifiable {
 
 struct OpeningHour: Codable {
     let day: Int // 0 for Sunday, 1 for Monday, etc.
-    let open: String // Format: "09:00"
-    let close: String // Format: "17:00"
-    let isClosed: Bool
+    let open: String? // Format: "09:00"
+    let close: String? // Format: "17:00"
+    let isClosed: Bool?
+    let hours: String? // Legacy field for backward compatibility
+    
+    enum CodingKeys: String, CodingKey {
+        case day, open, close, isClosed, hours
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.day = try container.decode(Int.self, forKey: .day)
+        
+        // Handle both formats - new format with open/close and old format with hours
+        if let hoursString = try container.decodeIfPresent(String.self, forKey: .hours) {
+            // Old format - parse hours string
+            self.hours = hoursString
+            if hoursString.contains("Open 24 hours") {
+                self.open = "00:00"
+                self.close = "23:59"
+            } else if hoursString.contains("Closed") {
+                self.open = "00:00"
+                self.close = "00:00"
+            } else {
+                // Try to parse hours from string like "Monday: 9:00 AM – 5:00 PM"
+                self.open = "09:00" // Default
+                self.close = "17:00" // Default
+            }
+        } else {
+            // New format
+            self.hours = nil
+            self.open = try container.decodeIfPresent(String.self, forKey: .open) ?? "00:00"
+            self.close = try container.decodeIfPresent(String.self, forKey: .close) ?? "00:00"
+        }
+        
+        self.isClosed = try container.decodeIfPresent(Bool.self, forKey: .isClosed)
+    }
+    
+    // For encoding, always use the new format
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(day, forKey: .day)
+        try container.encodeIfPresent(open, forKey: .open)
+        try container.encodeIfPresent(close, forKey: .close)
+        try container.encodeIfPresent(isClosed, forKey: .isClosed)
+        // Don't encode the hours field
+    }
 }
 
 enum PlaceCategory: String, Codable, CaseIterable {
@@ -79,6 +216,8 @@ enum PlaceCategory: String, Codable, CaseIterable {
     case outdoor
     case transport
     case finance
+    case home
+    case work
     case other
     
     var displayName: String {
@@ -97,27 +236,31 @@ enum PlaceCategory: String, Codable, CaseIterable {
         case .outdoor: return "Outdoor"
         case .transport: return "Transport"
         case .finance: return "Finance"
+        case .home: return "Home"
+        case .work: return "Work"
         case .other: return "Other"
         }
     }
     
     var systemIconName: String {
         switch self {
-        case .restaurant: return "fork.knife"
-        case .cafe: return "cup.and.saucer"
-        case .bar: return "wineglass"
-        case .hotel: return "bed.double"
-        case .retail: return "bag"
-        case .service: return "wrench.and.screwdriver"
-        case .attraction: return "mappin.and.ellipse"
-        case .entertainment: return "ticket"
-        case .healthcare: return "heart.text.square"
-        case .fitness: return "figure.run"
-        case .education: return "book"
-        case .outdoor: return "tree"
-        case .transport: return "car"
-        case .finance: return "dollarsign.circle"
-        case .other: return "questionmark.circle"
+        case .restaurant: return "fork.knife.circle.fill"
+        case .cafe: return "cup.and.saucer.fill"
+        case .bar: return "wineglass.fill"
+        case .hotel: return "bed.double.fill"
+        case .retail: return "bag.fill"
+        case .service: return "wrench.and.screwdriver.fill"
+        case .attraction: return "star.fill"
+        case .entertainment: return "music.note.tv.fill"
+        case .healthcare: return "heart.text.square.fill"
+        case .fitness: return "figure.walk"
+        case .education: return "graduationcap.fill"
+        case .outdoor: return "tree.fill"
+        case .transport: return "car.fill"
+        case .finance: return "dollarsign.circle.fill"
+        case .home: return "house.fill"
+        case .work: return "building.2.fill"
+        case .other: return "mappin.circle.fill"
         }
     }
 }

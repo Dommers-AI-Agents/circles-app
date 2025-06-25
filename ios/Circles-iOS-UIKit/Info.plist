@@ -18,6 +18,16 @@
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>CFBundleURLName</key>
+			<string>circles-deeplink</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>circles</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
 			<string>apple-sign-in</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
@@ -72,6 +82,8 @@
 		<string>fbshareextension</string>
 		<string>linkedin</string>
 		<string>linkedin-sdk</string>
+		<string>comgooglemaps</string>
+		<string>comgooglemaps-x-callback</string>
 	</array>
 	<key>LinkedInClientID</key>
 	<string>86rx0d8w7xn8rq</string>
@@ -109,5 +121,11 @@
 	<string>1</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>GMSApiKey</key>
+	<string>AIzaSyBa0RkhbYlb24A4LbcM3wYQoNU0yr2IK7Y</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Circles needs access to your camera to take photos for your places.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Circles needs access to your photo library to select photos for your places.</string>
 </dict>
 </plist>

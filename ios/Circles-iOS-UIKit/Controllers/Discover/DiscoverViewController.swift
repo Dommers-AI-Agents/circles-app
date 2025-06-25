@@ -37,7 +37,7 @@ class DiscoverViewController: UIViewController {
         let label = UILabel()
         label.text = "Featured Circles"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.large, weight: .bold)
-        label.textColor = Constants.Colors.darkGray
+        label.textColor = Constants.Colors.label
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -61,7 +61,7 @@ class DiscoverViewController: UIViewController {
         let label = UILabel()
         label.text = "Popular Users"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.large, weight: .bold)
-        label.textColor = Constants.Colors.darkGray
+        label.textColor = Constants.Colors.label
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -85,7 +85,7 @@ class DiscoverViewController: UIViewController {
         let label = UILabel()
         label.text = "Browse Categories"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.large, weight: .bold)
-        label.textColor = Constants.Colors.darkGray
+        label.textColor = Constants.Colors.label
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -236,13 +236,20 @@ class DiscoverViewController: UIViewController {
                 description: "Best restaurants in New York City",
                 coverImage: nil,
                 owner: "user1",
+                ownerDetails: nil,
                 places: ["place1", "place2", "place3", "place4"],
+                placesWithDetails: nil,
                 privacy: .public,
                 category: .food,
                 location: "New York, NY",
                 tags: ["food", "nyc", "restaurants"],
                 sharedWith: nil,
                 followers: ["user2", "user3", "user4"],
+                activeShares: nil,
+                shareSettings: nil,
+                isSharedWithMe: false,
+                sharedBy: nil,
+                myAccessLevel: nil,
                 createdAt: currentDate.addingTimeInterval(-86400 * 5),
                 updatedAt: currentDate.addingTimeInterval(-3600)
             ),
@@ -252,13 +259,20 @@ class DiscoverViewController: UIViewController {
                 description: "Top shopping spots in Los Angeles",
                 coverImage: nil,
                 owner: "user2",
+                ownerDetails: nil,
                 places: ["place5", "place6", "place7"],
+                placesWithDetails: nil,
                 privacy: .public,
                 category: .shopping,
                 location: "Los Angeles, CA",
                 tags: ["shopping", "la", "fashion"],
                 sharedWith: nil,
                 followers: ["user1", "user3", "user5"],
+                activeShares: nil,
+                shareSettings: nil,
+                isSharedWithMe: false,
+                sharedBy: nil,
+                myAccessLevel: nil,
                 createdAt: currentDate.addingTimeInterval(-86400 * 8),
                 updatedAt: currentDate.addingTimeInterval(-7200)
             ),
@@ -268,13 +282,20 @@ class DiscoverViewController: UIViewController {
                 description: "Entertainment venues in Chicago",
                 coverImage: nil,
                 owner: "user3",
+                ownerDetails: nil,
                 places: ["place8", "place9", "place10", "place11"],
+                placesWithDetails: nil,
                 privacy: .public,
                 category: .entertainment,
                 location: "Chicago, IL",
                 tags: ["entertainment", "chicago", "venues"],
                 sharedWith: nil,
                 followers: ["user2", "user4", "user6"],
+                activeShares: nil,
+                shareSettings: nil,
+                isSharedWithMe: false,
+                sharedBy: nil,
+                myAccessLevel: nil,
                 createdAt: currentDate.addingTimeInterval(-86400 * 12),
                 updatedAt: currentDate.addingTimeInterval(-10800)
             ),
@@ -284,13 +305,20 @@ class DiscoverViewController: UIViewController {
                 description: "Best beaches and beach clubs in Miami",
                 coverImage: nil,
                 owner: "user4",
+                ownerDetails: nil,
                 places: ["place12", "place13", "place14"],
+                placesWithDetails: nil,
                 privacy: .public,
                 category: .travel,
                 location: "Miami, FL",
                 tags: ["travel", "miami", "beaches"],
                 sharedWith: nil,
                 followers: ["user1", "user5", "user7"],
+                activeShares: nil,
+                shareSettings: nil,
+                isSharedWithMe: false,
+                sharedBy: nil,
+                myAccessLevel: nil,
                 createdAt: currentDate.addingTimeInterval(-86400 * 15),
                 updatedAt: currentDate.addingTimeInterval(-14400)
             )
@@ -471,7 +499,7 @@ class FeaturedCircleCell: UICollectionViewCell {
     // MARK: - UI Elements
     private let containerView: UIView = {
         let view = UIView()
-        view.backgroundColor = Constants.Colors.white
+        view.backgroundColor = Constants.Colors.secondaryBackground
         view.layer.cornerRadius = 12
         view.clipsToBounds = true
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -483,7 +511,7 @@ class FeaturedCircleCell: UICollectionViewCell {
         let imageView = UIImageView()
         imageView.contentMode = .scaleAspectFill
         imageView.clipsToBounds = true
-        imageView.backgroundColor = Constants.Colors.lightGray
+        imageView.backgroundColor = Constants.Colors.tertiaryBackground
         imageView.translatesAutoresizingMaskIntoConstraints = false
         return imageView
     }()
@@ -491,7 +519,7 @@ class FeaturedCircleCell: UICollectionViewCell {
     private let nameLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.large, weight: .bold)
-        label.textColor = Constants.Colors.darkGray
+        label.textColor = Constants.Colors.label
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -499,7 +527,7 @@ class FeaturedCircleCell: UICollectionViewCell {
     private let descriptionLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
-        label.textColor = Constants.Colors.gray
+        label.textColor = Constants.Colors.secondaryLabel
         label.numberOfLines = 2
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -516,7 +544,7 @@ class FeaturedCircleCell: UICollectionViewCell {
     private let placeCountLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small, weight: .medium)
-        label.textColor = Constants.Colors.darkGray
+        label.textColor = Constants.Colors.label
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -626,19 +654,19 @@ class FeaturedCircleCell: UICollectionViewCell {
             // Default image based on category
             switch circle.category {
             case .travel:
-                coverImageView.image = UIImage(systemName: "airplane")
+                coverImageView.image = UIImage(systemName: "airplane.departure")
             case .food:
-                coverImageView.image = UIImage(systemName: "fork.knife")
+                coverImageView.image = UIImage(systemName: "fork.knife.circle.fill")
             case .services:
-                coverImageView.image = UIImage(systemName: "wrench.and.screwdriver")
+                coverImageView.image = UIImage(systemName: "wrench.and.screwdriver.fill")
             case .shopping:
-                coverImageView.image = UIImage(systemName: "bag")
+                coverImageView.image = UIImage(systemName: "bag.fill")
             case .healthcare:
-                coverImageView.image = UIImage(systemName: "heart.text.square")
+                coverImageView.image = UIImage(systemName: "heart.text.square.fill")
             case .entertainment:
-                coverImageView.image = UIImage(systemName: "ticket")
+                coverImageView.image = UIImage(systemName: "music.note.tv.fill")
             case .other:
-                coverImageView.image = UIImage(systemName: "square.grid.2x2")
+                coverImageView.image = UIImage(systemName: "square.stack.3d.up.fill")
             }
             coverImageView.tintColor = Constants.Colors.primary
             coverImageView.contentMode = .center
@@ -664,7 +692,7 @@ class UserCell: UICollectionViewCell {
         let imageView = UIImageView()
         imageView.contentMode = .scaleAspectFill
         imageView.clipsToBounds = true
-        imageView.backgroundColor = Constants.Colors.lightGray
+        imageView.backgroundColor = Constants.Colors.tertiaryBackground
         imageView.layer.cornerRadius = 30
         imageView.translatesAutoresizingMaskIntoConstraints = false
         return imageView
@@ -673,7 +701,7 @@ class UserCell: UICollectionViewCell {
     private let nameLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small, weight: .medium)
-        label.textColor = Constants.Colors.darkGray
+        label.textColor = Constants.Colors.label
         label.textAlignment = .center
         label.numberOfLines = 2
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -735,7 +763,7 @@ class CategoryCell: UICollectionViewCell {
     // MARK: - UI Elements
     private let containerView: UIView = {
         let view = UIView()
-        view.backgroundColor = Constants.Colors.white
+        view.backgroundColor = Constants.Colors.secondaryBackground
         view.layer.cornerRadius = 12
         view.clipsToBounds = true
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -753,7 +781,7 @@ class CategoryCell: UICollectionViewCell {
     private let nameLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small, weight: .medium)
-        label.textColor = Constants.Colors.darkGray
+        label.textColor = Constants.Colors.label
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -801,25 +829,25 @@ class CategoryCell: UICollectionViewCell {
         // Set icon and tint color based on category
         switch category {
         case .travel:
-            iconImageView.image = UIImage(systemName: "airplane")
+            iconImageView.image = UIImage(systemName: "airplane.departure")
             iconImageView.tintColor = UIColor(hex: "#3182CE") // Blue
         case .food:
-            iconImageView.image = UIImage(systemName: "fork.knife")
+            iconImageView.image = UIImage(systemName: "fork.knife.circle.fill")
             iconImageView.tintColor = UIColor(hex: "#E53E3E") // Red
         case .services:
-            iconImageView.image = UIImage(systemName: "wrench.and.screwdriver")
+            iconImageView.image = UIImage(systemName: "wrench.and.screwdriver.fill")
             iconImageView.tintColor = UIColor(hex: "#38A169") // Green
         case .shopping:
-            iconImageView.image = UIImage(systemName: "bag")
+            iconImageView.image = UIImage(systemName: "bag.fill")
             iconImageView.tintColor = UIColor(hex: "#805AD5") // Purple
         case .healthcare:
-            iconImageView.image = UIImage(systemName: "heart.text.square")
+            iconImageView.image = UIImage(systemName: "heart.text.square.fill")
             iconImageView.tintColor = UIColor(hex: "#DD6B20") // Orange
         case .entertainment:
-            iconImageView.image = UIImage(systemName: "ticket")
+            iconImageView.image = UIImage(systemName: "music.note.tv.fill")
             iconImageView.tintColor = UIColor(hex: "#D69E2E") // Yellow
         case .other:
-            iconImageView.image = UIImage(systemName: "square.grid.2x2")
+            iconImageView.image = UIImage(systemName: "square.stack.3d.up.fill")
             iconImageView.tintColor = UIColor(hex: "#718096") // Gray
         }
     }

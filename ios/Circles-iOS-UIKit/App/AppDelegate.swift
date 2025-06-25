@@ -9,6 +9,9 @@ import UIKit
 import AuthenticationServices
 import GoogleSignIn
 import FBSDKCoreKit
+import GooglePlaces
+import GoogleMaps
+import Firebase
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -22,6 +25,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Override point for customization after application launch.
+        
+        // Configure Firebase first
+        FirebaseApp.configure()
+        
+        // Configure AuthManager Firebase listener after Firebase is initialized
+        AuthManager.shared.configureFirebaseAuth()
+        
+        // Configure NetworkManager after Firebase is initialized
+        NetworkManager.shared.configure()
         
         // Set up Apple ID credential state observer
         NotificationCenter.default.addObserver(
@@ -85,6 +97,20 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // Initialize Facebook SDK
         print("📘 Initializing Facebook SDK")
         ApplicationDelegate.shared.application(application, didFinishLaunchingWithOptions: launchOptions)
+        
+        // Initialize Google Places SDK
+        print("📍 Initializing Google Places SDK")
+        if let gmsApiKey = infoPlist["GMSApiKey"] as? String {
+            GMSPlacesClient.provideAPIKey(gmsApiKey)
+            print("📍 Google Places SDK initialized with API key: \(String(gmsApiKey.prefix(10)))...")
+            
+            // Also initialize Google Maps SDK with the same API key
+            GMSServices.provideAPIKey(gmsApiKey)
+            print("🗺️ Google Maps SDK initialized with API key: \(String(gmsApiKey.prefix(10)))...")
+            print("🗺️ Bundle ID: \(Bundle.main.bundleIdentifier ?? "unknown")")
+        } else {
+            print("📍 ❌ Failed to load Google Places/Maps API key from Info.plist")
+        }
         
         return true
     }
@@ -160,6 +186,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         
         // Handle other URL schemes your app may use
         print("📱 URL not recognized by auth providers, checking app's deep linking")
+        
+        // Forward deep links to the active scene
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let sceneDelegate = windowScene.delegate as? SceneDelegate {
+            print("📱 Forwarding URL to SceneDelegate for deep link handling")
+            sceneDelegate.handleURLContext(url)
+        }
+        
         return true
     }
     

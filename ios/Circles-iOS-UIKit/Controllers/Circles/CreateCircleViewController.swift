@@ -253,8 +253,14 @@ class CreateCircleViewController: UIViewController {
             addCoverPhotoButton.widthAnchor.constraint(equalToConstant: 150),
             addCoverPhotoButton.heightAnchor.constraint(equalToConstant: 40),
             
+            // Create button - positioned right below the cover image
+            createButton.topAnchor.constraint(equalTo: coverImageView.bottomAnchor, constant: Constants.Spacing.medium),
+            createButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            createButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            createButton.heightAnchor.constraint(equalToConstant: 50),
+            
             // Name label
-            nameLabel.topAnchor.constraint(equalTo: coverImageView.bottomAnchor, constant: Constants.Spacing.large),
+            nameLabel.topAnchor.constraint(equalTo: createButton.bottomAnchor, constant: Constants.Spacing.large),
             nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             
             // Name text field
@@ -320,13 +326,7 @@ class CreateCircleViewController: UIViewController {
             inviteTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             inviteTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             inviteTextField.heightAnchor.constraint(equalToConstant: 40),
-            
-            // Create button
-            createButton.topAnchor.constraint(equalTo: inviteTextField.bottomAnchor, constant: Constants.Spacing.large),
-            createButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            createButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            createButton.heightAnchor.constraint(equalToConstant: 50),
-            createButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
+            inviteTextField.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
         ])
     }
     

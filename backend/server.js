@@ -16,9 +16,12 @@ const firebaseCircleRoutes = require('./routes/firebaseCircleRoutes');
 const firebasePlaceRoutes = require('./routes/firebasePlaceRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
 const linkedinAuthRoutes = require('./routes/linkedinAuthRoutes');
+const connectionRoutes = require('./routes/connectionRoutes');
+const networkRoutes = require('./routes/networkRoutes');
+const messagingRoutes = require('./routes/messagingRoutes');
 
 // Import Firebase Place controller for circle-specific routes
-const { getPlacesByCircleId } = require('./controllers/firebasePlaceController');
+const { getPlacesByCircleId, reorderPlacesInCircle } = require('./controllers/firebasePlaceController');
 const { protect } = require('./middleware/firebaseAuth');
 
 const app = express();
@@ -50,6 +53,9 @@ app.use('/api/users', firebaseUserRoutes);
 app.use('/api/circles', firebaseCircleRoutes);
 app.use('/api/places', firebasePlaceRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/connections', connectionRoutes);
+app.use('/api/network', networkRoutes);
+app.use('/api/messages', messagingRoutes);
 app.use('/api/app', require('./routes/appRoutes'));
 
 // LinkedIn OAuth callback route (outside /api prefix)
@@ -58,6 +64,7 @@ app.use('/', linkedinCallback);
 
 // Special route for circle-specific places
 app.get('/api/circles/:circleId/places', protect, getPlacesByCircleId);
+app.put('/api/circles/:id/places/reorder', protect, reorderPlacesInCircle);
 
 // 404 handler
 app.use('*', (req, res) => {
