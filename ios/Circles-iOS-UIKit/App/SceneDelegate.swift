@@ -51,16 +51,37 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             activityIndicator.startAnimating()
             window?.rootViewController = loadingVC
             
-            // Try to restore Google Sign-In session if user previously signed in with Google
-            if AuthService.shared.getAuthProvider() == "google" {
-                print("🎬 User previously signed in with Google, attempting to restore session")
-                SocialAuthService.shared.restoreGoogleSignInSession { result in
-                    switch result {
-                    case .success:
-                        print("🎬 Google session restored successfully")
-                    case .failure(let error):
-                        print("🎬 Google session restoration failed: \(error)")
-                        // The backend token might still be valid even if Google session expired
+            // Perform token refresh on app launch if user is logged in
+            if AuthService.shared.isLoggedIn {
+                print("🎬 User is logged in, checking token validity")
+                
+                // Check if token should be refreshed (expired or expiring soon)
+                if AuthService.shared.shouldRefreshToken() {
+                    print("🎬 Token needs refresh, refreshing...")
+                    AuthService.shared.refreshToken { result in
+                        switch result {
+                        case .success:
+                            print("🎬 Token refreshed successfully on app launch")
+                        case .failure(let error):
+                            print("🎬 Token refresh failed: \(error)")
+                            // Don't force logout here - let 401 handling take care of it
+                        }
+                    }
+                } else {
+                    print("🎬 Token is still valid")
+                }
+                
+                // Try to restore Google Sign-In session if user previously signed in with Google
+                if AuthService.shared.getAuthProvider() == "google" {
+                    print("🎬 User previously signed in with Google, attempting to restore session")
+                    SocialAuthService.shared.restoreGoogleSignInSession { result in
+                        switch result {
+                        case .success:
+                            print("🎬 Google session restored successfully")
+                        case .failure(let error):
+                            print("🎬 Google session restoration failed: \(error)")
+                            // The backend token might still be valid even if Google session expired
+                        }
                     }
                 }
             }
@@ -580,7 +601,18 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Called as the scene transitions from the background to the foreground.
         // Check authentication status and refresh token if needed
         if AuthService.shared.isLoggedIn {
-            AuthService.shared.refreshToken { _ in }
+            // Refresh if token is expired or will expire soon
+            if AuthService.shared.shouldRefreshToken() {
+                print("🎬 Token needs refresh on foreground, refreshing...")
+                AuthService.shared.refreshToken { result in
+                    switch result {
+                    case .success:
+                        print("🎬 Token refreshed successfully on foreground")
+                    case .failure(let error):
+                        print("🎬 Token refresh failed on foreground: \(error)")
+                    }
+                }
+            }
         }
     }
 

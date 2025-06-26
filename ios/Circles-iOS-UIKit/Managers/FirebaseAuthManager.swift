@@ -330,8 +330,7 @@ class FirebaseAuthManager: ObservableObject {
         do {
             try Auth.auth().signOut()
             
-            // Clear stored data
-            UserDefaults.standard.removeObject(forKey: "authToken")
+            // Clear stored data - now handled by AuthService/KeychainService
             
             // Clear backend session
             authService.logout { _ in }

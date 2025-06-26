@@ -68,6 +68,7 @@ enum AuthError: Error, LocalizedError, Equatable {
 class AuthService {
     static let shared = AuthService()
     
+    private let keychainService = KeychainService.shared
     private let userDefaults = UserDefaults.standard
     private let tokenKey = "authToken"
     private let refreshTokenKey = "refreshToken"
@@ -96,13 +97,31 @@ class AuthService {
         return getToken() != nil
     }
     
+    func isTokenExpired() -> Bool {
+        return keychainService.isTokenExpired()
+    }
+    
+    func shouldRefreshToken() -> Bool {
+        guard let expiration = keychainService.getTokenExpiration() else {
+            // If no expiration date, don't refresh
+            return false
+        }
+        
+        // Refresh if token expires in less than 5 minutes
+        let timeUntilExpiration = expiration.timeIntervalSinceNow
+        return timeUntilExpiration < 300 // 5 minutes
+    }
+    
     private init() {
-        // Load token from UserDefaults if available
-        if let token = userDefaults.string(forKey: tokenKey) {
+        // Migrate existing tokens from UserDefaults to Keychain
+        keychainService.migrateFromUserDefaults()
+        
+        // Load token from Keychain if available
+        if let token = keychainService.getAuthToken() {
             APIService.shared.setAuthToken(token)
         }
         
-        if let refreshToken = userDefaults.string(forKey: refreshTokenKey) {
+        if let refreshToken = keychainService.getRefreshToken() {
             APIService.shared.setRefreshToken(refreshToken)
         }
     }
@@ -209,7 +228,7 @@ class AuthService {
     }
     
     func refreshToken(completion: @escaping (Result<Void, Error>) -> Void) {
-        guard let refreshToken = userDefaults.string(forKey: refreshTokenKey) else {
+        guard let refreshToken = keychainService.getRefreshToken() else {
             completion(.failure(AuthError.tokenExpired))
             return
         }
@@ -383,9 +402,16 @@ class AuthService {
         print("🔐 handleAuthResponse called, success: \(response.success)")
         
         if response.success {
-            // Save tokens
-            saveToken(response.token)
-            print("🔐 Token saved")
+            // Save tokens with expiration
+            let expiration: Date?
+            if let expiresIn = response.expiresIn {
+                expiration = Date().addingTimeInterval(TimeInterval(expiresIn))
+            } else {
+                // Default to 24 hours if no expiration provided
+                expiration = Date().addingTimeInterval(24 * 60 * 60)
+            }
+            saveToken(response.token, expiration: expiration)
+            print("🔐 Token saved with expiration: \(expiration?.description ?? "none")")
             
             if let refreshToken = response.refreshToken {
                 saveRefreshToken(refreshToken)
@@ -448,48 +474,48 @@ class AuthService {
     
     // MARK: - Token Management
     
-    private func saveToken(_ token: String) {
-        userDefaults.set(token, forKey: tokenKey)
+    private func saveToken(_ token: String, expiration: Date? = nil) {
+        keychainService.saveAuthToken(token, expiration: expiration)
     }
     
     private func getToken() -> String? {
-        return userDefaults.string(forKey: tokenKey)
+        return keychainService.getAuthToken()
     }
     
     private func clearToken() {
-        userDefaults.removeObject(forKey: tokenKey)
+        keychainService.clearAllTokens()
     }
     
     private func saveRefreshToken(_ token: String) {
-        userDefaults.set(token, forKey: refreshTokenKey)
+        keychainService.saveRefreshToken(token)
     }
     
     private func clearRefreshToken() {
-        userDefaults.removeObject(forKey: refreshTokenKey)
+        keychainService.clearAllTokens()
     }
     
     private func saveUserId(_ userId: String) {
-        userDefaults.set(userId, forKey: userIdKey)
+        keychainService.saveUserId(userId)
     }
     
     func getUserId() -> String? {
-        return userDefaults.string(forKey: userIdKey)
+        return keychainService.getUserId()
     }
     
     private func clearUserId() {
-        userDefaults.removeObject(forKey: userIdKey)
+        keychainService.clearAllTokens()
     }
     
     private func saveAuthProvider(_ provider: String) {
-        userDefaults.set(provider, forKey: authProviderKey)
+        keychainService.saveAuthProvider(provider)
     }
     
     func getAuthProvider() -> String? {
-        return userDefaults.string(forKey: authProviderKey)
+        return keychainService.getAuthProvider()
     }
     
     private func clearAuthProvider() {
-        userDefaults.removeObject(forKey: authProviderKey)
+        keychainService.clearAllTokens()
     }
     
     // MARK: - Error Mapping
@@ -555,6 +581,7 @@ struct AuthResponse: Decodable {
     let token: String
     let refreshToken: String?
     let user: User
+    let expiresIn: Int? // Token expiration in seconds
 }
 
 struct UserResponse: Decodable {

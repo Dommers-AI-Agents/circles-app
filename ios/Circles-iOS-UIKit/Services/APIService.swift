@@ -82,6 +82,7 @@ class APIService {
     // Authentication
     private var authToken: String?
     private var refreshToken: String?
+    private let keychainService = KeychainService.shared
     
     // Logging
     private var isLoggingEnabled = true
@@ -126,9 +127,9 @@ class APIService {
             throw DecodingError.dataCorruptedError(in: container, debugDescription: "Expected date string to be ISO8601-formatted with or without fractional seconds")
         }
         
-        // Load saved tokens if available
-        authToken = UserDefaults.standard.string(forKey: "authToken")
-        refreshToken = UserDefaults.standard.string(forKey: "refreshToken")
+        // Load saved tokens from Keychain if available
+        authToken = keychainService.getAuthToken()
+        refreshToken = keychainService.getRefreshToken()
         
         // Monitor network status
         NetworkMonitor.shared.addObserver(id: networkMonitorId) { isConnected in
@@ -154,19 +155,18 @@ class APIService {
     
     func setAuthToken(_ token: String) {
         self.authToken = token
-        UserDefaults.standard.set(token, forKey: "authToken")
+        keychainService.saveAuthToken(token)
     }
     
     func setRefreshToken(_ token: String) {
         self.refreshToken = token
-        UserDefaults.standard.set(token, forKey: "refreshToken")
+        keychainService.saveRefreshToken(token)
     }
     
     func clearTokens() {
         self.authToken = nil
         self.refreshToken = nil
-        UserDefaults.standard.removeObject(forKey: "authToken")
-        UserDefaults.standard.removeObject(forKey: "refreshToken")
+        keychainService.clearAllTokens()
     }
     
     // MARK: - Request Methods
@@ -218,6 +218,7 @@ class APIService {
             body: body,
             headers: headers,
             requiresAuth: requiresAuth,
+            retryCount: 0,
             completion: completion
         )
     }
@@ -229,6 +230,7 @@ class APIService {
         body: [String: Any]?,
         headers: [String: String]?,
         requiresAuth: Bool,
+        retryCount: Int = 0,
         completion: @escaping (Result<T, APIError>) -> Void
     ) {
         // Build URL with query parameters
@@ -340,27 +342,34 @@ class APIService {
                 
             case 401:
                 // Unauthorized - try to refresh token if available
-                if requiresAuth && self.refreshToken != nil {
+                if requiresAuth && self.refreshToken != nil && retryCount < 1 {
                     self.refreshAuthToken { result in
                         switch result {
                         case .success(let newToken):
                             self.setAuthToken(newToken)
                             // Retry the original request with the new token
-                            self.request(
+                            self.performRequest(
                                 endpoint: endpoint,
                                 method: method,
                                 queryParams: queryParams,
                                 body: body,
                                 headers: headers,
                                 requiresAuth: requiresAuth,
+                                retryCount: retryCount + 1,
                                 completion: completion
                             )
                         case .failure:
+                            // Clear tokens on refresh failure
+                            self.clearTokens()
                             completion(.failure(.unauthorized))
                         }
                     }
                     return
                 } else {
+                    // Clear tokens if we can't refresh
+                    if requiresAuth {
+                        self.clearTokens()
+                    }
                     completion(.failure(.unauthorized))
                     return
                 }
