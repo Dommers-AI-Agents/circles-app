@@ -410,10 +410,338 @@ const updateShareAccess = async (req, res) => {
   }
 };
 
+// @desc    Get circles shared with me that allow editing
+// @route   GET /api/network/circles-shared-with-me
+// @access  Private
+const getCirclesSharedWithMe = async (req, res) => {
+  try {
+    const userId = req.user.uid;
+
+    // Get all connections for the current user (where they are either userId or connectedUserId)
+    const connectionsQuery1 = await db.collection(COLLECTIONS.CONNECTIONS)
+      .where('userId', '==', userId)
+      .where('status', '==', 'accepted')
+      .get();
+      
+    const connectionsQuery2 = await db.collection(COLLECTIONS.CONNECTIONS)
+      .where('connectedUserId', '==', userId)
+      .where('status', '==', 'accepted')
+      .get();
+
+    // Get connected user IDs
+    const connectedUserIds = new Set();
+    
+    // Add users from connections where current user is userId
+    connectionsQuery1.docs.forEach(doc => {
+      const connection = doc.data();
+      connectedUserIds.add(connection.connectedUserId);
+    });
+    
+    // Add users from connections where current user is connectedUserId
+    connectionsQuery2.docs.forEach(doc => {
+      const connection = doc.data();
+      connectedUserIds.add(connection.userId);
+    });
+
+    if (connectedUserIds.size === 0) {
+      return res.status(200).json({
+        success: true,
+        data: []
+      });
+    }
+
+    // Get circles from connected users where allowNetworkEdit is true
+    const circlesQuery = await db.collection(COLLECTIONS.CIRCLES)
+      .where('owner', 'in', Array.from(connectedUserIds))
+      .where('allowNetworkEdit', '==', true)
+      .get();
+
+    // Build response with circle data
+    const circles = [];
+    for (const doc of circlesQuery.docs) {
+      const circle = serializeDoc(doc);
+      
+      // Get owner details
+      const ownerDoc = await db.collection(COLLECTIONS.USERS).doc(circle.owner).get();
+      if (ownerDoc.exists) {
+        circle.ownerDetails = serializeDoc(ownerDoc);
+      }
+      
+      circles.push(circle);
+    }
+
+    res.status(200).json({
+      success: true,
+      data: circles
+    });
+
+  } catch (error) {
+    console.error('Error fetching circles shared with me:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get all non-private circles from my network connections (public and myNetwork privacy)
+// @route   GET /api/network/my-network-circles
+// @access  Private
+const getMyNetworkCircles = async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    console.log('🔍 Getting network circles for user:', userId);
+
+    // Get all connections for the current user (where they are either userId or connectedUserId)
+    const connectionsQuery1 = await db.collection(COLLECTIONS.CONNECTIONS)
+      .where('userId', '==', userId)
+      .where('status', '==', 'accepted')
+      .get();
+      
+    const connectionsQuery2 = await db.collection(COLLECTIONS.CONNECTIONS)
+      .where('connectedUserId', '==', userId)
+      .where('status', '==', 'accepted')
+      .get();
+
+    console.log('📊 Found connections as userId:', connectionsQuery1.size);
+    console.log('📊 Found connections as connectedUserId:', connectionsQuery2.size);
+
+    // Get connected user IDs
+    const connectedUserIds = new Set();
+    
+    // Add users from connections where current user is userId
+    connectionsQuery1.docs.forEach(doc => {
+      const connection = doc.data();
+      console.log('Connection (as userId):', connection.userId, '->', connection.connectedUserId);
+      connectedUserIds.add(connection.connectedUserId);
+    });
+    
+    // Add users from connections where current user is connectedUserId
+    connectionsQuery2.docs.forEach(doc => {
+      const connection = doc.data();
+      console.log('Connection (as connectedUserId):', connection.userId, '<-', connection.connectedUserId);
+      connectedUserIds.add(connection.userId);
+    });
+
+    console.log('👥 Connected user IDs:', Array.from(connectedUserIds));
+
+    if (connectedUserIds.size === 0) {
+      console.log('⚠️ No connections found for user:', userId);
+      return res.status(200).json({
+        success: true,
+        data: []
+      });
+    }
+
+    // Get circles from connected users with non-private privacy (public or myNetwork)
+    const circlesQuery = await db.collection(COLLECTIONS.CIRCLES)
+      .where('owner', 'in', Array.from(connectedUserIds))
+      .where('privacy', 'in', ['public', 'myNetwork'])
+      .get();
+    
+    console.log('🔵 Found circles from connections:', circlesQuery.size);
+
+    // Build response with circle data
+    const circles = [];
+    for (const doc of circlesQuery.docs) {
+      const circle = serializeDoc(doc);
+      
+      // Get owner details
+      const ownerDoc = await db.collection(COLLECTIONS.USERS).doc(circle.owner).get();
+      if (ownerDoc.exists) {
+        circle.ownerDetails = serializeDoc(ownerDoc);
+      }
+      
+      circles.push(circle);
+    }
+
+    res.status(200).json({
+      success: true,
+      data: circles
+    });
+
+  } catch (error) {
+    console.error('Error fetching my network circles:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get connected users with their circle counts
+// @route   GET /api/network/users-with-circles
+// @access  Private
+const getUsersWithCircles = async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    console.log('🔍 Getting users with circles for:', userId);
+
+    // Get all connections for the current user
+    const connectionsQuery1 = await db.collection(COLLECTIONS.CONNECTIONS)
+      .where('userId', '==', userId)
+      .where('status', '==', 'accepted')
+      .get();
+      
+    const connectionsQuery2 = await db.collection(COLLECTIONS.CONNECTIONS)
+      .where('connectedUserId', '==', userId)
+      .where('status', '==', 'accepted')
+      .get();
+
+    // Get connected user IDs
+    const connectedUserIds = new Set();
+    
+    connectionsQuery1.docs.forEach(doc => {
+      const connection = doc.data();
+      connectedUserIds.add(connection.connectedUserId);
+    });
+    
+    connectionsQuery2.docs.forEach(doc => {
+      const connection = doc.data();
+      connectedUserIds.add(connection.userId);
+    });
+
+    if (connectedUserIds.size === 0) {
+      return res.status(200).json({
+        success: true,
+        data: []
+      });
+    }
+
+    // Get user details and circle counts
+    const usersWithCircles = [];
+    
+    for (const connectedUserId of connectedUserIds) {
+      // Get user details
+      const userDoc = await db.collection(COLLECTIONS.USERS).doc(connectedUserId).get();
+      if (!userDoc.exists) continue;
+      
+      const userData = serializeDoc(userDoc);
+      
+      // Get count of non-private circles for this user
+      const circlesQuery = await db.collection(COLLECTIONS.CIRCLES)
+        .where('owner', '==', connectedUserId)
+        .where('privacy', 'in', ['public', 'myNetwork'])
+        .get();
+      
+      usersWithCircles.push({
+        userId: userData.id,
+        displayName: userData.displayName,
+        profilePicture: userData.profilePicture,
+        email: userData.email,
+        circleCount: circlesQuery.size
+      });
+    }
+
+    // Sort by circle count (descending) then by name
+    usersWithCircles.sort((a, b) => {
+      if (b.circleCount !== a.circleCount) {
+        return b.circleCount - a.circleCount;
+      }
+      return a.displayName.localeCompare(b.displayName);
+    });
+
+    res.status(200).json({
+      success: true,
+      data: usersWithCircles
+    });
+
+  } catch (error) {
+    console.error('Error fetching users with circles:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get circles for a specific connected user
+// @route   GET /api/network/user-circles/:userId
+// @access  Private
+const getUserCircles = async (req, res) => {
+  try {
+    const currentUserId = req.user.uid;
+    const targetUserId = req.params.userId;
+
+    // Verify the users are connected
+    const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
+      .where('userId', '==', currentUserId)
+      .where('connectedUserId', '==', targetUserId)
+      .where('status', '==', 'accepted')
+      .get();
+      
+    const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
+      .where('userId', '==', targetUserId)
+      .where('connectedUserId', '==', currentUserId)
+      .where('status', '==', 'accepted')
+      .get();
+
+    if (connection1.empty && connection2.empty) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not connected to this user'
+      });
+    }
+
+    // Get user details
+    const userDoc = await db.collection(COLLECTIONS.USERS).doc(targetUserId).get();
+    if (!userDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const userData = serializeDoc(userDoc);
+
+    // Get circles from the target user with non-private privacy
+    const circlesQuery = await db.collection(COLLECTIONS.CIRCLES)
+      .where('owner', '==', targetUserId)
+      .where('privacy', 'in', ['public', 'myNetwork'])
+      .get();
+    
+    // Sort in memory for now until Firestore index is created
+    const sortedDocs = circlesQuery.docs.sort((a, b) => {
+      const aDate = a.data().updatedAt || a.data().createdAt;
+      const bDate = b.data().updatedAt || b.data().createdAt;
+      return bDate.localeCompare(aDate);
+    });
+
+    const circles = sortedDocs.map(doc => {
+      const circle = serializeDoc(doc);
+      circle.ownerDetails = userData;
+      return circle;
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        user: userData,
+        circles: circles
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching user circles:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   shareCircle,
   revokeShare,
   getCircleShares,
   getSharedCircles,
-  updateShareAccess
+  updateShareAccess,
+  getCirclesSharedWithMe,
+  getMyNetworkCircles,
+  getUsersWithCircles,
+  getUserCircles
 };

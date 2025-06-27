@@ -10,14 +10,15 @@ struct User: Codable, Identifiable {
     let friends: [String]?
     let friendRequests: [String]?
     let createdAt: Date
+    let connectionStatus: String? // "connected", "pending", or nil
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
-        case email, displayName, profilePicture, bio, location, friends, friendRequests, createdAt
+        case email, displayName, profilePicture, bio, location, friends, friendRequests, createdAt, connectionStatus
     }
     
     // Convenience initializer for creating User objects directly
-    init(id: String, email: String, displayName: String, profilePicture: String?, bio: String?, location: String?, friends: [String]?, friendRequests: [String]?, createdAt: Date) {
+    init(id: String, email: String, displayName: String, profilePicture: String?, bio: String?, location: String?, friends: [String]?, friendRequests: [String]?, createdAt: Date, connectionStatus: String? = nil) {
         self.id = id
         self.email = email
         self.displayName = displayName
@@ -27,6 +28,7 @@ struct User: Codable, Identifiable {
         self.friends = friends
         self.friendRequests = friendRequests
         self.createdAt = createdAt
+        self.connectionStatus = connectionStatus
     }
     
     // Custom decoder for JSON decoding
@@ -41,6 +43,7 @@ struct User: Codable, Identifiable {
         location = try container.decodeIfPresent(String.self, forKey: .location)
         friends = try container.decodeIfPresent([String].self, forKey: .friends)
         friendRequests = try container.decodeIfPresent([String].self, forKey: .friendRequests)
+        connectionStatus = try container.decodeIfPresent(String.self, forKey: .connectionStatus)
         
         // Custom date decoding with multiple format support
         let dateString = try container.decode(String.self, forKey: .createdAt)

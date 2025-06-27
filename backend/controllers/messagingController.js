@@ -31,6 +31,18 @@ const getConversations = async (req, res) => {
     // Populate participant details for each conversation
     const populatedConversations = await Promise.all(
       conversations.map(async (conversation) => {
+        // Clean up unreadCounts to ensure it's a flat structure
+        if (conversation.unreadCounts) {
+          const cleanedUnreadCounts = {};
+          for (const [key, value] of Object.entries(conversation.unreadCounts)) {
+            // Only keep entries where value is a number
+            if (typeof value === 'number') {
+              cleanedUnreadCounts[key] = value;
+            }
+          }
+          conversation.unreadCounts = cleanedUnreadCounts;
+        }
+        
         // Get participant details
         const participantIds = conversation.participants.filter(id => id !== userId);
         const participantPromises = participantIds.map(id => 
@@ -96,6 +108,18 @@ const createNewConversation = async (req, res) => {
 
       if (existingConversation) {
         const conversation = serializeDoc(existingConversation);
+        
+        // Clean up unreadCounts to ensure it's a flat structure
+        if (conversation.unreadCounts) {
+          const cleanedUnreadCounts = {};
+          for (const [key, value] of Object.entries(conversation.unreadCounts)) {
+            // Only keep entries where value is a number
+            if (typeof value === 'number') {
+              cleanedUnreadCounts[key] = value;
+            }
+          }
+          conversation.unreadCounts = cleanedUnreadCounts;
+        }
         
         // Populate participant details
         const otherUserId = conversation.participants.find(id => id !== userId);

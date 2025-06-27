@@ -168,7 +168,7 @@ struct CircleDetailView: View {
     private var privacyIcon: String {
         switch circle.privacy {
         case .public: return "globe"
-        case .friends: return "person.2"
+        case .myNetwork: return "person.2"
         case .private: return "lock"
         }
     }
@@ -382,7 +382,8 @@ struct ShareSheet: UIViewControllerRepresentable {
             ownerDetails: nil,
             places: [],
             placesWithDetails: nil,
-            privacy: .friends,
+            privacy: .myNetwork,
+            allowNetworkEdit: false,
             category: .food,
             location: nil,
             tags: nil,

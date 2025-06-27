@@ -486,3 +486,71 @@ exports.removeFriend = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Search users by email, name, or phone
+// @route   GET /api/users/search
+// @access  Private
+exports.searchUsers = async (req, res, next) => {
+  try {
+    const { query } = req.query;
+    
+    if (!query || query.trim().length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: 'Search query must be at least 2 characters'
+      });
+    }
+
+    const searchTerm = query.trim().toLowerCase();
+    const currentUserId = req.user.uid;
+    
+    // Search users by email, name, or phone
+    const usersSnapshot = await db.collection(COLLECTIONS.USERS).get();
+    
+    const matchingUsers = [];
+    for (const doc of usersSnapshot.docs) {
+      const user = serializeDoc(doc);
+      
+      // Skip current user
+      if (user.id === currentUserId) continue;
+      
+      // Check if query matches email, name, or phone
+      const emailMatch = user.email && user.email.toLowerCase().includes(searchTerm);
+      const nameMatch = user.displayName && user.displayName.toLowerCase().includes(searchTerm);
+      const phoneMatch = user.phone && user.phone.replace(/\D/g, '').includes(searchTerm.replace(/\D/g, ''));
+      
+      if (emailMatch || nameMatch || phoneMatch) {
+        // Check connection status
+        const connectionQuery = await db.collection(COLLECTIONS.CONNECTIONS)
+          .where('participants', 'array-contains', currentUserId)
+          .get();
+        
+        let connectionStatus = 'none';
+        for (const connDoc of connectionQuery.docs) {
+          const conn = connDoc.data();
+          if (conn.participants.includes(user.id)) {
+            connectionStatus = conn.status;
+            break;
+          }
+        }
+        
+        matchingUsers.push({
+          _id: user.id,
+          displayName: user.displayName,
+          email: user.email,
+          profilePicture: user.profilePicture,
+          connectionStatus: connectionStatus
+        });
+      }
+    }
+    
+    res.status(200).json({
+      success: true,
+      count: matchingUsers.length,
+      users: matchingUsers
+    });
+  } catch (error) {
+    console.error('Error searching users:', error);
+    next(error);
+  }
+};

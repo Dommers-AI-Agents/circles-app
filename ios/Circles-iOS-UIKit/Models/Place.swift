@@ -13,6 +13,7 @@ struct Place: Codable, Identifiable {
     let googlePlaceId: String?
     let photos: [String]?
     let category: PlaceCategory
+    let customCategory: String?
     let rating: Double?
     let userRatingsTotal: Int?
     let notes: String? // Legacy field, will be migrated to publicNotes
@@ -32,7 +33,7 @@ struct Place: Codable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id = "_id"
         case name, description, address, location, website, phone, googlePlaceId
-        case photos, category, rating, userRatingsTotal, notes, privateNotes, publicNotes, tags, reviews, openingHours
+        case photos, category, customCategory, rating, userRatingsTotal, notes, privateNotes, publicNotes, tags, reviews, openingHours
         case priceLevel, circleId, addedBy, addedByUser, privacy, createdAt, updatedAt
     }
     
@@ -50,6 +51,7 @@ struct Place: Codable, Identifiable {
         self.googlePlaceId = try container.decodeIfPresent(String.self, forKey: .googlePlaceId)
         self.photos = try container.decodeIfPresent([String].self, forKey: .photos)
         self.category = try container.decode(PlaceCategory.self, forKey: .category)
+        self.customCategory = try container.decodeIfPresent(String.self, forKey: .customCategory)
         self.rating = try container.decodeIfPresent(Double.self, forKey: .rating)
         self.userRatingsTotal = try container.decodeIfPresent(Int.self, forKey: .userRatingsTotal)
         self.notes = try container.decodeIfPresent(String.self, forKey: .notes)
@@ -79,7 +81,7 @@ struct Place: Codable, Identifiable {
     init(id: String, name: String, description: String?, address: String,
          location: GeoLocation?, website: String?, phone: String?,
          googlePlaceId: String?, photos: [String]?, category: PlaceCategory,
-         rating: Double?, userRatingsTotal: Int?, notes: String?,
+         customCategory: String?, rating: Double?, userRatingsTotal: Int?, notes: String?,
          privateNotes: String?, publicNotes: String?, tags: [String]?,
          reviews: [PlaceReview]?, openingHours: [OpeningHour]?,
          priceLevel: PriceLevel?, circleId: String, addedBy: String,
@@ -94,6 +96,7 @@ struct Place: Codable, Identifiable {
         self.googlePlaceId = googlePlaceId
         self.photos = photos
         self.category = category
+        self.customCategory = customCategory
         self.rating = rating
         self.userRatingsTotal = userRatingsTotal
         self.notes = notes
@@ -114,6 +117,13 @@ struct Place: Codable, Identifiable {
     // Helper computed properties
     var isAddedByCurrentUser: Bool {
         return addedBy == AuthService.shared.getUserId()
+    }
+    
+    var displayCategory: String {
+        if category == .other, let customCategory = customCategory, !customCategory.isEmpty {
+            return customCategory
+        }
+        return category.displayName
     }
     
     var addedByDisplayName: String {
@@ -286,14 +296,14 @@ enum PriceLevel: Int, Codable, CaseIterable {
 enum PlacePrivacy: String, Codable, CaseIterable {
     case followCirclePrivacy = "followCircle"
     case `public` = "public"
-    case friends = "friends"
+    case myNetwork = "myNetwork"
     case `private` = "private"
     
     var displayName: String {
         switch self {
         case .followCirclePrivacy: return "Follow Circle Privacy"
         case .`public`: return "Public"
-        case .friends: return "Friends Only"
+        case .myNetwork: return "My Network"
         case .`private`: return "Private"
         }
     }
@@ -302,7 +312,7 @@ enum PlacePrivacy: String, Codable, CaseIterable {
         switch self {
         case .followCirclePrivacy: return "circle"
         case .`public`: return "globe"
-        case .friends: return "person.2"
+        case .myNetwork: return "person.2"
         case .`private`: return "lock"
         }
     }

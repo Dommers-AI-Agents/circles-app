@@ -245,12 +245,9 @@ class MessagingManager: ObservableObject {
                 if case .success = result {
                     // Update local messages
                     if var messages = self?.activeMessages[conversationId] {
-                        if let index = messages.firstIndex(where: { $0.id == messageId }) {
-                            let formatter = ISO8601DateFormatter()
-                            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-                            messages[index].deletedAt = formatter.string(from: Date())
-                            self?.activeMessages[conversationId] = messages
-                        }
+                        // Remove the deleted message from the array
+                        messages.removeAll { $0.id == messageId }
+                        self?.activeMessages[conversationId] = messages
                     }
                 }
             }

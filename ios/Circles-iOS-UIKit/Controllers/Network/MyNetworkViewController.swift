@@ -31,6 +31,10 @@ class MyNetworkViewController: UIViewController {
         showConnectionsList()
     }
     
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+    }
+    
     // MARK: - Setup
     private func setupView() {
         view.backgroundColor = .systemBackground
@@ -63,6 +67,14 @@ class MyNetworkViewController: UIViewController {
     }
     
     private func setupNavigationBar() {
+        // Add the search button
+        let searchButton = UIBarButtonItem(
+            image: UIImage(systemName: "magnifyingglass"),
+            style: .plain,
+            target: self,
+            action: #selector(searchButtonTapped)
+        )
+        
         // Add the connection button
         let addConnectionButton = UIBarButtonItem(
             image: UIImage(systemName: "person.badge.plus"),
@@ -70,7 +82,8 @@ class MyNetworkViewController: UIViewController {
             target: self,
             action: #selector(showConnectionMenu)
         )
-        navigationItem.rightBarButtonItem = addConnectionButton
+        
+        navigationItem.rightBarButtonItems = [addConnectionButton, searchButton]
     }
     
     private func setupChildViewControllers() {
@@ -81,16 +94,26 @@ class MyNetworkViewController: UIViewController {
     
     // MARK: - Actions
     @objc private func segmentChanged() {
-        if segmentedControl.selectedSegmentIndex == 0 {
+        switch segmentedControl.selectedSegmentIndex {
+        case 0:
             showConnectionsList()
-        } else {
+        case 1:
             showSharedCirclesList()
+        default:
+            break
         }
     }
     
     @objc private func showConnectionMenu() {
         // Directly show the share sheet without a menu
         shareConnectionInvite()
+    }
+    
+    @objc private func searchButtonTapped() {
+        let searchVC = UserSearchViewController()
+        searchVC.delegate = self
+        let navController = UINavigationController(rootViewController: searchVC)
+        present(navController, animated: true)
     }
     
     private func shareConnectionInvite() {
@@ -153,10 +176,59 @@ class MyNetworkViewController: UIViewController {
         currentViewController = sharedCirclesListVC
     }
     
+    
     private func removeCurrentViewController() {
         currentViewController?.willMove(toParent: nil)
         currentViewController?.view.removeFromSuperview()
         currentViewController?.removeFromParent()
         currentViewController = nil
+    }
+}
+
+// MARK: - UserSearchViewControllerDelegate
+extension MyNetworkViewController: UserSearchViewControllerDelegate {
+    func userSearchViewController(_ controller: UserSearchViewController, didSelectUser user: User) {
+        // Dismiss the search controller
+        controller.dismiss(animated: true) { [weak self] in
+            // Send connection request
+            self?.sendConnectionRequest(to: user)
+        }
+    }
+    
+    private func sendConnectionRequest(to user: User) {
+        // Show loading indicator
+        let loadingAlert = UIAlertController(title: "Sending Request", message: "Please wait...", preferredStyle: .alert)
+        present(loadingAlert, animated: true)
+        
+        NetworkManager.shared.sendConnectionRequest(to: user.id) { [weak self] result in
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    switch result {
+                    case .success:
+                        let successAlert = UIAlertController(
+                            title: "Request Sent",
+                            message: "Connection request sent to \(user.displayName)",
+                            preferredStyle: .alert
+                        )
+                        successAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                        self?.present(successAlert, animated: true)
+                        
+                        // Refresh connections list if it's currently showing
+                        if self?.segmentedControl.selectedSegmentIndex == 0 {
+                            self?.connectionsListVC?.loadConnections()
+                        }
+                        
+                    case .failure(let error):
+                        let errorAlert = UIAlertController(
+                            title: "Error",
+                            message: error.localizedDescription,
+                            preferredStyle: .alert
+                        )
+                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                        self?.present(errorAlert, animated: true)
+                    }
+                }
+            }
+        }
     }
 }

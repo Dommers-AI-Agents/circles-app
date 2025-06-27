@@ -51,7 +51,7 @@ struct AddPlaceView: View {
     private let privacyOptions = [
         ("followCircle", "Follow Circle Privacy", "circle", "Use the same privacy setting as the circle"),
         ("public", "Public", "globe", "Anyone can see this place"),
-        ("friends", "Friends Only", "person.2", "Only friends can see this place"),
+        ("myNetwork", "My Network", "person.2", "Only my network can see this place"),
         ("private", "Private", "lock", "Only you can see this place")
     ]
     
@@ -465,7 +465,8 @@ class SearchCompleterDelegate: NSObject, MKLocalSearchCompleterDelegate {
             ownerDetails: nil,
             places: [],
             placesWithDetails: nil,
-            privacy: .friends,
+            privacy: .myNetwork,
+            allowNetworkEdit: false,
             category: .food,
             location: nil,
             tags: nil,

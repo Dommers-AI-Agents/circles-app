@@ -27,8 +27,12 @@ const CircleSchema = new mongoose.Schema({
   }],
   privacy: {
     type: String,
-    enum: ['public', 'friends', 'private'],
-    default: 'friends'
+    enum: ['public', 'myNetwork', 'private'],
+    default: 'myNetwork'
+  },
+  allowNetworkEdit: {
+    type: Boolean,
+    default: false
   },
   category: {
     type: String,

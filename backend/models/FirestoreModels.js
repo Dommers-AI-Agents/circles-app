@@ -13,7 +13,9 @@ const COLLECTIONS = {
   CIRCLE_SHARES: 'circleShares',
   CONVERSATIONS: 'conversations',
   MESSAGES: 'messages',
-  MESSAGE_READS: 'messageReads'
+  MESSAGE_READS: 'messageReads',
+  SUGGESTIONS: 'suggestions',
+  COMMENTS: 'comments'
 };
 
 // User model structure
@@ -44,7 +46,8 @@ const createCircle = (circleData, ownerId) => {
     coverImage: circleData.coverImage || null,
     owner: ownerId,
     places: circleData.places || [],
-    privacy: circleData.privacy || 'friends', // public, friends, private
+    privacy: circleData.privacy || 'myNetwork', // public, myNetwork, private
+    allowNetworkEdit: circleData.allowNetworkEdit || false,
     category: circleData.category || 'other', // travel, food, services, shopping, healthcare, entertainment, other
     location: circleData.location || null,
     tags: circleData.tags || [],
@@ -87,7 +90,7 @@ const createPlace = (placeData, circleId, addedBy) => {
     priceLevel: placeData.priceLevel || null,
     circleId: circleId,
     addedBy: addedBy,
-    privacy: placeData.privacy || 'followCircle', // followCircle, public, friends, private
+    privacy: placeData.privacy || 'followCircle', // followCircle, public, myNetwork, private
     createdAt: now,
     updatedAt: now
   };
@@ -137,6 +140,27 @@ const createCircleShare = (shareData) => {
   };
 };
 
+// Suggestion model structure
+const createSuggestion = (suggestionData, userId) => {
+  const now = new Date().toISOString();
+  const tomorrow = new Date();
+  tomorrow.setHours(tomorrow.getHours() + 24);
+  
+  return {
+    userId: userId,
+    message: suggestionData.message,
+    placeId: suggestionData.placeId || null,
+    placeDetails: suggestionData.placeDetails || null,
+    imageUrl: suggestionData.imageUrl || null,
+    mentionedPlaces: suggestionData.mentionedPlaces || [],
+    likes: suggestionData.likes || [],
+    likesCount: suggestionData.likesCount || 0,
+    createdAt: now,
+    updatedAt: now,
+    expiresAt: tomorrow.toISOString() // Suggestions expire after 24 hours
+  };
+};
+
 // Validation functions
 const validateCircle = (circleData) => {
   const errors = [];
@@ -153,9 +177,9 @@ const validateCircle = (circleData) => {
     errors.push('Description must be 500 characters or less');
   }
   
-  const validPrivacyLevels = ['public', 'friends', 'private'];
+  const validPrivacyLevels = ['public', 'myNetwork', 'private'];
   if (circleData.privacy && !validPrivacyLevels.includes(circleData.privacy)) {
-    errors.push('Privacy must be public, friends, or private');
+    errors.push('Privacy must be public, myNetwork, or private');
   }
   
   const validCategories = ['travel', 'food', 'services', 'shopping', 'healthcare', 'entertainment', 'other'];
@@ -257,6 +281,20 @@ const validateCircleShare = (shareData) => {
   return errors;
 };
 
+const validateSuggestion = (suggestionData) => {
+  const errors = [];
+  
+  if (!suggestionData.message || suggestionData.message.trim().length === 0) {
+    errors.push('Suggestion message is required');
+  }
+  
+  if (suggestionData.message && suggestionData.message.length > 500) {
+    errors.push('Suggestion message must be 500 characters or less');
+  }
+  
+  return errors;
+};
+
 // Conversation model structure
 const createConversation = (conversationData) => {
   const now = new Date().toISOString();
@@ -353,6 +391,37 @@ const validateMessage = (message) => {
   return errors;
 };
 
+// Create comment object for Firestore
+const createComment = (commentData) => {
+  const now = new Date().toISOString();
+  return {
+    suggestionId: commentData.suggestionId,
+    userId: commentData.userId,
+    message: commentData.message,
+    createdAt: now,
+    updatedAt: now
+  };
+};
+
+// Validate comment
+const validateComment = (commentData) => {
+  const errors = [];
+  
+  if (!commentData.message || commentData.message.trim().length === 0) {
+    errors.push('Comment message is required');
+  }
+  
+  if (commentData.message && commentData.message.length > 500) {
+    errors.push('Comment must be 500 characters or less');
+  }
+  
+  if (!commentData.suggestionId) {
+    errors.push('Suggestion ID is required');
+  }
+  
+  return errors;
+};
+
 module.exports = {
   COLLECTIONS,
   createUser,
@@ -361,6 +430,8 @@ module.exports = {
   createFriendRequest,
   createConnection,
   createCircleShare,
+  createSuggestion,
+  createComment,
   createConversation,
   createMessage,
   createMessageRead,
@@ -368,6 +439,8 @@ module.exports = {
   validatePlace,
   validateConnection,
   validateCircleShare,
+  validateSuggestion,
+  validateComment,
   validateConversation,
   validateMessage,
   serializeDoc,

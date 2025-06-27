@@ -90,6 +90,25 @@ class EditPlaceViewController: UIViewController {
         return segmentedControl
     }()
     
+    private let customCategoryLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Custom Category Name"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .bold)
+        label.textColor = Constants.Colors.darkGray
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.isHidden = true
+        return label
+    }()
+    
+    private let customCategoryTextField: UITextField = {
+        let textField = UITextField()
+        textField.placeholder = "Enter custom category name"
+        textField.borderStyle = .roundedRect
+        textField.translatesAutoresizingMaskIntoConstraints = false
+        textField.isHidden = true
+        return textField
+    }()
+    
     private let descriptionLabel: UILabel = {
         let label = UILabel()
         label.text = "Description (optional)"
@@ -374,6 +393,8 @@ class EditPlaceViewController: UIViewController {
         contentView.addSubview(nameTextField)
         contentView.addSubview(categoryLabel)
         contentView.addSubview(categorySegmentedControl)
+        contentView.addSubview(customCategoryLabel)
+        contentView.addSubview(customCategoryTextField)
         contentView.addSubview(descriptionLabel)
         contentView.addSubview(descriptionTextView)
         contentView.addSubview(addressLabel)
@@ -436,8 +457,17 @@ class EditPlaceViewController: UIViewController {
             categorySegmentedControl.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             categorySegmentedControl.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             
+            // Custom category label and text field
+            customCategoryLabel.topAnchor.constraint(equalTo: categorySegmentedControl.bottomAnchor, constant: Constants.Spacing.medium),
+            customCategoryLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            
+            customCategoryTextField.topAnchor.constraint(equalTo: customCategoryLabel.bottomAnchor, constant: Constants.Spacing.small),
+            customCategoryTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            customCategoryTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            customCategoryTextField.heightAnchor.constraint(equalToConstant: 40),
+            
             // Description label and text view
-            descriptionLabel.topAnchor.constraint(equalTo: categorySegmentedControl.bottomAnchor, constant: Constants.Spacing.medium),
+            descriptionLabel.topAnchor.constraint(equalTo: customCategoryTextField.bottomAnchor, constant: Constants.Spacing.medium),
             descriptionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             
             descriptionTextView.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: Constants.Spacing.small),
@@ -587,6 +617,9 @@ class EditPlaceViewController: UIViewController {
         deleteButton.addTarget(self, action: #selector(deleteButtonTapped), for: .touchUpInside)
         addPhotoButton.addTarget(self, action: #selector(addPhotoButtonTapped), for: .touchUpInside)
         
+        // Add category change handler
+        categorySegmentedControl.addTarget(self, action: #selector(categoryChanged), for: .valueChanged)
+        
         // Add gesture recognizer to dismiss keyboard when tapping on the view
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
         tapGesture.cancelsTouchesInView = false
@@ -601,6 +634,13 @@ class EditPlaceViewController: UIViewController {
         let categories = [PlaceCategory.restaurant, .cafe, .bar, .hotel, .retail, .service, .attraction, .other]
         if let index = categories.firstIndex(of: place.category) {
             categorySegmentedControl.selectedSegmentIndex = index
+        }
+        
+        // Set custom category if it's "Other"
+        if place.category == .other {
+            customCategoryTextField.text = place.customCategory
+            customCategoryLabel.isHidden = false
+            customCategoryTextField.isHidden = false
         }
         
         // Parse address
@@ -622,7 +662,7 @@ class EditPlaceViewController: UIViewController {
         }
         
         // Set privacy
-        let privacyOptions = [PlacePrivacy.followCirclePrivacy, .public, .friends, .private]
+        let privacyOptions = [PlacePrivacy.followCirclePrivacy, .public, .myNetwork, .private]
         if let index = privacyOptions.firstIndex(of: place.privacy) {
             privacySegmentedControl.selectedSegmentIndex = index
         }
@@ -642,6 +682,14 @@ class EditPlaceViewController: UIViewController {
     }
     
     // MARK: - Actions
+    
+    @objc private func categoryChanged() {
+        let isOtherSelected = categorySegmentedControl.selectedSegmentIndex == 7 // "Other" is at index 7
+        UIView.animate(withDuration: 0.3) {
+            self.customCategoryLabel.isHidden = !isOtherSelected
+            self.customCategoryTextField.isHidden = !isOtherSelected
+        }
+    }
     
     @objc private func cancelButtonTapped() {
         dismiss(animated: true)
@@ -676,6 +724,9 @@ class EditPlaceViewController: UIViewController {
         let categories = [PlaceCategory.restaurant, .cafe, .bar, .hotel, .retail, .service, .attraction, .other]
         let category = categories[categoryIndex]
         
+        // Get custom category if "Other" is selected
+        let customCategory: String? = category == .other ? customCategoryTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines) : nil
+        
         // Format the address string
         let formattedAddress = [streetTextField.text, cityTextField.text, stateTextField.text, zipCodeTextField.text, countryTextField.text]
             .compactMap { $0 }
@@ -697,7 +748,7 @@ class EditPlaceViewController: UIViewController {
         
         // Get privacy setting
         let privacyIndex = privacySegmentedControl.selectedSegmentIndex
-        let privacyOptions = [PlacePrivacy.followCirclePrivacy, .public, .friends, .private]
+        let privacyOptions = [PlacePrivacy.followCirclePrivacy, .public, .myNetwork, .private]
         let privacy = privacyOptions[privacyIndex]
         
         // Show loading indicator
@@ -710,6 +761,7 @@ class EditPlaceViewController: UIViewController {
             description: description,
             address: address,
             category: category,
+            customCategory: customCategory,
             privacy: privacy,
             website: website,
             phone: phone,
@@ -869,6 +921,7 @@ class EditPlaceViewController: UIViewController {
         description: String?,
         address: String?,
         category: PlaceCategory,
+        customCategory: String?,
         privacy: PlacePrivacy,
         website: String?,
         phone: String?,
@@ -885,6 +938,7 @@ class EditPlaceViewController: UIViewController {
             description: description,
             address: address,
             category: category,
+            customCategory: customCategory,
             privacy: privacy,
             website: website,
             phone: phone,
@@ -1034,6 +1088,13 @@ class EditPlaceViewController: UIViewController {
         let categories = [PlaceCategory.restaurant, .cafe, .bar, .hotel, .retail, .service, .attraction, .other]
         if categories[categoryIndex] != place.category { return true }
         
+        // Check custom category if "Other" is selected
+        if place.category == .other {
+            let currentCustomCategory = customCategoryTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let originalCustomCategory = place.customCategory ?? ""
+            if currentCustomCategory != originalCustomCategory { return true }
+        }
+        
         // Check address
         let formattedAddress = [streetTextField.text, cityTextField.text, stateTextField.text, zipCodeTextField.text, countryTextField.text]
             .compactMap { $0 }
@@ -1043,7 +1104,7 @@ class EditPlaceViewController: UIViewController {
         
         // Check privacy
         let privacyIndex = privacySegmentedControl.selectedSegmentIndex
-        let privacyOptions = [PlacePrivacy.followCirclePrivacy, .public, .friends, .private]
+        let privacyOptions = [PlacePrivacy.followCirclePrivacy, .public, .myNetwork, .private]
         if privacyOptions[privacyIndex] != place.privacy { return true }
         
         // Check notes

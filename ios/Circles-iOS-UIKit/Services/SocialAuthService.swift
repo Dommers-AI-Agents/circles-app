@@ -322,7 +322,7 @@ class SocialAuthService: NSObject {
         
         // Use the backend URL for LinkedIn OAuth callback
         // LinkedIn will redirect to backend, which then redirects to app
-        let redirectUri = "https://circles-backend-778088177220.us-central1.run.app/auth/linkedin/callback"
+        let redirectUri = "https://circles-backend-196924649787.us-central1.run.app/auth/linkedin/callback"
         let state = UUID().uuidString
         let scope = "openid profile email"
         

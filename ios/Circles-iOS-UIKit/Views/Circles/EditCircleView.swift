@@ -31,7 +31,7 @@ struct EditCircleView: View {
     
     private let privacyOptions: [(PrivacyLevel, String, String, String)] = [
         (.public, "Public", "globe", "Anyone can see this circle"),
-        (.friends, "Friends", "person.2", "Only friends can see this circle"),
+        (.myNetwork, "My Network", "person.2", "Only my network can see this circle"),
         (.private, "Private", "lock", "Only you can see this circle")
     ]
     
@@ -271,7 +271,8 @@ struct EditCircleView: View {
             ownerDetails: nil,
             places: [],
             placesWithDetails: nil,
-            privacy: .friends,
+            privacy: .myNetwork,
+            allowNetworkEdit: false,
             category: .food,
             location: nil,
             tags: nil,

@@ -27,7 +27,7 @@ class ImageService {
         var finalURLString = urlString
         if !urlString.hasPrefix("http://") && !urlString.hasPrefix("https://") {
             // This is a relative URL, prepend the base URL
-            let baseURL = "https://circles-backend-778088177220.us-central1.run.app"
+            let baseURL = "https://circles-backend-196924649787.us-central1.run.app"
             finalURLString = baseURL + (urlString.hasPrefix("/") ? "" : "/") + urlString
             print("ImageService: Converted relative URL to absolute: \(finalURLString)")
         }

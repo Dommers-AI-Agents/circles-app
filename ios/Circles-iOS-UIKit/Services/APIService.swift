@@ -49,7 +49,7 @@ enum APIEnvironment {
         case .staging:
             return "https://api-staging.circles-app.com/api"
         case .production:
-            return "https://circles-backend-778088177220.us-central1.run.app/api"
+            return "https://circles-backend-196924649787.us-central1.run.app/api"
         }
     }
 }

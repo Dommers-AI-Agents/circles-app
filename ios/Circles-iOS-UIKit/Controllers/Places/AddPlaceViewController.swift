@@ -204,6 +204,30 @@ class AddPlaceViewController: UIViewController {
         return segmentedControl
     }()
     
+    private let customCategoryLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Custom Category Name"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
+        label.textColor = .darkGray
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.isHidden = true
+        return label
+    }()
+    
+    private let customCategoryTextField: UITextField = {
+        let textField = UITextField()
+        textField.placeholder = "Enter custom category name"
+        textField.font = UIFont.systemFont(ofSize: 16)
+        textField.borderStyle = .roundedRect
+        textField.backgroundColor = .white
+        textField.layer.borderWidth = 1
+        textField.layer.borderColor = UIColor.systemBlue.withAlphaComponent(0.3).cgColor
+        textField.layer.cornerRadius = 8
+        textField.translatesAutoresizingMaskIntoConstraints = false
+        textField.isHidden = true
+        return textField
+    }()
+    
     private let descriptionLabel: UILabel = {
         let label = UILabel()
         label.text = "Description"
@@ -421,6 +445,8 @@ class AddPlaceViewController: UIViewController {
         formContainer.addSubview(removePhotoButton)
         formContainer.addSubview(categoryLabel)
         formContainer.addSubview(categorySegmentedControl)
+        formContainer.addSubview(customCategoryLabel)
+        formContainer.addSubview(customCategoryTextField)
         formContainer.addSubview(descriptionLabel)
         formContainer.addSubview(descriptionTextView)
         formContainer.addSubview(addressLabel)
@@ -529,7 +555,15 @@ class AddPlaceViewController: UIViewController {
             categorySegmentedControl.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
             categorySegmentedControl.trailingAnchor.constraint(equalTo: formContainer.trailingAnchor, constant: -Constants.Spacing.large),
             
-            descriptionLabel.topAnchor.constraint(equalTo: categorySegmentedControl.bottomAnchor, constant: Constants.Spacing.medium),
+            customCategoryLabel.topAnchor.constraint(equalTo: categorySegmentedControl.bottomAnchor, constant: Constants.Spacing.medium),
+            customCategoryLabel.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
+            
+            customCategoryTextField.topAnchor.constraint(equalTo: customCategoryLabel.bottomAnchor, constant: Constants.Spacing.small),
+            customCategoryTextField.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
+            customCategoryTextField.trailingAnchor.constraint(equalTo: formContainer.trailingAnchor, constant: -Constants.Spacing.large),
+            customCategoryTextField.heightAnchor.constraint(equalToConstant: 44),
+            
+            descriptionLabel.topAnchor.constraint(equalTo: customCategoryTextField.bottomAnchor, constant: Constants.Spacing.medium),
             descriptionLabel.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
             
             descriptionTextView.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: Constants.Spacing.small),
@@ -649,6 +683,7 @@ class AddPlaceViewController: UIViewController {
         manualEntryButton.addTarget(self, action: #selector(manualEntryButtonTapped), for: .touchUpInside)
         addPhotoButton.addTarget(self, action: #selector(addPhotoButtonTapped), for: .touchUpInside)
         removePhotoButton.addTarget(self, action: #selector(removePhotoButtonTapped), for: .touchUpInside)
+        categorySegmentedControl.addTarget(self, action: #selector(categoryChanged), for: .valueChanged)
     }
     
     
@@ -737,6 +772,22 @@ class AddPlaceViewController: UIViewController {
         ])
     }
     
+    @objc private func categoryChanged() {
+        let isOtherSelected = categorySegmentedControl.selectedSegmentIndex == 7 // "Other" is at index 7
+        
+        UIView.animate(withDuration: 0.3) {
+            self.customCategoryLabel.isHidden = !isOtherSelected
+            self.customCategoryTextField.isHidden = !isOtherSelected
+            
+            if !isOtherSelected {
+                self.customCategoryTextField.text = ""
+            }
+            
+            // Update layout
+            self.view.layoutIfNeeded()
+        }
+    }
+    
     @objc private func categoryButtonTapped(_ sender: UIButton) {
         guard let buttonTitle = sender.title(for: .normal) else { return }
         
@@ -764,6 +815,9 @@ class AddPlaceViewController: UIViewController {
         let categories = [PlaceCategory.restaurant, .cafe, .bar, .hotel, .retail, .service, .attraction, .other]
         let category = categories[categoryIndex]
         
+        // Get custom category if "Other" is selected
+        let customCategory: String? = (categoryIndex == 7 && !customCategoryTextField.text!.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) ? customCategoryTextField.text!.trimmingCharacters(in: .whitespacesAndNewlines) : nil
+        
         let description = descriptionTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
         
         // Get privacy setting from segmented control
@@ -787,6 +841,7 @@ class AddPlaceViewController: UIViewController {
             description: description.isEmpty ? nil : description,
             address: address,
             category: category,
+            customCategory: customCategory,
             circleId: circleId,
             privacy: privacy,
             website: nil,

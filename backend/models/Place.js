@@ -36,6 +36,11 @@ const PlaceSchema = new mongoose.Schema({
     enum: ['restaurant', 'cafe', 'bar', 'hotel', 'retail', 'service', 'attraction', 'entertainment', 'healthcare', 'fitness', 'education', 'outdoor', 'transport', 'finance', 'other'],
     default: 'other'
   },
+  customCategory: {
+    type: String,
+    maxlength: [50, 'Custom category can not be more than 50 characters'],
+    trim: true
+  },
   rating: {
     type: Number,
     min: 1,
@@ -58,7 +63,7 @@ const PlaceSchema = new mongoose.Schema({
   }],
   privacy: {
     type: String,
-    enum: ['public', 'friends', 'private', 'followCircle'],
+    enum: ['public', 'myNetwork', 'private', 'followCircle'],
     default: 'followCircle'
   },
   addedBy: {

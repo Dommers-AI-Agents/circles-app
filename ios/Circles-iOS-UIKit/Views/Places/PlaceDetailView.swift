@@ -242,6 +242,7 @@ struct PlaceDetailView_Previews: PreviewProvider {
                 googlePlaceId: nil,
                 photos: nil,
                 category: PlaceCategory.restaurant,
+                customCategory: nil,
                 rating: 4.5,
                 userRatingsTotal: nil,
                 notes: "Great place to visit!",

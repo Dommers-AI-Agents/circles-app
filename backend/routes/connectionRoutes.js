@@ -6,7 +6,8 @@ const {
   acceptConnection,
   declineConnection,
   blockConnection,
-  getSharedCirclesWithConnection
+  getSharedCirclesWithConnection,
+  removeConnection
 } = require('../controllers/connectionController');
 const { protect } = require('../middleware/firebaseAuth');
 
@@ -33,5 +34,8 @@ router.route('/:id/block')
 
 router.route('/:id/shared-circles')
   .get(getSharedCirclesWithConnection);
+
+router.route('/:id')
+  .delete(removeConnection);
 
 module.exports = router;

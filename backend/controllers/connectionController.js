@@ -15,7 +15,8 @@ const db = getFirestore();
 // @access  Private
 const getConnections = async (req, res) => {
   try {
-    const userId = req.user.uid;
+    const userId = req.user.firebaseDocId || req.user.uid;
+    console.log(`🔍 getConnections - userId: ${userId}`);
 
     // Get connections where user is either the requester or the target
     const connectionsQuery1 = db.collection(COLLECTIONS.CONNECTIONS)
@@ -45,13 +46,17 @@ const getConnections = async (req, res) => {
         
         // Fetch the other user's data
         try {
+          console.log(`🔍 Fetching connected user data for ID: ${otherUserId}`);
           const userDoc = await db.collection(COLLECTIONS.USERS).doc(otherUserId).get();
           if (userDoc.exists) {
             connection.connectedUser = serializeDoc(userDoc);
             connection.connectedUserId = otherUserId;
+            console.log(`✅ Found connected user: ${connection.connectedUser.displayName}`);
+          } else {
+            console.log(`⚠️ Connected user not found for ID: ${otherUserId}`);
           }
         } catch (error) {
-          console.error(`Error fetching user ${otherUserId}:`, error);
+          console.error(`❌ Error fetching user ${otherUserId}:`, error);
         }
 
         return connection;
@@ -77,10 +82,16 @@ const getConnections = async (req, res) => {
 // @access  Private
 const sendConnectionRequest = async (req, res) => {
   try {
-    const userId = req.user.uid;
+    const userId = req.user.firebaseDocId || req.user.uid;
     const { targetUserId, message, autoAccept } = req.body;
     
-    console.log(`Connection request from userId: ${userId} to targetUserId: ${targetUserId}`);
+    console.log(`🔗 Connection request:`, {
+      fromUserId: userId,
+      toTargetUserId: targetUserId,
+      autoAccept: autoAccept,
+      message: message,
+      userObj: { uid: req.user.uid, firebaseDocId: req.user.firebaseDocId, originalUid: req.user.originalUid }
+    });
 
     // Validate input
     if (!targetUserId) {
@@ -90,7 +101,20 @@ const sendConnectionRequest = async (req, res) => {
       });
     }
 
-    if (targetUserId === userId) {
+    // Parse target user ID if it's in complex format
+    let actualTargetUserId = targetUserId;
+    if (targetUserId.includes('.')) {
+      const parts = targetUserId.split('.');
+      if (parts.length >= 2) {
+        actualTargetUserId = parts[1]; // Use the middle part as Firebase UID
+        console.log(`🔄 Parsed complex target user ID from ${targetUserId} to ${actualTargetUserId}`);
+      }
+    } else {
+      // Simple format - use as is
+      console.log(`✅ Using simple target user ID as-is: ${actualTargetUserId}`);
+    }
+
+    if (actualTargetUserId === userId) {
       return res.status(400).json({
         success: false,
         message: 'Cannot connect to yourself'
@@ -98,26 +122,62 @@ const sendConnectionRequest = async (req, res) => {
     }
 
     // Check if target user exists
-    console.log(`Checking if target user exists with ID: ${targetUserId}`);
-    const targetUserDoc = await db.collection(COLLECTIONS.USERS).doc(targetUserId).get();
+    console.log(`Checking if target user exists with ID: ${actualTargetUserId}`);
+    
+    // First try direct lookup
+    let targetUserDoc = await db.collection(COLLECTIONS.USERS).doc(actualTargetUserId).get();
+    
+    // If not found, try to find by complex ID pattern
     if (!targetUserDoc.exists) {
-      console.error(`Target user not found with ID: ${targetUserId}`);
-      return res.status(404).json({
-        success: false,
-        message: 'Target user not found',
-        targetUserId: targetUserId
-      });
+      console.log(`Direct lookup failed, searching for user with pattern containing: ${actualTargetUserId}`);
+      
+      // Query for users where the document ID contains the simple ID
+      const usersSnapshot = await db.collection(COLLECTIONS.USERS).get();
+      let foundUser = null;
+      
+      for (const doc of usersSnapshot.docs) {
+        const docId = doc.id;
+        // Check if this document ID contains our simple ID
+        if (docId.includes(actualTargetUserId)) {
+          // Verify it matches the expected pattern: prefix.simpleId.suffix
+          const parts = docId.split('.');
+          if (parts.length >= 2 && parts[1] === actualTargetUserId) {
+            foundUser = doc;
+            console.log(`Found user with complex ID: ${docId}`);
+            break;
+          }
+        }
+      }
+      
+      if (foundUser) {
+        targetUserDoc = foundUser;
+      } else {
+        console.error(`Target user not found with ID: ${actualTargetUserId}`);
+        return res.status(404).json({
+          success: false,
+          message: 'Target user not found',
+          targetUserId: actualTargetUserId,
+          originalTargetUserId: targetUserId
+        });
+      }
     }
-    console.log(`Target user found: ${targetUserDoc.data().displayName || 'No name'}`)
+    console.log(`✅ Target user found:`, {
+      id: targetUserDoc.id,
+      displayName: targetUserDoc.data().displayName,
+      email: targetUserDoc.data().email
+    });
 
+    // Use the actual document ID for connection checks
+    const targetUserDocId = targetUserDoc.id;
+    
     // Check if connection already exists
     const existingConnectionQuery1 = await db.collection(COLLECTIONS.CONNECTIONS)
       .where('userId', '==', userId)
-      .where('connectedUserId', '==', targetUserId)
+      .where('connectedUserId', '==', targetUserDocId)
       .get();
 
     const existingConnectionQuery2 = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', targetUserId)
+      .where('userId', '==', targetUserDocId)
       .where('connectedUserId', '==', userId)
       .get();
 
@@ -143,8 +203,8 @@ const sendConnectionRequest = async (req, res) => {
       });
     }
 
-    // Create connection
-    const connectionData = createConnection(userId, targetUserId, message);
+    // Create connection with the actual document ID
+    const connectionData = createConnection(userId, targetUserDocId, message);
     
     // If autoAccept is true (from invite link), set status to accepted
     if (autoAccept) {
@@ -164,12 +224,20 @@ const sendConnectionRequest = async (req, res) => {
     }
 
     // Add to Firestore
+    console.log(`💾 Creating connection with data:`, connectionData);
     const docRef = await db.collection(COLLECTIONS.CONNECTIONS).add(connectionData);
     const newDoc = await docRef.get();
     const connection = serializeDoc(newDoc);
     
     // Populate connected user data
     connection.connectedUser = serializeDoc(targetUserDoc);
+    
+    console.log(`✅ Connection created successfully:`, {
+      connectionId: connection.id,
+      userId: connection.userId,
+      connectedUserId: connection.connectedUserId,
+      status: connection.status
+    });
 
     res.status(201).json({
       success: true,
@@ -177,7 +245,12 @@ const sendConnectionRequest = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error sending connection request:', error);
+    console.error('❌ Error sending connection request:', {
+      error: error.message,
+      stack: error.stack,
+      userId: req.user?.uid,
+      targetUserId: req.body?.targetUserId
+    });
     res.status(500).json({
       success: false,
       message: 'Server error',
@@ -191,7 +264,7 @@ const sendConnectionRequest = async (req, res) => {
 // @access  Private
 const acceptConnection = async (req, res) => {
   try {
-    const userId = req.user.uid;
+    const userId = req.user.firebaseDocId || req.user.uid;
     const connectionId = req.params.id;
 
     // Get connection document
@@ -259,7 +332,7 @@ const acceptConnection = async (req, res) => {
 // @access  Private
 const declineConnection = async (req, res) => {
   try {
-    const userId = req.user.uid;
+    const userId = req.user.firebaseDocId || req.user.uid;
     const connectionId = req.params.id;
 
     // Get connection document
@@ -305,7 +378,7 @@ const declineConnection = async (req, res) => {
 // @access  Private
 const blockConnection = async (req, res) => {
   try {
-    const userId = req.user.uid;
+    const userId = req.user.firebaseDocId || req.user.uid;
     const connectionId = req.params.id;
 
     // Get connection document
@@ -358,7 +431,7 @@ const blockConnection = async (req, res) => {
 // @access  Private
 const getSharedCirclesWithConnection = async (req, res) => {
   try {
-    const userId = req.user.uid;
+    const userId = req.user.firebaseDocId || req.user.uid;
     const connectionId = req.params.id;
 
     // Get connection to verify it exists and get the other user's ID
@@ -426,11 +499,58 @@ const getSharedCirclesWithConnection = async (req, res) => {
   }
 };
 
+// @desc    Remove/delete a connection
+// @route   DELETE /api/connections/:id
+// @access  Private
+const removeConnection = async (req, res) => {
+  try {
+    const userId = req.user.firebaseDocId || req.user.uid;
+    const connectionId = req.params.id;
+
+    // Get connection document
+    const connectionDoc = await db.collection(COLLECTIONS.CONNECTIONS).doc(connectionId).get();
+    
+    if (!connectionDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Connection not found'
+      });
+    }
+
+    const connection = connectionDoc.data();
+
+    // Check if user is part of this connection
+    if (connection.userId !== userId && connection.connectedUserId !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to remove this connection'
+      });
+    }
+
+    // Delete the connection
+    await connectionDoc.ref.delete();
+
+    res.status(200).json({
+      success: true,
+      message: 'Connection removed successfully'
+    });
+
+  } catch (error) {
+    console.error('Error removing connection:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getConnections,
   sendConnectionRequest,
   acceptConnection,
   declineConnection,
   blockConnection,
-  getSharedCirclesWithConnection
+  getSharedCirclesWithConnection,
+  removeConnection
 };

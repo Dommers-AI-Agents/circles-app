@@ -298,9 +298,28 @@ exports.firebaseAuth = async (req, res, next) => {
     
     // If no existing user found by email, check by provider ID
     if (!user) {
-      console.log(`🔍 Checking for user by provider ID: ${uid}`);
-      userRef = db.collection(COLLECTIONS.USERS).doc(uid);
-      const userDoc = await userRef.get();
+      // Parse the UID to get the simple format if it's complex
+      let simpleUid = uid;
+      if (uid.includes('.')) {
+        const parts = uid.split('.');
+        if (parts.length >= 2) {
+          simpleUid = parts[1]; // Use the middle part as the simple UID
+          console.log(`🔄 Parsed complex UID ${uid} to simple UID ${simpleUid}`);
+        }
+      }
+      
+      console.log(`🔍 Checking for user by provider ID: ${simpleUid}`);
+      
+      // First try with simple UID
+      userRef = db.collection(COLLECTIONS.USERS).doc(simpleUid);
+      let userDoc = await userRef.get();
+      
+      // If not found with simple UID, try with complex UID (for existing users)
+      if (!userDoc.exists && simpleUid !== uid) {
+        console.log(`🔍 Not found with simple UID, trying complex UID: ${uid}`);
+        userRef = db.collection(COLLECTIONS.USERS).doc(uid);
+        userDoc = await userRef.get();
+      }
       
       if (userDoc.exists) {
         // Existing user by provider ID
@@ -316,19 +335,19 @@ exports.firebaseAuth = async (req, res, next) => {
         await userRef.update(updateData);
         user = serializeDoc(await userRef.get());
       } else {
-        // Completely new user
-        console.log(`🆕 Creating new user with ID: ${uid}, provider: ${provider}`);
+        // Completely new user - use simple UID as document ID
+        console.log(`🆕 Creating new user with ID: ${simpleUid}, provider: ${provider}`);
         const userData = createUser({
-          uid,
+          uid: simpleUid,
           email,
           displayName: name,
           profilePicture: picture,
-          linkedProviders: { [provider]: uid }
+          linkedProviders: { [provider]: uid } // Store original complex UID in linkedProviders
         });
         
         await userRef.set(userData);
-        user = { id: uid, ...userData };
-        console.log(`✅ New user created successfully with ID: ${uid}`);
+        user = { id: simpleUid, ...userData };
+        console.log(`✅ New user created successfully with ID: ${simpleUid} (original: ${uid})`);
       }
     }
 
@@ -344,12 +363,17 @@ exports.firebaseAuth = async (req, res, next) => {
       { expiresIn: process.env.JWT_EXPIRE }
     );
 
+    // Return the actual document ID (whether complex or simple)
+    // The iOS app will parse it when needed for connection invites
+    let responseUserId = user.id || user._id || user.uid;
+    console.log(`📤 Returning user ID: ${responseUserId} (${responseUserId.includes('.') ? 'complex' : 'simple'} format)`)
+    
     const response = {
       success: true,
       token,
       refreshToken: token, // For now, use same token as refresh token
       user: {
-        _id: user.id || user.uid, // iOS expects _id, not id
+        _id: responseUserId, // iOS expects _id, not id
         email: user.email || '',
         displayName: user.displayName || name || 'Unknown User',
         profilePicture: user.profilePicture || picture || null,
@@ -361,7 +385,13 @@ exports.firebaseAuth = async (req, res, next) => {
       }
     };
 
-    console.log('📤 Sending auth response:', JSON.stringify(response, null, 2));
+    console.log('📤 Sending auth response with user ID formats:', {
+      originalUid: uid,
+      userObjectId: user.id || user._id || user.uid,
+      responseUserId: responseUserId,
+      tokenUid: tokenUid
+    });
+    console.log('📤 Full auth response:', JSON.stringify(response, null, 2));
 
     res.status(200).json(response);
   } catch (error) {

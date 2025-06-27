@@ -7,6 +7,7 @@ class NetworkManager: ObservableObject {
     @Published var connections: [Connection] = []
     @Published var pendingConnections: [Connection] = []
     @Published var sharedCircles: [CircleShare] = []
+    @Published var editableCirclesFromOthers: [Circle] = []
     @Published var isLoading = false
     @Published var error: String?
     
@@ -73,9 +74,42 @@ class NetworkManager: ObservableObject {
             DispatchQueue.main.async {
                 switch result {
                 case .success(let response):
-                    self?.sharedCircles = response.shares
+                    // Handle both old format (shares) and new format (data)
+                    if !response.shares.isEmpty {
+                        self?.sharedCircles = response.shares
+                    } else if let circlesData = response.data {
+                        // Convert circles to shares if needed
+                        print("✅ Loaded \(circlesData.count) shared circles")
+                    }
                 case .failure(let error):
                     self?.error = error.localizedDescription
+                }
+            }
+        }
+        
+        // Also load editable circles from others
+        loadEditableCirclesFromOthers()
+    }
+    
+    func loadEditableCirclesFromOthers() {
+        struct EditableCirclesResponse: Codable {
+            let success: Bool
+            let data: [Circle]
+        }
+        
+        apiService.request(
+            endpoint: "network/circles-shared-with-me",
+            method: .get,
+            requiresAuth: true
+        ) { [weak self] (result: Result<EditableCirclesResponse, APIError>) in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let response):
+                    self?.editableCirclesFromOthers = response.data
+                    print("✅ Loaded \(response.data.count) editable circles from others")
+                case .failure(let error):
+                    self?.error = error.localizedDescription
+                    print("❌ Failed to load editable circles from others: \(error)")
                 }
             }
         }
@@ -89,10 +123,22 @@ class NetworkManager: ObservableObject {
             return ""
         }
         
-        print("🔗 NetworkManager: Generating connection invite link with userId: \(userId)")
+        print("🔗 NetworkManager: Generating connection invite link")
+        print("🔗 NetworkManager: Current user ID from AuthService: \(userId)")
+        print("🔗 NetworkManager: Current user from AuthManager: \(AuthManager.shared.currentUser?.id ?? "nil")")
         
-        // Create the deep link URL with just the user ID
-        let inviteLink = "circles://connect/\(userId)"
+        // Parse the user ID to ensure we use simple format in the link
+        var simpleUserId = userId
+        if userId.contains(".") {
+            let components = userId.components(separatedBy: ".")
+            if components.count >= 2 {
+                simpleUserId = components[1] // Extract the Firebase UID part
+                print("🔗 NetworkManager: Extracted simple ID \(simpleUserId) from complex ID \(userId)")
+            }
+        }
+        
+        // Create the deep link URL with the simple user ID
+        let inviteLink = "circles://connect/\(simpleUserId)"
         print("🔗 NetworkManager: Generated invite link: \(inviteLink)")
         
         return inviteLink
@@ -106,12 +152,22 @@ class NetworkManager: ObservableObject {
         let userId = currentUser.id
         let userName = currentUser.displayName
         
+        // Parse the user ID to ensure we use simple format in the link
+        var simpleUserId = userId
+        if userId.contains(".") {
+            let components = userId.components(separatedBy: ".")
+            if components.count >= 2 {
+                simpleUserId = components[1] // Extract the Firebase UID part
+                print("🔗 NetworkManager: shareConnectionInvite - Extracted simple ID \(simpleUserId) from complex ID \(userId)")
+            }
+        }
+        
         // Create invite text
         var shareText = "\(userName) wants to connect with you on Circles!"
         shareText += "\n\n🔗 Join my network to share favorite places and discover new ones together."
         
-        // Add deep link
-        let deepLink = "circles://connect/\(userId)"
+        // Add deep link with simple user ID
+        let deepLink = "circles://connect/\(simpleUserId)"
         shareText += "\n\n📱 Connect with me: \(deepLink)"
         
         // Add app store link
@@ -122,6 +178,7 @@ class NetworkManager: ObservableObject {
     }
     
     func sendConnectionRequest(to userId: String, message: String? = nil, autoAccept: Bool = false, completion: @escaping (Result<Connection, Error>) -> Void) {
+        print("📤 NetworkManager: Sending connection request to userId: \(userId)")
         var body: [String: Any] = ["targetUserId": userId]
         if let message = message {
             body["message"] = message
@@ -129,6 +186,7 @@ class NetworkManager: ObservableObject {
         if autoAccept {
             body["autoAccept"] = true
         }
+        print("📤 NetworkManager: Request body: \(body)")
         
         apiService.request(
             endpoint: "connections/invite",
@@ -563,6 +621,32 @@ struct ConnectionResponse: Codable {
 struct CircleSharesResponse: Codable {
     let success: Bool
     let shares: [CircleShare]
+    let data: [Circle]?
+    
+    enum CodingKeys: String, CodingKey {
+        case success
+        case shares
+        case data
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        success = try container.decode(Bool.self, forKey: .success)
+        
+        // Try to decode shares if present (old format)
+        if let shares = try? container.decode([CircleShare].self, forKey: .shares) {
+            self.shares = shares
+            self.data = nil
+        } else if let data = try? container.decode([Circle].self, forKey: .data) {
+            // New format with circles data
+            self.data = data
+            self.shares = []
+        } else {
+            // Default to empty arrays
+            self.shares = []
+            self.data = nil
+        }
+    }
 }
 
 struct NetworkCirclesResponse: Codable {

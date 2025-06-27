@@ -84,13 +84,19 @@ exports.protect = async (req, res, next) => {
       // Add user to request object
       const userData = serializeDoc(userDoc);
       req.user = {
-        uid: decoded.uid, // Always use the original complex ID from the token
-        firebaseDocId: actualUserId, // Keep the actual Firestore document ID
+        uid: actualUserId, // Use the actual Firestore document ID as primary UID
+        firebaseDocId: actualUserId, // Keep for backwards compatibility
+        originalUid: decoded.uid, // Keep the original complex ID if needed
         email: decoded.email,
         ...userData
       };
       
-      console.log('🔍 DEBUG auth middleware user:', req.user);
+      console.log('🔍 Auth middleware - User authenticated:', {
+        uid: req.user.uid,
+        firebaseDocId: req.user.firebaseDocId,
+        originalUid: req.user.originalUid,
+        email: req.user.email
+      });
 
       next();
     } catch (error) {

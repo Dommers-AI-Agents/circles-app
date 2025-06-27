@@ -51,6 +51,7 @@ class ConnectionsListViewController: UIViewController {
     
     // MARK: - Properties
     private var connections: [Connection] = []
+    private var pendingConnections: [Connection] = []
     private let cellIdentifier = "ConnectionCell"
     
     // MARK: - Lifecycle
@@ -121,25 +122,21 @@ class ConnectionsListViewController: UIViewController {
     }
     
     // MARK: - Data Loading
-    private func loadConnections() {
-        NetworkManager.shared.fetchConnections { [weak self] connections, error in
-            DispatchQueue.main.async {
-                self?.tableView.refreshControl?.endRefreshing()
-                
-                if let error = error {
-                    print("Error loading connections: \\(error)")
-                    self?.showEmptyState()
-                    return
-                }
-                
-                self?.connections = connections ?? []
-                self?.tableView.reloadData()
-                
-                if self?.connections.isEmpty == true {
-                    self?.showEmptyState()
-                } else {
-                    self?.hideEmptyState()
-                }
+    func loadConnections() {
+        NetworkManager.shared.loadConnections()
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.tableView.refreshControl?.endRefreshing()
+            
+            // Get connections from NetworkManager
+            self?.connections = NetworkManager.shared.connections
+            self?.pendingConnections = NetworkManager.shared.pendingConnections
+            self?.tableView.reloadData()
+            
+            if self?.connections.isEmpty == true && self?.pendingConnections.isEmpty == true {
+                self?.showEmptyState()
+            } else {
+                self?.hideEmptyState()
             }
         }
     }

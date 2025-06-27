@@ -10,6 +10,7 @@ struct Circle: Codable, Identifiable {
     let places: [String]?
     let placesWithDetails: [Place]? // Populated with full place details including who added them
     let privacy: PrivacyLevel
+    let allowNetworkEdit: Bool? // Allow network connections to edit this circle
     let category: CircleCategory
     let location: String?
     let tags: [String]?
@@ -27,7 +28,7 @@ struct Circle: Codable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id = "_id"
         case name, description, coverImage, owner, ownerDetails
-        case places, placesWithDetails, privacy, category
+        case places, placesWithDetails, privacy, allowNetworkEdit, category
         case location, tags, sharedWith, followers, activeShares, shareSettings
         case isSharedWithMe, sharedBy, myAccessLevel
         case createdAt, updatedAt
@@ -45,6 +46,7 @@ struct Circle: Codable, Identifiable {
         places = try container.decodeIfPresent([String].self, forKey: .places)
         placesWithDetails = try container.decodeIfPresent([Place].self, forKey: .placesWithDetails)
         privacy = try container.decode(PrivacyLevel.self, forKey: .privacy)
+        allowNetworkEdit = try container.decodeIfPresent(Bool.self, forKey: .allowNetworkEdit)
         category = try container.decode(CircleCategory.self, forKey: .category)
         location = try container.decodeIfPresent(String.self, forKey: .location)
         tags = try container.decodeIfPresent([String].self, forKey: .tags)
@@ -74,7 +76,7 @@ struct Circle: Codable, Identifiable {
     // Add manual init for creating circles in code
     init(id: String, name: String, description: String?, coverImage: String?, owner: String,
          ownerDetails: User?, places: [String]?, placesWithDetails: [Place]?,
-         privacy: PrivacyLevel, category: CircleCategory, location: String?,
+         privacy: PrivacyLevel, allowNetworkEdit: Bool?, category: CircleCategory, location: String?,
          tags: [String]?, sharedWith: [String]?, followers: [String]?,
          activeShares: [CircleShare]?, shareSettings: ShareSettings?,
          isSharedWithMe: Bool?, sharedBy: User?, myAccessLevel: AccessLevel?,
@@ -88,6 +90,7 @@ struct Circle: Codable, Identifiable {
         self.places = places
         self.placesWithDetails = placesWithDetails
         self.privacy = privacy
+        self.allowNetworkEdit = allowNetworkEdit
         self.category = category
         self.location = location
         self.tags = tags
@@ -144,7 +147,7 @@ struct Circle: Codable, Identifiable {
 
 enum PrivacyLevel: String, Codable {
     case `public`
-    case friends
+    case myNetwork
     case `private`
 }
 

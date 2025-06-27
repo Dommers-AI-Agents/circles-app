@@ -8,7 +8,7 @@ struct CreateCircleView: View {
     @State private var name = ""
     @State private var description = ""
     @State private var selectedCategory = "other"
-    @State private var selectedPrivacy = "friends"
+    @State private var selectedPrivacy = "myNetwork"
     @State private var selectedImage: UIImage?
     @State private var showingImagePicker = false
     @State private var showingImageOptions = false
@@ -28,7 +28,7 @@ struct CreateCircleView: View {
     
     private let privacyOptions = [
         ("public", "Public", "globe", "Anyone can see this circle"),
-        ("friends", "Friends", "person.2", "Only friends can see this circle"),
+        ("myNetwork", "My Network", "person.2", "Only my network can see this circle"),
         ("private", "Private", "lock", "Only you can see this circle")
     ]
     

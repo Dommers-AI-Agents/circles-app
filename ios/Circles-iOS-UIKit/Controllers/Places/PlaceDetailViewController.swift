@@ -608,7 +608,7 @@ class PlaceDetailViewController: UIViewController {
         nameLabel.text = place.name
         
         // Category
-        categoryLabel.text = place.category.displayName
+        categoryLabel.text = place.displayCategory
         
         // Set category color and icon
         switch place.category {
@@ -794,7 +794,7 @@ class PlaceDetailViewController: UIViewController {
             let marker = GMSMarker()
             marker.position = location.coordinate
             marker.title = place.name
-            marker.snippet = place.category.displayName
+            marker.snippet = place.displayCategory
             marker.map = mapView
             
             // Custom marker color

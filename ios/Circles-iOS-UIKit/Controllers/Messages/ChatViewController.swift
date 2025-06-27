@@ -308,6 +308,28 @@ class ChatViewController: UIViewController {
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
     }
+    
+    private func deleteMessage(at indexPath: IndexPath) {
+        let messageIndex = messages.count - 1 - indexPath.row
+        guard messageIndex >= 0 && messageIndex < messages.count else { return }
+        
+        let message = messages[messageIndex]
+        guard let conversationId = conversation?.id else { return }
+        
+        // Store the message for potential restoration
+        let deletedMessage = message
+        
+        // Remove from local array immediately for better UX
+        messages.remove(at: messageIndex)
+        
+        // Animate the deletion
+        tableView.performBatchUpdates({
+            tableView.deleteRows(at: [indexPath], with: .fade)
+        }) { [weak self] _ in
+            // Call the messaging manager to delete from backend
+            self?.messagingManager.deleteMessage(messageId: deletedMessage.id, conversationId: conversationId)
+        }
+    }
 }
 
 // MARK: - UITableViewDataSource
@@ -333,6 +355,22 @@ extension ChatViewController: UITableViewDelegate {
     
     func tableView(_ tableView: UITableView, estimatedHeightForRowAt indexPath: IndexPath) -> CGFloat {
         return 60
+    }
+    
+    func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        let message = messages[messages.count - 1 - indexPath.row]
+        
+        // Only allow deletion of user's own messages
+        guard message.isCurrentUserMessage else { return nil }
+        
+        let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, completionHandler in
+            self?.deleteMessage(at: indexPath)
+            completionHandler(true)
+        }
+        
+        deleteAction.image = UIImage(systemName: "trash")
+        
+        return UISwipeActionsConfiguration(actions: [deleteAction])
     }
 }
 

@@ -175,7 +175,7 @@ class CircleManager: ObservableObject {
         switch circle.privacy {
         case .public:
             shareText += " 🌐"
-        case .friends:
+        case .myNetwork:
             shareText += " 👥"
         case .private:
             shareText += " 🔒"

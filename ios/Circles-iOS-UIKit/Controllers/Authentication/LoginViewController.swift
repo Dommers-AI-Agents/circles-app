@@ -235,7 +235,7 @@ class LoginViewController: UIViewController {
             buttonsStackView.leadingAnchor.constraint(equalTo: backgroundView.leadingAnchor, constant: 40),
             buttonsStackView.trailingAnchor.constraint(equalTo: backgroundView.trailingAnchor, constant: -40),
             buttonsStackView.bottomAnchor.constraint(equalTo: loginLinkButton.topAnchor, constant: -40),
-            buttonsStackView.heightAnchor.constraint(equalToConstant: 280), // 5 buttons * 50 height + 4 * 16 spacing
+            buttonsStackView.heightAnchor.constraint(equalToConstant: 248), // 4 buttons * 50 height + 3 * 16 spacing
             
             // Apple Sign In button in container
             appleSignInButton.topAnchor.constraint(equalTo: appleSignInContainer.topAnchor),

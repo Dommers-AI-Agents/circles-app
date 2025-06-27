@@ -108,7 +108,7 @@ class EditCircleViewController: UIViewController {
     }()
     
     private let privacySegmentedControl: UISegmentedControl = {
-        let privacyLevels = ["Public", "Friends Only", "Private"]
+        let privacyLevels = ["Public", "My Network", "Private"]
         let segmentedControl = UISegmentedControl(items: privacyLevels)
         segmentedControl.selectedSegmentIndex = 0
         segmentedControl.translatesAutoresizingMaskIntoConstraints = false
@@ -375,7 +375,7 @@ class EditCircleViewController: UIViewController {
         }
         
         // Set privacy
-        let privacyLevels = [PrivacyLevel.public, .friends, .private]
+        let privacyLevels = [PrivacyLevel.public, .myNetwork, .private]
         if let privacyIndex = privacyLevels.firstIndex(of: circle.privacy) {
             privacySegmentedControl.selectedSegmentIndex = privacyIndex
         }
@@ -436,7 +436,7 @@ class EditCircleViewController: UIViewController {
     }
     
     private func getCurrentPrivacy() -> PrivacyLevel {
-        let privacyLevels = [PrivacyLevel.public, .friends, .private]
+        let privacyLevels = [PrivacyLevel.public, .myNetwork, .private]
         return privacyLevels[privacySegmentedControl.selectedSegmentIndex]
     }
     

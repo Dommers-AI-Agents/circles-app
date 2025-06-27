@@ -218,7 +218,7 @@ struct CircleCard: View {
     private func privacyIcon(for privacy: String) -> String {
         switch privacy.lowercased() {
         case "public": return "globe"
-        case "friends": return "person.2"
+        case "mynetwork": return "person.2"
         case "private": return "lock"
         default: return "questionmark.circle"
         }

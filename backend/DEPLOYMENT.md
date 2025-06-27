@@ -52,13 +52,44 @@ The script will:
 
 ## Environment Variables
 
-Required variables:
+### Required Variables
+
+#### Authentication
 - `JWT_SECRET`: Secret key for JWT tokens (required)
 - `JWT_EXPIRE`: Token expiration time (default: 30d)
 
-Optional variables:
+#### Firebase Configuration
+- `FIREBASE_PROJECT_ID`: Your Firebase project ID
+- `FIREBASE_PRIVATE_KEY_ID`: Private key ID from service account
+- `FIREBASE_PRIVATE_KEY`: Private key from service account (include quotes)
+- `FIREBASE_CLIENT_EMAIL`: Service account email
+- `FIREBASE_CLIENT_ID`: Client ID from service account
+- `FIREBASE_AUTH_URI`: Auth URI (usually https://accounts.google.com/o/oauth2/auth)
+- `FIREBASE_TOKEN_URI`: Token URI (usually https://oauth2.googleapis.com/token)
+- `FIREBASE_AUTH_PROVIDER_X509_CERT_URL`: Certificate URL
+- `FIREBASE_CLIENT_X509_CERT_URL`: Client certificate URL
+
+#### Google Cloud Storage (for image uploads)
+- `GCS_BUCKET_NAME`: Your storage bucket name
+- `GCS_PROJECT_ID`: Google Cloud project ID
+
+### Optional Variables
+
+#### Google Services
+- `GOOGLE_MAPS_API_KEY`: For Google Maps integration
+- `GOOGLE_PLACES_API_KEY`: For Google Places integration
+
+#### Social Authentication
 - `LINKEDIN_CLIENT_ID`: For LinkedIn OAuth
 - `LINKEDIN_CLIENT_SECRET`: For LinkedIn OAuth
+- `APPLE_TEAM_ID`: For Apple Sign In
+- `APPLE_SERVICE_ID`: For Apple Sign In
+- `APPLE_KEY_ID`: For Apple Sign In
+- `APPLE_PRIVATE_KEY`: For Apple Sign In
+
+#### Frontend Configuration
+- `FRONTEND_URL`: Frontend URL for CORS (default: http://localhost:3000)
+- `APP_SCHEME`: App URL scheme for deep linking (default: circles://)
 
 ## Update iOS App
 
@@ -149,6 +180,46 @@ Tips to minimize costs:
 - Check token expiration settings
 - Ensure Firebase credentials are valid
 
+## Deploying Network Sharing Feature Updates
+
+When deploying updates to the network sharing functionality:
+
+### 1. Pre-deployment Checklist
+- [ ] Test all network endpoints locally
+- [ ] Verify Firebase rules support the new functionality
+- [ ] Check that all environment variables are set
+- [ ] Ensure Firestore indexes are up to date
+
+### 2. Deploy Firestore Indexes
+```bash
+cd /Users/wesleysgroi/circles-app/backend
+./deploy-indexes.sh
+```
+
+### 3. Deploy Backend Changes
+```bash
+# For quick updates (uses existing environment variables)
+./quick-deploy.sh
+
+# For full deployment with environment variable updates
+./deploy.sh
+```
+
+### 4. Verify Deployment
+- Test connection management endpoints
+- Verify circle sharing functionality
+- Check shared circles retrieval
+- Test permission management
+
+### 5. Monitor After Deployment
+```bash
+# Watch logs in real-time
+gcloud run logs tail circles-backend
+
+# Check for errors
+gcloud run logs read circles-backend --limit=100 | grep ERROR
+```
+
 ## Production Checklist
 
 Before going to production:
@@ -160,6 +231,9 @@ Before going to production:
 - [ ] Set up automated backups for Firestore
 - [ ] Review and set appropriate resource limits
 - [ ] Enable Cloud Logging for better debugging
+- [ ] Test all network sharing features thoroughly
+- [ ] Verify Firebase security rules are production-ready
+- [ ] Ensure all Firestore indexes are deployed
 
 ## Rollback
 

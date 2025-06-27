@@ -30,7 +30,7 @@ class SharedCirclesListViewController: UIViewController {
     
     private let emptyTitleLabel: UILabel = {
         let label = UILabel()
-        label.text = "No Shared Circles Yet"
+        label.text = "No Editable Circles Yet"
         label.font = .systemFont(ofSize: 20, weight: .semibold)
         label.textColor = .label
         label.textAlignment = .center
@@ -40,7 +40,7 @@ class SharedCirclesListViewController: UIViewController {
     
     private let emptyDescriptionLabel: UILabel = {
         let label = UILabel()
-        label.text = "When your connections share circles with you, they'll appear here."
+        label.text = "When your connections share circles with you and allow you to edit them, they'll appear here."
         label.font = .systemFont(ofSize: 16)
         label.textColor = .secondaryLabel
         label.textAlignment = .center
@@ -50,7 +50,7 @@ class SharedCirclesListViewController: UIViewController {
     }()
     
     // MARK: - Properties
-    private var sharedCircles: [CircleShare] = []
+    private var editableCircles: [Circle] = []
     private let cellIdentifier = "SharedCircleCell"
     
     // MARK: - Lifecycle
@@ -122,14 +122,14 @@ class SharedCirclesListViewController: UIViewController {
     
     // MARK: - Data Loading
     private func loadSharedCircles() {
-        NetworkManager.shared.loadSharedCircles()
+        NetworkManager.shared.loadEditableCirclesFromOthers()
         
-        // Use the published sharedCircles from NetworkManager
-        self.sharedCircles = NetworkManager.shared.sharedCircles
+        // Use the published editableCirclesFromOthers from NetworkManager
+        self.editableCircles = NetworkManager.shared.editableCirclesFromOthers
         self.tableView.reloadData()
         self.tableView.refreshControl?.endRefreshing()
         
-        if self.sharedCircles.isEmpty {
+        if self.editableCircles.isEmpty {
             self.showEmptyState()
         } else {
             self.hideEmptyState()
@@ -152,9 +152,8 @@ class SharedCirclesListViewController: UIViewController {
     }
     
     // MARK: - Navigation
-    private func showSharedCircleDetail(_ sharedCircle: CircleShare) {
-        let detailVC = SharedCircleDetailViewController()
-        detailVC.circleShare = sharedCircle
+    private func showCircleDetail(_ circle: Circle) {
+        let detailVC = CircleDetailViewController(circle: circle)
         navigationController?.pushViewController(detailVC, animated: true)
     }
 }
@@ -162,18 +161,36 @@ class SharedCirclesListViewController: UIViewController {
 // MARK: - UITableViewDataSource
 extension SharedCirclesListViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return sharedCircles.count
+        return editableCircles.count
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: cellIdentifier, for: indexPath)
-        let sharedCircle = sharedCircles[indexPath.row]
+        let circle = editableCircles[indexPath.row]
         
         // Configure cell
         var configuration = cell.defaultContentConfiguration()
-        configuration.text = sharedCircle.circle?.name ?? "Unnamed Circle"
-        configuration.secondaryText = "Shared by \(sharedCircle.sharedByUser?.displayName ?? "Unknown")"
-        configuration.image = UIImage(systemName: "circle.grid.2x2.fill")
+        configuration.text = circle.name
+        configuration.secondaryText = "Shared by \(circle.ownerDetails?.displayName ?? "Unknown")"
+        
+        // Set icon based on category
+        switch circle.category {
+        case .travel:
+            configuration.image = UIImage(systemName: "airplane")
+        case .food:
+            configuration.image = UIImage(systemName: "fork.knife")
+        case .services:
+            configuration.image = UIImage(systemName: "wrench.and.screwdriver")
+        case .shopping:
+            configuration.image = UIImage(systemName: "bag")
+        case .healthcare:
+            configuration.image = UIImage(systemName: "heart")
+        case .entertainment:
+            configuration.image = UIImage(systemName: "tv")
+        default:
+            configuration.image = UIImage(systemName: "circle.grid.2x2.fill")
+        }
+        
         configuration.imageProperties.tintColor = Constants.Colors.primary
         
         cell.contentConfiguration = configuration
@@ -187,8 +204,8 @@ extension SharedCirclesListViewController: UITableViewDataSource {
 extension SharedCirclesListViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        let sharedCircle = sharedCircles[indexPath.row]
-        showSharedCircleDetail(sharedCircle)
+        let circle = editableCircles[indexPath.row]
+        showCircleDetail(circle)
     }
     
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {

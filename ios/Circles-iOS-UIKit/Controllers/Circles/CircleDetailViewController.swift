@@ -11,9 +11,11 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
     // MARK: - Properties
     private var circle: Circle
     private var places: [Place] = []
+    private var filteredPlaces: [Place] = []
     private var markerPlaceMap: [GMSMarker: Place] = [:]
     private let locationManager = CLLocationManager()
     private var userLocation: CLLocation?
+    private var selectedCategory: PlaceCategory?
     
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
@@ -115,6 +117,19 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
         return label
     }()
     
+    private let categoryFilterButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("All Categories", for: .normal)
+        button.setImage(UIImage(systemName: "chevron.down"), for: .normal)
+        button.semanticContentAttribute = .forceRightToLeft
+        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.small, weight: .medium)
+        button.backgroundColor = Constants.Colors.tertiaryBackground
+        button.layer.cornerRadius = 16
+        button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 8)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
     private let mapView: GMSMapView = {
         let mapView = GMSMapView()
         // Start with a wider view to show multiple places
@@ -162,6 +177,16 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
         return button
     }()
     
+    private let mapExpandButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "arrow.up.left.and.arrow.down.right"), for: .normal)
+        button.tintColor = .white
+        button.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+        button.layer.cornerRadius = 18
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
     // MARK: - Init
     
     init(circle: Circle) {
@@ -173,6 +198,10 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
         fatalError("init(coder:) has not been implemented")
     }
     
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+    
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -180,6 +209,7 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
         configureUI()
         setupLocationManager()
         fetchPlaces()
+        setupNotificationObservers()
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -229,7 +259,9 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
         privacyView.addSubview(privacyLabel)
         
         contentView.addSubview(placesLabel)
+        contentView.addSubview(categoryFilterButton)
         contentView.addSubview(mapView)
+        contentView.addSubview(mapExpandButton)
         contentView.addSubview(tableView)
         
         view.addSubview(addPlaceButton)
@@ -303,11 +335,22 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
             placesLabel.topAnchor.constraint(equalTo: headerView.bottomAnchor, constant: Constants.Spacing.large),
             placesLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             
+            // Category filter button
+            categoryFilterButton.centerYAnchor.constraint(equalTo: placesLabel.centerYAnchor),
+            categoryFilterButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            categoryFilterButton.heightAnchor.constraint(equalToConstant: 32),
+            
             // Map view
             mapView.topAnchor.constraint(equalTo: placesLabel.bottomAnchor, constant: Constants.Spacing.medium),
             mapView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             mapView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             mapView.heightAnchor.constraint(equalToConstant: 200),
+            
+            // Map expand button
+            mapExpandButton.topAnchor.constraint(equalTo: mapView.topAnchor, constant: Constants.Spacing.small),
+            mapExpandButton.trailingAnchor.constraint(equalTo: mapView.trailingAnchor, constant: -Constants.Spacing.small),
+            mapExpandButton.widthAnchor.constraint(equalToConstant: 36),
+            mapExpandButton.heightAnchor.constraint(equalToConstant: 36),
             
             // Table view
             tableView.topAnchor.constraint(equalTo: mapView.bottomAnchor, constant: Constants.Spacing.large),
@@ -327,6 +370,12 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
         
         // Setup button actions
         addPlaceButton.addTarget(self, action: #selector(addPlaceButtonTapped), for: .touchUpInside)
+        mapExpandButton.addTarget(self, action: #selector(expandMapButtonTapped), for: .touchUpInside)
+        categoryFilterButton.addTarget(self, action: #selector(categoryFilterButtonTapped), for: .touchUpInside)
+        
+        // Add tap gesture to map
+        let mapTapGesture = UITapGestureRecognizer(target: self, action: #selector(mapViewTapped))
+        mapView.addGestureRecognizer(mapTapGesture)
         
         // Setup table view
         tableView.delegate = self
@@ -386,9 +435,9 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
         case .public:
             privacyImageView.image = UIImage(systemName: "globe")
             privacyLabel.text = "Public"
-        case .friends:
+        case .myNetwork:
             privacyImageView.image = UIImage(systemName: "person.2")
-            privacyLabel.text = "Friends Only"
+            privacyLabel.text = "My Network"
         case .private:
             privacyImageView.image = UIImage(systemName: "lock")
             privacyLabel.text = "Private"
@@ -430,11 +479,13 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
                 case .success(let places):
                     // Sort places by createdAt date, most recent first
                     self?.places = places.sorted { $0.createdAt > $1.createdAt }
+                    self?.applyFilter()
                 case .failure(let error):
                     print("❌ Error fetching places: \(error.localizedDescription)")
                     print("❌ Full error: \(error)")
                     // Don't use sample places - show empty state instead
                     self?.places = []
+                    self?.filteredPlaces = []
                 }
                 
                 self?.tableView.reloadData()
@@ -786,12 +837,12 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
         var bounds = GMSCoordinateBounds()
         var hasMarkers = false
         
-        for place in places {
+        for place in filteredPlaces {
             if let location = place.location?.clLocation {
                 let marker = GMSMarker()
                 marker.position = location.coordinate
                 marker.title = place.name
-                marker.snippet = place.category.displayName
+                marker.snippet = place.displayCategory
                 marker.map = mapView
                 
                 // Store the place associated with this marker
@@ -926,7 +977,7 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
         switch circle.privacy {
         case .public:
             shareText += " 🌐"
-        case .friends:
+        case .myNetwork:
             shareText += " 👥"
         case .private:
             shareText += " 🔒"
@@ -984,6 +1035,131 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
         // Directly open the AddPlaceViewController with map and search functionality
         let addPlaceVC = AddPlaceViewController(circleId: circle.id)
         navigationController?.pushViewController(addPlaceVC, animated: true)
+    }
+    
+    @objc private func expandMapButtonTapped() {
+        presentFullScreenMap()
+    }
+    
+    @objc private func mapViewTapped() {
+        presentFullScreenMap()
+    }
+    
+    @objc private func categoryFilterButtonTapped() {
+        showCategoryFilterMenu()
+    }
+    
+    private func showCategoryFilterMenu() {
+        let actionSheet = UIAlertController(title: "Filter by Category", message: nil, preferredStyle: .actionSheet)
+        
+        // All categories option
+        actionSheet.addAction(UIAlertAction(title: "All Categories", style: .default) { [weak self] _ in
+            self?.selectedCategory = nil
+            self?.categoryFilterButton.setTitle("All Categories", for: .normal)
+            self?.applyFilter()
+        })
+        
+        // Get unique categories from places
+        let categories = Set(places.map { $0.category })
+        let sortedCategories = categories.sorted { $0.displayName < $1.displayName }
+        
+        // Add action for each category
+        for category in sortedCategories {
+            actionSheet.addAction(UIAlertAction(title: category.displayName, style: .default) { [weak self] _ in
+                self?.selectedCategory = category
+                self?.categoryFilterButton.setTitle(category.displayName, for: .normal)
+                self?.applyFilter()
+            })
+        }
+        
+        // Cancel action
+        actionSheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        
+        // For iPad
+        if let popover = actionSheet.popoverPresentationController {
+            popover.sourceView = categoryFilterButton
+            popover.sourceRect = categoryFilterButton.bounds
+        }
+        
+        present(actionSheet, animated: true)
+    }
+    
+    private func applyFilter() {
+        if let category = selectedCategory {
+            filteredPlaces = places.filter { $0.category == category }
+        } else {
+            filteredPlaces = places
+        }
+        
+        tableView.reloadData()
+        
+        // Update table view height
+        DispatchQueue.main.async { [weak self] in
+            self?.tableView.layoutIfNeeded()
+            self?.updateTableViewHeight()
+        }
+        
+        // Update map annotations
+        addAnnotationsToMap()
+    }
+    
+    private func presentFullScreenMap() {
+        let fullScreenMapVC = FullScreenMapViewController(places: filteredPlaces, initialCamera: mapView.camera)
+        present(fullScreenMapVC, animated: true)
+    }
+    
+    private func setupNotificationObservers() {
+        // Observe when user wants to view place details from full-screen map
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleShowPlaceDetails(_:)),
+            name: Notification.Name("ShowPlaceDetails"),
+            object: nil
+        )
+        
+        // Observe when user wants to add a POI from full-screen map
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAddPOIToCircle(_:)),
+            name: Notification.Name("AddPOIToCircle"),
+            object: nil
+        )
+    }
+    
+    @objc private func handleShowPlaceDetails(_ notification: Notification) {
+        guard let place = notification.userInfo?["place"] as? Place else { return }
+        let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
+        navigationController?.pushViewController(placeDetailVC, animated: true)
+    }
+    
+    @objc private func handleAddPOIToCircle(_ notification: Notification) {
+        guard let placeID = notification.userInfo?["placeID"] as? String,
+              let name = notification.userInfo?["name"] as? String,
+              let location = notification.userInfo?["location"] as? CLLocationCoordinate2D else { return }
+        
+        // Fetch place details from Google
+        fetchGooglePlaceDetails(placeID: placeID, name: name, location: location)
+    }
+    
+    private func fetchGooglePlaceDetails(placeID: String, name: String, location: CLLocationCoordinate2D) {
+        // Show loading indicator
+        let alert = UIAlertController(title: "Loading", message: "Fetching place details...", preferredStyle: .alert)
+        present(alert, animated: true)
+        
+        GooglePlacesService.shared.fetchPlaceDetails(placeID: placeID) { [weak self] result in
+            DispatchQueue.main.async {
+                alert.dismiss(animated: true) {
+                    switch result {
+                    case .success(let gmsPlace):
+                        self?.addGooglePlace(gmsPlace: gmsPlace, placeID: placeID)
+                    case .failure(let error):
+                        print("Failed to fetch place details: \(error)")
+                        // Fallback to basic place info
+                        self?.addPlaceWithCoordinates(name: name, location: location, placeID: placeID)
+                    }
+                }
+            }
+        }
     }
     
     private func presentGooglePlacesSearch() {
@@ -1104,7 +1280,7 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
 // MARK: - UITableViewDelegate & UITableViewDataSource
 extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource, UITableViewDragDelegate, UITableViewDropDelegate {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return places.count
+        return filteredPlaces.count
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
@@ -1112,7 +1288,7 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
             return UITableViewCell()
         }
         
-        let place = places[indexPath.row]
+        let place = filteredPlaces[indexPath.row]
         cell.configure(with: place)
         
         // Set up share button action
@@ -1135,14 +1311,17 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         
-        let place = places[indexPath.row]
+        let place = filteredPlaces[indexPath.row]
         let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
         navigationController?.pushViewController(placeDetailVC, animated: true)
     }
     
     // MARK: - Drag Delegate
     func tableView(_ tableView: UITableView, itemsForBeginning session: UIDragSession, at indexPath: IndexPath) -> [UIDragItem] {
-        let place = places[indexPath.row]
+        // Disable drag when filtering
+        guard selectedCategory == nil else { return [] }
+        
+        let place = filteredPlaces[indexPath.row]
         let itemProvider = NSItemProvider(object: place.id as NSString)
         let dragItem = UIDragItem(itemProvider: itemProvider)
         dragItem.localObject = place
@@ -1468,7 +1647,7 @@ class PlaceTableViewCell: UITableViewCell {
         nameLabel.text = place.name.isEmpty ? "Unnamed Place" : place.name
         
         // Category label
-        categoryLabel.text = " \(place.category.rawValue.capitalized) "
+        categoryLabel.text = " \(place.displayCategory) "
         
         // Set category color and icon
         setCategoryAppearance(for: place.category)

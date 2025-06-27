@@ -22,12 +22,21 @@ fi
 
 echo "📦 Deploying to project: $PROJECT_ID"
 
+# Ensure we're using the correct project
+if [ "$PROJECT_ID" != "circles-app-83b67" ]; then
+    echo "⚠️  Warning: Current project is $PROJECT_ID, but circles-app-83b67 is the consolidated project"
+    echo "Switching to circles-app-83b67..."
+    gcloud config set project circles-app-83b67
+    PROJECT_ID="circles-app-83b67"
+fi
+
 # Deploy
 gcloud run deploy $SERVICE_NAME \
     --source . \
     --platform managed \
     --region $REGION \
-    --project=$PROJECT_ID
+    --project=$PROJECT_ID \
+    --allow-unauthenticated
 
 # Get the service URL
 SERVICE_URL=$(gcloud run services describe $SERVICE_NAME \

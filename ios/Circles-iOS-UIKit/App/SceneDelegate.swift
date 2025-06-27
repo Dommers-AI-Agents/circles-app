@@ -102,6 +102,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Handle deep links when the app is already running
         if let url = URLContexts.first?.url {
             print("📱 SceneDelegate: Processing URL: \(url.absoluteString)")
+            print("📱 SceneDelegate: URL scheme: \(url.scheme ?? "nil")")
+            print("📱 SceneDelegate: URL host: \(url.host ?? "nil")")
+            print("📱 SceneDelegate: URL path: \(url.path)")
+            print("📱 SceneDelegate: URL pathComponents: \(url.pathComponents)")
             
             // First check if it's a Facebook callback
             if ApplicationDelegate.shared.application(UIApplication.shared, open: url, sourceApplication: nil, annotation: nil) {
@@ -120,6 +124,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             }
             
             // Handle other deep links
+            print("📱 SceneDelegate: Calling handleDeepLink with URL: \(url.absoluteString)")
             handleDeepLink(url)
         }
     }
@@ -191,12 +196,35 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         
         print("📱 SceneDelegate: Processing deep link with path: \(url.path)")
+        print("📱 SceneDelegate: Path components: \(url.pathComponents)")
+        print("📱 SceneDelegate: Path components count: \(url.pathComponents.count)")
         
         // Handle different path components
         let components = url.pathComponents
         
+        // Log each component for debugging
+        for (index, component) in components.enumerated() {
+            print("📱 SceneDelegate: Component[\(index)]: '\(component)'")
+        }
+        
         // Handle deep linking after app is fully loaded
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            print("📱 SceneDelegate: Inside dispatch queue, processing components")
+            
+            // First check if this is a host-based URL format (e.g., circles://connect/userId)
+            if url.host == "connect" {
+                // Handle circles://connect/userId format where "connect" is the host
+                print("📱 SceneDelegate: Detected 'connect' as host")
+                let userId = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                print("📱 SceneDelegate: Extracted userId from path: \(userId)")
+                if !userId.isEmpty {
+                    print("📱 SceneDelegate: Calling handleConnectionInvite with userId: \(userId)")
+                    self.handleConnectionInvite(from: userId)
+                    return
+                }
+            }
+            
+            // Then check path-based URL format (e.g., circles:///connect/userId)
             if components.count >= 2 {
                 if components[1] == "circle" && components.count >= 3 {
                     // Example: circles://circle/circle_123
@@ -215,7 +243,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     let userId = components[2]
                     self.navigateToUserProfile(userId: userId)
                 } else if components[1] == "connect" && components.count >= 3 {
-                    // Example: circles://connect/user_123
+                    // Example: circles:///connect/user_123 (with triple slash)
                     let userId = components[2]
                     print("📱 SceneDelegate: Handling connection invite from user: \(userId)")
                     self.handleConnectionInvite(from: userId)
@@ -412,6 +440,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     
     private func handleConnectionInvite(from userId: String) {
         print("📱 SceneDelegate: handleConnectionInvite called with userId: \(userId)")
+        print("📱 SceneDelegate: Current user logged in: \(AuthService.shared.isLoggedIn)")
+        print("📱 SceneDelegate: Current user ID: \(AuthService.shared.getUserId() ?? "nil")")
         
         // If user is not logged in, store the connection invite and prompt login
         guard AuthService.shared.isLoggedIn else {
@@ -438,10 +468,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         
         // Handle the connection invite
+        print("📱 SceneDelegate: About to call NetworkManager.handleConnectionInvite")
         NetworkManager.shared.handleConnectionInvite(from: userId) { [weak self] result in
+            print("📱 SceneDelegate: NetworkManager.handleConnectionInvite callback received")
             DispatchQueue.main.async {
                 switch result {
                 case .success(let connection):
+                    print("📱 SceneDelegate: Connection successful! Connection ID: \(connection.id), Status: \(connection.status)")
                     // Refresh connections list to ensure UI is updated
                     NetworkManager.shared.loadConnections()
                     
@@ -489,6 +522,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     }
                     
                 case .failure(let error):
+                    print("📱 SceneDelegate: Connection failed with error: \(error)")
                     // Show error alert
                     let errorMessage: String
                     if error.localizedDescription.contains("Already connected") {
