@@ -453,8 +453,10 @@ class PlaceService {
         let base64String = imageData.base64EncodedString()
         let filename = "place-\(UUID().uuidString).jpg"
         
+        print("📸 Uploading image - size: \(imageData.count) bytes, base64 length: \(base64String.count)")
+        
         let body: [String: Any] = [
-            "image": "data:image/jpeg;base64,\(base64String)",
+            "image": base64String,
             "filename": filename
         ]
         

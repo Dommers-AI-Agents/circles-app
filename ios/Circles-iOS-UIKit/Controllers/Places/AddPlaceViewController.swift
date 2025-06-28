@@ -830,7 +830,23 @@ class AddPlaceViewController: UIViewController {
         // Prepare photo data if available
         var photoData: [Data]? = nil
         if let image = selectedImage {
-            if let imageData = image.jpegData(compressionQuality: 0.8) {
+            // Resize image if it's too large
+            let maxSize: CGFloat = 1024 // Max dimension
+            var finalImage = image
+            
+            if image.size.width > maxSize || image.size.height > maxSize {
+                let scale = min(maxSize / image.size.width, maxSize / image.size.height)
+                let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+                
+                UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
+                image.draw(in: CGRect(origin: .zero, size: newSize))
+                if let resizedImage = UIGraphicsGetImageFromCurrentImageContext() {
+                    finalImage = resizedImage
+                }
+                UIGraphicsEndImageContext()
+            }
+            
+            if let imageData = finalImage.jpegData(compressionQuality: 0.7) {
                 photoData = [imageData]
                 print("📸 Prepared photo for upload, size: \(imageData.count / 1024)KB")
             }

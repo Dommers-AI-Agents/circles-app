@@ -81,17 +81,6 @@ class CirclesHomeViewController: UIViewController {
         return view
     }()
     
-    private let myCirclesButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("My Circles", for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .medium)
-        button.backgroundColor = Constants.Colors.primary
-        button.tintColor = .white
-        button.layer.cornerRadius = 16
-        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
     
     private let myNetworkCirclesButton: UIButton = {
         let button = UIButton(type: .system)
@@ -236,7 +225,6 @@ class CirclesHomeViewController: UIViewController {
         workCard.addSubview(workButton)
         workCard.addSubview(workNavigateButton)
         view.addSubview(filterContainer)
-        filterContainer.addSubview(myCirclesButton)
         filterContainer.addSubview(myNetworkCirclesButton)
         filterContainer.addSubview(suggestionsButton)
         filterContainer.addSubview(suggestionsBadge)
@@ -292,13 +280,8 @@ class CirclesHomeViewController: UIViewController {
             filterContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             filterContainer.heightAnchor.constraint(equalToConstant: 60),
             
-            // My Circles button
-            myCirclesButton.leadingAnchor.constraint(equalTo: filterContainer.leadingAnchor, constant: Constants.Spacing.large),
-            myCirclesButton.centerYAnchor.constraint(equalTo: filterContainer.centerYAnchor),
-            myCirclesButton.heightAnchor.constraint(equalToConstant: 36),
-            
             // My Network's Circles button
-            myNetworkCirclesButton.leadingAnchor.constraint(equalTo: myCirclesButton.trailingAnchor, constant: Constants.Spacing.medium),
+            myNetworkCirclesButton.leadingAnchor.constraint(equalTo: filterContainer.leadingAnchor, constant: Constants.Spacing.large),
             myNetworkCirclesButton.centerYAnchor.constraint(equalTo: filterContainer.centerYAnchor),
             myNetworkCirclesButton.heightAnchor.constraint(equalToConstant: 36),
             
@@ -381,7 +364,6 @@ class CirclesHomeViewController: UIViewController {
         workNavigateButton.addTarget(self, action: #selector(workNavigateButtonTapped), for: .touchUpInside)
         
         // Add targets for filter buttons
-        myCirclesButton.addTarget(self, action: #selector(myCirclesButtonTapped), for: .touchUpInside)
         myNetworkCirclesButton.addTarget(self, action: #selector(myNetworkCirclesButtonTapped), for: .touchUpInside)
         suggestionsButton.addTarget(self, action: #selector(suggestionsButtonTapped), for: .touchUpInside)
         
@@ -411,7 +393,10 @@ class CirclesHomeViewController: UIViewController {
     @objc private func navigationTitleTapped() {
         // Return to My Circles tab if not already there
         if isShowingNetworkCircles {
-            myCirclesButtonTapped()
+            isShowingNetworkCircles = false
+            updateFilterButtons()
+            tableView.reloadData()
+            updateEmptyState()
         }
     }
     
@@ -655,12 +640,6 @@ class CirclesHomeViewController: UIViewController {
         navigateToQuickAccess(type: .work)
     }
     
-    @objc private func myCirclesButtonTapped() {
-        isShowingNetworkCircles = false
-        updateFilterButtons()
-        tableView.reloadData()
-        updateEmptyState()
-    }
     
     @objc private func myNetworkCirclesButtonTapped() {
         // Navigate to NetworkUsersViewController instead of showing circles directly
@@ -675,9 +654,7 @@ class CirclesHomeViewController: UIViewController {
     }
     
     private func updateFilterButtons() {
-        // Always keep My Circles as the primary selection since other tabs navigate away
-        myCirclesButton.backgroundColor = Constants.Colors.primary
-        myCirclesButton.tintColor = .white
+        // Since we're always showing My Circles (no tab for it), just reset the other buttons
         myNetworkCirclesButton.backgroundColor = Constants.Colors.tertiaryBackground
         myNetworkCirclesButton.tintColor = Constants.Colors.primary
         suggestionsButton.backgroundColor = Constants.Colors.tertiaryBackground

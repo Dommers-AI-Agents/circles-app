@@ -14,9 +14,30 @@ const uploadImage = async (base64Data, filename) => {
     
     // Get storage bucket
     const storage = getStorage();
-    // Get the bucket name from environment or use default
-    const bucketName = process.env.FIREBASE_STORAGE_BUCKET || `${process.env.FIREBASE_PROJECT_ID}.appspot.com`;
+    
+    // Check for Firebase Storage configuration
+    const bucketName = process.env.FIREBASE_STORAGE_BUCKET || 
+                      process.env.GCS_BUCKET_NAME || 
+                      (process.env.FIREBASE_PROJECT_ID ? `${process.env.FIREBASE_PROJECT_ID}.appspot.com` : null);
+    
+    if (!bucketName) {
+      console.error('Firebase Storage Error: No bucket name configured');
+      console.error('Please set one of the following environment variables:');
+      console.error('- FIREBASE_STORAGE_BUCKET (e.g., your-project.appspot.com)');
+      console.error('- GCS_BUCKET_NAME');
+      console.error('- FIREBASE_PROJECT_ID (will use {project-id}.appspot.com)');
+      throw new Error('Firebase Storage bucket not configured');
+    }
+    
     console.log('Using storage bucket:', bucketName);
+    
+    // Check if storage is initialized properly
+    if (!storage || !storage.bucket) {
+      console.error('Firebase Storage Error: Storage not properly initialized');
+      console.error('Make sure Firebase Admin SDK is initialized with proper credentials');
+      throw new Error('Firebase Storage not initialized');
+    }
+    
     const bucket = storage.bucket(bucketName);
     const file = bucket.file(uniqueFilename);
     
@@ -37,7 +58,14 @@ const uploadImage = async (base64Data, filename) => {
     // Return a promise that resolves when upload is complete
     return new Promise((resolve, reject) => {
       stream.on('error', (error) => {
-        console.error('Upload error:', error);
+        console.error('Stream upload error:', error);
+        console.error('Error details:', {
+          code: error.code,
+          message: error.message,
+          statusCode: error.statusCode,
+          bucketName: bucketName,
+          filename: uniqueFilename
+        });
         reject(error);
       });
       
@@ -53,6 +81,13 @@ const uploadImage = async (base64Data, filename) => {
           resolve(publicUrl);
         } catch (error) {
           console.error('Error making file public:', error);
+          console.error('makePublic error details:', {
+            code: error.code,
+            message: error.message,
+            statusCode: error.statusCode,
+            bucketName: bucketName,
+            filename: uniqueFilename
+          });
           reject(error);
         }
       });
