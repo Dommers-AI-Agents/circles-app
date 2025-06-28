@@ -360,6 +360,31 @@ class CircleService {
         }
     }
     
+    // MARK: - Update Circle Order
+    
+    func updateCircleOrder(circleIds: [String]) async throws {
+        let body: [String: Any] = [
+            "circleIds": circleIds
+        ]
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            APIService.shared.request(
+                endpoint: "users/me/circles/reorder",
+                method: .put,
+                body: body,
+                requiresAuth: true
+            ) { [weak self] (result: Result<EmptyResponse, APIError>) in
+                switch result {
+                case .success(_):
+                    continuation.resume()
+                case .failure(let error):
+                    let mappedError = self?.mapAPIErrorToCircleError(error) ?? CircleError.unknown
+                    continuation.resume(throwing: mappedError)
+                }
+            }
+        }
+    }
+    
     // MARK: - Error Mapping
     
     private func mapAPIErrorToCircleError(_ error: APIError) -> CircleError {

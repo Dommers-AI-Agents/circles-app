@@ -8,6 +8,10 @@ class FullScreenMapViewController: UIViewController {
     private let places: [Place]
     private let initialCamera: GMSCameraPosition
     private var markerPlaceMap: [GMSMarker: Place] = [:]
+    private var selectedCategory: PlaceCategory?
+    private var filteredPlaces: [Place] = []
+    private var isDropdownOpen = false
+    private var dropdownHeightConstraint: NSLayoutConstraint?
     
     // MARK: - UI Elements
     private let mapView: GMSMapView = {
@@ -50,10 +54,57 @@ class FullScreenMapViewController: UIViewController {
         return label
     }()
     
+    private let categoryFilterButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("All Categories", for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+        button.layer.cornerRadius = 16
+        button.layer.masksToBounds = true
+        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Add dropdown arrow
+        let config = UIImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+        let arrowImage = UIImage(systemName: "chevron.down", withConfiguration: config)
+        button.setImage(arrowImage, for: .normal)
+        button.tintColor = .white
+        button.semanticContentAttribute = .forceRightToLeft
+        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: 8, bottom: 0, right: 0)
+        
+        return button
+    }()
+    
+    private let dropdownContainer: UIView = {
+        let view = UIView()
+        view.backgroundColor = UIColor.black.withAlphaComponent(0.9)
+        view.layer.cornerRadius = 16
+        view.layer.masksToBounds = true
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isHidden = true
+        view.alpha = 0
+        return view
+    }()
+    
+    private let categoryTableView: UITableView = {
+        let tableView = UITableView()
+        tableView.backgroundColor = .clear
+        tableView.separatorStyle = .none
+        tableView.rowHeight = 44
+        tableView.showsVerticalScrollIndicator = false
+        tableView.translatesAutoresizingMaskIntoConstraints = false
+        tableView.layer.cornerRadius = 16
+        tableView.clipsToBounds = true
+        return tableView
+    }()
+    
     // MARK: - Init
-    init(places: [Place], initialCamera: GMSCameraPosition) {
+    init(places: [Place], initialCamera: GMSCameraPosition, selectedCategory: PlaceCategory? = nil) {
         self.places = places
         self.initialCamera = initialCamera
+        self.selectedCategory = selectedCategory
+        self.filteredPlaces = places
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .fullScreen
     }
@@ -67,7 +118,9 @@ class FullScreenMapViewController: UIViewController {
         super.viewDidLoad()
         setupUI()
         setupMap()
-        addAnnotationsToMap()
+        setupTableView()
+        updateFilterButtonTitle()
+        applyFilter()
     }
     
     override var preferredStatusBarStyle: UIStatusBarStyle {
@@ -89,6 +142,14 @@ class FullScreenMapViewController: UIViewController {
         view.addSubview(placesCountLabel)
         placesCountLabel.text = "\(places.count) places"
         
+        // Add category filter button
+        view.addSubview(categoryFilterButton)
+        categoryFilterButton.addTarget(self, action: #selector(categoryFilterButtonTapped), for: .touchUpInside)
+        
+        // Add dropdown container
+        view.addSubview(dropdownContainer)
+        dropdownContainer.addSubview(categoryTableView)
+        
         // Setup constraints
         NSLayoutConstraint.activate([
             // Map view - full screen
@@ -107,8 +168,28 @@ class FullScreenMapViewController: UIViewController {
             placesCountLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
             placesCountLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             placesCountLabel.heightAnchor.constraint(equalToConstant: 32),
-            placesCountLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 80)
+            placesCountLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 80),
+            
+            // Category filter button - center top
+            categoryFilterButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            categoryFilterButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+            categoryFilterButton.heightAnchor.constraint(equalToConstant: 32),
+            
+            // Dropdown container
+            dropdownContainer.centerXAnchor.constraint(equalTo: categoryFilterButton.centerXAnchor),
+            dropdownContainer.topAnchor.constraint(equalTo: categoryFilterButton.bottomAnchor, constant: 8),
+            dropdownContainer.widthAnchor.constraint(equalToConstant: 200),
+            
+            // Category table view inside dropdown
+            categoryTableView.topAnchor.constraint(equalTo: dropdownContainer.topAnchor),
+            categoryTableView.leadingAnchor.constraint(equalTo: dropdownContainer.leadingAnchor),
+            categoryTableView.trailingAnchor.constraint(equalTo: dropdownContainer.trailingAnchor),
+            categoryTableView.bottomAnchor.constraint(equalTo: dropdownContainer.bottomAnchor)
         ])
+        
+        // Create height constraint for dropdown
+        dropdownHeightConstraint = dropdownContainer.heightAnchor.constraint(equalToConstant: 0)
+        dropdownHeightConstraint?.isActive = true
         
         // Add padding to label
         placesCountLabel.layoutMargins = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
@@ -117,6 +198,12 @@ class FullScreenMapViewController: UIViewController {
     private func setupMap() {
         mapView.delegate = self
         mapView.camera = initialCamera
+    }
+    
+    private func setupTableView() {
+        categoryTableView.delegate = self
+        categoryTableView.dataSource = self
+        categoryTableView.register(UITableViewCell.self, forCellReuseIdentifier: "CategoryCell")
     }
     
     // MARK: - Map Annotations
@@ -129,7 +216,7 @@ class FullScreenMapViewController: UIViewController {
         var hasValidLocation = false
         
         // Add markers for each place
-        for place in places {
+        for place in filteredPlaces {
             guard let location = place.location?.clLocation else { continue }
             
             let marker = GMSMarker()
@@ -150,7 +237,7 @@ class FullScreenMapViewController: UIViewController {
         }
         
         // Adjust camera to show all markers
-        if hasValidLocation && places.count > 1 {
+        if hasValidLocation && filteredPlaces.count > 1 {
             let update = GMSCameraUpdate.fit(bounds, withPadding: 100.0)
             mapView.animate(with: update)
         }
@@ -269,6 +356,97 @@ class FullScreenMapViewController: UIViewController {
     // MARK: - Actions
     @objc private func closeButtonTapped() {
         dismiss(animated: true)
+    }
+    
+    @objc private func categoryFilterButtonTapped() {
+        toggleDropdown()
+    }
+    
+    private func toggleDropdown() {
+        isDropdownOpen.toggle()
+        
+        if isDropdownOpen {
+            showDropdown()
+        } else {
+            hideDropdown()
+        }
+    }
+    
+    private func showDropdown() {
+        // Calculate dropdown height based on number of categories + 1 for "All Categories"
+        let numberOfRows = PlaceCategory.allCases.count + 1
+        let maxHeight: CGFloat = 300 // Maximum height before scrolling
+        let calculatedHeight = CGFloat(numberOfRows) * 44
+        let dropdownHeight = min(calculatedHeight, maxHeight)
+        
+        dropdownContainer.isHidden = false
+        dropdownHeightConstraint?.constant = dropdownHeight
+        
+        // Animate dropdown appearance
+        UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.9, initialSpringVelocity: 0.5, options: .curveEaseInOut) {
+            self.dropdownContainer.alpha = 1
+            self.view.layoutIfNeeded()
+            
+            // Rotate arrow
+            self.categoryFilterButton.imageView?.transform = CGAffineTransform(rotationAngle: .pi)
+        }
+        
+        // Add tap gesture to dismiss
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTapOutside(_:)))
+        tapGesture.cancelsTouchesInView = false
+        mapView.addGestureRecognizer(tapGesture)
+    }
+    
+    private func hideDropdown() {
+        UIView.animate(withDuration: 0.2, animations: {
+            self.dropdownContainer.alpha = 0
+            self.dropdownHeightConstraint?.constant = 0
+            self.view.layoutIfNeeded()
+            
+            // Rotate arrow back
+            self.categoryFilterButton.imageView?.transform = .identity
+        }) { _ in
+            self.dropdownContainer.isHidden = true
+        }
+        
+        // Remove tap gesture
+        mapView.gestureRecognizers?.forEach { gesture in
+            if gesture is UITapGestureRecognizer {
+                mapView.removeGestureRecognizer(gesture)
+            }
+        }
+    }
+    
+    @objc private func handleTapOutside(_ gesture: UITapGestureRecognizer) {
+        let location = gesture.location(in: view)
+        
+        // Check if tap is outside dropdown and button
+        if !dropdownContainer.frame.contains(location) && !categoryFilterButton.frame.contains(location) {
+            hideDropdown()
+        }
+    }
+    
+    private func applyFilter() {
+        // Filter places based on selected category
+        if let category = selectedCategory {
+            filteredPlaces = places.filter { $0.category == category }
+        } else {
+            filteredPlaces = places
+        }
+        
+        // Update places count label
+        placesCountLabel.text = "\(filteredPlaces.count) places"
+        
+        // Update map annotations
+        addAnnotationsToMap()
+    }
+    
+    private func updateFilterButtonTitle() {
+        if let category = selectedCategory {
+            categoryFilterButton.setTitle(category.displayName, for: .normal)
+        } else {
+            categoryFilterButton.setTitle("All Categories", for: .normal)
+        }
     }
     
     // MARK: - Place Actions
@@ -416,3 +594,64 @@ extension FullScreenMapViewController: GMSMapViewDelegate {
     }
 }
 
+// MARK: - UITableViewDataSource
+extension FullScreenMapViewController: UITableViewDataSource {
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        return PlaceCategory.allCases.count + 1 // +1 for "All Categories"
+    }
+    
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "CategoryCell", for: indexPath)
+        
+        // Configure cell appearance
+        cell.backgroundColor = .clear
+        cell.textLabel?.textColor = .white
+        cell.textLabel?.font = UIFont.systemFont(ofSize: 15, weight: .medium)
+        cell.selectionStyle = .none
+        
+        if indexPath.row == 0 {
+            // All Categories option
+            cell.textLabel?.text = "All Categories"
+            if selectedCategory == nil {
+                cell.textLabel?.text = "✓ All Categories"
+                cell.textLabel?.textColor = UIColor(hex: "#4299E1") // Blue accent
+            }
+        } else {
+            // Specific category
+            let category = PlaceCategory.allCases[indexPath.row - 1]
+            cell.textLabel?.text = category.displayName
+            
+            if category == selectedCategory {
+                cell.textLabel?.text = "✓ \(category.displayName)"
+                cell.textLabel?.textColor = UIColor(hex: "#4299E1") // Blue accent
+            }
+        }
+        
+        return cell
+    }
+}
+
+// MARK: - UITableViewDelegate
+extension FullScreenMapViewController: UITableViewDelegate {
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        if indexPath.row == 0 {
+            // All Categories selected
+            selectedCategory = nil
+        } else {
+            // Specific category selected
+            selectedCategory = PlaceCategory.allCases[indexPath.row - 1]
+        }
+        
+        // Update UI
+        updateFilterButtonTitle()
+        applyFilter()
+        tableView.reloadData()
+        
+        // Hide dropdown after selection
+        hideDropdown()
+    }
+    
+    func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
+        return 44
+    }
+}

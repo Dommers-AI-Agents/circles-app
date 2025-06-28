@@ -124,7 +124,7 @@ class PlaceService {
         }
     }
     
-    func createPlace(name: String, description: String?, address: String, category: PlaceCategory, customCategory: String? = nil, circleId: String, privacy: PlacePrivacy = .followCirclePrivacy, website: String? = nil, phone: String? = nil, tags: [String]? = nil, photos: [Data]? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
+    func createPlace(name: String, description: String?, address: String, category: PlaceCategory, customCategory: String? = nil, subcategory: String? = nil, circleId: String, privacy: PlacePrivacy = .followCirclePrivacy, website: String? = nil, phone: String? = nil, tags: [String]? = nil, photos: [Data]? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
         
         // First geocode the address to get coordinates
         geocodeAddress(address) { [weak self] result in
@@ -143,6 +143,7 @@ class PlaceService {
                                 location: location,
                                 category: category,
                                 customCategory: customCategory,
+                                subcategory: subcategory,
                                 circleId: circleId,
                                 privacy: privacy,
                                 website: website,
@@ -164,6 +165,7 @@ class PlaceService {
                         location: location,
                         category: category,
                         customCategory: customCategory,
+                        subcategory: subcategory,
                         circleId: circleId,
                         privacy: privacy,
                         website: website,
@@ -179,7 +181,7 @@ class PlaceService {
         }
     }
     
-    private func performCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photoUrls: [String]?, completion: @escaping (Result<Place, Error>) -> Void) {
+    private func performCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photoUrls: [String]?, completion: @escaping (Result<Place, Error>) -> Void) {
         
         var body: [String: Any] = [
             "name": name,
@@ -199,6 +201,10 @@ class PlaceService {
         
         if let customCategory = customCategory {
             body["customCategory"] = customCategory
+        }
+        
+        if let subcategory = subcategory {
+            body["subcategory"] = subcategory
         }
         
         if let website = website {
@@ -449,11 +455,17 @@ class PlaceService {
     }
     
     private func uploadImage(_ imageData: Data, completion: @escaping (Result<String, Error>) -> Void) {
+        // Log image size
+        let imageSizeInKB = Double(imageData.count) / 1024.0
+        print("📸 Uploading image - size: \(String(format: "%.0f", imageSizeInKB)) KB")
+        
         // Convert image data to base64
         let base64String = imageData.base64EncodedString()
         let filename = "place-\(UUID().uuidString).jpg"
         
-        print("📸 Uploading image - size: \(imageData.count) bytes, base64 length: \(base64String.count)")
+        // Log base64 size (about 33% larger than original)
+        let base64SizeInKB = Double(base64String.count) / 1024.0
+        print("📸 Base64 encoded size: \(String(format: "%.0f", base64SizeInKB)) KB")
         
         let body: [String: Any] = [
             "image": base64String,
@@ -468,8 +480,10 @@ class PlaceService {
         ) { (result: Result<ImageUploadResponse, APIError>) in
             switch result {
             case .success(let response):
+                print("✅ Image uploaded successfully: \(response.url)")
                 completion(.success(response.url))
             case .failure(let error):
+                print("❌ Failed to upload image: \(error)")
                 completion(.failure(error))
             }
         }

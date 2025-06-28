@@ -1,6 +1,7 @@
 import UIKit
 import SwiftUI
 import CoreLocation
+import UniformTypeIdentifiers
 
 class CirclesHomeViewController: UIViewController {
     
@@ -329,6 +330,9 @@ class CirclesHomeViewController: UIViewController {
     private func setupTableView() {
         tableView.delegate = self
         tableView.dataSource = self
+        tableView.dragDelegate = self
+        tableView.dropDelegate = self
+        tableView.dragInteractionEnabled = true
         
         refreshControl.addTarget(self, action: #selector(refreshData), for: .valueChanged)
         tableView.refreshControl = refreshControl
@@ -975,7 +979,7 @@ class CirclesHomeViewController: UIViewController {
 }
 
 // MARK: - UITableViewDelegate & UITableViewDataSource
-extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource {
+extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource, UITableViewDragDelegate, UITableViewDropDelegate {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         return isShowingNetworkCircles ? networkCircles.count : circles.count
     }
@@ -1066,6 +1070,76 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             }
             
             return UIMenu(title: circle.name, children: [editAction, deleteAction])
+        }
+    }
+    
+    // MARK: - Drag Delegate
+    func tableView(_ tableView: UITableView, itemsForBeginning session: UIDragSession, at indexPath: IndexPath) -> [UIDragItem] {
+        // Disable drag when showing network circles
+        guard !isShowingNetworkCircles else { return [] }
+        
+        let circle = circles[indexPath.row]
+        let itemProvider = NSItemProvider(object: circle.id as NSString)
+        let dragItem = UIDragItem(itemProvider: itemProvider)
+        dragItem.localObject = circle
+        return [dragItem]
+    }
+    
+    // MARK: - Drop Delegate
+    func tableView(_ tableView: UITableView, canHandle session: UIDropSession) -> Bool {
+        return session.hasItemsConforming(toTypeIdentifiers: [UTType.text.identifier])
+    }
+    
+    func tableView(_ tableView: UITableView, dropSessionDidUpdate session: UIDropSession, withDestinationIndexPath destinationIndexPath: IndexPath?) -> UITableViewDropProposal {
+        if tableView.hasActiveDrag {
+            if session.items.count > 1 {
+                return UITableViewDropProposal(operation: .cancel)
+            } else {
+                return UITableViewDropProposal(operation: .move, intent: .insertAtDestinationIndexPath)
+            }
+        } else {
+            return UITableViewDropProposal(operation: .forbidden)
+        }
+    }
+    
+    func tableView(_ tableView: UITableView, performDropWith coordinator: UITableViewDropCoordinator) {
+        guard let destinationIndexPath = coordinator.destinationIndexPath else { return }
+        
+        for item in coordinator.items {
+            guard let sourceIndexPath = item.sourceIndexPath else { continue }
+            
+            tableView.performBatchUpdates({
+                let movedCircle = circles.remove(at: sourceIndexPath.row)
+                circles.insert(movedCircle, at: destinationIndexPath.row)
+                tableView.moveRow(at: sourceIndexPath, to: destinationIndexPath)
+            })
+            
+            coordinator.drop(item.dragItem, toRowAt: destinationIndexPath)
+            
+            // Update the order in the backend
+            updateCircleOrder()
+        }
+    }
+    
+    // MARK: - Helper method to update circle order
+    private func updateCircleOrder() {
+        // Update the order of circles in the backend
+        Task {
+            do {
+                // Create an array of circle IDs in the new order
+                let orderedCircleIds = circles.map { $0.id }
+                
+                // Call the API to update the order
+                try await CircleService.shared.updateCircleOrder(circleIds: orderedCircleIds)
+                
+                print("Circle order updated successfully")
+            } catch {
+                print("Failed to update circle order: \(error)")
+                // Optionally, revert the changes if the API call fails
+                await MainActor.run {
+                    self.fetchCircles()
+                }
+            }
         }
     }
 }

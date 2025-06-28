@@ -477,8 +477,8 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
             DispatchQueue.main.async {
                 switch result {
                 case .success(let places):
-                    // Sort places by createdAt date, most recent first
-                    self?.places = places.sorted { $0.createdAt > $1.createdAt }
+                    // Places are already ordered by the backend based on the circle's places array
+                    self?.places = places
                     self?.applyFilter()
                 case .failure(let error):
                     print("❌ Error fetching places: \(error.localizedDescription)")
@@ -1104,7 +1104,7 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
     }
     
     private func presentFullScreenMap() {
-        let fullScreenMapVC = FullScreenMapViewController(places: filteredPlaces, initialCamera: mapView.camera)
+        let fullScreenMapVC = FullScreenMapViewController(places: filteredPlaces, initialCamera: mapView.camera, selectedCategory: selectedCategory)
         present(fullScreenMapVC, animated: true)
     }
     
@@ -1314,6 +1314,86 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
         let place = filteredPlaces[indexPath.row]
         let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
         navigationController?.pushViewController(placeDetailVC, animated: true)
+    }
+    
+    // MARK: - Swipe Actions
+    func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        // Only allow deletion for own circles
+        guard circle.isOwner else { return nil }
+        
+        let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, completion in
+            self?.confirmDeletePlace(at: indexPath, completion: completion)
+        }
+        deleteAction.image = UIImage(systemName: "trash")
+        
+        let configuration = UISwipeActionsConfiguration(actions: [deleteAction])
+        configuration.performsFirstActionWithFullSwipe = false
+        
+        return configuration
+    }
+    
+    private func confirmDeletePlace(at indexPath: IndexPath, completion: @escaping (Bool) -> Void) {
+        let place = filteredPlaces[indexPath.row]
+        
+        let alert = UIAlertController(
+            title: "Delete Place",
+            message: "Are you sure you want to remove \"\(place.name)\" from this circle?",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in
+            completion(false)
+        })
+        
+        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+            self?.deletePlace(at: indexPath)
+            completion(true)
+        })
+        
+        present(alert, animated: true)
+    }
+    
+    private func deletePlace(at indexPath: IndexPath) {
+        let place = filteredPlaces[indexPath.row]
+        
+        // Show loading indicator
+        let loadingAlert = UIAlertController(title: "Deleting", message: "Removing place...", preferredStyle: .alert)
+        present(loadingAlert, animated: true)
+        
+        PlaceService.shared.deletePlace(id: place.id) { [weak self] result in
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    switch result {
+                    case .success:
+                        // Remove from local arrays
+                        if let originalIndex = self?.places.firstIndex(where: { $0.id == place.id }) {
+                            self?.places.remove(at: originalIndex)
+                        }
+                        if let filteredIndex = self?.filteredPlaces.firstIndex(where: { $0.id == place.id }) {
+                            self?.filteredPlaces.remove(at: filteredIndex)
+                        }
+                        
+                        // Update table view
+                        self?.tableView.deleteRows(at: [indexPath], with: .fade)
+                        
+                        // Update map
+                        self?.addAnnotationsToMap()
+                        
+                        // Update table view height after deletion
+                        self?.updateTableViewHeight()
+                        
+                    case .failure(let error):
+                        let errorAlert = UIAlertController(
+                            title: "Error",
+                            message: "Failed to delete place: \(error.localizedDescription)",
+                            preferredStyle: .alert
+                        )
+                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                        self?.present(errorAlert, animated: true)
+                    }
+                }
+            }
+        }
     }
     
     // MARK: - Drag Delegate

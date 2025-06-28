@@ -9,16 +9,17 @@ struct User: Codable, Identifiable {
     let location: String?
     let friends: [String]?
     let friendRequests: [String]?
+    let circleOrder: [String]?
     let createdAt: Date
     let connectionStatus: String? // "connected", "pending", or nil
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
-        case email, displayName, profilePicture, bio, location, friends, friendRequests, createdAt, connectionStatus
+        case email, displayName, profilePicture, bio, location, friends, friendRequests, circleOrder, createdAt, connectionStatus
     }
     
     // Convenience initializer for creating User objects directly
-    init(id: String, email: String, displayName: String, profilePicture: String?, bio: String?, location: String?, friends: [String]?, friendRequests: [String]?, createdAt: Date, connectionStatus: String? = nil) {
+    init(id: String, email: String, displayName: String, profilePicture: String?, bio: String?, location: String?, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, createdAt: Date, connectionStatus: String? = nil) {
         self.id = id
         self.email = email
         self.displayName = displayName
@@ -27,6 +28,7 @@ struct User: Codable, Identifiable {
         self.location = location
         self.friends = friends
         self.friendRequests = friendRequests
+        self.circleOrder = circleOrder
         self.createdAt = createdAt
         self.connectionStatus = connectionStatus
     }
@@ -43,6 +45,7 @@ struct User: Codable, Identifiable {
         location = try container.decodeIfPresent(String.self, forKey: .location)
         friends = try container.decodeIfPresent([String].self, forKey: .friends)
         friendRequests = try container.decodeIfPresent([String].self, forKey: .friendRequests)
+        circleOrder = try container.decodeIfPresent([String].self, forKey: .circleOrder)
         connectionStatus = try container.decodeIfPresent(String.self, forKey: .connectionStatus)
         
         // Custom date decoding with multiple format support

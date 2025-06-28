@@ -243,6 +243,7 @@ struct PlaceDetailView_Previews: PreviewProvider {
                 photos: nil,
                 category: PlaceCategory.restaurant,
                 customCategory: nil,
+                subcategory: nil,
                 rating: 4.5,
                 userRatingsTotal: nil,
                 notes: "Great place to visit!",

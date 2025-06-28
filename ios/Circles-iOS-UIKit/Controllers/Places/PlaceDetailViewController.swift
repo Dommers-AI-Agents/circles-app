@@ -181,11 +181,32 @@ class PlaceDetailViewController: UIViewController {
         return label
     }()
     
+    private let notesButtonsStackView: UIStackView = {
+        let stackView = UIStackView()
+        stackView.axis = .horizontal
+        stackView.spacing = Constants.Spacing.small
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        return stackView
+    }()
+    
     private let notesEditButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setTitle("Edit", for: .normal)
+        
+        // Create configuration for button with icon
+        var config = UIButton.Configuration.plain()
+        config.image = UIImage(systemName: "pencil.circle")
+        config.title = "Edit"
+        config.imagePadding = 4
+        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+        
+        button.configuration = config
+        button.configurationUpdateHandler = { button in
+            var config = button.configuration
+            config?.baseForegroundColor = Constants.Colors.primary
+            button.configuration = config
+        }
+        
         button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        button.setTitleColor(Constants.Colors.primary, for: .normal)
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
@@ -201,10 +222,22 @@ class PlaceDetailViewController: UIViewController {
     
     private let addNotesButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "plus"), for: .normal)
-        button.tintColor = .white
-        button.backgroundColor = Constants.Colors.primary
-        button.layer.cornerRadius = 20
+        
+        // Create configuration for button with icon
+        var config = UIButton.Configuration.plain()
+        config.image = UIImage(systemName: "plus.circle")
+        config.title = "Add Note"
+        config.imagePadding = 4
+        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+        
+        button.configuration = config
+        button.configurationUpdateHandler = { button in
+            var config = button.configuration
+            config?.baseForegroundColor = Constants.Colors.primary
+            button.configuration = config
+        }
+        
+        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.isHidden = true
         return button
@@ -359,9 +392,10 @@ class PlaceDetailViewController: UIViewController {
         
         // Always add notes labels - visibility will be controlled in configureUI
         infoContainerView.addSubview(notesTitleLabel)
-        infoContainerView.addSubview(notesEditButton)
+        infoContainerView.addSubview(notesButtonsStackView)
+        notesButtonsStackView.addArrangedSubview(notesEditButton)
+        notesButtonsStackView.addArrangedSubview(addNotesButton)
         infoContainerView.addSubview(notesLabel)
-        infoContainerView.addSubview(addNotesButton)
         
         if let tags = place.tags, !tags.isEmpty {
             infoContainerView.addSubview(tagsTitleLabel)
@@ -516,18 +550,12 @@ class PlaceDetailViewController: UIViewController {
             notesTitleLabel.topAnchor.constraint(equalTo: lastAnchor, constant: additionalSpacing),
             notesTitleLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
             
-            notesEditButton.centerYAnchor.constraint(equalTo: notesTitleLabel.centerYAnchor),
-            notesEditButton.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.large),
+            notesButtonsStackView.centerYAnchor.constraint(equalTo: notesTitleLabel.centerYAnchor),
+            notesButtonsStackView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.large),
             
             notesLabel.topAnchor.constraint(equalTo: notesTitleLabel.bottomAnchor, constant: Constants.Spacing.small),
             notesLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
-            notesLabel.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.large),
-            
-            // Add notes button (centered below title when there are no notes)
-            addNotesButton.topAnchor.constraint(equalTo: notesTitleLabel.bottomAnchor, constant: Constants.Spacing.medium),
-            addNotesButton.centerXAnchor.constraint(equalTo: infoContainerView.centerXAnchor),
-            addNotesButton.widthAnchor.constraint(equalToConstant: 40),
-            addNotesButton.heightAnchor.constraint(equalToConstant: 40)
+            notesLabel.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.large)
         ])
         
         lastAnchor = notesLabel.bottomAnchor

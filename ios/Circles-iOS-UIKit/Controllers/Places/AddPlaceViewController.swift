@@ -25,6 +25,11 @@ class AddPlaceViewController: UIViewController {
     private var mapItemsByCoordinate: [String: MKMapItem] = [:]
     private var markerToPlaceIdMap: [GMSMarker: String] = [:]
     private var placeIdsByCoordinate: [String: String] = [:] // Additional storage by coordinate
+    private var selectedCategory: PlaceCategory = .restaurant
+    private var selectedSubcategory: String?
+    private var selectedGooglePlaceDetails: GooglePlaceDetails?
+    private var isCategoryDropdownVisible = false
+    private var categoryDropdownItems: [(category: PlaceCategory, subcategory: String?)] = []
     
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
@@ -188,44 +193,47 @@ class AddPlaceViewController: UIViewController {
         return label
     }()
     
-    private let categorySegmentedControl: UISegmentedControl = {
-        let categories = ["Restaurant", "Cafe", "Bar", "Hotel", "Retail", "Service", "Attraction", "Other"]
-        let segmentedControl = UISegmentedControl(items: categories)
-        segmentedControl.selectedSegmentIndex = 0
-        segmentedControl.selectedSegmentTintColor = UIColor.systemBlue
-        segmentedControl.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.1)
-        segmentedControl.setTitleTextAttributes([
-            NSAttributedString.Key.foregroundColor: UIColor.darkGray
-        ], for: .normal)
-        segmentedControl.setTitleTextAttributes([
-            NSAttributedString.Key.foregroundColor: UIColor.white
-        ], for: .selected)
-        segmentedControl.translatesAutoresizingMaskIntoConstraints = false
-        return segmentedControl
+    private let categoryButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.backgroundColor = .white
+        button.layer.cornerRadius = 8
+        button.layer.borderWidth = 1
+        button.layer.borderColor = UIColor.systemBlue.withAlphaComponent(0.3).cgColor
+        button.contentHorizontalAlignment = .left
+        button.titleEdgeInsets = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Set default category
+        button.setTitle("Restaurant", for: .normal)
+        button.setTitleColor(.darkGray, for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 16)
+        
+        // Add chevron icon
+        let chevronImage = UIImage(systemName: "chevron.down")
+        button.setImage(chevronImage, for: .normal)
+        button.tintColor = .systemBlue
+        button.semanticContentAttribute = .forceRightToLeft
+        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: 8, bottom: 0, right: 12)
+        
+        return button
     }()
     
-    private let customCategoryLabel: UILabel = {
-        let label = UILabel()
-        label.text = "Custom Category Name"
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
-        label.textColor = .darkGray
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.isHidden = true
-        return label
-    }()
-    
-    private let customCategoryTextField: UITextField = {
-        let textField = UITextField()
-        textField.placeholder = "Enter custom category name"
-        textField.font = UIFont.systemFont(ofSize: 16)
-        textField.borderStyle = .roundedRect
-        textField.backgroundColor = .white
-        textField.layer.borderWidth = 1
-        textField.layer.borderColor = UIColor.systemBlue.withAlphaComponent(0.3).cgColor
-        textField.layer.cornerRadius = 8
-        textField.translatesAutoresizingMaskIntoConstraints = false
-        textField.isHidden = true
-        return textField
+    private let categoryDropdownTableView: UITableView = {
+        let tableView = UITableView()
+        tableView.backgroundColor = .systemBackground
+        tableView.layer.cornerRadius = 8
+        tableView.layer.borderWidth = 1
+        tableView.layer.borderColor = UIColor.systemBlue.withAlphaComponent(0.3).cgColor
+        tableView.layer.shadowColor = UIColor.label.cgColor
+        tableView.layer.shadowOpacity = 0.2
+        tableView.layer.shadowOffset = CGSize(width: 0, height: 4)
+        tableView.layer.shadowRadius = 8
+        tableView.translatesAutoresizingMaskIntoConstraints = true  // Use manual layout
+        tableView.isHidden = true
+        tableView.alpha = 0
+        tableView.clipsToBounds = false
+        tableView.layer.masksToBounds = false
+        return tableView
     }()
     
     private let descriptionLabel: UILabel = {
@@ -385,6 +393,22 @@ class AddPlaceViewController: UIViewController {
         setupSearchCompleter()
         setupActions()
         
+        // Build comprehensive category list with subcategories
+        setupCategoryDropdownItems()
+        
+        // Set up category dropdown
+        categoryDropdownTableView.delegate = self
+        categoryDropdownTableView.dataSource = self
+        categoryDropdownTableView.register(UITableViewCell.self, forCellReuseIdentifier: "CategoryCell")
+        categoryDropdownTableView.rowHeight = 44
+        categoryDropdownTableView.separatorInset = UIEdgeInsets(top: 0, left: 50, bottom: 0, right: 0)
+        
+        // Add tap gesture to dismiss dropdown
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissCategoryDropdown))
+        tapGesture.cancelsTouchesInView = false
+        tapGesture.delegate = self
+        view.addGestureRecognizer(tapGesture)
+        
         // Set initial map region to NYC to prevent black screen
         let initialLocation = CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060) // New York City
         let camera = GMSCameraPosition.camera(withTarget: initialLocation, zoom: 12.0)
@@ -444,9 +468,8 @@ class AddPlaceViewController: UIViewController {
         formContainer.addSubview(addPhotoButton)
         formContainer.addSubview(removePhotoButton)
         formContainer.addSubview(categoryLabel)
-        formContainer.addSubview(categorySegmentedControl)
-        formContainer.addSubview(customCategoryLabel)
-        formContainer.addSubview(customCategoryTextField)
+        formContainer.addSubview(categoryButton)
+        // Don't add dropdown to formContainer - will add to main view later
         formContainer.addSubview(descriptionLabel)
         formContainer.addSubview(descriptionTextView)
         formContainer.addSubview(addressLabel)
@@ -551,19 +574,14 @@ class AddPlaceViewController: UIViewController {
             categoryLabel.topAnchor.constraint(equalTo: addPhotoButton.bottomAnchor, constant: Constants.Spacing.medium),
             categoryLabel.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
             
-            categorySegmentedControl.topAnchor.constraint(equalTo: categoryLabel.bottomAnchor, constant: Constants.Spacing.small),
-            categorySegmentedControl.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
-            categorySegmentedControl.trailingAnchor.constraint(equalTo: formContainer.trailingAnchor, constant: -Constants.Spacing.large),
+            categoryButton.topAnchor.constraint(equalTo: categoryLabel.bottomAnchor, constant: Constants.Spacing.small),
+            categoryButton.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
+            categoryButton.trailingAnchor.constraint(equalTo: formContainer.trailingAnchor, constant: -Constants.Spacing.large),
+            categoryButton.heightAnchor.constraint(equalToConstant: 44),
             
-            customCategoryLabel.topAnchor.constraint(equalTo: categorySegmentedControl.bottomAnchor, constant: Constants.Spacing.medium),
-            customCategoryLabel.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
+            // Note: categoryDropdownTableView constraints are set up separately after all other constraints
             
-            customCategoryTextField.topAnchor.constraint(equalTo: customCategoryLabel.bottomAnchor, constant: Constants.Spacing.small),
-            customCategoryTextField.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
-            customCategoryTextField.trailingAnchor.constraint(equalTo: formContainer.trailingAnchor, constant: -Constants.Spacing.large),
-            customCategoryTextField.heightAnchor.constraint(equalToConstant: 44),
-            
-            descriptionLabel.topAnchor.constraint(equalTo: customCategoryTextField.bottomAnchor, constant: Constants.Spacing.medium),
+            descriptionLabel.topAnchor.constraint(equalTo: categoryButton.bottomAnchor, constant: Constants.Spacing.medium),
             descriptionLabel.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
             
             descriptionTextView.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: Constants.Spacing.small),
@@ -612,10 +630,14 @@ class AddPlaceViewController: UIViewController {
         nameTextField.alpha = 1.0
         descriptionTextView.alpha = 1.0
         addressTextView.alpha = 1.0
-        categorySegmentedControl.alpha = 1.0
+        categoryButton.alpha = 1.0
         
         // Setup category buttons
         setupCategoryButtons()
+        
+        // Add dropdown to main view last to ensure it's on top
+        view.addSubview(categoryDropdownTableView)
+        view.bringSubviewToFront(categoryDropdownTableView)
     }
     
     private func setupCategoryButtons() {
@@ -646,7 +668,7 @@ class AddPlaceViewController: UIViewController {
             button.layer.shadowOffset = CGSize(width: 0, height: 1)
             button.layer.shadowRadius = 2
             button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
-            button.addTarget(self, action: #selector(categoryButtonTapped(_:)), for: .touchUpInside)
+            button.addTarget(self, action: #selector(searchCategoryButtonTapped(_:)), for: .touchUpInside)
             
             categoryStackView.addArrangedSubview(button)
         }
@@ -683,7 +705,44 @@ class AddPlaceViewController: UIViewController {
         manualEntryButton.addTarget(self, action: #selector(manualEntryButtonTapped), for: .touchUpInside)
         addPhotoButton.addTarget(self, action: #selector(addPhotoButtonTapped), for: .touchUpInside)
         removePhotoButton.addTarget(self, action: #selector(removePhotoButtonTapped), for: .touchUpInside)
-        categorySegmentedControl.addTarget(self, action: #selector(categoryChanged), for: .valueChanged)
+        categoryButton.addTarget(self, action: #selector(categoryButtonTapped), for: .touchUpInside)
+    }
+    
+    private func setupCategoryDropdownItems() {
+        categoryDropdownItems = []
+        
+        // Define subcategories for each category
+        let subcategories: [PlaceCategory: [String]] = [
+            .restaurant: ["Breakfast", "Lunch", "Dinner", "Fast Food", "Fine Dining", "Buffet", "Food Truck", "Bakery", "Deli", "Pizza", "Sushi", "Mexican", "Italian", "Chinese", "Indian", "Thai", "Vietnamese", "Korean", "Japanese"],
+            .cafe: ["Coffee Shop", "Tea House", "Juice Bar", "Internet Cafe", "Dessert Shop", "Smoothie Bar"],
+            .bar: ["Sports Bar", "Wine Bar", "Cocktail Bar", "Pub", "Brewery", "Nightclub", "Lounge", "Dive Bar"],
+            .retail: ["Grocery Store", "Pharmacy", "Clothing Store", "Electronics", "Department Store", "Convenience Store", "Mall", "Bookstore", "Hardware Store", "Pet Store", "Toy Store", "Sporting Goods", "Home Goods"],
+            .service: ["Beauty Salon", "Hair Salon", "Nail Salon", "Spa", "Barber Shop", "Car Wash", "Dry Cleaner", "Repair Shop", "Pet Grooming", "Laundromat", "Tailor", "Locksmith"],
+            .fitness: ["Gym", "Yoga Studio", "Pilates Studio", "CrossFit", "Personal Training", "Martial Arts", "Dance Studio", "Swimming Pool", "Sports Center", "Boxing Gym", "Climbing Gym"],
+            .healthcare: ["Doctor", "Dentist", "Hospital", "Clinic", "Veterinarian", "Urgent Care", "Optometrist", "Physical Therapy", "Mental Health", "Chiropractor", "Dermatologist", "Pediatrician"],
+            .entertainment: ["Movie Theater", "Concert Venue", "Comedy Club", "Arcade", "Bowling Alley", "Museum", "Art Gallery", "Theater", "Casino", "Amusement Park", "Escape Room"],
+            .education: ["School", "University", "Library", "Tutoring Center", "Language School", "Music School", "Art School", "Daycare", "Preschool"],
+            .outdoor: ["Park", "Beach", "Trail", "Campground", "Playground", "Garden", "Lake", "Golf Course", "Tennis Court", "Basketball Court"],
+            .transport: ["Airport", "Train Station", "Bus Station", "Subway", "Taxi Stand", "Car Rental", "Parking", "Gas Station", "EV Charging"],
+            .finance: ["Bank", "ATM", "Credit Union", "Insurance", "Investment Firm", "Tax Service", "Accounting"],
+            .hotel: ["Hotel", "Motel", "Resort", "Bed & Breakfast", "Hostel", "Vacation Rental", "Inn"],
+            .attraction: ["Tourist Attraction", "Monument", "Landmark", "Theme Park", "Zoo", "Aquarium", "Observatory"],
+            .home: [],  // No subcategories for home
+            .work: []   // No subcategories for work
+        ]
+        
+        // Build flat list of all options
+        for category in PlaceCategory.allCases.sorted(by: { $0.displayName < $1.displayName }) {
+            // Add main category
+            categoryDropdownItems.append((category: category, subcategory: nil))
+            
+            // Add subcategories if they exist
+            if let subs = subcategories[category] {
+                for sub in subs.sorted() {
+                    categoryDropdownItems.append((category: category, subcategory: sub))
+                }
+            }
+        }
     }
     
     
@@ -728,6 +787,9 @@ class AddPlaceViewController: UIViewController {
                 self.nameTextField.text = ""
                 self.descriptionTextView.text = ""
                 
+                // Clear any Google Place details since this is manual
+                self.selectedGooglePlaceDetails = nil
+                
                 // Fill in address
                 let address = [
                     placemark.subThoroughfare,
@@ -745,6 +807,8 @@ class AddPlaceViewController: UIViewController {
     }
     
     @objc private func manualEntryButtonTapped() {
+        // Clear any selected Google Place when manually entering
+        selectedGooglePlaceDetails = nil
         enableManualEntry()
         nameTextField.becomeFirstResponder()
     }
@@ -772,23 +836,57 @@ class AddPlaceViewController: UIViewController {
         ])
     }
     
-    @objc private func categoryChanged() {
-        let isOtherSelected = categorySegmentedControl.selectedSegmentIndex == 7 // "Other" is at index 7
+    @objc private func categoryButtonTapped() {
+        isCategoryDropdownVisible.toggle()
+        
+        if isCategoryDropdownVisible {
+            // Position dropdown below button
+            let buttonFrame = categoryButton.convert(categoryButton.bounds, to: view)
+            
+            // Calculate available space below button
+            let availableHeight = view.frame.height - buttonFrame.maxY - 20
+            let dropdownHeight = min(300, availableHeight)
+            
+            categoryDropdownTableView.frame = CGRect(
+                x: Constants.Spacing.large,
+                y: buttonFrame.maxY + 4,
+                width: view.frame.width - (Constants.Spacing.large * 2),
+                height: dropdownHeight
+            )
+            
+            // Ensure it's on top
+            view.bringSubviewToFront(categoryDropdownTableView)
+            categoryDropdownTableView.reloadData()
+            
+            // Set proper layer properties for visibility
+            categoryDropdownTableView.layer.zPosition = 999
+        }
         
         UIView.animate(withDuration: 0.3) {
-            self.customCategoryLabel.isHidden = !isOtherSelected
-            self.customCategoryTextField.isHidden = !isOtherSelected
+            self.categoryDropdownTableView.isHidden = !self.isCategoryDropdownVisible
+            self.categoryDropdownTableView.alpha = self.isCategoryDropdownVisible ? 1.0 : 0.0
             
-            if !isOtherSelected {
-                self.customCategoryTextField.text = ""
+            // Rotate chevron
+            if self.isCategoryDropdownVisible {
+                self.categoryButton.imageView?.transform = CGAffineTransform(rotationAngle: .pi)
+            } else {
+                self.categoryButton.imageView?.transform = .identity
             }
-            
-            // Update layout
-            self.view.layoutIfNeeded()
         }
     }
     
-    @objc private func categoryButtonTapped(_ sender: UIButton) {
+    @objc private func dismissCategoryDropdown() {
+        if isCategoryDropdownVisible {
+            isCategoryDropdownVisible = false
+            UIView.animate(withDuration: 0.3) {
+                self.categoryDropdownTableView.isHidden = true
+                self.categoryDropdownTableView.alpha = 0.0
+                self.categoryButton.imageView?.transform = .identity
+            }
+        }
+    }
+    
+    @objc private func searchCategoryButtonTapped(_ sender: UIButton) {
         guard let buttonTitle = sender.title(for: .normal) else { return }
         
         // Extract the category name (remove emoji and trim)
@@ -811,12 +909,11 @@ class AddPlaceViewController: UIViewController {
             return
         }
         
-        let categoryIndex = categorySegmentedControl.selectedSegmentIndex
-        let categories = [PlaceCategory.restaurant, .cafe, .bar, .hotel, .retail, .service, .attraction, .other]
-        let category = categories[categoryIndex]
+        let category = selectedCategory
         
         // Get custom category if "Other" is selected
-        let customCategory: String? = (categoryIndex == 7 && !customCategoryTextField.text!.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) ? customCategoryTextField.text!.trimmingCharacters(in: .whitespacesAndNewlines) : nil
+        let customCategory: String? = (category == .other && selectedSubcategory != nil) ? selectedSubcategory : nil
+        let subcategory: String? = (category != .other) ? selectedSubcategory : nil
         
         let description = descriptionTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
         
@@ -830,46 +927,164 @@ class AddPlaceViewController: UIViewController {
         // Prepare photo data if available
         var photoData: [Data]? = nil
         if let image = selectedImage {
-            // Resize image if it's too large
-            let maxSize: CGFloat = 1024 // Max dimension
+            // Very aggressive image resizing for reliability
+            let maxSize: CGFloat = 500 // Much smaller max dimension
             var finalImage = image
             
-            if image.size.width > maxSize || image.size.height > maxSize {
-                let scale = min(maxSize / image.size.width, maxSize / image.size.height)
-                let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-                
-                UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
-                image.draw(in: CGRect(origin: .zero, size: newSize))
-                if let resizedImage = UIGraphicsGetImageFromCurrentImageContext() {
-                    finalImage = resizedImage
-                }
-                UIGraphicsEndImageContext()
-            }
+            // Always resize to reduce memory usage
+            let scale = min(maxSize / image.size.width, maxSize / image.size.height, 1.0) // Never upscale
+            let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
             
-            if let imageData = finalImage.jpegData(compressionQuality: 0.7) {
-                photoData = [imageData]
-                print("📸 Prepared photo for upload, size: \(imageData.count / 1024)KB")
+            // Use lower scale for retina optimization (1.0 instead of screen scale)
+            UIGraphicsBeginImageContextWithOptions(newSize, true, 1.0) // true = opaque for smaller size
+            // Fill with white background for JPEG
+            UIColor.white.setFill()
+            UIRectFill(CGRect(origin: .zero, size: newSize))
+            image.draw(in: CGRect(origin: .zero, size: newSize))
+            
+            if let resizedImage = UIGraphicsGetImageFromCurrentImageContext() {
+                finalImage = resizedImage
+            }
+            UIGraphicsEndImageContext()
+            
+            // Use low quality JPEG compression
+            let compressionQuality: CGFloat = 0.4 // Low quality is fine for place photos
+            
+            if let imageData = finalImage.jpegData(compressionQuality: compressionQuality) {
+                let sizeInKB = Double(imageData.count) / 1024.0
+                print("📸 Image compressed to \(String(format: "%.0f", sizeInKB)) KB (quality: \(compressionQuality))")
+                
+                // Only proceed if under 500KB
+                if sizeInKB < 500 {
+                    photoData = [imageData]
+                    print("✅ Photo ready for upload")
+                } else {
+                    // Try one more time with even lower quality
+                    if let tinyImageData = finalImage.jpegData(compressionQuality: 0.2) {
+                        let tinySizeInKB = Double(tinyImageData.count) / 1024.0
+                        print("📸 Further compressed to \(String(format: "%.0f", tinySizeInKB)) KB")
+                        photoData = [tinyImageData]
+                    }
+                }
+            } else {
+                print("⚠️ Failed to prepare photo for upload")
             }
         }
         
-        PlaceService.shared.createPlace(
-            name: name,
-            description: description.isEmpty ? nil : description,
-            address: address,
-            category: category,
-            customCategory: customCategory,
-            circleId: circleId,
-            privacy: privacy,
-            website: nil,
-            phone: nil,
-            tags: nil,
-            photos: photoData
-        ) { [weak self] result in
+        // Check if we have Google Place details to use
+        if let googleDetails = selectedGooglePlaceDetails {
+            // Create place data from Google details
+            var placeData: [String: Any] = [
+                "name": name,
+                "address": address,
+                "circleId": circleId,
+                "category": category.rawValue,
+                "privacy": privacy.rawValue,
+                "location": [
+                    "type": "Point",
+                    "coordinates": [googleDetails.coordinate.longitude, googleDetails.coordinate.latitude]
+                ]
+            ]
+            
+            // Add Google-specific data
+            if !googleDetails.placeID.isEmpty {
+                placeData["googlePlaceId"] = googleDetails.placeID
+            }
+            if let rating = googleDetails.rating, rating > 0 {
+                placeData["rating"] = rating
+            }
+            if googleDetails.userRatingsTotal > 0 {
+                placeData["userRatingsTotal"] = googleDetails.userRatingsTotal
+            }
+            if let website = googleDetails.website {
+                placeData["website"] = website.absoluteString
+            }
+            if let phone = googleDetails.phoneNumber {
+                placeData["phone"] = phone
+            }
+            if let priceLevel = googleDetails.priceLevel {
+                placeData["priceLevel"] = priceLevel.rawValue
+            }
+            if !description.isEmpty {
+                placeData["description"] = description
+            }
+            if let customCategory = customCategory {
+                placeData["customCategory"] = customCategory
+            }
+            if let subcategory = subcategory {
+                placeData["subcategory"] = subcategory
+            }
+            
+            // Handle photos
+            if let imageData = photoData?.first {
+                PlaceService.shared.uploadMultipleImages([imageData]) { uploadResult in
+                    DispatchQueue.main.async {
+                        switch uploadResult {
+                        case .success(let imageUrls):
+                            placeData["photos"] = imageUrls
+                            self.createPlaceWithData(placeData, loadingAlert: loadingAlert)
+                        case .failure(let error):
+                            print("❌ Failed to upload photo: \(error)")
+                            // Show error but continue without photo
+                            loadingAlert.dismiss(animated: true) {
+                                let alert = UIAlertController(title: "Photo Upload Failed", 
+                                                            message: "The place will be created without the photo. Error: \(error.localizedDescription)", 
+                                                            preferredStyle: .alert)
+                                alert.addAction(UIAlertAction(title: "Continue", style: .default) { _ in
+                                    // Re-show loading and create without photo
+                                    self.present(loadingAlert, animated: true)
+                                    self.createPlaceWithData(placeData, loadingAlert: loadingAlert)
+                                })
+                                alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+                                self.present(alert, animated: true)
+                            }
+                        }
+                    }
+                }
+            } else {
+                self.createPlaceWithData(placeData, loadingAlert: loadingAlert)
+            }
+        } else {
+            // No Google details, create place normally
+            PlaceService.shared.createPlace(
+                name: name,
+                description: description.isEmpty ? nil : description,
+                address: address,
+                category: category,
+                customCategory: customCategory,
+                subcategory: subcategory,
+                circleId: circleId,
+                privacy: privacy,
+                website: nil,
+                phone: nil,
+                tags: nil,
+                photos: photoData
+            ) { [weak self] result in
+                DispatchQueue.main.async {
+                    loadingAlert.dismiss(animated: true) {
+                        switch result {
+                        case .success(let place):
+                            print("✅ Place created successfully with photos: \(place.photos ?? [])")
+                            self?.presentAlert(title: "Success", message: "Place added successfully") { _ in
+                                self?.navigationController?.popViewController(animated: true)
+                            }
+                        case .failure(let error):
+                            print("❌ Failed to create place: \(error)")
+                            self?.presentAlert(title: "Error", message: error.localizedDescription)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private func createPlaceWithData(_ placeData: [String: Any], loadingAlert: UIAlertController) {
+        PlaceService.shared.createPlaceFromGoogleData(placeData) { [weak self] result in
             DispatchQueue.main.async {
                 loadingAlert.dismiss(animated: true) {
                     switch result {
                     case .success(let place):
-                        print("✅ Place created successfully with photos: \(place.photos ?? [])")
+                        print("✅ Place created successfully with rating: \(place.rating ?? 0)")
                         self?.presentAlert(title: "Success", message: "Place added successfully") { _ in
                             self?.navigationController?.popViewController(animated: true)
                         }
@@ -908,6 +1123,7 @@ class AddPlaceViewController: UIViewController {
     
     private func fillFormWithMapItem(_ mapItem: MKMapItem) {
         selectedMapItem = mapItem
+        selectedGooglePlaceDetails = nil // Clear Google details
         
         // Enable form first
         enableManualEntry()
@@ -970,40 +1186,111 @@ class AddPlaceViewController: UIViewController {
             self.descriptionTextView.text = description
             
             // Set category
+            self.selectedSubcategory = nil
+            
             if let poiCategory = mapItem.pointOfInterestCategory {
                 switch poiCategory {
-                case .restaurant: self.categorySegmentedControl.selectedSegmentIndex = 0
-                case .cafe: self.categorySegmentedControl.selectedSegmentIndex = 1
-                case .nightlife, .brewery, .winery: self.categorySegmentedControl.selectedSegmentIndex = 2
-                case .hotel, .campground: self.categorySegmentedControl.selectedSegmentIndex = 3
-                case .store, .foodMarket: self.categorySegmentedControl.selectedSegmentIndex = 4
-                case .gasStation, .evCharger, .parking, .carRental,
-                     .laundry, .postOffice, .bank, .atm, .pharmacy, .hospital,
-                     .fireStation, .police, .publicTransport,
-                     .school, .university, .library, .movieTheater:
-                    self.categorySegmentedControl.selectedSegmentIndex = 5
-                case .museum, .park, .beach, .theater, .zoo, .aquarium, .amusementPark,
-                     .miniGolf, .stadium, .marina, .castle, .landmark, .nationalPark:
-                    self.categorySegmentedControl.selectedSegmentIndex = 6
+                case .restaurant: 
+                    self.selectedCategory = .restaurant
+                case .cafe: 
+                    self.selectedCategory = .cafe
+                    self.selectedSubcategory = "Coffee Shop"
+                case .nightlife: 
+                    self.selectedCategory = .bar
+                    self.selectedSubcategory = "Nightclub"
+                case .brewery: 
+                    self.selectedCategory = .bar
+                    self.selectedSubcategory = "Brewery"
+                case .winery: 
+                    self.selectedCategory = .bar
+                    self.selectedSubcategory = "Wine Bar"
+                case .hotel, .campground: 
+                    self.selectedCategory = .hotel
+                case .store: 
+                    self.selectedCategory = .retail
+                case .foodMarket: 
+                    self.selectedCategory = .retail
+                    self.selectedSubcategory = "Grocery Store"
+                case .gasStation, .evCharger, .carRental, .laundry, .postOffice:
+                    self.selectedCategory = .service
+                case .bank, .atm:
+                    self.selectedCategory = .finance
+                case .pharmacy:
+                    self.selectedCategory = .healthcare
+                    self.selectedSubcategory = "Pharmacy"
+                case .hospital:
+                    self.selectedCategory = .healthcare
+                    self.selectedSubcategory = "Hospital"
+                case .parking:
+                    self.selectedCategory = .transport
+                    self.selectedSubcategory = "Parking"
+                case .fireStation, .police:
+                    self.selectedCategory = .service
+                case .publicTransport:
+                    self.selectedCategory = .transport
+                case .school, .university, .library:
+                    self.selectedCategory = .education
+                case .movieTheater:
+                    self.selectedCategory = .entertainment
+                    self.selectedSubcategory = "Movie Theater"
+                case .museum:
+                    self.selectedCategory = .attraction
+                    self.selectedSubcategory = "Museum"
+                case .park, .beach, .nationalPark:
+                    self.selectedCategory = .outdoor
+                    if poiCategory == .park {
+                        self.selectedSubcategory = "Park"
+                    } else if poiCategory == .beach {
+                        self.selectedSubcategory = "Beach"
+                    }
+                case .theater:
+                    self.selectedCategory = .entertainment
+                    self.selectedSubcategory = "Theater"
+                case .zoo, .aquarium:
+                    self.selectedCategory = .attraction
+                    if poiCategory == .zoo {
+                        self.selectedSubcategory = "Zoo"
+                    } else {
+                        self.selectedSubcategory = "Aquarium"
+                    }
+                case .amusementPark:
+                    self.selectedCategory = .attraction
+                    self.selectedSubcategory = "Theme Park"
+                case .miniGolf:
+                    self.selectedCategory = .entertainment
+                case .stadium:
+                    self.selectedCategory = .entertainment
+                case .marina:
+                    self.selectedCategory = .outdoor
+                case .castle, .landmark:
+                    self.selectedCategory = .attraction
+                    self.selectedSubcategory = "Landmark"
                 default:
-                    self.categorySegmentedControl.selectedSegmentIndex = 7
+                    self.selectedCategory = .other
                 }
             } else {
                 // Try to infer category from name
                 let name = (mapItem.name ?? "").lowercased()
                 if name.contains("restaurant") || name.contains("kitchen") || name.contains("grill") {
-                    self.categorySegmentedControl.selectedSegmentIndex = 0
+                    self.selectedCategory = .restaurant
                 } else if name.contains("cafe") || name.contains("coffee") {
-                    self.categorySegmentedControl.selectedSegmentIndex = 1
+                    self.selectedCategory = .cafe
                 } else if name.contains("bar") || name.contains("pub") || name.contains("brewery") {
-                    self.categorySegmentedControl.selectedSegmentIndex = 2
+                    self.selectedCategory = .bar
                 } else if name.contains("hotel") || name.contains("inn") || name.contains("motel") {
-                    self.categorySegmentedControl.selectedSegmentIndex = 3
+                    self.selectedCategory = .hotel
                 } else if name.contains("store") || name.contains("shop") || name.contains("market") {
-                    self.categorySegmentedControl.selectedSegmentIndex = 4
+                    self.selectedCategory = .retail
                 } else {
-                    self.categorySegmentedControl.selectedSegmentIndex = 7 // Other
+                    self.selectedCategory = .other
                 }
+            }
+            
+            // Update category button text
+            if let subcategory = self.selectedSubcategory {
+                self.categoryButton.setTitle("\(self.selectedCategory.displayName) - \(subcategory)", for: .normal)
+            } else {
+                self.categoryButton.setTitle(self.selectedCategory.displayName, for: .normal)
             }
             
             // Update selected location
@@ -1120,6 +1407,9 @@ class AddPlaceViewController: UIViewController {
     }
     
     private func fillFormWithGooglePlace(_ placeDetails: GooglePlaceDetails) {
+        // Store the Google Place details
+        self.selectedGooglePlaceDetails = placeDetails
+        
         // Enable form first
         enableManualEntry()
         
@@ -1212,23 +1502,81 @@ class AddPlaceViewController: UIViewController {
     }
     
     private func setCategoryFromGoogleTypes(_ types: [String]) {
+        // Reset subcategory
+        selectedSubcategory = nil
+        
         // Check types and set appropriate category
         if types.contains("restaurant") || types.contains("food") {
-            self.categorySegmentedControl.selectedSegmentIndex = 0 // Restaurant
+            selectedCategory = .restaurant
+            // Try to set subcategory based on more specific types
+            if types.contains("meal_takeaway") || types.contains("meal_delivery") {
+                selectedSubcategory = "Fast Food"
+            } else if types.contains("bakery") {
+                selectedSubcategory = "Bakery"
+            }
         } else if types.contains("cafe") {
-            self.categorySegmentedControl.selectedSegmentIndex = 1 // Cafe
+            selectedCategory = .cafe
+            if types.contains("coffee_shop") {
+                selectedSubcategory = "Coffee Shop"
+            }
         } else if types.contains("bar") || types.contains("night_club") {
-            self.categorySegmentedControl.selectedSegmentIndex = 2 // Bar
-        } else if types.contains("lodging") {
-            self.categorySegmentedControl.selectedSegmentIndex = 3 // Hotel
+            selectedCategory = .bar
+            if types.contains("night_club") {
+                selectedSubcategory = "Nightclub"
+            }
+        } else if types.contains("lodging") || types.contains("hotel") {
+            selectedCategory = .hotel
         } else if types.contains("store") || types.contains("shopping_mall") {
-            self.categorySegmentedControl.selectedSegmentIndex = 4 // Retail
-        } else if types.contains("doctor") || types.contains("hospital") || types.contains("health") {
-            self.categorySegmentedControl.selectedSegmentIndex = 5 // Service
+            selectedCategory = .retail
+            if types.contains("grocery_or_supermarket") {
+                selectedSubcategory = "Grocery Store"
+            } else if types.contains("clothing_store") {
+                selectedSubcategory = "Clothing Store"
+            } else if types.contains("electronics_store") {
+                selectedSubcategory = "Electronics"
+            }
+        } else if types.contains("beauty_salon") || types.contains("hair_care") || types.contains("spa") {
+            selectedCategory = .service
+            if types.contains("beauty_salon") {
+                selectedSubcategory = "Beauty Salon"
+            } else if types.contains("hair_care") {
+                selectedSubcategory = "Hair Salon"
+            } else if types.contains("spa") {
+                selectedSubcategory = "Spa"
+            }
+        } else if types.contains("gym") || types.contains("health") {
+            selectedCategory = .fitness
+            if types.contains("gym") {
+                selectedSubcategory = "Gym"
+            }
+        } else if types.contains("doctor") || types.contains("hospital") || types.contains("pharmacy") {
+            selectedCategory = .healthcare
+            if types.contains("doctor") {
+                selectedSubcategory = "Doctor"
+            } else if types.contains("hospital") {
+                selectedSubcategory = "Hospital"
+            } else if types.contains("pharmacy") {
+                selectedSubcategory = "Pharmacy"
+            }
         } else if types.contains("tourist_attraction") || types.contains("museum") || types.contains("park") {
-            self.categorySegmentedControl.selectedSegmentIndex = 6 // Attraction
+            selectedCategory = .attraction
+            if types.contains("museum") {
+                selectedSubcategory = "Museum"
+            } else if types.contains("park") {
+                selectedSubcategory = "Park"
+            }
+        } else if types.contains("movie_theater") {
+            selectedCategory = .entertainment
+            selectedSubcategory = "Movie Theater"
         } else {
-            self.categorySegmentedControl.selectedSegmentIndex = 7 // Other
+            selectedCategory = .other
+        }
+        
+        // Update category button text
+        if let subcategory = selectedSubcategory {
+            categoryButton.setTitle("\(selectedCategory.displayName) - \(subcategory)", for: .normal)
+        } else {
+            categoryButton.setTitle(selectedCategory.displayName, for: .normal)
         }
     }
     
@@ -1879,34 +2227,116 @@ extension AddPlaceViewController {
 
 extension AddPlaceViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return searchResults.count
+        if tableView == categoryDropdownTableView {
+            return categoryDropdownItems.count
+        } else {
+            return searchResults.count
+        }
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        var cell = tableView.dequeueReusableCell(withIdentifier: "SearchCell")
-        if cell == nil {
-            cell = UITableViewCell(style: .subtitle, reuseIdentifier: "SearchCell")
+        if tableView == categoryDropdownTableView {
+            let cell = tableView.dequeueReusableCell(withIdentifier: "CategoryCell") ?? UITableViewCell(style: .default, reuseIdentifier: "CategoryCell")
+            
+            // Set cell background for dark mode support
+            cell.backgroundColor = .secondarySystemBackground
+            let item = categoryDropdownItems[indexPath.row]
+            
+            // Format display text
+            if let subcategory = item.subcategory {
+                cell.textLabel?.text = "    \(subcategory)"  // Indent subcategories
+                cell.textLabel?.font = UIFont.systemFont(ofSize: 15)
+                cell.textLabel?.textColor = .secondaryLabel  // Better for dark mode
+            } else {
+                cell.textLabel?.text = item.category.displayName
+                cell.textLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+                cell.textLabel?.textColor = .label  // Adapts to dark/light mode
+            }
+            
+            // Add checkmark for selected item
+            let isSelected = (item.subcategory == nil && item.category == selectedCategory && selectedSubcategory == nil) ||
+                           (item.subcategory != nil && item.category == selectedCategory && item.subcategory == selectedSubcategory)
+            
+            if isSelected {
+                cell.accessoryType = .checkmark
+                cell.tintColor = .systemBlue
+            } else {
+                cell.accessoryType = .none
+            }
+            
+            // Add icon only for main categories
+            if item.subcategory == nil {
+                let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+                cell.imageView?.image = UIImage(systemName: item.category.systemIconName, withConfiguration: config)
+                cell.imageView?.tintColor = .systemBlue
+            } else {
+                cell.imageView?.image = nil
+            }
+            
+            return cell
+        } else {
+            var cell = tableView.dequeueReusableCell(withIdentifier: "SearchCell")
+            if cell == nil {
+                cell = UITableViewCell(style: .subtitle, reuseIdentifier: "SearchCell")
+            }
+            
+            let result = searchResults[indexPath.row]
+            
+            // Configure cell for better display
+            cell?.textLabel?.text = result.attributedPrimaryText.string
+            cell?.textLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+            cell?.textLabel?.numberOfLines = 2
+            
+            // Show full address with city, state, country
+            cell?.detailTextLabel?.text = result.attributedSecondaryText?.string
+            cell?.detailTextLabel?.font = UIFont.systemFont(ofSize: 14)
+            cell?.detailTextLabel?.textColor = .systemGray
+            cell?.detailTextLabel?.numberOfLines = 2
+            
+            return cell!
         }
-        
-        let result = searchResults[indexPath.row]
-        
-        // Configure cell for better display
-        cell?.textLabel?.text = result.attributedPrimaryText.string
-        cell?.textLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
-        cell?.textLabel?.numberOfLines = 2
-        
-        // Show full address with city, state, country
-        cell?.detailTextLabel?.text = result.attributedSecondaryText?.string
-        cell?.detailTextLabel?.font = UIFont.systemFont(ofSize: 14)
-        cell?.detailTextLabel?.textColor = .systemGray
-        cell?.detailTextLabel?.numberOfLines = 2
-        
-        return cell!
     }
     
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        selectSearchResult(searchResults[indexPath.row])
+        
+        if tableView == categoryDropdownTableView {
+            let item = categoryDropdownItems[indexPath.row]
+            selectedCategory = item.category
+            selectedSubcategory = item.subcategory
+            
+            // Update button title
+            if let subcategory = item.subcategory {
+                categoryButton.setTitle("\(item.category.displayName) - \(subcategory)", for: .normal)
+            } else {
+                categoryButton.setTitle(item.category.displayName, for: .normal)
+            }
+            
+            // Hide dropdown
+            categoryButtonTapped()
+            
+            tableView.reloadData()
+        } else {
+            selectSearchResult(searchResults[indexPath.row])
+        }
+    }
+}
+
+// MARK: - PHPickerViewControllerDelegate
+
+// MARK: - UIGestureRecognizerDelegate
+
+extension AddPlaceViewController: UIGestureRecognizerDelegate {
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        // Don't dismiss if tapping on the dropdown or button itself
+        let location = touch.location(in: view)
+        let dropdownFrame = categoryDropdownTableView.convert(categoryDropdownTableView.bounds, to: view)
+        let buttonFrame = categoryButton.convert(categoryButton.bounds, to: view)
+        
+        if dropdownFrame.contains(location) || buttonFrame.contains(location) {
+            return false
+        }
+        return isCategoryDropdownVisible
     }
 }
 
@@ -1935,3 +2365,4 @@ extension AddPlaceViewController: PHPickerViewControllerDelegate {
         }
     }
 }
+

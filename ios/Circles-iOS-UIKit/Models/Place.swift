@@ -14,6 +14,7 @@ struct Place: Codable, Identifiable {
     let photos: [String]?
     let category: PlaceCategory
     let customCategory: String?
+    let subcategory: String?
     let rating: Double?
     let userRatingsTotal: Int?
     let notes: String? // Legacy field, will be migrated to publicNotes
@@ -33,7 +34,7 @@ struct Place: Codable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id = "_id"
         case name, description, address, location, website, phone, googlePlaceId
-        case photos, category, customCategory, rating, userRatingsTotal, notes, privateNotes, publicNotes, tags, reviews, openingHours
+        case photos, category, customCategory, subcategory, rating, userRatingsTotal, notes, privateNotes, publicNotes, tags, reviews, openingHours
         case priceLevel, circleId, addedBy, addedByUser, privacy, createdAt, updatedAt
     }
     
@@ -52,6 +53,7 @@ struct Place: Codable, Identifiable {
         self.photos = try container.decodeIfPresent([String].self, forKey: .photos)
         self.category = try container.decode(PlaceCategory.self, forKey: .category)
         self.customCategory = try container.decodeIfPresent(String.self, forKey: .customCategory)
+        self.subcategory = try container.decodeIfPresent(String.self, forKey: .subcategory)
         self.rating = try container.decodeIfPresent(Double.self, forKey: .rating)
         self.userRatingsTotal = try container.decodeIfPresent(Int.self, forKey: .userRatingsTotal)
         self.notes = try container.decodeIfPresent(String.self, forKey: .notes)
@@ -81,7 +83,7 @@ struct Place: Codable, Identifiable {
     init(id: String, name: String, description: String?, address: String,
          location: GeoLocation?, website: String?, phone: String?,
          googlePlaceId: String?, photos: [String]?, category: PlaceCategory,
-         customCategory: String?, rating: Double?, userRatingsTotal: Int?, notes: String?,
+         customCategory: String?, subcategory: String?, rating: Double?, userRatingsTotal: Int?, notes: String?,
          privateNotes: String?, publicNotes: String?, tags: [String]?,
          reviews: [PlaceReview]?, openingHours: [OpeningHour]?,
          priceLevel: PriceLevel?, circleId: String, addedBy: String,
@@ -97,6 +99,7 @@ struct Place: Codable, Identifiable {
         self.photos = photos
         self.category = category
         self.customCategory = customCategory
+        self.subcategory = subcategory
         self.rating = rating
         self.userRatingsTotal = userRatingsTotal
         self.notes = notes
@@ -123,6 +126,11 @@ struct Place: Codable, Identifiable {
         if category == .other, let customCategory = customCategory, !customCategory.isEmpty {
             return customCategory
         }
+        
+        if let subcategory = subcategory, !subcategory.isEmpty {
+            return "\(category.displayName) - \(subcategory)"
+        }
+        
         return category.displayName
     }
     
