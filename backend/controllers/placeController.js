@@ -3,7 +3,8 @@ const Place = require('../models/Place');
 const Circle = require('../models/Circle');
 const { Client } = require('@googlemaps/google-maps-services-js');
 const { googleMapsApiKey } = require('../config/config');
-const { storage } = require('../config/firebase');
+const { storage, getStorage } = require('../config/firebase');
+const { uploadImage } = require('../services/storage');
 const axios = require('axios');
 
 const googleMapsClient = new Client({});
@@ -43,8 +44,9 @@ async function downloadAndStoreGooglePlacePhoto(photoUrl, placeId, photoIndex) {
       stream.end(buffer);
     });
     
-    // Return the public URL
-    return `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+    // Return the public URL using Firebase Storage format
+    // This format works with both .appspot.com and .firebasestorage.app bucket names
+    return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(fileName)}?alt=media`;
   } catch (error) {
     console.error('Error downloading/storing Google Place photo:', error);
     // Return the original URL as fallback
@@ -346,8 +348,8 @@ exports.uploadPlacePhotos = async (req, res, next) => {
           // Make the file public
           await fileUpload.makePublic();
           
-          // Get the public URL
-          const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileUpload.name}`;
+          // Get the public URL using Firebase Storage format
+          const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(fileUpload.name)}?alt=media`;
           resolve(publicUrl);
         });
 

@@ -63,24 +63,20 @@ FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-$PROJECT_ID}
 
 # Firebase Storage Configuration
 echo -e "\n${BLUE}2. Firebase Storage Configuration${NC}"
-echo "Your Firebase Storage bucket name"
-echo "Common formats:"
-echo "  - ${FIREBASE_PROJECT_ID}.appspot.com (older format)"
-echo "  - ${FIREBASE_PROJECT_ID}.firebasestorage.app (newer format)"
-echo ""
-echo "Checking for existing buckets..."
+echo "Detecting Firebase Storage bucket..."
 
 # Try to list buckets and find the Firebase one
 EXISTING_BUCKET=$(gcloud storage buckets list --project=$FIREBASE_PROJECT_ID --format="value(name)" | grep -E "(${FIREBASE_PROJECT_ID}\.(appspot\.com|firebasestorage\.app))" | head -1)
 
 if [ -n "$EXISTING_BUCKET" ]; then
-    echo -e "${GREEN}Found existing bucket: $EXISTING_BUCKET${NC}"
-    read -p "FIREBASE_STORAGE_BUCKET [$EXISTING_BUCKET]: " FIREBASE_STORAGE_BUCKET
-    FIREBASE_STORAGE_BUCKET=${FIREBASE_STORAGE_BUCKET:-"$EXISTING_BUCKET"}
+    echo -e "${GREEN}✅ Found existing Firebase Storage bucket: $EXISTING_BUCKET${NC}"
+    FIREBASE_STORAGE_BUCKET="$EXISTING_BUCKET"
+    echo -e "${YELLOW}Using: $FIREBASE_STORAGE_BUCKET${NC}"
 else
-    echo "No existing Firebase bucket found."
-    read -p "FIREBASE_STORAGE_BUCKET [${FIREBASE_PROJECT_ID}.firebasestorage.app]: " FIREBASE_STORAGE_BUCKET
-    FIREBASE_STORAGE_BUCKET=${FIREBASE_STORAGE_BUCKET:-"${FIREBASE_PROJECT_ID}.firebasestorage.app"}
+    echo -e "${RED}❌ No Firebase Storage bucket found for project: $FIREBASE_PROJECT_ID${NC}"
+    echo "Please create a bucket in Firebase Console > Storage"
+    echo "Then run this script again."
+    exit 1
 fi
 
 # Service Account Configuration

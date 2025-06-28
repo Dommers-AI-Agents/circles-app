@@ -19,7 +19,9 @@ router.post('/image', async (req, res, next) => {
     console.log('Upload request received:', {
       hasImage: !!image,
       imageLength: image ? image.length : 0,
-      filename: filename
+      imageSizeMB: image ? (image.length / (1024 * 1024)).toFixed(2) : 0,
+      filename: filename,
+      userId: req.user?.uid || 'unknown'
     });
     
     if (!image) {
@@ -28,6 +30,21 @@ router.post('/image', async (req, res, next) => {
         message: 'No image data provided'
       });
     }
+    
+    // Check if image is too large (should be much smaller now with compression)
+    const imageSizeMB = image.length / (1024 * 1024);
+    const imageSizeKB = image.length / 1024;
+    
+    if (imageSizeMB > 5) {
+      console.error(`Image unexpectedly large: ${imageSizeMB.toFixed(2)} MB`);
+      return res.status(413).json({
+        success: false,
+        message: `Image too large: ${imageSizeMB.toFixed(2)} MB. Images should be under 1 MB after compression.`
+      });
+    }
+    
+    // Log expected small size
+    console.log(`Processing compressed image: ${imageSizeKB.toFixed(0)} KB`);
     
     // Upload image to Firebase Storage
     const imageUrl = await uploadImage(image, filename || 'image.jpg');
@@ -40,9 +57,20 @@ router.post('/image', async (req, res, next) => {
     });
   } catch (error) {
     console.error('Error in image upload:', error);
+    console.error('Error stack:', error.stack);
+    
+    // Check for specific error types
+    if (error.code === 'LIMIT_FILE_SIZE' || error.message?.includes('too large')) {
+      return res.status(413).json({
+        success: false,
+        message: 'Request entity too large. Please reduce image size.'
+      });
+    }
+    
     res.status(500).json({
       success: false,
-      message: 'Failed to upload image'
+      message: 'Failed to upload image',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });

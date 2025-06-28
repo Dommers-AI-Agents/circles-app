@@ -117,10 +117,13 @@ const deleteImage = async (imageUrl) => {
       if (match) {
         filename = decodeURIComponent(match[1]);
       }
-    } else {
-      // Handle old format
-      const urlParts = imageUrl.split('/');
-      filename = `circles/${urlParts[urlParts.length - 1]}`;
+    } else if (imageUrl.includes('storage.googleapis.com')) {
+      // Handle storage.googleapis.com format
+      // Extract filename from URL like: https://storage.googleapis.com/bucket-name/path/to/file.jpg
+      const match = imageUrl.match(/storage\.googleapis\.com\/[^\/]+\/(.+)$/);
+      if (match) {
+        filename = match[1];
+      }
     }
     
     if (!filename) {

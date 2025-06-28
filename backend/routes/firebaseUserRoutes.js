@@ -8,7 +8,8 @@ const {
   sendFriendRequest,
   getFriendRequests,
   respondToFriendRequest,
-  removeFriend
+  removeFriend,
+  reorderCircles
 } = require('../controllers/firebaseUserController');
 const { protect } = require('../middleware/firebaseAuth');
 
@@ -30,6 +31,9 @@ router.route('/me/friends')
 
 router.route('/me/friend-requests')
   .get(getFriendRequests);
+
+router.route('/me/circles/reorder')
+  .put(reorderCircles);
 
 router.route('/friend-request')
   .post(sendFriendRequest);

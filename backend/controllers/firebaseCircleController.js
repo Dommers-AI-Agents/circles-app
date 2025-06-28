@@ -35,13 +35,43 @@ exports.getMyCircles = async (req, res, next) => {
 
     const circles = serializeQuerySnapshot(snapshot);
     
-    // Sort in memory for now
-    circles.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    // Get user's circle order preference
+    const userDoc = await db.collection(COLLECTIONS.USERS).doc(req.user.uid).get();
+    const userData = userDoc.exists ? serializeDoc(userDoc) : null;
+    const circleOrder = userData?.circleOrder || [];
+    
+    // Sort circles based on user's preferred order
+    let sortedCircles;
+    if (circleOrder.length > 0) {
+      // Create a map for quick lookup
+      const circlesMap = new Map();
+      circles.forEach(circle => {
+        circlesMap.set(circle.id, circle);
+      });
+      
+      // Sort based on the order array
+      sortedCircles = [];
+      circleOrder.forEach(circleId => {
+        const circle = circlesMap.get(circleId);
+        if (circle) {
+          sortedCircles.push(circle);
+          circlesMap.delete(circleId);
+        }
+      });
+      
+      // Add any remaining circles not in the order array (newly created circles)
+      circlesMap.forEach(circle => {
+        sortedCircles.push(circle);
+      });
+    } else {
+      // Fallback to date-based sorting
+      sortedCircles = circles.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    }
 
     res.status(200).json({
       success: true,
-      count: circles.length,
-      circles: circles
+      count: sortedCircles.length,
+      circles: sortedCircles
     });
   } catch (error) {
     console.error('Error fetching user circles:', error);

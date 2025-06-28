@@ -32,7 +32,8 @@ app.use(cors({
   origin: true, // Allow all origins in development
   credentials: true
 }));
-app.use(express.json({ limit: '10mb' })); // Increase limit for image uploads
+app.use(express.json({ limit: '50mb' })); // Increased limit for image uploads
+app.use(express.urlencoded({ limit: '50mb', extended: true })); // Also handle URL encoded data
 app.use(morgan('combined'));
 
 // Images are now served from Firebase Storage, not local filesystem

@@ -30,6 +30,7 @@ const createUser = (userData) => {
     friends: userData.friends || [],
     friendRequests: userData.friendRequests || [],
     linkedProviders: userData.linkedProviders || {},
+    circleOrder: userData.circleOrder || [],
     createdAt: now,
     updatedAt: now,
     // Firebase UID from authentication
@@ -82,7 +83,10 @@ const createPlace = (placeData, circleId, addedBy) => {
     googlePlaceId: placeData.googlePlaceId || null,
     photos: placeData.photos || [],
     category: placeData.category, // restaurant, cafe, bar, hotel, retail, service, attraction, entertainment, healthcare, fitness, education, outdoor, transport, finance, other
+    customCategory: placeData.customCategory || null,
+    subcategory: placeData.subcategory || null,
     rating: placeData.rating || null,
+    userRatingsTotal: placeData.userRatingsTotal || null,
     notes: placeData.notes || null,
     tags: placeData.tags || [],
     reviews: placeData.reviews || [],
@@ -213,7 +217,8 @@ const validatePlace = (placeData) => {
   
   const validCategories = ['restaurant', 'cafe', 'bar', 'hotel', 'retail', 'service', 
                           'attraction', 'entertainment', 'healthcare', 'fitness', 
-                          'education', 'outdoor', 'transport', 'finance', 'other'];
+                          'education', 'outdoor', 'transport', 'finance', 'home', 
+                          'work', 'other'];
   if (placeData.category && !validCategories.includes(placeData.category)) {
     errors.push('Invalid place category');
   }

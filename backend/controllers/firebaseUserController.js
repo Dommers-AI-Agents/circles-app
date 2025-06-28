@@ -554,3 +554,58 @@ exports.searchUsers = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Reorder user's circles
+// @route   PUT /api/users/me/circles/reorder
+// @access  Private
+exports.reorderCircles = async (req, res, next) => {
+  try {
+    const { circleIds } = req.body;
+    
+    if (!circleIds || !Array.isArray(circleIds)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide an array of circle IDs'
+      });
+    }
+    
+    // Verify all circle IDs belong to the user
+    const circlesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
+      .where('owner', '==', req.user.uid)
+      .get();
+    
+    const userCircleIds = [];
+    circlesSnapshot.forEach(doc => {
+      userCircleIds.push(doc.id);
+    });
+    
+    // Check if all provided IDs exist in user's circles
+    const allIdsExist = circleIds.every(id => userCircleIds.includes(id));
+    
+    if (!allIdsExist) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid circle IDs - some circles do not belong to this user'
+      });
+    }
+    
+    // Update the user document with the new circle order
+    const userRef = db.collection(COLLECTIONS.USERS).doc(req.user.uid);
+    await userRef.update({
+      circleOrder: circleIds,
+      updatedAt: new Date().toISOString()
+    });
+    
+    console.log('Updated circle order for user:', req.user.uid);
+    console.log('New order:', circleIds);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Circles reordered successfully'
+    });
+    
+  } catch (error) {
+    console.error('Error reordering circles:', error);
+    next(error);
+  }
+};
