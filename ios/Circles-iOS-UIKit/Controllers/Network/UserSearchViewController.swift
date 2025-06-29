@@ -349,7 +349,16 @@ class UserSearchCell: UITableViewCell {
     
     // MARK: - Configure
     func configure(with user: User) {
-        nameLabel.text = user.displayName
+        // Display full name if available, otherwise display name
+        if let firstName = user.firstName, let lastName = user.lastName {
+            nameLabel.text = "\(firstName) \(lastName)"
+        } else if let firstName = user.firstName {
+            nameLabel.text = firstName
+        } else if let lastName = user.lastName {
+            nameLabel.text = lastName
+        } else {
+            nameLabel.text = user.displayName
+        }
         emailLabel.text = user.email
         
         // Set profile image

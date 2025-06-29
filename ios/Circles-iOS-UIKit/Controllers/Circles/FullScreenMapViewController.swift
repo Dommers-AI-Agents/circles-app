@@ -2,16 +2,28 @@ import UIKit
 import GoogleMaps
 import GooglePlaces
 
+protocol FullScreenMapViewControllerDelegate: AnyObject {
+    func mapViewController(_ controller: FullScreenMapViewController, didSelectPlace place: Place)
+}
+
+enum MapViewMode {
+    case circle
+    case allPlaces
+}
+
 class FullScreenMapViewController: UIViewController {
     
     // MARK: - Properties
-    private let places: [Place]
-    private let initialCamera: GMSCameraPosition
+    private var places: [Place]
+    private var initialCamera: GMSCameraPosition
     private var markerPlaceMap: [GMSMarker: Place] = [:]
     private var selectedCategory: PlaceCategory?
     private var filteredPlaces: [Place] = []
     private var isDropdownOpen = false
     private var dropdownHeightConstraint: NSLayoutConstraint?
+    
+    weak var delegate: FullScreenMapViewControllerDelegate?
+    var viewMode: MapViewMode = .circle
     
     // MARK: - UI Elements
     private let mapView: GMSMapView = {
@@ -100,13 +112,40 @@ class FullScreenMapViewController: UIViewController {
     }()
     
     // MARK: - Init
-    init(places: [Place], initialCamera: GMSCameraPosition, selectedCategory: PlaceCategory? = nil) {
+    init(places: [Place] = [], initialCamera: GMSCameraPosition? = nil, selectedCategory: PlaceCategory? = nil) {
         self.places = places
-        self.initialCamera = initialCamera
         self.selectedCategory = selectedCategory
         self.filteredPlaces = places
+        
+        // Calculate initial camera position
+        if let camera = initialCamera {
+            self.initialCamera = camera
+        } else if let firstPlace = places.first(where: { $0.location != nil }),
+                  let location = firstPlace.location?.clLocation {
+            self.initialCamera = GMSCameraPosition.camera(
+                withLatitude: location.coordinate.latitude,
+                longitude: location.coordinate.longitude,
+                zoom: 14
+            )
+        } else {
+            // Default to San Francisco if no location available
+            self.initialCamera = GMSCameraPosition.camera(
+                withLatitude: 37.7749,
+                longitude: -122.4194,
+                zoom: 12
+            )
+        }
+        
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .fullScreen
+    }
+    
+    // MARK: - Public Methods
+    func updatePlaces(_ newPlaces: [Place]) {
+        self.places = newPlaces
+        self.filteredPlaces = newPlaces
+        updatePlacesCount()
+        addAnnotationsToMap()
     }
     
     required init?(coder: NSCoder) {
@@ -137,6 +176,11 @@ class FullScreenMapViewController: UIViewController {
         // Add close button
         view.addSubview(closeButton)
         closeButton.addTarget(self, action: #selector(closeButtonTapped), for: .touchUpInside)
+        
+        // Hide close button if in allPlaces mode
+        if viewMode == .allPlaces {
+            closeButton.isHidden = true
+        }
         
         // Add places count label
         view.addSubview(placesCountLabel)
@@ -434,11 +478,14 @@ class FullScreenMapViewController: UIViewController {
             filteredPlaces = places
         }
         
-        // Update places count label
-        placesCountLabel.text = "\(filteredPlaces.count) places"
+        updatePlacesCount()
         
         // Update map annotations
         addAnnotationsToMap()
+    }
+    
+    private func updatePlacesCount() {
+        placesCountLabel.text = "\(filteredPlaces.count) places"
     }
     
     private func updateFilterButtonTitle() {
@@ -455,13 +502,18 @@ class FullScreenMapViewController: UIViewController {
         
         // View Details
         actionSheet.addAction(UIAlertAction(title: "View Details", style: .default) { [weak self] _ in
-            self?.dismiss(animated: true) {
-                // The presenting view controller should handle navigation to place details
-                NotificationCenter.default.post(
-                    name: Notification.Name("ShowPlaceDetails"),
-                    object: nil,
-                    userInfo: ["place": place]
-                )
+            if self?.viewMode == .allPlaces {
+                // Use delegate for allPlaces mode
+                self?.delegate?.mapViewController(self!, didSelectPlace: place)
+            } else {
+                // Use notification for circle mode
+                self?.dismiss(animated: true) {
+                    NotificationCenter.default.post(
+                        name: Notification.Name("ShowPlaceDetails"),
+                        object: nil,
+                        userInfo: ["place": place]
+                    )
+                }
             }
         })
         

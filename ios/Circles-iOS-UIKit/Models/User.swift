@@ -4,6 +4,9 @@ struct User: Codable, Identifiable {
     let id: String
     let email: String
     let displayName: String
+    let firstName: String?
+    let lastName: String?
+    let phoneNumber: String?
     let profilePicture: String?
     let bio: String?
     let location: String?
@@ -15,14 +18,17 @@ struct User: Codable, Identifiable {
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
-        case email, displayName, profilePicture, bio, location, friends, friendRequests, circleOrder, createdAt, connectionStatus
+        case email, displayName, firstName, lastName, phoneNumber, profilePicture, bio, location, friends, friendRequests, circleOrder, createdAt, connectionStatus
     }
     
     // Convenience initializer for creating User objects directly
-    init(id: String, email: String, displayName: String, profilePicture: String?, bio: String?, location: String?, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, createdAt: Date, connectionStatus: String? = nil) {
+    init(id: String, email: String, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, createdAt: Date, connectionStatus: String? = nil) {
         self.id = id
         self.email = email
         self.displayName = displayName
+        self.firstName = firstName
+        self.lastName = lastName
+        self.phoneNumber = phoneNumber
         self.profilePicture = profilePicture
         self.bio = bio
         self.location = location
@@ -40,6 +46,9 @@ struct User: Codable, Identifiable {
         id = try container.decode(String.self, forKey: .id)
         email = try container.decode(String.self, forKey: .email)
         displayName = try container.decode(String.self, forKey: .displayName)
+        firstName = try container.decodeIfPresent(String.self, forKey: .firstName)
+        lastName = try container.decodeIfPresent(String.self, forKey: .lastName)
+        phoneNumber = try container.decodeIfPresent(String.self, forKey: .phoneNumber)
         profilePicture = try container.decodeIfPresent(String.self, forKey: .profilePicture)
         bio = try container.decodeIfPresent(String.self, forKey: .bio)
         location = try container.decodeIfPresent(String.self, forKey: .location)

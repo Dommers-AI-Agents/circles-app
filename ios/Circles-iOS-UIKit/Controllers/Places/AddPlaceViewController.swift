@@ -30,6 +30,7 @@ class AddPlaceViewController: UIViewController {
     private var selectedGooglePlaceDetails: GooglePlaceDetails?
     private var isCategoryDropdownVisible = false
     private var categoryDropdownItems: [(category: PlaceCategory, subcategory: String?)] = []
+    private var searchTimer: Timer?
     
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
@@ -920,6 +921,119 @@ class AddPlaceViewController: UIViewController {
         // Get privacy setting from segmented control
         let privacy: PlacePrivacy = privacySegmentedControl.selectedSegmentIndex == 0 ? .followCirclePrivacy : .private
         
+        // First check for duplicates
+        let checkingAlert = UIAlertController(title: "Checking...", message: "Verifying place doesn't already exist", preferredStyle: .alert)
+        present(checkingAlert, animated: true)
+        
+        // Check for duplicate places
+        checkForDuplicatePlace(name: name, address: address, googlePlaceId: selectedGooglePlaceDetails?.placeID) { [weak self] duplicatePlace, duplicateCircle in
+            DispatchQueue.main.async {
+                checkingAlert.dismiss(animated: true) {
+                    if let duplicate = duplicatePlace, let circle = duplicateCircle {
+                        // Show alert about duplicate
+                        let alert = UIAlertController(
+                            title: "Place Already Exists",
+                            message: "You already have \"\(duplicate.name)\" in your \"\(circle.name)\" circle. Would you like to view it?",
+                            preferredStyle: .alert
+                        )
+                        
+                        alert.addAction(UIAlertAction(title: "View Place", style: .default) { _ in
+                            // Navigate to the place detail
+                            self?.navigationController?.popViewController(animated: false)
+                            NotificationCenter.default.post(
+                                name: Notification.Name("ShowPlaceDetails"),
+                                object: nil,
+                                userInfo: ["place": duplicate]
+                            )
+                        })
+                        
+                        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+                        
+                        self?.present(alert, animated: true)
+                    } else {
+                        // No duplicate found, proceed with creation
+                        self?.proceedWithPlaceCreation(
+                            name: name,
+                            address: address,
+                            description: description,
+                            category: category,
+                            customCategory: customCategory,
+                            subcategory: subcategory,
+                            privacy: privacy
+                        )
+                    }
+                }
+            }
+        }
+    }
+    
+    private func checkForDuplicatePlace(name: String, address: String, googlePlaceId: String?, completion: @escaping (Place?, Circle?) -> Void) {
+        // Get all circles for the user
+        CircleService.shared.fetchUserCircles { result in
+            switch result {
+            case .success(let circles):
+                let group = DispatchGroup()
+                var duplicatePlace: Place?
+                var duplicateCircle: Circle?
+                
+                // Check each circle for places
+                for circle in circles {
+                    group.enter()
+                    PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { placeResult in
+                        defer { group.leave() }
+                        
+                        if case .success(let places) = placeResult {
+                            // Check for duplicate by googlePlaceId first (most accurate)
+                            if let googleId = googlePlaceId, !googleId.isEmpty {
+                                if let match = places.first(where: { $0.googlePlaceId == googleId }) {
+                                    duplicatePlace = match
+                                    duplicateCircle = circle
+                                    return
+                                }
+                            }
+                            
+                            // Check by name and address similarity
+                            for place in places {
+                                // Exact name match
+                                if place.name.lowercased() == name.lowercased() {
+                                    // Check if addresses are similar
+                                    let placeAddressLower = place.address.lowercased()
+                                    let newAddressLower = address.lowercased()
+                                    
+                                    // Simple similarity check - if addresses share significant components
+                                    let placeComponents = placeAddressLower.components(separatedBy: CharacterSet(charactersIn: ", "))
+                                    let newComponents = newAddressLower.components(separatedBy: CharacterSet(charactersIn: ", "))
+                                    
+                                    let commonComponents = placeComponents.filter { component in
+                                        newComponents.contains { $0.contains(component) || component.contains($0) }
+                                    }
+                                    
+                                    // If at least 2 address components match, consider it a duplicate
+                                    if commonComponents.count >= 2 {
+                                        duplicatePlace = place
+                                        duplicateCircle = circle
+                                        return
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                group.notify(queue: .main) {
+                    completion(duplicatePlace, duplicateCircle)
+                }
+                
+            case .failure:
+                // If we can't check for duplicates, allow creation
+                completion(nil, nil)
+            }
+        }
+    }
+    
+    private func proceedWithPlaceCreation(name: String, address: String, description: String, 
+                                        category: PlaceCategory, customCategory: String?, 
+                                        subcategory: String?, privacy: PlacePrivacy) {
         // Create place
         let loadingAlert = UIAlertController(title: "Creating Place", message: "Please wait...", preferredStyle: .alert)
         present(loadingAlert, animated: true)
@@ -2179,8 +2293,24 @@ extension AddPlaceViewController: GMSMapViewDelegate {
 
 extension AddPlaceViewController: UISearchBarDelegate {
     func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
-        performGooglePlacesSearch(searchText)
-        searchResultsTableView.isHidden = searchText.isEmpty
+        // Cancel previous timer
+        searchTimer?.invalidate()
+        
+        // Hide results if search is empty
+        if searchText.isEmpty {
+            searchResults = []
+            searchResultsTableView.reloadData()
+            searchResultsTableView.isHidden = true
+            return
+        }
+        
+        // Show table view immediately for better UX
+        searchResultsTableView.isHidden = false
+        
+        // Debounce search by 0.3 seconds
+        searchTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
+            self?.performGooglePlacesSearch(searchText)
+        }
     }
     
     func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
@@ -2207,6 +2337,25 @@ extension AddPlaceViewController {
         let filter = GMSAutocompleteFilter()
         filter.type = .noFilter
         
+        // Create location bounds for bias (25 mile radius)
+        if let userLocation = locationManager.location {
+            // Convert 25 miles to degrees (approximate)
+            // 1 degree latitude = ~69 miles, so 25 miles = ~0.36 degrees
+            let latDelta = 0.36
+            let lonDelta = 0.36
+            
+            let northEast = CLLocationCoordinate2D(
+                latitude: userLocation.coordinate.latitude + latDelta,
+                longitude: userLocation.coordinate.longitude + lonDelta
+            )
+            let southWest = CLLocationCoordinate2D(
+                latitude: userLocation.coordinate.latitude - latDelta,
+                longitude: userLocation.coordinate.longitude - lonDelta
+            )
+            
+            filter.locationBias = GMSPlaceRectangularLocationOption(northEast, southWest)
+        }
+        
         placesClient.findAutocompletePredictions(
             fromQuery: query,
             filter: filter,
@@ -2214,8 +2363,21 @@ extension AddPlaceViewController {
         ) { [weak self] (results, error) in
             guard let self = self else { return }
             
+            if let error = error {
+                print("🔴 Google Places search error: \(error.localizedDescription)")
+                print("🔴 Error details: \(error)")
+                self.searchResults = []
+                self.searchResultsTableView.reloadData()
+                return
+            }
+            
             if let results = results {
+                print("✅ Google Places found \(results.count) results for query: \(query)")
                 self.searchResults = results
+                self.searchResultsTableView.reloadData()
+            } else {
+                print("⚠️ Google Places returned nil results")
+                self.searchResults = []
                 self.searchResultsTableView.reloadData()
             }
         }

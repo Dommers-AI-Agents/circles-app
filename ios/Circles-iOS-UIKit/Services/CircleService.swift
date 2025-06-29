@@ -55,6 +55,22 @@ class CircleService {
         }
     }
     
+    func fetchUserCircles(userId: String, completion: @escaping (Result<[Circle], Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "users/\(userId)/circles",
+            method: .get,
+            requiresAuth: true
+        ) { [weak self] (result: Result<CirclesResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.circles))
+            case .failure(let error):
+                let mappedError = self?.mapAPIErrorToCircleError(error)
+                completion(.failure(mappedError ?? error))
+            }
+        }
+    }
+    
     func fetchCircleById(id: String, completion: @escaping (Result<Circle, Error>) -> Void) {
         APIService.shared.request(
             endpoint: "circles/\(id)",

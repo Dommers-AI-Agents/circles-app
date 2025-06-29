@@ -460,8 +460,16 @@ class ProfileViewController: UIViewController {
             profileImageView.tintColor = Constants.Colors.primary
         }
         
-        // Display user's name
-        displayNameLabel.text = user.displayName
+        // Display user's name - show full name if available, otherwise display name
+        var displayName = user.displayName
+        if let firstName = user.firstName, let lastName = user.lastName {
+            displayName = "\(firstName) \(lastName)"
+        } else if let firstName = user.firstName {
+            displayName = firstName
+        } else if let lastName = user.lastName {
+            displayName = lastName
+        }
+        displayNameLabel.text = displayName
         
         emailLabel.text = user.email
         locationLabel.text = user.location

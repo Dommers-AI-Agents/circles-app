@@ -10,8 +10,23 @@ class CirclesHomeViewController: UIViewController {
     private var networkCircles: [Circle] = []
     private var isShowingNetworkCircles = false
     private let refreshControl = UIRefreshControl()
+    private var allPlaces: [Place] = []
+    private var filteredPlaces: [Place] = []
+    private var isSearching = false
+    private var isShowingMap = false
+    private var selectedCategory: PlaceCategory?
+    private var selectedCircleFilter: Circle?
     
     // MARK: - UI Elements
+    private let searchBar: UISearchBar = {
+        let searchBar = UISearchBar()
+        searchBar.placeholder = "Search places..."
+        searchBar.searchBarStyle = .minimal
+        searchBar.backgroundColor = Constants.Colors.background
+        searchBar.translatesAutoresizingMaskIntoConstraints = false
+        return searchBar
+    }()
+    
     private let quickAccessContainer: UIView = {
         let view = UIView()
         view.backgroundColor = Constants.Colors.white
@@ -125,6 +140,7 @@ class CirclesHomeViewController: UIViewController {
         tableView.backgroundColor = Constants.Colors.background
         tableView.separatorStyle = .none
         tableView.register(CircleTableViewCell.self, forCellReuseIdentifier: "CircleCell")
+        tableView.register(PlaceSearchResultCell.self, forCellReuseIdentifier: "PlaceSearchResultCell")
         tableView.translatesAutoresizingMaskIntoConstraints = false
         return tableView
     }()
@@ -166,6 +182,135 @@ class CirclesHomeViewController: UIViewController {
         return button
     }()
     
+    private let quickAddPlaceButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "plus.circle.fill"), for: .normal)
+        button.setTitle(" Add Place", for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        button.backgroundColor = Constants.Colors.primary
+        button.setTitleColor(.white, for: .normal)
+        button.tintColor = .white
+        button.layer.cornerRadius = 20
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addShadow(opacity: 0.2, radius: 5, offset: CGSize(width: 0, height: 2))
+        return button
+    }()
+    
+    private let mapToggleButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "map"), for: .normal)
+        button.tintColor = Constants.Colors.primary
+        button.backgroundColor = Constants.Colors.tertiaryBackground
+        button.layer.cornerRadius = 18
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let mapContainerView: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.background
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isHidden = true
+        return view
+    }()
+    
+    private var mapViewController: FullScreenMapViewController?
+    
+    private let filterStackView: UIStackView = {
+        let stack = UIStackView()
+        stack.axis = .horizontal
+        stack.spacing = 12
+        stack.distribution = .fillProportionally
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.isHidden = true
+        return stack
+    }()
+    
+    private let categoryFilterButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("All Categories", for: .normal)
+        button.setImage(UIImage(systemName: "chevron.down"), for: .normal)
+        button.semanticContentAttribute = .forceRightToLeft
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+        button.backgroundColor = Constants.Colors.secondaryBackground
+        button.layer.cornerRadius = 16
+        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let circleFilterButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("All Circles", for: .normal)
+        button.setImage(UIImage(systemName: "chevron.down"), for: .normal)
+        button.semanticContentAttribute = .forceRightToLeft
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+        button.backgroundColor = Constants.Colors.secondaryBackground
+        button.layer.cornerRadius = 16
+        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    // Dropdown views for filters
+    private let categoryDropdownView: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.secondaryBackground
+        view.layer.cornerRadius = 12
+        view.layer.shadowColor = UIColor.black.cgColor
+        view.layer.shadowOpacity = 0.15
+        view.layer.shadowOffset = CGSize(width: 0, height: 4)
+        view.layer.shadowRadius = 8
+        view.isHidden = true
+        view.alpha = 0
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let categoryDropdownTableView: UITableView = {
+        let tableView = UITableView()
+        tableView.backgroundColor = .clear
+        tableView.separatorStyle = .none
+        tableView.rowHeight = 44
+        tableView.showsVerticalScrollIndicator = false
+        tableView.translatesAutoresizingMaskIntoConstraints = false
+        tableView.layer.cornerRadius = 12
+        tableView.clipsToBounds = true
+        return tableView
+    }()
+    
+    private let circleDropdownView: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.secondaryBackground
+        view.layer.cornerRadius = 12
+        view.layer.shadowColor = UIColor.black.cgColor
+        view.layer.shadowOpacity = 0.15
+        view.layer.shadowOffset = CGSize(width: 0, height: 4)
+        view.layer.shadowRadius = 8
+        view.isHidden = true
+        view.alpha = 0
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let circleDropdownTableView: UITableView = {
+        let tableView = UITableView()
+        tableView.backgroundColor = .clear
+        tableView.separatorStyle = .none
+        tableView.rowHeight = 44
+        tableView.showsVerticalScrollIndicator = false
+        tableView.translatesAutoresizingMaskIntoConstraints = false
+        tableView.layer.cornerRadius = 12
+        tableView.clipsToBounds = true
+        return tableView
+    }()
+    
+    private var isCategoryDropdownOpen = false
+    private var isCircleDropdownOpen = false
+    private var availableCategories: [PlaceCategory] = []
+    private var categoryDropdownHeightConstraint: NSLayoutConstraint?
+    private var circleDropdownHeightConstraint: NSLayoutConstraint?
+    
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -173,6 +318,7 @@ class CirclesHomeViewController: UIViewController {
         setupTableView()
         setupNotifications()
         checkForNewSuggestions()
+        setupSearchBar()
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -218,6 +364,7 @@ class CirclesHomeViewController: UIViewController {
         // Setup quick access buttons
         setupQuickAccessButtons()
         
+        view.addSubview(searchBar)
         view.addSubview(quickAccessContainer)
         quickAccessContainer.addSubview(homeCard)
         quickAccessContainer.addSubview(workCard)
@@ -225,19 +372,49 @@ class CirclesHomeViewController: UIViewController {
         homeCard.addSubview(homeNavigateButton)
         workCard.addSubview(workButton)
         workCard.addSubview(workNavigateButton)
+        view.addSubview(quickAddPlaceButton)
+        view.addSubview(mapToggleButton)
         view.addSubview(filterContainer)
+        view.addSubview(mapContainerView)
+        view.addSubview(filterStackView)
+        filterStackView.addArrangedSubview(categoryFilterButton)
+        filterStackView.addArrangedSubview(circleFilterButton)
         filterContainer.addSubview(myNetworkCirclesButton)
         filterContainer.addSubview(suggestionsButton)
         filterContainer.addSubview(suggestionsBadge)
         view.addSubview(tableView)
         view.addSubview(emptyStateView)
         
+        // Add dropdown views
+        view.addSubview(categoryDropdownView)
+        view.addSubview(circleDropdownView)
+        categoryDropdownView.addSubview(categoryDropdownTableView)
+        circleDropdownView.addSubview(circleDropdownTableView)
+        
         NSLayoutConstraint.activate([
+            // Search bar
+            searchBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            searchBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Constants.Spacing.medium),
+            searchBar.trailingAnchor.constraint(equalTo: quickAddPlaceButton.leadingAnchor, constant: -Constants.Spacing.small),
+            searchBar.heightAnchor.constraint(equalToConstant: 44),
+            
             // Quick access container
-            quickAccessContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            quickAccessContainer.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: Constants.Spacing.small),
             quickAccessContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             quickAccessContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             quickAccessContainer.heightAnchor.constraint(equalToConstant: 80),
+            
+            // Quick Add Place button
+            quickAddPlaceButton.trailingAnchor.constraint(equalTo: mapToggleButton.leadingAnchor, constant: -Constants.Spacing.small),
+            quickAddPlaceButton.centerYAnchor.constraint(equalTo: searchBar.centerYAnchor),
+            quickAddPlaceButton.heightAnchor.constraint(equalToConstant: 40),
+            quickAddPlaceButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 120),
+            
+            // Map toggle button
+            mapToggleButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.large),
+            mapToggleButton.centerYAnchor.constraint(equalTo: searchBar.centerYAnchor),
+            mapToggleButton.widthAnchor.constraint(equalToConstant: 36),
+            mapToggleButton.heightAnchor.constraint(equalToConstant: 36),
             
             // Home card
             homeCard.leadingAnchor.constraint(equalTo: quickAccessContainer.leadingAnchor, constant: Constants.Spacing.large),
@@ -303,6 +480,18 @@ class CirclesHomeViewController: UIViewController {
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             
+            // Map container
+            mapContainerView.topAnchor.constraint(equalTo: filterStackView.bottomAnchor, constant: Constants.Spacing.small),
+            mapContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            mapContainerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            mapContainerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            
+            // Filter stack
+            filterStackView.topAnchor.constraint(equalTo: filterContainer.bottomAnchor, constant: Constants.Spacing.small),
+            filterStackView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Constants.Spacing.large),
+            filterStackView.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -Constants.Spacing.large),
+            filterStackView.heightAnchor.constraint(equalToConstant: 36),
+            
             emptyStateView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             emptyStateView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             emptyStateView.widthAnchor.constraint(equalTo: view.widthAnchor, multiplier: 0.8),
@@ -321,10 +510,62 @@ class CirclesHomeViewController: UIViewController {
             createCircleButton.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
             createCircleButton.widthAnchor.constraint(equalTo: emptyStateView.widthAnchor, multiplier: 0.8),
             createCircleButton.heightAnchor.constraint(equalToConstant: 44),
-            createCircleButton.bottomAnchor.constraint(equalTo: emptyStateView.bottomAnchor)
+            createCircleButton.bottomAnchor.constraint(equalTo: emptyStateView.bottomAnchor),
+            
+            // Category dropdown
+            categoryDropdownView.topAnchor.constraint(equalTo: categoryFilterButton.bottomAnchor, constant: 4),
+            categoryDropdownView.leadingAnchor.constraint(equalTo: categoryFilterButton.leadingAnchor),
+            categoryDropdownView.widthAnchor.constraint(equalToConstant: 200),
+            
+            categoryDropdownTableView.topAnchor.constraint(equalTo: categoryDropdownView.topAnchor),
+            categoryDropdownTableView.leadingAnchor.constraint(equalTo: categoryDropdownView.leadingAnchor),
+            categoryDropdownTableView.trailingAnchor.constraint(equalTo: categoryDropdownView.trailingAnchor),
+            categoryDropdownTableView.bottomAnchor.constraint(equalTo: categoryDropdownView.bottomAnchor),
+            
+            // Circle dropdown
+            circleDropdownView.topAnchor.constraint(equalTo: circleFilterButton.bottomAnchor, constant: 4),
+            circleDropdownView.leadingAnchor.constraint(equalTo: circleFilterButton.leadingAnchor),
+            circleDropdownView.widthAnchor.constraint(equalToConstant: 200),
+            
+            circleDropdownTableView.topAnchor.constraint(equalTo: circleDropdownView.topAnchor),
+            circleDropdownTableView.leadingAnchor.constraint(equalTo: circleDropdownView.leadingAnchor),
+            circleDropdownTableView.trailingAnchor.constraint(equalTo: circleDropdownView.trailingAnchor),
+            circleDropdownTableView.bottomAnchor.constraint(equalTo: circleDropdownView.bottomAnchor)
         ])
         
+        // Create height constraints for dropdowns
+        categoryDropdownHeightConstraint = categoryDropdownView.heightAnchor.constraint(equalToConstant: 0)
+        categoryDropdownHeightConstraint?.isActive = true
+        
+        circleDropdownHeightConstraint = circleDropdownView.heightAnchor.constraint(equalToConstant: 0)
+        circleDropdownHeightConstraint?.isActive = true
+        
         createCircleButton.addTarget(self, action: #selector(createCircleButtonTapped), for: .touchUpInside)
+        quickAddPlaceButton.addTarget(self, action: #selector(quickAddPlaceButtonTapped), for: .touchUpInside)
+        mapToggleButton.addTarget(self, action: #selector(mapToggleButtonTapped), for: .touchUpInside)
+        categoryFilterButton.addTarget(self, action: #selector(categoryFilterButtonTapped), for: .touchUpInside)
+        circleFilterButton.addTarget(self, action: #selector(circleFilterButtonTapped), for: .touchUpInside)
+        
+        setupMapView()
+    }
+    
+    private func setupMapView() {
+        let mapVC = FullScreenMapViewController()
+        mapVC.viewMode = .allPlaces
+        mapVC.delegate = self
+        
+        addChild(mapVC)
+        mapContainerView.addSubview(mapVC.view)
+        mapVC.view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            mapVC.view.topAnchor.constraint(equalTo: mapContainerView.topAnchor),
+            mapVC.view.leadingAnchor.constraint(equalTo: mapContainerView.leadingAnchor),
+            mapVC.view.trailingAnchor.constraint(equalTo: mapContainerView.trailingAnchor),
+            mapVC.view.bottomAnchor.constraint(equalTo: mapContainerView.bottomAnchor)
+        ])
+        mapVC.didMove(toParent: self)
+        
+        mapViewController = mapVC
     }
     
     private func setupTableView() {
@@ -336,6 +577,19 @@ class CirclesHomeViewController: UIViewController {
         
         refreshControl.addTarget(self, action: #selector(refreshData), for: .valueChanged)
         tableView.refreshControl = refreshControl
+        
+        // Setup dropdown table views
+        categoryDropdownTableView.delegate = self
+        categoryDropdownTableView.dataSource = self
+        categoryDropdownTableView.register(UITableViewCell.self, forCellReuseIdentifier: "CategoryDropdownCell")
+        
+        circleDropdownTableView.delegate = self
+        circleDropdownTableView.dataSource = self
+        circleDropdownTableView.register(UITableViewCell.self, forCellReuseIdentifier: "CircleDropdownCell")
+    }
+    
+    private func setupSearchBar() {
+        searchBar.delegate = self
     }
     
     private func setupQuickAccessButtons() {
@@ -415,11 +669,13 @@ class CirclesHomeViewController: UIViewController {
                         print("Circle: \(circle.name), coverImage: \(circle.coverImage ?? "nil")")
                     }
                     self?.circles = circles
+                    self?.fetchAllPlacesFromCircles()
                 case .failure(let error):
                     print("❌ Error fetching circles: \(error.localizedDescription)")
                     print("❌ Full error: \(error)")
                     // Don't use sample circles - show empty state instead
                     self?.circles = []
+                    self?.allPlaces = []
                 }
                 
                 self?.tableView.reloadData()
@@ -545,15 +801,46 @@ class CirclesHomeViewController: UIViewController {
     }
     
     private func updateEmptyState() {
-        let isEmpty = isShowingNetworkCircles ? networkCircles.isEmpty : circles.isEmpty
-        emptyStateView.isHidden = !isEmpty
-        tableView.isHidden = isEmpty
-        
-        // Update empty state message based on filter
-        if isShowingNetworkCircles {
-            emptyStateLabel.text = "No circles from your network yet"
+        if isSearching {
+            emptyStateView.isHidden = !filteredPlaces.isEmpty
+            tableView.isHidden = filteredPlaces.isEmpty
+            emptyStateLabel.text = "No places found"
         } else {
-            emptyStateLabel.text = "You don't have any circles yet"
+            let isEmpty = isShowingNetworkCircles ? networkCircles.isEmpty : circles.isEmpty
+            emptyStateView.isHidden = !isEmpty
+            tableView.isHidden = isEmpty
+            
+            // Update empty state message based on filter
+            if isShowingNetworkCircles {
+                emptyStateLabel.text = "No circles from your network yet"
+            } else {
+                emptyStateLabel.text = "You don't have any circles yet"
+            }
+        }
+    }
+    
+    private func fetchAllPlacesFromCircles() {
+        var allFetchedPlaces: [Place] = []
+        let group = DispatchGroup()
+        
+        for circle in circles {
+            group.enter()
+            PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
+                switch result {
+                case .success(let places):
+                    allFetchedPlaces.append(contentsOf: places)
+                case .failure(let error):
+                    print("Failed to fetch places for circle \(circle.id): \(error)")
+                }
+                group.leave()
+            }
+        }
+        
+        group.notify(queue: .main) { [weak self] in
+            self?.allPlaces = allFetchedPlaces
+            if self?.isShowingMap == true {
+                self?.updateMapPlaces()
+            }
         }
     }
     
@@ -618,6 +905,217 @@ class CirclesHomeViewController: UIViewController {
         let createCircleVC = CreateCircleViewController()
         createCircleVC.delegate = self
         navigationController?.pushViewController(createCircleVC, animated: true)
+    }
+    
+    @objc private func quickAddPlaceButtonTapped() {
+        // If user has circles, show circle picker. Otherwise, prompt to create a circle
+        if circles.isEmpty {
+            let alert = UIAlertController(
+                title: "No Circles Yet",
+                message: "You need to create a circle first before adding places.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Create Circle", style: .default) { [weak self] _ in
+                self?.createCircleButtonTapped()
+            })
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            present(alert, animated: true)
+        } else if circles.count == 1 {
+            // If only one circle, go directly to add place
+            let addPlaceVC = AddPlaceViewController(circleId: circles[0].id)
+            navigationController?.pushViewController(addPlaceVC, animated: true)
+        } else {
+            // Show circle picker
+            showCirclePicker()
+        }
+    }
+    
+    private func showCirclePicker() {
+        let alert = UIAlertController(
+            title: "Select Circle",
+            message: "Choose which circle to add the place to:",
+            preferredStyle: .actionSheet
+        )
+        
+        for circle in circles {
+            alert.addAction(UIAlertAction(title: circle.name, style: .default) { [weak self] _ in
+                let addPlaceVC = AddPlaceViewController(circleId: circle.id)
+                self?.navigationController?.pushViewController(addPlaceVC, animated: true)
+            })
+        }
+        
+        alert.addAction(UIAlertAction(title: "Create New Circle", style: .default) { [weak self] _ in
+            self?.createCircleButtonTapped()
+        })
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        
+        // For iPad
+        if let popover = alert.popoverPresentationController {
+            popover.sourceView = quickAddPlaceButton
+            popover.sourceRect = quickAddPlaceButton.bounds
+        }
+        
+        present(alert, animated: true)
+    }
+    
+    @objc private func mapToggleButtonTapped() {
+        isShowingMap.toggle()
+        updateMapVisibility()
+    }
+    
+    private func updateMapVisibility() {
+        UIView.animate(withDuration: 0.3) {
+            self.tableView.isHidden = self.isShowingMap
+            self.mapContainerView.isHidden = !self.isShowingMap
+            self.filterStackView.isHidden = !self.isShowingMap
+            self.filterContainer.isHidden = self.isShowingMap
+            
+            // Update map button icon
+            self.mapToggleButton.setImage(UIImage(systemName: self.isShowingMap ? "list.bullet" : "map"), for: .normal)
+        }
+        
+        if isShowingMap {
+            updateMapPlaces()
+        }
+    }
+    
+    private func updateMapPlaces() {
+        var placesToShow = allPlaces
+        
+        // Apply category filter
+        if let category = selectedCategory {
+            placesToShow = placesToShow.filter { $0.category == category }
+        }
+        
+        // Apply circle filter
+        if let circle = selectedCircleFilter {
+            placesToShow = placesToShow.filter { place in
+                circle.places?.contains(place.id) == true
+            }
+        }
+        
+        mapViewController?.updatePlaces(placesToShow)
+    }
+    
+    @objc private func categoryFilterButtonTapped() {
+        isCategoryDropdownOpen.toggle()
+        
+        if isCategoryDropdownOpen {
+            // Close circle dropdown if open
+            if isCircleDropdownOpen {
+                isCircleDropdownOpen = false
+                hideCircleDropdown()
+            }
+            showCategoryDropdown()
+        } else {
+            hideCategoryDropdown()
+        }
+    }
+    
+    private func showCategoryDropdown() {
+        // Calculate available categories from all places
+        updateAvailableCategories()
+        
+        // Calculate dropdown height
+        let numberOfRows = availableCategories.count + 1 // +1 for "All Categories"
+        let maxHeight: CGFloat = 300
+        let calculatedHeight = CGFloat(numberOfRows) * 44
+        let dropdownHeight = min(calculatedHeight, maxHeight)
+        
+        categoryDropdownView.isHidden = false
+        categoryDropdownHeightConstraint?.constant = dropdownHeight
+        
+        // Reload table data
+        categoryDropdownTableView.reloadData()
+        
+        // Animate dropdown appearance
+        UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.9, initialSpringVelocity: 0.5, options: .curveEaseInOut) {
+            self.categoryDropdownView.alpha = 1
+            self.view.layoutIfNeeded()
+            
+            // Rotate arrow
+            self.categoryFilterButton.imageView?.transform = CGAffineTransform(rotationAngle: .pi)
+        }
+        
+        // Bring dropdown to front
+        view.bringSubviewToFront(categoryDropdownView)
+    }
+    
+    private func hideCategoryDropdown() {
+        UIView.animate(withDuration: 0.2, animations: {
+            self.categoryDropdownView.alpha = 0
+            self.categoryDropdownHeightConstraint?.constant = 0
+            self.view.layoutIfNeeded()
+            
+            // Rotate arrow back
+            self.categoryFilterButton.imageView?.transform = .identity
+        }) { _ in
+            self.categoryDropdownView.isHidden = true
+        }
+    }
+    
+    private func updateAvailableCategories() {
+        // Get unique categories from all places
+        var categoriesSet = Set<PlaceCategory>()
+        for place in allPlaces {
+            categoriesSet.insert(place.category)
+        }
+        availableCategories = Array(categoriesSet).sorted { $0.displayName < $1.displayName }
+    }
+    
+    @objc private func circleFilterButtonTapped() {
+        isCircleDropdownOpen.toggle()
+        
+        if isCircleDropdownOpen {
+            // Close category dropdown if open
+            if isCategoryDropdownOpen {
+                isCategoryDropdownOpen = false
+                hideCategoryDropdown()
+            }
+            showCircleDropdown()
+        } else {
+            hideCircleDropdown()
+        }
+    }
+    
+    private func showCircleDropdown() {
+        // Calculate dropdown height
+        let numberOfRows = circles.count + 1 // +1 for "All Circles"
+        let maxHeight: CGFloat = 300
+        let calculatedHeight = CGFloat(numberOfRows) * 44
+        let dropdownHeight = min(calculatedHeight, maxHeight)
+        
+        circleDropdownView.isHidden = false
+        circleDropdownHeightConstraint?.constant = dropdownHeight
+        
+        // Reload table data
+        circleDropdownTableView.reloadData()
+        
+        // Animate dropdown appearance
+        UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.9, initialSpringVelocity: 0.5, options: .curveEaseInOut) {
+            self.circleDropdownView.alpha = 1
+            self.view.layoutIfNeeded()
+            
+            // Rotate arrow
+            self.circleFilterButton.imageView?.transform = CGAffineTransform(rotationAngle: .pi)
+        }
+        
+        // Bring dropdown to front
+        view.bringSubviewToFront(circleDropdownView)
+    }
+    
+    private func hideCircleDropdown() {
+        UIView.animate(withDuration: 0.2, animations: {
+            self.circleDropdownView.alpha = 0
+            self.circleDropdownHeightConstraint?.constant = 0
+            self.view.layoutIfNeeded()
+            
+            // Rotate arrow back
+            self.circleFilterButton.imageView?.transform = .identity
+        }) { _ in
+            self.circleDropdownView.isHidden = true
+        }
     }
     
     @objc private func refreshData() {
@@ -981,34 +1479,139 @@ class CirclesHomeViewController: UIViewController {
 // MARK: - UITableViewDelegate & UITableViewDataSource
 extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource, UITableViewDragDelegate, UITableViewDropDelegate {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        if tableView == categoryDropdownTableView {
+            return availableCategories.count + 1 // +1 for "All Categories"
+        } else if tableView == circleDropdownTableView {
+            return circles.count + 1 // +1 for "All Circles"
+        } else if isSearching {
+            return filteredPlaces.count
+        }
         return isShowingNetworkCircles ? networkCircles.count : circles.count
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        guard let cell = tableView.dequeueReusableCell(withIdentifier: "CircleCell", for: indexPath) as? CircleTableViewCell else {
-            return UITableViewCell()
+        if tableView == categoryDropdownTableView {
+            let cell = tableView.dequeueReusableCell(withIdentifier: "CategoryDropdownCell") ?? UITableViewCell(style: .default, reuseIdentifier: "CategoryDropdownCell")
+            
+            cell.backgroundColor = .clear
+            cell.textLabel?.font = UIFont.systemFont(ofSize: 15, weight: .medium)
+            cell.selectionStyle = .none
+            
+            if indexPath.row == 0 {
+                cell.textLabel?.text = "All Categories"
+                cell.textLabel?.textColor = selectedCategory == nil ? Constants.Colors.primary : Constants.Colors.label
+                cell.accessoryType = selectedCategory == nil ? .checkmark : .none
+            } else {
+                let category = availableCategories[indexPath.row - 1]
+                cell.textLabel?.text = category.displayName
+                cell.textLabel?.textColor = selectedCategory == category ? Constants.Colors.primary : Constants.Colors.label
+                cell.accessoryType = selectedCategory == category ? .checkmark : .none
+            }
+            
+            return cell
+        } else if tableView == circleDropdownTableView {
+            let cell = tableView.dequeueReusableCell(withIdentifier: "CircleDropdownCell") ?? UITableViewCell(style: .default, reuseIdentifier: "CircleDropdownCell")
+            
+            cell.backgroundColor = .clear
+            cell.textLabel?.font = UIFont.systemFont(ofSize: 15, weight: .medium)
+            cell.selectionStyle = .none
+            
+            if indexPath.row == 0 {
+                cell.textLabel?.text = "All Circles"
+                cell.textLabel?.textColor = selectedCircleFilter == nil ? Constants.Colors.primary : Constants.Colors.label
+                cell.accessoryType = selectedCircleFilter == nil ? .checkmark : .none
+            } else {
+                let circle = circles[indexPath.row - 1]
+                cell.textLabel?.text = circle.name
+                cell.textLabel?.textColor = selectedCircleFilter?.id == circle.id ? Constants.Colors.primary : Constants.Colors.label
+                cell.accessoryType = selectedCircleFilter?.id == circle.id ? .checkmark : .none
+            }
+            
+            return cell
+        } else if isSearching {
+            guard let cell = tableView.dequeueReusableCell(withIdentifier: "PlaceSearchResultCell", for: indexPath) as? PlaceSearchResultCell else {
+                return UITableViewCell()
+            }
+            let place = filteredPlaces[indexPath.row]
+            cell.configure(with: place)
+            return cell
+        } else {
+            guard let cell = tableView.dequeueReusableCell(withIdentifier: "CircleCell", for: indexPath) as? CircleTableViewCell else {
+                return UITableViewCell()
+            }
+            
+            let circle = isShowingNetworkCircles ? networkCircles[indexPath.row] : circles[indexPath.row]
+            cell.configure(with: circle)
+            cell.delegate = self
+            
+            return cell
         }
-        
-        let circle = isShowingNetworkCircles ? networkCircles[indexPath.row] : circles[indexPath.row]
-        cell.configure(with: circle)
-        cell.delegate = self
-        
-        return cell
     }
     
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
+        if tableView == categoryDropdownTableView || tableView == circleDropdownTableView {
+            return 44
+        } else if isSearching {
+            return 80
+        }
         return 160
     }
     
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         
-        let circle = isShowingNetworkCircles ? networkCircles[indexPath.row] : circles[indexPath.row]
-        let detailVC = CircleDetailViewController(circle: circle)
-        navigationController?.pushViewController(detailVC, animated: true)
+        if tableView == categoryDropdownTableView {
+            if indexPath.row == 0 {
+                // All Categories selected
+                selectedCategory = nil
+                categoryFilterButton.setTitle("All Categories", for: .normal)
+            } else {
+                // Specific category selected
+                selectedCategory = availableCategories[indexPath.row - 1]
+                categoryFilterButton.setTitle(selectedCategory?.displayName ?? "All Categories", for: .normal)
+            }
+            
+            // Update UI and hide dropdown
+            updateMapPlaces()
+            hideCategoryDropdown()
+            isCategoryDropdownOpen = false
+            
+        } else if tableView == circleDropdownTableView {
+            if indexPath.row == 0 {
+                // All Circles selected
+                selectedCircleFilter = nil
+                circleFilterButton.setTitle("All Circles", for: .normal)
+            } else {
+                // Specific circle selected
+                selectedCircleFilter = circles[indexPath.row - 1]
+                circleFilterButton.setTitle(selectedCircleFilter?.name ?? "All Circles", for: .normal)
+            }
+            
+            // Update UI and hide dropdown
+            updateMapPlaces()
+            hideCircleDropdown()
+            isCircleDropdownOpen = false
+            
+        } else if isSearching {
+            let place = filteredPlaces[indexPath.row]
+            // Find the circle this place belongs to
+            if let circle = circles.first(where: { $0.places?.contains(place.id) == true }) {
+                let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
+                navigationController?.pushViewController(placeDetailVC, animated: true)
+            }
+        } else {
+            let circle = isShowingNetworkCircles ? networkCircles[indexPath.row] : circles[indexPath.row]
+            let detailVC = CircleDetailViewController(circle: circle)
+            navigationController?.pushViewController(detailVC, animated: true)
+        }
     }
     
     func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        // Don't allow swipe actions when searching
+        if isSearching {
+            return nil
+        }
+        
         // Don't allow editing/deleting network circles
         if isShowingNetworkCircles {
             return nil
@@ -1440,6 +2043,17 @@ extension CirclesHomeViewController: EditCircleDelegate {
     }
 }
 
+// MARK: - FullScreenMapViewControllerDelegate
+extension CirclesHomeViewController: FullScreenMapViewControllerDelegate {
+    func mapViewController(_ controller: FullScreenMapViewController, didSelectPlace place: Place) {
+        // Find the circle this place belongs to
+        if let circle = circles.first(where: { $0.places?.contains(place.id) == true }) {
+            let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
+            navigationController?.pushViewController(placeDetailVC, animated: true)
+        }
+    }
+}
+
 // MARK: - CircleTableViewCellDelegate
 extension CirclesHomeViewController: CircleTableViewCellDelegate {
     func circleTableViewCell(_ cell: CircleTableViewCell, didTapShareForCircle circle: Circle) {
@@ -1548,5 +2162,170 @@ extension CirclesHomeViewController: CircleTableViewCellDelegate {
                 }
             }
         }
+    }
+}
+
+// MARK: - UISearchBarDelegate
+extension CirclesHomeViewController: UISearchBarDelegate {
+    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+        if searchText.isEmpty {
+            isSearching = false
+            filteredPlaces = []
+        } else {
+            isSearching = true
+            filteredPlaces = allPlaces.filter { place in
+                place.name.localizedCaseInsensitiveContains(searchText) ||
+                (place.address).localizedCaseInsensitiveContains(searchText) ||
+                (place.description ?? "").localizedCaseInsensitiveContains(searchText)
+            }
+        }
+        tableView.reloadData()
+        updateEmptyState()
+    }
+    
+    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+        searchBar.resignFirstResponder()
+    }
+    
+    func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
+        searchBar.text = ""
+        searchBar.resignFirstResponder()
+        isSearching = false
+        filteredPlaces = []
+        tableView.reloadData()
+        updateEmptyState()
+    }
+    
+    func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
+        searchBar.setShowsCancelButton(true, animated: true)
+    }
+    
+    func searchBarTextDidEndEditing(_ searchBar: UISearchBar) {
+        searchBar.setShowsCancelButton(false, animated: true)
+    }
+}
+
+// MARK: - PlaceSearchResultCell
+class PlaceSearchResultCell: UITableViewCell {
+    
+    // MARK: - UI Elements
+    private let containerView: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.secondaryBackground
+        view.layer.cornerRadius = 8
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let placeImageView: UIImageView = {
+        let imageView = UIImageView()
+        imageView.contentMode = .scaleAspectFill
+        imageView.clipsToBounds = true
+        imageView.backgroundColor = Constants.Colors.tertiaryBackground
+        imageView.layer.cornerRadius = 6
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        return imageView
+    }()
+    
+    private let nameLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+        label.textColor = Constants.Colors.label
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let addressLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 14)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.numberOfLines = 1
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let categoryLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 12)
+        label.textColor = Constants.Colors.tertiaryLabel
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    // MARK: - Init
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
+        setupCell()
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    // MARK: - Setup
+    private func setupCell() {
+        backgroundColor = Constants.Colors.background
+        selectionStyle = .none
+        
+        contentView.addSubview(containerView)
+        containerView.addSubview(placeImageView)
+        containerView.addSubview(nameLabel)
+        containerView.addSubview(addressLabel)
+        containerView.addSubview(categoryLabel)
+        
+        NSLayoutConstraint.activate([
+            containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
+            containerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            containerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
+            
+            placeImageView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 12),
+            placeImageView.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
+            placeImageView.widthAnchor.constraint(equalToConstant: 50),
+            placeImageView.heightAnchor.constraint(equalToConstant: 50),
+            
+            nameLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 12),
+            nameLabel.leadingAnchor.constraint(equalTo: placeImageView.trailingAnchor, constant: 12),
+            nameLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
+            
+            addressLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 2),
+            addressLabel.leadingAnchor.constraint(equalTo: placeImageView.trailingAnchor, constant: 12),
+            addressLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
+            
+            categoryLabel.topAnchor.constraint(equalTo: addressLabel.bottomAnchor, constant: 2),
+            categoryLabel.leadingAnchor.constraint(equalTo: placeImageView.trailingAnchor, constant: 12),
+            categoryLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
+            categoryLabel.bottomAnchor.constraint(lessThanOrEqualTo: containerView.bottomAnchor, constant: -12)
+        ])
+    }
+    
+    // MARK: - Configure
+    func configure(with place: Place) {
+        nameLabel.text = place.name
+        addressLabel.text = place.address.isEmpty ? "No address" : place.address
+        categoryLabel.text = place.category.rawValue.capitalized
+        
+        // Load place image
+        if let photos = place.photos, !photos.isEmpty, let firstPhoto = photos.first {
+            ImageService.shared.loadImage(from: firstPhoto) { [weak self] image in
+                DispatchQueue.main.async {
+                    self?.placeImageView.image = image ?? UIImage(systemName: "mappin.circle.fill")
+                    if image == nil {
+                        self?.placeImageView.tintColor = Constants.Colors.primary
+                    }
+                }
+            }
+        } else {
+            placeImageView.image = UIImage(systemName: "mappin.circle.fill")
+            placeImageView.tintColor = Constants.Colors.primary
+        }
+    }
+    
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        placeImageView.image = nil
+        nameLabel.text = nil
+        addressLabel.text = nil
+        categoryLabel.text = nil
     }
 }

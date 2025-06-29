@@ -60,4 +60,10 @@ router.route('/friend/:id')
 router.route('/:id')
   .get(getUser);
 
+// Import getUserCircles from circleSharingController
+const { getUserCircles } = require('../controllers/circleSharingController');
+
+router.route('/:userId/circles')
+  .get(getUserCircles);
+
 module.exports = router;

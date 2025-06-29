@@ -177,7 +177,7 @@ class NetworkManager: ObservableObject {
         shareText += "\n\n📱 Connect with me: \(deepLink)"
         
         // Add app store link
-        let appStoreLink = "https://testflight.apple.com/join/YourTestFlightLink" // Replace with actual link
+        let appStoreLink = "https://testflight.apple.com/join/n1sBRMG3"
         shareText += "\n\nDon't have Circles? Download here: \(appStoreLink)"
         
         return [shareText]

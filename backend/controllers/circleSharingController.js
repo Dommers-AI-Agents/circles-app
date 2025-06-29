@@ -665,6 +665,8 @@ const getUserCircles = async (req, res) => {
   try {
     const currentUserId = req.user.uid;
     const targetUserId = req.params.userId;
+    
+    console.log('getUserCircles called:', { currentUserId, targetUserId });
 
     // Verify the users are connected
     const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
@@ -710,11 +712,47 @@ const getUserCircles = async (req, res) => {
       return bDate.localeCompare(aDate);
     });
 
-    const circles = sortedDocs.map(doc => {
+    // Fetch places for each circle
+    const circles = await Promise.all(sortedDocs.map(async doc => {
       const circle = serializeDoc(doc);
       circle.ownerDetails = userData;
+      
+      // Only fetch places for circles with appropriate privacy settings
+      if (circle.privacy === 'myNetwork' || circle.privacy === 'public') {
+        try {
+          // Try with index first
+          const placesSnapshot = await db.collection(COLLECTIONS.PLACES)
+            .where('circleId', '==', circle._id)
+            .orderBy('createdAt', 'desc')
+            .get();
+            
+          // Return both place IDs and full details in separate fields
+          circle.places = placesSnapshot.docs.map(doc => doc.id);
+          circle.placesWithDetails = serializeQuerySnapshot(placesSnapshot);
+        } catch (indexError) {
+          // Fallback: fetch without orderBy and sort in memory
+          console.log(`Index not ready, using fallback for circle ${circle._id}`);
+          const placesSnapshot = await db.collection(COLLECTIONS.PLACES)
+            .where('circleId', '==', circle._id)
+            .get();
+            
+          const sortedDocs = placesSnapshot.docs
+            .sort((a, b) => {
+              const aDate = new Date(a.data().createdAt || 0);
+              const bDate = new Date(b.data().createdAt || 0);
+              return bDate - aDate;
+            });
+          
+          circle.places = sortedDocs.map(doc => doc.id);
+          circle.placesWithDetails = sortedDocs.map(doc => serializeDoc(doc));
+        }
+      } else {
+        circle.places = [];
+        circle.placesWithDetails = [];
+      }
+      
       return circle;
-    });
+    }));
 
     res.status(200).json({
       success: true,
@@ -726,6 +764,7 @@ const getUserCircles = async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching user circles:', error);
+    console.error('Full error details:', JSON.stringify(error, null, 2));
     res.status(500).json({
       success: false,
       message: 'Server error',

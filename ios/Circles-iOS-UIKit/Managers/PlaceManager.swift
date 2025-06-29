@@ -189,7 +189,7 @@ class PlaceManager: ObservableObject {
         shareText += "\n📱 Open in Circles: \(deepLink)"
         
         // App Store link (use TestFlight for now)
-        let appStoreLink = "https://testflight.apple.com/join/YourTestFlightLink" // Replace with actual App Store link
+        let appStoreLink = "https://testflight.apple.com/join/n1sBRMG3"
         shareText += "\n\nDon't have Circles? Download here: \(appStoreLink)"
         
         return [shareText]

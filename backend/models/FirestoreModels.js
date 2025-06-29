@@ -24,6 +24,9 @@ const createUser = (userData) => {
   return {
     email: userData.email || null,
     displayName: userData.displayName || userData.name,
+    firstName: userData.firstName || null,
+    lastName: userData.lastName || null,
+    phoneNumber: userData.phoneNumber || null,
     profilePicture: userData.profilePicture || userData.picture || null,
     bio: userData.bio || null,
     location: userData.location || null,

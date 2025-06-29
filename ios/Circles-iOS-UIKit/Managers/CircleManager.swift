@@ -186,7 +186,7 @@ class CircleManager: ObservableObject {
         shareText += "\n\nOpen in Circles: \(deepLink)"
         
         // Add app download link
-        let appStoreLink = "https://testflight.apple.com/join/YourTestFlightLink" // Replace with actual link
+        let appStoreLink = "https://testflight.apple.com/join/n1sBRMG3"
         shareText += "\n\nDon't have Circles? Download here: \(appStoreLink)"
         
         var items: [Any] = [shareText]

@@ -77,6 +77,41 @@ class ConnectionDetailViewController: UIViewController {
         return button
     }()
     
+    private let circlesSectionLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Circles"
+        label.font = .systemFont(ofSize: 20, weight: .semibold)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let circlesCollectionView: UICollectionView = {
+        let layout = UICollectionViewFlowLayout()
+        layout.scrollDirection = .horizontal
+        layout.minimumLineSpacing = 12
+        layout.itemSize = CGSize(width: 140, height: 180)
+        
+        let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        collectionView.backgroundColor = .clear
+        collectionView.showsHorizontalScrollIndicator = false
+        collectionView.translatesAutoresizingMaskIntoConstraints = false
+        return collectionView
+    }()
+    
+    private let noCirclesLabel: UILabel = {
+        let label = UILabel()
+        label.text = "No circles to show"
+        label.font = .systemFont(ofSize: 16)
+        label.textColor = .secondaryLabel
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.isHidden = true
+        return label
+    }()
+    
+    // MARK: - Properties
+    private var connectionCircles: [Circle] = []
+    
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -98,6 +133,9 @@ class ConnectionDetailViewController: UIViewController {
         contentView.addSubview(connectionDateLabel)
         contentView.addSubview(messageButton)
         contentView.addSubview(removeButton)
+        contentView.addSubview(circlesSectionLabel)
+        contentView.addSubview(circlesCollectionView)
+        contentView.addSubview(noCirclesLabel)
         
         NSLayoutConstraint.activate([
             scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
@@ -135,23 +173,115 @@ class ConnectionDetailViewController: UIViewController {
             
             removeButton.topAnchor.constraint(equalTo: messageButton.bottomAnchor, constant: 16),
             removeButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            removeButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -32)
+            
+            circlesSectionLabel.topAnchor.constraint(equalTo: removeButton.bottomAnchor, constant: 32),
+            circlesSectionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            circlesSectionLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            
+            circlesCollectionView.topAnchor.constraint(equalTo: circlesSectionLabel.bottomAnchor, constant: 12),
+            circlesCollectionView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            circlesCollectionView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            circlesCollectionView.heightAnchor.constraint(equalToConstant: 200),
+            
+            noCirclesLabel.centerXAnchor.constraint(equalTo: circlesCollectionView.centerXAnchor),
+            noCirclesLabel.centerYAnchor.constraint(equalTo: circlesCollectionView.centerYAnchor),
+            noCirclesLabel.leadingAnchor.constraint(equalTo: circlesCollectionView.leadingAnchor),
+            noCirclesLabel.trailingAnchor.constraint(equalTo: circlesCollectionView.trailingAnchor, constant: -20),
+            
+            circlesCollectionView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -32)
         ])
         
         messageButton.addTarget(self, action: #selector(messageButtonTapped), for: .touchUpInside)
         removeButton.addTarget(self, action: #selector(removeConnectionTapped), for: .touchUpInside)
+        
+        // Setup collection view
+        circlesCollectionView.delegate = self
+        circlesCollectionView.dataSource = self
+        circlesCollectionView.register(CircleCell.self, forCellWithReuseIdentifier: "CircleCell")
     }
     
     private func configureView() {
         guard let connection = connection else { return }
         
-        nameLabel.text = connection.connectedUser?.displayName ?? "Unknown User"
+        // Display full name if available
+        if let firstName = connection.connectedUser?.firstName, let lastName = connection.connectedUser?.lastName {
+            nameLabel.text = "\(firstName) \(lastName)"
+        } else if let firstName = connection.connectedUser?.firstName {
+            nameLabel.text = firstName
+        } else if let lastName = connection.connectedUser?.lastName {
+            nameLabel.text = lastName
+        } else {
+            nameLabel.text = connection.connectedUser?.displayName ?? "Unknown User"
+        }
+        
         emailLabel.text = connection.connectedUser?.email ?? ""
         
         if let acceptedAt = connection.acceptedAt {
             let formatter = DateFormatter()
             formatter.dateStyle = .medium
             connectionDateLabel.text = "Connected since \\(formatter.string(from: acceptedAt))"
+        }
+        
+        // Load connection's circles
+        loadConnectionCircles()
+    }
+    
+    private func loadConnectionCircles() {
+        guard let userId = connection?.connectedUserId else { 
+            print("Error: No connected user ID found")
+            return 
+        }
+        
+        print("Loading circles for user: \(userId)")
+        
+        // Use the network endpoint that properly checks connections
+        struct UserCirclesResponse: Codable {
+            let success: Bool
+            let data: UserCirclesData
+        }
+        
+        struct UserCirclesData: Codable {
+            let user: User
+            let circles: [Circle]
+        }
+        
+        APIService.shared.request(
+            endpoint: "network/user-circles/\(userId)",
+            method: .get,
+            requiresAuth: true
+        ) { [weak self] (result: Result<UserCirclesResponse, APIError>) in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let response):
+                    self?.connectionCircles = response.data.circles
+                    self?.circlesCollectionView.reloadData()
+                    self?.noCirclesLabel.isHidden = !response.data.circles.isEmpty
+                    self?.circlesCollectionView.isHidden = response.data.circles.isEmpty
+                case .failure(let error):
+                    print("Failed to load connection circles: \(error)")
+                    self?.connectionCircles = []
+                    self?.circlesCollectionView.reloadData()
+                    self?.noCirclesLabel.isHidden = false
+                    self?.circlesCollectionView.isHidden = true
+                    
+                    // Show specific error message
+                    let errorMessage: String
+                    if case .httpError(let statusCode, _) = error {
+                        switch statusCode {
+                        case 403:
+                            errorMessage = "You are not connected to this user"
+                        case 404:
+                            errorMessage = "User not found"
+                        default:
+                            errorMessage = "Failed to load circles"
+                        }
+                    } else {
+                        errorMessage = "Failed to load circles: \(error.localizedDescription)"
+                    }
+                    
+                    self?.showAlert(title: "Error", message: errorMessage)
+                }
+            }
         }
     }
     
@@ -207,5 +337,35 @@ class ConnectionDetailViewController: UIViewController {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
+    }
+}
+
+// MARK: - UICollectionViewDataSource
+extension ConnectionDetailViewController: UICollectionViewDataSource {
+    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+        return connectionCircles.count
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
+        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "CircleCell", for: indexPath) as! CircleCell
+        let circle = connectionCircles[indexPath.item]
+        cell.configure(with: circle)
+        return cell
+    }
+}
+
+// MARK: - UICollectionViewDelegate
+extension ConnectionDetailViewController: UICollectionViewDelegate {
+    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        let circle = connectionCircles[indexPath.item]
+        let detailVC = CircleDetailViewController(circle: circle)
+        navigationController?.pushViewController(detailVC, animated: true)
+    }
+}
+
+// MARK: - UICollectionViewDelegateFlowLayout
+extension ConnectionDetailViewController: UICollectionViewDelegateFlowLayout {
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, insetForSectionAt section: Int) -> UIEdgeInsets {
+        return UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 20)
     }
 }

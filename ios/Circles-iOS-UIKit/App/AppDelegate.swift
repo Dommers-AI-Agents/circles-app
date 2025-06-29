@@ -102,13 +102,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         // Initialize Google Places SDK
         print("📍 Initializing Google Places SDK")
         if let gmsApiKey = infoPlist["GMSApiKey"] as? String {
+            print("📍 Full API Key length: \(gmsApiKey.count) characters")
+            print("📍 API Key prefix: \(String(gmsApiKey.prefix(10)))...")
+            print("📍 Bundle ID: \(Bundle.main.bundleIdentifier ?? "unknown")")
+            
             GMSPlacesClient.provideAPIKey(gmsApiKey)
-            print("📍 Google Places SDK initialized with API key: \(String(gmsApiKey.prefix(10)))...")
+            print("📍 Google Places SDK initialized")
             
             // Also initialize Google Maps SDK with the same API key
             GMSServices.provideAPIKey(gmsApiKey)
-            print("🗺️ Google Maps SDK initialized with API key: \(String(gmsApiKey.prefix(10)))...")
-            print("🗺️ Bundle ID: \(Bundle.main.bundleIdentifier ?? "unknown")")
+            print("🗺️ Google Maps SDK initialized")
         } else {
             print("📍 ❌ Failed to load Google Places/Maps API key from Info.plist")
         }

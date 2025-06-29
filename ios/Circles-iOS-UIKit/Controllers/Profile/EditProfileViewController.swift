@@ -52,6 +52,58 @@ class EditProfileViewController: UIViewController {
         return textField
     }()
     
+    private let firstNameLabel: UILabel = {
+        let label = UILabel()
+        label.text = "First Name (Optional)"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .bold)
+        label.textColor = Constants.Colors.darkGray
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let firstNameTextField: UITextField = {
+        let textField = UITextField()
+        textField.placeholder = "First name"
+        textField.borderStyle = .roundedRect
+        textField.translatesAutoresizingMaskIntoConstraints = false
+        return textField
+    }()
+    
+    private let lastNameLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Last Name (Optional)"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .bold)
+        label.textColor = Constants.Colors.darkGray
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let lastNameTextField: UITextField = {
+        let textField = UITextField()
+        textField.placeholder = "Last name"
+        textField.borderStyle = .roundedRect
+        textField.translatesAutoresizingMaskIntoConstraints = false
+        return textField
+    }()
+    
+    private let phoneNumberLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Phone Number (Optional)"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .bold)
+        label.textColor = Constants.Colors.darkGray
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let phoneNumberTextField: UITextField = {
+        let textField = UITextField()
+        textField.placeholder = "Phone number"
+        textField.keyboardType = .phonePad
+        textField.borderStyle = .roundedRect
+        textField.translatesAutoresizingMaskIntoConstraints = false
+        return textField
+    }()
+    
     private let emailLabel: UILabel = {
         let label = UILabel()
         label.text = "Email"
@@ -143,6 +195,12 @@ class EditProfileViewController: UIViewController {
         contentView.addSubview(changePhotoButton)
         contentView.addSubview(displayNameLabel)
         contentView.addSubview(displayNameTextField)
+        contentView.addSubview(firstNameLabel)
+        contentView.addSubview(firstNameTextField)
+        contentView.addSubview(lastNameLabel)
+        contentView.addSubview(lastNameTextField)
+        contentView.addSubview(phoneNumberLabel)
+        contentView.addSubview(phoneNumberTextField)
         contentView.addSubview(emailLabel)
         contentView.addSubview(emailTextField)
         contentView.addSubview(locationLabel)
@@ -186,8 +244,38 @@ class EditProfileViewController: UIViewController {
             displayNameTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             displayNameTextField.heightAnchor.constraint(equalToConstant: 40),
             
+            // First name label
+            firstNameLabel.topAnchor.constraint(equalTo: displayNameTextField.bottomAnchor, constant: Constants.Spacing.medium),
+            firstNameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            
+            // First name text field
+            firstNameTextField.topAnchor.constraint(equalTo: firstNameLabel.bottomAnchor, constant: Constants.Spacing.small),
+            firstNameTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            firstNameTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            firstNameTextField.heightAnchor.constraint(equalToConstant: 40),
+            
+            // Last name label
+            lastNameLabel.topAnchor.constraint(equalTo: firstNameTextField.bottomAnchor, constant: Constants.Spacing.medium),
+            lastNameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            
+            // Last name text field
+            lastNameTextField.topAnchor.constraint(equalTo: lastNameLabel.bottomAnchor, constant: Constants.Spacing.small),
+            lastNameTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            lastNameTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            lastNameTextField.heightAnchor.constraint(equalToConstant: 40),
+            
+            // Phone number label
+            phoneNumberLabel.topAnchor.constraint(equalTo: lastNameTextField.bottomAnchor, constant: Constants.Spacing.medium),
+            phoneNumberLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            
+            // Phone number text field
+            phoneNumberTextField.topAnchor.constraint(equalTo: phoneNumberLabel.bottomAnchor, constant: Constants.Spacing.small),
+            phoneNumberTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            phoneNumberTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            phoneNumberTextField.heightAnchor.constraint(equalToConstant: 40),
+            
             // Email label
-            emailLabel.topAnchor.constraint(equalTo: displayNameTextField.bottomAnchor, constant: Constants.Spacing.medium),
+            emailLabel.topAnchor.constraint(equalTo: phoneNumberTextField.bottomAnchor, constant: Constants.Spacing.medium),
             emailLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             
             // Email text field
@@ -274,6 +362,9 @@ class EditProfileViewController: UIViewController {
         
         // User info
         displayNameTextField.text = user.displayName
+        firstNameTextField.text = user.firstName ?? ""
+        lastNameTextField.text = user.lastName ?? ""
+        phoneNumberTextField.text = user.phoneNumber ?? ""
         emailTextField.text = user.email
         locationTextField.text = user.location ?? ""
         bioTextView.text = user.bio ?? ""
@@ -301,6 +392,18 @@ class EditProfileViewController: UIViewController {
         var updates: [String: Any] = [
             "displayName": displayName
         ]
+        
+        if let firstName = firstNameTextField.text, !firstName.isEmpty {
+            updates["firstName"] = firstName
+        }
+        
+        if let lastName = lastNameTextField.text, !lastName.isEmpty {
+            updates["lastName"] = lastName
+        }
+        
+        if let phoneNumber = phoneNumberTextField.text, !phoneNumber.isEmpty {
+            updates["phoneNumber"] = phoneNumber
+        }
         
         if let location = locationTextField.text, !location.isEmpty {
             updates["location"] = location
@@ -355,6 +458,9 @@ class EditProfileViewController: UIViewController {
         
         UserService.shared.updateUserProfile(
             displayName: displayName,
+            firstName: updates["firstName"] as? String,
+            lastName: updates["lastName"] as? String,
+            phoneNumber: updates["phoneNumber"] as? String,
             bio: bio,
             location: location,
             profilePicture: profileImageData

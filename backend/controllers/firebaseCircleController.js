@@ -145,9 +145,27 @@ exports.getCircle = async (req, res, next) => {
     const isSharedWith = circle.sharedWith.includes(req.user.uid);
     const isPublic = circle.privacy === 'public';
     
-    // For friends privacy, we'd need to check if users are friends
-    // For now, allow if user is owner, shared with, or circle is public
-    if (!isOwner && !isSharedWith && !isPublic) {
+    // For myNetwork privacy, check if users are connected
+    let isConnected = false;
+    if (circle.privacy === 'myNetwork' && !isOwner) {
+      // Check if the current user is connected to the circle owner
+      const connectionQuery1 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', req.user.uid)
+        .where('connectedUserId', '==', circle.owner)
+        .where('status', '==', 'accepted')
+        .get();
+        
+      const connectionQuery2 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', circle.owner)
+        .where('connectedUserId', '==', req.user.uid)
+        .where('status', '==', 'accepted')
+        .get();
+        
+      isConnected = !connectionQuery1.empty || !connectionQuery2.empty;
+    }
+    
+    // Allow access if user is owner, shared with, public, or connected (for myNetwork)
+    if (!isOwner && !isSharedWith && !isPublic && !(circle.privacy === 'myNetwork' && isConnected)) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to access this circle'
@@ -268,11 +286,11 @@ exports.updateCircle = async (req, res, next) => {
     }
     
     if (req.body.privacy !== undefined) {
-      const validPrivacyLevels = ['public', 'friends', 'private'];
+      const validPrivacyLevels = ['public', 'myNetwork', 'private'];
       if (!validPrivacyLevels.includes(req.body.privacy)) {
         return res.status(400).json({
           success: false,
-          message: 'Privacy must be public, friends, or private'
+          message: 'Privacy must be public, myNetwork, or private'
         });
       }
       updateData.privacy = req.body.privacy;

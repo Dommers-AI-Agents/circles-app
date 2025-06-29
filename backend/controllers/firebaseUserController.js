@@ -85,13 +85,16 @@ exports.getUser = async (req, res, next) => {
 // @access  Private
 exports.updateUser = async (req, res, next) => {
   try {
-    const { displayName, bio, location, profilePicture } = req.body;
+    const { displayName, firstName, lastName, phoneNumber, bio, location, profilePicture } = req.body;
     
     const updateData = {
       updatedAt: new Date().toISOString()
     };
 
     if (displayName !== undefined) updateData.displayName = displayName;
+    if (firstName !== undefined) updateData.firstName = firstName;
+    if (lastName !== undefined) updateData.lastName = lastName;
+    if (phoneNumber !== undefined) updateData.phoneNumber = phoneNumber;
     if (bio !== undefined) updateData.bio = bio;
     if (location !== undefined) updateData.location = location;
     if (profilePicture !== undefined) updateData.profilePicture = profilePicture;
@@ -109,6 +112,9 @@ exports.updateUser = async (req, res, next) => {
         _id: user.id,
         email: user.email,
         displayName: user.displayName,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        phoneNumber: user.phoneNumber,
         profilePicture: user.profilePicture,
         bio: user.bio,
         location: user.location,
@@ -121,54 +127,6 @@ exports.updateUser = async (req, res, next) => {
   }
 };
 
-// @desc    Search users
-// @route   GET /api/users/search
-// @access  Private
-exports.searchUsers = async (req, res, next) => {
-  try {
-    const { q: query } = req.query;
-
-    if (!query) {
-      return res.status(400).json({
-        success: false,
-        message: 'Search query is required'
-      });
-    }
-
-    // Note: Firestore doesn't have full-text search built-in
-    // For production, you'd want to use Algolia or similar
-    // For now, we'll do a simple displayName search
-    const snapshot = await db.collection(COLLECTIONS.USERS)
-      .where('displayName', '>=', query)
-      .where('displayName', '<=', query + '\uf8ff')
-      .orderBy('displayName')
-      .limit(20)
-      .get();
-
-    let users = serializeQuerySnapshot(snapshot);
-    
-    // Remove current user from results
-    users = users.filter(user => user.id !== req.user.uid);
-
-    // Return limited profile data
-    const publicUsers = users.map(user => ({
-      _id: user.id,
-      displayName: user.displayName,
-      profilePicture: user.profilePicture,
-      bio: user.bio,
-      location: user.location
-    }));
-
-    res.status(200).json({
-      success: true,
-      count: publicUsers.length,
-      users: publicUsers
-    });
-  } catch (error) {
-    console.error('Error searching users:', error);
-    next(error);
-  }
-};
 
 // @desc    Get user's friends
 // @route   GET /api/users/me/friends
@@ -494,10 +452,10 @@ exports.searchUsers = async (req, res, next) => {
   try {
     const { query } = req.query;
     
-    if (!query || query.trim().length < 2) {
+    if (!query || query.trim().length < 1) {
       return res.status(400).json({
         success: false,
-        message: 'Search query must be at least 2 characters'
+        message: 'Search query must be at least 1 character'
       });
     }
 
@@ -514,12 +472,18 @@ exports.searchUsers = async (req, res, next) => {
       // Skip current user
       if (user.id === currentUserId) continue;
       
-      // Check if query matches email, name, or phone
-      const emailMatch = user.email && user.email.toLowerCase().includes(searchTerm);
-      const nameMatch = user.displayName && user.displayName.toLowerCase().includes(searchTerm);
-      const phoneMatch = user.phone && user.phone.replace(/\D/g, '').includes(searchTerm.replace(/\D/g, ''));
+      // Check if query matches email, name, or phone (using startsWith for better UX)
+      const emailMatch = user.email && user.email.toLowerCase().startsWith(searchTerm);
+      const displayNameMatch = user.displayName && user.displayName.toLowerCase().startsWith(searchTerm);
+      const firstNameMatch = user.firstName && user.firstName.toLowerCase().startsWith(searchTerm);
+      const lastNameMatch = user.lastName && user.lastName.toLowerCase().startsWith(searchTerm);
+      const phoneMatch = user.phoneNumber && user.phoneNumber.replace(/\D/g, '').startsWith(searchTerm.replace(/\D/g, ''));
       
-      if (emailMatch || nameMatch || phoneMatch) {
+      // Also check if any word in display name starts with search term
+      const displayNameWords = user.displayName ? user.displayName.toLowerCase().split(' ') : [];
+      const wordMatch = displayNameWords.some(word => word.startsWith(searchTerm));
+      
+      if (emailMatch || displayNameMatch || firstNameMatch || lastNameMatch || phoneMatch || wordMatch) {
         // Check connection status
         const connectionQuery = await db.collection(COLLECTIONS.CONNECTIONS)
           .where('participants', 'array-contains', currentUserId)
@@ -537,6 +501,8 @@ exports.searchUsers = async (req, res, next) => {
         matchingUsers.push({
           _id: user.id,
           displayName: user.displayName,
+          firstName: user.firstName,
+          lastName: user.lastName,
           email: user.email,
           profilePicture: user.profilePicture,
           connectionStatus: connectionStatus
@@ -544,10 +510,31 @@ exports.searchUsers = async (req, res, next) => {
       }
     }
     
+    // Sort results by relevance (exact matches first, then partial matches)
+    matchingUsers.sort((a, b) => {
+      // Prioritize exact email matches
+      const aExact = a.email?.toLowerCase() === searchTerm;
+      const bExact = b.email?.toLowerCase() === searchTerm;
+      if (aExact && !bExact) return -1;
+      if (!aExact && bExact) return 1;
+      
+      // Then prioritize display name matches
+      const aNameExact = a.displayName?.toLowerCase() === searchTerm;
+      const bNameExact = b.displayName?.toLowerCase() === searchTerm;
+      if (aNameExact && !bNameExact) return -1;
+      if (!aNameExact && bNameExact) return 1;
+      
+      // Finally sort alphabetically
+      return (a.displayName || '').localeCompare(b.displayName || '');
+    });
+    
+    // Limit results to prevent overwhelming the UI
+    const limitedUsers = matchingUsers.slice(0, 20);
+    
     res.status(200).json({
       success: true,
-      count: matchingUsers.length,
-      users: matchingUsers
+      count: limitedUsers.length,
+      users: limitedUsers
     });
   } catch (error) {
     console.error('Error searching users:', error);

@@ -1,6 +1,6 @@
 import UIKit
 
-class CirclesTabBarController: UITabBarController {
+class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
     
     private var badgeObservers: [NSObjectProtocol] = []
     private var messagesBadgeTimer: Timer?
@@ -13,9 +13,15 @@ class CirclesTabBarController: UITabBarController {
         setupBadgeObservers()
         setupNotificationObservers()
         
+        // Set self as delegate
+        self.delegate = self
+        
         // Update badges on load
         updateMessagesBadge()
         updateNetworkBadge()
+        
+        // Set initial messages tab state (default is Circles tab which is index 0)
+        MessagingManager.shared.setMessagesTabActive(selectedIndex == 3)
     }
     
     deinit {
@@ -121,12 +127,11 @@ class CirclesTabBarController: UITabBarController {
         
         // Debounce the update by 0.5 seconds
         messagesBadgeTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
-            // Get unread messages count
-            ConversationService.shared.getUnreadMessageCount { [weak self] count in
-                DispatchQueue.main.async {
-                    self?.viewControllers?[3].tabBarItem.badgeValue = count > 0 ? "\(count)" : nil
-                    self?.updateApplicationBadge()
-                }
+            // Get unread messages count from MessagingManager
+            let count = MessagingManager.shared.unreadCount
+            DispatchQueue.main.async {
+                self?.viewControllers?[3].tabBarItem.badgeValue = count > 0 ? "\(count)" : nil
+                self?.updateApplicationBadge()
             }
         }
     }
@@ -186,5 +191,13 @@ class CirclesTabBarController: UITabBarController {
            let circlesVC = navController.topViewController as? CirclesHomeViewController {
             circlesVC.navigateToCircle(withId: circleId)
         }
+    }
+    
+    // MARK: - UITabBarControllerDelegate
+    
+    func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
+        // Update MessagingManager based on selected tab
+        let isMessagesTab = tabBarController.selectedIndex == 3
+        MessagingManager.shared.setMessagesTabActive(isMessagesTab)
     }
 }

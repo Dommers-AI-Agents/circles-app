@@ -14,6 +14,7 @@ class MessagingManager: ObservableObject {
     private let messagingService = MessagingService.shared
     private var cancellables = Set<AnyCancellable>()
     private var messagePollingTimer: Timer?
+    private var isMessagesTabActive = false
     
     private init() {
         setupSubscribers()
@@ -35,10 +36,9 @@ class MessagingManager: ObservableObject {
     // MARK: - Messaging Lifecycle
     
     private func startMessaging() {
-        // Temporarily disable messaging features until backend is deployed
-        // loadConversations()
-        // startMessagePolling()
-        // updateUnreadCount()
+        loadConversations()
+        startMessagePolling()
+        updateUnreadCount()
     }
     
     private func stopMessaging() {
@@ -55,8 +55,18 @@ class MessagingManager: ObservableObject {
     // MARK: - Polling (temporary until real-time is implemented)
     
     private func startMessagePolling() {
-        // Poll for new messages every 5 seconds
-        messagePollingTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+        updatePollingInterval()
+    }
+    
+    private func updatePollingInterval() {
+        // Stop existing timer
+        messagePollingTimer?.invalidate()
+        
+        // Set interval based on whether Messages tab is active
+        let interval: TimeInterval = isMessagesTabActive ? 5.0 : 10.0
+        
+        // Start new timer with appropriate interval
+        messagePollingTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             self?.refreshActiveConversations()
             self?.updateUnreadCount()
         }
@@ -223,7 +233,16 @@ class MessagingManager: ObservableObject {
         messagingService.getUnreadCount { [weak self] result in
             DispatchQueue.main.async {
                 if case .success(let response) = result {
+                    let oldCount = self?.unreadCount ?? 0
                     self?.unreadCount = response.totalUnread
+                    
+                    // Post notification if count changed
+                    if oldCount != response.totalUnread {
+                        NotificationCenter.default.post(
+                            name: Notification.Name("UnreadMessagesCountChanged"),
+                            object: nil
+                        )
+                    }
                 }
             }
         }
@@ -271,6 +290,19 @@ class MessagingManager: ObservableObject {
                     completion(.failure(error))
                 }
             }
+        }
+    }
+    
+    // MARK: - Tab Management
+    
+    func setMessagesTabActive(_ isActive: Bool) {
+        guard isMessagesTabActive != isActive else { return }
+        
+        isMessagesTabActive = isActive
+        
+        // Update polling interval if we're currently polling
+        if messagePollingTimer != nil {
+            updatePollingInterval()
         }
     }
 }
