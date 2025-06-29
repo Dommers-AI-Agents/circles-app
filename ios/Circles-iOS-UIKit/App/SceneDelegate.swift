@@ -52,36 +52,38 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             window?.rootViewController = loadingVC
             
             // Perform token refresh on app launch if user is logged in
-            if AuthService.shared.isLoggedIn {
-                print("🎬 User is logged in, checking token validity")
-                
-                // Check if token should be refreshed (expired or expiring soon)
-                if AuthService.shared.shouldRefreshToken() {
-                    print("🎬 Token needs refresh, refreshing...")
-                    AuthService.shared.refreshToken { result in
-                        switch result {
-                        case .success:
-                            print("🎬 Token refreshed successfully on app launch")
-                        case .failure(let error):
-                            print("🎬 Token refresh failed: \(error)")
-                            // Don't force logout here - let 401 handling take care of it
-                        }
+            print("🎬 User is logged in, checking token validity")
+            
+            // Check if token is expired first
+            if AuthService.shared.isTokenExpired() {
+                print("🎬 Token is expired, logging out immediately")
+                AuthService.shared.logout()
+            } else if AuthService.shared.shouldRefreshToken() {
+                // Token is not expired but should be refreshed soon
+                print("🎬 Token needs refresh, refreshing...")
+                AuthService.shared.refreshToken { result in
+                    switch result {
+                    case .success:
+                        print("🎬 Token refreshed successfully on app launch")
+                    case .failure(let error):
+                        print("🎬 Token refresh failed: \(error)")
+                        // Don't force logout here - let 401 handling take care of it
                     }
-                } else {
-                    print("🎬 Token is still valid")
                 }
-                
-                // Try to restore Google Sign-In session if user previously signed in with Google
-                if AuthService.shared.getAuthProvider() == "google" {
-                    print("🎬 User previously signed in with Google, attempting to restore session")
-                    SocialAuthService.shared.restoreGoogleSignInSession { result in
-                        switch result {
-                        case .success:
-                            print("🎬 Google session restored successfully")
-                        case .failure(let error):
-                            print("🎬 Google session restoration failed: \(error)")
-                            // The backend token might still be valid even if Google session expired
-                        }
+            } else {
+                print("🎬 Token is still valid")
+            }
+            
+            // Try to restore Google Sign-In session if user previously signed in with Google
+            if AuthService.shared.getAuthProvider() == "google" {
+                print("🎬 User previously signed in with Google, attempting to restore session")
+                SocialAuthService.shared.restoreGoogleSignInSession { result in
+                    switch result {
+                    case .success:
+                        print("🎬 Google session restored successfully")
+                    case .failure(let error):
+                        print("🎬 Google session restoration failed: \(error)")
+                        // The backend token might still be valid even if Google session expired
                     }
                 }
             }
@@ -132,9 +134,25 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     private func updateRootViewController(isLoggedIn: Bool) {
         if isLoggedIn {
             // First, fetch the current user to ensure profile data is available
-            AuthService.shared.fetchCurrentUser { [weak self] result in
+            // Add a timeout to prevent indefinite loading
+            var didTimeout = false
+            let timeoutWorkItem = DispatchWorkItem { [weak self] in
+                didTimeout = true
+                print("⏰ User fetch timed out, forcing logout")
                 DispatchQueue.main.async {
-                    guard let self = self else { return }
+                    AuthService.shared.logout()
+                }
+            }
+            
+            // Set a 10-second timeout
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: timeoutWorkItem)
+            
+            AuthService.shared.fetchCurrentUser { [weak self] result in
+                // Cancel the timeout if we got a response
+                timeoutWorkItem.cancel()
+                
+                DispatchQueue.main.async {
+                    guard let self = self, !didTimeout else { return }
                     
                     switch result {
                     case .success:
@@ -159,10 +177,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                             NetworkManager.shared.processPendingConnectionInvite()
                         }
                         
-                    case .failure:
+                    case .failure(let error):
                         // Failed to load user data, clear session and show login
-                        print("Failed to load user data on session restore, clearing session")
-                        AuthService.shared.logout()
+                        print("Failed to load user data on session restore: \(error)")
+                        // The AuthService will already clear the session if it's a 404, 
+                        // but we'll ensure logout is called for other errors
+                        if !(error is AuthError && error as! AuthError == .userNotFound) {
+                            AuthService.shared.logout()
+                        }
                     }
                 }
             }

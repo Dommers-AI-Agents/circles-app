@@ -1,6 +1,13 @@
 import UIKit
 import AuthenticationServices
 
+extension NSLayoutConstraint {
+    func withPriority(_ priority: UILayoutPriority) -> NSLayoutConstraint {
+        self.priority = priority
+        return self
+    }
+}
+
 class LoginViewController: UIViewController {
     
     // MARK: - UI Elements
@@ -239,9 +246,12 @@ class LoginViewController: UIViewController {
             
             // Apple Sign In button in container
             appleSignInButton.topAnchor.constraint(equalTo: appleSignInContainer.topAnchor),
-            appleSignInButton.leadingAnchor.constraint(equalTo: appleSignInContainer.leadingAnchor),
-            appleSignInButton.trailingAnchor.constraint(equalTo: appleSignInContainer.trailingAnchor),
+            appleSignInButton.leadingAnchor.constraint(greaterThanOrEqualTo: appleSignInContainer.leadingAnchor),
+            appleSignInButton.trailingAnchor.constraint(lessThanOrEqualTo: appleSignInContainer.trailingAnchor),
             appleSignInButton.bottomAnchor.constraint(equalTo: appleSignInContainer.bottomAnchor),
+            appleSignInButton.centerXAnchor.constraint(equalTo: appleSignInContainer.centerXAnchor),
+            appleSignInButton.widthAnchor.constraint(lessThanOrEqualToConstant: 375),
+            appleSignInButton.widthAnchor.constraint(equalTo: appleSignInContainer.widthAnchor, multiplier: 1.0).withPriority(.defaultHigh),
             
             // Button heights
             appleSignInContainer.heightAnchor.constraint(equalToConstant: 50),

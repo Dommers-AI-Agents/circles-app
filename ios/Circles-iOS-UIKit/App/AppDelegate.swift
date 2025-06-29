@@ -12,9 +12,10 @@ import FBSDKCoreKit
 import GooglePlaces
 import GoogleMaps
 import Firebase
+import UserNotifications
 
 @main
-class AppDelegate: UIResponder, UIApplicationDelegate {
+class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     
     // Used to store Apple Sign-In credentials for an extended period
     var appleIDCompletionHandler: ((ASAuthorization?, Error?) -> Void)?
@@ -112,6 +113,25 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             print("📍 ❌ Failed to load Google Places/Maps API key from Info.plist")
         }
         
+        // Configure Push Notifications
+        print("🔔 Configuring Push Notifications")
+        UNUserNotificationCenter.current().delegate = self
+        
+        // Request notification permissions
+        let authOptions: UNAuthorizationOptions = [.alert, .badge, .sound]
+        UNUserNotificationCenter.current().requestAuthorization(
+            options: authOptions,
+            completionHandler: { granted, error in
+                print("🔔 Push notification permission granted: \(granted)")
+                if let error = error {
+                    print("🔔 Error requesting notification permissions: \(error)")
+                }
+            }
+        )
+        
+        // Register for remote notifications
+        application.registerForRemoteNotifications()
+        
         return true
     }
 
@@ -205,6 +225,58 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         AuthService.shared.logout { _ in
             // This will trigger the auth state listener in SceneDelegate
         }
+    }
+    
+    // MARK: - Push Notification Methods
+    
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        let tokenParts = deviceToken.map { data in String(format: "%02.2hhx", data) }
+        let token = tokenParts.joined()
+        print("🔔 Device Token: \(token)")
+        
+        // Send device token to backend
+        NotificationService.shared.registerDeviceToken(token)
+    }
+    
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        print("🔔 Failed to register for remote notifications: \(error)")
+    }
+    
+    // MARK: - UNUserNotificationCenterDelegate
+    
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        // Show notification even when app is in foreground
+        completionHandler([.alert, .badge, .sound])
+    }
+    
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        // Handle notification tap
+        let userInfo = response.notification.request.content.userInfo
+        print("🔔 Notification tapped with userInfo: \(userInfo)")
+        
+        // Handle different notification types
+        if let type = userInfo["type"] as? String {
+            switch type {
+            case "new_message":
+                // Navigate to messages
+                NotificationCenter.default.post(name: Notification.Name("NavigateToMessages"), object: nil)
+            case "new_suggestion":
+                // Navigate to suggestions
+                NotificationCenter.default.post(name: Notification.Name("NavigateToSuggestions"), object: nil)
+            case "new_place":
+                // Navigate to the specific circle
+                if let circleId = userInfo["circleId"] as? String {
+                    NotificationCenter.default.post(name: Notification.Name("NavigateToCircle"), object: circleId)
+                }
+            case "connection_request":
+                // Navigate to network tab
+                NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
+            default:
+                break
+            }
+        }
+        
+        completionHandler()
     }
 }
 

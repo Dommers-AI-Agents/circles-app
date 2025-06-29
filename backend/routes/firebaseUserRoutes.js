@@ -9,7 +9,10 @@ const {
   getFriendRequests,
   respondToFriendRequest,
   removeFriend,
-  reorderCircles
+  reorderCircles,
+  registerDeviceToken,
+  removeDeviceToken,
+  updateNotificationPreferences
 } = require('../controllers/firebaseUserController');
 const { protect } = require('../middleware/firebaseAuth');
 
@@ -34,6 +37,13 @@ router.route('/me/friend-requests')
 
 router.route('/me/circles/reorder')
   .put(reorderCircles);
+
+router.route('/device-token')
+  .post(registerDeviceToken)
+  .delete(removeDeviceToken);
+
+router.route('/notification-preferences')
+  .put(updateNotificationPreferences);
 
 router.route('/friend-request')
   .post(sendFriendRequest);

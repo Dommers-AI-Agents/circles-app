@@ -9,6 +9,7 @@ const {
 } = require('../models/FirestoreModels');
 const { Client } = require('@googlemaps/google-maps-services-js');
 const { googleMapsApiKey } = require('../config/config');
+const notificationService = require('../services/notificationService');
 
 const db = getFirestore();
 const googleMapsClient = new Client({});
@@ -203,6 +204,48 @@ exports.createPlace = async (req, res, next) => {
       success: true,
       place: place
     });
+
+    // Send notifications to interested users
+    try {
+      // Get users who should be notified
+      const notifyUserIds = new Set();
+      
+      // Add circle members (if not private)
+      if (circle.privacy !== 'private') {
+        // Add shared users
+        circle.sharedWith.forEach(userId => {
+          if (userId !== req.user.uid) {
+            notifyUserIds.add(userId);
+          }
+        });
+        
+        // Add circle owner if not the one adding
+        if (circle.owner !== req.user.uid) {
+          notifyUserIds.add(circle.owner);
+        }
+        
+        // If circle is public, add user's network
+        if (circle.privacy === 'public' || circle.privacy === 'myNetwork') {
+          const userDoc = await db.collection(COLLECTIONS.USERS).doc(req.user.uid).get();
+          if (userDoc.exists) {
+            const userData = userDoc.data();
+            const connections = userData.friends || [];
+            connections.forEach(userId => notifyUserIds.add(userId));
+          }
+        }
+      }
+      
+      if (notifyUserIds.size > 0) {
+        await notificationService.notifyNewPlace(
+          place,
+          circle,
+          Array.from(notifyUserIds)
+        );
+      }
+    } catch (notifError) {
+      console.error('Error sending place notifications:', notifError);
+      // Don't fail the request if notifications fail
+    }
   } catch (error) {
     console.error('Error creating place:', error);
     next(error);

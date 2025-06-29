@@ -260,6 +260,9 @@ class AuthService {
     }
     
     func logout(completion: ((Bool) -> Void)? = nil) {
+        // Handle notifications cleanup
+        NotificationService.shared.handleUserLogout()
+        
         // Attempt to notify server about logout
         APIService.shared.request(
             endpoint: "auth/logout",
@@ -309,8 +312,17 @@ class AuthService {
                 completion(.success(response.user))
             case .failure(let error):
                 print("🔐 Failed to fetch current user: \(error)")
-                let authError = self?.mapAPIErrorToAuthError(error, context: .fetchUser)
-                completion(.failure(authError ?? error))
+                
+                // If user not found (404), clear the invalid session
+                if case .httpError(404, _) = error {
+                    print("🔐 User not found (404) - clearing invalid session")
+                    self?.clearLocalAuth()
+                    self?.notifyAuthStateChange(isLoggedIn: false)
+                    completion(.failure(AuthError.userNotFound))
+                } else {
+                    let authError = self?.mapAPIErrorToAuthError(error, context: .fetchUser)
+                    completion(.failure(authError ?? error))
+                }
             }
         }
     }
@@ -427,6 +439,9 @@ class AuthService {
             // Save current user
             self._currentUser = response.user
             print("🔐 Current user set: \(response.user.displayName)")
+            
+            // Handle notifications setup for logged in user
+            NotificationService.shared.handleUserLogin()
             
             // Notify auth state change
             print("🔐 About to notify auth state change - isLoggedIn: true")

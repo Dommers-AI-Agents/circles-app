@@ -8,6 +8,7 @@ const {
   serializeDoc,
   serializeQuerySnapshot 
 } = require('../models/FirestoreModels');
+const notificationService = require('../services/notificationService');
 
 const db = getFirestore();
 
@@ -72,6 +73,52 @@ const createNewSuggestion = async (req, res) => {
       data: suggestion,
       message: 'Suggestion created successfully'
     });
+
+    // Send notifications to network users
+    try {
+      // Get user's connections
+      const connectionsQuery1 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', userId)
+        .where('status', '==', 'accepted')
+        .get();
+        
+      const connectionsQuery2 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', userId)
+        .where('status', '==', 'accepted')
+        .get();
+      
+      const notifyUserIds = new Set();
+      
+      // Add connections from both queries
+      connectionsQuery1.forEach(doc => {
+        const conn = doc.data();
+        notifyUserIds.add(conn.connectedUserId);
+      });
+      
+      connectionsQuery2.forEach(doc => {
+        const conn = doc.data();
+        notifyUserIds.add(conn.userId);
+      });
+      
+      // Also notify users who own places mentioned in the suggestion
+      if (mentionedPlaces && mentionedPlaces.length > 0) {
+        for (const place of mentionedPlaces) {
+          if (place.addedBy && place.addedBy !== userId) {
+            notifyUserIds.add(place.addedBy);
+          }
+        }
+      }
+      
+      if (notifyUserIds.size > 0) {
+        await notificationService.notifyNewSuggestion(
+          suggestion,
+          Array.from(notifyUserIds)
+        );
+      }
+    } catch (notifError) {
+      console.error('Error sending suggestion notifications:', notifError);
+      // Don't fail the request if notifications fail
+    }
 
   } catch (error) {
     console.error('Error creating suggestion:', error);

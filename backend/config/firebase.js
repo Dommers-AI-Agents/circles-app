@@ -145,10 +145,28 @@ const getAuth = () => {
   return admin.auth();
 };
 
+// Get Firebase Messaging instance
+const getMessaging = () => {
+  if (global.mockFirebase) {
+    return {
+      sendMulticast: async (message) => {
+        console.log('🔔 Mock: Would send notification to', message.tokens?.length || 0, 'devices');
+        return {
+          successCount: message.tokens?.length || 0,
+          failureCount: 0,
+          responses: message.tokens?.map(() => ({ success: true })) || []
+        };
+      }
+    };
+  }
+  return admin.messaging();
+};
+
 module.exports = {
   initializeFirebase,
   getFirestore,
   getStorage,
   getAuth,
+  getMessaging,
   admin: global.mockFirebase ? null : admin
 };

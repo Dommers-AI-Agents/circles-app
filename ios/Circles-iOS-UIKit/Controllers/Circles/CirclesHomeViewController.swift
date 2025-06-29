@@ -1508,4 +1508,45 @@ extension CirclesHomeViewController: CircleTableViewCellDelegate {
             presentShareSheet()
         }
     }
+    
+    // MARK: - Navigation from Notifications
+    
+    func navigateToCircle(withId circleId: String) {
+        // Find the circle in our data
+        guard let circle = circles.first(where: { $0.id == circleId }) else {
+            // If circle not found, try to load it
+            loadCircleAndNavigate(circleId: circleId)
+            return
+        }
+        
+        // Navigate to circle detail
+        let detailVC = CircleDetailViewController(circle: circle)
+        navigationController?.pushViewController(detailVC, animated: true)
+    }
+    
+    private func loadCircleAndNavigate(circleId: String) {
+        // Show loading
+        let loadingAlert = UIAlertController(title: "Loading", message: "Loading circle...", preferredStyle: .alert)
+        present(loadingAlert, animated: true)
+        
+        CircleService.shared.fetchCircleById(id: circleId) { [weak self] result in
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    switch result {
+                    case .success(let circle):
+                        let detailVC = CircleDetailViewController(circle: circle)
+                        self?.navigationController?.pushViewController(detailVC, animated: true)
+                    case .failure(let error):
+                        let alert = UIAlertController(
+                            title: "Error",
+                            message: "Failed to load circle: \(error.localizedDescription)",
+                            preferredStyle: .alert
+                        )
+                        alert.addAction(UIAlertAction(title: "OK", style: .default))
+                        self?.present(alert, animated: true)
+                    }
+                }
+            }
+        }
+    }
 }

@@ -22,13 +22,9 @@ let package = Package(
                 .product(name: "FirebaseFirestore", package: "firebase-ios-sdk"),
                 .product(name: "FirebaseStorage", package: "firebase-ios-sdk"),
                 .product(name: "GoogleSignIn", package: "GoogleSignIn-iOS"),
-                .product(name: "FacebookCore", package: "facebook-ios-sdk"),
-                .product(name: "FacebookLogin", package: "facebook-ios-sdk"),
                 .product(name: "FBSDKCoreKit", package: "facebook-ios-sdk"),
                 .product(name: "FBSDKLoginKit", package: "facebook-ios-sdk"),
                 .product(name: "GoogleMaps", package: "ios-maps-sdk"),
-                .product(name: "GoogleMapsCore", package: "ios-maps-sdk"),
-                .product(name: "GoogleMapsBase", package: "ios-maps-sdk"),
                 .product(name: "GooglePlaces", package: "ios-places-sdk")
             ]
         )

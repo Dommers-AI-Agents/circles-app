@@ -31,6 +31,18 @@ const createUser = (userData) => {
     friendRequests: userData.friendRequests || [],
     linkedProviders: userData.linkedProviders || {},
     circleOrder: userData.circleOrder || [],
+    deviceTokens: userData.deviceTokens || [],
+    notificationPreferences: userData.notificationPreferences || {
+      newMessages: true,
+      newSuggestions: true,
+      newPlaces: true,
+      connectionRequests: true,
+      circleInvites: true,
+      dailyDigest: false,
+      quietHoursEnabled: false,
+      quietHoursStart: '22:00',
+      quietHoursEnd: '08:00'
+    },
     createdAt: now,
     updatedAt: now,
     // Firebase UID from authentication

@@ -58,6 +58,12 @@ class NetworkManager: ObservableObject {
                     let connections = response.connections
                     self?.connections = connections.filter { $0.status == .accepted }
                     self?.pendingConnections = connections.filter { $0.status == .pending }
+                    
+                    // Post notification after data is loaded
+                    NotificationCenter.default.post(
+                        name: Notification.Name("PendingConnectionsCountChanged"),
+                        object: nil
+                    )
                 case .failure(let error):
                     self?.error = error.localizedDescription
                 }
@@ -576,6 +582,18 @@ class NetworkManager: ObservableObject {
                 print("Failed to process pending connection invite: \(error)")
             }
         }
+    }
+    
+    // MARK: - Badge Count
+    
+    func getPendingConnectionsCount(completion: @escaping (Int) -> Void) {
+        // Return count of pending incoming connections
+        let pendingCount = pendingConnections.filter { connection in
+            // Count only incoming pending connections
+            connection.status == .pending && connection.connectedUserId == AuthService.shared.getUserId()
+        }.count
+        
+        completion(pendingCount)
     }
 }
 
