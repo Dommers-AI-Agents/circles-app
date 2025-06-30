@@ -104,7 +104,10 @@ const shareCircle = async (req, res) => {
       case 'link':
         // Generate a secure share link
         const shareToken = crypto.randomBytes(32).toString('hex');
-        shareData.shareLink = `https://circles-app.com/shared/${circleId}/${shareToken}`;
+        // Use deep link format that will open directly in the app
+        shareData.shareLink = `circles://circle/${circleId}?share=${shareToken}`;
+        // Also store a web fallback URL for users who don't have the app
+        shareData.webShareLink = `https://circles-app.com/shared/${circleId}/${shareToken}`;
         break;
 
       default:
@@ -773,6 +776,85 @@ const getUserCircles = async (req, res) => {
   }
 };
 
+// @desc    Validate a share token
+// @route   POST /api/circles/share/validate
+// @access  Public (for validating share links)
+const validateShareToken = async (req, res) => {
+  try {
+    const { circleId, shareToken } = req.body;
+
+    if (!circleId || !shareToken) {
+      return res.status(400).json({
+        success: false,
+        isValid: false,
+        message: 'Circle ID and share token are required'
+      });
+    }
+
+    // Find share by circle ID and token
+    const sharesQuery = await db.collection(COLLECTIONS.CIRCLE_SHARES)
+      .where('circleId', '==', circleId)
+      .where('shareType', '==', 'link')
+      .get();
+
+    let validShare = null;
+    
+    // Check each share to find one with matching token
+    for (const doc of sharesQuery.docs) {
+      const share = doc.data();
+      
+      // Extract token from share link
+      if (share.shareLink) {
+        const tokenMatch = share.shareLink.match(/share=([^&]+)/);
+        if (tokenMatch && tokenMatch[1] === shareToken) {
+          validShare = { id: doc.id, ...share };
+          break;
+        }
+      }
+    }
+
+    if (!validShare) {
+      return res.status(404).json({
+        success: false,
+        isValid: false,
+        message: 'Invalid share link'
+      });
+    }
+
+    // Check if share is expired
+    if (validShare.expiresAt && new Date(validShare.expiresAt) < new Date()) {
+      return res.status(410).json({
+        success: false,
+        isValid: false,
+        message: 'This share link has expired'
+      });
+    }
+
+    // Update last accessed time
+    await db.collection(COLLECTIONS.CIRCLE_SHARES).doc(validShare.id).update({
+      lastAccessedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+
+    // Return validation result
+    res.status(200).json({
+      success: true,
+      isValid: true,
+      accessLevel: validShare.accessLevel || 'view_only',
+      message: 'Share link is valid'
+    });
+
+  } catch (error) {
+    console.error('Error validating share token:', error);
+    res.status(500).json({
+      success: false,
+      isValid: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   shareCircle,
   revokeShare,
@@ -782,5 +864,6 @@ module.exports = {
   getCirclesSharedWithMe,
   getMyNetworkCircles,
   getUsersWithCircles,
-  getUserCircles
+  getUserCircles,
+  validateShareToken
 };

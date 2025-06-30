@@ -14,13 +14,18 @@ const {
 const {
   shareCircle: newShareCircle,
   revokeShare,
-  getCircleShares
+  getCircleShares,
+  validateShareToken
 } = require('../controllers/circleSharingController');
 const { protect } = require('../middleware/firebaseAuth');
 
 const router = express.Router();
 
-// Apply auth middleware to all routes
+// Public routes (no auth required)
+router.route('/share/validate')
+  .post(validateShareToken);
+
+// Apply auth middleware to all remaining routes
 router.use(protect);
 
 // Circle routes
