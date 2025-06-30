@@ -46,6 +46,15 @@ class ProfileViewController: UIViewController {
         return label
     }()
     
+    private let fullNameLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
     private let emailLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
@@ -236,6 +245,7 @@ class ProfileViewController: UIViewController {
         contentView.addSubview(profileHeaderView)
         profileHeaderView.addSubview(profileImageView)
         profileHeaderView.addSubview(displayNameLabel)
+        profileHeaderView.addSubview(fullNameLabel)
         profileHeaderView.addSubview(emailLabel)
         profileHeaderView.addSubview(locationLabel)
         profileHeaderView.addSubview(bioLabel)
@@ -285,8 +295,13 @@ class ProfileViewController: UIViewController {
             displayNameLabel.leadingAnchor.constraint(equalTo: profileHeaderView.leadingAnchor, constant: Constants.Spacing.medium),
             displayNameLabel.trailingAnchor.constraint(equalTo: profileHeaderView.trailingAnchor, constant: -Constants.Spacing.medium),
             
+            // Full name label
+            fullNameLabel.topAnchor.constraint(equalTo: displayNameLabel.bottomAnchor, constant: Constants.Spacing.tiny),
+            fullNameLabel.leadingAnchor.constraint(equalTo: profileHeaderView.leadingAnchor, constant: Constants.Spacing.medium),
+            fullNameLabel.trailingAnchor.constraint(equalTo: profileHeaderView.trailingAnchor, constant: -Constants.Spacing.medium),
+            
             // Email label
-            emailLabel.topAnchor.constraint(equalTo: displayNameLabel.bottomAnchor, constant: Constants.Spacing.small),
+            emailLabel.topAnchor.constraint(equalTo: fullNameLabel.bottomAnchor, constant: Constants.Spacing.small),
             emailLabel.leadingAnchor.constraint(equalTo: profileHeaderView.leadingAnchor, constant: Constants.Spacing.medium),
             emailLabel.trailingAnchor.constraint(equalTo: profileHeaderView.trailingAnchor, constant: -Constants.Spacing.medium),
             
@@ -460,16 +475,22 @@ class ProfileViewController: UIViewController {
             profileImageView.tintColor = Constants.Colors.primary
         }
         
-        // Display user's name - show full name if available, otherwise display name
-        var displayName = user.displayName
+        // Display user's name - show display name and full name separately
+        displayNameLabel.text = user.displayName
+        
+        // Show full name if available
         if let firstName = user.firstName, let lastName = user.lastName {
-            displayName = "\(firstName) \(lastName)"
+            fullNameLabel.text = "\(firstName) \(lastName)"
+            fullNameLabel.isHidden = false
         } else if let firstName = user.firstName {
-            displayName = firstName
+            fullNameLabel.text = firstName
+            fullNameLabel.isHidden = false
         } else if let lastName = user.lastName {
-            displayName = lastName
+            fullNameLabel.text = lastName
+            fullNameLabel.isHidden = false
+        } else {
+            fullNameLabel.isHidden = true
         }
-        displayNameLabel.text = displayName
         
         emailLabel.text = user.email
         locationLabel.text = user.location
@@ -525,6 +546,7 @@ class ProfileViewController: UIViewController {
         profileImageView.tintColor = Constants.Colors.primary
         
         displayNameLabel.text = "User"
+        fullNameLabel.isHidden = true
         emailLabel.text = "No email available"
         locationLabel.text = "No location available"
         bioLabel.text = "No bio available"

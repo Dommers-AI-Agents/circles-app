@@ -311,6 +311,17 @@ class ConversationCell: UITableViewCell {
         fatalError("init(coder:) has not been implemented")
     }
     
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        avatarImageView.image = nil
+        avatarImageView.backgroundColor = .systemGray5
+        nameLabel.text = nil
+        messageLabel.text = nil
+        timeLabel.text = nil
+        unreadBadge.isHidden = true
+        messageLabel.font = .systemFont(ofSize: 14)
+    }
+    
     private func setupViews() {
         contentView.addSubview(avatarImageView)
         contentView.addSubview(nameLabel)
@@ -350,9 +361,20 @@ class ConversationCell: UITableViewCell {
         timeLabel.text = conversation.formattedLastMessageTime ?? ""
         
         // Configure avatar
-        if let avatarURL = conversation.displayAvatar, let url = URL(string: avatarURL) {
-            // TODO: Load image from URL
-            avatarImageView.backgroundColor = .systemGray5
+        if let avatarURL = conversation.displayAvatar {
+            // Set placeholder while loading
+            avatarImageView.image = UIImage(systemName: conversation.type == .direct ? "person.circle.fill" : "person.2.circle.fill")
+            avatarImageView.tintColor = .systemGray3
+            
+            // Load image from URL
+            ImageService.shared.loadImage(from: avatarURL) { [weak self] image in
+                DispatchQueue.main.async {
+                    if let image = image {
+                        self?.avatarImageView.image = image
+                        self?.avatarImageView.tintColor = nil
+                    }
+                }
+            }
         } else {
             avatarImageView.image = UIImage(systemName: conversation.type == .direct ? "person.circle.fill" : "person.2.circle.fill")
             avatarImageView.tintColor = .systemGray3

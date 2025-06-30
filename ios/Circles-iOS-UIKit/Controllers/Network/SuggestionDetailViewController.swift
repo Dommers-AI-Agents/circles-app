@@ -210,6 +210,7 @@ class SuggestionDetailViewController: UIViewController {
         // Setup actions
         sendButton.addTarget(self, action: #selector(sendComment), for: .touchUpInside)
         commentTextField.addTarget(self, action: #selector(textFieldDidChange), for: .editingChanged)
+        commentTextField.delegate = self
         
         // Setup table view
         commentsTableView.delegate = self
@@ -368,6 +369,16 @@ extension SuggestionDetailViewController: UITableViewDataSource {
 extension SuggestionDetailViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
+    }
+}
+
+// MARK: - UITextFieldDelegate
+extension SuggestionDetailViewController: UITextFieldDelegate {
+    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        if textField == commentTextField && !(textField.text?.isEmpty ?? true) {
+            sendComment()
+        }
+        return true
     }
 }
 

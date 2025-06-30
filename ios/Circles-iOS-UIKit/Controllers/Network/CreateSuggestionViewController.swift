@@ -55,8 +55,8 @@ class CreateSuggestionViewController: UIViewController {
     private let addPlaceButton: UIButton = {
         let button = UIButton(type: .system)
         var config = UIButton.Configuration.filled()
-        config.title = "Add Place"
-        config.image = UIImage(systemName: "mappin.circle")
+        config.title = "Select Place"
+        config.image = UIImage(systemName: "magnifyingglass")
         config.imagePlacement = .leading
         config.imagePadding = 8
         config.baseBackgroundColor = .tertiarySystemGroupedBackground
@@ -67,38 +67,7 @@ class CreateSuggestionViewController: UIViewController {
         return button
     }()
     
-    private let selectedPlaceView: UIView = {
-        let view = UIView()
-        view.backgroundColor = .tertiarySystemGroupedBackground
-        view.layer.cornerRadius = 12
-        view.isHidden = true
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
-    
-    private let placeNameLabel: UILabel = {
-        let label = UILabel()
-        label.font = .systemFont(ofSize: 16, weight: .medium)
-        label.textColor = .label
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let placeAddressLabel: UILabel = {
-        let label = UILabel()
-        label.font = .systemFont(ofSize: 14)
-        label.textColor = .secondaryLabel
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let removePlaceButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
-        button.tintColor = .secondaryLabel
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    // Removed place display UI elements - places are now inserted as links directly in the message
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
@@ -124,15 +93,10 @@ class CreateSuggestionViewController: UIViewController {
         contentView.addSubview(placeholderLabel)
         contentView.addSubview(characterCountLabel)
         contentView.addSubview(addPlaceButton)
-        contentView.addSubview(selectedPlaceView)
-        
-        selectedPlaceView.addSubview(placeNameLabel)
-        selectedPlaceView.addSubview(placeAddressLabel)
-        selectedPlaceView.addSubview(removePlaceButton)
+        // Remove selectedPlaceView since we're inserting links directly
         
         messageTextView.delegate = self
         addPlaceButton.addTarget(self, action: #selector(addPlaceTapped), for: .touchUpInside)
-        removePlaceButton.addTarget(self, action: #selector(removePlaceTapped), for: .touchUpInside)
         
         NSLayoutConstraint.activate([
             scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
@@ -162,25 +126,7 @@ class CreateSuggestionViewController: UIViewController {
             addPlaceButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
             addPlaceButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
             addPlaceButton.heightAnchor.constraint(equalToConstant: 50),
-            
-            selectedPlaceView.topAnchor.constraint(equalTo: addPlaceButton.bottomAnchor, constant: 16),
-            selectedPlaceView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            selectedPlaceView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            selectedPlaceView.heightAnchor.constraint(equalToConstant: 72),
-            selectedPlaceView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -16),
-            
-            placeNameLabel.topAnchor.constraint(equalTo: selectedPlaceView.topAnchor, constant: 16),
-            placeNameLabel.leadingAnchor.constraint(equalTo: selectedPlaceView.leadingAnchor, constant: 16),
-            placeNameLabel.trailingAnchor.constraint(equalTo: removePlaceButton.leadingAnchor, constant: -8),
-            
-            placeAddressLabel.topAnchor.constraint(equalTo: placeNameLabel.bottomAnchor, constant: 4),
-            placeAddressLabel.leadingAnchor.constraint(equalTo: placeNameLabel.leadingAnchor),
-            placeAddressLabel.trailingAnchor.constraint(equalTo: placeNameLabel.trailingAnchor),
-            
-            removePlaceButton.centerYAnchor.constraint(equalTo: selectedPlaceView.centerYAnchor),
-            removePlaceButton.trailingAnchor.constraint(equalTo: selectedPlaceView.trailingAnchor, constant: -16),
-            removePlaceButton.widthAnchor.constraint(equalToConstant: 30),
-            removePlaceButton.heightAnchor.constraint(equalToConstant: 30)
+            addPlaceButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -16),
         ])
     }
     
@@ -254,8 +200,7 @@ class CreateSuggestionViewController: UIViewController {
     }
     
     @objc private func removePlaceTapped() {
-        selectedPlace = nil
-        updatePlaceDisplay()
+        // No longer needed since we insert places as links directly
     }
     
     @objc private func keyboardWillShow(notification: NSNotification) {
@@ -282,15 +227,7 @@ class CreateSuggestionViewController: UIViewController {
     }
     
     private func updatePlaceDisplay() {
-        if let place = selectedPlace {
-            selectedPlaceView.isHidden = false
-            addPlaceButton.isHidden = true
-            placeNameLabel.text = place.name
-            placeAddressLabel.text = place.address
-        } else {
-            selectedPlaceView.isHidden = true
-            addPlaceButton.isHidden = false
-        }
+        // No longer needed since we insert places as links directly
     }
     
     private func showError(_ message: String) {
@@ -318,8 +255,39 @@ extension CreateSuggestionViewController: UITextViewDelegate {
 // MARK: - PlacePickerViewControllerDelegate
 extension CreateSuggestionViewController: PlacePickerViewControllerDelegate {
     func placePickerViewController(_ controller: PlacePickerViewController, didSelectPlace place: Place) {
+        // Insert place as hyperlink in the message
+        let placeLinkText = " [\(place.name)]"
+        
+        // Get current text and cursor position
+        if let selectedRange = messageTextView.selectedTextRange {
+            let cursorPosition = messageTextView.offset(from: messageTextView.beginningOfDocument, to: selectedRange.start)
+            let currentText = messageTextView.text ?? ""
+            
+            // Insert the place link at cursor position
+            let index = currentText.index(currentText.startIndex, offsetBy: cursorPosition)
+            var newText = currentText
+            newText.insert(contentsOf: placeLinkText, at: index)
+            
+            // Update text view
+            messageTextView.text = newText
+            
+            // Move cursor after the inserted link
+            if let newPosition = messageTextView.position(from: messageTextView.beginningOfDocument, offset: cursorPosition + placeLinkText.count) {
+                messageTextView.selectedTextRange = messageTextView.textRange(from: newPosition, to: newPosition)
+            }
+        } else {
+            // If no selection, append to end
+            messageTextView.text = (messageTextView.text ?? "") + placeLinkText
+        }
+        
+        // Store the selected place for backend processing
         selectedPlace = place
-        updatePlaceDisplay()
+        
+        // Update UI
+        placeholderLabel.isHidden = !messageTextView.text.isEmpty
+        updateCharacterCount()
+        updateShareButtonState()
+        
         controller.dismiss(animated: true)
     }
 }

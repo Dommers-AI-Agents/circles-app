@@ -9,7 +9,7 @@ protocol PlaceSearchDelegate: AnyObject {
     func didSelectPlace(name: String, address: String, coordinate: CLLocationCoordinate2D, phone: String?, website: String?, category: String?, description: String?)
 }
 
-class AddPlaceViewController: UIViewController {
+class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
     
     // MARK: - Properties
     private let circleId: String
@@ -712,38 +712,20 @@ class AddPlaceViewController: UIViewController {
     private func setupCategoryDropdownItems() {
         categoryDropdownItems = []
         
-        // Define subcategories for each category
-        let subcategories: [PlaceCategory: [String]] = [
-            .restaurant: ["Breakfast", "Lunch", "Dinner", "Fast Food", "Fine Dining", "Buffet", "Food Truck", "Bakery", "Deli", "Pizza", "Sushi", "Mexican", "Italian", "Chinese", "Indian", "Thai", "Vietnamese", "Korean", "Japanese"],
-            .cafe: ["Coffee Shop", "Tea House", "Juice Bar", "Internet Cafe", "Dessert Shop", "Smoothie Bar"],
-            .bar: ["Sports Bar", "Wine Bar", "Cocktail Bar", "Pub", "Brewery", "Nightclub", "Lounge", "Dive Bar"],
-            .retail: ["Grocery Store", "Pharmacy", "Clothing Store", "Electronics", "Department Store", "Convenience Store", "Mall", "Bookstore", "Hardware Store", "Pet Store", "Toy Store", "Sporting Goods", "Home Goods"],
-            .service: ["Beauty Salon", "Hair Salon", "Nail Salon", "Spa", "Barber Shop", "Car Wash", "Dry Cleaner", "Repair Shop", "Pet Grooming", "Laundromat", "Tailor", "Locksmith"],
-            .fitness: ["Gym", "Yoga Studio", "Pilates Studio", "CrossFit", "Personal Training", "Martial Arts", "Dance Studio", "Swimming Pool", "Sports Center", "Boxing Gym", "Climbing Gym"],
-            .healthcare: ["Doctor", "Dentist", "Hospital", "Clinic", "Veterinarian", "Urgent Care", "Optometrist", "Physical Therapy", "Mental Health", "Chiropractor", "Dermatologist", "Pediatrician"],
-            .entertainment: ["Movie Theater", "Concert Venue", "Comedy Club", "Arcade", "Bowling Alley", "Museum", "Art Gallery", "Theater", "Casino", "Amusement Park", "Escape Room"],
-            .education: ["School", "University", "Library", "Tutoring Center", "Language School", "Music School", "Art School", "Daycare", "Preschool"],
-            .outdoor: ["Park", "Beach", "Trail", "Campground", "Playground", "Garden", "Lake", "Golf Course", "Tennis Court", "Basketball Court"],
-            .transport: ["Airport", "Train Station", "Bus Station", "Subway", "Taxi Stand", "Car Rental", "Parking", "Gas Station", "EV Charging"],
-            .finance: ["Bank", "ATM", "Credit Union", "Insurance", "Investment Firm", "Tax Service", "Accounting"],
-            .hotel: ["Hotel", "Motel", "Resort", "Bed & Breakfast", "Hostel", "Vacation Rental", "Inn"],
-            .attraction: ["Tourist Attraction", "Monument", "Landmark", "Theme Park", "Zoo", "Aquarium", "Observatory"],
-            .home: [],  // No subcategories for home
-            .work: []   // No subcategories for work
+        // Show only parent categories in the dropdown
+        // Most common categories first
+        let priorityCategories: [PlaceCategory] = [
+            .restaurant, .cafe, .bar, .retail, .service, 
+            .fitness, .healthcare, .entertainment
         ]
         
-        // Build flat list of all options
-        for category in PlaceCategory.allCases.sorted(by: { $0.displayName < $1.displayName }) {
-            // Add main category
+        // Add priority categories first
+        for category in priorityCategories {
             categoryDropdownItems.append((category: category, subcategory: nil))
-            
-            // Add subcategories if they exist
-            if let subs = subcategories[category] {
-                for sub in subs.sorted() {
-                    categoryDropdownItems.append((category: category, subcategory: sub))
-                }
-            }
         }
+        
+        // Add a special "More..." option - using .other as a placeholder
+        categoryDropdownItems.append((category: .other, subcategory: "More..."))
     }
     
     
@@ -2405,7 +2387,12 @@ extension AddPlaceViewController: UITableViewDataSource, UITableViewDelegate {
             let item = categoryDropdownItems[indexPath.row]
             
             // Format display text
-            if let subcategory = item.subcategory {
+            if item.category == .other && item.subcategory == "More..." {
+                // Special formatting for "More..." option
+                cell.textLabel?.text = "More..."
+                cell.textLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+                cell.textLabel?.textColor = .systemBlue
+            } else if let subcategory = item.subcategory {
                 cell.textLabel?.text = "    \(subcategory)"  // Indent subcategories
                 cell.textLabel?.font = UIFont.systemFont(ofSize: 15)
                 cell.textLabel?.textColor = .secondaryLabel  // Better for dark mode
@@ -2427,7 +2414,12 @@ extension AddPlaceViewController: UITableViewDataSource, UITableViewDelegate {
             }
             
             // Add icon only for main categories
-            if item.subcategory == nil {
+            if item.category == .other && item.subcategory == "More..." {
+                // Special icon for "More..." option
+                let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+                cell.imageView?.image = UIImage(systemName: "ellipsis.circle", withConfiguration: config)
+                cell.imageView?.tintColor = .systemBlue
+            } else if item.subcategory == nil {
                 let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
                 cell.imageView?.image = UIImage(systemName: item.category.systemIconName, withConfiguration: config)
                 cell.imageView?.tintColor = .systemBlue
@@ -2464,22 +2456,55 @@ extension AddPlaceViewController: UITableViewDataSource, UITableViewDelegate {
         
         if tableView == categoryDropdownTableView {
             let item = categoryDropdownItems[indexPath.row]
-            selectedCategory = item.category
-            selectedSubcategory = item.subcategory
             
-            // Update button title
-            if let subcategory = item.subcategory {
-                categoryButton.setTitle("\(item.category.displayName) - \(subcategory)", for: .normal)
+            // Check if "More..." was selected
+            if item.category == .other && item.subcategory == "More..." {
+                // Hide dropdown first
+                categoryButtonTapped()
+                
+                // Present the category picker
+                let categoryPicker = CategoryPickerViewController(
+                    selectedCategory: selectedCategory,
+                    selectedSubcategory: selectedSubcategory
+                )
+                categoryPicker.delegate = self
+                let navController = UINavigationController(rootViewController: categoryPicker)
+                present(navController, animated: true)
             } else {
-                categoryButton.setTitle(item.category.displayName, for: .normal)
+                // Normal category selection
+                selectedCategory = item.category
+                selectedSubcategory = item.subcategory
+                
+                // Update button title
+                if let subcategory = item.subcategory {
+                    categoryButton.setTitle("\(item.category.displayName) - \(subcategory)", for: .normal)
+                } else {
+                    categoryButton.setTitle(item.category.displayName, for: .normal)
+                }
+                
+                // Hide dropdown
+                categoryButtonTapped()
+                
+                tableView.reloadData()
             }
-            
-            // Hide dropdown
-            categoryButtonTapped()
-            
-            tableView.reloadData()
         } else {
             selectSearchResult(searchResults[indexPath.row])
+        }
+    }
+}
+
+// MARK: - CategoryPickerDelegate
+
+extension AddPlaceViewController {
+    func categoryPicker(_ picker: CategoryPickerViewController, didSelectCategory category: PlaceCategory, subcategory: String?) {
+        selectedCategory = category
+        selectedSubcategory = subcategory
+        
+        // Update button title
+        if let subcategory = subcategory {
+            categoryButton.setTitle("\(category.displayName) - \(subcategory)", for: .normal)
+        } else {
+            categoryButton.setTitle(category.displayName, for: .normal)
         }
     }
 }

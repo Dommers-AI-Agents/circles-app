@@ -106,12 +106,26 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             print("📍 API Key prefix: \(String(gmsApiKey.prefix(10)))...")
             print("📍 Bundle ID: \(Bundle.main.bundleIdentifier ?? "unknown")")
             
+            // Debug: Test if API key is valid format
+            if gmsApiKey.hasPrefix("AIza") && gmsApiKey.count == 39 {
+                print("📍 ✅ API Key format appears valid")
+            } else {
+                print("📍 ⚠️ API Key format may be invalid")
+            }
+            
             GMSPlacesClient.provideAPIKey(gmsApiKey)
-            print("📍 Google Places SDK initialized")
+            print("📍 Google Places SDK initialized with key")
             
             // Also initialize Google Maps SDK with the same API key
             GMSServices.provideAPIKey(gmsApiKey)
-            print("🗺️ Google Maps SDK initialized")
+            print("🗺️ Google Maps SDK initialized with key")
+            
+            // Add a test to verify the Places client is properly configured
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                print("📍 Testing Google Places client initialization...")
+                let placesClient = GMSPlacesClient.shared()
+                print("📍 Places client created: \(placesClient)")
+            }
         } else {
             print("📍 ❌ Failed to load Google Places/Maps API key from Info.plist")
         }

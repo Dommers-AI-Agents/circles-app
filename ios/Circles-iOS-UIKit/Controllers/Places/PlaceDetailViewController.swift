@@ -863,26 +863,19 @@ class PlaceDetailViewController: UIViewController {
             shareText += "\(stars) \(rating)/5.0\n"
         }
         
+        // Add Google Maps link
+        if let location = place.location?.clLocation {
+            let googleMapsURL = "https://maps.google.com/?q=\(location.coordinate.latitude),\(location.coordinate.longitude)"
+            shareText += "\n🗺️ View on Google Maps: \(googleMapsURL)"
+        }
+        
         // Add deep link and web link
         shareText += "\n\n📱 Open in Circles: circles://place/\(place.id)"
         
-        // Add a web link that could redirect to App Store or open the app
-        // For now, use TestFlight link since app isn't on App Store yet
-        shareText += "\n\n🔗 Get Circles App: https://testflight.apple.com/join/YourTestFlightCode"
-        // TODO: Replace with App Store link when published: https://apps.apple.com/app/circles/idYOURAPPID
-        
-        shareText += "\n\nShared from Circles!"
+        // Add TestFlight link
+        shareText += "\n\n🔗 Get Circles App: https://testflight.apple.com/join/n1sBRMG3"
         
         var activityItems: [Any] = [shareText]
-        
-        // Add location if available for sharing
-        if let location = place.location?.clLocation {
-            // Create a Google Maps URL for sharing
-            let googleMapsURL = "https://maps.google.com/?q=\(location.coordinate.latitude),\(location.coordinate.longitude)"
-            if let url = URL(string: googleMapsURL) {
-                activityItems.append(url)
-            }
-        }
         
         // Add website URL if available
         if let websiteString = place.website, let url = URL(string: websiteString) {

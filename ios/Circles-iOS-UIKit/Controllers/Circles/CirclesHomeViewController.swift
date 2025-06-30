@@ -931,32 +931,32 @@ class CirclesHomeViewController: UIViewController {
     }
     
     private func showCirclePicker() {
-        let alert = UIAlertController(
-            title: "Select Circle",
-            message: "Choose which circle to add the place to:",
-            preferredStyle: .actionSheet
-        )
-        
-        for circle in circles {
-            alert.addAction(UIAlertAction(title: circle.name, style: .default) { [weak self] _ in
-                let addPlaceVC = AddPlaceViewController(circleId: circle.id)
-                self?.navigationController?.pushViewController(addPlaceVC, animated: true)
-            })
+        let circlePickerVC = CirclePickerViewController(circles: circles)
+        circlePickerVC.onCircleSelected = { [weak self] circle in
+            let addPlaceVC = AddPlaceViewController(circleId: circle.id)
+            self?.navigationController?.pushViewController(addPlaceVC, animated: true)
         }
-        
-        alert.addAction(UIAlertAction(title: "Create New Circle", style: .default) { [weak self] _ in
+        circlePickerVC.onCreateNewCircle = { [weak self] in
             self?.createCircleButtonTapped()
-        })
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        
-        // For iPad
-        if let popover = alert.popoverPresentationController {
-            popover.sourceView = quickAddPlaceButton
-            popover.sourceRect = quickAddPlaceButton.bounds
         }
         
-        present(alert, animated: true)
+        let navController = UINavigationController(rootViewController: circlePickerVC)
+        
+        // Set presentation style for modal
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            navController.modalPresentationStyle = .formSheet
+            navController.preferredContentSize = CGSize(width: 400, height: 600)
+        } else {
+            navController.modalPresentationStyle = .pageSheet
+            if #available(iOS 15.0, *) {
+                if let sheet = navController.sheetPresentationController {
+                    sheet.detents = [.medium(), .large()]
+                    sheet.prefersGrabberVisible = true
+                }
+            }
+        }
+        
+        present(navController, animated: true)
     }
     
     @objc private func mapToggleButtonTapped() {
@@ -2082,10 +2082,8 @@ extension CirclesHomeViewController: CircleTableViewCellDelegate {
         // Add deep link and web link
         shareText += "\n\n📱 Open in Circles: circles://circle/\(circle.id)"
         
-        // Add a web link that could redirect to App Store or open the app
-        // For now, use TestFlight link since app isn't on App Store yet
-        shareText += "\n\n🔗 Get Circles App: https://testflight.apple.com/join/YourTestFlightCode"
-        // TODO: Replace with App Store link when published: https://apps.apple.com/app/circles/idYOURAPPID
+        // Add TestFlight link
+        shareText += "\n\n🔗 Get Circles App: https://testflight.apple.com/join/n1sBRMG3"
         
         shareText += "\n\nJoin me on Circles!"
         

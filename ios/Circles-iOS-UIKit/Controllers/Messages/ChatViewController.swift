@@ -32,6 +32,12 @@ class ChatViewController: UIViewController {
         textView.layer.cornerRadius = 18
         textView.textContainerInset = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
         textView.isScrollEnabled = false
+        // Fix RTI issues
+        textView.autocorrectionType = .default
+        textView.spellCheckingType = .default
+        textView.smartQuotesType = .no
+        textView.smartDashesType = .no
+        textView.smartInsertDeleteType = .no
         return textView
     }()
     
@@ -69,6 +75,7 @@ class ChatViewController: UIViewController {
     private var keyboardHeight: CGFloat = 0
     private var messageInputBottomConstraint: NSLayoutConstraint!
     private let cellIdentifier = "MessageCell"
+    private var temporaryText: String = "" // Store text to prevent loss
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
@@ -76,7 +83,7 @@ class ChatViewController: UIViewController {
         setupView()
         setupTableView()
         setupMessageInput()
-        setupKeyboardObservers()
+        setupKeyboardHandling(bottomConstraint: messageInputBottomConstraint, dismissOnTap: false)
         setupSubscribers()
         loadMessages()
     }
@@ -89,6 +96,7 @@ class ChatViewController: UIViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         markMessagesAsRead()
+        removeKeyboardHandling()
     }
     
     // MARK: - Setup
@@ -161,21 +169,6 @@ class ChatViewController: UIViewController {
         ])
     }
     
-    private func setupKeyboardObservers() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(keyboardWillShow),
-            name: UIResponder.keyboardWillShowNotification,
-            object: nil
-        )
-        
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(keyboardWillHide),
-            name: UIResponder.keyboardWillHideNotification,
-            object: nil
-        )
-    }
     
     private func setupSubscribers() {
         guard let conversationId = conversation?.id else { return }
@@ -212,22 +205,41 @@ class ChatViewController: UIViewController {
     
     // MARK: - Actions
     @objc private func sendMessage() {
-        guard let conversationId = conversation?.id,
-              let text = messageTextView.text?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !text.isEmpty else { return }
+        guard let conversationId = conversation?.id else { return }
         
-        // Clear input
-        messageTextView.text = ""
-        textViewDidChange(messageTextView)
+        // Get text from temporary storage or text view
+        let text = temporaryText.isEmpty ? (messageTextView.text ?? "") : temporaryText
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        guard !trimmedText.isEmpty else { return }
+        
+        // Store the message text before clearing
+        let messageToSend = trimmedText
+        
+        // Clear input and temporary storage
+        DispatchQueue.main.async { [weak self] in
+            self?.messageTextView.text = ""
+            self?.temporaryText = ""
+            self?.textViewDidChange(self?.messageTextView ?? UITextView())
+            
+            // Ensure the text view ends editing properly
+            self?.messageTextView.resignFirstResponder()
+            self?.messageTextView.becomeFirstResponder()
+        }
         
         // Send message
         messagingManager.sendMessage(
             conversationId: conversationId,
             type: .text,
-            content: text
+            content: messageToSend
         ) { [weak self] result in
             if case .failure(let error) = result {
                 self?.showError(error.localizedDescription)
+                // Restore text on failure
+                DispatchQueue.main.async {
+                    self?.messageTextView.text = messageToSend
+                    self?.textViewDidChange(self?.messageTextView ?? UITextView())
+                }
             }
         }
     }
@@ -261,28 +273,6 @@ class ChatViewController: UIViewController {
         // TODO: Show conversation info/settings
     }
     
-    @objc private func keyboardWillShow(_ notification: Notification) {
-        guard let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
-              let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double else { return }
-        
-        keyboardHeight = keyboardFrame.height
-        messageInputBottomConstraint.constant = -keyboardHeight + view.safeAreaInsets.bottom
-        
-        UIView.animate(withDuration: duration) {
-            self.view.layoutIfNeeded()
-        }
-    }
-    
-    @objc private func keyboardWillHide(_ notification: Notification) {
-        guard let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double else { return }
-        
-        keyboardHeight = 0
-        messageInputBottomConstraint.constant = 0
-        
-        UIView.animate(withDuration: duration) {
-            self.view.layoutIfNeeded()
-        }
-    }
     
     // MARK: - Helper Methods
     private func scrollToBottom(animated: Bool) {
@@ -376,7 +366,41 @@ extension ChatViewController: UITableViewDelegate {
 
 // MARK: - UITextViewDelegate
 extension ChatViewController: UITextViewDelegate {
+    func textViewDidBeginEditing(_ textView: UITextView) {
+        // Store current text when editing begins
+        temporaryText = textView.text ?? ""
+    }
+    
+    func textViewDidEndEditing(_ textView: UITextView) {
+        // Ensure text is preserved when ending editing
+        if textView.text.isEmpty && !temporaryText.isEmpty {
+            textView.text = temporaryText
+            textViewDidChange(textView)
+        }
+        temporaryText = ""
+    }
+    
+    func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+        // Handle text changes properly
+        guard let currentText = textView.text,
+              let textRange = Range(range, in: currentText) else { return true }
+        
+        let updatedText = currentText.replacingCharacters(in: textRange, with: text)
+        temporaryText = updatedText
+        
+        // Handle return key to send message
+        if text == "\n" && !updatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            sendMessage()
+            return false
+        }
+        
+        return true
+    }
+    
     func textViewDidChange(_ textView: UITextView) {
+        // Store current text
+        temporaryText = textView.text ?? ""
+        
         // Update placeholder visibility
         placeholderLabel.isHidden = !textView.text.isEmpty
         
@@ -388,6 +412,9 @@ extension ChatViewController: UITextViewDelegate {
         // Adjust text view height
         let size = textView.sizeThatFits(CGSize(width: textView.frame.width, height: CGFloat.greatestFiniteMagnitude))
         textView.isScrollEnabled = size.height > 120
+        
+        // Force layout update to prevent RTI issues
+        textView.layoutIfNeeded()
     }
 }
 

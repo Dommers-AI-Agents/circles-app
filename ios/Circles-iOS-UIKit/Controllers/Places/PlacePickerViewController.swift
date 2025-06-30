@@ -16,10 +16,23 @@ class PlacePickerViewController: UIViewController {
         return table
     }()
     
+    private let emptyStateLabel: UILabel = {
+        let label = UILabel()
+        label.text = "No places found.\nAdd places to your circles first."
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.textColor = .secondaryLabel
+        label.font = .systemFont(ofSize: 16)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.isHidden = true
+        return label
+    }()
+    
     private let searchController: UISearchController = {
         let controller = UISearchController(searchResultsController: nil)
-        controller.searchBar.placeholder = "Search places"
+        controller.searchBar.placeholder = "Search your places..."
         controller.obscuresBackgroundDuringPresentation = false
+        controller.hidesNavigationBarDuringPresentation = false
         return controller
     }()
     
@@ -31,17 +44,30 @@ class PlacePickerViewController: UIViewController {
         loadPlaces()
     }
     
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // Activate search immediately
+        searchController.isActive = true
+        searchController.searchBar.becomeFirstResponder()
+    }
+    
     // MARK: - Setup
     private func setupView() {
         view.backgroundColor = .systemBackground
         
         view.addSubview(tableView)
+        view.addSubview(emptyStateLabel)
         
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            
+            emptyStateLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            emptyStateLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            emptyStateLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
+            emptyStateLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32)
         ])
         
         tableView.delegate = self
@@ -82,6 +108,7 @@ class PlacePickerViewController: UIViewController {
                     let uniquePlaces = Array(Set(allPlaces))
                     self?.places = uniquePlaces.sorted { $0.name < $1.name }
                     self?.tableView.reloadData()
+                    self?.updateEmptyState()
                     
                 case .failure(let error):
                     print("Error loading places: \(error)")
@@ -141,6 +168,7 @@ extension PlacePickerViewController: UITableViewDelegate {
 extension PlacePickerViewController: UISearchResultsUpdating {
     func updateSearchResults(for searchController: UISearchController) {
         tableView.reloadData()
+        updateEmptyState()
     }
 }
 
@@ -152,5 +180,20 @@ extension Place: Hashable {
     
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
+    }
+}
+
+// MARK: - Private Methods
+private extension PlacePickerViewController {
+    func updateEmptyState() {
+        let hasPlaces = !filteredPlaces.isEmpty
+        tableView.isHidden = !hasPlaces
+        emptyStateLabel.isHidden = hasPlaces
+        
+        if searchController.isActive && !hasPlaces && !(searchController.searchBar.text ?? "").isEmpty {
+            emptyStateLabel.text = "No places found matching '\(searchController.searchBar.text ?? "")'"
+        } else if !hasPlaces {
+            emptyStateLabel.text = "No places found.\nAdd places to your circles first."
+        }
     }
 }

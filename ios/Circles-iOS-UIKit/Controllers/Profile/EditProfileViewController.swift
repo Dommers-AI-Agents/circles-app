@@ -179,7 +179,13 @@ class EditProfileViewController: UIViewController {
         super.viewDidLoad()
         setupUI()
         setupActions()
+        setupKeyboardHandling(scrollView: scrollView, dismissOnTap: true)
         loadUserProfile()
+    }
+    
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        removeKeyboardHandling()
     }
     
     // MARK: - UI Setup
@@ -311,10 +317,6 @@ class EditProfileViewController: UIViewController {
             saveButton.heightAnchor.constraint(equalToConstant: 50),
             saveButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
         ])
-        
-        // Add tap gesture to dismiss keyboard
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
-        view.addGestureRecognizer(tapGesture)
     }
     
     private func setupActions() {
