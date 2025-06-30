@@ -1352,17 +1352,24 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
                 case .amusementPark:
                     self.selectedCategory = .attraction
                     self.selectedSubcategory = "Theme Park"
-                case .miniGolf:
-                    self.selectedCategory = .entertainment
                 case .stadium:
                     self.selectedCategory = .entertainment
                 case .marina:
                     self.selectedCategory = .outdoor
-                case .castle, .landmark:
-                    self.selectedCategory = .attraction
-                    self.selectedSubcategory = "Landmark"
                 default:
-                    self.selectedCategory = .other
+                    if #available(iOS 18.0, *) {
+                        switch poiCategory {
+                        case .miniGolf:
+                            self.selectedCategory = .entertainment
+                        case .castle, .landmark:
+                            self.selectedCategory = .attraction
+                            self.selectedSubcategory = "Landmark"
+                        default:
+                            self.selectedCategory = .other
+                        }
+                    } else {
+                        self.selectedCategory = .other
+                    }
                 }
             } else {
                 // Try to infer category from name
@@ -2025,11 +2032,18 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
         case .theater: return "Theater and performing arts venue"
         case .zoo, .aquarium: return "Animal exhibits and attractions"
         case .amusementPark: return "Amusement park and rides"
-        case .miniGolf: return "Mini golf recreation"
         case .stadium: return "Sports and event venue"
         case .marina: return "Marina and boating services"
-        case .castle, .landmark: return "Historical landmark or attraction"
-        default: return "Local business or point of interest"
+        default:
+            if #available(iOS 18.0, *) {
+                switch category {
+                case .miniGolf: return "Mini golf recreation"
+                case .castle, .landmark: return "Historical landmark or attraction"
+                default: return "Local business or point of interest"
+                }
+            } else {
+                return "Local business or point of interest"
+            }
         }
     }
 }

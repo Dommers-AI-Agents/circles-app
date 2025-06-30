@@ -142,7 +142,7 @@ struct LoginView: View {
                         showingRegistration = true
                     }
                     .foregroundColor(.white)
-                    .fontWeight(.bold)
+                    .font(.system(size: 17, weight: .bold))
                 }
                 .padding(.bottom, 30)
             }

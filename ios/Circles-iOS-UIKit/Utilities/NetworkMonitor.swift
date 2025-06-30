@@ -72,19 +72,36 @@ struct NetworkAlertModifier: ViewModifier {
     @State private var showingAlert = false
     
     func body(content: Content) -> some View {
-        content
-            .onChange(of: networkMonitor.isConnected) { _, newValue in
-                if !newValue {
-                    showingAlert = true
+        if #available(iOS 17.0, *) {
+            content
+                .onChange(of: networkMonitor.isConnected) { _, newValue in
+                    if !newValue {
+                        showingAlert = true
+                    }
                 }
-            }
-            .alert("No Internet Connection", isPresented: $showingAlert) {
-                Button("OK") {
-                    showingAlert = false
+                .alert("No Internet Connection", isPresented: $showingAlert) {
+                    Button("OK") {
+                        showingAlert = false
+                    }
+                } message: {
+                    Text("Please check your internet connection and try again.")
                 }
-            } message: {
-                Text("Please check your internet connection and try again.")
-            }
+        } else {
+            // Fallback for iOS 16 and earlier
+            content
+                .onChange(of: networkMonitor.isConnected) { newValue in
+                    if !newValue {
+                        showingAlert = true
+                    }
+                }
+                .alert("No Internet Connection", isPresented: $showingAlert) {
+                    Button("OK") {
+                        showingAlert = false
+                    }
+                } message: {
+                    Text("Please check your internet connection and try again.")
+                }
+        }
     }
 }
 

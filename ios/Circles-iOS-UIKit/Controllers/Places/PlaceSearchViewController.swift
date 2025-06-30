@@ -274,11 +274,18 @@ class PlaceSearchViewController: UIViewController {
         case .theater: return "Theater and performing arts venue"
         case .zoo, .aquarium: return "Animal exhibits and attractions"
         case .amusementPark: return "Amusement park and rides"
-        case .miniGolf: return "Mini golf recreation"
         case .stadium: return "Sports and event venue"
         case .marina: return "Marina and boating services"
-        case .castle, .landmark: return "Historical landmark or attraction"
-        default: return "Local business or point of interest"
+        default:
+            if #available(iOS 18.0, *) {
+                switch category {
+                case .miniGolf: return "Mini golf recreation"
+                case .castle, .landmark: return "Historical landmark or attraction"
+                default: return "Local business or point of interest"
+                }
+            } else {
+                return "Local business or point of interest"
+            }
         }
     }
     
@@ -330,10 +337,21 @@ class PlaceSearchViewController: UIViewController {
                  .school, .university, .library, .movieTheater:
                 category = "Service"
             case .museum, .park, .beach, .theater, .zoo, .aquarium, .amusementPark,
-                 .miniGolf, .stadium,
-                 .marina, .castle, .landmark, .nationalPark:
+                 .stadium, .marina, .nationalPark:
                 category = "Attraction"
-            default: category = "Other"
+            default:
+                if #available(iOS 18.0, *) {
+                    switch poiCategory {
+                    case .miniGolf:
+                        category = "Attraction"
+                    case .castle, .landmark:
+                        category = "Attraction"
+                    default:
+                        category = "Other"
+                    }
+                } else {
+                    category = "Other"
+                }
             }
         }
         
