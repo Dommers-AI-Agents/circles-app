@@ -9,7 +9,10 @@ const {
   deleteCircle,
   shareCircle,
   followCircle,
-  unfollowCircle
+  unfollowCircle,
+  addEditor,
+  removeEditor,
+  getEditors
 } = require('../controllers/firebaseCircleController');
 const {
   shareCircle: newShareCircle,
@@ -59,5 +62,13 @@ router.route('/:id/follow')
 
 router.route('/:id/unfollow')
   .post(unfollowCircle);
+
+// Editor management routes
+router.route('/:id/editors')
+  .get(getEditors)
+  .post(addEditor);
+
+router.route('/:id/editors/:userId')
+  .delete(removeEditor);
 
 module.exports = router;

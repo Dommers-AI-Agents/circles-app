@@ -1,18 +1,16 @@
 import UIKit
-import GoogleMaps
-import GooglePlaces
-import SwiftUI
 import MapKit
+import SwiftUI
 import UniformTypeIdentifiers
 import CoreLocation
 
-class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocationManagerDelegate {
+class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocationManagerDelegate {
     
     // MARK: - Properties
     private var circle: Circle
     private var places: [Place] = []
     private var filteredPlaces: [Place] = []
-    private var markerPlaceMap: [GMSMarker: Place] = [:]
+    private var annotationPlaceMap: [ObjectIdentifier: Place] = [:]
     private let locationManager = CLLocationManager()
     private var userLocation: CLLocation?
     private var selectedCategory: PlaceCategory?
@@ -130,24 +128,21 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
         return button
     }()
     
-    private let mapView: GMSMapView = {
-        let mapView = GMSMapView()
-        // Start with a wider view to show multiple places
-        mapView.camera = GMSCameraPosition.camera(withLatitude: 40.7128, longitude: -74.0060, zoom: 10.0)
+    private let mapView: MKMapView = {
+        let mapView = MKMapView()
         mapView.layer.cornerRadius = 12
         mapView.clipsToBounds = true
         mapView.translatesAutoresizingMaskIntoConstraints = false
         
         // Enable map controls
-        mapView.settings.myLocationButton = true
-        mapView.settings.compassButton = true
-        mapView.settings.zoomGestures = true
-        mapView.settings.scrollGestures = true
-        mapView.settings.tiltGestures = true
-        mapView.settings.rotateGestures = true
-        
-        // Enable my location if permission granted
-        mapView.isMyLocationEnabled = true
+        mapView.showsUserLocation = true
+        mapView.showsCompass = true
+        mapView.showsScale = true
+        mapView.isZoomEnabled = true
+        mapView.isScrollEnabled = true
+        mapView.isPitchEnabled = true
+        mapView.isRotateEnabled = true
+        mapView.showsUserLocation = true
         
         return mapView
     }()
@@ -831,36 +826,39 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
     }
     
     private func addAnnotationsToMap() {
-        mapView.clear()
-        markerPlaceMap.removeAll()
+        // Remove existing annotations
+        mapView.removeAnnotations(mapView.annotations)
+        annotationPlaceMap.removeAll()
         
-        var bounds = GMSCoordinateBounds()
-        var hasMarkers = false
+        var mapRect = MKMapRect.null
         
         for place in filteredPlaces {
             if let location = place.location?.clLocation {
-                let marker = GMSMarker()
-                marker.position = location.coordinate
-                marker.title = place.name
-                marker.snippet = place.displayCategory
-                marker.map = mapView
+                let annotation = PlaceAnnotation(place: place)
+                mapView.addAnnotation(annotation)
                 
-                // Store the place associated with this marker
-                markerPlaceMap[marker] = place
+                // Store the place reference
+                annotationPlaceMap[ObjectIdentifier(annotation)] = place
                 
-                // Create custom marker view with category icon
-                if let customView = createMarkerView(for: place.category) {
-                    marker.iconView = customView
-                }
-                
-                bounds = bounds.includingCoordinate(location.coordinate)
-                hasMarkers = true
+                // Update map rect
+                let point = MKMapPoint(location.coordinate)
+                let rect = MKMapRect(x: point.x, y: point.y, width: 0, height: 0)
+                mapRect = mapRect.union(rect)
             }
         }
         
-        if hasMarkers {
-            let update = GMSCameraUpdate.fit(bounds, withPadding: 50.0)
-            mapView.animate(with: update)
+        // Adjust map to show all annotations
+        if !mapRect.isNull {
+            let padding = UIEdgeInsets(top: 50, left: 50, bottom: 50, right: 50)
+            mapView.setVisibleMapRect(mapRect, edgePadding: padding, animated: true)
+        } else if let userLocation = locationManager.location {
+            // Center on user location if no places
+            let region = MKCoordinateRegion(
+                center: userLocation.coordinate,
+                latitudinalMeters: 5000,
+                longitudinalMeters: 5000
+            )
+            mapView.setRegion(region, animated: true)
         }
     }
     
@@ -959,6 +957,39 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
     
     // MARK: - Actions
     @objc private func shareButtonTapped() {
+        // Show loading indicator
+        let loadingAlert = UIAlertController(title: nil, message: "Creating share link...", preferredStyle: .alert)
+        let loadingIndicator = UIActivityIndicatorView(style: .large)
+        loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
+        loadingIndicator.startAnimating()
+        loadingAlert.view.addSubview(loadingIndicator)
+        NSLayoutConstraint.activate([
+            loadingIndicator.centerXAnchor.constraint(equalTo: loadingAlert.view.centerXAnchor),
+            loadingIndicator.centerYAnchor.constraint(equalTo: loadingAlert.view.centerYAnchor, constant: 30)
+        ])
+        present(loadingAlert, animated: true)
+        
+        // Create share link via API
+        CircleService.shared.createShareLink(
+            circleId: circle.id,
+            shareType: .link,
+            accessLevel: .viewOnly,
+            expiresIn: 30 // 30 days expiration
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    switch result {
+                    case .success(let share):
+                        self?.presentShareSheet(with: share)
+                    case .failure(let error):
+                        self?.showShareError(error)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func presentShareSheet(with share: CircleShare) {
         // Create formatted text to share
         var shareText = "🟦 \(circle.name)"
         if let description = circle.description {
@@ -984,14 +1015,20 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
         }
         
         // Add deep link
-        let deepLink = "circles://circle/\(circle.id)"
-        shareText += "\n\nOpen in Circles: \(deepLink)"
+        if let shareLink = share.shareLink {
+            shareText += "\n\nOpen in Circles: \(shareLink)"
+        }
         
         // Add app download link
-        let appStoreLink = "https://testflight.apple.com/join/YourTestFlightLink" // Replace with actual link
+        let appStoreLink = "https://apps.apple.com/app/circles/id123456789" // TODO: Replace with actual App Store link
         shareText += "\n\nDon't have Circles? Download here: \(appStoreLink)"
         
         var activityItems: [Any] = [shareText]
+        
+        // Add the direct deep link URL as a separate item for better sharing
+        if let shareLink = share.shareLink, let url = URL(string: shareLink) {
+            activityItems.append(url)
+        }
         
         // Function to present the share sheet
         let presentShareSheet = { [weak self] in
@@ -1022,6 +1059,16 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
         } else {
             presentShareSheet()
         }
+    }
+    
+    private func showShareError(_ error: Error) {
+        let alert = UIAlertController(
+            title: "Share Failed",
+            message: "Unable to create share link. Please try again.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
     }
     
     @objc private func editButtonTapped() {
@@ -1104,7 +1151,8 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
     }
     
     private func presentFullScreenMap() {
-        let fullScreenMapVC = FullScreenMapViewController(places: filteredPlaces, initialCamera: mapView.camera, selectedCategory: selectedCategory)
+        let fullScreenMapVC = FullScreenMapViewController(places: filteredPlaces, initialRegion: mapView.region, selectedCategory: selectedCategory)
+        fullScreenMapVC.delegate = self
         present(fullScreenMapVC, animated: true)
     }
     
@@ -1163,24 +1211,11 @@ class CircleDetailViewController: UIViewController, GMSMapViewDelegate, CLLocati
     }
     
     private func presentGooglePlacesSearch() {
-        let autocompleteController = GMSAutocompleteViewController()
-        autocompleteController.delegate = self
-        
-        // Configure the filter
-        let filter = GMSAutocompleteFilter()
-        filter.types = ["establishment"]
-        autocompleteController.autocompleteFilter = filter
-        
-        // Set the location bias to the user's current location if available
-        if let location = LocationService.shared.lastKnownLocation {
-            let coordinate = location.coordinate
-            filter.locationBias = GMSPlaceRectangularLocationOption(
-                CLLocationCoordinate2D(latitude: coordinate.latitude - 0.1, longitude: coordinate.longitude - 0.1),
-                CLLocationCoordinate2D(latitude: coordinate.latitude + 0.1, longitude: coordinate.longitude + 0.1)
-            )
-        }
-        
-        present(autocompleteController, animated: true)
+        // Navigate to PlaceSearchViewController for Apple Maps search
+        let placeSearchVC = PlaceSearchViewController()
+        placeSearchVC.delegate = self
+        let navController = UINavigationController(rootViewController: placeSearchVC)
+        present(navController, animated: true)
     }
     
     private func sharePlace(_ place: Place) {
@@ -1919,10 +1954,10 @@ extension CircleDetailViewController: EditCircleDelegate {
     }
 }
 
-// MARK: - GMSAutocompleteViewControllerDelegate
-extension CircleDetailViewController: GMSAutocompleteViewControllerDelegate {
-    func viewController(_ viewController: GMSAutocompleteViewController, didAutocompleteWith place: GMSPlace) {
-        // Dismiss the autocomplete controller
+// MARK: - PlaceSearchDelegate
+extension CircleDetailViewController: PlaceSearchDelegate {
+    func didSelectPlace(name: String, address: String, coordinate: CLLocationCoordinate2D, phone: String?, website: String?, category: String?, description: String?) {
+        // Dismiss the search controller
         dismiss(animated: true) { [weak self] in
             guard let self = self else { return }
             
@@ -1930,28 +1965,27 @@ extension CircleDetailViewController: GMSAutocompleteViewControllerDelegate {
             let loadingAlert = UIAlertController(title: "Adding Place", message: "Please wait...", preferredStyle: .alert)
             self.present(loadingAlert, animated: true)
             
-            // Extract place details
-            let name = place.name ?? "Unknown Place"
-            let address = place.formattedAddress ?? ""
-            
-            // Determine category based on place types
-            let category = self.determinePlaceCategory(from: place.types ?? [])
+            // Determine category from string or default
+            let placeCategory: PlaceCategory
+            if let categoryString = category {
+                placeCategory = PlaceCategory(rawValue: categoryString) ?? .other
+            } else {
+                placeCategory = .other
+            }
             
             // Create location object
-            var location: GeoLocation? = nil
-            let coordinate = place.coordinate
-            location = GeoLocation(type: "Point", coordinates: [coordinate.longitude, coordinate.latitude])
+            let location = GeoLocation(type: "Point", coordinates: [coordinate.longitude, coordinate.latitude])
             
             // Add the place
             PlaceService.shared.createPlace(
                 name: name,
-                description: nil,
+                description: description,
                 address: address,
-                category: category,
+                category: placeCategory,
                 circleId: self.circle.id,
                 privacy: PlacePrivacy.followCirclePrivacy,
-                website: place.website?.absoluteString,
-                phone: place.phoneNumber,
+                website: website,
+                phone: phone,
                 tags: nil,
                 photos: nil
             ) { [weak self] (result: Result<Place, Error>) in
@@ -1989,23 +2023,6 @@ extension CircleDetailViewController: GMSAutocompleteViewControllerDelegate {
         }
     }
     
-    func viewController(_ viewController: GMSAutocompleteViewController, didFailAutocompleteWithError error: Error) {
-        // Handle the error
-        dismiss(animated: true) { [weak self] in
-            let alert = UIAlertController(
-                title: "Error",
-                message: "Place search failed: \(error.localizedDescription)",
-                preferredStyle: .alert
-            )
-            alert.addAction(UIAlertAction(title: "OK", style: .default))
-            self?.present(alert, animated: true)
-        }
-    }
-    
-    func wasCancelled(_ viewController: GMSAutocompleteViewController) {
-        dismiss(animated: true)
-    }
-    
     private func determinePlaceCategory(from types: [String]) -> PlaceCategory {
         // Check for specific place types and map to our categories
         if types.contains("restaurant") { return .restaurant }
@@ -2030,7 +2047,19 @@ extension CircleDetailViewController: GMSAutocompleteViewControllerDelegate {
 
 // MARK: - Helper Methods
 extension CircleDetailViewController {
-    private func addGooglePlace(gmsPlace: GMSPlace, placeID: String) {
+    private func addGooglePlace(gmsPlace: Any, placeID: String) {
+        // This method is kept for legacy compatibility but should be migrated to use Apple Maps
+        // For now, we'll just show an error message
+        let alert = UIAlertController(
+            title: "Not Available",
+            message: "Please use the search button to add places.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+        return
+        
+        /* Original implementation commented out for reference:
         // Show loading
         let loadingAlert = UIAlertController(title: "Adding Place", message: "Please wait...", preferredStyle: .alert)
         present(loadingAlert, animated: true)
@@ -2146,6 +2175,7 @@ extension CircleDetailViewController {
                 self?.createPlaceWithData(placeData, loadingAlert: loadingAlert)
             }
         }
+        */
     }
     
     private func createPlaceWithData(_ placeData: [String: Any], loadingAlert: UIAlertController) {
@@ -2303,161 +2333,54 @@ extension CircleDetailViewController {
     }
 }
 
-// MARK: - GMSMapViewDelegate
+
+// MARK: - MKMapViewDelegate
 extension CircleDetailViewController {
     
-    // Handle POI taps (Point of Interest taps on the map)
-    func mapView(_ mapView: GMSMapView, didTapPOIWithPlaceID placeID: String, name: String, location: CLLocationCoordinate2D) {
-        print("POI tapped: \(name) with placeID: \(placeID)")
-        
-        // Show loading indicator
-        let loadingAlert = UIAlertController(title: "Loading Place", message: "Please wait...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
-        
-        // Fetch full place details
-        GooglePlacesService.shared.fetchPlaceDetails(placeID: placeID) { [weak self] result in
-            guard let self = self else { return }
-            
-            DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true) {
-                    switch result {
-                    case .success(let gmsPlace):
-                        // Show confirmation alert
-                        let alert = UIAlertController(
-                            title: "Add Place",
-                            message: "Add '\(gmsPlace.name ?? name)' to \(self.circle.name)?",
-                            preferredStyle: .alert
-                        )
-                        
-                        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-                        alert.addAction(UIAlertAction(title: "Add", style: .default) { _ in
-                            self.addGooglePlace(gmsPlace: gmsPlace, placeID: placeID)
-                        })
-                        
-                        self.present(alert, animated: true)
-                        
-                    case .failure(let error):
-                        print("Failed to fetch place details: \(error)")
-                        // Fallback to basic info
-                        let alert = UIAlertController(
-                            title: "Add Place",
-                            message: "Add '\(name)' to \(self.circle.name)?",
-                            preferredStyle: .alert
-                        )
-                        
-                        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-                        alert.addAction(UIAlertAction(title: "Add", style: .default) { _ in
-                            // Use reverse geocoding to get address from coordinates
-                            self.addPlaceWithCoordinates(name: name, location: location, placeID: placeID)
-                        })
-                        
-                        self.present(alert, animated: true)
-                    }
-                }
-            }
-        }
-    }
-    
-    // Called when a marker info window is tapped
-    func mapView(_ mapView: GMSMapView, didTapInfoWindowOf marker: GMSMarker) {
-        guard let place = markerPlaceMap[marker] else { return }
-        
-        // Show action sheet with options
-        showPlaceActionSheet(for: place)
-    }
-    
-    // Customize info window content
-    func mapView(_ mapView: GMSMapView, markerInfoWindow marker: GMSMarker) -> UIView? {
-        guard let place = markerPlaceMap[marker] else { return nil }
-        
-        // Create custom info window
-        let infoWindow = UIView(frame: CGRect(x: 0, y: 0, width: 200, height: 70))
-        infoWindow.backgroundColor = .white
-        infoWindow.layer.cornerRadius = 8
-        infoWindow.layer.borderWidth = 1
-        infoWindow.layer.borderColor = UIColor.lightGray.cgColor
-        
-        // Name label
-        let nameLabel = UILabel(frame: CGRect(x: 8, y: 8, width: 184, height: 20))
-        nameLabel.text = place.name
-        nameLabel.font = .systemFont(ofSize: 14, weight: .semibold)
-        nameLabel.textColor = .black
-        infoWindow.addSubview(nameLabel)
-        
-        // Address label
-        let addressLabel = UILabel(frame: CGRect(x: 8, y: 28, width: 184, height: 16))
-        addressLabel.text = place.address
-        addressLabel.font = .systemFont(ofSize: 12)
-        addressLabel.textColor = .gray
-        addressLabel.lineBreakMode = .byTruncatingTail
-        infoWindow.addSubview(addressLabel)
-        
-        // Rating if available
-        if let rating = place.rating {
-            let ratingLabel = UILabel(frame: CGRect(x: 8, y: 46, width: 60, height: 16))
-            ratingLabel.text = "⭐ \(String(format: "%.1f", rating))"
-            ratingLabel.font = .systemFont(ofSize: 12)
-            ratingLabel.textColor = .orange
-            infoWindow.addSubview(ratingLabel)
+    func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+        // Skip user location
+        if annotation is MKUserLocation {
+            return nil
         }
         
-        // "Tap for options" hint
-        let hintLabel = UILabel(frame: CGRect(x: 100, y: 46, width: 92, height: 16))
-        hintLabel.text = "Tap for options"
-        hintLabel.font = .systemFont(ofSize: 11)
-        hintLabel.textColor = Constants.Colors.primary
-        hintLabel.textAlignment = .right
-        infoWindow.addSubview(hintLabel)
-        
-        return infoWindow
-    }
-    
-    // Handle marker tap
-    func mapView(_ mapView: GMSMapView, didTap marker: GMSMarker) -> Bool {
-        // Center the map on the marker
-        mapView.animate(toLocation: marker.position)
-        
-        // Return false to show info window
-        return false
-    }
-    
-    // Handle my location button tap
-    func mapView(_ mapView: GMSMapView, didTapMyLocationButtonFor location: GMSMapView) -> Bool {
-        // Check if we have user location
-        if let userLocation = userLocation {
-            // Animate to user location with closer zoom to see nearby places
-            let camera = GMSCameraPosition.camera(withTarget: userLocation.coordinate, zoom: 16.0)
-            mapView.animate(to: camera)
-            
-            // Calculate nearby places (within ~1km radius)
-            let nearbyPlaces = places.filter { place in
-                guard let placeLocation = place.location?.clLocation else { return false }
-                let distance = userLocation.distance(from: placeLocation)
-                return distance <= 1000 // 1km radius
-            }
-            
-            // If there are nearby places, adjust zoom to show them
-            if !nearbyPlaces.isEmpty {
-                var bounds = GMSCoordinateBounds(coordinate: userLocation.coordinate, coordinate: userLocation.coordinate)
-                
-                // Include all nearby places in bounds
-                for place in nearbyPlaces {
-                    if let coordinate = place.location?.clLocation?.coordinate {
-                        bounds = bounds.includingCoordinate(coordinate)
-                    }
-                }
-                
-                // Add some padding and animate to show all nearby places
-                let update = GMSCameraUpdate.fit(bounds, withPadding: 100.0)
-                mapView.animate(with: update)
-                
-                // Optionally show a toast or label indicating number of nearby places
-                showNearbyPlacesIndicator(count: nearbyPlaces.count)
-            }
+        guard let placeAnnotation = annotation as? PlaceAnnotation else {
+            return nil
         }
         
-        // Return true to indicate we handled the tap
-        return true
+        let identifier = "PlaceAnnotation"
+        var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier) as? MKMarkerAnnotationView
+        
+        if annotationView == nil {
+            annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+            annotationView?.canShowCallout = true
+            
+            // Add detail button
+            let detailButton = UIButton(type: .detailDisclosure)
+            annotationView?.rightCalloutAccessoryView = detailButton
+        } else {
+            annotationView?.annotation = annotation
+        }
+        
+        // Customize marker appearance
+        if let markerView = annotationView {
+            markerView.markerTintColor = categoryColor(for: placeAnnotation.place.category)
+            markerView.glyphImage = UIImage(systemName: categoryIcon(for: placeAnnotation.place.category))
+        }
+        
+        return annotationView
+    }
+    
+    func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView, calloutAccessoryControlTapped control: UIControl) {
+        guard let placeAnnotation = view.annotation as? PlaceAnnotation else { return }
+        showPlaceActionSheet(for: placeAnnotation.place)
+    }
+    
+    // Handle map region changes for better performance
+    func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+        // Update user location if needed
+        if let userLocation = locationManager.location {
+            self.userLocation = userLocation
+        }
     }
     
     private func showNearbyPlacesIndicator(count: Int) {
@@ -2533,5 +2456,14 @@ extension CircleDetailViewController {
         }
         
         present(actionSheet, animated: true)
+    }
+}
+
+// MARK: - FullScreenMapViewControllerDelegate
+extension CircleDetailViewController: FullScreenMapViewControllerDelegate {
+    func mapViewController(_ controller: FullScreenMapViewController, didSelectPlace place: Place) {
+        // Navigate to place details
+        let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
+        navigationController?.pushViewController(placeDetailVC, animated: true)
     }
 }

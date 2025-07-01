@@ -21,7 +21,7 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         updateNetworkBadge()
         
         // Set initial messages tab state (default is Circles tab which is index 0)
-        MessagingManager.shared.setMessagesTabActive(selectedIndex == 3)
+        MessagingManager.shared.setMessagesTabActive(selectedIndex == 2)
     }
     
     deinit {
@@ -55,22 +55,22 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
     private func setupTabs() {
         // Create view controllers for each tab
         let circlesVC = UINavigationController(rootViewController: CirclesHomeViewController())
-        circlesVC.tabBarItem = UITabBarItem(title: "Circles", image: UIImage(systemName: "circle.grid.2x2"), tag: 0)
-        
-        let discoverVC = UINavigationController(rootViewController: DiscoverViewController())
-        discoverVC.tabBarItem = UITabBarItem(title: "Discover", image: UIImage(systemName: "magnifyingglass"), tag: 1)
+        circlesVC.tabBarItem = UITabBarItem(title: "My Circles", image: UIImage(systemName: "circle.grid.2x2"), tag: 0)
         
         let networkVC = UINavigationController(rootViewController: MyNetworkViewController())
-        networkVC.tabBarItem = UITabBarItem(title: "Network", image: UIImage(systemName: "person.2"), tag: 2)
+        networkVC.tabBarItem = UITabBarItem(title: "My Network", image: UIImage(systemName: "person.2"), tag: 1)
         
         let messagesVC = UINavigationController(rootViewController: ConversationsListViewController())
-        messagesVC.tabBarItem = UITabBarItem(title: "Messages", image: UIImage(systemName: "message"), tag: 3)
+        messagesVC.tabBarItem = UITabBarItem(title: "Messages", image: UIImage(systemName: "message"), tag: 2)
+        
+        let discoverVC = UINavigationController(rootViewController: DiscoverViewController())
+        discoverVC.tabBarItem = UITabBarItem(title: "Discover", image: UIImage(systemName: "magnifyingglass"), tag: 3)
         
         let profileVC = UINavigationController(rootViewController: ProfileViewController())
         profileVC.tabBarItem = UITabBarItem(title: "Profile", image: UIImage(systemName: "person"), tag: 4)
         
-        // Set view controllers to tab bar
-        self.viewControllers = [circlesVC, discoverVC, networkVC, messagesVC, profileVC]
+        // Set view controllers to tab bar in the new order
+        self.viewControllers = [circlesVC, networkVC, messagesVC, discoverVC, profileVC]
     }
     
     // MARK: - Badge Management
@@ -130,7 +130,7 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
             // Get unread messages count from MessagingManager
             let count = MessagingManager.shared.unreadCount
             DispatchQueue.main.async {
-                self?.viewControllers?[3].tabBarItem.badgeValue = count > 0 ? "\(count)" : nil
+                self?.viewControllers?[2].tabBarItem.badgeValue = count > 0 ? "\(count)" : nil
                 self?.updateApplicationBadge()
             }
         }
@@ -145,7 +145,7 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
             // Get pending connections count
             NetworkManager.shared.getPendingConnectionsCount { [weak self] count in
                 DispatchQueue.main.async {
-                    self?.viewControllers?[2].tabBarItem.badgeValue = count > 0 ? "\(count)" : nil
+                    self?.viewControllers?[1].tabBarItem.badgeValue = count > 0 ? "\(count)" : nil
                     self?.updateApplicationBadge()
                 }
             }
@@ -156,12 +156,12 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         // Calculate total badge count
         var totalCount = 0
         
-        if let messagesCount = viewControllers?[3].tabBarItem.badgeValue,
+        if let messagesCount = viewControllers?[2].tabBarItem.badgeValue,
            let count = Int(messagesCount) {
             totalCount += count
         }
         
-        if let networkCount = viewControllers?[2].tabBarItem.badgeValue,
+        if let networkCount = viewControllers?[1].tabBarItem.badgeValue,
            let count = Int(networkCount) {
             totalCount += count
         }
@@ -173,11 +173,11 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
     // MARK: - Navigation
     
     @objc private func navigateToMessages() {
-        selectedIndex = 3 // Messages tab
+        selectedIndex = 2 // Messages tab
     }
     
     @objc private func navigateToNetwork() {
-        selectedIndex = 2 // Network tab
+        selectedIndex = 1 // Network tab
     }
     
     @objc private func navigateToCircle(_ notification: Notification) {
@@ -197,7 +197,7 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
     
     func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
         // Update MessagingManager based on selected tab
-        let isMessagesTab = tabBarController.selectedIndex == 3
+        let isMessagesTab = tabBarController.selectedIndex == 2
         MessagingManager.shared.setMessagesTabActive(isMessagesTab)
     }
 }

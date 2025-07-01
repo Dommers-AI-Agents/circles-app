@@ -1,0 +1,290 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isInUserNetwork(userId) {
+      return isAuthenticated() && (
+        request.auth.uid == userId ||
+        exists(/databases/$(database)/documents/connections/$(request.auth.uid + '_' + userId)) ||
+        exists(/databases/$(database)/documents/connections/$(userId + '_' + request.auth.uid))
+      );
+    }
+    
+    function isCircleOwner(circleId) {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/circles/$(circleId)).data.owner == request.auth.uid;
+    }
+    
+    function canViewCircle(circle) {
+      return isAuthenticated() && (
+        circle.owner == request.auth.uid ||
+        circle.privacy == 'public' ||
+        (circle.privacy == 'myNetwork' && isInUserNetwork(circle.owner)) ||
+        request.auth.uid in circle.sharedWith ||
+        exists(/databases/$(database)/documents/circleShares/$(circle.id + '_' + request.auth.uid))
+      );
+    }
+    
+    function canEditCircle(circleId) {
+      let circle = get(/databases/$(database)/documents/circles/$(circleId)).data;
+      return isAuthenticated() && (
+        circle.owner == request.auth.uid ||
+        (circle.allowNetworkEdit && isInUserNetwork(circle.owner)) ||
+        (exists(/databases/$(database)/documents/circleShares/$(circleId + '_' + request.auth.uid)) &&
+         get(/databases/$(database)/documents/circleShares/$(circleId + '_' + request.auth.uid)).data.accessLevel in ['can_edit', 'can_add_places'])
+      );
+    }
+    
+    function isConversationParticipant(conversationId) {
+      return isAuthenticated() && 
+        request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
+    }
+    
+    function validateUserData() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['email', 'displayName', 'createdAt', 'updatedAt']) &&
+        data.email is string &&
+        data.displayName is string &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+    
+    function validateCircleData() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['name', 'owner', 'privacy', 'createdAt', 'updatedAt']) &&
+        data.name is string && data.name.size() <= 50 &&
+        data.owner == request.auth.uid &&
+        data.privacy in ['public', 'myNetwork', 'private'] &&
+        (!('description' in data) || data.description.size() <= 500) &&
+        (!('category' in data) || data.category in ['travel', 'food', 'services', 'shopping', 'healthcare', 'entertainment', 'other']);
+    }
+    
+    function validatePlaceData() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['name', 'address', 'location', 'category', 'circleId', 'addedBy']) &&
+        data.name is string &&
+        data.address is string &&
+        data.location.keys().hasAll(['type', 'coordinates']) &&
+        data.location.type == 'Point' &&
+        data.location.coordinates is list &&
+        data.location.coordinates.size() == 2 &&
+        data.category in ['restaurant', 'cafe', 'bar', 'hotel', 'retail', 'service', 'attraction', 
+                         'entertainment', 'healthcare', 'fitness', 'education', 'outdoor', 
+                         'transport', 'finance', 'home', 'work', 'other'] &&
+        data.addedBy == request.auth.uid;
+    }
+    
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (
+        isOwner(userId) || 
+        isInUserNetwork(userId) ||
+        resource.data.privacy == 'public'
+      );
+      
+      allow create: if isOwner(userId) && validateUserData();
+      
+      allow update: if isOwner(userId) && 
+        validateUserData() &&
+        request.resource.data.uid == resource.data.uid && // Can't change UID
+        request.resource.data.createdAt == resource.data.createdAt; // Can't change creation time
+      
+      allow delete: if false; // Users cannot be deleted through client
+    }
+    
+    // Circles collection
+    match /circles/{circleId} {
+      allow read: if canViewCircle(resource.data);
+      
+      allow create: if isAuthenticated() && validateCircleData();
+      
+      allow update: if canEditCircle(circleId) &&
+        request.resource.data.owner == resource.data.owner && // Can't change owner
+        request.resource.data.createdAt == resource.data.createdAt; // Can't change creation time
+      
+      allow delete: if isCircleOwner(circleId);
+    }
+    
+    // Places collection  
+    match /places/{placeId} {
+      allow read: if isAuthenticated() && 
+        canViewCircle(get(/databases/$(database)/documents/circles/$(resource.data.circleId)).data);
+      
+      allow create: if isAuthenticated() && 
+        validatePlaceData() &&
+        canEditCircle(request.resource.data.circleId);
+      
+      allow update: if isAuthenticated() &&
+        canEditCircle(resource.data.circleId) &&
+        request.resource.data.circleId == resource.data.circleId && // Can't move between circles
+        request.resource.data.addedBy == resource.data.addedBy && // Can't change who added it
+        request.resource.data.createdAt == resource.data.createdAt; // Can't change creation time
+      
+      allow delete: if isAuthenticated() && (
+        isCircleOwner(resource.data.circleId) ||
+        resource.data.addedBy == request.auth.uid
+      );
+    }
+    
+    // Friend requests collection
+    match /friendRequests/{requestId} {
+      allow read: if isAuthenticated() && (
+        resource.data.from == request.auth.uid ||
+        resource.data.to == request.auth.uid
+      );
+      
+      allow create: if isAuthenticated() &&
+        request.resource.data.from == request.auth.uid &&
+        request.resource.data.status == 'pending';
+      
+      allow update: if isAuthenticated() && 
+        resource.data.to == request.auth.uid && // Only recipient can update
+        request.resource.data.status in ['accepted', 'rejected'];
+      
+      allow delete: if isAuthenticated() && (
+        resource.data.from == request.auth.uid ||
+        resource.data.to == request.auth.uid
+      );
+    }
+    
+    // Connections collection
+    match /connections/{connectionId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.connectedUserId == request.auth.uid
+      );
+      
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == 'pending';
+      
+      allow update: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.connectedUserId == request.auth.uid
+      );
+      
+      allow delete: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.connectedUserId == request.auth.uid
+      );
+    }
+    
+    // Circle shares collection
+    match /circleShares/{shareId} {
+      allow read: if isAuthenticated() && (
+        isCircleOwner(resource.data.circleId) ||
+        resource.data.sharedBy == request.auth.uid ||
+        resource.data.sharedWith == request.auth.uid ||
+        resource.data.sharedWith == request.auth.token.email
+      );
+      
+      allow create: if isAuthenticated() &&
+        canEditCircle(request.resource.data.circleId) &&
+        request.resource.data.sharedBy == request.auth.uid &&
+        request.resource.data.accessLevel in ['view_only', 'can_add_places', 'can_edit'];
+      
+      allow update: if isAuthenticated() &&
+        isCircleOwner(resource.data.circleId) &&
+        request.resource.data.circleId == resource.data.circleId; // Can't change circle
+      
+      allow delete: if isAuthenticated() && (
+        isCircleOwner(resource.data.circleId) ||
+        resource.data.sharedBy == request.auth.uid
+      );
+    }
+    
+    // Conversations collection
+    match /conversations/{conversationId} {
+      allow read: if isConversationParticipant(conversationId);
+      
+      allow create: if isAuthenticated() &&
+        request.auth.uid in request.resource.data.participants &&
+        request.resource.data.type in ['direct', 'group'] &&
+        request.resource.data.participants.size() >= 2 &&
+        (request.resource.data.type == 'direct' ? request.resource.data.participants.size() == 2 : true);
+      
+      allow update: if isConversationParticipant(conversationId) &&
+        request.resource.data.participants == resource.data.participants && // Can't change participants
+        request.resource.data.type == resource.data.type; // Can't change type
+      
+      allow delete: if false; // Conversations cannot be deleted
+    }
+    
+    // Messages collection
+    match /messages/{messageId} {
+      allow read: if isAuthenticated() && 
+        isConversationParticipant(resource.data.conversationId);
+      
+      allow create: if isAuthenticated() &&
+        isConversationParticipant(request.resource.data.conversationId) &&
+        request.resource.data.senderId == request.auth.uid &&
+        request.resource.data.type in ['text', 'image', 'location', 'circle_share', 'place_share'];
+      
+      allow update: if isAuthenticated() &&
+        resource.data.senderId == request.auth.uid && // Only sender can update
+        request.resource.data.conversationId == resource.data.conversationId && // Can't change conversation
+        request.resource.data.senderId == resource.data.senderId; // Can't change sender
+      
+      allow delete: if false; // Messages cannot be deleted, only marked as deleted
+    }
+    
+    // Message reads collection
+    match /messageReads/{readId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        isConversationParticipant(resource.data.conversationId)
+      );
+      
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        isConversationParticipant(request.resource.data.conversationId);
+      
+      allow update: if false; // Read receipts cannot be updated
+      allow delete: if false; // Read receipts cannot be deleted
+    }
+    
+    // Suggestions collection
+    match /suggestions/{suggestionId} {
+      allow read: if isAuthenticated(); // All authenticated users can read suggestions
+      
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.message.size() <= 500;
+      
+      allow update: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || // Author can update
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'likesCount'])) // Others can only like
+      );
+      
+      allow delete: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
+    }
+    
+    // Comments collection
+    match /comments/{commentId} {
+      allow read: if isAuthenticated();
+      
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.message.size() <= 500 &&
+        exists(/databases/$(database)/documents/suggestions/$(request.resource.data.suggestionId));
+      
+      allow update: if isAuthenticated() &&
+        resource.data.userId == request.auth.uid &&
+        request.resource.data.suggestionId == resource.data.suggestionId; // Can't change suggestion
+      
+      allow delete: if isAuthenticated() &&
+        resource.data.userId == request.auth.uid;
+    }
+  }
+}

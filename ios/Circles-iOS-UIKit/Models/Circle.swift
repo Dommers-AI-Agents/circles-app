@@ -7,6 +7,8 @@ struct Circle: Codable, Identifiable {
     let coverImage: String?
     let owner: String
     let ownerDetails: User? // Populated when fetching shared circles
+    let editors: [String]? // Array of user IDs who can edit
+    let editorsDetails: [User]? // Full user objects when populated
     let places: [String]?
     let placesWithDetails: [Place]? // Populated with full place details including who added them
     let privacy: PrivacyLevel
@@ -28,6 +30,7 @@ struct Circle: Codable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id = "_id"
         case name, description, coverImage, owner, ownerDetails
+        case editors, editorsDetails
         case places, placesWithDetails, privacy, allowNetworkEdit, category
         case location, tags, sharedWith, followers, activeShares, shareSettings
         case isSharedWithMe, sharedBy, myAccessLevel
@@ -43,6 +46,8 @@ struct Circle: Codable, Identifiable {
         coverImage = try container.decodeIfPresent(String.self, forKey: .coverImage)
         owner = try container.decode(String.self, forKey: .owner)
         ownerDetails = try container.decodeIfPresent(User.self, forKey: .ownerDetails)
+        editors = try container.decodeIfPresent([String].self, forKey: .editors)
+        editorsDetails = try container.decodeIfPresent([User].self, forKey: .editorsDetails)
         places = try container.decodeIfPresent([String].self, forKey: .places)
         placesWithDetails = try container.decodeIfPresent([Place].self, forKey: .placesWithDetails)
         privacy = try container.decode(PrivacyLevel.self, forKey: .privacy)
@@ -75,7 +80,8 @@ struct Circle: Codable, Identifiable {
     
     // Add manual init for creating circles in code
     init(id: String, name: String, description: String?, coverImage: String?, owner: String,
-         ownerDetails: User?, places: [String]?, placesWithDetails: [Place]?,
+         ownerDetails: User?, editors: [String]?, editorsDetails: [User]?,
+         places: [String]?, placesWithDetails: [Place]?,
          privacy: PrivacyLevel, allowNetworkEdit: Bool?, category: CircleCategory, location: String?,
          tags: [String]?, sharedWith: [String]?, followers: [String]?,
          activeShares: [CircleShare]?, shareSettings: ShareSettings?,
@@ -87,6 +93,8 @@ struct Circle: Codable, Identifiable {
         self.coverImage = coverImage
         self.owner = owner
         self.ownerDetails = ownerDetails
+        self.editors = editors
+        self.editorsDetails = editorsDetails
         self.places = places
         self.placesWithDetails = placesWithDetails
         self.privacy = privacy
@@ -123,11 +131,23 @@ struct Circle: Codable, Identifiable {
         if isOwner {
             return true
         }
+        // Check if user is an editor
+        if let userId = AuthService.shared.getUserId(),
+           let editors = editors,
+           editors.contains(userId) {
+            return true
+        }
         return myAccessLevel == .canEdit
     }
     
     var canAddPlaces: Bool {
         if isOwner {
+            return true
+        }
+        // Check if user is an editor
+        if let userId = AuthService.shared.getUserId(),
+           let editors = editors,
+           editors.contains(userId) {
             return true
         }
         return myAccessLevel == .canAddPlaces || myAccessLevel == .canEdit

@@ -42,6 +42,34 @@ class NetworkManager: ObservableObject {
         loadSharedCircles()
     }
     
+    // MARK: - Get Connections as Users
+    
+    func getConnections(completion: @escaping (Result<[User], Error>) -> Void) {
+        // If connections are already loaded, return them
+        if !connections.isEmpty {
+            let users = connections.compactMap { $0.connectedUser }
+            completion(.success(users))
+            return
+        }
+        
+        // Otherwise, load connections first
+        apiService.request(
+            endpoint: "connections",
+            method: .get,
+            requiresAuth: true
+        ) { [weak self] (result: Result<ConnectionsResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                let acceptedConnections = response.connections.filter { $0.status == .accepted }
+                let users = acceptedConnections.compactMap { $0.connectedUser }
+                self?.connections = acceptedConnections
+                completion(.success(users))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
     func loadConnections() {
         isLoading = true
         
@@ -503,6 +531,58 @@ class NetworkManager: ObservableObject {
                     completion(self?.connections, nil)
                 case .failure(let error):
                     completion(nil, error)
+                }
+            }
+        }
+    }
+    
+    func fetchActiveConnections(limit: Int = 10, completion: @escaping ([Connection]?, Error?) -> Void) {
+        // Load active connections sorted by activity
+        apiService.request(
+            endpoint: "connections/active?limit=\(limit)",
+            method: .get,
+            requiresAuth: true
+        ) { (result: Result<ConnectionsResponse, APIError>) in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let response):
+                    completion(response.connections, nil)
+                case .failure(let error):
+                    completion(nil, error)
+                }
+            }
+        }
+    }
+    
+    func clearConnectionActivity(connectionId: String, completion: @escaping (Error?) -> Void) {
+        apiService.request(
+            endpoint: "connections/\(connectionId)/clear-activity",
+            method: .post,
+            requiresAuth: true
+        ) { (result: Result<EmptyResponse, APIError>) in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    completion(nil)
+                case .failure(let error):
+                    completion(error)
+                }
+            }
+        }
+    }
+    
+    func trackConnectionView(connectionId: String, completion: @escaping (Error?) -> Void) {
+        apiService.request(
+            endpoint: "connections/\(connectionId)/track-view",
+            method: .post,
+            requiresAuth: true
+        ) { (result: Result<EmptyResponse, APIError>) in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    completion(nil)
+                case .failure(let error):
+                    completion(error)
                 }
             }
         }

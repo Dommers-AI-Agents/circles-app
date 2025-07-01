@@ -46,6 +46,9 @@ const createUser = (userData) => {
       quietHoursStart: '22:00',
       quietHoursEnd: '08:00'
     },
+    preferences: userData.preferences || {
+      defaultHomeView: 'map' // 'list' or 'map'
+    },
     createdAt: now,
     updatedAt: now,
     // Firebase UID from authentication
@@ -61,6 +64,7 @@ const createCircle = (circleData, ownerId) => {
     description: circleData.description || null,
     coverImage: circleData.coverImage || null,
     owner: ownerId,
+    editors: circleData.editors || [], // Array of user IDs who can edit this circle
     places: circleData.places || [],
     privacy: circleData.privacy || 'myNetwork', // public, myNetwork, private
     allowNetworkEdit: circleData.allowNetworkEdit || false,
@@ -136,6 +140,14 @@ const createConnection = (userId, connectedUserId, message = null) => {
     status: 'pending', // pending, accepted, blocked
     message: message,
     sharedCircles: [],
+    // Activity tracking fields
+    lastInteractionAt: null,
+    interactionCount: 0,
+    lastAccessedCircles: [], // Array of {circleId, accessedAt}
+    recentActivity: [], // Array of {type: 'circle'|'place', entityId, createdAt}
+    hasNewActivity: false, // Flag for red dot notification
+    viewCount: 0, // Number of times this connection's profile was viewed
+    lastViewedAt: null, // Last time this connection was viewed
     createdAt: now,
     acceptedAt: null,
     updatedAt: now

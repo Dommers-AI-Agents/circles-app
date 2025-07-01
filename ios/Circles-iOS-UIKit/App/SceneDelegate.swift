@@ -1,6 +1,14 @@
 import UIKit
 import FBSDKCoreKit
 
+// MARK: - Response Types
+struct ShareValidationResponse: Codable {
+    let success: Bool
+    let isValid: Bool
+    let accessLevel: String?
+    let message: String?
+}
+
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     var window: UIWindow?
@@ -246,12 +254,39 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 }
             }
             
+            // Handle circle deep links with share tokens (e.g., circles://circle/circleId?share=shareToken)
+            if url.host == "circle" {
+                print("📱 SceneDelegate: Detected 'circle' as host")
+                let circleId = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                print("📱 SceneDelegate: Extracted circleId from path: \(circleId)")
+                
+                // Check for share token in query parameters
+                if let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
+                   let shareToken = urlComponents.queryItems?.first(where: { $0.name == "share" })?.value {
+                    print("📱 SceneDelegate: Found share token: \(shareToken)")
+                    self.handleSharedCircleWithToken(circleId: circleId, shareToken: shareToken)
+                    return
+                } else if !circleId.isEmpty {
+                    // Regular circle navigation without share token
+                    self.navigateToCircle(circleId: circleId)
+                    return
+                }
+            }
+            
             // Then check path-based URL format (e.g., circles:///connect/userId)
             if components.count >= 2 {
                 if components[1] == "circle" && components.count >= 3 {
                     // Example: circles://circle/circle_123
                     let circleId = components[2]
-                    self.navigateToCircle(circleId: circleId)
+                    
+                    // Check for share token in query parameters
+                    if let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
+                       let shareToken = urlComponents.queryItems?.first(where: { $0.name == "share" })?.value {
+                        print("📱 SceneDelegate: Found share token in path format: \(shareToken)")
+                        self.handleSharedCircleWithToken(circleId: circleId, shareToken: shareToken)
+                    } else {
+                        self.navigateToCircle(circleId: circleId)
+                    }
                 } else if components[1] == "share" && components.count >= 4 && components[2] == "circle" {
                     // Example: circles://share/circle/shareId_123
                     let shareId = components[3]
@@ -354,6 +389,114 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     }
                 }
             }
+        }
+    }
+    
+    private func handleSharedCircleWithToken(circleId: String, shareToken: String) {
+        // If user is not logged in, store the share info and prompt login
+        guard AuthService.shared.isLoggedIn else {
+            UserDefaults.standard.set("shareToken:\(circleId):\(shareToken)", forKey: "pendingDeepLink")
+            
+            // Show alert prompting user to login
+            let alert = UIAlertController(
+                title: "Login Required",
+                message: "Please login to view the shared circle",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Login", style: .default) { _ in
+                // The auth state listener will handle showing login screen
+            })
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            
+            if let rootVC = window?.rootViewController {
+                rootVC.present(alert, animated: true)
+            }
+            return
+        }
+        
+        // First, validate the share token with the backend
+        APIService.shared.request(
+            endpoint: "circles/share/validate",
+            method: .post,
+            body: ["circleId": circleId, "shareToken": shareToken],
+            requiresAuth: false
+        ) { [weak self] (result: Result<ShareValidationResponse, APIError>) in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let response):
+                    if response.isValid {
+                        // If share is valid and user has access, navigate to the circle
+                        self?.navigateToCircle(circleId: circleId)
+                        
+                        // Show access level information if it's a limited share
+                        if let accessLevel = response.accessLevel, accessLevel != "full" {
+                            self?.showShareAccessBanner(accessLevel: accessLevel)
+                        }
+                    } else {
+                        // Share is invalid or expired
+                        self?.showShareError(message: response.message ?? "This share link is no longer valid")
+                    }
+                    
+                case .failure(let error):
+                    self?.showShareError(message: "Failed to validate share link: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    
+    private func showShareAccessBanner(accessLevel: String) {
+        guard let tabBarController = window?.rootViewController as? CirclesTabBarController,
+              let currentVC = tabBarController.selectedViewController else { return }
+        
+        let banner = UIView()
+        banner.backgroundColor = .systemBlue
+        banner.layer.cornerRadius = 10
+        banner.translatesAutoresizingMaskIntoConstraints = false
+        
+        let label = UILabel()
+        label.text = accessLevel == "viewOnly" ? "View-only access" : "Limited access"
+        label.textColor = .white
+        label.font = .systemFont(ofSize: 14)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        
+        banner.addSubview(label)
+        currentVC.view.addSubview(banner)
+        
+        NSLayoutConstraint.activate([
+            banner.topAnchor.constraint(equalTo: currentVC.view.safeAreaLayoutGuide.topAnchor, constant: 20),
+            banner.centerXAnchor.constraint(equalTo: currentVC.view.centerXAnchor),
+            banner.heightAnchor.constraint(equalToConstant: 40),
+            banner.widthAnchor.constraint(equalToConstant: 150),
+            
+            label.centerXAnchor.constraint(equalTo: banner.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: banner.centerYAnchor)
+        ])
+        
+        // Animate and remove after 5 seconds
+        banner.alpha = 0
+        UIView.animate(withDuration: 0.3) {
+            banner.alpha = 1.0
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            UIView.animate(withDuration: 0.3, animations: {
+                banner.alpha = 0
+            }) { _ in
+                banner.removeFromSuperview()
+            }
+        }
+    }
+    
+    private func showShareError(message: String) {
+        let alert = UIAlertController(
+            title: "Unable to Access Circle",
+            message: message,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        
+        if let rootVC = window?.rootViewController {
+            rootVC.present(alert, animated: true)
         }
     }
     
@@ -578,20 +721,31 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         let components = pendingLink.split(separator: ":")
         if components.count >= 2 {
             let type = String(components[0])
-            let id = String(components[1])
             
             // Add a delay to ensure the UI is fully loaded
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 switch type {
+                case "shareToken":
+                    // Format: shareToken:circleId:shareToken
+                    if components.count >= 3 {
+                        let circleId = String(components[1])
+                        let shareToken = String(components[2])
+                        self.handleSharedCircleWithToken(circleId: circleId, shareToken: shareToken)
+                    }
                 case "circle":
+                    let id = String(components[1])
                     self.navigateToCircle(circleId: id)
                 case "place":
+                    let id = String(components[1])
                     self.navigateToPlace(placeId: id)
                 case "user":
+                    let id = String(components[1])
                     self.navigateToUserProfile(userId: id)
                 case "share":
+                    let id = String(components[1])
                     self.handleSharedCircle(shareId: id)
                 case "connect":
+                    let id = String(components[1])
                     self.handleConnectionInvite(from: id)
                 default:
                     break

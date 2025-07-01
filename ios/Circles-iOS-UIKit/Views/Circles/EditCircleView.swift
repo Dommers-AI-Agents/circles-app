@@ -269,6 +269,8 @@ struct EditCircleView: View {
             coverImage: nil,
             owner: "user1",
             ownerDetails: nil,
+            editors: nil,
+            editorsDetails: nil,
             places: [],
             placesWithDetails: nil,
             privacy: .myNetwork,

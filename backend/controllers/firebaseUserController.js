@@ -739,3 +739,55 @@ exports.updateNotificationPreferences = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Get user's public circles
+// @route   GET /api/users/:id/circles
+// @access  Private
+exports.getUserPublicCircles = async (req, res, next) => {
+  try {
+    const targetUserId = req.params.id;
+    const currentUserId = req.user.uid;
+    
+    // Check if users are connected
+    const connectionSnapshot = await db.collection(COLLECTIONS.CONNECTIONS)
+      .where('userId', '==', currentUserId)
+      .where('connectedUserId', '==', targetUserId)
+      .where('status', '==', 'accepted')
+      .limit(1)
+      .get();
+    
+    const reverseConnectionSnapshot = await db.collection(COLLECTIONS.CONNECTIONS)
+      .where('userId', '==', targetUserId)
+      .where('connectedUserId', '==', currentUserId)
+      .where('status', '==', 'accepted')
+      .limit(1)
+      .get();
+    
+    const isConnected = !connectionSnapshot.empty || !reverseConnectionSnapshot.empty;
+    
+    // Build query based on connection status
+    let circlesQuery = db.collection(COLLECTIONS.CIRCLES)
+      .where('owner', '==', targetUserId);
+    
+    // If not connected, only show public circles
+    if (!isConnected && currentUserId !== targetUserId) {
+      circlesQuery = circlesQuery.where('privacy', '==', 'public');
+    } else if (isConnected) {
+      // If connected, show public and myNetwork circles
+      circlesQuery = circlesQuery.where('privacy', 'in', ['public', 'myNetwork']);
+    }
+    // If viewing own circles, show all
+    
+    const circlesSnapshot = await circlesQuery.get();
+    const circles = serializeQuerySnapshot(circlesSnapshot);
+    
+    res.status(200).json({
+      success: true,
+      count: circles.length,
+      circles: circles
+    });
+  } catch (error) {
+    console.error('Error fetching user public circles:', error);
+    next(error);
+  }
+};

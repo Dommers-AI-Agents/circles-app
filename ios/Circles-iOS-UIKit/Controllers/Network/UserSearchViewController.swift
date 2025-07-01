@@ -8,9 +8,12 @@ class UserSearchViewController: UIViewController {
     
     // MARK: - Properties
     weak var delegate: UserSearchViewControllerDelegate?
+    var excludedUserIds: [String] = []
     private var searchResults: [User] = []
+    private var networkConnections: [User] = []
     private var isSearching = false
     private var searchTimer: Timer?
+    private var isLoadingConnections = false
     
     // MARK: - UI Elements
     private let searchController: UISearchController = {
@@ -47,7 +50,7 @@ class UserSearchViewController: UIViewController {
     
     private let emptyLabel: UILabel = {
         let label = UILabel()
-        label.text = "Search for users by name, email, or phone number"
+        label.text = "Your network connections will appear here"
         label.font = .systemFont(ofSize: 16)
         label.textColor = .secondaryLabel
         label.textAlignment = .center
@@ -71,6 +74,7 @@ class UserSearchViewController: UIViewController {
         setupSearchController()
         setupTableView()
         setupEmptyState()
+        loadNetworkConnections()
     }
     
     override func viewDidAppear(_ animated: Bool) {
@@ -142,7 +146,8 @@ class UserSearchViewController: UIViewController {
             emptyLabel.bottomAnchor.constraint(equalTo: emptyStateView.bottomAnchor)
         ])
         
-        showEmptyState()
+        // Don't show empty state initially, wait for connections to load
+        hideEmptyState()
     }
     
     // MARK: - Actions
@@ -175,10 +180,13 @@ class UserSearchViewController: UIViewController {
                 
                 switch result {
                 case .success(let response):
-                    self?.searchResults = response.users
+                    // Filter out excluded users
+                    self?.searchResults = response.users.filter { user in
+                        !(self?.excludedUserIds.contains(user.id) ?? false)
+                    }
                     self?.tableView.reloadData()
                     
-                    if response.users.isEmpty {
+                    if self?.searchResults.isEmpty ?? true {
                         self?.showNoResultsState(for: query)
                     }
                     
@@ -192,10 +200,74 @@ class UserSearchViewController: UIViewController {
         }
     }
     
+    // MARK: - Network Connections
+    private func loadNetworkConnections() {
+        isLoadingConnections = true
+        activityIndicator.startAnimating()
+        
+        NetworkManager.shared.getConnections { [weak self] result in
+            DispatchQueue.main.async {
+                self?.isLoadingConnections = false
+                self?.activityIndicator.stopAnimating()
+                
+                switch result {
+                case .success(let connections):
+                    // Filter out excluded users and sort alphabetically
+                    self?.networkConnections = connections
+                        .filter { connection in
+                            !(self?.excludedUserIds.contains(connection.id) ?? false)
+                        }
+                        .sorted { (user1, user2) in
+                            let name1 = self?.getDisplayName(for: user1) ?? ""
+                            let name2 = self?.getDisplayName(for: user2) ?? ""
+                            return name1.localizedCaseInsensitiveCompare(name2) == .orderedAscending
+                        }
+                    
+                    // Show connections if no search is active
+                    if self?.searchController.searchBar.text?.isEmpty ?? true {
+                        self?.searchResults = self?.networkConnections ?? []
+                        self?.tableView.reloadData()
+                        
+                        if self?.searchResults.isEmpty ?? true {
+                            self?.showEmptyConnectionsState()
+                        } else {
+                            self?.hideEmptyState()
+                        }
+                    }
+                    
+                case .failure(let error):
+                    print("Failed to load connections: \\(error)")
+                    if self?.searchController.searchBar.text?.isEmpty ?? true {
+                        self?.showEmptyState()
+                    }
+                }
+            }
+        }
+    }
+    
+    private func getDisplayName(for user: User) -> String {
+        if let firstName = user.firstName, let lastName = user.lastName {
+            return "\\(firstName) \\(lastName)"
+        } else if let firstName = user.firstName {
+            return firstName
+        } else if let lastName = user.lastName {
+            return lastName
+        } else {
+            return user.displayName
+        }
+    }
+    
     // MARK: - Empty States
     private func showEmptyState() {
         emptyImageView.image = UIImage(systemName: "magnifyingglass")
         emptyLabel.text = "Search for users by name, email, or phone number"
+        emptyStateView.isHidden = false
+        tableView.isHidden = true
+    }
+    
+    private func showEmptyConnectionsState() {
+        emptyImageView.image = UIImage(systemName: "person.2.slash")
+        emptyLabel.text = "No connections available"
         emptyStateView.isHidden = false
         tableView.isHidden = true
     }
@@ -226,9 +298,15 @@ extension UserSearchViewController: UISearchResultsUpdating {
         searchTimer?.invalidate()
         
         guard let query = searchController.searchBar.text, !query.isEmpty else {
-            searchResults = []
+            // Show network connections when search is empty
+            searchResults = networkConnections
             tableView.reloadData()
-            showEmptyState()
+            
+            if searchResults.isEmpty {
+                showEmptyConnectionsState()
+            } else {
+                hideEmptyState()
+            }
             return
         }
         

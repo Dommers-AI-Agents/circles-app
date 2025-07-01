@@ -4,6 +4,38 @@ import Combine
 class ConversationsListViewController: UIViewController {
     
     // MARK: - UI Elements
+    private let headerContainer: UIView = {
+        let view = UIView()
+        view.backgroundColor = .systemBackground
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let suggestionsButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Suggestions", for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        button.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.1)
+        button.tintColor = .systemBlue
+        button.layer.cornerRadius = 16
+        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let suggestionsBadge: UILabel = {
+        let label = UILabel()
+        label.backgroundColor = .systemRed
+        label.textColor = .white
+        label.font = .systemFont(ofSize: 11, weight: .bold)
+        label.textAlignment = .center
+        label.layer.cornerRadius = 10
+        label.clipsToBounds = true
+        label.isHidden = true
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
     private let tableView: UITableView = {
         let table = UITableView(frame: .zero, style: .plain)
         table.translatesAutoresizingMaskIntoConstraints = false
@@ -78,12 +110,14 @@ class ConversationsListViewController: UIViewController {
         setupNewMessageButton()
         setupSubscribers()
         loadConversations()
+        checkForNewSuggestions()
     }
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         messagingManager.loadConversations()
         messagingManager.updateUnreadCount()
+        checkForNewSuggestions()
     }
     
     // MARK: - Setup
@@ -91,12 +125,36 @@ class ConversationsListViewController: UIViewController {
         view.backgroundColor = .systemBackground
         title = "Messages"
         
+        view.addSubview(headerContainer)
+        headerContainer.addSubview(suggestionsButton)
+        headerContainer.addSubview(suggestionsBadge)
         view.addSubview(tableView)
         view.addSubview(emptyStateView)
         view.addSubview(newMessageButton)
         
+        // Add button target
+        suggestionsButton.addTarget(self, action: #selector(suggestionsButtonTapped), for: .touchUpInside)
+        
         NSLayoutConstraint.activate([
-            tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            // Header container
+            headerContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            headerContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            headerContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            headerContainer.heightAnchor.constraint(equalToConstant: 60),
+            
+            // Suggestions button
+            suggestionsButton.leadingAnchor.constraint(equalTo: headerContainer.leadingAnchor, constant: 16),
+            suggestionsButton.centerYAnchor.constraint(equalTo: headerContainer.centerYAnchor),
+            suggestionsButton.heightAnchor.constraint(equalToConstant: 36),
+            
+            // Suggestions badge
+            suggestionsBadge.widthAnchor.constraint(greaterThanOrEqualToConstant: 20),
+            suggestionsBadge.heightAnchor.constraint(equalToConstant: 20),
+            suggestionsBadge.leadingAnchor.constraint(equalTo: suggestionsButton.trailingAnchor, constant: -12),
+            suggestionsBadge.bottomAnchor.constraint(equalTo: suggestionsButton.topAnchor, constant: 8),
+            
+            // Table view
+            tableView.topAnchor.constraint(equalTo: headerContainer.bottomAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -191,6 +249,25 @@ class ConversationsListViewController: UIViewController {
         let hasConversations = !messagingManager.conversations.isEmpty
         emptyStateView.isHidden = hasConversations
         tableView.isHidden = !hasConversations
+    }
+    
+    // MARK: - Actions
+    @objc private func suggestionsButtonTapped() {
+        let suggestionsVC = SuggestionsViewController()
+        navigationController?.pushViewController(suggestionsVC, animated: true)
+    }
+    
+    private func checkForNewSuggestions() {
+        SuggestionService.shared.getUnreadSuggestionsCount { [weak self] count in
+            DispatchQueue.main.async {
+                if count > 0 {
+                    self?.suggestionsBadge.text = "\(count)"
+                    self?.suggestionsBadge.isHidden = false
+                } else {
+                    self?.suggestionsBadge.isHidden = true
+                }
+            }
+        }
     }
     
     // MARK: - Navigation

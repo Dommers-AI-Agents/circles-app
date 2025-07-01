@@ -1,12 +1,21 @@
 import UIKit
-import GoogleMaps
-import GooglePlaces
-import CoreLocation
 import MapKit
+import CoreLocation
+import GooglePlaces  // Keep only for photos
 import PhotosUI
 
 protocol PlaceSearchDelegate: AnyObject {
     func didSelectPlace(name: String, address: String, coordinate: CLLocationCoordinate2D, phone: String?, website: String?, category: String?, description: String?)
+}
+
+// Custom annotation class for place search
+class PlaceSearchAnnotation: NSObject, MKAnnotation {
+    var coordinate: CLLocationCoordinate2D = CLLocationCoordinate2D()
+    var title: String?
+    var subtitle: String?
+    var placeId: String?
+    var mapItem: MKMapItem?
+    var isTemporary: Bool = false
 }
 
 class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
@@ -16,18 +25,18 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
     private let locationManager = CLLocationManager()
     private var userLocation: CLLocation?
     private var selectedLocation: CLLocationCoordinate2D?
-    private var searchResults: [GMSAutocompletePrediction] = []
-    private var selectedPlace: GMSPlace?
-    private var markers: [GMSMarker] = []
-    private var placesClient: GMSPlacesClient!
+    private var searchCompleter = MKLocalSearchCompleter()
+    private var searchResults: [MKLocalSearchCompletion] = []
+    private var showPlaceTypeSuggestion = false
+    private var placeTypeSuggestionQuery = ""
     private var selectedMapItem: MKMapItem?
-    private var sessionToken: GMSAutocompleteSessionToken?
-    private var mapItemsByCoordinate: [String: MKMapItem] = [:]
-    private var markerToPlaceIdMap: [GMSMarker: String] = [:]
+    private var annotations: [MKAnnotation] = []
+    private var annotationToPlaceIdMap: [ObjectIdentifier: String] = [:]
+    private var placesClient: GMSPlacesClient!  // Keep only for photos
     private var placeIdsByCoordinate: [String: String] = [:] // Additional storage by coordinate
+    private var selectedGooglePlaceDetails: GooglePlaceDetails?
     private var selectedCategory: PlaceCategory = .restaurant
     private var selectedSubcategory: String?
-    private var selectedGooglePlaceDetails: GooglePlaceDetails?
     private var isCategoryDropdownVisible = false
     private var categoryDropdownItems: [(category: PlaceCategory, subcategory: String?)] = []
     private var searchTimer: Timer?
@@ -95,17 +104,17 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
     }()
     
     // Map view that shows immediately
-    private let mapView: GMSMapView = {
-        let camera = GMSCameraPosition.camera(withLatitude: 40.7128, longitude: -74.0060, zoom: 12.0)
-        let mapView = GMSMapView.map(withFrame: .zero, camera: camera)
+    private let mapView: MKMapView = {
+        let mapView = MKMapView()
         mapView.translatesAutoresizingMaskIntoConstraints = false
-        mapView.settings.myLocationButton = true
-        mapView.settings.compassButton = true
-        mapView.settings.zoomGestures = true
-        mapView.settings.scrollGestures = true
-        mapView.settings.tiltGestures = true
-        mapView.settings.rotateGestures = true
-        mapView.isMyLocationEnabled = true
+        mapView.showsUserLocation = true
+        mapView.showsCompass = true
+        mapView.showsScale = true
+        mapView.isZoomEnabled = true
+        mapView.isScrollEnabled = true
+        mapView.isPitchEnabled = true
+        mapView.isRotateEnabled = true
+        mapView.pointOfInterestFilter = .includingAll
         return mapView
     }()
     
@@ -373,6 +382,25 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
         return button
     }()
     
+    private let zoomToMeButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "location.fill"), for: .normal)
+        button.tintColor = .white
+        button.backgroundColor = UIColor.systemBlue
+        button.layer.cornerRadius = 22
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOpacity = 0.2
+        button.layer.shadowOffset = CGSize(width: 0, height: 2)
+        button.layer.shadowRadius = 4
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private var isSearchingNearby = false
+    private var mapRegionTimer: Timer?
+    private var hasSearchedCategory = false
+    private var hasPerformedInitialSearch = false
+    
     // MARK: - Lifecycle
     
     init(circleId: String) {
@@ -410,10 +438,7 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
         tapGesture.delegate = self
         view.addGestureRecognizer(tapGesture)
         
-        // Set initial map region to NYC to prevent black screen
-        let initialLocation = CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060) // New York City
-        let camera = GMSCameraPosition.camera(withTarget: initialLocation, zoom: 12.0)
-        mapView.animate(to: camera)
+        // Don't set initial region - wait for user location
     }
     
     override func viewDidAppear(_ animated: Bool) {
@@ -435,6 +460,8 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
             // Don't set a specific location - just leave the map gray
             break
         }
+        
+        // Don't automatically search - wait for user location to search for coffee shops
     }
     
     // MARK: - Setup Methods
@@ -454,6 +481,7 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
         categoryScrollView.addSubview(categoryStackView)
         contentView.addSubview(mapContainer)
         mapContainer.addSubview(mapView)
+        mapContainer.addSubview(zoomToMeButton)
         contentView.addSubview(manualEntryButton)
         contentView.addSubview(formContainer)
         contentView.addSubview(addPlaceButton)
@@ -534,6 +562,12 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
             mapView.leadingAnchor.constraint(equalTo: mapContainer.leadingAnchor),
             mapView.trailingAnchor.constraint(equalTo: mapContainer.trailingAnchor),
             mapView.bottomAnchor.constraint(equalTo: mapContainer.bottomAnchor),
+            
+            // Zoom to me button
+            zoomToMeButton.bottomAnchor.constraint(equalTo: mapContainer.bottomAnchor, constant: -12),
+            zoomToMeButton.trailingAnchor.constraint(equalTo: mapContainer.trailingAnchor, constant: -12),
+            zoomToMeButton.widthAnchor.constraint(equalToConstant: 44),
+            zoomToMeButton.heightAnchor.constraint(equalToConstant: 44),
             
             // Manual entry button
             manualEntryButton.topAnchor.constraint(equalTo: mapContainer.bottomAnchor, constant: Constants.Spacing.small),
@@ -682,13 +716,26 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
         // Map delegate - this will handle all map interactions
         mapView.delegate = self
         
-        // Note: We're using GMSMapViewDelegate's didTapAt method instead of a gesture recognizer
-        // to avoid conflicts with Google Maps' built-in gesture handling
+        // Add tap gesture for manual location selection
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleMapTap(_:)))
+        mapView.addGestureRecognizer(tapGesture)
+        
+        // Set initial region
+        let region = MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060),
+            latitudinalMeters: 20000,
+            longitudinalMeters: 20000
+        )
+        mapView.setRegion(region, animated: false)
     }
     
     private func setupSearchCompleter() {
+        // Keep Google Places client only for photos
         placesClient = GMSPlacesClient.shared()
-        sessionToken = GMSAutocompleteSessionToken.init()
+        
+        // Setup MKLocalSearchCompleter
+        searchCompleter.delegate = self
+        searchCompleter.resultTypes = [.address, .pointOfInterest]
         
         // Table view setup
         searchResultsTableView.delegate = self
@@ -707,6 +754,7 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
         addPhotoButton.addTarget(self, action: #selector(addPhotoButtonTapped), for: .touchUpInside)
         removePhotoButton.addTarget(self, action: #selector(removePhotoButtonTapped), for: .touchUpInside)
         categoryButton.addTarget(self, action: #selector(categoryButtonTapped), for: .touchUpInside)
+        zoomToMeButton.addTarget(self, action: #selector(zoomToCurrentLocation), for: .touchUpInside)
     }
     
     private func setupCategoryDropdownItems() {
@@ -732,28 +780,26 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
     // MARK: - Actions
     
     
+    @objc private func handleMapTap(_ gesture: UITapGestureRecognizer) {
+        let location = gesture.location(in: mapView)
+        let coordinate = mapView.convert(location, toCoordinateFrom: mapView)
+        handleMapTapAtCoordinate(coordinate)
+    }
+    
     private func handleMapTapAtCoordinate(_ coordinate: CLLocationCoordinate2D) {
+        // Remove any existing "Selected Location" annotations
+        let selectedAnnotations = mapView.annotations.filter { ($0 as? PlaceSearchAnnotation)?.title == "Selected Location" }
+        mapView.removeAnnotations(selectedAnnotations)
         
-        // Remove any existing "Selected Location" markers
-        for marker in markers {
-            if marker.title == "Selected Location" {
-                marker.map = nil
-            }
-        }
-        markers.removeAll { $0.title == "Selected Location" }
+        // Add new annotation
+        let annotation = PlaceSearchAnnotation()
+        annotation.coordinate = coordinate
+        annotation.title = "Selected Location"
+        annotation.subtitle = "Tap here to add this place"
+        annotation.isTemporary = true
         
-        // Add new marker
-        let marker = GMSMarker()
-        marker.position = coordinate
-        marker.title = "Selected Location"
-        marker.snippet = "Tap here to add this place"
-        
-        // Customize the selected location marker
-        marker.icon = GMSMarker.markerImage(with: .systemGreen)
-        marker.appearAnimation = .pop
-        
-        marker.map = mapView
-        markers.append(marker)
+        mapView.addAnnotation(annotation)
+        annotations.append(annotation)
         
         // Reverse geocode to get address
         let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
@@ -792,6 +838,7 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
     @objc private func manualEntryButtonTapped() {
         // Clear any selected Google Place when manually entering
         selectedGooglePlaceDetails = nil
+        hasSearchedCategory = false  // Reset category search flag
         enableManualEntry()
         nameTextField.becomeFirstResponder()
     }
@@ -1207,14 +1254,229 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
         }
     }
     
-    private func selectSearchResult(_ result: GMSAutocompletePrediction) {
+    private func selectSearchResult(_ result: MKLocalSearchCompletion) {
         // Hide search results
         searchResultsTableView.isHidden = true
         searchBar.resignFirstResponder()
-        searchBar.text = result.attributedPrimaryText.string
+        searchBar.text = result.title
         
-        // Load and fill the form with place details
-        loadAndFillFormWithGooglePlace(placeId: result.placeID, markerTitle: result.attributedPrimaryText.string)
+        // Create search request from completion
+        let searchRequest = MKLocalSearch.Request(completion: result)
+        let search = MKLocalSearch(request: searchRequest)
+        
+        search.start { [weak self] response, error in
+            guard let self = self else { return }
+            
+            if let error = error {
+                print("Search error: \(error.localizedDescription)")
+                return
+            }
+            
+            guard let response = response, let mapItem = response.mapItems.first else {
+                print("No map items found")
+                return
+            }
+            
+            DispatchQueue.main.async {
+                // Fill the form with map item details
+                self.fillFormWithMapItem(mapItem)
+                
+                // Update map location to show both user location and selected place
+                self.showBothUserAndPlace(placeCoordinate: mapItem.placemark.coordinate)
+                
+                // Add annotation
+                let annotation = PlaceSearchAnnotation()
+                annotation.coordinate = mapItem.placemark.coordinate
+                annotation.title = mapItem.name ?? result.title
+                annotation.subtitle = mapItem.placemark.formattedAddress
+                annotation.mapItem = mapItem
+                
+                // Remove previous search annotations
+                let nonUserAnnotations = self.mapView.annotations.filter { !($0 is MKUserLocation) && !(($0 as? PlaceSearchAnnotation)?.isTemporary ?? false) }
+                self.mapView.removeAnnotations(nonUserAnnotations)
+                
+                self.mapView.addAnnotation(annotation)
+                self.annotations = [annotation]
+            }
+        }
+    }
+    
+    private func performPlaceTypeSearch(_ query: String) {
+        // Hide search results
+        searchResultsTableView.isHidden = true
+        searchBar.resignFirstResponder()
+        
+        // Get user location to search nearby
+        guard let userLocation = locationManager.location else {
+            presentAlert(title: "Location Required", message: "Please enable location services to search nearby places")
+            return
+        }
+        
+        // Create search request for the place type
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = query
+        request.region = MKCoordinateRegion(
+            center: userLocation.coordinate,
+            latitudinalMeters: 10000, // ~6 miles radius
+            longitudinalMeters: 10000
+        )
+        
+        let search = MKLocalSearch(request: request)
+        search.start { [weak self] response, error in
+            guard let self = self else { return }
+            
+            if let error = error {
+                print("Place type search error: \(error.localizedDescription)")
+                return
+            }
+            
+            guard let response = response else {
+                print("No results found for place type: \(query)")
+                return
+            }
+            
+            DispatchQueue.main.async {
+                // Sort results by distance from user
+                let sortedItems = response.mapItems.sorted { item1, item2 in
+                    let location1 = CLLocation(latitude: item1.placemark.coordinate.latitude, longitude: item1.placemark.coordinate.longitude)
+                    let location2 = CLLocation(latitude: item2.placemark.coordinate.latitude, longitude: item2.placemark.coordinate.longitude)
+                    
+                    let distance1 = userLocation.distance(from: location1)
+                    let distance2 = userLocation.distance(from: location2)
+                    
+                    return distance1 < distance2
+                }
+                
+                // Clear existing annotations except user location
+                let annotationsToRemove = self.mapView.annotations.filter { !($0 is MKUserLocation) }
+                self.mapView.removeAnnotations(annotationsToRemove)
+                
+                // Add annotations for search results
+                for (index, item) in sortedItems.prefix(20).enumerated() { // Show top 20 results
+                    let annotation = PlaceSearchAnnotation()
+                    annotation.coordinate = item.placemark.coordinate
+                    annotation.title = item.name
+                    annotation.subtitle = item.placemark.formattedAddress
+                    annotation.mapItem = item
+                    
+                    self.mapView.addAnnotation(annotation)
+                }
+                
+                // Zoom map to show all results and user location
+                var coordinates: [CLLocationCoordinate2D] = sortedItems.prefix(10).map { $0.placemark.coordinate }
+                coordinates.append(userLocation.coordinate)
+                
+                self.showAnnotations(coordinates: coordinates)
+                
+                // Update search bar text
+                self.searchBar.text = ""
+                
+                // Show category search flag
+                self.hasSearchedCategory = true
+            }
+        }
+    }
+    
+    private func showBothUserAndPlace(placeCoordinate: CLLocationCoordinate2D) {
+        guard let userLocation = locationManager.location else {
+            // If no user location, just show the place
+            let region = MKCoordinateRegion(
+                center: placeCoordinate,
+                latitudinalMeters: 1000,
+                longitudinalMeters: 1000
+            )
+            mapView.setRegion(region, animated: true)
+            return
+        }
+        
+        // Calculate region that includes both user location and place
+        let userCoordinate = userLocation.coordinate
+        
+        // Find the center point between user and place
+        let centerLat = (userCoordinate.latitude + placeCoordinate.latitude) / 2
+        let centerLon = (userCoordinate.longitude + placeCoordinate.longitude) / 2
+        let centerCoordinate = CLLocationCoordinate2D(latitude: centerLat, longitude: centerLon)
+        
+        // Calculate distance between points
+        let placeLocation = CLLocation(latitude: placeCoordinate.latitude, longitude: placeCoordinate.longitude)
+        let distance = userLocation.distance(from: placeLocation)
+        
+        // Set span to include both points with some padding
+        let span = distance * 2.5 // Add padding
+        
+        let region = MKCoordinateRegion(
+            center: centerCoordinate,
+            latitudinalMeters: max(span, 2000), // Minimum 2km
+            longitudinalMeters: max(span, 2000)
+        )
+        
+        mapView.setRegion(region, animated: true)
+    }
+    
+    private func showAnnotations(coordinates: [CLLocationCoordinate2D]) {
+        guard !coordinates.isEmpty else { return }
+        
+        var minLat = coordinates[0].latitude
+        var maxLat = coordinates[0].latitude
+        var minLon = coordinates[0].longitude
+        var maxLon = coordinates[0].longitude
+        
+        for coordinate in coordinates {
+            minLat = min(minLat, coordinate.latitude)
+            maxLat = max(maxLat, coordinate.latitude)
+            minLon = min(minLon, coordinate.longitude)
+            maxLon = max(maxLon, coordinate.longitude)
+        }
+        
+        let centerLat = (minLat + maxLat) / 2
+        let centerLon = (minLon + maxLon) / 2
+        let center = CLLocationCoordinate2D(latitude: centerLat, longitude: centerLon)
+        
+        let latDelta = (maxLat - minLat) * 1.3 // Add padding
+        let lonDelta = (maxLon - minLon) * 1.3
+        
+        let span = MKCoordinateSpan(
+            latitudeDelta: max(latDelta, 0.01),
+            longitudeDelta: max(lonDelta, 0.01)
+        )
+        
+        let region = MKCoordinateRegion(center: center, span: span)
+        mapView.setRegion(region, animated: true)
+    }
+    
+    private func captureStreetViewImage(for coordinate: CLLocationCoordinate2D) {
+        // First check if street view is available at this location
+        GoogleStreetViewService.shared.checkStreetViewAvailability(at: coordinate) { [weak self] available in
+            guard available else {
+                print("Street View not available at this location")
+                return
+            }
+            
+            // Download the street view image
+            let parameters = GoogleStreetViewService.StreetViewParameters(
+                location: coordinate,
+                size: CGSize(width: 800, height: 600),
+                pitch: 10,
+                fov: 100
+            )
+            
+            GoogleStreetViewService.shared.downloadStreetViewImage(parameters: parameters) { imageData in
+                guard let data = imageData,
+                      let image = UIImage(data: data) else {
+                    print("Failed to download street view image")
+                    return
+                }
+                
+                DispatchQueue.main.async {
+                    self?.selectedImage = image
+                    self?.photoImageView.image = image
+                    self?.photoImageView.isHidden = false
+                    self?.removePhotoButton.isHidden = false
+                    self?.addPhotoButton.isHidden = true
+                    print("✅ Street view image captured successfully")
+                }
+            }
+        }
     }
     
     private func fillFormWithMapItem(_ mapItem: MKMapItem) {
@@ -1223,6 +1485,9 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
         
         // Enable form first
         enableManualEntry()
+        
+        // Capture street view image for the location
+        captureStreetViewImage(for: mapItem.placemark.coordinate)
         
         // Add a small delay to ensure the form is visible before populating
         DispatchQueue.main.async { [weak self] in
@@ -1252,7 +1517,22 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
                 placemark.country
             ].compactMap { $0 }.joined(separator: ", ")
             
-            self.addressTextView.text = address
+            // Calculate and add distance from current location
+            var finalAddress = address
+            if let userLocation = self.locationManager.location {
+                let placeLocation = CLLocation(latitude: placemark.coordinate.latitude, longitude: placemark.coordinate.longitude)
+                let distance = userLocation.distance(from: placeLocation)
+                
+                // Convert to miles or kilometers based on locale
+                let formatter = MeasurementFormatter()
+                formatter.numberFormatter.maximumFractionDigits = 1
+                let measurement = Measurement(value: distance, unit: UnitLength.meters)
+                let distanceString = formatter.string(from: measurement)
+                
+                finalAddress += "\n📍 \(distanceString) from current location"
+            }
+            
+            self.addressTextView.text = finalAddress
             
             // Generate enhanced description
             var description = ""
@@ -1415,6 +1695,9 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
         // Update map to show the selected place
         updateMapForLocation(place.coordinate)
         
+        // Capture street view image for the location
+        captureStreetViewImage(for: place.coordinate)
+        
         // Calculate and show distance from current location
         if let userLocation = locationManager.location {
             let placeLocation = CLLocation(latitude: place.coordinate.latitude, longitude: place.coordinate.longitude)
@@ -1461,26 +1744,30 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
     }
     
     private func updateMapForLocation(_ coordinate: CLLocationCoordinate2D) {
-        let camera = GMSCameraPosition.camera(withTarget: coordinate, zoom: 17.0)
-        mapView.animate(to: camera)
+        let region = MKCoordinateRegion(
+            center: coordinate,
+            latitudinalMeters: 500,
+            longitudinalMeters: 500
+        )
+        mapView.setRegion(region, animated: true)
         
-        // Add a marker for the selected location if not already present
-        var hasMarker = false
-        for marker in markers {
-            if marker.position.latitude == coordinate.latitude && 
-               marker.position.longitude == coordinate.longitude {
-                hasMarker = true
+        // Add an annotation for the selected location if not already present
+        var hasAnnotation = false
+        for annotation in mapView.annotations {
+            if let searchAnnotation = annotation as? PlaceSearchAnnotation,
+               searchAnnotation.coordinate.latitude == coordinate.latitude &&
+               searchAnnotation.coordinate.longitude == coordinate.longitude {
+                hasAnnotation = true
                 break
             }
         }
         
-        if !hasMarker {
-            let marker = GMSMarker()
-            marker.position = coordinate
-            marker.title = "Selected Location"
-            marker.icon = GMSMarker.markerImage(with: .systemGreen)
-            marker.map = mapView
-            markers.append(marker)
+        if !hasAnnotation {
+            let annotation = PlaceSearchAnnotation()
+            annotation.coordinate = coordinate
+            annotation.title = "Selected Location"
+            annotation.isTemporary = true
+            mapView.addAnnotation(annotation)
         }
     }
     
@@ -1574,7 +1861,7 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
             // Update map
             self.updateMapForLocation(self.selectedLocation!)
             
-            // Load Google Place photo if available
+            // Load Google Place photo if available, otherwise try street view
             if !placeDetails.photos.isEmpty {
                 print("📸 Loading photo from Google Places for form display...")
                 GooglePlacesService.shared.loadPhoto(from: placeDetails.photos[0], maxSize: CGSize(width: 800, height: 800)) { [weak self] result in
@@ -1590,8 +1877,13 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
                         }
                     case .failure(let error):
                         print("📸 Failed to load Google photo for form: \(error)")
+                        // Try street view as fallback
+                        self?.captureStreetViewImage(for: placeDetails.coordinate)
                     }
                 }
+            } else {
+                // No Google photos available, try street view
+                self.captureStreetViewImage(for: placeDetails.coordinate)
             }
             
             // Scroll to form
@@ -1697,113 +1989,92 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
     private func searchForCategory(_ category: String) {
         print("Searching for category: \(category)")
         
-        // Use Google Places text search
-        let filter = GMSAutocompleteFilter()
-        filter.type = .establishment
+        // Mark that we've searched for a category
+        hasSearchedCategory = true
         
-        // Get current map bounds for location bias
-        let visibleRegion = mapView.projection.visibleRegion()
-        let bounds = GMSCoordinateBounds(region: visibleRegion)
+        // Create search request
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = category
+        request.region = mapView.region
         
-        // Set location bias to current map view
-        filter.locationBias = GMSPlaceRectangularLocationOption(
-            bounds.northEast,
-            bounds.southWest
-        )
-        
-        // Create a search token
-        let token = GMSAutocompleteSessionToken()
-        
-        // Perform text search
-        placesClient.findAutocompletePredictions(
-            fromQuery: category,
-            filter: filter,
-            sessionToken: token
-        ) { [weak self] (predictions, error) in
-            guard let self = self,
-                  let predictions = predictions else {
-                print("No predictions found or error: \(error?.localizedDescription ?? "unknown")")
+        let search = MKLocalSearch(request: request)
+        search.start { [weak self] response, error in
+            guard let self = self else { return }
+            
+            if let error = error {
+                print("Search error: \(error.localizedDescription)")
                 return
             }
             
-            print("Found \(predictions.count) predictions")
+            guard let response = response else { return }
+            
+            print("Found \(response.mapItems.count) items")
             
             DispatchQueue.main.async {
-                // Remove existing markers
-                for marker in self.markers {
-                    marker.map = nil
-                }
-                self.markers.removeAll()
-                self.markerToPlaceIdMap.removeAll()
+                // Remove existing annotations (except user location)
+                let nonUserAnnotations = self.mapView.annotations.filter { !($0 is MKUserLocation) }
+                self.mapView.removeAnnotations(nonUserAnnotations)
+                self.annotations.removeAll()
+                self.annotationToPlaceIdMap.removeAll()
                 self.placeIdsByCoordinate.removeAll()
                 
-                // Process first 10 predictions to get place details
-                let predictionsToProcess = Array(predictions.prefix(10))
-                var processedCount = 0
-                
-                for prediction in predictionsToProcess {
-                    let placeId = prediction.placeID  // Capture placeID
+                // Add annotations for each result
+                for mapItem in response.mapItems {
+                    let annotation = PlaceSearchAnnotation()
+                    annotation.coordinate = mapItem.placemark.coordinate
+                    annotation.title = mapItem.name ?? "Unknown Place"
+                    annotation.subtitle = mapItem.placemark.formattedAddress
+                    annotation.mapItem = mapItem
                     
-                    // Fetch place details for each prediction
-                    self.placesClient.fetchPlace(
-                        fromPlaceID: placeId,
-                        placeFields: [.name, .formattedAddress, .coordinate, .types, .phoneNumber, .website],
-                        sessionToken: nil
-                    ) { (place, error) in
-                        guard let place = place else { 
-                            print("Failed to fetch place details for \(placeId)")
-                            return 
-                        }
-                        
-                        DispatchQueue.main.async {
-                            let marker = GMSMarker()
-                            marker.position = place.coordinate
-                            marker.title = place.name
-                            marker.snippet = place.formattedAddress
-                            
-                            // Store place ID in marker's userData
-                            marker.userData = placeId
-                            
-                            // Customize marker appearance
-                            marker.icon = GMSMarker.markerImage(with: Constants.Colors.primary)
-                            marker.appearAnimation = .pop
-                            
-                            marker.map = self.mapView
-                            self.markers.append(marker)
-                            
-                            // Store the place ID for this marker
-                            self.markerToPlaceIdMap[marker] = placeId
-                            
-                            // Also store by coordinate as backup
-                            let coordKey = "\(place.coordinate.latitude),\(place.coordinate.longitude)"
-                            self.placeIdsByCoordinate[coordKey] = placeId
-                            
-                            print("Added marker '\(place.name ?? "")' with placeId: \(placeId) and userData: \(marker.userData ?? "nil")")
-                            
-                            processedCount += 1
-                            
-                            // Show all markers when done
-                            if processedCount == predictionsToProcess.count {
-                                self.showAllAnnotations()
-                                print("Total markers with place IDs: \(self.markerToPlaceIdMap.count)")
-                            }
-                        }
-                    }
+                    self.mapView.addAnnotation(annotation)
+                    self.annotations.append(annotation)
+                    
+                    // Store by coordinate for lookup
+                    let coordKey = "\(mapItem.placemark.coordinate.latitude),\(mapItem.placemark.coordinate.longitude)"
+                    // We'll need to get Google Place ID later if user selects this
                 }
+                
+                // Show all annotations
+                self.showAllAnnotations()
             }
         }
     }
     
     private func showAllAnnotations() {
-        if markers.isEmpty { return }
+        if annotations.isEmpty { return }
         
-        var bounds = GMSCoordinateBounds()
-        for marker in markers {
-            bounds = bounds.includingCoordinate(marker.position)
+        var coordinates = annotations.map { $0.coordinate }
+        
+        // Include user location if available
+        if let userLocation = mapView.userLocation.location {
+            coordinates.append(userLocation.coordinate)
         }
         
-        let update = GMSCameraUpdate.fit(bounds, withPadding: 50.0)
-        mapView.animate(with: update)
+        // Calculate region that fits all coordinates
+        var minLat = coordinates[0].latitude
+        var maxLat = coordinates[0].latitude
+        var minLon = coordinates[0].longitude
+        var maxLon = coordinates[0].longitude
+        
+        for coordinate in coordinates {
+            minLat = min(minLat, coordinate.latitude)
+            maxLat = max(maxLat, coordinate.latitude)
+            minLon = min(minLon, coordinate.longitude)
+            maxLon = max(maxLon, coordinate.longitude)
+        }
+        
+        let center = CLLocationCoordinate2D(
+            latitude: (minLat + maxLat) / 2,
+            longitude: (minLon + maxLon) / 2
+        )
+        
+        let span = MKCoordinateSpan(
+            latitudeDelta: (maxLat - minLat) * 1.2,
+            longitudeDelta: (maxLon - minLon) * 1.2
+        )
+        
+        let region = MKCoordinateRegion(center: center, span: span)
+        mapView.setRegion(region, animated: true)
     }
     
     private func addGooglePlace(placeId: String, markerTitle: String) {
@@ -2057,17 +2328,25 @@ extension AddPlaceViewController: CLLocationManagerDelegate {
         userLocation = location
         
         // Center map on user location with wider zoom
-        let camera = GMSCameraPosition.camera(withTarget: location.coordinate, zoom: 15.0)
+        let region = MKCoordinateRegion(
+            center: location.coordinate,
+            latitudinalMeters: 2000,
+            longitudinalMeters: 2000
+        )
         
         // Use dispatch to ensure map renders properly
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
-            self.mapView.animate(to: camera)
+            self.mapView.setRegion(region, animated: true)
             
-            // Add a small delay to ensure map tiles load
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                self.mapView.setNeedsDisplay()
+            // Search for coffee shops if this is the first location update
+            if !self.hasPerformedInitialSearch {
+                self.hasPerformedInitialSearch = true
+                // Small delay to ensure map has finished animating
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self.searchNearbyPlaces(query: "coffee shop cafe")
+                }
             }
         }
         
@@ -2105,182 +2384,162 @@ extension AddPlaceViewController: CLLocationManagerDelegate {
     }
 }
 
-// MARK: - GMSMapViewDelegate
+// MARK: - Map Helpers
 
-extension AddPlaceViewController: GMSMapViewDelegate {
-    func mapView(_ mapView: GMSMapView, didTapAt coordinate: CLLocationCoordinate2D) {
-        // Handle tap on map (not on a marker)
-        handleMapTapAtCoordinate(coordinate)
+extension AddPlaceViewController {
+    @objc private func zoomToCurrentLocation() {
+        guard let location = userLocation else {
+            // Request location if not available
+            locationManager.requestWhenInUseAuthorization()
+            locationManager.startUpdatingLocation()
+            return
+        }
+        
+        let region = MKCoordinateRegion(
+            center: location.coordinate,
+            latitudinalMeters: 1000,
+            longitudinalMeters: 1000
+        )
+        mapView.setRegion(region, animated: true)
     }
     
-    func mapView(_ mapView: GMSMapView, didTap marker: GMSMarker) -> Bool {
-        guard let name = marker.title else { return false }
+    private func searchNearbyPlaces(query: String? = nil) {
+        // Only search if we're not already searching
+        guard !isSearchingNearby else { return }
         
-        print("Marker tapped: \(name)")
-        print("Marker userData: \(marker.userData ?? "nil")")
-        print("markerToPlaceIdMap has \(markerToPlaceIdMap.count) entries")
+        isSearchingNearby = true
+        let region = mapView.region
         
-        // For "Selected Location" markers, fill the form
-        if name == "Selected Location" {
-            mapView.selectedMarker = marker
-            return true
-        }
+        // Create search request for points of interest
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = query ?? "restaurant cafe bar shop attraction" // Use provided query or default
+        request.region = region
+        request.resultTypes = [.pointOfInterest]
         
-        // First check userData for place ID
-        if let placeId = marker.userData as? String {
-            print("Found place ID in userData: \(placeId)")
-            // Show confirmation popup
-            let alert = UIAlertController(
-                title: "Add Place",
-                message: "Do you want to add \"\(name)\" to this circle?",
-                preferredStyle: .alert
-            )
-            
-            alert.addAction(UIAlertAction(title: "Add Place", style: .default) { [weak self] _ in
-                self?.loadAndFillFormWithGooglePlace(placeId: placeId, markerTitle: name)
-            })
-            
-            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-            
-            present(alert, animated: true)
-        }
-        // Then check if this is a Google Places marker in our map
-        else if let placeId = markerToPlaceIdMap[marker] {
-            print("Found place ID in markerToPlaceIdMap: \(placeId)")
-            // Show confirmation popup
-            let alert = UIAlertController(
-                title: "Add Place",
-                message: "Do you want to add \"\(name)\" to this circle?",
-                preferredStyle: .alert
-            )
-            
-            alert.addAction(UIAlertAction(title: "Add Place", style: .default) { [weak self] _ in
-                self?.loadAndFillFormWithGooglePlace(placeId: placeId, markerTitle: name)
-            })
-            
-            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-            
-            present(alert, animated: true)
-        } else {
-            print("No place ID found for marker in markerToPlaceIdMap")
-            
-            // Try coordinate-based lookup
-            let coordKey = "\(marker.position.latitude),\(marker.position.longitude)"
-            if let placeId = placeIdsByCoordinate[coordKey] {
-                print("Found place ID by coordinate lookup: \(placeId)")
-                // Show confirmation popup
-                let alert = UIAlertController(
-                    title: "Add Place",
-                    message: "Do you want to add \"\(name)\" to this circle?",
-                    preferredStyle: .alert
-                )
-                
-                alert.addAction(UIAlertAction(title: "Add Place", style: .default) { [weak self] _ in
-                    self?.addGooglePlace(placeId: placeId, markerTitle: name)
-                })
-                
-                alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-                
-                present(alert, animated: true)
-            } else {
-                print("No place ID found even with coordinate lookup")
-                // As last resort, try to find by position in markerToPlaceIdMap
-                for (storedMarker, storedPlaceId) in markerToPlaceIdMap {
-                    if storedMarker.position.latitude == marker.position.latitude &&
-                       storedMarker.position.longitude == marker.position.longitude {
-                        print("Found place ID by position match in markerToPlaceIdMap: \(storedPlaceId)")
-                        // Show confirmation popup
-                        let alert = UIAlertController(
-                            title: "Add Place",
-                            message: "Do you want to add \"\(name)\" to this circle?",
-                            preferredStyle: .alert
-                        )
-                        
-                        alert.addAction(UIAlertAction(title: "Add Place", style: .default) { [weak self] _ in
-                            self?.loadAndFillFormWithGooglePlace(placeId: storedPlaceId, markerTitle: name)
-                        })
-                        
-                        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-                        
-                        present(alert, animated: true)
-                        break
-                    }
-                }
-            }
-        }
-        
-        // Select the marker to show info window
-        mapView.selectedMarker = marker
-        
-        return true // Consume the tap event
-    }
-    
-    func mapView(_ mapView: GMSMapView, didTapPOIWithPlaceID placeID: String, name: String, location: CLLocationCoordinate2D) {
-        print("POI tapped: \(name) with placeID: \(placeID)")
-        
-        // Show loading indicator
-        let loadingAlert = UIAlertController(title: "Loading Place", message: "Please wait...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
-        
-        // Fetch full place details
-        GooglePlacesService.shared.fetchPlaceDetails(placeID: placeID) { [weak self] result in
+        let search = MKLocalSearch(request: request)
+        search.start { [weak self] response, error in
             guard let self = self else { return }
             
-            DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true) {
-                    switch result {
-                    case .success(let gmsPlace):
-                        // Show confirmation alert
-                        let alert = UIAlertController(
-                            title: "Add Place", 
-                            message: "Add '\(gmsPlace.name ?? name)' to this circle?",
-                            preferredStyle: .alert
-                        )
-                        
-                        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-                        alert.addAction(UIAlertAction(title: "Add", style: .default) { _ in
-                            self.fillFormWithGMSPlace(gmsPlace)
-                        })
-                        
-                        self.present(alert, animated: true)
-                        
-                    case .failure(let error):
-                        print("Failed to fetch place details: \(error)")
-                        // Fallback to basic info
-                        let alert = UIAlertController(
-                            title: "Add Place",
-                            message: "Add '\(name)' to this circle?", 
-                            preferredStyle: .alert
-                        )
-                        
-                        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-                        alert.addAction(UIAlertAction(title: "Add", style: .default) { _ in
-                            // Populate with basic info
-                            self.nameTextField.text = name
-                            self.selectedLocation = location
-                            self.updateMapForLocation(location)
-                            self.performReverseGeocoding(for: location)
-                        })
-                        
-                        self.present(alert, animated: true)
-                    }
+            if let response = response {
+                // Clear existing annotations except user location
+                let annotationsToRemove = self.mapView.annotations.filter { !($0 is MKUserLocation) }
+                self.mapView.removeAnnotations(annotationsToRemove)
+                
+                // Add annotations for each result
+                for item in response.mapItems {
+                    let annotation = PlaceSearchAnnotation()
+                    annotation.coordinate = item.placemark.coordinate
+                    annotation.title = item.name
+                    annotation.subtitle = item.placemark.title
+                    annotation.mapItem = item
+                    
+                    self.mapView.addAnnotation(annotation)
                 }
             }
+            
+            self.isSearchingNearby = false
         }
     }
-    
-    func mapView(_ mapView: GMSMapView, didTapInfoWindowOf marker: GMSMarker) {
-        // When info window is tapped, ensure the form is visible and scroll to it
-        if marker.title != "Selected Location" {
-            // Scroll to form
-            let formRect = self.formContainer.convert(self.formContainer.bounds, to: self.scrollView)
-            self.scrollView.scrollRectToVisible(formRect, animated: true)
+}
+
+// MARK: - MKMapViewDelegate
+
+extension AddPlaceViewController: MKMapViewDelegate {
+    func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+        // Cancel previous timer
+        mapRegionTimer?.invalidate()
+        
+        // Don't auto-search if user has searched for a category or is searching
+        guard !hasSearchedCategory && searchResultsTableView.isHidden else { return }
+        
+        // Start new timer to search after user stops moving the map
+        mapRegionTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+            self?.searchNearbyPlaces()
         }
     }
+    func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+        // Skip user location
+        if annotation is MKUserLocation {
+            return nil
+        }
+        
+        guard let placeAnnotation = annotation as? PlaceSearchAnnotation else {
+            return nil
+        }
+        
+        let identifier = "PlaceSearchAnnotation"
+        var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier) as? MKMarkerAnnotationView
+        
+        if annotationView == nil {
+            annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+            annotationView?.canShowCallout = true
+            
+            // Add detail button
+            let detailButton = UIButton(type: .detailDisclosure)
+            annotationView?.rightCalloutAccessoryView = detailButton
+        } else {
+            annotationView?.annotation = annotation
+        }
+        
+        // Customize appearance
+        if let markerView = annotationView {
+            if placeAnnotation.isTemporary {
+                markerView.markerTintColor = .systemGreen
+            } else {
+                markerView.markerTintColor = Constants.Colors.primary
+            }
+        }
+        
+        return annotationView
+    }
     
-    func mapView(_ mapView: GMSMapView, markerInfoWindow marker: GMSMarker) -> UIView? {
-        // Return nil to use default info window
-        return nil
+    func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView, calloutAccessoryControlTapped control: UIControl) {
+        guard let placeAnnotation = view.annotation as? PlaceSearchAnnotation else { return }
+        
+        let name = placeAnnotation.title ?? "Unknown Place"
+        print("Annotation tapped: \(name)")
+        
+        // For "Selected Location" annotations, the form is already filled
+        if name == "Selected Location" {
+            return
+        }
+        
+        // Check if we have a mapItem (from Apple Maps search)
+        if let mapItem = placeAnnotation.mapItem {
+            print("Found map item: \(mapItem.name ?? "")")
+            // Show confirmation popup
+            let alert = UIAlertController(
+                title: "Add Place",
+                message: "Do you want to add \"\(name)\" to this circle?",
+                preferredStyle: .alert
+            )
+            
+            alert.addAction(UIAlertAction(title: "Add Place", style: .default) { [weak self] _ in
+                self?.fillFormWithMapItem(mapItem)
+            })
+            
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            
+            present(alert, animated: true)
+        }
+        // Check if we have a Google Place ID
+        else if let placeId = placeAnnotation.placeId {
+            print("Found Google place ID: \(placeId)")
+            // Show confirmation popup
+            let alert = UIAlertController(
+                title: "Add Place",
+                message: "Do you want to add \"\(name)\" to this circle?",
+                preferredStyle: .alert
+            )
+            
+            alert.addAction(UIAlertAction(title: "Add Place", style: .default) { [weak self] _ in
+                self?.loadAndFillFormWithGooglePlace(placeId: placeId, markerTitle: name)
+            })
+            
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            
+            present(alert, animated: true)
+        }
     }
     
 }
@@ -2305,11 +2564,14 @@ extension AddPlaceViewController: UISearchBarDelegate {
         
         // Debounce search by 0.3 seconds
         searchTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
-            self?.performGooglePlacesSearch(searchText)
+            self?.performAppleMapsSearch(searchText)
         }
     }
     
     func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
+        // Reset category search flag when user starts typing
+        hasSearchedCategory = false
+        
         if !searchBar.text!.isEmpty {
             searchResultsTableView.isHidden = false
         }
@@ -2320,63 +2582,56 @@ extension AddPlaceViewController: UISearchBarDelegate {
     }
 }
 
-// MARK: - Google Places Search
+// MARK: - Apple Maps Search
 
 extension AddPlaceViewController {
-    private func performGooglePlacesSearch(_ query: String) {
+    private func performAppleMapsSearch(_ query: String) {
         guard !query.isEmpty else {
             searchResults = []
+            showPlaceTypeSuggestion = false
             searchResultsTableView.reloadData()
             return
         }
         
-        let filter = GMSAutocompleteFilter()
-        filter.type = .noFilter
+        // Check if query looks like a place type (simple words without numbers or specific addresses)
+        let isLikelyPlaceType = !query.contains(where: { $0.isNumber }) && 
+                               !query.lowercased().contains("street") && 
+                               !query.lowercased().contains("ave") &&
+                               !query.lowercased().contains("road") &&
+                               !query.contains(",") &&
+                               query.split(separator: " ").count <= 3
         
-        // Create location bounds for bias (25 mile radius)
+        showPlaceTypeSuggestion = isLikelyPlaceType
+        placeTypeSuggestionQuery = query
+        
+        // Set search region based on current map view
         if let userLocation = locationManager.location {
-            // Convert 25 miles to degrees (approximate)
-            // 1 degree latitude = ~69 miles, so 25 miles = ~0.36 degrees
-            let latDelta = 0.36
-            let lonDelta = 0.36
-            
-            let northEast = CLLocationCoordinate2D(
-                latitude: userLocation.coordinate.latitude + latDelta,
-                longitude: userLocation.coordinate.longitude + lonDelta
+            searchCompleter.region = MKCoordinateRegion(
+                center: userLocation.coordinate,
+                latitudinalMeters: 40000, // ~25 miles
+                longitudinalMeters: 40000
             )
-            let southWest = CLLocationCoordinate2D(
-                latitude: userLocation.coordinate.latitude - latDelta,
-                longitude: userLocation.coordinate.longitude - lonDelta
-            )
-            
-            filter.locationBias = GMSPlaceRectangularLocationOption(northEast, southWest)
+        } else {
+            searchCompleter.region = mapView.region
         }
         
-        placesClient.findAutocompletePredictions(
-            fromQuery: query,
-            filter: filter,
-            sessionToken: sessionToken
-        ) { [weak self] (results, error) in
-            guard let self = self else { return }
-            
-            if let error = error {
-                print("🔴 Google Places search error: \(error.localizedDescription)")
-                print("🔴 Error details: \(error)")
-                self.searchResults = []
-                self.searchResultsTableView.reloadData()
-                return
-            }
-            
-            if let results = results {
-                print("✅ Google Places found \(results.count) results for query: \(query)")
-                self.searchResults = results
-                self.searchResultsTableView.reloadData()
-            } else {
-                print("⚠️ Google Places returned nil results")
-                self.searchResults = []
-                self.searchResultsTableView.reloadData()
-            }
-        }
+        searchCompleter.queryFragment = query
+    }
+}
+
+// MARK: - MKLocalSearchCompleterDelegate
+
+extension AddPlaceViewController: MKLocalSearchCompleterDelegate {
+    func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
+        searchResults = completer.results
+        searchResultsTableView.reloadData()
+        print("✅ Apple Maps found \(searchResults.count) results")
+    }
+    
+    func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
+        print("🔴 Apple Maps search error: \(error.localizedDescription)")
+        searchResults = []
+        searchResultsTableView.reloadData()
     }
 }
 
@@ -2388,7 +2643,8 @@ extension AddPlaceViewController: UITableViewDataSource, UITableViewDelegate {
         if tableView == categoryDropdownTableView {
             return categoryDropdownItems.count
         } else {
-            return searchResults.count
+            // Add 1 for place type suggestion if applicable
+            return showPlaceTypeSuggestion ? searchResults.count + 1 : searchResults.count
         }
     }
     
@@ -2448,18 +2704,44 @@ extension AddPlaceViewController: UITableViewDataSource, UITableViewDelegate {
                 cell = UITableViewCell(style: .subtitle, reuseIdentifier: "SearchCell")
             }
             
-            let result = searchResults[indexPath.row]
-            
-            // Configure cell for better display
-            cell?.textLabel?.text = result.attributedPrimaryText.string
-            cell?.textLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
-            cell?.textLabel?.numberOfLines = 2
-            
-            // Show full address with city, state, country
-            cell?.detailTextLabel?.text = result.attributedSecondaryText?.string
-            cell?.detailTextLabel?.font = UIFont.systemFont(ofSize: 14)
-            cell?.detailTextLabel?.textColor = .systemGray
-            cell?.detailTextLabel?.numberOfLines = 2
+            // Handle place type suggestion row
+            if showPlaceTypeSuggestion && indexPath.row == 0 {
+                // Configure as place type suggestion
+                cell?.textLabel?.text = "\"\(placeTypeSuggestionQuery)\" nearby"
+                cell?.textLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+                cell?.textLabel?.textColor = .systemBlue
+                cell?.textLabel?.numberOfLines = 1
+                
+                cell?.detailTextLabel?.text = "Search for this type of place"
+                cell?.detailTextLabel?.font = UIFont.systemFont(ofSize: 14)
+                cell?.detailTextLabel?.textColor = .systemGray
+                
+                // Add search icon
+                let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+                cell?.imageView?.image = UIImage(systemName: "magnifyingglass.circle.fill", withConfiguration: config)
+                cell?.imageView?.tintColor = .systemBlue
+            } else {
+                // Regular search result
+                let resultIndex = showPlaceTypeSuggestion ? indexPath.row - 1 : indexPath.row
+                let result = searchResults[resultIndex]
+                
+                // Configure cell for better display
+                cell?.textLabel?.text = result.title
+                cell?.textLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+                cell?.textLabel?.numberOfLines = 2
+                cell?.textLabel?.textColor = .label
+                
+                // Show full address with city, state, country
+                cell?.detailTextLabel?.text = result.subtitle
+                cell?.detailTextLabel?.font = UIFont.systemFont(ofSize: 14)
+                cell?.detailTextLabel?.textColor = .systemGray
+                cell?.detailTextLabel?.numberOfLines = 2
+                
+                // Add location icon for regular results
+                let config = UIImage.SymbolConfiguration(pointSize: 16, weight: .regular)
+                cell?.imageView?.image = UIImage(systemName: "mappin.circle", withConfiguration: config)
+                cell?.imageView?.tintColor = .systemGray
+            }
             
             return cell!
         }
@@ -2502,7 +2784,15 @@ extension AddPlaceViewController: UITableViewDataSource, UITableViewDelegate {
                 tableView.reloadData()
             }
         } else {
-            selectSearchResult(searchResults[indexPath.row])
+            // Handle place type suggestion
+            if showPlaceTypeSuggestion && indexPath.row == 0 {
+                // Perform a search for this place type nearby
+                performPlaceTypeSearch(placeTypeSuggestionQuery)
+            } else {
+                // Regular search result selection
+                let resultIndex = showPlaceTypeSuggestion ? indexPath.row - 1 : indexPath.row
+                selectSearchResult(searchResults[resultIndex])
+            }
         }
     }
 }
@@ -2567,3 +2857,20 @@ extension AddPlaceViewController: PHPickerViewControllerDelegate {
     }
 }
 
+
+// MARK: - MKPlacemark Extension
+
+extension MKPlacemark {
+    var formattedAddress: String {
+        let addressComponents = [
+            subThoroughfare,
+            thoroughfare,
+            locality,
+            administrativeArea,
+            postalCode,
+            country
+        ].compactMap { $0 }
+        
+        return addressComponents.joined(separator: ", ")
+    }
+}

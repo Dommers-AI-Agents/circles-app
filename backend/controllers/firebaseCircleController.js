@@ -7,6 +7,7 @@ const {
   serializeDoc,
   serializeQuerySnapshot 
 } = require('../models/FirestoreModels');
+const { trackCircleCreated } = require('../services/activityService');
 
 const db = getFirestore();
 
@@ -220,6 +221,9 @@ exports.createCircle = async (req, res, next) => {
     const createdCircle = await circleRef.get();
     const circle = serializeDoc(createdCircle);
 
+    // Track activity for network connections
+    await trackCircleCreated(circleRef.id, req.user.uid);
+
     res.status(201).json({
       success: true,
       circle: circle
@@ -246,9 +250,13 @@ exports.updateCircle = async (req, res, next) => {
     }
 
     const circle = serializeDoc(circleDoc);
+    const userId = req.user.firebaseDocId || req.user.uid;
 
-    // Make sure user is circle owner
-    if (circle.owner !== req.user.uid) {
+    // Check if user is owner or editor
+    const isOwner = circle.owner === userId;
+    const isEditor = (circle.editors || []).includes(userId);
+    
+    if (!isOwner && !isEditor) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to update this circle'
@@ -491,3 +499,179 @@ exports.followCircle = async (req, res, next) => {
 };
 
 exports.unfollowCircle = exports.followCircle; // Same handler, different action
+
+// @desc    Add editor to circle
+// @route   POST /api/circles/:id/editors
+// @access  Private (owner only)
+exports.addEditor = async (req, res, next) => {
+  try {
+    const circleId = req.params.id;
+    const { userId } = req.body;
+    const requesterId = req.user.firebaseDocId || req.user.uid;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID is required'
+      });
+    }
+
+    // Get circle
+    const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(circleId).get();
+    
+    if (!circleDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Circle not found'
+      });
+    }
+
+    const circle = circleDoc.data();
+
+    // Check if requester is the owner
+    if (circle.owner !== requesterId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only the circle owner can add editors'
+      });
+    }
+
+    // Check if user exists
+    const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+    if (!userDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Check if user is already an editor
+    const currentEditors = circle.editors || [];
+    if (currentEditors.includes(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'User is already an editor'
+      });
+    }
+
+    // Add user as editor
+    await db.collection(COLLECTIONS.CIRCLES).doc(circleId).update({
+      editors: [...currentEditors, userId],
+      updatedAt: new Date().toISOString()
+    });
+
+    // Return updated circle
+    const updatedCircleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(circleId).get();
+    const updatedCircle = serializeDoc(updatedCircleDoc);
+
+    res.status(200).json({
+      success: true,
+      data: updatedCircle
+    });
+  } catch (error) {
+    console.error('Error adding editor:', error);
+    next(error);
+  }
+};
+
+// @desc    Remove editor from circle
+// @route   DELETE /api/circles/:id/editors/:userId
+// @access  Private (owner only)
+exports.removeEditor = async (req, res, next) => {
+  try {
+    const circleId = req.params.id;
+    const userIdToRemove = req.params.userId;
+    const requesterId = req.user.firebaseDocId || req.user.uid;
+
+    // Get circle
+    const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(circleId).get();
+    
+    if (!circleDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Circle not found'
+      });
+    }
+
+    const circle = circleDoc.data();
+
+    // Check if requester is the owner
+    if (circle.owner !== requesterId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only the circle owner can remove editors'
+      });
+    }
+
+    // Remove user from editors
+    const currentEditors = circle.editors || [];
+    const updatedEditors = currentEditors.filter(id => id !== userIdToRemove);
+
+    await db.collection(COLLECTIONS.CIRCLES).doc(circleId).update({
+      editors: updatedEditors,
+      updatedAt: new Date().toISOString()
+    });
+
+    // Return updated circle
+    const updatedCircleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(circleId).get();
+    const updatedCircle = serializeDoc(updatedCircleDoc);
+
+    res.status(200).json({
+      success: true,
+      data: updatedCircle
+    });
+  } catch (error) {
+    console.error('Error removing editor:', error);
+    next(error);
+  }
+};
+
+// @desc    Get circle editors
+// @route   GET /api/circles/:id/editors
+// @access  Private
+exports.getEditors = async (req, res, next) => {
+  try {
+    const circleId = req.params.id;
+    const requesterId = req.user.firebaseDocId || req.user.uid;
+
+    // Get circle
+    const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(circleId).get();
+    
+    if (!circleDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Circle not found'
+      });
+    }
+
+    const circle = circleDoc.data();
+
+    // Check if user has access to view editors (owner or editor)
+    const editors = circle.editors || [];
+    if (circle.owner !== requesterId && !editors.includes(requesterId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to view editors'
+      });
+    }
+
+    // Fetch editor user details
+    const editorDetails = await Promise.all(
+      editors.map(async (editorId) => {
+        const userDoc = await db.collection(COLLECTIONS.USERS).doc(editorId).get();
+        if (userDoc.exists) {
+          return serializeDoc(userDoc);
+        }
+        return null;
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      data: editorDetails.filter(editor => editor !== null)
+    });
+  } catch (error) {
+    console.error('Error getting editors:', error);
+    next(error);
+  }
+};

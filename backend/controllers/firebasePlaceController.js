@@ -10,6 +10,7 @@ const {
 const { Client } = require('@googlemaps/google-maps-services-js');
 const { googleMapsApiKey } = require('../config/config');
 const notificationService = require('../services/notificationService');
+const { trackPlaceAdded } = require('../services/activityService');
 
 const db = getFirestore();
 const googleMapsClient = new Client({});
@@ -34,12 +35,55 @@ exports.getPlacesByCircleId = async (req, res, next) => {
 
     const circle = serializeDoc(circleDoc);
     
+    console.log('🔍 getPlacesByCircleId - Circle access check:', {
+      circleId: circleId,
+      circleName: circle.name,
+      circleOwner: circle.owner,
+      circlePrivacy: circle.privacy,
+      requestingUser: req.user.uid,
+      sharedWith: circle.sharedWith || []
+    });
+    
     // Check permissions
     const isOwner = circle.owner === req.user.uid;
-    const isSharedWith = circle.sharedWith.includes(req.user.uid);
+    const isSharedWith = circle.sharedWith && circle.sharedWith.includes(req.user.uid);
     const isPublic = circle.privacy === 'public';
     
-    if (!isOwner && !isSharedWith && !isPublic) {
+    // For myNetwork privacy, check if users are connected
+    let isConnected = false;
+    if (circle.privacy === 'myNetwork' && !isOwner) {
+      // Check if the current user is connected to the circle owner
+      const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', req.user.uid)
+        .where('connectedUserId', '==', circle.owner)
+        .where('status', '==', 'accepted')
+        .get();
+        
+      const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', circle.owner)
+        .where('connectedUserId', '==', req.user.uid)
+        .where('status', '==', 'accepted')
+        .get();
+        
+      isConnected = !connection1.empty || !connection2.empty;
+      
+      console.log('🔍 Connection check results:', {
+        connection1Count: connection1.size,
+        connection2Count: connection2.size,
+        isConnected: isConnected
+      });
+    }
+    
+    console.log('🔍 Permission check results:', {
+      isOwner,
+      isSharedWith,
+      isPublic,
+      isConnected,
+      circlePrivacy: circle.privacy,
+      willAllowAccess: isOwner || isSharedWith || isPublic || (circle.privacy === 'myNetwork' && isConnected)
+    });
+    
+    if (!isOwner && !isSharedWith && !isPublic && !(circle.privacy === 'myNetwork' && isConnected)) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to access this circle'
@@ -204,6 +248,9 @@ exports.createPlace = async (req, res, next) => {
       success: true,
       place: place
     });
+
+    // Track activity for network connections
+    await trackPlaceAdded(placeRef.id, circleId, req.user.uid);
 
     // Send notifications to interested users
     try {

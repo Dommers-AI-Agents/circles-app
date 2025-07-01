@@ -1,6 +1,6 @@
 import UIKit
-import GoogleMaps
-import GooglePlaces
+import MapKit
+import CoreLocation
 
 protocol FullScreenMapViewControllerDelegate: AnyObject {
     func mapViewController(_ controller: FullScreenMapViewController, didSelectPlace place: Place)
@@ -11,35 +11,40 @@ enum MapViewMode {
     case allPlaces
 }
 
-class FullScreenMapViewController: UIViewController {
+
+class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
     
     // MARK: - Properties
     private var places: [Place]
-    private var initialCamera: GMSCameraPosition
-    private var markerPlaceMap: [GMSMarker: Place] = [:]
+    private var initialRegion: MKCoordinateRegion
+    private var annotationPlaceMap: [ObjectIdentifier: Place] = [:]
     private var selectedCategory: PlaceCategory?
     private var filteredPlaces: [Place] = []
     private var isDropdownOpen = false
     private var dropdownHeightConstraint: NSLayoutConstraint?
+    private var connectionDropdownHeightConstraint: NSLayoutConstraint?
+    private var isConnectionDropdownOpen = false
+    private var selectedConnectionId: String?
+    private var connections: [Connection] = []
+    private var connectionPlaces: [String: [Place]] = [:] // connectionId -> places
+    private let locationManager = CLLocationManager()
     
     weak var delegate: FullScreenMapViewControllerDelegate?
     var viewMode: MapViewMode = .circle
     
     // MARK: - UI Elements
-    private let mapView: GMSMapView = {
-        let mapView = GMSMapView()
+    private let mapView: MKMapView = {
+        let mapView = MKMapView()
         mapView.translatesAutoresizingMaskIntoConstraints = false
         
         // Enable map controls
-        mapView.settings.myLocationButton = true
-        mapView.settings.compassButton = true
-        mapView.settings.zoomGestures = true
-        mapView.settings.scrollGestures = true
-        mapView.settings.tiltGestures = true
-        mapView.settings.rotateGestures = true
-        
-        // Enable my location if permission granted
-        mapView.isMyLocationEnabled = true
+        mapView.showsUserLocation = true
+        mapView.showsCompass = true
+        mapView.showsScale = true
+        mapView.isZoomEnabled = true
+        mapView.isScrollEnabled = true
+        mapView.isPitchEnabled = true
+        mapView.isRotateEnabled = true
         
         return mapView
     }()
@@ -88,6 +93,28 @@ class FullScreenMapViewController: UIViewController {
         return button
     }()
     
+    private let connectionFilterButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("All Connections", for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+        button.layer.cornerRadius = 16
+        button.layer.masksToBounds = true
+        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Add dropdown arrow
+        let config = UIImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+        let arrowImage = UIImage(systemName: "chevron.down", withConfiguration: config)
+        button.setImage(arrowImage, for: .normal)
+        button.tintColor = .white
+        button.semanticContentAttribute = .forceRightToLeft
+        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: 8, bottom: 0, right: 0)
+        
+        return button
+    }()
+    
     private let dropdownContainer: UIView = {
         let view = UIView()
         view.backgroundColor = UIColor.black.withAlphaComponent(0.9)
@@ -111,28 +138,51 @@ class FullScreenMapViewController: UIViewController {
         return tableView
     }()
     
+    private let connectionDropdownContainer: UIView = {
+        let view = UIView()
+        view.backgroundColor = UIColor.black.withAlphaComponent(0.9)
+        view.layer.cornerRadius = 16
+        view.layer.masksToBounds = true
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isHidden = true
+        view.alpha = 0
+        return view
+    }()
+    
+    private let connectionTableView: UITableView = {
+        let tableView = UITableView()
+        tableView.backgroundColor = .clear
+        tableView.separatorStyle = .none
+        tableView.rowHeight = 44
+        tableView.showsVerticalScrollIndicator = false
+        tableView.translatesAutoresizingMaskIntoConstraints = false
+        tableView.layer.cornerRadius = 16
+        tableView.clipsToBounds = true
+        return tableView
+    }()
+    
     // MARK: - Init
-    init(places: [Place] = [], initialCamera: GMSCameraPosition? = nil, selectedCategory: PlaceCategory? = nil) {
+    init(places: [Place] = [], initialRegion: MKCoordinateRegion? = nil, selectedCategory: PlaceCategory? = nil) {
         self.places = places
         self.selectedCategory = selectedCategory
         self.filteredPlaces = places
         
-        // Calculate initial camera position
-        if let camera = initialCamera {
-            self.initialCamera = camera
+        // Calculate initial region
+        if let region = initialRegion {
+            self.initialRegion = region
         } else if let firstPlace = places.first(where: { $0.location != nil }),
                   let location = firstPlace.location?.clLocation {
-            self.initialCamera = GMSCameraPosition.camera(
-                withLatitude: location.coordinate.latitude,
-                longitude: location.coordinate.longitude,
-                zoom: 14
+            self.initialRegion = MKCoordinateRegion(
+                center: location.coordinate,
+                latitudinalMeters: 5000,
+                longitudinalMeters: 5000
             )
         } else {
             // Default to San Francisco if no location available
-            self.initialCamera = GMSCameraPosition.camera(
-                withLatitude: 37.7749,
-                longitude: -122.4194,
-                zoom: 12
+            self.initialRegion = MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
+                latitudinalMeters: 20000,
+                longitudinalMeters: 20000
             )
         }
         
@@ -146,6 +196,26 @@ class FullScreenMapViewController: UIViewController {
         self.filteredPlaces = newPlaces
         updatePlacesCount()
         addAnnotationsToMap()
+    }
+    
+    func updatePlacesWithConnections(_ userPlaces: [Place], connections: [Connection], connectionPlaces: [String: [Place]]) {
+        // Combine all places
+        var allPlaces = userPlaces
+        for (_, places) in connectionPlaces {
+            allPlaces.append(contentsOf: places)
+        }
+        
+        self.places = allPlaces
+        self.connections = connections
+        self.connectionPlaces = connectionPlaces
+        
+        // Reload connection table if visible
+        if viewMode == .allPlaces {
+            connectionTableView.reloadData()
+            updateConnectionFilterButtonTitle()
+        }
+        
+        applyFilter()
     }
     
     required init?(coder: NSCoder) {
@@ -186,16 +256,20 @@ class FullScreenMapViewController: UIViewController {
         view.addSubview(placesCountLabel)
         placesCountLabel.text = "\(places.count) places"
         
-        // Add category filter button
-        view.addSubview(categoryFilterButton)
-        categoryFilterButton.addTarget(self, action: #selector(categoryFilterButtonTapped), for: .touchUpInside)
+        // Only add category filter button if NOT in allPlaces mode (to avoid redundancy)
+        if viewMode != .allPlaces {
+            view.addSubview(categoryFilterButton)
+            categoryFilterButton.addTarget(self, action: #selector(categoryFilterButtonTapped), for: .touchUpInside)
+        }
         
-        // Add dropdown container
-        view.addSubview(dropdownContainer)
-        dropdownContainer.addSubview(categoryTableView)
+        // Add dropdown containers
+        if viewMode != .allPlaces {
+            view.addSubview(dropdownContainer)
+            dropdownContainer.addSubview(categoryTableView)
+        }
         
-        // Setup constraints
-        NSLayoutConstraint.activate([
+        // Setup base constraints
+        var constraints: [NSLayoutConstraint] = [
             // Map view - full screen
             mapView.topAnchor.constraint(equalTo: view.topAnchor),
             mapView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -212,111 +286,165 @@ class FullScreenMapViewController: UIViewController {
             placesCountLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
             placesCountLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             placesCountLabel.heightAnchor.constraint(equalToConstant: 32),
-            placesCountLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 80),
-            
-            // Category filter button - center top
-            categoryFilterButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            categoryFilterButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
-            categoryFilterButton.heightAnchor.constraint(equalToConstant: 32),
-            
-            // Dropdown container
-            dropdownContainer.centerXAnchor.constraint(equalTo: categoryFilterButton.centerXAnchor),
-            dropdownContainer.topAnchor.constraint(equalTo: categoryFilterButton.bottomAnchor, constant: 8),
-            dropdownContainer.widthAnchor.constraint(equalToConstant: 200),
-            
-            // Category table view inside dropdown
-            categoryTableView.topAnchor.constraint(equalTo: dropdownContainer.topAnchor),
-            categoryTableView.leadingAnchor.constraint(equalTo: dropdownContainer.leadingAnchor),
-            categoryTableView.trailingAnchor.constraint(equalTo: dropdownContainer.trailingAnchor),
-            categoryTableView.bottomAnchor.constraint(equalTo: dropdownContainer.bottomAnchor)
-        ])
+            placesCountLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 80)
+        ]
         
-        // Create height constraint for dropdown
-        dropdownHeightConstraint = dropdownContainer.heightAnchor.constraint(equalToConstant: 0)
-        dropdownHeightConstraint?.isActive = true
+        // Add category table view constraints only if NOT in allPlaces mode
+        if viewMode != .allPlaces {
+            constraints.append(contentsOf: [
+                // Category table view inside dropdown
+                categoryTableView.topAnchor.constraint(equalTo: dropdownContainer.topAnchor),
+                categoryTableView.leadingAnchor.constraint(equalTo: dropdownContainer.leadingAnchor),
+                categoryTableView.trailingAnchor.constraint(equalTo: dropdownContainer.trailingAnchor),
+                categoryTableView.bottomAnchor.constraint(equalTo: dropdownContainer.bottomAnchor)
+            ])
+            
+            // Create height constraint for dropdown
+            dropdownHeightConstraint = dropdownContainer.heightAnchor.constraint(equalToConstant: 0)
+            dropdownHeightConstraint?.isActive = true
+        }
+        
+        NSLayoutConstraint.activate(constraints)
+        
+        // Add category filter constraints if NOT in allPlaces mode
+        if viewMode != .allPlaces {
+            NSLayoutConstraint.activate([
+                // Category filter button - center top
+                categoryFilterButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+                categoryFilterButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+                categoryFilterButton.heightAnchor.constraint(equalToConstant: 32),
+                
+                // Dropdown container
+                dropdownContainer.centerXAnchor.constraint(equalTo: categoryFilterButton.centerXAnchor),
+                dropdownContainer.topAnchor.constraint(equalTo: categoryFilterButton.bottomAnchor, constant: 8),
+                dropdownContainer.widthAnchor.constraint(equalToConstant: 200)
+            ])
+        }
+        
         
         // Add padding to label
         placesCountLabel.layoutMargins = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
+        
+        // Add user location button
+        let userLocationButton = MKUserTrackingButton(mapView: mapView)
+        userLocationButton.translatesAutoresizingMaskIntoConstraints = false
+        userLocationButton.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+        userLocationButton.layer.cornerRadius = 5
+        view.addSubview(userLocationButton)
+        
+        NSLayoutConstraint.activate([
+            userLocationButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
+            userLocationButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16)
+        ])
     }
     
     private func setupMap() {
         mapView.delegate = self
-        mapView.camera = initialCamera
+        
+        // Request location permission and zoom to user location if available
+        locationManager.delegate = self
+        locationManager.requestWhenInUseAuthorization()
+        
+        if let location = locationManager.location {
+            let region = MKCoordinateRegion(
+                center: location.coordinate,
+                latitudinalMeters: 5000,
+                longitudinalMeters: 5000
+            )
+            mapView.setRegion(region, animated: false)
+        } else {
+            mapView.setRegion(initialRegion, animated: false)
+        }
     }
     
     private func setupTableView() {
         categoryTableView.delegate = self
         categoryTableView.dataSource = self
         categoryTableView.register(UITableViewCell.self, forCellReuseIdentifier: "CategoryCell")
+        
+        if viewMode == .allPlaces {
+            connectionTableView.delegate = self
+            connectionTableView.dataSource = self
+            connectionTableView.register(UITableViewCell.self, forCellReuseIdentifier: "ConnectionCell")
+        }
     }
     
     // MARK: - Map Annotations
     private func addAnnotationsToMap() {
-        // Clear existing markers
-        mapView.clear()
-        markerPlaceMap.removeAll()
+        // Clear existing annotations
+        mapView.removeAnnotations(mapView.annotations)
+        annotationPlaceMap.removeAll()
         
-        var bounds = GMSCoordinateBounds()
-        var hasValidLocation = false
+        var mapRect = MKMapRect.null
         
-        // Add markers for each place
+        // Add annotations for each place
         for place in filteredPlaces {
             guard let location = place.location?.clLocation else { continue }
             
-            let marker = GMSMarker()
-            marker.position = location.coordinate
-            marker.title = place.name
-            marker.snippet = place.displayCategory
-            marker.map = mapView
+            let annotation = PlaceAnnotation(place: place)
+            mapView.addAnnotation(annotation)
             
-            // Store the place reference
-            markerPlaceMap[marker] = place
+            // Store the place reference using ObjectIdentifier
+            annotationPlaceMap[ObjectIdentifier(annotation)] = place
             
-            // Use custom marker view
-            marker.iconView = createMarkerView(for: place)
-            
-            // Update bounds
-            bounds = bounds.includingCoordinate(location.coordinate)
-            hasValidLocation = true
+            // Update map rect
+            let point = MKMapPoint(location.coordinate)
+            let rect = MKMapRect(x: point.x, y: point.y, width: 0, height: 0)
+            mapRect = mapRect.union(rect)
         }
         
-        // Adjust camera to show all markers
-        if hasValidLocation && filteredPlaces.count > 1 {
-            let update = GMSCameraUpdate.fit(bounds, withPadding: 100.0)
-            mapView.animate(with: update)
+        // Adjust region to show all annotations
+        if !mapRect.isNull && filteredPlaces.count > 1 {
+            let padding = UIEdgeInsets(top: 100, left: 100, bottom: 100, right: 100)
+            mapView.setVisibleMapRect(mapRect, edgePadding: padding, animated: true)
         }
     }
     
-    private func createMarkerView(for place: Place) -> UIView {
-        // Create container view
-        let markerView = UIView(frame: CGRect(x: 0, y: 0, width: 36, height: 36))
+    // MARK: - MKMapViewDelegate
+    
+    func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+        // Skip user location
+        if annotation is MKUserLocation {
+            return nil
+        }
         
-        // Add shadow
-        markerView.layer.shadowColor = UIColor.black.cgColor
-        markerView.layer.shadowOffset = CGSize(width: 1, height: 1)
-        markerView.layer.shadowOpacity = 0.3
-        markerView.layer.shadowRadius = 2
+        guard let placeAnnotation = annotation as? PlaceAnnotation else {
+            return nil
+        }
         
-        // Create white background circle
-        let backgroundView = UIView(frame: markerView.bounds)
-        backgroundView.backgroundColor = .white
-        backgroundView.layer.cornerRadius = 18
-        markerView.addSubview(backgroundView)
+        let identifier = "PlaceAnnotation"
+        var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier) as? MKMarkerAnnotationView
         
-        // Create colored inner circle
-        let coloredView = UIView(frame: CGRect(x: 3, y: 3, width: 30, height: 30))
-        coloredView.backgroundColor = categoryColor(for: place.category)
-        coloredView.layer.cornerRadius = 15
-        markerView.addSubview(coloredView)
+        if annotationView == nil {
+            annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+            annotationView?.canShowCallout = true
+            
+            // Add detail button
+            let detailButton = UIButton(type: .detailDisclosure)
+            annotationView?.rightCalloutAccessoryView = detailButton
+        } else {
+            annotationView?.annotation = annotation
+        }
         
-        // Add category icon
-        let iconImageView = UIImageView(frame: CGRect(x: 8, y: 8, width: 20, height: 20))
-        iconImageView.image = UIImage(systemName: categoryIcon(for: place.category))
-        iconImageView.tintColor = .white
-        iconImageView.contentMode = .scaleAspectFit
-        markerView.addSubview(iconImageView)
+        // Customize marker appearance based on category
+        if let markerView = annotationView {
+            markerView.markerTintColor = categoryColor(for: placeAnnotation.place.category)
+            markerView.glyphImage = UIImage(systemName: categoryIcon(for: placeAnnotation.place.category))
+        }
         
-        return markerView
+        return annotationView
+    }
+    
+    func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView, calloutAccessoryControlTapped control: UIControl) {
+        guard let placeAnnotation = view.annotation as? PlaceAnnotation else { return }
+        
+        // Notify delegate
+        delegate?.mapViewController(self, didSelectPlace: placeAnnotation.place)
+        
+        // Dismiss if not in allPlaces mode
+        if viewMode != .allPlaces {
+            dismiss(animated: true)
+        }
     }
     
     private func categoryColor(for category: PlaceCategory) -> UIColor {
@@ -350,9 +478,9 @@ class FullScreenMapViewController: UIViewController {
         case .finance:
             return UIColor(hex: "#805AD5") // Purple
         case .home:
-            return UIColor(hex: "#3182CE") // Blue
+            return UIColor(hex: "#4A5568") // Dark Gray
         case .work:
-            return UIColor(hex: "#38A169") // Green
+            return UIColor(hex: "#2D3748") // Darker Gray
         case .other:
             return UIColor(hex: "#718096") // Gray
         }
@@ -363,35 +491,35 @@ class FullScreenMapViewController: UIViewController {
         case .restaurant:
             return "fork.knife"
         case .cafe:
-            return "cup.and.saucer"
+            return "cup.and.saucer.fill"
         case .bar:
             return "wineglass"
         case .hotel:
-            return "bed.double"
+            return "bed.double.fill"
         case .retail:
-            return "bag"
+            return "bag.fill"
         case .service:
-            return "wrench.and.screwdriver"
+            return "wrench.and.screwdriver.fill"
         case .attraction:
-            return "star"
+            return "star.fill"
         case .entertainment:
-            return "ticket"
+            return "ticket.fill"
         case .healthcare:
-            return "cross.case"
+            return "cross.fill"
         case .fitness:
-            return "figure.run"
+            return "figure.walk"
         case .education:
-            return "book"
+            return "graduationcap.fill"
         case .outdoor:
-            return "tree"
+            return "leaf.fill"
         case .transport:
-            return "car"
+            return "car.fill"
         case .finance:
-            return "dollarsign.circle"
+            return "banknote.fill"
         case .home:
-            return "house"
+            return "house.fill"
         case .work:
-            return "building.2"
+            return "briefcase.fill"
         case .other:
             return "mappin"
         }
@@ -406,8 +534,18 @@ class FullScreenMapViewController: UIViewController {
         toggleDropdown()
     }
     
+    @objc private func connectionFilterButtonTapped() {
+        toggleConnectionDropdown()
+    }
+    
     private func toggleDropdown() {
         isDropdownOpen.toggle()
+        
+        // Close connection dropdown if open
+        if isDropdownOpen && isConnectionDropdownOpen {
+            isConnectionDropdownOpen = false
+            hideConnectionDropdown()
+        }
         
         if isDropdownOpen {
             showDropdown()
@@ -416,76 +554,101 @@ class FullScreenMapViewController: UIViewController {
         }
     }
     
-    private func showDropdown() {
-        // Calculate dropdown height based on number of categories + 1 for "All Categories"
-        let numberOfRows = PlaceCategory.allCases.count + 1
-        let maxHeight: CGFloat = 300 // Maximum height before scrolling
-        let calculatedHeight = CGFloat(numberOfRows) * 44
-        let dropdownHeight = min(calculatedHeight, maxHeight)
+    private func toggleConnectionDropdown() {
+        isConnectionDropdownOpen.toggle()
         
-        dropdownContainer.isHidden = false
-        dropdownHeightConstraint?.constant = dropdownHeight
-        
-        // Animate dropdown appearance
-        UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.9, initialSpringVelocity: 0.5, options: .curveEaseInOut) {
-            self.dropdownContainer.alpha = 1
-            self.view.layoutIfNeeded()
-            
-            // Rotate arrow
-            self.categoryFilterButton.imageView?.transform = CGAffineTransform(rotationAngle: .pi)
+        // Close category dropdown if open
+        if isConnectionDropdownOpen && isDropdownOpen {
+            isDropdownOpen = false
+            hideDropdown()
         }
         
-        // Add tap gesture to dismiss
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTapOutside(_:)))
-        tapGesture.cancelsTouchesInView = false
-        mapView.addGestureRecognizer(tapGesture)
+        if isConnectionDropdownOpen {
+            showConnectionDropdown()
+        } else {
+            hideConnectionDropdown()
+        }
+    }
+    
+    private func showDropdown() {
+        // Calculate dropdown height based on number of categories
+        let categories = PlaceCategory.allCases
+        let dropdownHeight = min(CGFloat(categories.count + 1) * 44, 300) // +1 for "All Categories"
+        
+        dropdownHeightConstraint?.constant = dropdownHeight
+        dropdownContainer.isHidden = false
+        
+        UIView.animate(withDuration: 0.3) {
+            self.dropdownContainer.alpha = 1
+            self.view.layoutIfNeeded()
+        }
+        
+        // Rotate arrow
+        UIView.animate(withDuration: 0.3) {
+            self.categoryFilterButton.imageView?.transform = CGAffineTransform(rotationAngle: .pi)
+        }
     }
     
     private func hideDropdown() {
-        UIView.animate(withDuration: 0.2, animations: {
+        UIView.animate(withDuration: 0.3, animations: {
             self.dropdownContainer.alpha = 0
             self.dropdownHeightConstraint?.constant = 0
             self.view.layoutIfNeeded()
-            
-            // Rotate arrow back
-            self.categoryFilterButton.imageView?.transform = .identity
         }) { _ in
             self.dropdownContainer.isHidden = true
         }
         
-        // Remove tap gesture
-        mapView.gestureRecognizers?.forEach { gesture in
-            if gesture is UITapGestureRecognizer {
-                mapView.removeGestureRecognizer(gesture)
-            }
+        // Rotate arrow back
+        UIView.animate(withDuration: 0.3) {
+            self.categoryFilterButton.imageView?.transform = .identity
         }
     }
     
-    @objc private func handleTapOutside(_ gesture: UITapGestureRecognizer) {
-        let location = gesture.location(in: view)
+    private func showConnectionDropdown() {
+        // Calculate dropdown height based on number of connections
+        let dropdownHeight = min(CGFloat(connections.count + 2) * 44, 300) // +2 for "All Connections" and "My Places Only"
         
-        // Check if tap is outside dropdown and button
-        if !dropdownContainer.frame.contains(location) && !categoryFilterButton.frame.contains(location) {
-            hideDropdown()
+        connectionDropdownHeightConstraint?.constant = dropdownHeight
+        connectionDropdownContainer.isHidden = false
+        
+        UIView.animate(withDuration: 0.3) {
+            self.connectionDropdownContainer.alpha = 1
+            self.view.layoutIfNeeded()
+        }
+        
+        // Rotate arrow
+        UIView.animate(withDuration: 0.3) {
+            self.connectionFilterButton.imageView?.transform = CGAffineTransform(rotationAngle: .pi)
         }
     }
     
-    private func applyFilter() {
-        // Filter places based on selected category
-        if let category = selectedCategory {
-            filteredPlaces = places.filter { $0.category == category }
-        } else {
-            filteredPlaces = places
+    private func hideConnectionDropdown() {
+        UIView.animate(withDuration: 0.3, animations: {
+            self.connectionDropdownContainer.alpha = 0
+            self.connectionDropdownHeightConstraint?.constant = 0
+            self.view.layoutIfNeeded()
+        }) { _ in
+            self.connectionDropdownContainer.isHidden = true
         }
         
-        updatePlacesCount()
-        
-        // Update map annotations
-        addAnnotationsToMap()
+        // Rotate arrow back
+        UIView.animate(withDuration: 0.3) {
+            self.connectionFilterButton.imageView?.transform = .identity
+        }
     }
     
-    private func updatePlacesCount() {
-        placesCountLabel.text = "\(filteredPlaces.count) places"
+    private func selectCategory(_ category: PlaceCategory?) {
+        selectedCategory = category
+        updateFilterButtonTitle()
+        applyFilter()
+        hideDropdown()
+    }
+    
+    private func selectConnection(_ connectionId: String?) {
+        selectedConnectionId = connectionId
+        updateConnectionFilterButtonTitle()
+        applyFilter()
+        hideConnectionDropdown()
     }
     
     private func updateFilterButtonTitle() {
@@ -496,214 +659,151 @@ class FullScreenMapViewController: UIViewController {
         }
     }
     
-    // MARK: - Place Actions
-    private func showPlaceActionSheet(for place: Place) {
-        let actionSheet = UIAlertController(title: place.name, message: place.address, preferredStyle: .actionSheet)
-        
-        // View Details
-        actionSheet.addAction(UIAlertAction(title: "View Details", style: .default) { [weak self] _ in
-            if self?.viewMode == .allPlaces {
-                // Use delegate for allPlaces mode
-                self?.delegate?.mapViewController(self!, didSelectPlace: place)
-            } else {
-                // Use notification for circle mode
-                self?.dismiss(animated: true) {
-                    NotificationCenter.default.post(
-                        name: Notification.Name("ShowPlaceDetails"),
-                        object: nil,
-                        userInfo: ["place": place]
-                    )
-                }
+    private func updateConnectionFilterButtonTitle() {
+        if let connectionId = selectedConnectionId {
+            if connectionId == "my_places_only" {
+                connectionFilterButton.setTitle("My Places Only", for: .normal)
+            } else if let connection = connections.first(where: { $0.id == connectionId }) {
+                let userName = connection.connectedUser?.displayName ?? "Unknown"
+                connectionFilterButton.setTitle(userName, for: .normal)
             }
-        })
-        
-        // Get Directions
-        if place.location != nil {
-            actionSheet.addAction(UIAlertAction(title: "Get Directions", style: .default) { _ in
-                self.openDirections(for: place)
-            })
+        } else {
+            connectionFilterButton.setTitle("All Connections", for: .normal)
         }
-        
-        // Cancel
-        actionSheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        
-        // For iPad
-        if let popover = actionSheet.popoverPresentationController {
-            popover.sourceView = view
-            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
-            popover.permittedArrowDirections = []
-        }
-        
-        present(actionSheet, animated: true)
     }
     
-    private func openDirections(for place: Place) {
-        guard let location = place.location?.clLocation else { return }
+    private func applyFilter() {
+        var filtered = places
         
-        let coordinate = location.coordinate
-        
-        // Try Google Maps first
-        let googleMapsURL = URL(string: "comgooglemaps://?daddr=\(coordinate.latitude),\(coordinate.longitude)&directionsmode=driving")
-        
-        if let url = googleMapsURL, UIApplication.shared.canOpenURL(url) {
-            UIApplication.shared.open(url)
-        } else {
-            // Fallback to Apple Maps
-            let appleMapsURL = URL(string: "maps://?daddr=\(coordinate.latitude),\(coordinate.longitude)&dirflg=d")
-            if let url = appleMapsURL {
-                UIApplication.shared.open(url)
+        // Apply connection filter first (only in allPlaces mode)
+        if viewMode == .allPlaces, let connectionId = selectedConnectionId {
+            if connectionId == "my_places_only" {
+                // Show only user's own places
+                let currentUserId = AuthService.shared.getUserId() ?? ""
+                filtered = filtered.filter { $0.addedBy == currentUserId }
+            } else {
+                // Show only places from the selected connection
+                filtered = connectionPlaces[connectionId] ?? []
             }
         }
+        
+        // Then apply category filter
+        if let category = selectedCategory {
+            filtered = filtered.filter { $0.category == category }
+        }
+        
+        filteredPlaces = filtered
+        updatePlacesCount()
+        addAnnotationsToMap()
+    }
+    
+    private func updatePlacesCount() {
+        placesCountLabel.text = "\(filteredPlaces.count) places"
     }
 }
 
-// MARK: - GMSMapViewDelegate
-extension FullScreenMapViewController: GMSMapViewDelegate {
-    func mapView(_ mapView: GMSMapView, didTapInfoWindowOf marker: GMSMarker) {
-        guard let place = markerPlaceMap[marker] else { return }
-        showPlaceActionSheet(for: place)
-    }
-    
-    func mapView(_ mapView: GMSMapView, didTap marker: GMSMarker) -> Bool {
-        // Center the map on the marker
-        mapView.animate(toLocation: marker.position)
+// MARK: - CLLocationManagerDelegate
+extension FullScreenMapViewController: CLLocationManagerDelegate {
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let location = locations.last else { return }
         
-        // Return false to display the info window
-        return false
-    }
-    
-    func mapView(_ mapView: GMSMapView, markerInfoWindow marker: GMSMarker) -> UIView? {
-        guard let place = markerPlaceMap[marker] else { return nil }
-        
-        // Create custom info window
-        let infoWindow = UIView(frame: CGRect(x: 0, y: 0, width: 250, height: 80))
-        infoWindow.backgroundColor = .white
-        infoWindow.layer.cornerRadius = 8
-        infoWindow.layer.masksToBounds = true
-        
-        // Add shadow
-        infoWindow.layer.shadowColor = UIColor.black.cgColor
-        infoWindow.layer.shadowOffset = CGSize(width: 0, height: 2)
-        infoWindow.layer.shadowOpacity = 0.2
-        infoWindow.layer.shadowRadius = 4
-        infoWindow.layer.masksToBounds = false
-        
-        // Name label
-        let nameLabel = UILabel(frame: CGRect(x: 12, y: 8, width: 226, height: 20))
-        nameLabel.text = place.name
-        nameLabel.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-        nameLabel.textColor = .black
-        infoWindow.addSubview(nameLabel)
-        
-        // Category label
-        let categoryLabel = UILabel(frame: CGRect(x: 12, y: 30, width: 226, height: 16))
-        categoryLabel.text = place.displayCategory
-        categoryLabel.font = UIFont.systemFont(ofSize: 13)
-        categoryLabel.textColor = .darkGray
-        infoWindow.addSubview(categoryLabel)
-        
-        // Rating if available
-        if let rating = place.rating {
-            let ratingLabel = UILabel(frame: CGRect(x: 12, y: 48, width: 100, height: 16))
-            ratingLabel.text = String(repeating: "★", count: Int(rating.rounded())) + " \(rating)"
-            ratingLabel.font = UIFont.systemFont(ofSize: 13)
-            ratingLabel.textColor = UIColor(hex: "#F6E05E")
-            infoWindow.addSubview(ratingLabel)
-        }
-        
-        // Tap hint label
-        let hintLabel = UILabel(frame: CGRect(x: 150, y: 48, width: 88, height: 16))
-        hintLabel.text = "Tap for options"
-        hintLabel.font = UIFont.systemFont(ofSize: 11)
-        hintLabel.textColor = .systemBlue
-        hintLabel.textAlignment = .right
-        infoWindow.addSubview(hintLabel)
-        
-        return infoWindow
-    }
-    
-    func mapView(_ mapView: GMSMapView, didTapPOIWithPlaceID placeID: String, name: String, location: CLLocationCoordinate2D) {
-        // Create an alert to ask if user wants to add this place
-        let alert = UIAlertController(
-            title: "Add \(name)?",
-            message: "Would you like to add this place to your circle?",
-            preferredStyle: .alert
+        // Zoom to user location
+        let region = MKCoordinateRegion(
+            center: location.coordinate,
+            latitudinalMeters: 5000,
+            longitudinalMeters: 5000
         )
+        mapView.setRegion(region, animated: true)
         
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Add", style: .default) { [weak self] _ in
-            self?.dismiss(animated: true) {
-                // Notify the presenting controller to add the POI
-                NotificationCenter.default.post(
-                    name: Notification.Name("AddPOIToCircle"),
-                    object: nil,
-                    userInfo: ["placeID": placeID, "name": name, "location": location]
-                )
-            }
-        })
-        
-        present(alert, animated: true)
+        // Stop updating location
+        manager.stopUpdatingLocation()
+    }
+    
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        switch manager.authorizationStatus {
+        case .authorizedWhenInUse, .authorizedAlways:
+            manager.startUpdatingLocation()
+        default:
+            break
+        }
     }
 }
 
 // MARK: - UITableViewDataSource
 extension FullScreenMapViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return PlaceCategory.allCases.count + 1 // +1 for "All Categories"
+        if tableView == categoryTableView {
+            return PlaceCategory.allCases.count + 1 // +1 for "All Categories"
+        } else if tableView == connectionTableView {
+            return connections.count + 2 // +2 for "All Connections" and "My Places Only"
+        }
+        return 0
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "CategoryCell", for: indexPath)
-        
-        // Configure cell appearance
-        cell.backgroundColor = .clear
-        cell.textLabel?.textColor = .white
-        cell.textLabel?.font = UIFont.systemFont(ofSize: 15, weight: .medium)
-        cell.selectionStyle = .none
-        
-        if indexPath.row == 0 {
-            // All Categories option
-            cell.textLabel?.text = "All Categories"
-            if selectedCategory == nil {
-                cell.textLabel?.text = "✓ All Categories"
-                cell.textLabel?.textColor = UIColor(hex: "#4299E1") // Blue accent
-            }
-        } else {
-            // Specific category
-            let category = PlaceCategory.allCases[indexPath.row - 1]
-            cell.textLabel?.text = category.displayName
+        if tableView == categoryTableView {
+            let cell = tableView.dequeueReusableCell(withIdentifier: "CategoryCell", for: indexPath)
             
-            if category == selectedCategory {
-                cell.textLabel?.text = "✓ \(category.displayName)"
-                cell.textLabel?.textColor = UIColor(hex: "#4299E1") // Blue accent
+            if indexPath.row == 0 {
+                cell.textLabel?.text = "All Categories"
+                cell.textLabel?.textColor = selectedCategory == nil ? .systemBlue : .white
+            } else {
+                let categories = PlaceCategory.allCases
+                let category = categories[indexPath.row - 1]
+                cell.textLabel?.text = category.displayName
+                cell.textLabel?.textColor = selectedCategory == category ? .systemBlue : .white
             }
+            
+            cell.backgroundColor = .clear
+            cell.selectionStyle = .none
+            
+            return cell
+        } else if tableView == connectionTableView {
+            let cell = tableView.dequeueReusableCell(withIdentifier: "ConnectionCell", for: indexPath)
+            
+            if indexPath.row == 0 {
+                cell.textLabel?.text = "All Connections"
+                cell.textLabel?.textColor = selectedConnectionId == nil ? .systemBlue : .white
+            } else if indexPath.row == 1 {
+                cell.textLabel?.text = "My Places Only"
+                cell.textLabel?.textColor = selectedConnectionId == "my_places_only" ? .systemBlue : .white
+            } else {
+                let connection = connections[indexPath.row - 2]
+                let userName = connection.connectedUser?.displayName ?? "Unknown"
+                cell.textLabel?.text = userName
+                cell.textLabel?.textColor = selectedConnectionId == connection.id ? .systemBlue : .white
+            }
+            
+            cell.backgroundColor = .clear
+            cell.selectionStyle = .none
+            
+            return cell
         }
         
-        return cell
+        return UITableViewCell()
     }
 }
 
 // MARK: - UITableViewDelegate
 extension FullScreenMapViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        if indexPath.row == 0 {
-            // All Categories selected
-            selectedCategory = nil
-        } else {
-            // Specific category selected
-            selectedCategory = PlaceCategory.allCases[indexPath.row - 1]
+        if tableView == categoryTableView {
+            if indexPath.row == 0 {
+                selectCategory(nil)
+            } else {
+                let categories = PlaceCategory.allCases
+                selectCategory(categories[indexPath.row - 1])
+            }
+        } else if tableView == connectionTableView {
+            if indexPath.row == 0 {
+                selectConnection(nil) // All connections
+            } else if indexPath.row == 1 {
+                selectConnection("my_places_only") // My places only
+            } else {
+                let connection = connections[indexPath.row - 2]
+                selectConnection(connection.id)
+            }
         }
-        
-        // Update UI
-        updateFilterButtonTitle()
-        applyFilter()
-        tableView.reloadData()
-        
-        // Hide dropdown after selection
-        hideDropdown()
-    }
-    
-    func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        return 44
     }
 }
+

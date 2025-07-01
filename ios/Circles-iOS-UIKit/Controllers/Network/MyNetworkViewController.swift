@@ -66,12 +66,11 @@ class MyNetworkViewController: UIViewController {
     private func setupView() {
         view.backgroundColor = .systemBackground
         
-        // Set the navigation title
-        title = "My Network"
+        // Removed redundant title - tab bar already shows "My Network"
         
-        // Set large title display mode
-        navigationController?.navigationBar.prefersLargeTitles = true
-        navigationItem.largeTitleDisplayMode = .always
+        // Set large title display mode to never to save space
+        navigationController?.navigationBar.prefersLargeTitles = false
+        navigationItem.largeTitleDisplayMode = .never
         
         // Add views
         view.addSubview(searchBar)

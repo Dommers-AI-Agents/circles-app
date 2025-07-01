@@ -37,6 +37,7 @@ class PlaceDetailViewController: UIViewController {
     private var isHomeOrWorkPlace: Bool {
         return place.circleId.isEmpty && (place.id == "home-place" || place.id == "work-place")
     }
+    private var isLoadingPhoto = false
     
     private let streetViewToggleButton: UIButton = {
         let button = UIButton(type: .system)
@@ -55,7 +56,7 @@ class PlaceDetailViewController: UIViewController {
     
     private let editImageButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setTitle("Edit Photo", for: .normal)
+        button.setTitle("Add Photo", for: .normal)
         button.setImage(UIImage(systemName: "camera.fill"), for: .normal)
         button.backgroundColor = UIColor.black.withAlphaComponent(0.7)
         button.setTitleColor(.white, for: .normal)
@@ -343,6 +344,9 @@ class PlaceDetailViewController: UIViewController {
         if isHomeOrWorkPlace {
             autoLoadStreetViewForHomeWork()
         }
+        
+        // Show edit image button for all places
+        editImageButton.isHidden = false
     }
     
     // MARK: - Data Fetching
@@ -765,12 +769,8 @@ class PlaceDetailViewController: UIViewController {
         // Circle info
         updateCircleInfo()
         
-        // Show edit image button for Home/Work places
-        if isHomeOrWorkPlace {
-            editImageButton.isHidden = false
-            // Load saved image if exists
-            loadSavedImage()
-        }
+        // Load place photos if available
+        loadPlacePhotos()
         
         // Hide navigate button if no location available
         navigateButton.isHidden = (place.location == nil)
@@ -1249,7 +1249,9 @@ class PlaceDetailViewController: UIViewController {
     // MARK: - Image Handling for Home/Work
     
     @objc private func editImageButtonTapped() {
-        let actionSheet = UIAlertController(title: "Choose Photo", message: nil, preferredStyle: .actionSheet)
+        let title = isHomeOrWorkPlace ? "Choose Photo" : "Upload Photo for \(place.name)"
+        let message = isHomeOrWorkPlace ? nil : "The photo will be uploaded and visible to others who can see this place"
+        let actionSheet = UIAlertController(title: title, message: message, preferredStyle: .actionSheet)
         
         actionSheet.addAction(UIAlertAction(title: "Camera", style: .default) { [weak self] _ in
             self?.presentCamera()
@@ -1266,7 +1268,7 @@ class PlaceDetailViewController: UIViewController {
             })
         }
         
-        if customImage != nil {
+        if customImage != nil || (place.photos != nil && !place.photos!.isEmpty) {
             actionSheet.addAction(UIAlertAction(title: "Remove Photo", style: .destructive) { [weak self] _ in
                 self?.removeCustomImage()
             })
@@ -1310,12 +1312,14 @@ class PlaceDetailViewController: UIViewController {
         customImage = nil
         saveImage(nil)
         configureDefaultImage()
+        editImageButton.setTitle("Add Photo", for: .normal)
     }
     
     private func useStreetViewAsCustomImage() {
         guard let streetViewImage = streetViewImage else { return }
         customImage = streetViewImage
         showingStreetView = false
+        editImageButton.setTitle("Change Photo", for: .normal)
         saveImage(streetViewImage)
         updateImageView()
         
@@ -1333,14 +1337,95 @@ class PlaceDetailViewController: UIViewController {
         }
     }
     
+    private func loadPlacePhotos() {
+        // First check if place has photos from the API
+        if let photos = place.photos, !photos.isEmpty, let firstPhotoUrl = photos.first, let url = URL(string: firstPhotoUrl) {
+            // Load the first photo from the API
+            URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
+                if let data = data, let image = UIImage(data: data) {
+                    DispatchQueue.main.async {
+                        self?.customImage = image
+                        self?.imageView.image = image
+                        self?.imageView.contentMode = .scaleAspectFill
+                        // Update button title
+                        self?.editImageButton.setTitle("Change Photo", for: .normal)
+                    }
+                }
+            }.resume()
+        } else if isHomeOrWorkPlace {
+            // For home/work places, check local storage
+            loadSavedImage()
+            // Update button title if image exists
+            if customImage != nil {
+                editImageButton.setTitle("Change Photo", for: .normal)
+            }
+        }
+    }
+    
     private func saveImage(_ image: UIImage?) {
-        let imageKey = "place_image_\(place.id)"
-        
-        if let image = image,
-           let imageData = image.jpegData(compressionQuality: 0.8) {
-            UserDefaults.standard.set(imageData, forKey: imageKey)
+        // For home/work places, save locally
+        if isHomeOrWorkPlace {
+            let imageKey = "place_image_\(place.id)"
+            
+            if let image = image,
+               let imageData = image.jpegData(compressionQuality: 0.8) {
+                UserDefaults.standard.set(imageData, forKey: imageKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: imageKey)
+            }
         } else {
-            UserDefaults.standard.removeObject(forKey: imageKey)
+            // For regular places, upload to API
+            guard let image = image else {
+                // If removing image, we could implement photo removal here
+                return
+            }
+            
+            guard !isLoadingPhoto else { return }
+            isLoadingPhoto = true
+            
+            // Show loading indicator
+            editImageButton.isEnabled = false
+            
+            // Compress image
+            guard let imageData = image.jpegData(compressionQuality: 0.8) else {
+                isLoadingPhoto = false
+                editImageButton.isEnabled = true
+                showAlert(title: "Error", message: "Failed to process image")
+                return
+            }
+            
+            // Upload to API
+            PlaceService.shared.updatePlace(
+                id: place.id,
+                addPhotos: [imageData]
+            ) { [weak self] result in
+                DispatchQueue.main.async {
+                    self?.isLoadingPhoto = false
+                    self?.editImageButton.isEnabled = true
+                    
+                    switch result {
+                    case .success(let updatedPlace):
+                        // Update the image view with the uploaded photo
+                        if let photos = updatedPlace.photos, !photos.isEmpty, let firstPhotoUrl = photos.first, let url = URL(string: firstPhotoUrl) {
+                            // Load the uploaded photo
+                            URLSession.shared.dataTask(with: url) { data, response, error in
+                                if let data = data, let image = UIImage(data: data) {
+                                    DispatchQueue.main.async {
+                                        self?.customImage = image
+                                        self?.imageView.image = image
+                                        self?.imageView.contentMode = .scaleAspectFill
+                                        // Update button title
+                                        self?.editImageButton.setTitle("Change Photo", for: .normal)
+                                    }
+                                }
+                            }.resume()
+                        }
+                        self?.showAlert(title: "Success", message: "Photo uploaded successfully")
+                    case .failure(let error):
+                        self?.showAlert(title: "Error", message: "Failed to upload photo: \(error.localizedDescription)")
+                    }
+                }
+            }
         }
     }
     
@@ -1374,11 +1459,13 @@ extension PlaceDetailViewController: UIImagePickerControllerDelegate, UINavigati
             customImage = editedImage
             imageView.image = editedImage
             imageView.contentMode = .scaleAspectFill
+            editImageButton.setTitle("Change Photo", for: .normal)
             saveImage(editedImage)
         } else if let originalImage = info[.originalImage] as? UIImage {
             customImage = originalImage
             imageView.image = originalImage
             imageView.contentMode = .scaleAspectFill
+            editImageButton.setTitle("Change Photo", for: .normal)
             saveImage(originalImage)
         }
     }
@@ -1401,6 +1488,7 @@ extension PlaceDetailViewController: PHPickerViewControllerDelegate {
                     self?.customImage = image
                     self?.imageView.image = image
                     self?.imageView.contentMode = .scaleAspectFill
+                    self?.editImageButton.setTitle("Change Photo", for: .normal)
                     self?.saveImage(image)
                 }
             }

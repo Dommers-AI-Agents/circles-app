@@ -1,5 +1,9 @@
 import Foundation
 
+struct UserPreferences: Codable {
+    let defaultHomeView: String? // "list" or "map"
+}
+
 struct User: Codable, Identifiable {
     let id: String
     let email: String
@@ -13,16 +17,17 @@ struct User: Codable, Identifiable {
     let friends: [String]?
     let friendRequests: [String]?
     let circleOrder: [String]?
-    let createdAt: Date
+    let preferences: UserPreferences?
+    let createdAt: Date?
     let connectionStatus: String? // "connected", "pending", or nil
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
-        case email, displayName, firstName, lastName, phoneNumber, profilePicture, bio, location, friends, friendRequests, circleOrder, createdAt, connectionStatus
+        case email, displayName, firstName, lastName, phoneNumber, profilePicture, bio, location, friends, friendRequests, circleOrder, preferences, createdAt, connectionStatus
     }
     
     // Convenience initializer for creating User objects directly
-    init(id: String, email: String, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, createdAt: Date, connectionStatus: String? = nil) {
+    init(id: String, email: String, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil) {
         self.id = id
         self.email = email
         self.displayName = displayName
@@ -35,6 +40,7 @@ struct User: Codable, Identifiable {
         self.friends = friends
         self.friendRequests = friendRequests
         self.circleOrder = circleOrder
+        self.preferences = preferences
         self.createdAt = createdAt
         self.connectionStatus = connectionStatus
     }
@@ -55,23 +61,27 @@ struct User: Codable, Identifiable {
         friends = try container.decodeIfPresent([String].self, forKey: .friends)
         friendRequests = try container.decodeIfPresent([String].self, forKey: .friendRequests)
         circleOrder = try container.decodeIfPresent([String].self, forKey: .circleOrder)
+        preferences = try container.decodeIfPresent(UserPreferences.self, forKey: .preferences)
         connectionStatus = try container.decodeIfPresent(String.self, forKey: .connectionStatus)
         
         // Custom date decoding with multiple format support
-        let dateString = try container.decode(String.self, forKey: .createdAt)
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        
-        if let date = formatter.date(from: dateString) {
-            createdAt = date
-        } else {
-            // Fallback to basic ISO8601 format
-            formatter.formatOptions = [.withInternetDateTime]
+        if let dateString = try container.decodeIfPresent(String.self, forKey: .createdAt) {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            
             if let date = formatter.date(from: dateString) {
                 createdAt = date
             } else {
-                throw DecodingError.dataCorruptedError(forKey: .createdAt, in: container, debugDescription: "Date string does not match expected format")
+                // Fallback to basic ISO8601 format
+                formatter.formatOptions = [.withInternetDateTime]
+                if let date = formatter.date(from: dateString) {
+                    createdAt = date
+                } else {
+                    createdAt = nil
+                }
             }
+        } else {
+            createdAt = nil
         }
     }
 }

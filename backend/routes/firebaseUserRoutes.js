@@ -12,7 +12,8 @@ const {
   reorderCircles,
   registerDeviceToken,
   removeDeviceToken,
-  updateNotificationPreferences
+  updateNotificationPreferences,
+  getUserPublicCircles
 } = require('../controllers/firebaseUserController');
 const { protect } = require('../middleware/firebaseAuth');
 
@@ -56,6 +57,9 @@ router.route('/friend-request/:id/reject')
 
 router.route('/friend/:id')
   .delete(removeFriend);
+
+router.route('/:id/circles')
+  .get(getUserPublicCircles);
 
 router.route('/:id')
   .get(getUser);

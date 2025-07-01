@@ -7,6 +7,7 @@ const {
   serializeDoc, 
   serializeQuerySnapshot 
 } = require('../models/FirestoreModels');
+const activityService = require('../services/activityService');
 
 const db = getFirestore();
 
@@ -36,7 +37,7 @@ const getConnections = async (req, res) => {
       index === self.findIndex(d => d.id === doc.id)
     );
 
-    // Serialize and populate user data
+    // Serialize and populate user data with activity stats
     const connections = await Promise.all(
       uniqueConnections.map(async (doc) => {
         const connection = serializeDoc(doc);
@@ -52,6 +53,33 @@ const getConnections = async (req, res) => {
             connection.connectedUser = serializeDoc(userDoc);
             connection.connectedUserId = otherUserId;
             console.log(`✅ Found connected user: ${connection.connectedUser.displayName}`);
+            
+            // Always add activity stats to properly sort connections
+            // Get total places count for connected user
+            const userCirclesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
+              .where('owner', '==', otherUserId)
+              .get();
+            
+            let totalPlaces = 0;
+            for (const circleDoc of userCirclesSnapshot.docs) {
+              const circleData = circleDoc.data();
+              totalPlaces += (circleData.places || []).length;
+            }
+            
+            // Check if user recently added a place (within last 7 days)
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            const hasRecentPlace = connection.recentActivity?.some(activity => 
+              activity.type === 'place' && 
+              new Date(activity.createdAt) > sevenDaysAgo
+            ) || false;
+            
+            // Add stats to connection
+            connection.totalPlaces = totalPlaces;
+            connection.hasRecentPlace = hasRecentPlace;
+            connection.viewCount = connection.viewCount || 0;
+            
+            console.log(`📊 Stats for ${connection.connectedUser.displayName}: Places=${totalPlaces}, Views=${connection.viewCount}, Recent=${hasRecentPlace}`);
           } else {
             console.log(`⚠️ Connected user not found for ID: ${otherUserId}`);
           }
@@ -545,6 +573,103 @@ const removeConnection = async (req, res) => {
   }
 };
 
+// @desc    Get connections sorted by activity and stats
+// @route   GET /api/connections/active
+// @access  Private
+const getActiveConnections = async (req, res) => {
+  try {
+    const userId = req.user.firebaseDocId || req.user.uid;
+    
+    const connections = await activityService.getConnectionsWithStats(userId);
+    
+    res.status(200).json({
+      success: true,
+      connections: connections
+    });
+  } catch (error) {
+    console.error('Error fetching active connections:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Clear activity notification for a connection
+// @route   POST /api/connections/:id/clear-activity
+// @access  Private
+const clearConnectionActivity = async (req, res) => {
+  try {
+    const userId = req.user.firebaseDocId || req.user.uid;
+    const { id: connectionId } = req.params;
+    
+    // Get the connection to find the connected user
+    const connectionDoc = await db.collection(COLLECTIONS.CONNECTIONS).doc(connectionId).get();
+    
+    if (!connectionDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Connection not found'
+      });
+    }
+    
+    const connection = connectionDoc.data();
+    const connectedUserId = connection.userId === userId ? connection.connectedUserId : connection.userId;
+    
+    await activityService.clearActivityNotification(userId, connectedUserId);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Activity notification cleared'
+    });
+  } catch (error) {
+    console.error('Error clearing activity notification:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Track connection view
+// @route   POST /api/connections/:id/track-view
+// @access  Private
+const trackConnectionView = async (req, res) => {
+  try {
+    const userId = req.user.firebaseDocId || req.user.uid;
+    const { id: connectionId } = req.params;
+    
+    // Get the connection to find the connected user
+    const connectionDoc = await db.collection(COLLECTIONS.CONNECTIONS).doc(connectionId).get();
+    
+    if (!connectionDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Connection not found'
+      });
+    }
+    
+    const connection = connectionDoc.data();
+    const connectedUserId = connection.userId === userId ? connection.connectedUserId : connection.userId;
+    
+    await activityService.trackConnectionView(userId, connectedUserId);
+    
+    res.status(200).json({
+      success: true,
+      message: 'View tracked'
+    });
+  } catch (error) {
+    console.error('Error tracking connection view:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getConnections,
   sendConnectionRequest,
@@ -552,5 +677,8 @@ module.exports = {
   declineConnection,
   blockConnection,
   getSharedCirclesWithConnection,
-  removeConnection
+  removeConnection,
+  getActiveConnections,
+  clearConnectionActivity,
+  trackConnectionView
 };

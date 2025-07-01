@@ -95,7 +95,7 @@ struct EditProfileView: View {
                     HStack {
                         Text("Member Since")
                         Spacer()
-                        Text(authManager.currentUser?.createdAt.formatted(date: .abbreviated, time: .omitted) ?? "")
+                        Text(authManager.currentUser?.createdAt?.formatted(date: .abbreviated, time: .omitted) ?? "")
                             .foregroundColor(.secondary)
                     }
                 }

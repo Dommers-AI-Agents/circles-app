@@ -133,6 +133,29 @@ class UserService {
         }
     }
     
+    func updateUserPreferences(defaultHomeView: String?, completion: @escaping (Result<User, Error>) -> Void) {
+        var body: [String: Any] = ["preferences": [:]]
+        
+        if let defaultHomeView = defaultHomeView {
+            body["preferences"] = ["defaultHomeView": defaultHomeView]
+        }
+        
+        APIService.shared.request(
+            endpoint: "users/me",
+            method: .put,
+            body: body,
+            requiresAuth: true
+        ) { [weak self] (result: Result<UserResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.user))
+            case .failure(let error):
+                let userError = self?.mapAPIErrorToUserError(error)
+                completion(.failure(userError ?? UserError.updateFailed))
+            }
+        }
+    }
+    
     // MARK: - User Search
     
     func searchUsers(query: String, completion: @escaping (Result<[User], Error>) -> Void) {

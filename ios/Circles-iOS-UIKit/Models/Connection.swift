@@ -21,6 +21,15 @@ struct Connection: Codable, Identifiable {
     let connectedUser: User? // Populated when fetching connections
     let status: ConnectionStatus
     let sharedCircles: [String]? // Circle IDs shared with this connection
+    let lastInteractionAt: Date?
+    let interactionCount: Int?
+    let lastAccessedCircles: [CircleAccess]?
+    let recentActivity: [UserActivity]?
+    let hasNewActivity: Bool?
+    let viewCount: Int?
+    let lastViewedAt: Date?
+    let totalPlaces: Int? // Populated by backend
+    let hasRecentPlace: Bool? // Populated by backend
     let createdAt: Date
     let acceptedAt: Date?
     let updatedAt: Date
@@ -28,7 +37,10 @@ struct Connection: Codable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id = "_id"
         case userId, connectedUserId, connectedUser, status
-        case sharedCircles, createdAt, acceptedAt, updatedAt
+        case sharedCircles, lastInteractionAt, interactionCount
+        case lastAccessedCircles, recentActivity, hasNewActivity
+        case viewCount, lastViewedAt, totalPlaces, hasRecentPlace
+        case createdAt, acceptedAt, updatedAt
     }
     
     // Helper computed properties
@@ -42,6 +54,25 @@ struct Connection: Codable, Identifiable {
     
     var sharedCircleCount: Int {
         return sharedCircles?.count ?? 0
+    }
+}
+
+// Circle access tracking
+struct CircleAccess: Codable {
+    let circleId: String
+    let accessedAt: Date
+}
+
+// User activity tracking
+struct UserActivity: Codable {
+    let type: ActivityType
+    let entityId: String
+    let circleId: String?
+    let createdAt: Date
+    
+    enum ActivityType: String, Codable {
+        case circle = "circle"
+        case place = "place"
     }
 }
 

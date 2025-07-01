@@ -149,6 +149,42 @@ class EditCircleViewController: UIViewController {
         return textField
     }()
     
+    // Editors section
+    private let editorsLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Circle Editors"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.large, weight: .semibold)
+        label.textColor = Constants.Colors.label
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let editorsDescriptionLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Editors can add and remove places from this circle"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.numberOfLines = 0
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let editorsStackView: UIStackView = {
+        let stackView = UIStackView()
+        stackView.axis = .vertical
+        stackView.spacing = 8
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        return stackView
+    }()
+    
+    private let addEditorButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("+ Add Editor", for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .medium)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
     private let saveButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle("Save Changes", for: .normal)
@@ -172,6 +208,7 @@ class EditCircleViewController: UIViewController {
     }()
     
     // MARK: - Properties
+    private var editors: [User] = []
     private var selectedImage: UIImage? {
         didSet {
             if let image = selectedImage {
@@ -248,6 +285,10 @@ class EditCircleViewController: UIViewController {
         contentView.addSubview(locationTextField)
         contentView.addSubview(tagsLabel)
         contentView.addSubview(tagsTextField)
+        contentView.addSubview(editorsLabel)
+        contentView.addSubview(editorsDescriptionLabel)
+        contentView.addSubview(editorsStackView)
+        contentView.addSubview(addEditorButton)
         contentView.addSubview(saveButton)
         contentView.addSubview(deleteButton)
         
@@ -336,8 +377,26 @@ class EditCircleViewController: UIViewController {
             tagsTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             tagsTextField.heightAnchor.constraint(equalToConstant: 40),
             
+            // Editors label
+            editorsLabel.topAnchor.constraint(equalTo: tagsTextField.bottomAnchor, constant: Constants.Spacing.large),
+            editorsLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            
+            // Editors description
+            editorsDescriptionLabel.topAnchor.constraint(equalTo: editorsLabel.bottomAnchor, constant: Constants.Spacing.xsmall),
+            editorsDescriptionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            editorsDescriptionLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            
+            // Editors stack view
+            editorsStackView.topAnchor.constraint(equalTo: editorsDescriptionLabel.bottomAnchor, constant: Constants.Spacing.small),
+            editorsStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            editorsStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            
+            // Add editor button
+            addEditorButton.topAnchor.constraint(equalTo: editorsStackView.bottomAnchor, constant: Constants.Spacing.small),
+            addEditorButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            
             // Save button
-            saveButton.topAnchor.constraint(equalTo: tagsTextField.bottomAnchor, constant: Constants.Spacing.large),
+            saveButton.topAnchor.constraint(equalTo: addEditorButton.bottomAnchor, constant: Constants.Spacing.large),
             saveButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             saveButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             saveButton.heightAnchor.constraint(equalToConstant: 50),
@@ -355,6 +414,7 @@ class EditCircleViewController: UIViewController {
         addCoverPhotoButton.addTarget(self, action: #selector(addCoverPhotoButtonTapped), for: .touchUpInside)
         saveButton.addTarget(self, action: #selector(saveTapped), for: .touchUpInside)
         deleteButton.addTarget(self, action: #selector(deleteButtonTapped), for: .touchUpInside)
+        addEditorButton.addTarget(self, action: #selector(addEditorTapped), for: .touchUpInside)
         
         // Add gesture recognizer to dismiss keyboard when tapping on the view
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
@@ -387,6 +447,9 @@ class EditCircleViewController: UIViewController {
         
         // Load cover image
         loadCurrentCoverImage()
+        
+        // Load editors
+        loadEditors()
     }
     
     private func loadCurrentCoverImage() {
@@ -657,6 +720,133 @@ class EditCircleViewController: UIViewController {
         let alertController = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alertController.addAction(UIAlertAction(title: "OK", style: .default, handler: completion))
         present(alertController, animated: true)
+    }
+    
+    // MARK: - Editor Management
+    
+    private func loadEditors() {
+        CircleService.shared.getEditors(circleId: circle.id) { [weak self] result in
+            switch result {
+            case .success(let editors):
+                self?.editors = editors
+                self?.updateEditorsDisplay()
+            case .failure(let error):
+                print("Failed to load editors: \(error)")
+            }
+        }
+    }
+    
+    private func updateEditorsDisplay() {
+        // Clear existing editor views
+        editorsStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        
+        // Add editor views
+        for editor in editors {
+            let editorView = createEditorView(for: editor)
+            editorsStackView.addArrangedSubview(editorView)
+        }
+        
+        // Show/hide stack view based on whether there are editors
+        editorsStackView.isHidden = editors.isEmpty
+    }
+    
+    private func createEditorView(for user: User) -> UIView {
+        let containerView = UIView()
+        containerView.backgroundColor = Constants.Colors.secondaryBackground
+        containerView.layer.cornerRadius = 8
+        containerView.translatesAutoresizingMaskIntoConstraints = false
+        
+        let nameLabel = UILabel()
+        nameLabel.text = user.displayName
+        nameLabel.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
+        nameLabel.translatesAutoresizingMaskIntoConstraints = false
+        
+        let removeButton = UIButton(type: .system)
+        removeButton.setTitle("Remove", for: .normal)
+        removeButton.setTitleColor(.systemRed, for: .normal)
+        removeButton.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
+        removeButton.tag = editors.firstIndex(where: { $0.id == user.id }) ?? 0
+        removeButton.addTarget(self, action: #selector(removeEditorTapped(_:)), for: .touchUpInside)
+        removeButton.translatesAutoresizingMaskIntoConstraints = false
+        
+        containerView.addSubview(nameLabel)
+        containerView.addSubview(removeButton)
+        
+        NSLayoutConstraint.activate([
+            containerView.heightAnchor.constraint(equalToConstant: 44),
+            
+            nameLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 12),
+            nameLabel.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
+            
+            removeButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
+            removeButton.centerYAnchor.constraint(equalTo: containerView.centerYAnchor)
+        ])
+        
+        return containerView
+    }
+    
+    @objc private func addEditorTapped() {
+        let searchVC = UserSearchViewController()
+        searchVC.delegate = self
+        searchVC.excludedUserIds = [circle.owner] + (editors.map { $0.id })
+        searchVC.title = "Add Editor"
+        let navController = UINavigationController(rootViewController: searchVC)
+        present(navController, animated: true)
+    }
+    
+    @objc private func removeEditorTapped(_ sender: UIButton) {
+        guard sender.tag < editors.count else { return }
+        let editor = editors[sender.tag]
+        
+        let alert = UIAlertController(
+            title: "Remove Editor",
+            message: "Remove \(editor.displayName) as an editor?",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Remove", style: .destructive) { [weak self] _ in
+            self?.removeEditor(userId: editor.id)
+        })
+        
+        present(alert, animated: true)
+    }
+    
+    private func removeEditor(userId: String) {
+        CircleService.shared.removeEditor(circleId: circle.id, userId: userId) { [weak self] result in
+            switch result {
+            case .success:
+                self?.editors.removeAll { $0.id == userId }
+                self?.updateEditorsDisplay()
+            case .failure(let error):
+                self?.presentAlert(
+                    title: "Error",
+                    message: "Failed to remove editor: \(error.localizedDescription)"
+                )
+            }
+        }
+    }
+}
+
+// MARK: - UserSearchViewControllerDelegate
+extension EditCircleViewController: UserSearchViewControllerDelegate {
+    func userSearchViewController(_ controller: UserSearchViewController, didSelectUser user: User) {
+        dismiss(animated: true) { [weak self] in
+            guard let self = self else { return }
+            
+            CircleService.shared.addEditor(circleId: self.circle.id, userId: user.id) { result in
+                switch result {
+                case .success:
+                    self.editors.append(user)
+                    self.updateEditorsDisplay()
+                case .failure(let error):
+                    self.presentAlert(
+                        title: "Error",
+                        message: "Failed to add editor: \(error.localizedDescription)"
+                    )
+                }
+            }
+        }
     }
 }
 

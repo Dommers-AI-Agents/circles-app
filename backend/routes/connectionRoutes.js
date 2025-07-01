@@ -7,7 +7,10 @@ const {
   declineConnection,
   blockConnection,
   getSharedCirclesWithConnection,
-  removeConnection
+  removeConnection,
+  getActiveConnections,
+  clearConnectionActivity,
+  trackConnectionView
 } = require('../controllers/connectionController');
 const { protect } = require('../middleware/firebaseAuth');
 
@@ -19,6 +22,9 @@ router.use(protect);
 // Connection management routes
 router.route('/')
   .get(getConnections);
+
+router.route('/active')
+  .get(getActiveConnections);
 
 router.route('/invite')
   .post(sendConnectionRequest);
@@ -34,6 +40,12 @@ router.route('/:id/block')
 
 router.route('/:id/shared-circles')
   .get(getSharedCirclesWithConnection);
+
+router.route('/:id/clear-activity')
+  .post(clearConnectionActivity);
+
+router.route('/:id/track-view')
+  .post(trackConnectionView);
 
 router.route('/:id')
   .delete(removeConnection);
