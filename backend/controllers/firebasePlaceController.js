@@ -1054,11 +1054,11 @@ exports.addPlaceComment = async (req, res, next) => {
 };
 
 // @desc    Add existing place to a circle
-// @route   POST /api/places/:placeId/add-to-circle/:circleId
+// @route   POST /api/places/:id/add-to-circle/:circleId
 // @access  Private
 exports.addExistingPlaceToCircle = async (req, res, next) => {
   try {
-    const { placeId, circleId } = req.params;
+    const { id: placeId, circleId } = req.params; // Route uses :id, not :placeId
     const userId = req.user.uid;
     const { notes } = req.body;
     
@@ -1069,9 +1069,38 @@ exports.addExistingPlaceToCircle = async (req, res, next) => {
       notes
     });
     
+    // Validate input parameters
+    if (!placeId || placeId.trim() === '') {
+      console.error('❌ Invalid placeId:', placeId);
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid place ID provided'
+      });
+    }
+    
+    if (!circleId || circleId.trim() === '') {
+      console.error('❌ Invalid circleId:', circleId);
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid circle ID provided'
+      });
+    }
+    
     // Check if the place exists
-    const placeRef = db.collection(COLLECTIONS.PLACES).doc(placeId);
-    const placeDoc = await placeRef.get();
+    let placeRef, placeDoc;
+    try {
+      console.log('📄 Attempting to get place document with ID:', placeId);
+      placeRef = db.collection(COLLECTIONS.PLACES).doc(placeId);
+      placeDoc = await placeRef.get();
+    } catch (docError) {
+      console.error('❌ Error accessing place document:', docError);
+      console.error('❌ PlaceId that caused error:', placeId);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to access place document',
+        error: docError.message
+      });
+    }
     
     if (!placeDoc.exists) {
       return res.status(404).json({
