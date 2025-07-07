@@ -1052,3 +1052,128 @@ exports.addPlaceComment = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Add existing place to a circle
+// @route   POST /api/places/:placeId/add-to-circle/:circleId
+// @access  Private
+exports.addExistingPlaceToCircle = async (req, res, next) => {
+  try {
+    const { placeId, circleId } = req.params;
+    const userId = req.user.uid;
+    const { notes } = req.body;
+    
+    console.log('🔄 Adding existing place to circle:', {
+      placeId,
+      circleId,
+      userId,
+      notes
+    });
+    
+    // Check if the place exists
+    const placeRef = db.collection(COLLECTIONS.PLACES).doc(placeId);
+    const placeDoc = await placeRef.get();
+    
+    if (!placeDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Place not found'
+      });
+    }
+    
+    const originalPlace = serializeDoc(placeDoc);
+    
+    // Check if the circle exists and user has access
+    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(circleId);
+    const circleDoc = await circleRef.get();
+    
+    if (!circleDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Circle not found'
+      });
+    }
+    
+    const circle = serializeDoc(circleDoc);
+    
+    // Verify user owns the target circle
+    if (circle.owner !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only add places to your own circles'
+      });
+    }
+    
+    // Check if place already exists in this circle
+    if (originalPlace.googlePlaceId) {
+      const existingPlace = await db.collection(COLLECTIONS.PLACES)
+        .where('circleId', '==', circleId)
+        .where('googlePlaceId', '==', originalPlace.googlePlaceId)
+        .get();
+        
+      if (!existingPlace.empty) {
+        return res.status(400).json({
+          success: false,
+          message: 'This place already exists in the selected circle'
+        });
+      }
+    } else {
+      // For places without googlePlaceId, check by name and address
+      const existingPlace = await db.collection(COLLECTIONS.PLACES)
+        .where('circleId', '==', circleId)
+        .where('name', '==', originalPlace.name)
+        .where('address', '==', originalPlace.address)
+        .get();
+        
+      if (!existingPlace.empty) {
+        return res.status(400).json({
+          success: false,
+          message: 'This place already exists in the selected circle'
+        });
+      }
+    }
+    
+    // Create a new place entry for this circle
+    // Copy all fields except ID fields
+    const { _id, id, ...placeDataWithoutIds } = originalPlace;
+    
+    const newPlaceData = {
+      ...placeDataWithoutIds,
+      circleId: circleId,
+      addedBy: userId,
+      notes: notes || originalPlace.notes || null,
+      publicNotes: notes || originalPlace.publicNotes || null,
+      privateNotes: null, // Reset private notes for the new copy
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      likes: [], // Reset likes for the new copy
+      likesCount: 0
+    };
+    
+    // Create the new place
+    const newPlaceRef = await db.collection(COLLECTIONS.PLACES).add(newPlaceData);
+    const newPlaceDoc = await newPlaceRef.get();
+    const newPlace = serializeDoc(newPlaceDoc);
+    
+    // Update circle's places array
+    const currentPlaces = circle.places || [];
+    await circleRef.update({
+      places: [...currentPlaces, newPlace._id],
+      updatedAt: new Date().toISOString()
+    });
+    
+    // Track activity
+    if (trackPlaceAdded) {
+      await trackPlaceAdded(userId, circleId, newPlace._id);
+    }
+    
+    res.status(201).json({
+      success: true,
+      message: 'Place added to circle successfully',
+      place: newPlace
+    });
+    
+  } catch (error) {
+    console.error('Error adding existing place to circle:', error);
+    next(error);
+  }
+};
