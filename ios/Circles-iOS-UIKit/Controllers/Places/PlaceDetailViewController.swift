@@ -69,9 +69,9 @@ class PlaceDetailViewController: UIViewController {
         button.backgroundColor = UIColor.black.withAlphaComponent(0.8)
         button.setTitleColor(.white, for: .normal)
         button.tintColor = .white
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .medium)
-        button.layer.cornerRadius = 16
-        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 12, weight: .medium)
+        button.layer.cornerRadius = 14
+        button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.isHidden = false  // Show by default
         // Add shadow for better visibility
@@ -412,9 +412,9 @@ class PlaceDetailViewController: UIViewController {
         setupUI()
         configureUI()
         setupMap()
-        checkStreetViewAvailability()
         
-        // Auto-load street view for all places
+        // Check street view availability and auto-load if no photos
+        checkStreetViewAvailability()
         autoLoadStreetView()
         
         // Fetch rating if not available
@@ -815,8 +815,12 @@ class PlaceDetailViewController: UIViewController {
             categoryLabel.backgroundColor = UIColor(hex: "#38A169") // Green
         }
         
-        // Set default image
+        // Set default image - this will be called before street view loads
         configureDefaultImage()
+        
+        // Update edit button visibility based on whether user can edit this place
+        let canEdit = place.isAddedByCurrentUser || isHomeOrWorkPlace
+        editImageButton.isHidden = !canEdit
         
         // Description - only show if available
         if let description = place.description, !description.isEmpty {
@@ -916,6 +920,18 @@ class PlaceDetailViewController: UIViewController {
         
         // Load place photos if available
         loadPlacePhotos()
+        
+        // After loading photos, check if we need to show street view
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self = self else { return }
+            let hasPhotos = !self.placePhotos.isEmpty || self.customImage != nil || (self.place.photos != nil && !self.place.photos!.isEmpty)
+            if !hasPhotos && self.streetViewImage != nil {
+                // No photos loaded, but we have street view - show it
+                self.showingStreetView = true
+                self.updateImageView()
+                self.streetViewToggleButton.isHidden = true
+            }
+        }
         
         // Hide navigate button if no location available
         navigateButton.isHidden = (place.location == nil)
@@ -1340,7 +1356,7 @@ class PlaceDetailViewController: UIViewController {
                 let available = await AppleLookAroundService.shared.checkLookAroundAvailability(at: location.coordinate)
                 guard available else { return }
                 
-                let imageSize = CGSize(width: UIScreen.main.bounds.width, height: 200)
+                let imageSize = CGSize(width: UIScreen.main.bounds.width, height: 300)
                 
                 do {
                     let image = try await AppleLookAroundService.shared.getLookAroundSnapshot(
@@ -1349,14 +1365,24 @@ class PlaceDetailViewController: UIViewController {
                     )
                     await MainActor.run {
                         self.streetViewImage = image
-                        self.showingStreetView = true
-                        self.updateImageView()
-                        // Update button state
-                        self.streetViewToggleButton.setTitle("Photos", for: .normal)
-                        self.streetViewToggleButton.setImage(UIImage(systemName: "photo"), for: .normal)
+                        
+                        // Only show street view automatically if there are no photos
+                        let hasPhotos = (self.place.photos != nil && !self.place.photos!.isEmpty) || self.customImage != nil
+                        
+                        if !hasPhotos {
+                            // No photos available, show street view
+                            self.showingStreetView = true
+                            self.updateImageView()
+                            self.streetViewToggleButton.isHidden = true // Hide toggle when street view is the only option
+                            Logger.debug("PlaceDetailViewController: Auto-showing street view for place without photos")
+                        } else {
+                            // Has photos, just store street view for toggle option
+                            self.updateToggleButtonVisibility()
+                            Logger.debug("PlaceDetailViewController: Street view loaded but not shown (place has photos)")
+                        }
                     }
                 } catch {
-                    print("Failed to auto-load Look Around: \(error)")
+                    Logger.error("Failed to auto-load Look Around: \(error)")
                 }
             }
         }
@@ -1397,29 +1423,30 @@ class PlaceDetailViewController: UIViewController {
     }
     
     private func configureDefaultImage() {
-        // For Home/Work places, check if we already have street view loaded
-        if isHomeOrWorkPlace && showingStreetView && streetViewImage != nil {
-            imageView.image = streetViewImage
-            imageView.contentMode = .scaleAspectFill
-            return
-        }
-        
-        // Check if we have a custom image for Home/Work places
-        if isHomeOrWorkPlace && customImage != nil {
+        // Check if we have a custom image (for Home/Work places or user-uploaded)
+        if customImage != nil {
             imageView.image = customImage
             imageView.contentMode = .scaleAspectFill
             return
         }
         
-        // First check if we have stored photo URLs
+        // Check if we have stored photo URLs
         if let photos = place.photos, !photos.isEmpty, let firstPhotoUrl = photos.first {
             // Load from URL if available
             loadPhotoFromURL(firstPhotoUrl)
             return
         }
         
-        // If no stored photos, use category icon instead of calling Google Places API
-        // This saves API costs since we already fetched all data when creating the place
+        // If we have street view available and no photos, show it
+        if streetViewImage != nil {
+            imageView.image = streetViewImage
+            imageView.contentMode = .scaleAspectFill
+            showingStreetView = true
+            streetViewToggleButton.isHidden = true // Hide toggle when street view is the only option
+            return
+        }
+        
+        // If no photos or street view, use category icon
         switch place.category {
         case .restaurant:
             imageView.image = UIImage(systemName: "fork.knife")

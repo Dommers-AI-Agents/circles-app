@@ -701,6 +701,15 @@ class CirclesHomeViewController: UIViewController {
                 case .failure(let error):
                     print("❌ Error fetching circles: \(error.localizedDescription)")
                     print("❌ Full error: \(error)")
+                    
+                    // If it's a duplicate request error, retry after a short delay
+                    if case .duplicateRequest = error as? APIError {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            self?.fetchCircles()
+                        }
+                        return
+                    }
+                    
                     // Don't use sample circles - show empty state instead
                     self?.circles = []
                     self?.allPlaces = []
@@ -735,6 +744,15 @@ class CirclesHomeViewController: UIViewController {
                     self?.updateMapPlaces()
                 case .failure(let error):
                     print("❌ Error fetching network circles: \(error.localizedDescription)")
+                    
+                    // If it's a duplicate request error, retry after a short delay
+                    if case .duplicateRequest = error {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            self?.fetchNetworkCircles()
+                        }
+                        return
+                    }
+                    
                     self?.networkCircles = []
                     self?.updateEmptyState()
                 }
@@ -911,6 +929,12 @@ class CirclesHomeViewController: UIViewController {
                     }
                 case .failure(let error):
                     print("Failed to fetch network circles: \(error)")
+                    // If it's a duplicate request error, retry
+                    if case .duplicateRequest = error {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            self?.fetchNetworkCircles()
+                        }
+                    }
                 }
                 group.leave()
             }

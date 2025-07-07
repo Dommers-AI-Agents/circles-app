@@ -1174,6 +1174,19 @@ exports.addExistingPlaceToCircle = async (req, res, next) => {
     
   } catch (error) {
     console.error('Error adding existing place to circle:', error);
-    next(error);
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      placeId: req.params.placeId,
+      circleId: req.params.circleId,
+      userId: req.user?.uid
+    });
+    
+    // Send a more detailed error response
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to add place to circle',
+      error: error.message
+    });
   }
 };

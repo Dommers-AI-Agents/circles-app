@@ -209,8 +209,8 @@ class APIService {
             
             pendingGETRequests.insert(requestKey)
             
-            // Set a timer to clean up the pending request after 30 seconds
-            let timer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: false) { [weak self] _ in
+            // Set a timer to clean up the pending request after 5 seconds
+            let timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
                 self?.pendingGETRequests.remove(requestKey)
                 self?.pendingRequestTimers.removeValue(forKey: requestKey)
                 Logger.debug("Cleaned up stale pending request: \(requestKey)")
@@ -430,6 +430,10 @@ class APIService {
                 }
                 
             case 400, 403, 404:
+                // Log the error response for debugging
+                if let data = data, let errorString = String(data: data, encoding: .utf8) {
+                    Logger.error("HTTP \(httpResponse.statusCode) Error Response: \(errorString)")
+                }
                 completion(.failure(.httpError(httpResponse.statusCode, data)))
                 return
                 
@@ -464,10 +468,18 @@ class APIService {
                 return
                 
             case 500..<600:
+                // Log server errors
+                if let data = data, let errorString = String(data: data, encoding: .utf8) {
+                    Logger.error("HTTP \(httpResponse.statusCode) Server Error: \(errorString)")
+                }
                 completion(.failure(.serverError))
                 return
                 
             default:
+                // Log any other HTTP errors
+                if let data = data, let errorString = String(data: data, encoding: .utf8) {
+                    Logger.error("HTTP \(httpResponse.statusCode) Unexpected Error: \(errorString)")
+                }
                 completion(.failure(.httpError(httpResponse.statusCode, data)))
                 return
             }

@@ -988,48 +988,19 @@ class PlaceService {
         }
         
         // The API endpoint expects circleId in the URL path, not in the body
+        let endpoint = "places/\(placeId)/add-to-circle/\(circleId)"
+        Logger.info("Adding existing place to circle - Endpoint: \(endpoint)")
+        
         APIService.shared.request(
-            endpoint: "places/\(placeId)/add-to-circle/\(circleId)",
+            endpoint: endpoint,
             method: .post,
             body: body.isEmpty ? nil : body,
             requiresAuth: true
-        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
+        ) { [weak self] (result: Result<PlaceResponse, APIError>) in
             switch result {
-            case .success:
-                // The API returns just a success message, not the place object
-                // We'll return a success with a placeholder place
-                // In a real scenario, you might want to fetch the updated place
-                completion(.success(Place(
-                    id: placeId,
-                    name: "",
-                    description: nil,
-                    address: "",
-                    location: nil,
-                    website: nil,
-                    phone: nil,
-                    googlePlaceId: nil,
-                    photos: nil,
-                    category: .other,
-                    customCategory: nil,
-                    subcategory: nil,
-                    rating: nil,
-                    userRatingsTotal: nil,
-                    notes: nil,
-                    privateNotes: nil,
-                    publicNotes: nil,
-                    tags: nil,
-                    reviews: nil,
-                    openingHours: nil,
-                    priceLevel: nil,
-                    likes: nil,
-                    likesCount: nil,
-                    circleId: circleId,
-                    addedBy: "",
-                    addedByUser: nil,
-                    privacy: .followCirclePrivacy,
-                    createdAt: Date(),
-                    updatedAt: Date()
-                )))
+            case .success(let response):
+                // Return the actual place from the response
+                completion(.success(response.place))
             case .failure(let error):
                 let mappedError = self?.mapAPIErrorToPlaceError(error)
                 completion(.failure(mappedError ?? error))
