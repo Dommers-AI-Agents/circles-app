@@ -117,6 +117,8 @@ struct Message: Codable, Identifiable {
             return "🔵 Shared a circle"
         case .placeShare:
             return "📍 Shared a place"
+        case .connectionRequest:
+            return "🤝 Connection request"
         }
     }
     
@@ -139,6 +141,7 @@ enum MessageType: String, Codable {
     case location = "location"
     case circleShare = "circle_share"
     case placeShare = "place_share"
+    case connectionRequest = "connection_request"
 }
 
 // MARK: - Date Formatter Extension

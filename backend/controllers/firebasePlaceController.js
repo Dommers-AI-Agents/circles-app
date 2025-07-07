@@ -90,16 +90,67 @@ exports.getPlacesByCircleId = async (req, res, next) => {
       });
     }
 
-    // Get places for this circle
+    // Get places for this circle, ordered by creation date (newest first)
     const placesSnapshot = await db.collection(COLLECTIONS.PLACES)
       .where('circleId', '==', circleId)
+      .orderBy('createdAt', 'desc')
       .get();
 
     const places = serializeQuerySnapshot(placesSnapshot);
     
+    // Get unique user IDs who added places
+    const userIds = [...new Set(places.map(place => place.addedBy))];
+    
+    // Fetch user information for all users who added places
+    const userPromises = userIds.map(userId => {
+      // Handle complex ID format if needed
+      let actualUserId = userId;
+      if (userId && userId.includes('.')) {
+        const parts = userId.split('.');
+        if (parts.length >= 2) {
+          actualUserId = parts[1]; // Use the middle part as Firebase UID
+        }
+      }
+      return db.collection(COLLECTIONS.USERS).doc(actualUserId).get();
+    });
+    const userDocs = await Promise.all(userPromises);
+    
+    // Create a map of user information
+    const userMap = new Map();
+    userDocs.forEach((doc, index) => {
+      if (doc.exists) {
+        const userData = serializeDoc(doc);
+        const originalUserId = userIds[index]; // The original ID from the place
+        
+        // Map both the simple and complex ID formats
+        userMap.set(userData.id, {
+          id: userData.id,
+          displayName: userData.displayName || 'Unknown User',
+          email: userData.email,
+          profilePicture: userData.profilePicture
+        });
+        
+        // Also map the original ID if it's different
+        if (originalUserId !== userData.id) {
+          userMap.set(originalUserId, {
+            id: userData.id,
+            displayName: userData.displayName || 'Unknown User',
+            email: userData.email,
+            profilePicture: userData.profilePicture
+          });
+        }
+      }
+    });
+    
+    // Add user information to each place
+    const placesWithUsers = places.map(place => ({
+      ...place,
+      addedByUser: userMap.get(place.addedBy) || null
+    }));
+    
     // Create a map for quick lookup
     const placesMap = new Map();
-    places.forEach(place => {
+    placesWithUsers.forEach(place => {
       placesMap.set(place.id, place);
     });
     
@@ -111,11 +162,16 @@ exports.getPlacesByCircleId = async (req, res, next) => {
         .filter(place => place !== undefined); // Filter out any deleted places
     } else {
       // Fallback to date-based sorting if no order is specified
-      orderedPlaces = places.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      orderedPlaces = placesWithUsers.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     }
     
     console.log('Circle places order:', circle.places || []);
-    console.log('Returning places in order:', orderedPlaces.map(p => ({ id: p.id, name: p.name })));
+    console.log('Returning places in order:', orderedPlaces.map(p => ({ 
+      id: p.id, 
+      name: p.name,
+      addedBy: p.addedBy,
+      addedByUser: p.addedByUser ? p.addedByUser.displayName : 'No user info'
+    })));
 
     res.status(200).json({
       success: true,
@@ -239,7 +295,7 @@ exports.createPlace = async (req, res, next) => {
     const currentPlaces = circle.places || [];
     if (place.id) {
       await db.collection(COLLECTIONS.CIRCLES).doc(circleId).update({
-        places: [...currentPlaces, place.id],
+        places: [place.id, ...currentPlaces], // Add new place at the beginning
         updatedAt: new Date().toISOString()
       });
     }
@@ -702,6 +758,297 @@ exports.reorderPlacesInCircle = async (req, res, next) => {
     
   } catch (error) {
     console.error('Error reordering places:', error);
+    next(error);
+  }
+};
+
+// @desc    Like a place
+// @route   POST /api/places/:id/like
+// @access  Private
+exports.likePlace = async (req, res, next) => {
+  try {
+    const placeId = req.params.id;
+    const userId = req.user.uid;
+    
+    // Get the place
+    const placeRef = db.collection(COLLECTIONS.PLACES).doc(placeId);
+    const placeDoc = await placeRef.get();
+    
+    if (!placeDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Place not found'
+      });
+    }
+    
+    const place = serializeDoc(placeDoc);
+    
+    // Check if user has permission to view this place
+    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(place.circleId);
+    const circleDoc = await circleRef.get();
+    const circle = serializeDoc(circleDoc);
+    
+    const isOwner = circle.owner === userId;
+    const isSharedWith = circle.sharedWith && circle.sharedWith.includes(userId);
+    const isPublic = circle.privacy === 'public';
+    
+    // Check if users are connected for myNetwork privacy
+    let isConnected = false;
+    if (circle.privacy === 'myNetwork' && !isOwner) {
+      const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', userId)
+        .where('connectedUserId', '==', circle.owner)
+        .where('status', '==', 'accepted')
+        .get();
+        
+      const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', circle.owner)
+        .where('connectedUserId', '==', userId)
+        .where('status', '==', 'accepted')
+        .get();
+        
+      isConnected = !connection1.empty || !connection2.empty;
+    }
+    
+    if (!isOwner && !isSharedWith && !isPublic && !(circle.privacy === 'myNetwork' && isConnected)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to like this place'
+      });
+    }
+    
+    // Check if already liked
+    const likes = place.likes || [];
+    const alreadyLiked = likes.includes(userId);
+    
+    let updatedLikes;
+    let updatedLikesCount;
+    
+    if (alreadyLiked) {
+      // Unlike
+      updatedLikes = likes.filter(id => id !== userId);
+      updatedLikesCount = Math.max(0, (place.likesCount || 0) - 1);
+    } else {
+      // Like
+      updatedLikes = [...likes, userId];
+      updatedLikesCount = (place.likesCount || 0) + 1;
+    }
+    
+    // Update the place
+    await placeRef.update({
+      likes: updatedLikes,
+      likesCount: updatedLikesCount,
+      updatedAt: new Date().toISOString()
+    });
+    
+    // Get updated place
+    const updatedDoc = await placeRef.get();
+    const updatedPlace = serializeDoc(updatedDoc);
+    
+    // Send notification to place owner if someone liked their place (not unliked, and not their own place)
+    if (!alreadyLiked && place.addedBy !== userId) {
+      await notificationService.sendPlaceLikeNotification(
+        place.addedBy,
+        userId,
+        placeId,
+        place.name
+      );
+    }
+    
+    res.status(200).json({
+      success: true,
+      liked: !alreadyLiked,
+      place: updatedPlace
+    });
+    
+  } catch (error) {
+    console.error('Error liking place:', error);
+    next(error);
+  }
+};
+
+// @desc    Get comments for a place
+// @route   GET /api/places/:id/comments
+// @access  Private
+exports.getPlaceComments = async (req, res, next) => {
+  try {
+    const placeId = req.params.id;
+    const userId = req.user.uid;
+    
+    // Get the place to check permissions
+    const placeRef = db.collection(COLLECTIONS.PLACES).doc(placeId);
+    const placeDoc = await placeRef.get();
+    
+    if (!placeDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Place not found'
+      });
+    }
+    
+    const place = serializeDoc(placeDoc);
+    
+    // Check permissions (same as likePlace)
+    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(place.circleId);
+    const circleDoc = await circleRef.get();
+    const circle = serializeDoc(circleDoc);
+    
+    const isOwner = circle.owner === userId;
+    const isSharedWith = circle.sharedWith && circle.sharedWith.includes(userId);
+    const isPublic = circle.privacy === 'public';
+    
+    let isConnected = false;
+    if (circle.privacy === 'myNetwork' && !isOwner) {
+      const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', userId)
+        .where('connectedUserId', '==', circle.owner)
+        .where('status', '==', 'accepted')
+        .get();
+        
+      const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', circle.owner)
+        .where('connectedUserId', '==', userId)
+        .where('status', '==', 'accepted')
+        .get();
+        
+      isConnected = !connection1.empty || !connection2.empty;
+    }
+    
+    if (!isOwner && !isSharedWith && !isPublic && !(circle.privacy === 'myNetwork' && isConnected)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to view comments for this place'
+      });
+    }
+    
+    // Get comments
+    const commentsSnapshot = await db.collection('placeComments')
+      .where('placeId', '==', placeId)
+      .orderBy('createdAt', 'desc')
+      .get();
+    
+    const comments = [];
+    for (const doc of commentsSnapshot.docs) {
+      const comment = serializeDoc(doc);
+      
+      // Get user details
+      const userDoc = await db.collection(COLLECTIONS.USERS).doc(comment.userId).get();
+      if (userDoc.exists) {
+        comment.user = serializeDoc(userDoc);
+      }
+      
+      comments.push(comment);
+    }
+    
+    res.status(200).json({
+      success: true,
+      comments: comments
+    });
+    
+  } catch (error) {
+    console.error('Error getting place comments:', error);
+    next(error);
+  }
+};
+
+// @desc    Add comment to a place
+// @route   POST /api/places/:id/comments
+// @access  Private
+exports.addPlaceComment = async (req, res, next) => {
+  try {
+    const placeId = req.params.id;
+    const userId = req.user.uid;
+    const { text } = req.body;
+    
+    if (!text || text.trim() === '') {
+      return res.status(400).json({
+        success: false,
+        message: 'Comment text is required'
+      });
+    }
+    
+    // Get the place to check permissions
+    const placeRef = db.collection(COLLECTIONS.PLACES).doc(placeId);
+    const placeDoc = await placeRef.get();
+    
+    if (!placeDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Place not found'
+      });
+    }
+    
+    const place = serializeDoc(placeDoc);
+    
+    // Check permissions (same as likePlace)
+    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(place.circleId);
+    const circleDoc = await circleRef.get();
+    const circle = serializeDoc(circleDoc);
+    
+    const isOwner = circle.owner === userId;
+    const isSharedWith = circle.sharedWith && circle.sharedWith.includes(userId);
+    const isPublic = circle.privacy === 'public';
+    
+    let isConnected = false;
+    if (circle.privacy === 'myNetwork' && !isOwner) {
+      const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', userId)
+        .where('connectedUserId', '==', circle.owner)
+        .where('status', '==', 'accepted')
+        .get();
+        
+      const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', circle.owner)
+        .where('connectedUserId', '==', userId)
+        .where('status', '==', 'accepted')
+        .get();
+        
+      isConnected = !connection1.empty || !connection2.empty;
+    }
+    
+    if (!isOwner && !isSharedWith && !isPublic && !(circle.privacy === 'myNetwork' && isConnected)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to comment on this place'
+      });
+    }
+    
+    // Create comment
+    const commentData = {
+      placeId: placeId,
+      userId: userId,
+      text: text.trim(),
+      createdAt: new Date().toISOString()
+    };
+    
+    const commentRef = await db.collection('placeComments').add(commentData);
+    const commentDoc = await commentRef.get();
+    const comment = serializeDoc(commentDoc);
+    
+    // Get user details
+    const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+    if (userDoc.exists) {
+      comment.user = serializeDoc(userDoc);
+    }
+    
+    // Send notification to place owner if it's not the commenter
+    if (place.addedBy !== userId) {
+      await notificationService.sendPlaceCommentNotification(
+        place.addedBy,
+        userId,
+        placeId,
+        place.name,
+        text.trim()
+      );
+    }
+    
+    res.status(201).json({
+      success: true,
+      comment: comment
+    });
+    
+  } catch (error) {
+    console.error('Error adding place comment:', error);
     next(error);
   }
 };

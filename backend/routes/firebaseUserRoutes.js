@@ -13,7 +13,9 @@ const {
   registerDeviceToken,
   removeDeviceToken,
   updateNotificationPreferences,
-  getUserPublicCircles
+  getUserPublicCircles,
+  findDuplicateAccounts,
+  checkDuplicateConnections
 } = require('../controllers/firebaseUserController');
 const { protect } = require('../middleware/firebaseAuth');
 
@@ -38,6 +40,12 @@ router.route('/me/friend-requests')
 
 router.route('/me/circles/reorder')
   .put(reorderCircles);
+
+router.route('/me/duplicate-connections')
+  .get(checkDuplicateConnections);
+
+router.route('/find-duplicates')
+  .post(findDuplicateAccounts);
 
 router.route('/device-token')
   .post(registerDeviceToken)

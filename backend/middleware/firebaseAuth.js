@@ -2,6 +2,7 @@
 const jwt = require('jsonwebtoken');
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS, serializeDoc } = require('../models/FirestoreModels');
+const { normalizeUserId, logNormalization } = require('../services/idService');
 
 const db = getFirestore();
 
@@ -27,75 +28,72 @@ exports.protect = async (req, res, next) => {
       // Verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-      // Parse the actual Firebase UID from complex format if needed
-      let firebaseUid = decoded.uid;
-      let parsedUid = null;
-      if (decoded.uid && decoded.uid.includes('.')) {
-        // Handle format like "000454.9b5eeac93282416c9bc6dcecbc49b40f.2127"
-        const parts = decoded.uid.split('.');
-        if (parts.length >= 2) {
-          parsedUid = parts[1]; // Use the middle part as potential Firebase UID
-          console.log(`🔐 Auth middleware: Complex ID detected: ${decoded.uid}, parsed UID: ${parsedUid}`);
-        }
-      }
+      // Normalize the user ID using our centralized service
+      const normalizedUid = normalizeUserId(decoded.uid);
+      logNormalization('Auth Middleware', decoded.uid, normalizedUid);
 
-      // Get user from Firestore - try multiple ID formats
+      // Get user from Firestore - try normalized ID first
       let userDoc = null;
       let actualUserId = null;
       
-      // First try the original UID as-is
-      userDoc = await db.collection(COLLECTIONS.USERS).doc(firebaseUid).get();
+      // Try with normalized ID
+      userDoc = await db.collection(COLLECTIONS.USERS).doc(normalizedUid).get();
       
       if (userDoc.exists) {
-        actualUserId = firebaseUid;
-      } else if (parsedUid) {
-        // If not found and we have a parsed UID, try that
-        const parsedUserDoc = await db.collection(COLLECTIONS.USERS).doc(parsedUid).get();
+        actualUserId = normalizedUid;
+      } else if (normalizedUid !== decoded.uid) {
+        // If not found with normalized ID and original was different, try original
+        const originalDoc = await db.collection(COLLECTIONS.USERS).doc(decoded.uid).get();
         
-        if (parsedUserDoc.exists) {
-          userDoc = parsedUserDoc;
-          actualUserId = parsedUid;
+        if (originalDoc.exists) {
+          userDoc = originalDoc;
+          actualUserId = decoded.uid;
+          console.log(`⚠️ User found with complex ID ${decoded.uid}, migration needed`);
         }
       }
       
       // If still not found, try to find by email if available
       if (!userDoc || !userDoc.exists) {
         if (decoded.email) {
+          const normalizedEmail = decoded.email.toLowerCase().trim();
           const usersWithEmail = await db.collection(COLLECTIONS.USERS)
-            .where('email', '==', decoded.email)
+            .where('email', '==', normalizedEmail)
             .limit(1)
             .get();
           
           if (!usersWithEmail.empty) {
             userDoc = usersWithEmail.docs[0];
             actualUserId = userDoc.id;
+            console.log(`Found user by email ${normalizedEmail}, ID: ${actualUserId}`);
           }
         }
       }
 
       if (!userDoc || !userDoc.exists) {
-        console.error(`❌ User not found in auth middleware. Tried UIDs: ${firebaseUid}, ${parsedUid}, email: ${decoded.email}`);
+        console.error(`❌ User not found in auth middleware. Tried normalized UID: ${normalizedUid}, original: ${decoded.uid}, email: ${decoded.email}`);
         return res.status(401).json({
           success: false,
           message: 'User no longer exists'
         });
       }
 
-      // Add user to request object
+      // Add user to request object with normalized ID
       const userData = serializeDoc(userDoc);
+      const finalUserId = normalizeUserId(actualUserId); // Ensure we always use normalized ID
+      
       req.user = {
-        uid: actualUserId, // Use the actual Firestore document ID as primary UID
-        firebaseDocId: actualUserId, // Keep for backwards compatibility
-        originalUid: decoded.uid, // Keep the original complex ID if needed
-        email: decoded.email,
+        uid: finalUserId, // Always use normalized ID
+        firebaseDocId: finalUserId, // Keep for backwards compatibility
+        originalUid: decoded.uid, // Keep the original ID from token
+        email: decoded.email || userData.email,
         ...userData
       };
       
       console.log('🔍 Auth middleware - User authenticated:', {
         uid: req.user.uid,
-        firebaseDocId: req.user.firebaseDocId,
         originalUid: req.user.originalUid,
-        email: req.user.email
+        email: req.user.email,
+        normalized: finalUserId !== decoded.uid
       });
 
       next();

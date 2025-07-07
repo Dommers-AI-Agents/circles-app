@@ -5,6 +5,7 @@ class CreateCircleViewController: UIViewController {
     
     // MARK: - Properties
     weak var delegate: CreateCircleDelegate?
+    private var keyboardHeight: CGFloat = 0
     
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
@@ -145,19 +146,17 @@ class CreateCircleViewController: UIViewController {
     
     private let inviteLabel: UILabel = {
         let label = UILabel()
-        label.text = "Invite Friends (optional)"
+        label.text = "Share with Connection(s) (optional)"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .bold)
         label.textColor = Constants.Colors.darkGray
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
     
-    private let inviteTextField: UITextField = {
-        let textField = UITextField()
-        textField.placeholder = "Enter email addresses, separated by commas"
-        textField.borderStyle = .roundedRect
-        textField.translatesAutoresizingMaskIntoConstraints = false
-        return textField
+    private let connectionPickerView: ConnectionPickerView = {
+        let picker = ConnectionPickerView()
+        picker.translatesAutoresizingMaskIntoConstraints = false
+        return picker
     }()
     
     private let createButton: UIButton = {
@@ -192,6 +191,12 @@ class CreateCircleViewController: UIViewController {
         super.viewDidLoad()
         setupUI()
         setupActions()
+        setupKeyboardObservers()
+    }
+    
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        removeKeyboardObservers()
     }
     
     // MARK: - UI Setup
@@ -223,7 +228,7 @@ class CreateCircleViewController: UIViewController {
         contentView.addSubview(tagsLabel)
         contentView.addSubview(tagsTextField)
         contentView.addSubview(inviteLabel)
-        contentView.addSubview(inviteTextField)
+        contentView.addSubview(connectionPickerView)
         contentView.addSubview(createButton)
         
         // Layout constraints
@@ -321,12 +326,12 @@ class CreateCircleViewController: UIViewController {
             inviteLabel.topAnchor.constraint(equalTo: tagsTextField.bottomAnchor, constant: Constants.Spacing.medium),
             inviteLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             
-            // Invite text field
-            inviteTextField.topAnchor.constraint(equalTo: inviteLabel.bottomAnchor, constant: Constants.Spacing.small),
-            inviteTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            inviteTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            inviteTextField.heightAnchor.constraint(equalToConstant: 40),
-            inviteTextField.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
+            // Connection picker view
+            connectionPickerView.topAnchor.constraint(equalTo: inviteLabel.bottomAnchor, constant: Constants.Spacing.small),
+            connectionPickerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            connectionPickerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            connectionPickerView.heightAnchor.constraint(greaterThanOrEqualToConstant: 40),
+            connectionPickerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
         ])
     }
     
@@ -338,6 +343,36 @@ class CreateCircleViewController: UIViewController {
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
         tapGesture.cancelsTouchesInView = false
         view.addGestureRecognizer(tapGesture)
+        
+        // Set text field delegates for automatic scrolling
+        nameTextField.delegate = self
+        locationTextField.delegate = self
+        tagsTextField.delegate = self
+        descriptionTextView.delegate = self
+        
+        // Set connection picker delegate
+        connectionPickerView.delegate = self
+    }
+    
+    private func setupKeyboardObservers() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(keyboardWillShow),
+            name: UIResponder.keyboardWillShowNotification,
+            object: nil
+        )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(keyboardWillHide),
+            name: UIResponder.keyboardWillHideNotification,
+            object: nil
+        )
+    }
+    
+    private func removeKeyboardObservers() {
+        NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillShowNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillHideNotification, object: nil)
     }
     
     // MARK: - Actions
@@ -350,6 +385,18 @@ class CreateCircleViewController: UIViewController {
         // Validate required fields
         guard let name = nameTextField.text, !name.isEmpty else {
             presentAlert(title: "Error", message: "Please enter a name for your circle")
+            return
+        }
+        
+        // Check if user already has a circle with this name
+        let existingCircles = CircleManager.shared.circles
+        let normalizedNewName = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let hasDuplicate = existingCircles.contains { circle in
+            circle.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalizedNewName
+        }
+        
+        if hasDuplicate {
+            presentAlert(title: "Duplicate Name", message: "You already have a circle with this name. Please choose a different name.")
             return
         }
         
@@ -372,6 +419,10 @@ class CreateCircleViewController: UIViewController {
         if let tagsText = tagsTextField.text, !tagsText.isEmpty {
             tags = tagsText.split(separator: ",").map { String($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
         }
+        
+        // Get selected connections and any email text
+        let selectedConnections = connectionPickerView.getSelectedConnections()
+        let emailText = connectionPickerView.getEmailText()
         
         // Get cover image data - optimize for upload
         var coverImageData: Data? = nil
@@ -442,7 +493,12 @@ class CreateCircleViewController: UIViewController {
                         print("📍 Navigation controller exists: \(self?.navigationController != nil)")
                         print("📍 Navigation stack count: \(self?.navigationController?.viewControllers.count ?? 0)")
                         
-                        self?.delegate?.didCreateCircle(response.circle)
+                        let circle = response.circle
+                        
+                        // Share circle with selected connections
+                        self?.shareCircleWithConnections(circle, connections: selectedConnections, email: emailText)
+                        
+                        self?.delegate?.didCreateCircle(circle)
                         
                         if let navController = self?.navigationController {
                             print("📍 Popping view controller...")
@@ -480,6 +536,9 @@ class CreateCircleViewController: UIViewController {
                         print("📍 Navigation controller exists: \(self?.navigationController != nil)")
                         print("📍 Navigation stack count: \(self?.navigationController?.viewControllers.count ?? 0)")
                         
+                        // Share circle with selected connections
+                        self?.shareCircleWithConnections(circle, connections: selectedConnections, email: emailText)
+                        
                         self?.delegate?.didCreateCircle(circle)
                         
                         if let navController = self?.navigationController {
@@ -503,6 +562,52 @@ class CreateCircleViewController: UIViewController {
     
     @objc private func dismissKeyboard() {
         view.endEditing(true)
+    }
+    
+    @objc private func keyboardWillShow(notification: NSNotification) {
+        guard let userInfo = notification.userInfo,
+              let keyboardFrame = userInfo[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
+              let duration = userInfo[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double else {
+            return
+        }
+        
+        keyboardHeight = keyboardFrame.height
+        
+        UIView.animate(withDuration: duration) {
+            self.scrollView.contentInset.bottom = self.keyboardHeight
+            self.scrollView.scrollIndicatorInsets.bottom = self.keyboardHeight
+        }
+        
+        // Scroll to active field if needed
+        if let activeField = view.subviews.first(where: { $0.isFirstResponder }) {
+            scrollToField(activeField)
+        }
+    }
+    
+    @objc private func keyboardWillHide(notification: NSNotification) {
+        guard let userInfo = notification.userInfo,
+              let duration = userInfo[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double else {
+            return
+        }
+        
+        keyboardHeight = 0
+        
+        UIView.animate(withDuration: duration) {
+            self.scrollView.contentInset.bottom = 0
+            self.scrollView.scrollIndicatorInsets.bottom = 0
+        }
+    }
+    
+    private func scrollToField(_ field: UIView) {
+        // Convert field frame to scroll view coordinates
+        let fieldFrame = field.convert(field.bounds, to: scrollView)
+        let visibleHeight = scrollView.bounds.height - keyboardHeight
+        
+        // Check if field is below the visible area
+        if fieldFrame.maxY > scrollView.contentOffset.y + visibleHeight {
+            let targetOffset = fieldFrame.maxY - visibleHeight + 20 // Add some padding
+            scrollView.setContentOffset(CGPoint(x: 0, y: targetOffset), animated: true)
+        }
     }
     
     // MARK: - Helper Methods
@@ -616,6 +721,55 @@ class CreateCircleViewController: UIViewController {
         // Return a default travel image if no match found
         return "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=800&h=800&fit=crop"
     }
+    
+    private func shareCircleWithConnections(_ circle: Circle, connections: [User], email: String?) {
+        // Share with each selected connection
+        for user in connections {
+            NetworkManager.shared.shareCircle(
+                circle.id,
+                with: user.id,
+                accessLevel: .viewOnly
+            ) { result in
+                switch result {
+                case .success:
+                    print("✅ Shared circle with \(user.displayName)")
+                case .failure(let error):
+                    print("❌ Failed to share circle with \(user.displayName): \(error)")
+                }
+            }
+        }
+        
+        // Share with email if provided
+        if let email = email, !email.isEmpty {
+            // Parse email addresses
+            let emails = email.split(separator: ",").map { String($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            
+            for emailAddress in emails {
+                // Validate email format
+                if isValidEmail(emailAddress) {
+                    NetworkManager.shared.shareCircle(
+                        circle.id,
+                        with: nil,
+                        email: emailAddress,
+                        accessLevel: .viewOnly
+                    ) { result in
+                        switch result {
+                        case .success:
+                            print("✅ Sent circle invitation to \(emailAddress)")
+                        case .failure(let error):
+                            print("❌ Failed to send invitation to \(emailAddress): \(error)")
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private func isValidEmail(_ email: String) -> Bool {
+        let emailRegEx = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,64}"
+        let emailPred = NSPredicate(format:"SELF MATCHES %@", emailRegEx)
+        return emailPred.evaluate(with: email)
+    }
 }
 
 // MARK: - UIImagePickerControllerDelegate
@@ -632,5 +786,36 @@ extension CreateCircleViewController: UIImagePickerControllerDelegate, UINavigat
     
     func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
         picker.dismiss(animated: true)
+    }
+}
+
+// MARK: - UITextFieldDelegate
+extension CreateCircleViewController: UITextFieldDelegate {
+    func textFieldDidBeginEditing(_ textField: UITextField) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.scrollToField(textField)
+        }
+    }
+}
+
+// MARK: - UITextViewDelegate
+extension CreateCircleViewController: UITextViewDelegate {
+    func textViewDidBeginEditing(_ textView: UITextView) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.scrollToField(textView)
+        }
+    }
+}
+
+// MARK: - ConnectionPickerDelegate
+extension CreateCircleViewController: ConnectionPickerDelegate {
+    func connectionPicker(_ picker: ConnectionPickerView, didSelectConnection connection: User) {
+        // Connection selected - no additional action needed as the picker handles UI updates
+        print("Selected connection: \(connection.displayName)")
+    }
+    
+    func connectionPicker(_ picker: ConnectionPickerView, didDeselectConnection connection: User) {
+        // Connection deselected - no additional action needed as the picker handles UI updates
+        print("Deselected connection: \(connection.displayName)")
     }
 }

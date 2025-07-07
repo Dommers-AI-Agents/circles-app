@@ -84,16 +84,39 @@ class NetworkManager: ObservableObject {
                 switch result {
                 case .success(let response):
                     let connections = response.connections
-                    self?.connections = connections.filter { $0.status == .accepted }
-                    self?.pendingConnections = connections.filter { $0.status == .pending }
+                    
+                    // Filter out invalid self-connections
+                    let validConnections = connections.filter { connection in
+                        // Check if userId and connectedUserId are different
+                        let isSelfConnection = connection.userId == connection.connectedUserId
+                        if isSelfConnection {
+                            print("⚠️ NetworkManager: Filtering out invalid self-connection: \(connection.id)")
+                            print("   userId: \(connection.userId)")
+                            print("   connectedUserId: \(connection.connectedUserId)")
+                            print("   connectedUser: \(connection.connectedUser?.displayName ?? "nil") (\(connection.connectedUser?.email ?? "nil"))")
+                        }
+                        return !isSelfConnection
+                    }
+                    
+                    self?.connections = validConnections.filter { $0.status == .accepted }
+                    self?.pendingConnections = validConnections.filter { $0.status == .pending }
+                    
+                    print("🔍 NetworkManager: Loaded connections - accepted: \(self?.connections.count ?? 0), pending: \(self?.pendingConnections.count ?? 0)")
                     
                     // Post notification after data is loaded
                     NotificationCenter.default.post(
-                        name: Notification.Name("PendingConnectionsCountChanged"),
+                        name: .pendingConnectionsCountChanged,
                         object: nil
                     )
                 case .failure(let error):
+                    print("❌ NetworkManager: Failed to load connections: \(error)")
                     self?.error = error.localizedDescription
+                    // Clear pending connections on error to reset badge
+                    self?.pendingConnections = []
+                    NotificationCenter.default.post(
+                        name: .pendingConnectionsCountChanged,
+                        object: nil
+                    )
                 }
             }
         }
@@ -319,6 +342,10 @@ class NetworkManager: ObservableObject {
                         // Move from pending to accepted
                         self?.pendingConnections.removeAll { $0.id == connectionId }
                         self?.connections.append(connection)
+                        
+                        // Post notification to update badge count
+                        NotificationCenter.default.post(name: .pendingConnectionsCountChanged, object: nil)
+                        
                         completion(.success(connection))
                     } else {
                         completion(.failure(APIError.invalidResponse))
@@ -340,6 +367,10 @@ class NetworkManager: ObservableObject {
                 switch result {
                 case .success:
                     self?.pendingConnections.removeAll { $0.id == connectionId }
+                    
+                    // Post notification to update badge count
+                    NotificationCenter.default.post(name: .pendingConnectionsCountChanged, object: nil)
+                    
                     completion(.success(()))
                 case .failure(let error):
                     completion(.failure(error))
@@ -525,8 +556,22 @@ class NetworkManager: ObservableObject {
                 switch result {
                 case .success(let response):
                     let connections = response.connections
-                    self?.connections = connections.filter { $0.status == .accepted }
-                    self?.pendingConnections = connections.filter { $0.status == .pending }
+                    
+                    // Filter out invalid self-connections
+                    let validConnections = connections.filter { connection in
+                        // Check if userId and connectedUserId are different
+                        let isSelfConnection = connection.userId == connection.connectedUserId
+                        if isSelfConnection {
+                            print("⚠️ NetworkManager: Filtering out invalid self-connection: \(connection.id)")
+                            print("   userId: \(connection.userId)")
+                            print("   connectedUserId: \(connection.connectedUserId)")
+                            print("   connectedUser: \(connection.connectedUser?.displayName ?? "nil") (\(connection.connectedUser?.email ?? "nil"))")
+                        }
+                        return !isSelfConnection
+                    }
+                    
+                    self?.connections = validConnections.filter { $0.status == .accepted }
+                    self?.pendingConnections = validConnections.filter { $0.status == .pending }
                     // Return only accepted connections
                     completion(self?.connections, nil)
                 case .failure(let error):
@@ -614,6 +659,13 @@ class NetworkManager: ObservableObject {
         sharedCircles = []
     }
     
+    // Public method to force refresh badge
+    func refreshBadgeCount() {
+        print("🔄 NetworkManager: Force refreshing badge count")
+        loadConnections()
+    }
+    
+    
     // MARK: - Pending Connection Storage for New Users
     
     static func storePendingConnectionInvite(userId: String) {
@@ -668,11 +720,30 @@ class NetworkManager: ObservableObject {
     
     func getPendingConnectionsCount(completion: @escaping (Int) -> Void) {
         // Return count of pending incoming connections
+        let currentUserId = AuthService.shared.getUserId()
+        print("🔢 NetworkManager: Calculating pending connections count")
+        print("🔢 Current user ID: \(currentUserId ?? "nil")")
+        print("🔢 Total pending connections in array: \(pendingConnections.count)")
+        
+        // Log each pending connection
+        pendingConnections.forEach { connection in
+            print("🔢 Pending connection: \(connection.id)")
+            print("   Status: \(connection.status)")
+            print("   UserId: \(connection.userId)")
+            print("   ConnectedUserId: \(connection.connectedUserId)")
+            print("   Is incoming: \(connection.connectedUserId == currentUserId)")
+        }
+        
         let pendingCount = pendingConnections.filter { connection in
             // Count only incoming pending connections
-            connection.status == .pending && connection.connectedUserId == AuthService.shared.getUserId()
+            let isIncoming = connection.status == .pending && connection.connectedUserId == currentUserId
+            if isIncoming {
+                print("🔢 Counting incoming pending connection from: \(connection.userId)")
+            }
+            return isIncoming
         }.count
         
+        print("🔢 Final pending count: \(pendingCount)")
         completion(pendingCount)
     }
 }

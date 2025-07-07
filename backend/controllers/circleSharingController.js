@@ -690,6 +690,14 @@ const getUserCircles = async (req, res) => {
         message: 'You are not connected to this user'
       });
     }
+    
+    // Get the connection document to check for recent activity
+    const connectionDoc = !connection1.empty ? connection1.docs[0] : connection2.docs[0];
+    const connectionData = connectionDoc.data();
+    
+    // Track that the user viewed this connection
+    const activityService = require('../services/activityService');
+    await activityService.trackConnectionView(currentUserId, targetUserId);
 
     // Get user details
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(targetUserId).get();
@@ -715,10 +723,36 @@ const getUserCircles = async (req, res) => {
       return bDate.localeCompare(aDate);
     });
 
+    // Get recent activity from connection data
+    const recentActivity = connectionData.recentActivity || [];
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    // Filter recent activity within last 7 days
+    const recentActivityWithinWeek = recentActivity.filter(activity => 
+      new Date(activity.createdAt) > sevenDaysAgo
+    );
+    
+    // Create sets of recent circle and place IDs for easy lookup
+    const recentCircleIds = new Set(
+      recentActivityWithinWeek
+        .filter(a => a.type === 'circle')
+        .map(a => a.entityId)
+    );
+    
+    const recentPlaceIds = new Set(
+      recentActivityWithinWeek
+        .filter(a => a.type === 'place')
+        .map(a => a.entityId)
+    );
+
     // Fetch places for each circle
     const circles = await Promise.all(sortedDocs.map(async doc => {
       const circle = serializeDoc(doc);
       circle.ownerDetails = userData;
+      
+      // Mark if this circle is new
+      circle.isNew = recentCircleIds.has(circle._id);
       
       // Only fetch places for circles with appropriate privacy settings
       if (circle.privacy === 'myNetwork' || circle.privacy === 'public') {
@@ -732,6 +766,12 @@ const getUserCircles = async (req, res) => {
           // Return both place IDs and full details in separate fields
           circle.places = placesSnapshot.docs.map(doc => doc.id);
           circle.placesWithDetails = serializeQuerySnapshot(placesSnapshot);
+          
+          // Mark which places are new
+          circle.placesWithDetails = circle.placesWithDetails.map(place => ({
+            ...place,
+            isNew: recentPlaceIds.has(place._id)
+          }));
         } catch (indexError) {
           // Fallback: fetch without orderBy and sort in memory
           console.log(`Index not ready, using fallback for circle ${circle._id}`);
@@ -747,7 +787,13 @@ const getUserCircles = async (req, res) => {
             });
           
           circle.places = sortedDocs.map(doc => doc.id);
-          circle.placesWithDetails = sortedDocs.map(doc => serializeDoc(doc));
+          circle.placesWithDetails = sortedDocs.map(doc => {
+            const place = serializeDoc(doc);
+            return {
+              ...place,
+              isNew: recentPlaceIds.has(place._id)
+            };
+          });
         }
       } else {
         circle.places = [];
@@ -757,11 +803,15 @@ const getUserCircles = async (req, res) => {
       return circle;
     }));
 
+    // Clear activity notification after viewing
+    await activityService.clearActivityNotification(currentUserId, targetUserId);
+    
     res.status(200).json({
       success: true,
       data: {
         user: userData,
-        circles: circles
+        circles: circles,
+        hasRecentActivity: connectionData.hasNewActivity || connectionData.hasRecentPlace || false
       }
     });
 

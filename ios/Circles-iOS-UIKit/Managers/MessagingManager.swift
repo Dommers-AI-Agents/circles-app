@@ -22,8 +22,10 @@ class MessagingManager: ObservableObject {
     
     private func setupSubscribers() {
         // Listen for authentication changes
+        print("🔍 MessagingManager: Setting up auth subscriber")
         AuthManager.shared.$isAuthenticated
             .sink { [weak self] isAuthenticated in
+                print("🔍 MessagingManager: Auth state changed to: \(isAuthenticated)")
                 if isAuthenticated {
                     self?.startMessaging()
                 } else {
@@ -36,9 +38,23 @@ class MessagingManager: ObservableObject {
     // MARK: - Messaging Lifecycle
     
     private func startMessaging() {
+        print("🔍 MessagingManager: startMessaging called")
         loadConversations()
         startMessagePolling()
         updateUnreadCount()
+    }
+    
+    // Public method to force initialization when we know we're authenticated
+    func ensureInitialized() {
+        print("🔍 MessagingManager: ensureInitialized called")
+        print("🔍 MessagingManager: Current auth state = \(AuthManager.shared.isAuthenticated)")
+        print("🔍 MessagingManager: Has token = \(AuthService.shared.getToken() != nil)")
+        
+        // If we have a token but messaging hasn't started, start it now
+        if AuthService.shared.getToken() != nil && messagePollingTimer == nil {
+            print("🔍 MessagingManager: Token exists but messaging not started, starting now")
+            startMessaging()
+        }
     }
     
     private func stopMessaging() {
@@ -87,6 +103,22 @@ class MessagingManager: ObservableObject {
     // MARK: - Conversations
     
     func loadConversations() {
+        print("🔍 MessagingManager: loadConversations called")
+        print("🔍 MessagingManager: isAuthenticated = \(AuthManager.shared.isAuthenticated)")
+        print("🔍 MessagingManager: Has auth token = \(AuthService.shared.getToken() != nil)")
+        
+        // Skip auth check if we have a token - this is a workaround for auth state detection issues
+        guard AuthService.shared.getToken() != nil else {
+            print("⚠️ MessagingManager: No auth token, skipping conversation load")
+            return
+        }
+        
+        // Don't load if already loading
+        guard !isLoadingConversations else {
+            print("🔍 MessagingManager: Already loading conversations, skipping duplicate request")
+            return
+        }
+        
         isLoadingConversations = true
         
         messagingService.fetchConversations { [weak self] result in
@@ -95,6 +127,7 @@ class MessagingManager: ObservableObject {
                 
                 switch result {
                 case .success(let conversations):
+                    print("🔍 MessagingManager: Fetched \(conversations.count) conversations successfully")
                     self?.conversations = conversations.sorted { conv1, conv2 in
                         // Sort by last message time, most recent first
                         let time1 = conv1.lastMessageTime ?? conv1.createdAt
@@ -102,6 +135,7 @@ class MessagingManager: ObservableObject {
                         return time1 > time2
                     }
                 case .failure(let error):
+                    print("⚠️ MessagingManager: Failed to fetch conversations: \(error.localizedDescription)")
                     self?.error = error.localizedDescription
                 }
             }
@@ -287,6 +321,30 @@ class MessagingManager: ObservableObject {
                     }
                     completion(.success(updatedMessage))
                 case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
+        }
+    }
+    
+    func deleteConversation(_ conversationId: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        messagingService.deleteConversation(conversationId: conversationId) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    // Remove conversation from local array
+                    self?.conversations.removeAll { $0.id == conversationId }
+                    
+                    // Remove messages for this conversation
+                    self?.activeMessages.removeValue(forKey: conversationId)
+                    
+                    // Update unread count
+                    self?.updateUnreadCount()
+                    
+                    completion(.success(()))
+                    
+                case .failure(let error):
+                    self?.error = error.localizedDescription
                     completion(.failure(error))
                 }
             }

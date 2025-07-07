@@ -36,25 +36,33 @@ struct Conversation: Codable, Identifiable {
     
     // Computed properties
     var displayName: String {
-        if type == .direct {
+        switch type {
+        case .direct:
             // For direct conversations, show the other participant's name
             if let otherParticipant = participantDetails?.first {
                 return otherParticipant.displayName
             }
             return "Unknown User"
-        } else {
+        case .group:
             // For group conversations, use the conversation name
             return name ?? "Group Chat"
+        case .system:
+            // For system conversations (connection requests)
+            return "Connection Request"
         }
     }
     
     var displayAvatar: String? {
-        if type == .direct {
+        switch type {
+        case .direct:
             // For direct conversations, show the other participant's avatar
             return participantDetails?.first?.profilePicture
-        } else {
+        case .group:
             // For group conversations, use the conversation avatar
             return avatar
+        case .system:
+            // For system conversations, no avatar
+            return nil
         }
     }
     
@@ -85,6 +93,7 @@ struct Conversation: Codable, Identifiable {
 enum ConversationType: String, Codable {
     case direct = "direct"
     case group = "group"
+    case system = "system"
 }
 
 // MARK: - Date Formatter Extension

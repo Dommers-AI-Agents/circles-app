@@ -263,7 +263,54 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         // Show notification even when app is in foreground
+        let userInfo = notification.request.content.userInfo
+        
+        // Special handling for connection_accepted notifications
+        if let type = userInfo["type"] as? String, type == "connection_accepted" {
+            // Show a custom in-app alert for connection accepted
+            if let acceptedByUserId = userInfo["acceptedByUserId"] as? String {
+                UserDefaults.standard.set(acceptedByUserId, forKey: "newlyAcceptedConnectionId")
+                UserDefaults.standard.set(Date(), forKey: "newlyAcceptedConnectionDate")
+                
+                // Show custom alert
+                DispatchQueue.main.async {
+                    if let topViewController = self.getTopViewController() {
+                        let alertController = UIAlertController(
+                            title: "Connection Accepted! 🎉",
+                            message: notification.request.content.body,
+                            preferredStyle: .alert
+                        )
+                        
+                        alertController.addAction(UIAlertAction(title: "View Network", style: .default) { _ in
+                            NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
+                        })
+                        
+                        alertController.addAction(UIAlertAction(title: "Later", style: .cancel))
+                        
+                        topViewController.present(alertController, animated: true)
+                    }
+                }
+                
+                // Don't show the system notification since we're showing custom alert
+                completionHandler([.badge, .sound])
+                return
+            }
+        }
+        
+        // For other notifications, show normally
         completionHandler([.alert, .badge, .sound])
+    }
+    
+    private func getTopViewController() -> UIViewController? {
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first,
+           var topController = window.rootViewController {
+            while let presentedViewController = topController.presentedViewController {
+                topController = presentedViewController
+            }
+            return topController
+        }
+        return nil
     }
     
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
@@ -287,6 +334,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
                 }
             case "connection_request":
                 // Navigate to network tab
+                NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
+            case "connection_accepted":
+                // Store the newly accepted connection ID and navigate to network tab
+                if let acceptedByUserId = userInfo["acceptedByUserId"] as? String {
+                    UserDefaults.standard.set(acceptedByUserId, forKey: "newlyAcceptedConnectionId")
+                    UserDefaults.standard.set(Date(), forKey: "newlyAcceptedConnectionDate")
+                }
                 NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
             default:
                 break

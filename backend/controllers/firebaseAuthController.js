@@ -3,6 +3,7 @@ const { getFirestore, getAuth } = require('../config/firebase');
 const { COLLECTIONS, createUser, serializeDoc } = require('../models/FirestoreModels');
 const jwt = require('jsonwebtoken');
 const jwksClient = require('jwks-rsa');
+const { normalizeUserId, logNormalization } = require('../services/idService');
 
 const db = getFirestore();
 const auth = getAuth();
@@ -251,6 +252,12 @@ exports.firebaseAuth = async (req, res, next) => {
       }
     }
 
+    // Normalize email to prevent duplicates
+    if (email) {
+      email = email.toLowerCase().trim();
+      console.log(`📧 Social auth with normalized email: ${email}, provider: ${provider}`);
+    }
+
     // Check if user exists by email first (for account merging)
     let user;
     let userRef;
@@ -281,12 +288,12 @@ exports.firebaseAuth = async (req, res, next) => {
         linkedProviders[provider] = uid;
         updateData.linkedProviders = linkedProviders;
         
-        // Update name if provided and better than current
-        if (name && name !== 'Apple User' && (!existingUser.displayName || existingUser.displayName === 'Apple User')) {
+        // Only update name if user doesn't have one set
+        if (name && !existingUser.displayName) {
           updateData.displayName = name;
         }
         
-        // Update profile picture if provided and not already set
+        // Only update profile picture if user doesn't have one set
         if (picture && !existingUser.profilePicture) {
           updateData.profilePicture = picture;
         }
@@ -310,70 +317,113 @@ exports.firebaseAuth = async (req, res, next) => {
       
       console.log(`🔍 Checking for user by provider ID: ${simpleUid}`);
       
-      // First try with simple UID
-      userRef = db.collection(COLLECTIONS.USERS).doc(simpleUid);
-      let userDoc = await userRef.get();
-      
-      // If not found with simple UID, try with complex UID (for existing users)
-      if (!userDoc.exists && simpleUid !== uid) {
-        console.log(`🔍 Not found with simple UID, trying complex UID: ${uid}`);
-        userRef = db.collection(COLLECTIONS.USERS).doc(uid);
-        userDoc = await userRef.get();
-      }
-      
-      if (userDoc.exists) {
-        // Existing user by provider ID
-        const updateData = {
-          updatedAt: new Date().toISOString()
-        };
+      // Use transaction to prevent race conditions
+      const result = await db.runTransaction(async (transaction) => {
+        // First try with simple UID
+        userRef = db.collection(COLLECTIONS.USERS).doc(simpleUid);
+        let userDoc = await transaction.get(userRef);
         
-        const existingUser = serializeDoc(userDoc);
-        if (name && name !== 'Apple User' && (!existingUser.displayName || existingUser.displayName === 'Apple User')) {
-          updateData.displayName = name;
+        // If not found with simple UID, try with complex UID (for existing users)
+        if (!userDoc.exists && simpleUid !== uid) {
+          console.log(`🔍 Not found with simple UID, trying complex UID: ${uid}`);
+          userRef = db.collection(COLLECTIONS.USERS).doc(uid);
+          userDoc = await transaction.get(userRef);
         }
         
-        await userRef.update(updateData);
-        user = serializeDoc(await userRef.get());
-      } else {
-        // Completely new user - use simple UID as document ID
-        console.log(`🆕 Creating new user with ID: ${simpleUid}, provider: ${provider}`);
-        const userData = createUser({
-          uid: simpleUid,
-          email,
-          displayName: name,
-          profilePicture: picture,
-          linkedProviders: { [provider]: uid } // Store original complex UID in linkedProviders
-        });
+        // Also check for existing user by email one more time inside transaction
+        if (!userDoc.exists && email) {
+          const emailQuery = await transaction.get(
+            db.collection(COLLECTIONS.USERS)
+              .where('email', '==', email)
+              .limit(1)
+          );
+          
+          if (!emailQuery.empty) {
+            // Found by email - use that user instead
+            userDoc = emailQuery.docs[0];
+            userRef = userDoc.ref;
+            console.log(`Found existing user by email during transaction: ${email}`);
+          }
+        }
         
-        await userRef.set(userData);
-        user = { id: simpleUid, ...userData };
+        if (userDoc.exists) {
+          // Existing user - update within transaction
+          const updateData = {
+            updatedAt: new Date().toISOString()
+          };
+          
+          const existingUser = serializeDoc(userDoc);
+          
+          // Update linked providers
+          const linkedProviders = existingUser.linkedProviders || {};
+          linkedProviders[provider] = uid;
+          updateData.linkedProviders = linkedProviders;
+          
+          // Only update name if user doesn't have one set
+          if (name && !existingUser.displayName) {
+            updateData.displayName = name;
+          }
+          
+          // Only update profile picture if user doesn't have one set
+          if (picture && !existingUser.profilePicture) {
+            updateData.profilePicture = picture;
+          }
+          
+          transaction.update(userRef, updateData);
+          return { userRef, isNew: false };
+        } else {
+          // Completely new user - create within transaction
+          console.log(`🆕 Creating new user with ID: ${simpleUid}, provider: ${provider}`);
+          const userData = createUser({
+            uid: simpleUid,
+            email,
+            displayName: name,
+            profilePicture: picture,
+            linkedProviders: { [provider]: uid } // Store original complex UID in linkedProviders
+          });
+          
+          // Use simple UID for the document ID
+          userRef = db.collection(COLLECTIONS.USERS).doc(simpleUid);
+          transaction.set(userRef, userData);
+          return { userRef, isNew: true, userData };
+        }
+      });
+      
+      // Fetch the user after transaction completes
+      const finalUserDoc = await result.userRef.get();
+      user = serializeDoc(finalUserDoc);
+      
+      if (result.isNew) {
         console.log(`✅ New user created successfully with ID: ${simpleUid} (original: ${uid})`);
+      } else {
+        console.log(`✅ Existing user updated successfully`);
       }
     }
 
-    // Create JWT token for API access
-    const tokenUid = user.id || user.uid;
-    console.log(`🆔 Creating JWT token with UID: ${tokenUid}`);
+    // Create JWT token for API access with normalized ID
+    const normalizedId = normalizeUserId(user.id || user.uid);
+    logNormalization('Firebase Auth Response', user.id || user.uid, normalizedId);
+    
+    console.log(`🆔 Creating JWT token with normalized UID: ${normalizedId}`);
     const token = jwt.sign(
       { 
-        uid: tokenUid,
+        uid: normalizedId,
         email: user.email 
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRE }
     );
 
-    // Return the actual document ID (whether complex or simple)
-    // The iOS app will parse it when needed for connection invites
-    let responseUserId = user.id || user._id || user.uid;
-    console.log(`📤 Returning user ID: ${responseUserId} (${responseUserId.includes('.') ? 'complex' : 'simple'} format)`)
+    // Always return normalized ID to iOS app
+    const responseUserId = normalizedId;
+    console.log(`📤 Returning normalized user ID: ${responseUserId}`)
     
     const response = {
       success: true,
       token,
       refreshToken: token, // For now, use same token as refresh token
       user: {
-        _id: responseUserId, // iOS expects _id, not id
+        _id: responseUserId, // Always normalized ID
         email: user.email || '',
         displayName: user.displayName || name || 'Unknown User',
         profilePicture: user.profilePicture || picture || null,
@@ -385,13 +435,11 @@ exports.firebaseAuth = async (req, res, next) => {
       }
     };
 
-    console.log('📤 Sending auth response with user ID formats:', {
+    console.log('📤 Sending auth response with normalized ID:', {
       originalUid: uid,
-      userObjectId: user.id || user._id || user.uid,
-      responseUserId: responseUserId,
-      tokenUid: tokenUid
+      normalizedId: responseUserId,
+      tokenUid: normalizedId
     });
-    console.log('📤 Full auth response:', JSON.stringify(response, null, 2));
 
     res.status(200).json(response);
   } catch (error) {
@@ -414,119 +462,155 @@ exports.register = async (req, res, next) => {
       });
     }
 
-    // Check if user already exists with this email
-    const existingUsersQuery = await db.collection(COLLECTIONS.USERS)
-      .where('email', '==', email)
-      .limit(1)
-      .get();
-    
-    let user;
-    let userRef;
-    
-    if (!existingUsersQuery.empty) {
-      // User with this email exists - link the manual registration
-      const existingUserDoc = existingUsersQuery.docs[0];
-      const existingUserId = existingUserDoc.id;
-      userRef = existingUserDoc.ref;
+    // Normalize email to lowercase to prevent duplicates
+    const normalizedEmail = email.toLowerCase().trim();
+    console.log(`📧 Registering user with email: ${normalizedEmail} (original: ${email})`);
+
+    let result;
+    try {
+      // Use transaction to prevent race conditions
+      result = await db.runTransaction(async (transaction) => {
+      // Check if user already exists with this email
+      const existingUsersQuery = await transaction.get(
+        db.collection(COLLECTIONS.USERS)
+          .where('email', '==', normalizedEmail)
+          .limit(1)
+      );
       
-      console.log(`Linking manual registration to existing user with email ${email}. Existing ID: ${existingUserId}`);
-      
-      // For existing users, we need to handle this differently
-      // Since Firebase Auth likely already has this email, we can't create a new auth user
-      // Instead, we should update the existing user's record to support password login
-      
-      try {
-        // Try to get the existing Firebase Auth user
-        const existingAuthUser = await auth.getUserByEmail(email);
+      if (!existingUsersQuery.empty) {
+        // User with this email exists - link the manual registration
+        const existingUserDoc = existingUsersQuery.docs[0];
+        const existingUserId = existingUserDoc.id;
+        const userRef = existingUserDoc.ref;
         
-        // Update the password for the existing auth user
-        await auth.updateUser(existingAuthUser.uid, {
-          password: password,
-          displayName: displayName || existingUserDoc.data().displayName || email.split('@')[0]
-        });
+        console.log(`Linking manual registration to existing user with email ${normalizedEmail}. Existing ID: ${existingUserId}`);
         
-        console.log(`Updated password for existing Firebase Auth user: ${existingAuthUser.uid}`);
-      } catch (error) {
-        if (error.code === 'auth/user-not-found') {
-          // No Firebase Auth user exists yet (e.g., they only used social login before)
-          // Create auth user with the existing Firestore user's ID
-          try {
-            await auth.createUser({
-              uid: existingUserId,
-              email,
-              password,
-              displayName: displayName || existingUserDoc.data().displayName || email.split('@')[0]
-            });
-          } catch (createError) {
-            console.error('Error creating Firebase Auth user:', createError);
-            return res.status(400).json({
-              success: false,
-              message: 'Failed to enable password login for this account'
-            });
+        // For existing users, we need to handle this differently
+        // Since Firebase Auth likely already has this email, we can't create a new auth user
+        // Instead, we should update the existing user's record to support password login
+        
+        let authHandled = false;
+        try {
+          // Try to get the existing Firebase Auth user
+          const existingAuthUser = await auth.getUserByEmail(normalizedEmail);
+          
+          // Update the password for the existing auth user
+          await auth.updateUser(existingAuthUser.uid, {
+            password: password,
+            displayName: displayName || existingUserDoc.data().displayName || normalizedEmail.split('@')[0]
+          });
+          
+          console.log(`Updated password for existing Firebase Auth user: ${existingAuthUser.uid}`);
+          authHandled = true;
+        } catch (error) {
+          if (error.code === 'auth/user-not-found') {
+            // No Firebase Auth user exists yet (e.g., they only used social login before)
+            // Create auth user with the existing Firestore user's ID
+            try {
+              await auth.createUser({
+                uid: existingUserId,
+                email: normalizedEmail,
+                password,
+                displayName: displayName || existingUserDoc.data().displayName || normalizedEmail.split('@')[0]
+              });
+              authHandled = true;
+            } catch (createError) {
+              console.error('Error creating Firebase Auth user:', createError);
+              throw new Error('Failed to enable password login for this account');
+            }
+          } else {
+            console.error('Error handling existing user registration:', error);
+            throw new Error('This email is already registered. Please use the login page instead.');
           }
-        } else {
-          console.error('Error handling existing user registration:', error);
-          return res.status(400).json({
-            success: false,
-            message: 'This email is already registered. Please use the login page instead.'
-          });
         }
-      }
-      
-      // Update existing user with manual registration info
-      const updateData = {
-        updatedAt: new Date().toISOString()
-      };
-      
-      const existingUser = serializeDoc(existingUserDoc);
-      const linkedProviders = existingUser.linkedProviders || {};
-      linkedProviders.manual = existingUserId;
-      updateData.linkedProviders = linkedProviders;
-      
-      // Update display name if provided and better than current
-      if (displayName && (!existingUser.displayName || existingUser.displayName === 'Apple User')) {
-        updateData.displayName = displayName;
-      }
-      
-      await userRef.update(updateData);
-      user = serializeDoc(await userRef.get());
-    } else {
-      // No existing user - create new account
-      let userRecord;
-      try {
-        userRecord = await auth.createUser({
-          email,
-          password,
-          displayName: displayName || email.split('@')[0]
+        
+        if (!authHandled) {
+          throw new Error('Failed to handle authentication for existing user');
+        }
+        
+        // Update existing user with manual registration info
+        const updateData = {
+          updatedAt: new Date().toISOString()
+        };
+        
+        const existingUser = serializeDoc(existingUserDoc);
+        const linkedProviders = existingUser.linkedProviders || {};
+        linkedProviders.manual = existingUserId;
+        updateData.linkedProviders = linkedProviders;
+        
+        // Update display name if provided and better than current
+        if (displayName && (!existingUser.displayName || existingUser.displayName === 'Apple User')) {
+          updateData.displayName = displayName;
+        }
+        
+        transaction.update(userRef, updateData);
+        return { userRef, isNew: false };
+      } else {
+        // No existing user - create new account
+        let userRecord;
+        try {
+          userRecord = await auth.createUser({
+            email: normalizedEmail,
+            password,
+            displayName: displayName || normalizedEmail.split('@')[0]
+          });
+        } catch (error) {
+          if (error.code === 'auth/email-already-exists') {
+            // This might happen if auth user exists but Firestore doesn't
+            // Try to get the auth user and create Firestore doc
+            try {
+              const existingAuthUser = await auth.getUserByEmail(normalizedEmail);
+              userRecord = existingAuthUser;
+              console.log('Found existing auth user without Firestore doc, creating doc...');
+            } catch (getError) {
+              throw new Error('Email already in use');
+            }
+          } else {
+            throw error;
+          }
+        }
+
+        // Create user profile in Firestore within transaction
+        const userData = createUser({
+          uid: userRecord.uid,
+          email: userRecord.email,
+          displayName: displayName || userRecord.displayName || normalizedEmail.split('@')[0],
+          profilePicture: null,
+          linkedProviders: { manual: userRecord.uid }
         });
-      } catch (error) {
-        if (error.code === 'auth/email-already-exists') {
-          return res.status(400).json({
-            success: false,
-            message: 'Email already in use'
-          });
-        }
-        throw error;
+
+        const userRef = db.collection(COLLECTIONS.USERS).doc(userRecord.uid);
+        transaction.set(userRef, userData);
+        return { userRef, isNew: true, userData: { id: userRecord.uid, ...userData } };
       }
-
-      // Create user profile in Firestore
-      const userData = createUser({
-        uid: userRecord.uid,
-        email: userRecord.email,
-        displayName: displayName || userRecord.displayName || email.split('@')[0],
-        profilePicture: null,
-        linkedProviders: { manual: userRecord.uid }
-      });
-
-      userRef = db.collection(COLLECTIONS.USERS).doc(userRecord.uid);
-      await userRef.set(userData);
-      user = { id: userRecord.uid, ...userData };
+    });
+    } catch (transactionError) {
+      console.error('Transaction error during registration:', transactionError);
+      if (transactionError.message) {
+        return res.status(400).json({
+          success: false,
+          message: transactionError.message
+        });
+      }
+      throw transactionError;
+    }
+    
+    // Fetch the user after transaction completes
+    let user;
+    if (result.isNew) {
+      user = result.userData;
+    } else {
+      const userDoc = await result.userRef.get();
+      user = serializeDoc(userDoc);
     }
 
-    // Create JWT token
+    // Create JWT token with normalized ID
+    const normalizedId = normalizeUserId(user.id || user.uid);
+    logNormalization('Register Response', user.id || user.uid, normalizedId);
+    
     const token = jwt.sign(
       { 
-        uid: user.id || user.uid,
+        uid: normalizedId,
         email: user.email 
       },
       process.env.JWT_SECRET,
@@ -538,7 +622,7 @@ exports.register = async (req, res, next) => {
       token,
       refreshToken: token,
       user: {
-        _id: user.id || user.uid,
+        _id: normalizedId, // Always normalized ID
         email: user.email,
         displayName: user.displayName,
         profilePicture: user.profilePicture,
@@ -569,10 +653,14 @@ exports.login = async (req, res, next) => {
       });
     }
 
+    // Normalize email to lowercase to prevent duplicates
+    const normalizedEmail = email.toLowerCase().trim();
+    console.log(`📧 Login attempt with email: ${normalizedEmail} (original: ${email})`);
+
     // Get user by email from Firebase Auth
     let userRecord;
     try {
-      userRecord = await auth.getUserByEmail(email);
+      userRecord = await auth.getUserByEmail(normalizedEmail);
     } catch (error) {
       if (error.code === 'auth/user-not-found') {
         return res.status(401).json({
@@ -596,7 +684,7 @@ exports.login = async (req, res, next) => {
     
     // First, try to find user by email (for account merging)
     const usersWithEmail = await db.collection(COLLECTIONS.USERS)
-      .where('email', '==', email)
+      .where('email', '==', normalizedEmail)
       .limit(1)
       .get();
     
@@ -639,10 +727,13 @@ exports.login = async (req, res, next) => {
       }
     }
       
-    // Create JWT token
+    // Create JWT token with normalized ID
+    const normalizedId = normalizeUserId(user.id || user.uid);
+    logNormalization('Login Response', user.id || user.uid, normalizedId);
+    
     const token = jwt.sign(
       { 
-        uid: user.id || user.uid,
+        uid: normalizedId,
         email: user.email 
       },
       process.env.JWT_SECRET,
@@ -654,7 +745,7 @@ exports.login = async (req, res, next) => {
       token,
       refreshToken: token,
       user: {
-        _id: user.id || user.uid,
+        _id: normalizedId, // Always normalized ID
         email: user.email,
         displayName: user.displayName,
         profilePicture: user.profilePicture,
@@ -688,10 +779,12 @@ exports.getMe = async (req, res, next) => {
 
     const user = serializeDoc(userDoc);
 
+    const normalizedId = normalizeUserId(user.id);
+    
     res.status(200).json({
       success: true,
       user: {
-        _id: user.id,
+        _id: normalizedId, // Always normalized ID
         email: user.email,
         displayName: user.displayName,
         profilePicture: user.profilePicture,
@@ -730,10 +823,12 @@ exports.updateProfile = async (req, res, next) => {
     const updatedUserDoc = await userRef.get();
     const user = serializeDoc(updatedUserDoc);
 
+    const normalizedId = normalizeUserId(user.id);
+    
     res.status(200).json({
       success: true,
       user: {
-        _id: user.id,
+        _id: normalizedId, // Always normalized ID
         email: user.email,
         displayName: user.displayName,
         profilePicture: user.profilePicture,

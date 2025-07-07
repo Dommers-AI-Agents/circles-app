@@ -1,5 +1,12 @@
 import Foundation
 import CoreLocation
+import UIKit
+
+// IMPORTANT API USAGE POLICY:
+// - Use Apple Maps API for EVERYTHING except photos
+// - Only use Google Places API for fetching place photos
+// - Apple Maps is more cost-efficient than Google Maps
+// - See APIUsageGuidelines.md for detailed policy
 
 enum PlaceError: Error, LocalizedError {
     case notFound
@@ -124,41 +131,127 @@ class PlaceService {
         }
     }
     
-    func createPlace(name: String, description: String?, address: String, category: PlaceCategory, customCategory: String? = nil, subcategory: String? = nil, circleId: String, privacy: PlacePrivacy = .followCirclePrivacy, website: String? = nil, phone: String? = nil, tags: [String]? = nil, photos: [Data]? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
+    func createPlace(name: String, description: String?, address: String, category: PlaceCategory, customCategory: String? = nil, subcategory: String? = nil, circleId: String, privacy: PlacePrivacy = .followCirclePrivacy, website: String? = nil, phone: String? = nil, tags: [String]? = nil, photos: [Data]? = nil, photoUrls: [String]? = nil, location: CLLocationCoordinate2D? = nil, googlePlaceId: String? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
         
-        // First geocode the address to get coordinates
-        geocodeAddress(address) { [weak self] result in
-            switch result {
-            case .success(let location):
-                // Upload photos if provided
-                if let photoDataArray = photos, !photoDataArray.isEmpty {
-                    self?.uploadMultipleImages(photoDataArray) { photoUrlsResult in
-                        switch photoUrlsResult {
-                        case .success(let photoUrls):
-                            // Create place with location and photo URLs
-                            self?.performCreatePlace(
-                                name: name,
-                                description: description,
-                                address: address,
-                                location: location,
-                                category: category,
-                                customCategory: customCategory,
-                                subcategory: subcategory,
-                                circleId: circleId,
-                                privacy: privacy,
-                                website: website,
-                                phone: phone,
-                                tags: tags,
-                                photoUrls: photoUrls,
-                                completion: completion
-                            )
-                        case .failure(let error):
-                            completion(.failure(error))
-                        }
-                    }
-                } else {
-                    // Create place with location but no photos
-                    self?.performCreatePlace(
+        // Use provided location or geocode the address
+        if let providedLocation = location {
+            // If we have location and googlePlaceId but no photos, use addPlaceFromPOI to fetch photos
+            if googlePlaceId != nil && (photoUrls?.isEmpty ?? true) && (photos?.isEmpty ?? true) {
+                print("📸 Using addPlaceFromPOI to fetch photos for Google Place ID: \(googlePlaceId!)")
+                let geoLocation = GeoLocation(type: "Point", coordinates: [providedLocation.longitude, providedLocation.latitude])
+                self.addPlaceFromPOI(
+                    name: name,
+                    address: address,
+                    location: geoLocation,
+                    category: category,
+                    website: website,
+                    phone: phone,
+                    description: description,
+                    circleId: circleId,
+                    notes: nil,
+                    googlePlaceId: googlePlaceId,
+                    preUploadedPhotoUrls: photoUrls,
+                    completion: completion
+                )
+                return
+            }
+            
+            // Otherwise, continue with standard flow
+            continueCreatePlace(
+                name: name,
+                description: description,
+                address: address,
+                location: providedLocation,
+                category: category,
+                customCategory: customCategory,
+                subcategory: subcategory,
+                circleId: circleId,
+                privacy: privacy,
+                website: website,
+                phone: phone,
+                tags: tags,
+                photos: photos,
+                photoUrls: photoUrls,
+                completion: completion
+            )
+        } else {
+            // Geocode the address to get coordinates
+            geocodeAddress(address) { [weak self] result in
+                switch result {
+                case .success(let location):
+                    self?.continueCreatePlace(
+                        name: name,
+                        description: description,
+                        address: address,
+                        location: location,
+                        category: category,
+                        customCategory: customCategory,
+                        subcategory: subcategory,
+                        circleId: circleId,
+                        privacy: privacy,
+                        website: website,
+                        phone: phone,
+                        tags: tags,
+                        photos: photos,
+                        photoUrls: photoUrls,
+                        completion: completion
+                    )
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
+        }
+    }
+    
+    private func continueCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photos: [Data]?, photoUrls: [String]?, completion: @escaping (Result<Place, Error>) -> Void) {
+        // If we already have photo URLs, use them directly
+        if let urls = photoUrls, !urls.isEmpty {
+            print("📸 Using \(urls.count) pre-uploaded photo URLs")
+            self.performCreatePlace(
+                name: name,
+                description: description,
+                address: address,
+                location: location,
+                category: category,
+                customCategory: customCategory,
+                subcategory: subcategory,
+                circleId: circleId,
+                privacy: privacy,
+                website: website,
+                phone: phone,
+                tags: tags,
+                photoUrls: urls,
+                completion: completion
+            )
+        }
+        // Otherwise upload photos if provided
+        else if let photoDataArray = photos, !photoDataArray.isEmpty {
+            print("📸 Uploading \(photoDataArray.count) photos")
+            self.uploadMultipleImages(photoDataArray) { photoUrlsResult in
+                switch photoUrlsResult {
+                case .success(let photoUrls):
+                    // Create place with location and photo URLs
+                    self.performCreatePlace(
+                        name: name,
+                        description: description,
+                        address: address,
+                        location: location,
+                        category: category,
+                        customCategory: customCategory,
+                        subcategory: subcategory,
+                        circleId: circleId,
+                        privacy: privacy,
+                        website: website,
+                        phone: phone,
+                        tags: tags,
+                        photoUrls: photoUrls,
+                        completion: completion
+                    )
+                case .failure(let error):
+                    print("❌ PlaceService: Failed to upload images: \(error)")
+                    print("⚠️ PlaceService: Will create place without images")
+                    // Continue creating the place without photos
+                    self.performCreatePlace(
                         name: name,
                         description: description,
                         address: address,
@@ -175,9 +268,26 @@ class PlaceService {
                         completion: completion
                     )
                 }
-            case .failure(let error):
-                completion(.failure(error))
             }
+        } else {
+            // Create place with location but no photos
+            print("📸 Creating place without photos")
+            self.performCreatePlace(
+                name: name,
+                description: description,
+                address: address,
+                location: location,
+                category: category,
+                customCategory: customCategory,
+                subcategory: subcategory,
+                circleId: circleId,
+                privacy: privacy,
+                website: website,
+                phone: phone,
+                tags: tags,
+                photoUrls: nil,
+                completion: completion
+            )
         }
     }
     
@@ -256,6 +366,228 @@ class PlaceService {
             case .failure(let error):
                 let mappedError = self?.mapAPIErrorToPlaceError(error)
                 completion(.failure(mappedError ?? PlaceError.updateFailed))
+            }
+        }
+    }
+    
+    // MARK: - Add Place from POI
+    
+    func addPlaceFromPOI(name: String, address: String, location: GeoLocation?, category: PlaceCategory, website: String? = nil, phone: String? = nil, description: String? = nil, circleId: String, notes: String?, googlePlaceId: String? = nil, preUploadedPhotoUrls: [String]? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
+        print("🚀 PlaceService.addPlaceFromPOI called with:")
+        print("  Name: \(name)")
+        print("  GooglePlaceId: \(googlePlaceId ?? "nil")")
+        print("  Location: \(location?.coordinates ?? [])")
+        print("  Pre-uploaded photos: \(preUploadedPhotoUrls?.count ?? 0)")
+        
+        var body: [String: Any] = [
+            "name": name,
+            "address": address,
+            "category": category.rawValue,
+            "circleId": circleId,
+            "privacy": PlacePrivacy.followCirclePrivacy.rawValue
+        ]
+        
+        if let location = location {
+            body["location"] = [
+                "type": location.type,
+                "coordinates": location.coordinates
+            ]
+        }
+        
+        if let notes = notes {
+            body["privateNotes"] = notes
+        }
+        
+        if let website = website {
+            body["website"] = website
+        }
+        
+        if let phone = phone {
+            body["phone"] = phone
+        }
+        
+        if let description = description {
+            body["description"] = description
+        }
+        
+        if let googlePlaceId = googlePlaceId {
+            body["googlePlaceId"] = googlePlaceId
+        }
+        
+        // If we have pre-uploaded photos, use them directly
+        if let preUploadedUrls = preUploadedPhotoUrls, !preUploadedUrls.isEmpty {
+            print("📸 Using \(preUploadedUrls.count) pre-uploaded photos")
+            body["photos"] = preUploadedUrls
+            createPlaceWithBody(body, completion: completion)
+            return
+        }
+        
+        // Otherwise, collect images from both Apple Look Around and Google Places
+        var collectedImageUrls: [String] = []
+        let imageCollectionGroup = DispatchGroup()
+        
+        // Try to get Apple Look Around image if location is available
+        if let location = location, location.coordinates.count >= 2 {
+            let latitude = location.coordinates[1]
+            let longitude = location.coordinates[0]
+            let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+            
+            // Collect Apple Look Around image
+            if #available(iOS 16.0, *) {
+                print("🔍 PlaceService: Checking Apple Look Around availability at \(coordinate)")
+                imageCollectionGroup.enter()
+                Task {
+                    let hasLookAround = await AppleLookAroundService.shared.checkLookAroundAvailability(at: coordinate)
+                    
+                    if hasLookAround {
+                        print("✅ PlaceService: Look Around is available")
+                        do {
+                            // Get the Look Around snapshot
+                            let lookAroundImage = try await AppleLookAroundService.shared.getLookAroundSnapshot(at: coordinate)
+                            print("📸 PlaceService: Got Look Around snapshot")
+                            
+                            // Convert to JPEG data
+                            if let imageData = lookAroundImage.jpegData(compressionQuality: 0.8) {
+                                // Upload the image
+                                self.uploadImage(imageData) { uploadResult in
+                                    switch uploadResult {
+                                    case .success(let imageUrl):
+                                        collectedImageUrls.append(imageUrl)
+                                        print("✅ PlaceService: Apple Look Around image uploaded successfully: \(imageUrl)")
+                                    case .failure(let error):
+                                        print("❌ PlaceService: Failed to upload Look Around image: \(error)")
+                                        print("⚠️ PlaceService: Will continue place creation without this image")
+                                    }
+                                    imageCollectionGroup.leave()
+                                }
+                            } else {
+                                print("❌ PlaceService: Failed to convert Look Around image to JPEG")
+                                imageCollectionGroup.leave()
+                            }
+                        } catch {
+                            print("❌ PlaceService: Failed to get Look Around snapshot: \(error)")
+                            imageCollectionGroup.leave()
+                        }
+                    } else {
+                        print("⚠️ PlaceService: Look Around is NOT available at this location")
+                        imageCollectionGroup.leave()
+                    }
+                }
+            } else {
+                print("⚠️ PlaceService: iOS version < 16.0, skipping Look Around")
+            }
+        }
+        
+        // Try to get Google Places photo if googlePlaceId is available
+        if let googlePlaceId = googlePlaceId, !googlePlaceId.isEmpty {
+            print("🔍 PlaceService: Fetching Google Places photo for placeId: \(googlePlaceId)")
+            imageCollectionGroup.enter()
+            
+            // Fetch place details including photos
+            GooglePlacesService.shared.fetchPlaceDetails(placeID: googlePlaceId) { result in
+                switch result {
+                case .success(let place):
+                    // Get the first photo if available
+                    if let photoMetadata = place.photos?.first {
+                        print("📸 PlaceService: Found Google Places photo metadata, loading photo...")
+                        GooglePlacesService.shared.loadPhoto(from: photoMetadata) { photoResult in
+                            switch photoResult {
+                            case .success(let image):
+                                print("✅ PlaceService: Google Places photo loaded successfully")
+                                // Convert to JPEG and upload
+                                if let imageData = image.jpegData(compressionQuality: 0.8) {
+                                    print("📸 PlaceService: Converting Google photo to JPEG (size: \(imageData.count / 1024) KB)")
+                                    self.uploadImage(imageData) { uploadResult in
+                                        switch uploadResult {
+                                        case .success(let imageUrl):
+                                            collectedImageUrls.append(imageUrl)
+                                            print("✅ PlaceService: Google Places photo uploaded successfully: \(imageUrl)")
+                                        case .failure(let error):
+                                            print("❌ PlaceService: Failed to upload Google Places photo: \(error)")
+                                            print("⚠️ PlaceService: Will continue place creation without this image")
+                                            
+                                            // Check if it's specifically a server error
+                                            if let apiError = error as? APIError, case .serverError = apiError {
+                                                print("🔧 PlaceService: Server error - Firebase Storage may not be configured properly")
+                                                print("🔧 PlaceService: Run: gcloud run services update circles-backend --update-env-vars FIREBASE_STORAGE_BUCKET=circles-app-83b67.appspot.com --region us-central1")
+                                            }
+                                        }
+                                        imageCollectionGroup.leave()
+                                    }
+                                } else {
+                                    print("❌ PlaceService: Failed to convert Google Places photo to JPEG")
+                                    imageCollectionGroup.leave()
+                                }
+                            case .failure(let error):
+                                print("❌ PlaceService: Failed to load Google Places photo: \(error)")
+                                imageCollectionGroup.leave()
+                            }
+                        }
+                    } else {
+                        print("⚠️ PlaceService: No photos available from Google Places")
+                        imageCollectionGroup.leave()
+                    }
+                case .failure(let error):
+                    print("❌ PlaceService: Failed to fetch Google Place details: \(error)")
+                    imageCollectionGroup.leave()
+                }
+            }
+        } else {
+            print("⚠️ PlaceService: No googlePlaceId provided or empty, skipping Google Places photo")
+        }
+        
+        // Wait for all image collection tasks to complete
+        imageCollectionGroup.notify(queue: .main) {
+            print("🔔 PlaceService: All image collection tasks completed")
+            
+            // Add collected images to the body
+            if !collectedImageUrls.isEmpty {
+                body["photos"] = collectedImageUrls
+                print("📸 PlaceService: Collected \(collectedImageUrls.count) images for the place")
+                for (index, url) in collectedImageUrls.enumerated() {
+                    print("  Image \(index + 1): \(url)")
+                }
+            } else {
+                print("⚠️ PlaceService: No images were collected for the place")
+                print("⚠️ PlaceService: Creating place without images - image upload may have failed")
+                print("🔧 PlaceService: If images aren't uploading, check Firebase Storage configuration")
+            }
+            
+            print("📤 PlaceService: About to create place with \(body.keys.count) fields")
+            
+            // Create the place with collected images (or without if upload failed)
+            self.createPlaceWithBody(body, completion: completion)
+        }
+    }
+    
+    private func createPlaceWithBody(_ body: [String: Any], completion: @escaping (Result<Place, Error>) -> Void) {
+        print("🚀 PlaceService: Creating place with body containing \(body.keys.count) fields")
+        if let photos = body["photos"] as? [String] {
+            print("  Photos in request: \(photos.count)")
+        }
+        
+        APIService.shared.request(
+            endpoint: "places",
+            method: .post,
+            body: body,
+            requiresAuth: true
+        ) { [weak self] (result: Result<PlaceResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                print("✅ PlaceService: Place created successfully")
+                if let photos = response.place.photos {
+                    print("  Photos in response: \(photos.count)")
+                    for (index, photo) in photos.enumerated() {
+                        print("  Photo \(index + 1): \(photo)")
+                    }
+                } else {
+                    print("  ⚠️ No photos in response")
+                }
+                completion(.success(response.place))
+            case .failure(let error):
+                print("❌ PlaceService: Failed to create place: \(error)")
+                let mappedError = self?.mapAPIErrorToPlaceError(error)
+                completion(.failure(mappedError ?? PlaceError.creationFailed))
             }
         }
     }
@@ -455,12 +787,77 @@ class PlaceService {
     }
     
     private func uploadImage(_ imageData: Data, completion: @escaping (Result<String, Error>) -> Void) {
+        uploadImageWithCompression(imageData, compressionQuality: 1.0, attemptNumber: 1, completion: completion)
+    }
+    
+    private func uploadImageWithCompression(_ imageData: Data, compressionQuality: Float, attemptNumber: Int, completion: @escaping (Result<String, Error>) -> Void) {
+        // IMPORTANT: Image Compression Strategy
+        // Goal: Keep images under 1MB to prevent storage costs and upload failures
+        // Strategy: Progressive compression with quality reduction and resizing
+        // Note: Backend has a hard limit of 1MB for base64 encoded images
+        
         // Log image size
         let imageSizeInKB = Double(imageData.count) / 1024.0
-        print("📸 Uploading image - size: \(String(format: "%.0f", imageSizeInKB)) KB")
+        print("📸 Uploading image - size: \(String(format: "%.0f", imageSizeInKB)) KB (attempt #\(attemptNumber), quality: \(compressionQuality))")
+        
+        // CRITICAL: Max size is 1MB (1024KB) to match backend limits
+        // DO NOT increase this without also updating backend/routes/uploadRoutes.js
+        let maxSizeKB: Double = 1024 // 1MB - DO NOT CHANGE
+        let maxAttempts = 6
+        // Progressive compression levels - will try each until under 1MB
+        let compressionLevels: [Float] = [0.8, 0.6, 0.4, 0.2, 0.1, 0.05]
+        
+        var dataToUpload = imageData
+        
+        if imageSizeInKB > maxSizeKB && attemptNumber <= maxAttempts {
+            print("⚠️ Image size exceeds \(maxSizeKB)KB limit, attempting to compress...")
+            
+            // Try to compress the image further
+            if let image = UIImage(data: imageData),
+               attemptNumber <= compressionLevels.count {
+                
+                // Progressive resizing strategy based on attempt number
+                var imageToCompress = image
+                
+                // Start resizing earlier and more aggressively to achieve 1MB goal
+                if attemptNumber >= 2 { // Start resizing on second attempt
+                    let resizeDimensions: [CGFloat] = [2048, 1920, 1280, 1024, 800, 640]
+                    let dimensionIndex = min(attemptNumber - 2, resizeDimensions.count - 1)
+                    let maxDimension = resizeDimensions[dimensionIndex]
+                    
+                    let scale = min(maxDimension / image.size.width, maxDimension / image.size.height)
+                    if scale < 1.0 {
+                        let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+                        UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
+                        image.draw(in: CGRect(origin: .zero, size: newSize))
+                        if let resizedImage = UIGraphicsGetImageFromCurrentImageContext() {
+                            imageToCompress = resizedImage
+                            print("📐 Resized image to \(Int(newSize.width))x\(Int(newSize.height)) (max dimension: \(Int(maxDimension)))")
+                        }
+                        UIGraphicsEndImageContext()
+                    }
+                }
+                
+                if let compressedData = imageToCompress.jpegData(compressionQuality: CGFloat(compressionLevels[attemptNumber - 1])) {
+                    let compressedSizeKB = Double(compressedData.count) / 1024.0
+                    print("📸 Compressed image size: \(String(format: "%.0f", compressedSizeKB)) KB with quality \(compressionLevels[attemptNumber - 1])")
+                    
+                    // If still too large and we have more compression levels to try
+                    if compressedSizeKB > maxSizeKB && attemptNumber < compressionLevels.count {
+                        uploadImageWithCompression(compressedData, compressionQuality: compressionLevels[attemptNumber], attemptNumber: attemptNumber + 1, completion: completion)
+                        return
+                    }
+                    
+                    // Use the compressed data even if slightly over limit on final attempt
+                    dataToUpload = compressedData
+                }
+            } else {
+                print("⚠️ Unable to compress image further, uploading as is...")
+            }
+        }
         
         // Convert image data to base64
-        let base64String = imageData.base64EncodedString()
+        let base64String = dataToUpload.base64EncodedString()
         let filename = "place-\(UUID().uuidString).jpg"
         
         // Log base64 size (about 33% larger than original)
@@ -471,6 +868,8 @@ class PlaceService {
             "image": base64String,
             "filename": filename
         ]
+        
+        print("📤 Sending image upload request...")
         
         APIService.shared.request(
             endpoint: "upload/image",
@@ -484,6 +883,19 @@ class PlaceService {
                 completion(.success(response.url))
             case .failure(let error):
                 print("❌ Failed to upload image: \(error)")
+                print("   Error details: \(error.localizedDescription)")
+                
+                // Provide more specific error message
+                switch error {
+                case .httpError(let statusCode, let messageData):
+                    let message = messageData.flatMap { String(data: $0, encoding: .utf8) } ?? "Unknown error"
+                    print("   HTTP Error \(statusCode): \(message)")
+                case .serverError:
+                    print("   Server error - image may be too large or invalid")
+                default:
+                    print("   Error type: \(error)")
+                }
+                
                 completion(.failure(error))
             }
         }
@@ -540,6 +952,120 @@ class PlaceService {
             return .unknown
         }
     }
+    
+    // MARK: - Like/Unlike Place
+    
+    func likePlace(id: String, completion: @escaping (Result<Place, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "places/\(id)/like",
+            method: .post,
+            requiresAuth: true
+        ) { [weak self] (result: Result<PlaceResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.place))
+            case .failure(let error):
+                let mappedError = self?.mapAPIErrorToPlaceError(error)
+                completion(.failure(mappedError ?? error))
+            }
+        }
+    }
+    
+    // MARK: - Add Existing Place to Circle
+    
+    func addExistingPlaceToCircle(placeId: String, circleId: String, notes: String? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
+        var body: [String: Any] = [:]
+        
+        if let notes = notes {
+            body["notes"] = notes
+        }
+        
+        // The API endpoint expects circleId in the URL path, not in the body
+        APIService.shared.request(
+            endpoint: "places/\(placeId)/add-to-circle/\(circleId)",
+            method: .post,
+            body: body.isEmpty ? nil : body,
+            requiresAuth: true
+        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
+            switch result {
+            case .success:
+                // The API returns just a success message, not the place object
+                // We'll return a success with a placeholder place
+                // In a real scenario, you might want to fetch the updated place
+                completion(.success(Place(
+                    id: placeId,
+                    name: "",
+                    description: nil,
+                    address: "",
+                    location: nil,
+                    website: nil,
+                    phone: nil,
+                    googlePlaceId: nil,
+                    photos: nil,
+                    category: .other,
+                    customCategory: nil,
+                    subcategory: nil,
+                    rating: nil,
+                    userRatingsTotal: nil,
+                    notes: nil,
+                    privateNotes: nil,
+                    publicNotes: nil,
+                    tags: nil,
+                    reviews: nil,
+                    openingHours: nil,
+                    priceLevel: nil,
+                    likes: nil,
+                    likesCount: nil,
+                    circleId: circleId,
+                    addedBy: "",
+                    addedByUser: nil,
+                    privacy: .followCirclePrivacy,
+                    createdAt: Date(),
+                    updatedAt: Date()
+                )))
+            case .failure(let error):
+                let mappedError = self?.mapAPIErrorToPlaceError(error)
+                completion(.failure(mappedError ?? error))
+            }
+        }
+    }
+    
+    // MARK: - Comments
+    
+    func getPlaceComments(placeId: String, completion: @escaping (Result<[PlaceComment], Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "places/\(placeId)/comments",
+            method: .get,
+            requiresAuth: true
+        ) { [weak self] (result: Result<PlaceCommentsResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.comments))
+            case .failure(let error):
+                let mappedError = self?.mapAPIErrorToPlaceError(error)
+                completion(.failure(mappedError ?? error))
+            }
+        }
+    }
+    
+    func addPlaceComment(placeId: String, text: String, completion: @escaping (Result<PlaceComment, Error>) -> Void) {
+        let body = ["text": text]
+        
+        APIService.shared.request(
+            endpoint: "places/\(placeId)/comments",
+            method: .post,
+            body: body,
+            requiresAuth: true
+        ) { [weak self] (result: Result<PlaceCommentResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.comment))
+            case .failure(let error):
+                let mappedError = self?.mapAPIErrorToPlaceError(error)
+                completion(.failure(mappedError ?? error))
+            }
+        }
+    }
 }
 
 // MARK: - Response Types
@@ -552,4 +1078,30 @@ struct PlacesResponse: Decodable {
 struct PlaceResponse: Decodable {
     let success: Bool
     let place: Place
+}
+
+struct PlaceCommentsResponse: Decodable {
+    let success: Bool
+    let comments: [PlaceComment]
+}
+
+struct PlaceCommentResponse: Decodable {
+    let success: Bool
+    let comment: PlaceComment
+}
+
+// MARK: - PlaceComment Model
+
+struct PlaceComment: Codable, Identifiable {
+    let id: String
+    let placeId: String
+    let userId: String
+    let text: String
+    let createdAt: Date
+    let user: User? // Populated when fetching comments
+    
+    enum CodingKeys: String, CodingKey {
+        case id = "_id"
+        case placeId, userId, text, createdAt, user
+    }
 }

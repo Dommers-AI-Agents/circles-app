@@ -8,8 +8,37 @@ const {
   serializeQuerySnapshot 
 } = require('../models/FirestoreModels');
 const activityService = require('../services/activityService');
+const notificationService = require('../services/notificationService');
 
 const db = getFirestore();
+
+// Helper function to normalize user IDs for comparison
+// Handles both simple format (e.g., "9b5eeac93282416c9bc6dcecbc49b40f") 
+// and complex format (e.g., "000454.9b5eeac93282416c9bc6dcecbc49b40f.2127")
+const normalizeUserId = (userId) => {
+  if (!userId) return userId;
+  
+  // If it's a complex format, extract the middle part
+  if (userId.includes('.')) {
+    const parts = userId.split('.');
+    if (parts.length >= 2) {
+      return parts[1]; // Return the simple ID
+    }
+  }
+  
+  // Otherwise return as-is (already simple format)
+  return userId;
+};
+
+// Helper function to check if two user IDs are the same (accounting for format differences)
+const isSameUser = (userId1, userId2) => {
+  if (!userId1 || !userId2) return false;
+  
+  const normalized1 = normalizeUserId(userId1);
+  const normalized2 = normalizeUserId(userId2);
+  
+  return normalized1 === normalized2;
+};
 
 // @desc    Get user connections
 // @route   GET /api/connections
@@ -51,7 +80,7 @@ const getConnections = async (req, res) => {
           const userDoc = await db.collection(COLLECTIONS.USERS).doc(otherUserId).get();
           if (userDoc.exists) {
             connection.connectedUser = serializeDoc(userDoc);
-            connection.connectedUserId = otherUserId;
+            // DO NOT overwrite connectedUserId - it should remain as stored in database
             console.log(`✅ Found connected user: ${connection.connectedUser.displayName}`);
             
             // Always add activity stats to properly sort connections
@@ -142,7 +171,21 @@ const sendConnectionRequest = async (req, res) => {
       console.log(`✅ Using simple target user ID as-is: ${actualTargetUserId}`);
     }
 
-    if (actualTargetUserId === userId) {
+    // Check for self-connection with more robust comparison
+    const normalizedCurrentUserId = normalizeUserId(userId);
+    const normalizedTargetUserId = normalizeUserId(actualTargetUserId);
+    
+    if (normalizedCurrentUserId === normalizedTargetUserId || 
+        actualTargetUserId === userId ||
+        targetUserId === userId ||
+        isSameUser(userId, targetUserId)) {
+      console.log(`🚫 Prevented self-connection attempt:`, {
+        userId,
+        targetUserId,
+        actualTargetUserId,
+        normalizedCurrentUserId,
+        normalizedTargetUserId
+      });
       return res.status(400).json({
         success: false,
         message: 'Cannot connect to yourself'
@@ -199,20 +242,55 @@ const sendConnectionRequest = async (req, res) => {
     const targetUserDocId = targetUserDoc.id;
     
     // Check if connection already exists
-    const existingConnectionQuery1 = await db.collection(COLLECTIONS.CONNECTIONS)
+    // We need to check all possible combinations of ID formats
+    console.log(`🔍 Checking for existing connections between:`, {
+      currentUser: userId,
+      targetUser: targetUserDocId,
+      normalizedCurrent: normalizeUserId(userId),
+      normalizedTarget: normalizeUserId(targetUserDocId)
+    });
+    
+    // Get all connections involving the current user
+    const userConnectionsQuery = await db.collection(COLLECTIONS.CONNECTIONS)
       .where('userId', '==', userId)
-      .where('connectedUserId', '==', targetUserDocId)
       .get();
-
-    const existingConnectionQuery2 = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', targetUserDocId)
+    
+    const connectedUserConnectionsQuery = await db.collection(COLLECTIONS.CONNECTIONS)
       .where('connectedUserId', '==', userId)
       .get();
-
-    if (!existingConnectionQuery1.empty || !existingConnectionQuery2.empty) {
-      // If connection exists and is already accepted, return success
-      const existingConnection = !existingConnectionQuery1.empty ? 
-        existingConnectionQuery1.docs[0] : existingConnectionQuery2.docs[0];
+    
+    // Check if any existing connection matches our target user
+    let existingConnection = null;
+    
+    // Check connections where current user is the initiator
+    for (const doc of userConnectionsQuery.docs) {
+      const conn = doc.data();
+      if (isSameUser(conn.connectedUserId, targetUserDocId)) {
+        existingConnection = doc;
+        console.log(`✅ Found existing connection (user as initiator):`, {
+          connectionId: doc.id,
+          status: conn.status
+        });
+        break;
+      }
+    }
+    
+    // Check connections where current user is the recipient
+    if (!existingConnection) {
+      for (const doc of connectedUserConnectionsQuery.docs) {
+        const conn = doc.data();
+        if (isSameUser(conn.userId, targetUserDocId)) {
+          existingConnection = doc;
+          console.log(`✅ Found existing connection (user as recipient):`, {
+            connectionId: doc.id,
+            status: conn.status
+          });
+          break;
+        }
+      }
+    }
+    
+    if (existingConnection) {
       const connectionData = existingConnection.data();
       
       if (connectionData.status === 'accepted') {
@@ -225,9 +303,26 @@ const sendConnectionRequest = async (req, res) => {
         });
       }
       
+      console.log(`⚠️ Connection request already exists with status: ${connectionData.status}`);
       return res.status(409).json({
         success: false,
-        message: 'Connection request already pending'
+        message: 'Connection request already pending',
+        connectionId: existingConnection.id,
+        status: connectionData.status
+      });
+    }
+    
+    console.log(`✅ No existing connection found, proceeding to create new connection`);
+
+    // Final safety check before creating connection
+    if (userId === targetUserDocId || isSameUser(userId, targetUserDocId)) {
+      console.log(`🚫 Final safety check prevented self-connection:`, {
+        userId,
+        targetUserDocId
+      });
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot connect to yourself'
       });
     }
 
@@ -272,6 +367,75 @@ const sendConnectionRequest = async (req, res) => {
       data: connection
     });
 
+    // Send notification to target user if not auto-accepted
+    if (!autoAccept) {
+      try {
+        await notificationService.notifyConnectionRequest(userId, targetUserDocId);
+        
+        // Also create a system message in the user's inbox
+        const senderDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+        const senderName = senderDoc.exists ? senderDoc.data().displayName : 'Someone';
+        
+        // Create or find direct conversation between users
+        let directConversation = null;
+        
+        // Check if a direct conversation already exists
+        const existingConvQuery = await db.collection(COLLECTIONS.CONVERSATIONS)
+          .where('type', '==', 'direct')
+          .where('participants', 'array-contains', userId)
+          .get();
+          
+        const existingConversation = existingConvQuery.docs.find(doc => {
+          const data = doc.data();
+          return data.participants.includes(targetUserDocId) && 
+                 data.participants.length === 2;
+        });
+        
+        if (existingConversation) {
+          directConversation = { id: existingConversation.id, ...existingConversation.data() };
+        } else {
+          // Create direct conversation
+          const { createConversation } = require('../models/FirestoreModels');
+          const convData = createConversation({
+            type: 'direct',
+            participants: [userId, targetUserDocId],
+            name: null,
+            avatar: null
+          }, userId);
+          
+          const convRef = await db.collection(COLLECTIONS.CONVERSATIONS).add(convData);
+          directConversation = { id: convRef.id, ...convData };
+        }
+        
+        // Create connection request message
+        const { createMessage } = require('../models/FirestoreModels');
+        const messageData = createMessage({
+          type: 'connection_request',
+          content: `${senderName} wants to connect with you`,
+          metadata: {
+            connectionId: docRef.id,
+            senderId: userId,
+            senderName: senderName,
+            senderAvatar: senderDoc.exists ? senderDoc.data().profilePicture : null,
+            status: 'pending' // Track if this request has been handled
+          }
+        }, directConversation.id, userId);
+        
+        await db.collection(COLLECTIONS.MESSAGES).add(messageData);
+        
+        // Update conversation's last message time
+        await db.collection(COLLECTIONS.CONVERSATIONS).doc(directConversation.id).update({
+          lastMessageTime: messageData.createdAt,
+          lastMessage: messageData.content,
+          lastMessageType: 'connection_request'
+        });
+        
+      } catch (notifError) {
+        console.error('Error sending connection request notification:', notifError);
+        // Don't fail the request if notification fails
+      }
+    }
+
   } catch (error) {
     console.error('❌ Error sending connection request:', {
       error: error.message,
@@ -307,8 +471,26 @@ const acceptConnection = async (req, res) => {
 
     const connection = connectionDoc.data();
 
+    console.log(`🔍 Accept connection check:`, {
+      connectionId: connectionId,
+      userId: userId,
+      connectedUserId: connection.connectedUserId,
+      requestingUserId: connection.userId,
+      normalizedCurrentUser: normalizeUserId(userId),
+      normalizedConnectedUser: normalizeUserId(connection.connectedUserId)
+    });
+
     // Check if user is the target of this connection request
-    if (connection.connectedUserId !== userId) {
+    // Use the helper function to handle ID format differences
+    if (!isSameUser(connection.connectedUserId, userId)) {
+      console.log(`❌ User not authorized to accept connection:`, {
+        expectedUserId: connection.connectedUserId,
+        actualUserId: userId,
+        normalized: {
+          expected: normalizeUserId(connection.connectedUserId),
+          actual: normalizeUserId(userId)
+        }
+      });
       return res.status(403).json({
         success: false,
         message: 'Not authorized to accept this connection'
@@ -345,6 +527,36 @@ const acceptConnection = async (req, res) => {
       data: updatedConnection
     });
 
+    // Send notification to the requester that their connection was accepted
+    try {
+      const acceptingUserDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+      const acceptingUserName = acceptingUserDoc.exists ? acceptingUserDoc.data().displayName : 'Someone';
+      
+      // Send push notification
+      await notificationService.sendToUser(connection.userId, {
+        type: 'connection_accepted',
+        title: 'Connection Accepted',
+        body: `${acceptingUserName} accepted your connection request`,
+        data: {
+          type: 'connection_accepted',
+          acceptedByUserId: userId
+        }
+      });
+      
+      // Send email notification
+      const requesterDoc = await db.collection(COLLECTIONS.USERS).doc(connection.userId).get();
+      if (requesterDoc.exists && requesterDoc.data().email) {
+        const emailService = require('../services/emailService');
+        await emailService.sendConnectionAcceptedEmail(
+          requesterDoc.data().email,
+          acceptingUserName
+        );
+      }
+    } catch (notifError) {
+      console.error('Error sending acceptance notification:', notifError);
+      // Don't fail the request if notification fails
+    }
+
   } catch (error) {
     console.error('Error accepting connection:', error);
     res.status(500).json({
@@ -376,7 +588,18 @@ const declineConnection = async (req, res) => {
     const connection = connectionDoc.data();
 
     // Check if user is authorized to decline (either party can decline)
-    if (connection.userId !== userId && connection.connectedUserId !== userId) {
+    // Use the helper function to handle ID format differences
+    if (!isSameUser(connection.userId, userId) && !isSameUser(connection.connectedUserId, userId)) {
+      console.log(`❌ User not authorized to decline connection:`, {
+        connectionUserId: connection.userId,
+        connectedUserId: connection.connectedUserId,
+        currentUserId: userId,
+        normalized: {
+          connectionUser: normalizeUserId(connection.userId),
+          connectedUser: normalizeUserId(connection.connectedUserId),
+          currentUser: normalizeUserId(userId)
+        }
+      });
       return res.status(403).json({
         success: false,
         message: 'Not authorized to decline this connection'
@@ -422,7 +645,8 @@ const blockConnection = async (req, res) => {
     const connection = connectionDoc.data();
 
     // Check if user is part of this connection
-    if (connection.userId !== userId && connection.connectedUserId !== userId) {
+    // Use the helper function to handle ID format differences
+    if (!isSameUser(connection.userId, userId) && !isSameUser(connection.connectedUserId, userId)) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to block this connection'
@@ -475,7 +699,8 @@ const getSharedCirclesWithConnection = async (req, res) => {
     const connection = connectionDoc.data();
     
     // Verify user is part of this connection
-    if (connection.userId !== userId && connection.connectedUserId !== userId) {
+    // Use the helper function to handle ID format differences
+    if (!isSameUser(connection.userId, userId) && !isSameUser(connection.connectedUserId, userId)) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to view this connection'
@@ -483,7 +708,7 @@ const getSharedCirclesWithConnection = async (req, res) => {
     }
 
     // Get the other user's ID
-    const otherUserId = connection.userId === userId ? connection.connectedUserId : connection.userId;
+    const otherUserId = isSameUser(connection.userId, userId) ? connection.connectedUserId : connection.userId;
 
     // Find circle shares between these users
     const sharesQuery = await db.collection(COLLECTIONS.CIRCLE_SHARES)
@@ -548,7 +773,8 @@ const removeConnection = async (req, res) => {
     const connection = connectionDoc.data();
 
     // Check if user is part of this connection
-    if (connection.userId !== userId && connection.connectedUserId !== userId) {
+    // Use the helper function to handle ID format differences
+    if (!isSameUser(connection.userId, userId) && !isSameUser(connection.connectedUserId, userId)) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to remove this connection'
@@ -615,7 +841,7 @@ const clearConnectionActivity = async (req, res) => {
     }
     
     const connection = connectionDoc.data();
-    const connectedUserId = connection.userId === userId ? connection.connectedUserId : connection.userId;
+    const connectedUserId = isSameUser(connection.userId, userId) ? connection.connectedUserId : connection.userId;
     
     await activityService.clearActivityNotification(userId, connectedUserId);
     
@@ -652,7 +878,7 @@ const trackConnectionView = async (req, res) => {
     }
     
     const connection = connectionDoc.data();
-    const connectedUserId = connection.userId === userId ? connection.connectedUserId : connection.userId;
+    const connectedUserId = isSameUser(connection.userId, userId) ? connection.connectedUserId : connection.userId;
     
     await activityService.trackConnectionView(userId, connectedUserId);
     

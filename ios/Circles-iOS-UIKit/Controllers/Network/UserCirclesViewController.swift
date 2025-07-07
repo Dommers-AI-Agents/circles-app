@@ -5,8 +5,10 @@ class UserCirclesViewController: UIViewController {
     // MARK: - Properties
     private let userId: String
     private let userName: String
+    private let connectionId: String?
     private var userCircles: [Circle] = []
     private let refreshControl = UIRefreshControl()
+    private var hasRecentActivity = false
     
     // MARK: - UI Elements
     private let headerView: UIView = {
@@ -51,14 +53,15 @@ class UserCirclesViewController: UIViewController {
         table.translatesAutoresizingMaskIntoConstraints = false
         table.separatorStyle = .none
         table.backgroundColor = .systemGroupedBackground
-        table.register(CircleTableViewCell.self, forCellReuseIdentifier: "CircleCell")
+        table.register(UITableViewCell.self, forCellReuseIdentifier: "CircleCell")
         return table
     }()
     
     // MARK: - Init
-    init(userId: String, userName: String) {
+    init(userId: String, userName: String, connectionId: String? = nil) {
         self.userId = userId
         self.userName = userName
+        self.connectionId = connectionId
         super.init(nibName: nil, bundle: nil)
     }
     
@@ -132,6 +135,7 @@ class UserCirclesViewController: UIViewController {
         struct UserCirclesData: Codable {
             let user: User
             let circles: [Circle]
+            let hasRecentActivity: Bool?
         }
         
         APIService.shared.request(
@@ -145,8 +149,14 @@ class UserCirclesViewController: UIViewController {
                 switch result {
                 case .success(let response):
                     self?.userCircles = response.data.circles
+                    self?.hasRecentActivity = response.data.hasRecentActivity ?? false
                     self?.updateUI(with: response.data.user)
                     self?.tableView.reloadData()
+                    
+                    // Show activity banner if there's recent activity
+                    if self?.hasRecentActivity == true {
+                        self?.showActivityBanner()
+                    }
                 case .failure(let error):
                     print("Error loading user circles: \(error)")
                     self?.showError("Failed to load circles")
@@ -179,6 +189,47 @@ class UserCirclesViewController: UIViewController {
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
     }
+    
+    private func showActivityBanner() {
+        let bannerView = UIView()
+        bannerView.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.1)
+        bannerView.layer.cornerRadius = 8
+        bannerView.translatesAutoresizingMaskIntoConstraints = false
+        
+        let label = UILabel()
+        label.text = "🆕 New activity from \(userName)"
+        label.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+        label.textColor = Constants.Colors.primary
+        label.translatesAutoresizingMaskIntoConstraints = false
+        
+        bannerView.addSubview(label)
+        view.addSubview(bannerView)
+        
+        NSLayoutConstraint.activate([
+            bannerView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            bannerView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            bannerView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            bannerView.heightAnchor.constraint(equalToConstant: 36),
+            
+            label.centerXAnchor.constraint(equalTo: bannerView.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: bannerView.centerYAnchor)
+        ])
+        
+        // Animate banner appearance
+        bannerView.alpha = 0
+        UIView.animate(withDuration: 0.3) {
+            bannerView.alpha = 1
+        }
+        
+        // Remove banner after 3 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            UIView.animate(withDuration: 0.3, animations: {
+                bannerView.alpha = 0
+            }) { _ in
+                bannerView.removeFromSuperview()
+            }
+        }
+    }
 }
 
 // MARK: - UITableViewDataSource
@@ -188,9 +239,63 @@ extension UserCirclesViewController: UITableViewDataSource {
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "CircleCell", for: indexPath) as! CircleTableViewCell
+        let cell = tableView.dequeueReusableCell(withIdentifier: "CircleCell", for: indexPath)
         let circle = userCircles[indexPath.row]
-        cell.configure(with: circle)
+        
+        // Configure cell with basic information
+        var content = cell.defaultContentConfiguration()
+        content.text = circle.name
+        content.secondaryText = "\(circle.places?.count ?? 0) places"
+        
+        // Set image based on category
+        let iconName: String
+        switch circle.category {
+        case .travel: iconName = "airplane"
+        case .food: iconName = "fork.knife"
+        case .services: iconName = "wrench.and.screwdriver"
+        case .shopping: iconName = "bag"
+        case .healthcare: iconName = "heart"
+        case .entertainment: iconName = "tv"
+        case .other: iconName = "circle.grid.3x3"
+        }
+        content.image = UIImage(systemName: iconName)
+        content.imageProperties.tintColor = Constants.Colors.primary
+        
+        cell.contentConfiguration = content
+        cell.accessoryType = .disclosureIndicator
+        
+        // Highlight new circles
+        if circle.isNew == true {
+            cell.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.05)
+            
+            // Add new badge
+            let newBadge = UILabel()
+            newBadge.text = "NEW"
+            newBadge.font = UIFont.systemFont(ofSize: 10, weight: .bold)
+            newBadge.textColor = .white
+            newBadge.backgroundColor = Constants.Colors.primary
+            newBadge.layer.cornerRadius = 4
+            newBadge.clipsToBounds = true
+            newBadge.textAlignment = .center
+            newBadge.translatesAutoresizingMaskIntoConstraints = false
+            
+            cell.contentView.addSubview(newBadge)
+            NSLayoutConstraint.activate([
+                newBadge.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor, constant: -36),
+                newBadge.centerYAnchor.constraint(equalTo: cell.contentView.centerYAnchor),
+                newBadge.widthAnchor.constraint(equalToConstant: 32),
+                newBadge.heightAnchor.constraint(equalToConstant: 18)
+            ])
+        } else {
+            cell.backgroundColor = .systemBackground
+            // Remove any existing new badges
+            cell.contentView.subviews.forEach { view in
+                if view is UILabel && (view as? UILabel)?.text == "NEW" {
+                    view.removeFromSuperview()
+                }
+            }
+        }
+        
         return cell
     }
 }
@@ -206,6 +311,6 @@ extension UserCirclesViewController: UITableViewDelegate {
     }
     
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        return 160
+        return UITableView.automaticDimension
     }
 }

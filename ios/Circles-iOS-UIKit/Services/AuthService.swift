@@ -493,7 +493,7 @@ class AuthService {
         keychainService.saveAuthToken(token, expiration: expiration)
     }
     
-    private func getToken() -> String? {
+    func getToken() -> String? {
         return keychainService.getAuthToken()
     }
     

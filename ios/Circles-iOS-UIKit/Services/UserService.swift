@@ -159,7 +159,7 @@ class UserService {
     // MARK: - User Search
     
     func searchUsers(query: String, completion: @escaping (Result<[User], Error>) -> Void) {
-        let queryParams = ["q": query]
+        let queryParams = ["query": query]
         
         APIService.shared.request(
             endpoint: "users/search",
@@ -281,14 +281,26 @@ class UserService {
     // MARK: - Helper Methods
     
     private func uploadProfileImage(_ imageData: Data, completion: @escaping (Result<String, Error>) -> Void) {
-        // In a real app, this would upload the image to a cloud storage service
-        // For now, we'll simulate it with a mock URL
+        // Convert to base64
+        let base64String = imageData.base64EncodedString()
         
-        // Simulate network delay
-        DispatchQueue.global().asyncAfter(deadline: .now() + 1.0) {
-            // Generate a mock image URL
-            let mockImageUrl = "https://storage.circles-app.com/profiles/\(UUID().uuidString).jpg"
-            completion(.success(mockImageUrl))
+        // Upload to backend
+        APIService.shared.request(
+            endpoint: "upload/image",
+            method: .post,
+            body: [
+                "image": base64String,
+                "filename": "profile_\(UUID().uuidString).jpg"
+            ],
+            requiresAuth: true
+        ) { (result: Result<ImageUploadResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.url))
+            case .failure(let error):
+                print("Profile image upload failed: \(error)")
+                completion(.failure(self.mapAPIErrorToUserError(error)))
+            }
         }
     }
     
@@ -366,6 +378,25 @@ class UserService {
             case .failure(let error):
                 let userError = self?.mapAPIErrorToUserError(error)
                 completion(.failure(userError ?? error))
+            }
+        }
+    }
+    
+    func reorderCircles(circleIds: [String], completion: @escaping (Error?) -> Void) {
+        let body: [String: Any] = ["circleIds": circleIds]
+        
+        APIService.shared.request(
+            endpoint: "users/me/circles/reorder",
+            method: .put,
+            body: body,
+            requiresAuth: true
+        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
+            switch result {
+            case .success:
+                completion(nil)
+            case .failure(let error):
+                let userError = self?.mapAPIErrorToUserError(error)
+                completion(userError ?? error)
             }
         }
     }

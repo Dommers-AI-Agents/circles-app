@@ -211,6 +211,19 @@ exports.createCircle = async (req, res, next) => {
       });
     }
 
+    // Check for duplicate circle name for this user
+    const existingCirclesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
+      .where('owner', '==', req.user.uid)
+      .where('name', '==', req.body.name)
+      .get();
+    
+    if (!existingCirclesSnapshot.empty) {
+      return res.status(400).json({
+        success: false,
+        message: 'You already have a circle with this name. Please choose a different name.'
+      });
+    }
+
     // Create circle data
     const circleData = createCircle(req.body, req.user.uid);
     
@@ -280,6 +293,22 @@ exports.updateCircle = async (req, res, next) => {
           message: 'Circle name must be 50 characters or less'
         });
       }
+      
+      // Check for duplicate name if name is being changed
+      if (req.body.name !== circle.name) {
+        const existingCirclesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
+          .where('owner', '==', circle.owner)
+          .where('name', '==', req.body.name)
+          .get();
+        
+        if (!existingCirclesSnapshot.empty) {
+          return res.status(400).json({
+            success: false,
+            message: 'You already have a circle with this name. Please choose a different name.'
+          });
+        }
+      }
+      
       updateData.name = req.body.name;
     }
     

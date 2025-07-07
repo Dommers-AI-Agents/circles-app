@@ -6,6 +6,27 @@ const morgan = require('morgan');
 const { initializeFirebase } = require('./config/firebase');
 const errorHandler = require('./middleware/errorHandler');
 
+// CRITICAL ENVIRONMENT VARIABLES for Cloud Run deployment:
+// 
+// EXISTING ENVIRONMENT VARIABLES (as of January 2025):
+// DO NOT OVERWRITE THESE - Use --update-env-vars, NOT --set-env-vars!
+// - EMAIL_USER: 'noreply@circles-app.com'
+// - APP_URL: 'https://circles-app.com'
+// - GMAIL_USER: 'circles.app.notifications@gmail.com'
+// - GMAIL_APP_PASSWORD: [app-specific password]
+// - JWT_SECRET: [secret key for JWT tokens]
+// - JWT_EXPIRE: '30d'
+// - FIREBASE_PROJECT_ID: 'circles-app-83b67'
+// - FIREBASE_STORAGE_BUCKET: 'circles-app-83b67.appspot.com'
+//
+// IMPORTANT: Always use --update-env-vars to add/modify variables:
+// gcloud run services update circles-backend --update-env-vars KEY=value --region us-central1
+//
+// NEVER use --set-env-vars as it will DELETE all existing variables!
+//
+// To fix 500 errors on image upload, ensure FIREBASE_STORAGE_BUCKET is set:
+// gcloud run services update circles-backend --update-env-vars FIREBASE_STORAGE_BUCKET=circles-app-83b67.appspot.com --region us-central1
+
 // Initialize Firebase
 const firebaseInitialized = initializeFirebase();
 

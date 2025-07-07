@@ -102,10 +102,6 @@ class HorizontalUserListView: UIView {
                 // Filter for accepted connections only
                 let acceptedConnections = connections.filter { $0.status == .accepted }
                 
-                // Debug: Log connection data
-                for conn in acceptedConnections {
-                    print("Connection: \(conn.connectedUser?.displayName ?? "Unknown") - Places: \(conn.totalPlaces ?? -1), Views: \(conn.viewCount ?? 0), Status: \(conn.status.rawValue)")
-                }
                 
                 // Sort connections by activity (places, view count, recent activity)
                 let sortedConnections = acceptedConnections.sorted { (a, b) in
@@ -202,9 +198,22 @@ extension HorizontalUserListView: UICollectionViewDelegate {
             
             delegate?.didSelectUser(user, connectionId: connection.id)
             
-            // Clear activity notification after viewing if they had new activity
-            if connection.hasNewActivity ?? false {
+            // Clear activity notification after viewing if they had new activity or recent place
+            if connection.hasNewActivity ?? false || connection.hasRecentPlace ?? false {
                 clearActivityForConnection(connection.id)
+                
+                // Update the local connection data immediately
+                if let index = connections.firstIndex(where: { $0.id == connection.id }) {
+                    var updatedConnection = connections[index]
+                    updatedConnection.hasNewActivity = false
+                    updatedConnection.hasRecentPlace = false
+                    connections[index] = updatedConnection
+                    
+                    // Update the cell immediately
+                    if let cell = collectionView.cellForItem(at: IndexPath(item: index, section: 0)) as? UserActivityCell {
+                        cell.configure(with: updatedConnection)
+                    }
+                }
             }
         }
     }

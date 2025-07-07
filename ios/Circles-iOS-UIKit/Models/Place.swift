@@ -24,18 +24,21 @@ struct Place: Codable, Identifiable {
     let reviews: [PlaceReview]?
     let openingHours: [OpeningHour]?
     let priceLevel: PriceLevel?
+    let likes: [String]?
+    let likesCount: Int?
     let circleId: String
     let addedBy: String
     let addedByUser: User? // Populated when fetching places in shared circles
     let privacy: PlacePrivacy
     let createdAt: Date
     let updatedAt: Date
+    var isNew: Bool? // Indicates if this is new activity
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
         case name, description, address, location, website, phone, googlePlaceId
         case photos, category, customCategory, subcategory, rating, userRatingsTotal, notes, privateNotes, publicNotes, tags, reviews, openingHours
-        case priceLevel, circleId, addedBy, addedByUser, privacy, createdAt, updatedAt
+        case priceLevel, likes, likesCount, circleId, addedBy, addedByUser, privacy, createdAt, updatedAt, isNew
     }
     
     init(from decoder: Decoder) throws {
@@ -71,12 +74,15 @@ struct Place: Codable, Identifiable {
             self.priceLevel = nil
         }
         
+        self.likes = try container.decodeIfPresent([String].self, forKey: .likes)
+        self.likesCount = try container.decodeIfPresent(Int.self, forKey: .likesCount)
         self.circleId = try container.decode(String.self, forKey: .circleId)
         self.addedBy = try container.decode(String.self, forKey: .addedBy)
         self.addedByUser = try container.decodeIfPresent(User.self, forKey: .addedByUser)
         self.privacy = try container.decode(PlacePrivacy.self, forKey: .privacy)
         self.createdAt = try container.decode(Date.self, forKey: .createdAt)
         self.updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        self.isNew = try container.decodeIfPresent(Bool.self, forKey: .isNew)
     }
     
     // Manual initializer for creating Place instances in code
@@ -86,8 +92,8 @@ struct Place: Codable, Identifiable {
          customCategory: String?, subcategory: String?, rating: Double?, userRatingsTotal: Int?, notes: String?,
          privateNotes: String?, publicNotes: String?, tags: [String]?,
          reviews: [PlaceReview]?, openingHours: [OpeningHour]?,
-         priceLevel: PriceLevel?, circleId: String, addedBy: String,
-         addedByUser: User?, privacy: PlacePrivacy, createdAt: Date, updatedAt: Date) {
+         priceLevel: PriceLevel?, likes: [String]?, likesCount: Int?, circleId: String, addedBy: String,
+         addedByUser: User?, privacy: PlacePrivacy, createdAt: Date, updatedAt: Date, isNew: Bool? = nil) {
         self.id = id
         self.name = name
         self.description = description
@@ -109,17 +115,29 @@ struct Place: Codable, Identifiable {
         self.reviews = reviews
         self.openingHours = openingHours
         self.priceLevel = priceLevel
+        self.likes = likes
+        self.likesCount = likesCount
         self.circleId = circleId
         self.addedBy = addedBy
         self.addedByUser = addedByUser
         self.privacy = privacy
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.isNew = isNew
     }
     
     // Helper computed properties
     var isAddedByCurrentUser: Bool {
         return addedBy == AuthService.shared.getUserId()
+    }
+    
+    var isLikedByCurrentUser: Bool {
+        guard let likes = likes, let userId = AuthService.shared.getUserId() else { return false }
+        return likes.contains(userId)
+    }
+    
+    var hasPhotos: Bool {
+        return photos != nil && !photos!.isEmpty
     }
     
     var displayCategory: String {
@@ -349,7 +367,12 @@ class PlaceAnnotation: NSObject, MKAnnotation {
     }
     
     var subtitle: String? {
-        return place.category.displayName
+        // Include owner information when viewing connection places
+        let categoryName = place.displayCategory
+        let ownerName = place.addedByDisplayName
+        
+        // Format: "Category • Added by Name"
+        return "\(categoryName) • Added by \(ownerName)"
     }
     
     init(place: Place) {

@@ -20,14 +20,16 @@ struct User: Codable, Identifiable {
     let preferences: UserPreferences?
     let createdAt: Date?
     let connectionStatus: String? // "connected", "pending", or nil
+    let connectionDirection: String? // "incoming" or "outgoing" for pending connections
+    let connectionId: String? // ID of the connection document
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
-        case email, displayName, firstName, lastName, phoneNumber, profilePicture, bio, location, friends, friendRequests, circleOrder, preferences, createdAt, connectionStatus
+        case email, displayName, firstName, lastName, phoneNumber, profilePicture, bio, location, friends, friendRequests, circleOrder, preferences, createdAt, connectionStatus, connectionDirection, connectionId
     }
     
     // Convenience initializer for creating User objects directly
-    init(id: String, email: String, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil) {
+    init(id: String, email: String, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil, connectionDirection: String? = nil, connectionId: String? = nil) {
         self.id = id
         self.email = email
         self.displayName = displayName
@@ -43,13 +45,42 @@ struct User: Codable, Identifiable {
         self.preferences = preferences
         self.createdAt = createdAt
         self.connectionStatus = connectionStatus
+        self.connectionDirection = connectionDirection
+        self.connectionId = connectionId
     }
     
     // Custom decoder for JSON decoding
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         
-        id = try container.decode(String.self, forKey: .id)
+        // Try to decode id with flexible field names (_id or id)
+        if let id = try? container.decode(String.self, forKey: .id) {
+            self.id = id
+        } else {
+            // Try to decode with dynamic key "id" (without underscore)
+            struct DynamicCodingKeys: CodingKey {
+                var stringValue: String
+                var intValue: Int? { nil }
+                
+                init(stringValue: String) {
+                    self.stringValue = stringValue
+                }
+                
+                init?(intValue: Int) {
+                    return nil
+                }
+            }
+            
+            let dynamicContainer = try decoder.container(keyedBy: DynamicCodingKeys.self)
+            if let id = try? dynamicContainer.decode(String.self, forKey: DynamicCodingKeys(stringValue: "id")) {
+                self.id = id
+            } else {
+                throw DecodingError.keyNotFound(CodingKeys.id, 
+                    DecodingError.Context(codingPath: decoder.codingPath, 
+                                        debugDescription: "No value found for key '_id' or 'id'"))
+            }
+        }
+        
         email = try container.decode(String.self, forKey: .email)
         displayName = try container.decode(String.self, forKey: .displayName)
         firstName = try container.decodeIfPresent(String.self, forKey: .firstName)
@@ -63,6 +94,8 @@ struct User: Codable, Identifiable {
         circleOrder = try container.decodeIfPresent([String].self, forKey: .circleOrder)
         preferences = try container.decodeIfPresent(UserPreferences.self, forKey: .preferences)
         connectionStatus = try container.decodeIfPresent(String.self, forKey: .connectionStatus)
+        connectionDirection = try container.decodeIfPresent(String.self, forKey: .connectionDirection)
+        connectionId = try container.decodeIfPresent(String.self, forKey: .connectionId)
         
         // Custom date decoding with multiple format support
         if let dateString = try container.decodeIfPresent(String.self, forKey: .createdAt) {

@@ -1,5 +1,10 @@
 import Foundation
 
+// Notification for circle deletion
+extension Notification.Name {
+    static let circleDeleted = Notification.Name("circleDeleted")
+}
+
 enum CircleError: Error, LocalizedError {
     case notFound
     case permissionDenied
@@ -288,6 +293,12 @@ class CircleService {
         ) { [weak self] (result: Result<EmptyResponse, APIError>) in
             switch result {
             case .success(_):
+                // Post notification for circle deletion
+                NotificationCenter.default.post(
+                    name: .circleDeleted,
+                    object: nil,
+                    userInfo: ["circleId": id]
+                )
                 completion(.success(true))
             case .failure(let error):
                 let mappedError = self?.mapAPIErrorToCircleError(error)

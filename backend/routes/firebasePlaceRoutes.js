@@ -7,7 +7,10 @@ const {
   updatePlace,
   deletePlace,
   searchPlaces,
-  refreshPlaceFromGoogle
+  refreshPlaceFromGoogle,
+  likePlace,
+  getPlaceComments,
+  addPlaceComment
 } = require('../controllers/firebasePlaceController');
 const { protect } = require('../middleware/firebaseAuth');
 
@@ -26,6 +29,13 @@ router.route('/search')
 // More specific routes before generic :id route
 router.route('/:id/refresh-google')
   .post(refreshPlaceFromGoogle);
+
+router.route('/:id/like')
+  .post(likePlace);
+
+router.route('/:id/comments')
+  .get(getPlaceComments)
+  .post(addPlaceComment);
 
 router.route('/:id')
   .get(getPlace)

@@ -26,6 +26,7 @@ struct Circle: Codable, Identifiable {
     let myAccessLevel: AccessLevel? // My access level if this is a shared circle
     let createdAt: Date
     let updatedAt: Date
+    var isNew: Bool? // Indicates if this is new activity
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -34,7 +35,7 @@ struct Circle: Codable, Identifiable {
         case places, placesWithDetails, privacy, allowNetworkEdit, category
         case location, tags, sharedWith, followers, activeShares, shareSettings
         case isSharedWithMe, sharedBy, myAccessLevel
-        case createdAt, updatedAt
+        case createdAt, updatedAt, isNew
     }
     
     init(from decoder: Decoder) throws {
@@ -76,6 +77,7 @@ struct Circle: Codable, Identifiable {
         myAccessLevel = try container.decodeIfPresent(AccessLevel.self, forKey: .myAccessLevel)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        isNew = try container.decodeIfPresent(Bool.self, forKey: .isNew)
     }
     
     // Add manual init for creating circles in code
@@ -86,7 +88,7 @@ struct Circle: Codable, Identifiable {
          tags: [String]?, sharedWith: [String]?, followers: [String]?,
          activeShares: [CircleShare]?, shareSettings: ShareSettings?,
          isSharedWithMe: Bool?, sharedBy: User?, myAccessLevel: AccessLevel?,
-         createdAt: Date, updatedAt: Date) {
+         createdAt: Date, updatedAt: Date, isNew: Bool? = nil) {
         self.id = id
         self.name = name
         self.description = description
@@ -112,6 +114,7 @@ struct Circle: Codable, Identifiable {
         self.myAccessLevel = myAccessLevel
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.isNew = isNew
     }
     
     // Helper computed properties

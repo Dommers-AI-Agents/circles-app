@@ -111,8 +111,11 @@ const clearActivityNotification = async (userId, connectedUserId) => {
 
     if (!connectionSnapshot.empty) {
       const connectionRef = connectionSnapshot.docs[0].ref;
+      
+      // Clear all activity indicators
       await connectionRef.update({
         hasNewActivity: false,
+        hasRecentPlace: false, // Also clear recent place flag
         recentActivity: [], // Clear recent activity after viewing
         updatedAt: new Date().toISOString()
       });

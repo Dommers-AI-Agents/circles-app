@@ -121,3 +121,10 @@ Archived-SwiftUI-Views/
 # Backend deployment files
 backend/scripts/deploy-storage-rules.sh
 backend/scripts/migrate-storage-urls.js
+
+# Backend scripts and migrations
+backend/scripts/
+backend/migrations/
+
+# Planning documents
+LOCATION_TRACKING_PLAN.md

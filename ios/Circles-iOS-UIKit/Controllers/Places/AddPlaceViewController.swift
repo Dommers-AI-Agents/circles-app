@@ -268,6 +268,50 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
         return textView
     }()
     
+    private let privateNotesLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Private Notes (only visible to you)"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
+        label.textColor = .darkGray
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let privateNotesTextView: UITextView = {
+        let textView = UITextView()
+        textView.font = UIFont.systemFont(ofSize: 16)
+        textView.backgroundColor = .white
+        textView.textColor = .darkGray
+        textView.layer.cornerRadius = 8
+        textView.layer.borderWidth = 1
+        textView.layer.borderColor = UIColor.systemBlue.withAlphaComponent(0.3).cgColor
+        textView.textContainerInset = UIEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+        textView.translatesAutoresizingMaskIntoConstraints = false
+        return textView
+    }()
+    
+    private let publicNotesLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Public Notes (visible to others)"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
+        label.textColor = .darkGray
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let publicNotesTextView: UITextView = {
+        let textView = UITextView()
+        textView.font = UIFont.systemFont(ofSize: 16)
+        textView.backgroundColor = .white
+        textView.textColor = .darkGray
+        textView.layer.cornerRadius = 8
+        textView.layer.borderWidth = 1
+        textView.layer.borderColor = UIColor.systemBlue.withAlphaComponent(0.3).cgColor
+        textView.textContainerInset = UIEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+        textView.translatesAutoresizingMaskIntoConstraints = false
+        return textView
+    }()
+    
     private let addressLabel: UILabel = {
         let label = UILabel()
         label.text = "Address"
@@ -370,6 +414,9 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
     }()
     
     private var selectedImage: UIImage?
+    private var downloadedGoogleImage: UIImage?
+    private var downloadedLookAroundImage: UIImage?
+    private var uploadedPhotoUrls: [String] = []
     
     private let addPlaceButton: UIButton = {
         let button = UIButton(type: .system)
@@ -501,6 +548,10 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
         // Don't add dropdown to formContainer - will add to main view later
         formContainer.addSubview(descriptionLabel)
         formContainer.addSubview(descriptionTextView)
+        formContainer.addSubview(privateNotesLabel)
+        formContainer.addSubview(privateNotesTextView)
+        formContainer.addSubview(publicNotesLabel)
+        formContainer.addSubview(publicNotesTextView)
         formContainer.addSubview(addressLabel)
         formContainer.addSubview(addressTextView)
         formContainer.addSubview(privacyLabel)
@@ -624,7 +675,23 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
             descriptionTextView.trailingAnchor.constraint(equalTo: formContainer.trailingAnchor, constant: -Constants.Spacing.large),
             descriptionTextView.heightAnchor.constraint(equalToConstant: 80),
             
-            addressLabel.topAnchor.constraint(equalTo: descriptionTextView.bottomAnchor, constant: Constants.Spacing.medium),
+            privateNotesLabel.topAnchor.constraint(equalTo: descriptionTextView.bottomAnchor, constant: Constants.Spacing.medium),
+            privateNotesLabel.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
+            
+            privateNotesTextView.topAnchor.constraint(equalTo: privateNotesLabel.bottomAnchor, constant: Constants.Spacing.small),
+            privateNotesTextView.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
+            privateNotesTextView.trailingAnchor.constraint(equalTo: formContainer.trailingAnchor, constant: -Constants.Spacing.large),
+            privateNotesTextView.heightAnchor.constraint(equalToConstant: 60),
+            
+            publicNotesLabel.topAnchor.constraint(equalTo: privateNotesTextView.bottomAnchor, constant: Constants.Spacing.medium),
+            publicNotesLabel.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
+            
+            publicNotesTextView.topAnchor.constraint(equalTo: publicNotesLabel.bottomAnchor, constant: Constants.Spacing.small),
+            publicNotesTextView.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
+            publicNotesTextView.trailingAnchor.constraint(equalTo: formContainer.trailingAnchor, constant: -Constants.Spacing.large),
+            publicNotesTextView.heightAnchor.constraint(equalToConstant: 60),
+            
+            addressLabel.topAnchor.constraint(equalTo: publicNotesTextView.bottomAnchor, constant: Constants.Spacing.medium),
             addressLabel.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
             
             addressTextView.topAnchor.constraint(equalTo: addressLabel.bottomAnchor, constant: Constants.Spacing.small),
@@ -664,6 +731,8 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
         // Ensure all form fields have default alpha
         nameTextField.alpha = 1.0
         descriptionTextView.alpha = 1.0
+        privateNotesTextView.alpha = 1.0
+        publicNotesTextView.alpha = 1.0
         addressTextView.alpha = 1.0
         categoryButton.alpha = 1.0
         
@@ -716,8 +785,14 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
         // Map delegate - this will handle all map interactions
         mapView.delegate = self
         
+        // Enable POI selection for iOS 16+
+        if #available(iOS 16.0, *) {
+            mapView.selectableMapFeatures = [.pointsOfInterest]
+        }
+        
         // Add tap gesture for manual location selection
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleMapTap(_:)))
+        tapGesture.delegate = self
         mapView.addGestureRecognizer(tapGesture)
         
         // Set initial region
@@ -815,6 +890,8 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
                 // Clear form for manual entry
                 self.nameTextField.text = ""
                 self.descriptionTextView.text = ""
+                self.privateNotesTextView.text = ""
+                self.publicNotesTextView.text = ""
                 
                 // Clear any Google Place details since this is manual
                 self.selectedGooglePlaceDetails = nil
@@ -831,6 +908,53 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
                 
                 self.addressTextView.text = address
                 self.selectedLocation = coordinate
+                
+                // Search for nearby places at this location
+                self.searchNearbyPlaces(at: coordinate)
+            }
+        }
+    }
+    
+    private func searchNearbyPlaces(at coordinate: CLLocationCoordinate2D) {
+        print("🔍 Searching for nearby places at \(coordinate.latitude), \(coordinate.longitude)")
+        
+        // Use Google Places to search for nearby businesses
+        GooglePlacesService.shared.searchPlacesByCategory(
+            category: "",  // Empty query to get all nearby places
+            center: coordinate,
+            radiusInMeters: 50  // Search within 50 meters
+        ) { [weak self] result in
+            switch result {
+            case .success(let predictions):
+                if let nearestPlace = predictions.first {
+                    print("✅ Found nearby place: \(nearestPlace.attributedPrimaryText.string)")
+                    
+                    // Fetch details for the nearest place
+                    GooglePlacesService.shared.fetchPlaceDetails(placeID: nearestPlace.placeID) { detailsResult in
+                        switch detailsResult {
+                        case .success(let place):
+                            DispatchQueue.main.async {
+                                // If we found a place, update the form with its details
+                                let googleDetails = GooglePlaceDetails(from: place)
+                                self?.selectedGooglePlaceDetails = googleDetails
+                                
+                                // Update the name field with the found place
+                                self?.nameTextField.text = place.name ?? ""
+                                
+                                // Preload photos
+                                self?.preloadAndUploadPhotosForPlace(googleDetails)
+                                
+                                print("📍 Updated form with nearby place: \(place.name ?? "Unknown")")
+                            }
+                        case .failure(let error):
+                            print("❌ Failed to fetch place details: \(error)")
+                        }
+                    }
+                } else {
+                    print("⚠️ No nearby places found at this location")
+                }
+            case .failure(let error):
+                print("❌ Failed to search nearby places: \(error)")
             }
         }
     }
@@ -860,10 +984,19 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
         removePhotoButton.isHidden = true
         addPhotoButton.isHidden = false
         
-        // Update constraint for form container bottom
-        NSLayoutConstraint.activate([
-            addPhotoButton.bottomAnchor.constraint(equalTo: formContainer.bottomAnchor)
-        ])
+        // Clear pre-uploaded photos when user removes photo
+        uploadedPhotoUrls.removeAll()
+        downloadedGoogleImage = nil
+        downloadedLookAroundImage = nil
+        print("📸 Cleared all photos and uploads")
+        
+        // Update layout to reflect changes
+        view.setNeedsLayout()
+        view.layoutIfNeeded()
+        
+        // Ensure scroll view updates its content size
+        scrollView.setNeedsLayout()
+        scrollView.layoutIfNeeded()
     }
     
     @objc private func categoryButtonTapped() {
@@ -946,6 +1079,8 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
         let subcategory: String? = (category != .other) ? selectedSubcategory : nil
         
         let description = descriptionTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let privateNotes = privateNotesTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let publicNotes = publicNotesTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
         
         // Get privacy setting from segmented control
         let privacy: PlacePrivacy = privacySegmentedControl.selectedSegmentIndex == 0 ? .followCirclePrivacy : .private
@@ -988,7 +1123,9 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
                             category: category,
                             customCategory: customCategory,
                             subcategory: subcategory,
-                            privacy: privacy
+                            privacy: privacy,
+                            privateNotes: privateNotes.isEmpty ? nil : privateNotes,
+                            publicNotes: publicNotes.isEmpty ? nil : publicNotes
                         )
                     }
                 }
@@ -1062,133 +1199,91 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
     
     private func proceedWithPlaceCreation(name: String, address: String, description: String, 
                                         category: PlaceCategory, customCategory: String?, 
-                                        subcategory: String?, privacy: PlacePrivacy) {
+                                        subcategory: String?, privacy: PlacePrivacy,
+                                        privateNotes: String?, publicNotes: String?) {
         // Create place
         let loadingAlert = UIAlertController(title: "Creating Place", message: "Please wait...", preferredStyle: .alert)
         present(loadingAlert, animated: true)
         
-        // Prepare photo data if available
+        // Check if we have pre-uploaded photos
+        print("📸 Checking pre-uploaded photos: \(uploadedPhotoUrls.count) available")
+        
+        // Only prepare photo data if no pre-uploaded photos exist
         var photoData: [Data]? = nil
-        if let image = selectedImage {
-            // Very aggressive image resizing for reliability
-            let maxSize: CGFloat = 500 // Much smaller max dimension
-            var finalImage = image
-            
-            // Always resize to reduce memory usage
-            let scale = min(maxSize / image.size.width, maxSize / image.size.height, 1.0) // Never upscale
-            let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-            
-            // Use lower scale for retina optimization (1.0 instead of screen scale)
-            UIGraphicsBeginImageContextWithOptions(newSize, true, 1.0) // true = opaque for smaller size
-            // Fill with white background for JPEG
-            UIColor.white.setFill()
-            UIRectFill(CGRect(origin: .zero, size: newSize))
-            image.draw(in: CGRect(origin: .zero, size: newSize))
-            
-            if let resizedImage = UIGraphicsGetImageFromCurrentImageContext() {
-                finalImage = resizedImage
-            }
-            UIGraphicsEndImageContext()
-            
-            // Use low quality JPEG compression
-            let compressionQuality: CGFloat = 0.4 // Low quality is fine for place photos
-            
-            if let imageData = finalImage.jpegData(compressionQuality: compressionQuality) {
-                let sizeInKB = Double(imageData.count) / 1024.0
-                print("📸 Image compressed to \(String(format: "%.0f", sizeInKB)) KB (quality: \(compressionQuality))")
-                
-                // Only proceed if under 500KB
-                if sizeInKB < 500 {
+        if uploadedPhotoUrls.isEmpty && selectedImage != nil {
+            print("⚠️ No pre-uploaded photos but image exists - this shouldn't happen!")
+            // This is a fallback - photos should have been pre-uploaded
+            if let image = selectedImage {
+                if let imageData = image.jpegData(compressionQuality: 0.6) {
                     photoData = [imageData]
-                    print("✅ Photo ready for upload")
-                } else {
-                    // Try one more time with even lower quality
-                    if let tinyImageData = finalImage.jpegData(compressionQuality: 0.2) {
-                        let tinySizeInKB = Double(tinyImageData.count) / 1024.0
-                        print("📸 Further compressed to \(String(format: "%.0f", tinySizeInKB)) KB")
-                        photoData = [tinyImageData]
-                    }
+                    print("📸 Using fallback photo data")
                 }
-            } else {
-                print("⚠️ Failed to prepare photo for upload")
             }
         }
         
         // Check if we have Google Place details to use
         if let googleDetails = selectedGooglePlaceDetails {
-            // Create place data from Google details
-            var placeData: [String: Any] = [
-                "name": name,
-                "address": address,
-                "circleId": circleId,
-                "category": category.rawValue,
-                "privacy": privacy.rawValue,
-                "location": [
-                    "type": "Point",
-                    "coordinates": [googleDetails.coordinate.longitude, googleDetails.coordinate.latitude]
-                ]
-            ]
+            print("🚀 AddPlaceViewController: Creating place with Google details")
+            print("  Name: \(name)")
+            print("  GooglePlaceId: \(googleDetails.placeID)")
+            print("  Has photos: \(googleDetails.photos.count > 0)")
             
-            // Add Google-specific data
-            if !googleDetails.placeID.isEmpty {
-                placeData["googlePlaceId"] = googleDetails.placeID
-            }
-            if let rating = googleDetails.rating, rating > 0 {
-                placeData["rating"] = rating
-            }
-            if googleDetails.userRatingsTotal > 0 {
-                placeData["userRatingsTotal"] = googleDetails.userRatingsTotal
-            }
-            if let website = googleDetails.website {
-                placeData["website"] = website.absoluteString
-            }
-            if let phone = googleDetails.phoneNumber {
-                placeData["phone"] = phone
-            }
-            if let priceLevel = googleDetails.priceLevel {
-                placeData["priceLevel"] = priceLevel.rawValue
-            }
-            if !description.isEmpty {
-                placeData["description"] = description
-            }
-            if let customCategory = customCategory {
-                placeData["customCategory"] = customCategory
-            }
-            if let subcategory = subcategory {
-                placeData["subcategory"] = subcategory
-            }
+            // Use addPlaceFromPOI which collects both Apple Look Around and Google Places photos
+            let location = GeoLocation(
+                type: "Point", 
+                coordinates: [googleDetails.coordinate.longitude, googleDetails.coordinate.latitude]
+            )
             
-            // Handle photos
-            if let imageData = photoData?.first {
-                PlaceService.shared.uploadMultipleImages([imageData]) { uploadResult in
-                    DispatchQueue.main.async {
-                        switch uploadResult {
-                        case .success(let imageUrls):
-                            placeData["photos"] = imageUrls
-                            self.createPlaceWithData(placeData, loadingAlert: loadingAlert)
-                        case .failure(let error):
-                            print("❌ Failed to upload photo: \(error)")
-                            // Show error but continue without photo
-                            loadingAlert.dismiss(animated: true) {
-                                let alert = UIAlertController(title: "Photo Upload Failed", 
-                                                            message: "The place will be created without the photo. Error: \(error.localizedDescription)", 
-                                                            preferredStyle: .alert)
-                                alert.addAction(UIAlertAction(title: "Continue", style: .default) { _ in
-                                    // Re-show loading and create without photo
-                                    self.present(loadingAlert, animated: true)
-                                    self.createPlaceWithData(placeData, loadingAlert: loadingAlert)
-                                })
-                                alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-                                self.present(alert, animated: true)
+            print("📸 Using pre-uploaded photos: \(self.uploadedPhotoUrls)")
+            
+            PlaceService.shared.addPlaceFromPOI(
+                name: name,
+                address: address,
+                location: location,
+                category: category,
+                website: googleDetails.website?.absoluteString,
+                phone: googleDetails.phoneNumber,
+                description: description.isEmpty ? nil : description,
+                circleId: circleId,
+                notes: privateNotes,
+                googlePlaceId: googleDetails.placeID.isEmpty ? nil : googleDetails.placeID,
+                preUploadedPhotoUrls: self.uploadedPhotoUrls.isEmpty ? nil : self.uploadedPhotoUrls
+            ) { [weak self] result in
+                DispatchQueue.main.async {
+                    loadingAlert.dismiss(animated: true) {
+                        switch result {
+                        case .success(let place):
+                            print("✅ Place created successfully")
+                            print("  ID: \(place.id)")
+                            print("  Photos count: \(place.photos?.count ?? 0)")
+                            if let photos = place.photos {
+                                for (index, photo) in photos.enumerated() {
+                                    print("  Photo \(index + 1): \(photo)")
+                                }
                             }
+                            
+                            // TODO: Update place with publicNotes if provided
+                            // Currently addPlaceFromPOI only supports privateNotes through the 'notes' parameter
+                            // A separate update call would be needed for publicNotes
+                            if let publicNotes = publicNotes, !publicNotes.isEmpty {
+                                print("⚠️ Public notes were provided but not saved: \(publicNotes)")
+                                // PlaceService.shared.updatePlace(id: place.id, publicNotes: publicNotes) { _ in }
+                            }
+                            
+                            self?.presentAlert(title: "Success", message: "Place added successfully") { _ in
+                                self?.navigationController?.popViewController(animated: true)
+                            }
+                        case .failure(let error):
+                            print("❌ Failed to create place: \(error)")
+                            self?.presentAlert(title: "Error", message: error.localizedDescription)
                         }
                     }
                 }
-            } else {
-                self.createPlaceWithData(placeData, loadingAlert: loadingAlert)
             }
         } else {
             // No Google details, create place normally
+            print("📸 Creating non-Google place with pre-uploaded photos: \(self.uploadedPhotoUrls)")
+            
             PlaceService.shared.createPlace(
                 name: name,
                 description: description.isEmpty ? nil : description,
@@ -1201,7 +1296,10 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
                 website: nil,
                 phone: nil,
                 tags: nil,
-                photos: photoData
+                photos: photoData,
+                photoUrls: self.uploadedPhotoUrls.isEmpty ? nil : self.uploadedPhotoUrls,
+                location: self.selectedLocation,
+                googlePlaceId: self.selectedGooglePlaceDetails?.placeID
             ) { [weak self] result in
                 DispatchQueue.main.async {
                     loadingAlert.dismiss(animated: true) {
@@ -1215,25 +1313,6 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
                             print("❌ Failed to create place: \(error)")
                             self?.presentAlert(title: "Error", message: error.localizedDescription)
                         }
-                    }
-                }
-            }
-        }
-    }
-    
-    private func createPlaceWithData(_ placeData: [String: Any], loadingAlert: UIAlertController) {
-        PlaceService.shared.createPlaceFromGoogleData(placeData) { [weak self] result in
-            DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true) {
-                    switch result {
-                    case .success(let place):
-                        print("✅ Place created successfully with rating: \(place.rating ?? 0)")
-                        self?.presentAlert(title: "Success", message: "Place added successfully") { _ in
-                            self?.navigationController?.popViewController(animated: true)
-                        }
-                    case .failure(let error):
-                        print("❌ Failed to create place: \(error)")
-                        self?.presentAlert(title: "Error", message: error.localizedDescription)
                     }
                 }
             }
@@ -1288,7 +1367,7 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
                 let annotation = PlaceSearchAnnotation()
                 annotation.coordinate = mapItem.placemark.coordinate
                 annotation.title = mapItem.name ?? result.title
-                annotation.subtitle = mapItem.placemark.formattedAddress
+                annotation.subtitle = self.formatAddress(for: mapItem.placemark)
                 annotation.mapItem = mapItem
                 
                 // Remove previous search annotations
@@ -1356,7 +1435,7 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
                     let annotation = PlaceSearchAnnotation()
                     annotation.coordinate = item.placemark.coordinate
                     annotation.title = item.name
-                    annotation.subtitle = item.placemark.formattedAddress
+                    annotation.subtitle = self.formatAddress(for: item.placemark)
                     annotation.mapItem = item
                     
                     self.mapView.addAnnotation(annotation)
@@ -1480,6 +1559,9 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
     }
     
     private func fillFormWithMapItem(_ mapItem: MKMapItem) {
+        print("📝 fillFormWithMapItem called with: \(mapItem.name ?? "Unknown")")
+        print("📝 Category search active: \(hasSearchedCategory)")
+        
         selectedMapItem = mapItem
         selectedGooglePlaceDetails = nil // Clear Google details
         
@@ -1492,6 +1574,8 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
         // Add a small delay to ensure the form is visible before populating
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
+            
+            print("📝 Form container state - alpha: \(self.formContainer.alpha), enabled: \(self.formContainer.isUserInteractionEnabled)")
             
             // Check if this is likely a residential address (no business name)
             let isResidentialAddress = mapItem.name == nil || mapItem.name?.isEmpty == true || 
@@ -1560,6 +1644,10 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
             }
             
             self.descriptionTextView.text = description
+            
+            // Clear notes fields for new place
+            self.privateNotesTextView.text = ""
+            self.publicNotesTextView.text = ""
             
             // Set category
             self.selectedSubcategory = nil
@@ -1684,6 +1772,49 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
             // Force UI refresh
             self.view.setNeedsLayout()
             self.view.layoutIfNeeded()
+            
+            // Debug: Log what was filled
+            print("📝 Form filled with:")
+            print("  - Name: \(self.nameTextField.text ?? "empty")")
+            print("  - Address: \(self.addressTextView.text ?? "empty")")
+            print("  - Description: \(self.descriptionTextView.text ?? "empty")")
+            print("  - Category: \(self.selectedCategory.displayName)")
+            print("  - Form enabled: \(self.formContainer.isUserInteractionEnabled)")
+            
+            // Search for Google Place to get photos (only for businesses, not residential)
+            if !isResidentialAddress, let placeName = mapItem.name, !placeName.isEmpty {
+                print("🔍 Searching Google Places for: \(placeName)")
+                GooglePlacesService.shared.searchPlaceByNameAndLocation(
+                    name: placeName,
+                    coordinate: mapItem.placemark.coordinate
+                ) { [weak self] result in
+                    switch result {
+                    case .success(let prediction):
+                        if let prediction = prediction {
+                            print("✅ Found Google Place match: \(prediction.attributedPrimaryText.string)")
+                            // Fetch place details to get photos
+                            GooglePlacesService.shared.fetchPlaceDetails(placeID: prediction.placeID) { detailsResult in
+                                switch detailsResult {
+                                case .success(let place):
+                                    let googleDetails = GooglePlaceDetails(from: place)
+                                    DispatchQueue.main.async {
+                                        // Store the Google Place details for later use
+                                        self?.selectedGooglePlaceDetails = googleDetails
+                                        // Preload and upload photos
+                                        self?.preloadAndUploadPhotosForPlace(googleDetails)
+                                    }
+                                case .failure(let error):
+                                    print("❌ Failed to fetch Google Place details: \(error)")
+                                }
+                            }
+                        } else {
+                            print("⚠️ No Google Place match found for: \(placeName)")
+                        }
+                    case .failure(let error):
+                        print("❌ Failed to search Google Places: \(error)")
+                    }
+                }
+            }
         }
     }
     
@@ -1796,6 +1927,125 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
         }
     }
     
+    private func preloadAndUploadPhotosForPlace(_ placeDetails: GooglePlaceDetails) {
+        print("🚀 Pre-loading photos for place: \(placeDetails.name)")
+        
+        // Reset previous photos
+        self.downloadedGoogleImage = nil
+        self.downloadedLookAroundImage = nil
+        self.uploadedPhotoUrls.removeAll()
+        
+        let photoGroup = DispatchGroup()
+        
+        // Load Google Place photo if available
+        if !placeDetails.photos.isEmpty {
+            photoGroup.enter()
+            print("📸 Loading photo from Google Places...")
+            GooglePlacesService.shared.loadPhoto(from: placeDetails.photos[0], maxSize: CGSize(width: 800, height: 800)) { [weak self] result in
+                switch result {
+                case .success(let image):
+                    print("📸 Successfully loaded Google photo")
+                    self?.downloadedGoogleImage = image
+                    
+                    // Show in UI immediately
+                    DispatchQueue.main.async {
+                        self?.selectedImage = image
+                        self?.photoImageView.image = image
+                        self?.photoImageView.isHidden = false
+                        self?.removePhotoButton.isHidden = false
+                        self?.addPhotoButton.isHidden = true
+                    }
+                    
+                    // Upload the image
+                    if let imageData = image.jpegData(compressionQuality: 0.8) {
+                        print("📸 Uploading Google photo (size: \(imageData.count / 1024) KB)...")
+                        self?.uploadImageData(imageData) { uploadedUrl in
+                            if let url = uploadedUrl {
+                                self?.uploadedPhotoUrls.append(url)
+                                print("✅ Google photo uploaded: \(url)")
+                            }
+                            photoGroup.leave()
+                        }
+                    } else {
+                        photoGroup.leave()
+                    }
+                    
+                case .failure(let error):
+                    print("❌ Failed to load Google photo: \(error)")
+                    photoGroup.leave()
+                }
+            }
+        }
+        
+        // Try Apple Look Around
+        if #available(iOS 16.0, *) {
+            photoGroup.enter()
+            Task {
+                print("📸 Checking Apple Look Around...")
+                let hasLookAround = await AppleLookAroundService.shared.checkLookAroundAvailability(at: placeDetails.coordinate)
+                
+                if hasLookAround {
+                    print("✅ Look Around is available")
+                    do {
+                        let lookAroundImage = try await AppleLookAroundService.shared.getLookAroundSnapshot(at: placeDetails.coordinate)
+                        self.downloadedLookAroundImage = lookAroundImage
+                        
+                        // If no Google photo, show Look Around in UI
+                        if self.downloadedGoogleImage == nil {
+                            DispatchQueue.main.async {
+                                self.selectedImage = lookAroundImage
+                                self.photoImageView.image = lookAroundImage
+                                self.photoImageView.isHidden = false
+                                self.removePhotoButton.isHidden = false
+                                self.addPhotoButton.isHidden = true
+                            }
+                        }
+                        
+                        // Upload the image
+                        if let imageData = lookAroundImage.jpegData(compressionQuality: 0.8) {
+                            print("📸 Uploading Look Around photo (size: \(imageData.count / 1024) KB)...")
+                            self.uploadImageData(imageData) { uploadedUrl in
+                                if let url = uploadedUrl {
+                                    self.uploadedPhotoUrls.append(url)
+                                    print("✅ Look Around photo uploaded: \(url)")
+                                }
+                                photoGroup.leave()
+                            }
+                        } else {
+                            photoGroup.leave()
+                        }
+                    } catch {
+                        print("❌ Failed to get Look Around snapshot: \(error)")
+                        photoGroup.leave()
+                    }
+                } else {
+                    print("⚠️ Look Around not available")
+                    photoGroup.leave()
+                }
+            }
+        }
+        
+        // Log completion
+        photoGroup.notify(queue: .main) {
+            print("📸 Photo pre-loading complete. Uploaded \(self.uploadedPhotoUrls.count) photos")
+            for (index, url) in self.uploadedPhotoUrls.enumerated() {
+                print("  Photo \(index + 1): \(url)")
+            }
+        }
+    }
+    
+    private func uploadImageData(_ imageData: Data, completion: @escaping (String?) -> Void) {
+        PlaceService.shared.uploadMultipleImages([imageData]) { result in
+            switch result {
+            case .success(let urls):
+                completion(urls.first)
+            case .failure(let error):
+                print("❌ Image upload failed: \(error)")
+                completion(nil)
+            }
+        }
+    }
+    
     private func fillFormWithGooglePlace(_ placeDetails: GooglePlaceDetails) {
         // Store the Google Place details
         self.selectedGooglePlaceDetails = placeDetails
@@ -1850,6 +2100,10 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
             
             self.descriptionTextView.text = description
             
+            // Clear notes fields for new place
+            self.privateNotesTextView.text = ""
+            self.publicNotesTextView.text = ""
+            
             // Set category based on types
             if !placeDetails.types.isEmpty {
                 self.setCategoryFromGoogleTypes(placeDetails.types)
@@ -1861,30 +2115,8 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
             // Update map
             self.updateMapForLocation(self.selectedLocation!)
             
-            // Load Google Place photo if available, otherwise try street view
-            if !placeDetails.photos.isEmpty {
-                print("📸 Loading photo from Google Places for form display...")
-                GooglePlacesService.shared.loadPhoto(from: placeDetails.photos[0], maxSize: CGSize(width: 800, height: 800)) { [weak self] result in
-                    switch result {
-                    case .success(let image):
-                        print("📸 Successfully loaded Google photo for form")
-                        DispatchQueue.main.async {
-                            self?.selectedImage = image
-                            self?.photoImageView.image = image
-                            self?.photoImageView.isHidden = false
-                            self?.removePhotoButton.isHidden = false
-                            self?.addPhotoButton.isHidden = true
-                        }
-                    case .failure(let error):
-                        print("📸 Failed to load Google photo for form: \(error)")
-                        // Try street view as fallback
-                        self?.captureStreetViewImage(for: placeDetails.coordinate)
-                    }
-                }
-            } else {
-                // No Google photos available, try street view
-                self.captureStreetViewImage(for: placeDetails.coordinate)
-            }
+            // Pre-load and pre-upload photos when place is selected
+            self.preloadAndUploadPhotosForPlace(placeDetails)
             
             // Scroll to form
             let formRect = self.formContainer.convert(self.formContainer.bounds, to: self.scrollView)
@@ -1992,7 +2224,8 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
         // Mark that we've searched for a category
         hasSearchedCategory = true
         
-        // Create search request
+        // Create search request using Apple Maps (cost-efficient)
+        // NOTE: Always use MKLocalSearch for place discovery, not Google Places
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = category
         request.region = mapView.region
@@ -2023,11 +2256,13 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
                     let annotation = PlaceSearchAnnotation()
                     annotation.coordinate = mapItem.placemark.coordinate
                     annotation.title = mapItem.name ?? "Unknown Place"
-                    annotation.subtitle = mapItem.placemark.formattedAddress
+                    annotation.subtitle = self.formatAddress(for: mapItem.placemark)
                     annotation.mapItem = mapItem
                     
                     self.mapView.addAnnotation(annotation)
                     self.annotations.append(annotation)
+                    
+                    print("📍 Added annotation: \(annotation.title ?? "Unknown") at \(annotation.coordinate)")
                     
                     // Store by coordinate for lookup
                     let coordKey = "\(mapItem.placemark.coordinate.latitude),\(mapItem.placemark.coordinate.longitude)"
@@ -2160,6 +2395,8 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
             }
             
             // Handle Google Place photos
+            // NOTE: This is the ONLY acceptable use of Google Places API - fetching photos
+            // For all other operations, use Apple Maps API (see APIUsageGuidelines.md)
             if let photos = place.photos, !photos.isEmpty {
                 // Load the first photo
                 print("📸 Loading photo from Google Places...")
@@ -2206,6 +2443,74 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
         print("📍 Rating: \(placeData["rating"] ?? "No rating")")
         print("📍 Description: \(placeData["description"] ?? "No description")")
         
+        var enrichedPlaceData = placeData
+        
+        // Try to get Apple Look Around image if location is available
+        if let location = placeData["location"] as? [String: Any],
+           let coordinates = location["coordinates"] as? [Double],
+           coordinates.count >= 2 {
+            
+            let longitude = coordinates[0]
+            let latitude = coordinates[1]
+            let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+            
+            // Check and fetch Apple Look Around
+            if #available(iOS 16.0, *) {
+                Task {
+                    let hasLookAround = await AppleLookAroundService.shared.checkLookAroundAvailability(at: coordinate)
+                    
+                    if hasLookAround {
+                        do {
+                            // Get the Look Around snapshot
+                            let lookAroundImage = try await AppleLookAroundService.shared.getLookAroundSnapshot(at: coordinate)
+                            
+                            // Convert to JPEG data
+                            if let imageData = lookAroundImage.jpegData(compressionQuality: 0.8) {
+                                // Upload the image
+                                PlaceService.shared.uploadMultipleImages([imageData]) { uploadResult in
+                                    switch uploadResult {
+                                    case .success(let imageUrls):
+                                        // Add Apple Look Around URL to existing photos
+                                        var photos = enrichedPlaceData["photos"] as? [String] ?? []
+                                        photos.append(contentsOf: imageUrls)
+                                        enrichedPlaceData["photos"] = photos
+                                        print("✅ Apple Look Around image uploaded successfully")
+                                        print("📸 Total photos: \(photos.count)")
+                                        
+                                        // Now create the place with both images
+                                        self.finalizeCreatePlace(enrichedPlaceData, loadingAlert: loadingAlert)
+                                        
+                                    case .failure(let error):
+                                        print("Failed to upload Look Around image: \(error)")
+                                        // Continue without Look Around image
+                                        self.finalizeCreatePlace(enrichedPlaceData, loadingAlert: loadingAlert)
+                                    }
+                                }
+                            } else {
+                                // Failed to convert image
+                                self.finalizeCreatePlace(enrichedPlaceData, loadingAlert: loadingAlert)
+                            }
+                        } catch {
+                            print("Failed to get Look Around snapshot: \(error)")
+                            // Continue without Look Around image
+                            self.finalizeCreatePlace(enrichedPlaceData, loadingAlert: loadingAlert)
+                        }
+                    } else {
+                        // No Look Around available
+                        self.finalizeCreatePlace(enrichedPlaceData, loadingAlert: loadingAlert)
+                    }
+                }
+            } else {
+                // iOS version too old for Look Around
+                finalizeCreatePlace(enrichedPlaceData, loadingAlert: loadingAlert)
+            }
+        } else {
+            // No location available
+            finalizeCreatePlace(enrichedPlaceData, loadingAlert: loadingAlert)
+        }
+    }
+    
+    private func finalizeCreatePlace(_ placeData: [String: Any], loadingAlert: UIAlertController) {
         PlaceService.shared.createPlaceFromGoogleData(placeData) { [weak self] result in
             DispatchQueue.main.async {
                 loadingAlert.dismiss(animated: true) {
@@ -2242,6 +2547,19 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
                 }
             }
         }
+    }
+    
+    private func formatAddress(for placemark: MKPlacemark) -> String {
+        let addressComponents = [
+            placemark.subThoroughfare,
+            placemark.thoroughfare,
+            placemark.locality,
+            placemark.administrativeArea,
+            placemark.postalCode,
+            placemark.country
+        ].compactMap { $0 }
+        
+        return addressComponents.joined(separator: ", ")
     }
     
     private func determinePlaceCategory(from types: [String]) -> PlaceCategory {
@@ -2403,6 +2721,16 @@ extension AddPlaceViewController {
         mapView.setRegion(region, animated: true)
     }
     
+    private func scrollToFormTop() {
+        // Calculate the offset to show the form nicely
+        let formY = formContainer.frame.origin.y - 20 // Add some padding
+        let maxOffset = scrollView.contentSize.height - scrollView.bounds.height
+        let targetOffset = min(formY, maxOffset)
+        
+        // Animate scroll to show form
+        scrollView.setContentOffset(CGPoint(x: 0, y: targetOffset), animated: true)
+    }
+    
     private func searchNearbyPlaces(query: String? = nil) {
         // Only search if we're not already searching
         guard !isSearchingNearby else { return }
@@ -2445,6 +2773,94 @@ extension AddPlaceViewController {
 // MARK: - MKMapViewDelegate
 
 extension AddPlaceViewController: MKMapViewDelegate {
+    @available(iOS 16.0, *)
+    private func handlePOISelection(_ featureAnnotation: MKMapFeatureAnnotation) {
+        let poiName = featureAnnotation.title ?? "Unknown Place"
+        let poiSubtitle = featureAnnotation.subtitle ?? ""
+        let coordinate = featureAnnotation.coordinate
+        
+        print("🏪 POI selected: \(poiName)")
+        print("📍 POI subtitle: \(poiSubtitle)")
+        print("📍 POI coordinate: \(coordinate.latitude), \(coordinate.longitude)")
+        
+        // Enable form first
+        enableManualEntry()
+        
+        // Convert POI to place details using Apple Maps
+        AppleMapsService.shared.convertPOIToPlace(
+            from: featureAnnotation,
+            circleId: circleId,
+            notes: nil
+        ) { [weak self] result in
+            switch result {
+            case .success(let place):
+                DispatchQueue.main.async {
+                    // Fill form with POI details
+                    self?.nameTextField.text = place.name
+                    self?.addressTextView.text = place.address
+                    self?.selectedCategory = place.category
+                    self?.updateCategoryButtonTitle()
+                    
+                    // Update location
+                    self?.selectedLocation = coordinate
+                    
+                    // Add marker to map
+                    self?.clearPreviousAnnotations()
+                    let annotation = MKPointAnnotation()
+                    annotation.coordinate = coordinate
+                    annotation.title = poiName
+                    self?.mapView.addAnnotation(annotation)
+                    
+                    // Center map on selected location
+                    let region = MKCoordinateRegion(
+                        center: coordinate,
+                        latitudinalMeters: 500,
+                        longitudinalMeters: 500
+                    )
+                    self?.mapView.setRegion(region, animated: true)
+                    
+                    // Deselect the POI annotation
+                    self?.mapView.deselectAnnotation(featureAnnotation, animated: true)
+                    
+                    // Scroll to show form
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        self?.scrollToFormTop()
+                    }
+                }
+            case .failure(let error):
+                print("❌ Failed to convert POI to place: \(error)")
+                // Fall back to basic info
+                DispatchQueue.main.async {
+                    self?.nameTextField.text = poiName
+                    self?.addressTextView.text = poiSubtitle
+                    self?.selectedLocation = coordinate
+                    
+                    // Add marker
+                    self?.clearPreviousAnnotations()
+                    let annotation = MKPointAnnotation()
+                    annotation.coordinate = coordinate
+                    annotation.title = poiName
+                    self?.mapView.addAnnotation(annotation)
+                    
+                    // Center map
+                    let region = MKCoordinateRegion(
+                        center: coordinate,
+                        latitudinalMeters: 500,
+                        longitudinalMeters: 500
+                    )
+                    self?.mapView.setRegion(region, animated: true)
+                    
+                    self?.mapView.deselectAnnotation(featureAnnotation, animated: true)
+                    
+                    // Scroll to form
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        self?.scrollToFormTop()
+                    }
+                }
+            }
+        }
+    }
+    
     func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
         // Cancel previous timer
         mapRegionTimer?.invalidate()
@@ -2456,6 +2872,70 @@ extension AddPlaceViewController: MKMapViewDelegate {
         mapRegionTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
             self?.searchNearbyPlaces()
         }
+    }
+    
+    func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
+        // Handle POI selection for iOS 16+
+        if #available(iOS 16.0, *) {
+            if let featureAnnotation = view.annotation as? MKMapFeatureAnnotation {
+                handlePOISelection(featureAnnotation)
+                return
+            }
+        }
+        
+        guard let placeAnnotation = view.annotation as? PlaceSearchAnnotation else { return }
+        
+        // Skip user location and "Selected Location" markers
+        if view.annotation is MKUserLocation || placeAnnotation.title == "Selected Location" {
+            return
+        }
+        
+        let name = placeAnnotation.title ?? "Unknown Place"
+        print("🗺️ Map annotation selected: \(name)")
+        print("🗺️ Annotation source: \(hasSearchedCategory ? "category search" : "regular search")")
+        
+        // Check if we have a mapItem (from Apple Maps search)
+        if let mapItem = placeAnnotation.mapItem {
+            print("✅ Found map item, filling form immediately")
+            print("🗺️ Map item details: name=\(mapItem.name ?? ""), placemark=\(mapItem.placemark)")
+            
+            // Enable form first to ensure it's ready
+            enableManualEntry()
+            
+            // Small delay to ensure form is ready
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                // Immediately fill the form without confirmation popup
+                self?.fillFormWithMapItem(mapItem)
+                
+                // Scroll to show the form after filling
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    self?.scrollToFormTop()
+                }
+            }
+        }
+        // Check if we have a Google Place ID
+        else if let placeId = placeAnnotation.placeId {
+            print("✅ Found Google place ID, loading details")
+            
+            // Enable form first
+            enableManualEntry()
+            
+            // Small delay to ensure form is ready
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                // Load and fill form without confirmation popup
+                self?.loadAndFillFormWithGooglePlace(placeId: placeId, markerTitle: name)
+                
+                // Scroll to show the form
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    self?.scrollToFormTop()
+                }
+            }
+        } else {
+            print("⚠️ No map item or place ID found for annotation")
+        }
+        
+        // Keep the annotation selected to show the callout
+        // The info button will still work for users who want to use it
     }
     func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
         // Skip user location
@@ -2473,12 +2953,14 @@ extension AddPlaceViewController: MKMapViewDelegate {
         if annotationView == nil {
             annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
             annotationView?.canShowCallout = true
+            annotationView?.isEnabled = true  // Ensure it's enabled for selection
             
-            // Add detail button
+            // Add detail button (optional - users can still use it if they prefer)
             let detailButton = UIButton(type: .detailDisclosure)
             annotationView?.rightCalloutAccessoryView = detailButton
         } else {
             annotationView?.annotation = annotation
+            annotationView?.isEnabled = true  // Ensure it's enabled
         }
         
         // Customize appearance
@@ -2497,49 +2979,19 @@ extension AddPlaceViewController: MKMapViewDelegate {
         guard let placeAnnotation = view.annotation as? PlaceSearchAnnotation else { return }
         
         let name = placeAnnotation.title ?? "Unknown Place"
-        print("Annotation tapped: \(name)")
+        print("ℹ️ Info button tapped: \(name)")
         
         // For "Selected Location" annotations, the form is already filled
         if name == "Selected Location" {
             return
         }
         
-        // Check if we have a mapItem (from Apple Maps search)
-        if let mapItem = placeAnnotation.mapItem {
-            print("Found map item: \(mapItem.name ?? "")")
-            // Show confirmation popup
-            let alert = UIAlertController(
-                title: "Add Place",
-                message: "Do you want to add \"\(name)\" to this circle?",
-                preferredStyle: .alert
-            )
-            
-            alert.addAction(UIAlertAction(title: "Add Place", style: .default) { [weak self] _ in
-                self?.fillFormWithMapItem(mapItem)
-            })
-            
-            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-            
-            present(alert, animated: true)
-        }
-        // Check if we have a Google Place ID
-        else if let placeId = placeAnnotation.placeId {
-            print("Found Google place ID: \(placeId)")
-            // Show confirmation popup
-            let alert = UIAlertController(
-                title: "Add Place",
-                message: "Do you want to add \"\(name)\" to this circle?",
-                preferredStyle: .alert
-            )
-            
-            alert.addAction(UIAlertAction(title: "Add Place", style: .default) { [weak self] _ in
-                self?.loadAndFillFormWithGooglePlace(placeId: placeId, markerTitle: name)
-            })
-            
-            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-            
-            present(alert, animated: true)
-        }
+        // Since we now handle selection in didSelect, this is just a backup
+        // or for users who prefer to use the info button
+        print("ℹ️ Form should already be populated from didSelect")
+        
+        // Scroll to form if it's not visible
+        scrollToFormTop()
     }
     
 }
@@ -2805,11 +3257,26 @@ extension AddPlaceViewController {
         selectedSubcategory = subcategory
         
         // Update button title
-        if let subcategory = subcategory {
-            categoryButton.setTitle("\(category.displayName) - \(subcategory)", for: .normal)
+        updateCategoryButtonTitle()
+    }
+    
+    private func updateCategoryButtonTitle() {
+        if let subcategory = selectedSubcategory {
+            categoryButton.setTitle("\(selectedCategory.displayName) - \(subcategory)", for: .normal)
         } else {
-            categoryButton.setTitle(category.displayName, for: .normal)
+            categoryButton.setTitle(selectedCategory.displayName, for: .normal)
         }
+    }
+    
+    private func clearPreviousAnnotations() {
+        // Remove any existing temporary annotations (like "Selected Location")
+        let annotationsToRemove = mapView.annotations.filter { annotation in
+            if let placeAnnotation = annotation as? PlaceSearchAnnotation {
+                return placeAnnotation.isTemporary || placeAnnotation.title == "Selected Location"
+            }
+            return false
+        }
+        mapView.removeAnnotations(annotationsToRemove)
     }
 }
 
@@ -2819,7 +3286,28 @@ extension AddPlaceViewController {
 
 extension AddPlaceViewController: UIGestureRecognizerDelegate {
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        // Don't dismiss if tapping on the dropdown or button itself
+        // Handle map tap gesture
+        if gestureRecognizer is UITapGestureRecognizer && gestureRecognizer.view == mapView {
+            let location = touch.location(in: mapView)
+            
+            // Check if tap is on an annotation view
+            for annotation in mapView.annotations {
+                if let annotationView = mapView.view(for: annotation) {
+                    let annotationPoint = mapView.convert(annotation.coordinate, toPointTo: mapView)
+                    let annotationRect = CGRect(x: annotationPoint.x - 22, y: annotationPoint.y - 22, width: 44, height: 44)
+                    
+                    if annotationRect.contains(location) {
+                        print("🚫 Tap on annotation detected, allowing map to handle it")
+                        return false // Let the map handle annotation selection
+                    }
+                }
+            }
+            
+            print("✅ Tap on empty map area, handling manual location selection")
+            return true // Handle tap for manual location selection
+        }
+        
+        // Handle category dropdown tap
         let location = touch.location(in: view)
         let dropdownFrame = categoryDropdownTableView.convert(categoryDropdownTableView.bounds, to: view)
         let buttonFrame = categoryButton.convert(categoryButton.bounds, to: view)
@@ -2828,6 +3316,15 @@ extension AddPlaceViewController: UIGestureRecognizerDelegate {
             return false
         }
         return isCategoryDropdownVisible
+    }
+    
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        // Allow map's internal gesture recognizers to work alongside our tap gesture
+        if gestureRecognizer.view == mapView || otherGestureRecognizer.view == mapView {
+            print("🤝 Allowing simultaneous gesture recognition on map")
+            return true
+        }
+        return false
     }
 }
 
@@ -2849,7 +3346,23 @@ extension AddPlaceViewController: PHPickerViewControllerDelegate {
                         self?.removePhotoButton.isHidden = false
                         self?.addPhotoButton.isHidden = true
                         
-                        // No need to update constraints as they're already set up
+                        // Clear pre-uploaded photos since user selected a new one
+                        self?.uploadedPhotoUrls.removeAll()
+                        self?.downloadedGoogleImage = nil
+                        self?.downloadedLookAroundImage = nil
+                        
+                        // Pre-upload the manually selected photo
+                        print("📸 Pre-uploading manually selected photo...")
+                        if let imageData = image.jpegData(compressionQuality: 0.8) {
+                            self?.uploadImageData(imageData) { uploadedUrl in
+                                if let url = uploadedUrl {
+                                    self?.uploadedPhotoUrls.append(url)
+                                    print("✅ Manual photo pre-uploaded: \(url)")
+                                } else {
+                                    print("❌ Failed to pre-upload manual photo")
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -2857,20 +3370,3 @@ extension AddPlaceViewController: PHPickerViewControllerDelegate {
     }
 }
 
-
-// MARK: - MKPlacemark Extension
-
-extension MKPlacemark {
-    var formattedAddress: String {
-        let addressComponents = [
-            subThoroughfare,
-            thoroughfare,
-            locality,
-            administrativeArea,
-            postalCode,
-            country
-        ].compactMap { $0 }
-        
-        return addressComponents.joined(separator: ", ")
-    }
-}

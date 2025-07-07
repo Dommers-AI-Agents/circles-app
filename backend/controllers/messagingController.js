@@ -10,6 +10,7 @@ const {
   serializeDoc, 
   serializeQuerySnapshot 
 } = require('../models/FirestoreModels');
+const { normalizeUserId, isSameUser } = require('../services/idService');
 
 const db = getFirestore();
 
@@ -18,15 +19,25 @@ const db = getFirestore();
 // @access  Private
 const getConversations = async (req, res) => {
   try {
+    console.log('🔍 getConversations called for user:', req.user.uid);
     const userId = req.user.uid;
 
     // Get all conversations where user is a participant
+    // Simplified query to avoid complex index requirements
     const conversationsQuery = db.collection(COLLECTIONS.CONVERSATIONS)
-      .where('participants', 'array-contains', userId)
-      .orderBy('lastMessageTime', 'desc');
+      .where('participants', 'array-contains', userId);
 
     const snapshot = await conversationsQuery.get();
-    const conversations = serializeQuerySnapshot(snapshot);
+    
+    // Filter out system conversations and sort in JavaScript
+    const conversations = serializeQuerySnapshot(snapshot)
+      .filter(conv => conv.type !== 'system')
+      .sort((a, b) => {
+        // Handle cases where lastMessageTime might be missing
+        const timeA = a.lastMessageTime || a.createdAt || '0';
+        const timeB = b.lastMessageTime || b.createdAt || '0';
+        return timeB.localeCompare(timeA); // Descending order
+      });
 
     // Populate participant details for each conversation
     const populatedConversations = await Promise.all(
@@ -54,6 +65,38 @@ const getConversations = async (req, res) => {
           .filter(doc => doc.exists)
           .map(doc => serializeDoc(doc));
 
+        // If the last message is a connection request sent by the current user,
+        // we need to fetch the previous message to show in the conversation list
+        if (conversation.lastMessageType === 'connection_request') {
+          // Get the last few messages to find one that should be shown
+          const messagesSnapshot = await db.collection(COLLECTIONS.MESSAGES)
+            .where('conversationId', '==', conversation.id)
+            .orderBy('createdAt', 'desc')
+            .limit(5)
+            .get();
+          
+          const messages = serializeQuerySnapshot(messagesSnapshot);
+          
+          // Find the first message that isn't a connection request sent by current user
+          const visibleMessage = messages.find(msg => {
+            if (msg.type === 'connection_request' && msg.senderId === userId) {
+              return false;
+            }
+            return true;
+          });
+          
+          if (visibleMessage) {
+            conversation.lastMessage = visibleMessage.content;
+            conversation.lastMessageTime = visibleMessage.createdAt;
+            conversation.lastMessageType = visibleMessage.type;
+          } else {
+            // No visible messages, clear the last message info
+            conversation.lastMessage = null;
+            conversation.lastMessageTime = conversation.createdAt;
+            conversation.lastMessageType = null;
+          }
+        }
+
         return conversation;
       })
     );
@@ -63,7 +106,125 @@ const getConversations = async (req, res) => {
       conversations: populatedConversations
     });
   } catch (error) {
-    console.error('Error fetching conversations:', error);
+    console.error('❌ Error fetching conversations:', error);
+    console.error('Error stack:', error.stack);
+    
+    // Check if it's a Firestore index error
+    if (error.code === 'failed-precondition' || 
+        (error.message && error.message.includes('index'))) {
+      console.error('⚠️ This appears to be a Firestore index error. The required index may need to be created.');
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+};
+
+// @desc    Get or create a direct conversation with a user
+// @route   POST /api/messages/conversations/direct/:userId
+// @access  Private
+const getOrCreateDirectConversation = async (req, res) => {
+  try {
+    const currentUserId = req.user.uid;
+    let targetUserId = req.params.userId;
+    
+    // Normalize the target user ID to handle both simple and complex formats
+    targetUserId = normalizeUserId(targetUserId);
+    
+    console.log(`🔍 getOrCreateDirectConversation - currentUserId: ${currentUserId}, targetUserId: ${targetUserId} (original: ${req.params.userId})`);
+
+    // Check for self-conversation using normalized IDs
+    if (isSameUser(currentUserId, targetUserId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot create conversation with yourself'
+      });
+    }
+
+    // First verify target user exists
+    const targetUserDoc = await db.collection(COLLECTIONS.USERS).doc(targetUserId).get();
+    if (!targetUserDoc.exists) {
+      console.error(`Target user not found with ID: ${targetUserId}`);
+      return res.status(404).json({
+        success: false,
+        message: 'Target user not found'
+      });
+    }
+
+    // Check if a direct conversation already exists between these users
+    const existingQuery1 = await db.collection(COLLECTIONS.CONVERSATIONS)
+      .where('type', '==', 'direct')
+      .where('participants', 'array-contains', currentUserId)
+      .get();
+
+    let existingConversation = null;
+    for (const doc of existingQuery1.docs) {
+      const conv = doc.data();
+      // Check if any participant matches the target user (using normalized comparison)
+      const hasTargetUser = conv.participants.some(participantId => 
+        isSameUser(participantId, targetUserId)
+      );
+      if (hasTargetUser && conv.participants.length === 2) {
+        existingConversation = { id: doc.id, ...conv };
+        break;
+      }
+    }
+
+    if (existingConversation) {
+      // Get participant details
+      const participantIds = existingConversation.participants.filter(id => id !== currentUserId);
+      const participantPromises = participantIds.map(id => 
+        db.collection(COLLECTIONS.USERS).doc(id).get()
+      );
+      
+      const participantDocs = await Promise.all(participantPromises);
+      existingConversation.participantDetails = participantDocs
+        .filter(doc => doc.exists)
+        .map(doc => serializeDoc(doc));
+
+      return res.status(200).json({
+        success: true,
+        conversation: serializeDoc({ id: existingConversation.id, data: () => existingConversation, exists: true })
+      });
+    }
+
+    // Create new conversation
+    const conversationData = createConversation({
+      type: 'direct',
+      participants: [currentUserId, targetUserId],
+      name: null,
+      avatar: null
+    });
+
+    const conversationRef = await db.collection(COLLECTIONS.CONVERSATIONS).add(conversationData);
+    
+    // Get participant details
+    const participantIds = [targetUserId];
+    const participantPromises = participantIds.map(id => 
+      db.collection(COLLECTIONS.USERS).doc(id).get()
+    );
+    
+    const participantDocs = await Promise.all(participantPromises);
+    const conversation = {
+      _id: conversationRef.id,
+      id: conversationRef.id,
+      ...conversationData,
+      participantDetails: participantDocs
+        .filter(doc => doc.exists)
+        .map(doc => serializeDoc(doc))
+    };
+
+    res.status(201).json({
+      success: true,
+      conversation
+    });
+
+  } catch (error) {
+    console.error('Error in getOrCreateDirectConversation:', error);
     res.status(500).json({
       success: false,
       message: 'Server error',
@@ -227,7 +388,16 @@ const getMessages = async (req, res) => {
     }
 
     const snapshot = await messagesQuery.get();
-    const messages = serializeQuerySnapshot(snapshot);
+    let messages = serializeQuerySnapshot(snapshot);
+
+    // Filter out connection request messages sent by the current user
+    // Connection requests should only be visible to the recipient
+    messages = messages.filter(msg => {
+      if (msg.type === 'connection_request' && msg.senderId === userId) {
+        return false; // Don't show connection requests you sent
+      }
+      return true;
+    });
 
     // Mark messages as read
     const unreadMessages = messages.filter(msg => 
@@ -635,13 +805,137 @@ const getUnreadCount = async (req, res) => {
   }
 };
 
+// @desc    Debug endpoint to test conversation fetching
+// @route   GET /api/messages/conversations/debug
+// @access  Private
+const debugGetConversations = async (req, res) => {
+  try {
+    console.log('🔍 DEBUG: getConversations called');
+    console.log('🔍 DEBUG: User ID:', req.user.uid);
+    console.log('🔍 DEBUG: User object:', JSON.stringify(req.user, null, 2));
+    
+    const userId = req.user.uid;
+    
+    // Try a simple query first
+    console.log('🔍 DEBUG: Attempting simple query...');
+    const snapshot = await db.collection(COLLECTIONS.CONVERSATIONS)
+      .where('participants', 'array-contains', userId)
+      .limit(10)
+      .get();
+    
+    console.log('🔍 DEBUG: Query executed successfully');
+    console.log('🔍 DEBUG: Found', snapshot.size, 'conversations');
+    
+    const conversations = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      console.log('🔍 DEBUG: Conversation', doc.id, 'data:', JSON.stringify(data, null, 2));
+      conversations.push({
+        id: doc.id,
+        ...data
+      });
+    });
+    
+    res.status(200).json({
+      success: true,
+      debug: true,
+      userId: userId,
+      conversationCount: conversations.length,
+      conversations: conversations
+    });
+  } catch (error) {
+    console.error('❌ DEBUG ERROR:', error);
+    console.error('❌ DEBUG ERROR Stack:', error.stack);
+    res.status(500).json({
+      success: false,
+      debug: true,
+      error: error.message,
+      stack: error.stack,
+      code: error.code
+    });
+  }
+};
+
+// @desc    Delete a conversation
+// @route   DELETE /api/messages/conversations/:conversationId
+// @access  Private
+const deleteConversation = async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const { conversationId } = req.params;
+
+    // Get the conversation to verify permissions
+    const conversationDoc = await db.collection(COLLECTIONS.CONVERSATIONS).doc(conversationId).get();
+    
+    if (!conversationDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Conversation not found'
+      });
+    }
+
+    const conversation = conversationDoc.data();
+    
+    // Verify user is part of this conversation
+    if (!conversation.participants.includes(userId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to delete this conversation'
+      });
+    }
+
+    // Use batch to delete conversation and all its messages
+    const batch = db.batch();
+
+    // Delete the conversation document
+    batch.delete(conversationDoc.ref);
+
+    // Delete all messages in the conversation
+    const messagesSnapshot = await db.collection(COLLECTIONS.MESSAGES)
+      .where('conversationId', '==', conversationId)
+      .get();
+
+    messagesSnapshot.docs.forEach(doc => {
+      batch.delete(doc.ref);
+    });
+
+    // Delete all message reads for this conversation
+    const messageReadsSnapshot = await db.collection(COLLECTIONS.MESSAGE_READS)
+      .where('conversationId', '==', conversationId)
+      .get();
+
+    messageReadsSnapshot.docs.forEach(doc => {
+      batch.delete(doc.ref);
+    });
+
+    // Commit the batch
+    await batch.commit();
+
+    res.status(200).json({
+      success: true,
+      message: 'Conversation deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('Error deleting conversation:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getConversations,
+  getOrCreateDirectConversation,
   createNewConversation,
   getMessages,
   sendMessage,
   editMessage,
   deleteMessage,
   markMessagesAsRead,
-  getUnreadCount
+  getUnreadCount,
+  deleteConversation,
+  debugGetConversations
 };

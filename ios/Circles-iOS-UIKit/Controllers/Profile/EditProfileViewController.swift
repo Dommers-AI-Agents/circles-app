@@ -416,45 +416,23 @@ class EditProfileViewController: UIViewController {
         }
         
         // Upload profile image if changed
-        if let image = selectedImage {
-            uploadProfileImage(image) { [weak self] imageUrl in
-                guard let self = self else { return }
-                
-                if let imageUrl = imageUrl {
-                    updates["profilePicture"] = imageUrl
-                }
-                
-                self.updateProfile(with: updates)
-            }
+        if let _ = selectedImage {
+            // Profile image will be handled by UserService
+            updateProfile(with: updates)
         } else {
             updateProfile(with: updates)
         }
     }
     
-    private func uploadProfileImage(_ image: UIImage, completion: @escaping (String?) -> Void) {
-        // Convert image to data
-        guard let imageData = image.jpegData(compressionQuality: 0.8) else {
-            completion(nil)
-            return
-        }
-        
-        // In a real app, you would upload to a storage service
-        // For now, we'll simulate an upload
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-            // Return a mock URL
-            completion("https://api.circles.app/images/profile_\(UUID().uuidString).jpg")
-        }
-    }
     
     private func updateProfile(with updates: [String: Any]) {
         let displayName = updates["displayName"] as? String
         let location = updates["location"] as? String
         let bio = updates["bio"] as? String
         
-        // Convert profile image URL to data if needed
+        // Convert selected image to data if available
         var profileImageData: Data?
-        if let _ = updates["profilePicture"] as? String,
-           let image = selectedImage {
+        if let image = selectedImage {
             profileImageData = image.jpegData(compressionQuality: 0.8)
         }
         

@@ -104,19 +104,49 @@ class ConversationsListViewController: UIViewController {
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
+        print("🔍 ConversationsListViewController: viewDidLoad called")
         setupView()
         setupTableView()
         setupEmptyState()
         setupNewMessageButton()
         setupSubscribers()
-        loadConversations()
         checkForNewSuggestions()
+        
+        // Check if we already have auth - if so, ensure messaging is initialized
+        if AuthService.shared.getToken() != nil {
+            print("🔍 ConversationsListViewController: Token available, ensuring MessagingManager is initialized")
+            messagingManager.ensureInitialized()
+            
+            // Load conversations after a slight delay to ensure UI is ready
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                print("🔍 ConversationsListViewController: Initial load of conversations")
+                self?.loadConversations()
+            }
+        } else {
+            print("🔍 ConversationsListViewController: No token yet, waiting for auth")
+        }
     }
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        messagingManager.loadConversations()
-        messagingManager.updateUnreadCount()
+        print("🔍 ConversationsListViewController: viewWillAppear called")
+        print("🔍 ConversationsListViewController: Auth status: \(AuthManager.shared.isAuthenticated)")
+        print("🔍 ConversationsListViewController: Auth token available: \(AuthService.shared.getToken() != nil)")
+        
+        // Always load conversations if we have a token, regardless of AuthManager state
+        if AuthService.shared.getToken() != nil {
+            print("🔍 ConversationsListViewController: Token exists, ensuring initialized and loading conversations")
+            messagingManager.ensureInitialized()
+            messagingManager.loadConversations()
+            messagingManager.updateUnreadCount()
+        }
+        
+        // Also check auth status to ensure MessagingManager is properly initialized
+        if AuthService.shared.getToken() != nil && !AuthManager.shared.isAuthenticated {
+            print("⚠️ ConversationsListViewController: Token exists but auth not detected, forcing auth check")
+            AuthManager.shared.checkAuthenticationStatus()
+        }
+        
         checkForNewSuggestions()
     }
     
@@ -211,7 +241,8 @@ class ConversationsListViewController: UIViewController {
     private func setupSubscribers() {
         messagingManager.$conversations
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
+            .sink { [weak self] conversations in
+                print("🔍 ConversationsListViewController: Received \(conversations.count) conversations")
                 self?.tableView.reloadData()
                 self?.updateEmptyState()
             }
@@ -229,10 +260,13 @@ class ConversationsListViewController: UIViewController {
     
     // MARK: - Data Loading
     private func loadConversations() {
+        print("🔍 ConversationsListViewController: Loading conversations...")
+        messagingManager.ensureInitialized()  // Ensure messaging is initialized
         messagingManager.loadConversations()
     }
     
     @objc private func refreshConversations() {
+        print("🔍 ConversationsListViewController: Pull to refresh triggered")
         messagingManager.loadConversations()
     }
     
@@ -247,6 +281,7 @@ class ConversationsListViewController: UIViewController {
     // MARK: - Empty State
     private func updateEmptyState() {
         let hasConversations = !messagingManager.conversations.isEmpty
+        print("🔍 ConversationsListViewController: updateEmptyState - hasConversations: \(hasConversations)")
         emptyStateView.isHidden = hasConversations
         tableView.isHidden = !hasConversations
     }
@@ -269,6 +304,7 @@ class ConversationsListViewController: UIViewController {
             }
         }
     }
+    
     
     // MARK: - Navigation
     private func showConversation(_ conversation: Conversation) {
@@ -306,10 +342,51 @@ extension ConversationsListViewController: UITableViewDelegate {
     
     func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
         let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, completion in
-            // TODO: Implement conversation deletion
-            completion(false)
+            guard let self = self else {
+                completion(false)
+                return
+            }
+            
+            let conversation = self.messagingManager.conversations[indexPath.row]
+            
+            // Show confirmation alert
+            let alert = UIAlertController(
+                title: "Delete Conversation",
+                message: "Are you sure you want to delete this conversation? This action cannot be undone.",
+                preferredStyle: .alert
+            )
+            
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in
+                completion(false)
+            })
+            
+            alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { _ in
+                // Delete the conversation
+                self.messagingManager.deleteConversation(conversation.id) { result in
+                    DispatchQueue.main.async {
+                        switch result {
+                        case .success:
+                            // The table will reload automatically due to the subscription
+                            completion(true)
+                        case .failure(let error):
+                            // Show error alert
+                            let errorAlert = UIAlertController(
+                                title: "Error",
+                                message: "Failed to delete conversation: \(error.localizedDescription)",
+                                preferredStyle: .alert
+                            )
+                            errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                            self.present(errorAlert, animated: true)
+                            completion(false)
+                        }
+                    }
+                }
+            })
+            
+            self.present(alert, animated: true)
         }
         deleteAction.backgroundColor = .systemRed
+        deleteAction.image = UIImage(systemName: "trash")
         
         return UISwipeActionsConfiguration(actions: [deleteAction])
     }
@@ -318,13 +395,51 @@ extension ConversationsListViewController: UITableViewDelegate {
 // MARK: - SelectConnectionViewControllerDelegate
 extension ConversationsListViewController: SelectConnectionViewControllerDelegate {
     func didSelectConnection(_ connection: Connection) {
+        // Get the current user ID to determine the other user
+        guard let currentUserId = AuthService.shared.getUserId() else {
+            print("Error: No current user ID")
+            return
+        }
+        
+        // Use the otherUserId helper to get the correct user ID
+        let otherUserId = connection.otherUserId(currentUserId: currentUserId)
+        
         // Create or get conversation with selected connection
-        messagingManager.createOrGetDirectConversation(with: connection.connectedUserId) { [weak self] result in
+        messagingManager.createOrGetDirectConversation(with: otherUserId) { [weak self] result in
             switch result {
             case .success(let conversation):
                 self?.showConversation(conversation)
             case .failure(let error):
                 print("Error creating conversation: \(error)")
+                
+                // Extract error details and show alert
+                var errorMessage = "Failed to create conversation"
+                
+                if case APIError.httpError(let statusCode, let data) = error {
+                    if statusCode == 400 {
+                        errorMessage = "Cannot create conversation with this user"
+                    }
+                    
+                    if let data = data,
+                       let serverMessage = String(data: data, encoding: .utf8) {
+                        print("Server error details: \(serverMessage)")
+                        if serverMessage.contains("yourself") {
+                            errorMessage = "Cannot create conversation with yourself"
+                        } else if let jsonData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                                  let message = jsonData["message"] as? String {
+                            errorMessage = message
+                        }
+                    }
+                }
+                
+                // Show alert
+                let alert = UIAlertController(
+                    title: "Error",
+                    message: errorMessage,
+                    preferredStyle: .alert
+                )
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                self?.present(alert, animated: true)
             }
         }
     }

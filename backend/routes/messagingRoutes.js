@@ -5,22 +5,31 @@ const { protect } = require('../middleware/firebaseAuth');
 
 const {
   getConversations,
+  getOrCreateDirectConversation,
   createNewConversation,
   getMessages,
   sendMessage,
   editMessage,
   deleteMessage,
   markMessagesAsRead,
-  getUnreadCount
+  getUnreadCount,
+  deleteConversation,
+  debugGetConversations
 } = require('../controllers/messagingController');
 
 // Apply authentication middleware to all routes
 router.use(protect);
 
+// Debug route (must come before parameterized routes)
+router.get('/conversations/debug', debugGetConversations);
+
 // Conversation routes
 router.route('/conversations')
   .get(getConversations)
   .post(createNewConversation);
+
+// Get or create direct conversation with specific user
+router.post('/conversations/direct/:userId', getOrCreateDirectConversation);
 
 // Message routes for a specific conversation
 router.route('/conversations/:conversationId/messages')
@@ -37,5 +46,8 @@ router.route('/:messageId')
 
 // Get unread count
 router.get('/unread-count', getUnreadCount);
+
+// Delete a conversation
+router.delete('/conversations/:conversationId', deleteConversation);
 
 module.exports = router;

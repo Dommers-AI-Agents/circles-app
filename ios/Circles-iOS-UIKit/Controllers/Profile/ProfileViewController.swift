@@ -4,6 +4,7 @@ class ProfileViewController: UIViewController {
     
     // MARK: - Properties
     private var user: User?
+    private var circles: [Circle] = []
     
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
@@ -195,6 +196,48 @@ class ProfileViewController: UIViewController {
         return label
     }()
     
+    // Circles list section
+    private let circlesHeaderView: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.background
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let circlesHeaderLabel: UILabel = {
+        let label = UILabel()
+        label.text = "My Circles"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.xlarge, weight: .bold)
+        label.textColor = Constants.Colors.label
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let addCircleButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "plus.circle.fill"), for: .normal)
+        button.tintColor = Constants.Colors.primary
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let circlesCollectionView: UICollectionView = {
+        let layout = UICollectionViewFlowLayout()
+        layout.scrollDirection = .vertical
+        layout.minimumInteritemSpacing = Constants.Spacing.medium
+        layout.minimumLineSpacing = Constants.Spacing.medium
+        layout.sectionInset = UIEdgeInsets(top: 0, left: Constants.Spacing.medium, bottom: Constants.Spacing.medium, right: Constants.Spacing.medium)
+        
+        let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        collectionView.backgroundColor = Constants.Colors.background
+        collectionView.translatesAutoresizingMaskIntoConstraints = false
+        collectionView.showsVerticalScrollIndicator = false
+        collectionView.isScrollEnabled = false
+        return collectionView
+    }()
+    
+    private var circlesCollectionHeightConstraint: NSLayoutConstraint?
+    
     // MARK: - Lifecycle
     
     init(user: User? = nil) {
@@ -212,6 +255,11 @@ class ProfileViewController: UIViewController {
         setupActions()
         loadUserProfile()
         displayAppVersion()
+        setupNotificationObservers()
+    }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
     
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
@@ -261,6 +309,10 @@ class ProfileViewController: UIViewController {
         statsView.addSubview(divider1View)
         statsView.addSubview(divider2View)
         
+        contentView.addSubview(circlesHeaderView)
+        circlesHeaderView.addSubview(circlesHeaderLabel)
+        circlesHeaderView.addSubview(addCircleButton)
+        contentView.addSubview(circlesCollectionView)
         contentView.addSubview(logoutButton)
         contentView.addSubview(versionLabel)
         
@@ -358,8 +410,27 @@ class ProfileViewController: UIViewController {
             friendsTitleLabel.topAnchor.constraint(equalTo: friendsLabel.bottomAnchor, constant: Constants.Spacing.tiny),
             friendsTitleLabel.centerXAnchor.constraint(equalTo: friendsLabel.centerXAnchor),
             
+            // Circles header
+            circlesHeaderView.topAnchor.constraint(equalTo: statsView.bottomAnchor, constant: Constants.Spacing.xlarge),
+            circlesHeaderView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            circlesHeaderView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            circlesHeaderView.heightAnchor.constraint(equalToConstant: 50),
+            
+            circlesHeaderLabel.centerYAnchor.constraint(equalTo: circlesHeaderView.centerYAnchor),
+            circlesHeaderLabel.leadingAnchor.constraint(equalTo: circlesHeaderView.leadingAnchor, constant: Constants.Spacing.medium),
+            
+            addCircleButton.centerYAnchor.constraint(equalTo: circlesHeaderView.centerYAnchor),
+            addCircleButton.trailingAnchor.constraint(equalTo: circlesHeaderView.trailingAnchor, constant: -Constants.Spacing.medium),
+            addCircleButton.widthAnchor.constraint(equalToConstant: 30),
+            addCircleButton.heightAnchor.constraint(equalToConstant: 30),
+            
+            // Circles collection view
+            circlesCollectionView.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor, constant: Constants.Spacing.small),
+            circlesCollectionView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            circlesCollectionView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            
             // Logout button
-            logoutButton.topAnchor.constraint(equalTo: statsView.bottomAnchor, constant: Constants.Spacing.xlarge),
+            logoutButton.topAnchor.constraint(equalTo: circlesCollectionView.bottomAnchor, constant: Constants.Spacing.xlarge),
             logoutButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             logoutButton.widthAnchor.constraint(equalToConstant: 100),
             logoutButton.heightAnchor.constraint(equalToConstant: 40),
@@ -392,11 +463,26 @@ class ProfileViewController: UIViewController {
             
             self.view.layoutIfNeeded()
         }
+        
+        // Create height constraint for collection view
+        circlesCollectionHeightConstraint = circlesCollectionView.heightAnchor.constraint(equalToConstant: 200)
+        circlesCollectionHeightConstraint?.isActive = true
+        
+        // Setup collection view
+        circlesCollectionView.delegate = self
+        circlesCollectionView.dataSource = self
+        circlesCollectionView.register(CircleCell.self, forCellWithReuseIdentifier: "CircleCell")
+        
+        // Enable drag and drop for reordering
+        circlesCollectionView.dragDelegate = self
+        circlesCollectionView.dropDelegate = self
+        circlesCollectionView.dragInteractionEnabled = true
     }
     
     private func setupActions() {
         editProfileButton.addTarget(self, action: #selector(editProfileButtonTapped), for: .touchUpInside)
         logoutButton.addTarget(self, action: #selector(logoutButtonTapped), for: .touchUpInside)
+        addCircleButton.addTarget(self, action: #selector(addCircleButtonTapped), for: .touchUpInside)
         
         // Apply initial appearance
         updateAppearance()
@@ -422,6 +508,13 @@ class ProfileViewController: UIViewController {
     @objc private func settingsButtonTapped() {
         let settingsVC = SettingsViewController()
         navigationController?.pushViewController(settingsVC, animated: true)
+    }
+    
+    @objc private func addCircleButtonTapped() {
+        let createCircleVC = CreateCircleViewController()
+        createCircleVC.delegate = self
+        let navController = UINavigationController(rootViewController: createCircleVC)
+        present(navController, animated: true)
     }
     
     // MARK: - Data Loading
@@ -503,14 +596,20 @@ class ProfileViewController: UIViewController {
     private func fetchUserStats(userId: String) {
         // For current user, fetch their circles
         if userId == AuthService.shared.getUserId() {
-            // Fetch circles count
+            // Fetch circles
             CircleService.shared.fetchUserCircles { [weak self] result in
                 DispatchQueue.main.async {
                     switch result {
                     case .success(let circles):
+                        self?.circles = circles
                         self?.circlesLabel.text = "\(circles.count)"
+                        self?.circlesCollectionView.reloadData()
+                        self?.updateCollectionViewHeight()
                     case .failure:
+                        self?.circles = []
                         self?.circlesLabel.text = "0"
+                        self?.circlesCollectionView.reloadData()
+                        self?.updateCollectionViewHeight()
                     }
                 }
             }
@@ -564,6 +663,32 @@ class ProfileViewController: UIViewController {
         versionLabel.text = "Version \(appVersion) (\(buildNumber))"
     }
     
+    private func setupNotificationObservers() {
+        // Listen for circle deletion notifications
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleCircleDeleted(_:)),
+            name: .circleDeleted,
+            object: nil
+        )
+    }
+    
+    @objc private func handleCircleDeleted(_ notification: Notification) {
+        guard let circleId = notification.userInfo?["circleId"] as? String else { return }
+        
+        DispatchQueue.main.async { [weak self] in
+            // Remove the circle from our local array
+            if let index = self?.circles.firstIndex(where: { $0.id == circleId }) {
+                self?.circles.remove(at: index)
+                self?.circlesCollectionView.reloadData()
+                self?.updateCollectionViewHeight()
+                
+                // Update stats
+                self?.circlesLabel.text = "\(self?.circles.count ?? 0)"
+            }
+        }
+    }
+    
     private func logout() {
         // Log out the user
         AuthService.shared.logout()
@@ -577,6 +702,298 @@ class ProfileViewController: UIViewController {
            let window = windowScene.windows.first {
             window.rootViewController = navController
             window.makeKeyAndVisible()
+        }
+    }
+    
+    private func updateCollectionViewHeight() {
+        // Calculate required height based on number of circles
+        let itemsPerRow: CGFloat = 2
+        let spacing = Constants.Spacing.medium
+        let totalWidth = view.bounds.width - (spacing * 3) // left, right, and middle spacing
+        let itemWidth = (totalWidth - spacing) / itemsPerRow
+        let itemHeight = itemWidth * 1.3 // Aspect ratio
+        
+        let rows = ceil(CGFloat(circles.count) / itemsPerRow)
+        let totalHeight = (rows * itemHeight) + ((rows - 1) * spacing)
+        
+        circlesCollectionHeightConstraint?.constant = max(totalHeight, 100) // Minimum height
+        
+        UIView.animate(withDuration: 0.3) {
+            self.view.layoutIfNeeded()
+        }
+    }
+}
+
+// MARK: - UICollectionViewDataSource
+extension ProfileViewController: UICollectionViewDataSource {
+    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+        return circles.count
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
+        guard let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "CircleCell", for: indexPath) as? CircleCell else {
+            return UICollectionViewCell()
+        }
+        
+        let circle = circles[indexPath.item]
+        cell.configure(with: circle)
+        return cell
+    }
+}
+
+// MARK: - UICollectionViewDelegate
+extension ProfileViewController: UICollectionViewDelegate {
+    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        let circle = circles[indexPath.item]
+        let detailVC = CircleDetailViewController(circle: circle)
+        navigationController?.pushViewController(detailVC, animated: true)
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, contextMenuConfigurationForItemAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
+        let circle = circles[indexPath.item]
+        
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
+            let editAction = UIAction(
+                title: "Edit Circle",
+                image: UIImage(systemName: "pencil")
+            ) { _ in
+                self?.editCircle(circle)
+            }
+            
+            let shareAction = UIAction(
+                title: "Share Circle",
+                image: UIImage(systemName: "square.and.arrow.up")
+            ) { _ in
+                self?.shareCircle(circle, from: indexPath)
+            }
+            
+            let deleteAction = UIAction(
+                title: "Delete Circle",
+                image: UIImage(systemName: "trash"),
+                attributes: .destructive
+            ) { _ in
+                self?.deleteCircle(circle, at: indexPath)
+            }
+            
+            return UIMenu(title: circle.name, children: [editAction, shareAction, deleteAction])
+        }
+    }
+    
+    private func editCircle(_ circle: Circle) {
+        let editVC = EditCircleViewController(circle: circle)
+        editVC.delegate = self
+        navigationController?.pushViewController(editVC, animated: true)
+    }
+    
+    private func shareCircle(_ circle: Circle, from indexPath: IndexPath) {
+        var shareText = "🔵 \(circle.name)\n"
+        
+        if let description = circle.description, !description.isEmpty {
+            shareText += "\(description)\n"
+        }
+        
+        // Calculate member count from sharedWith and followers
+        let memberCount = 1 + (circle.sharedWith?.count ?? 0) + (circle.followers?.count ?? 0)
+        shareText += "\n👥 \(memberCount) members"
+        shareText += "\n📍 \(circle.places?.count ?? 0) places"
+        
+        // Add privacy info
+        switch circle.privacy {
+        case .public:
+            shareText += "\n🌐 Public Circle"
+        case .myNetwork:
+            shareText += "\n👥 My Network"
+        case .private:
+            shareText += "\n🔒 Private Circle"
+        }
+        
+        // Add deep link
+        shareText += "\n\n📱 Open in Circles: circles://circle/\(circle.id)"
+        shareText += "\n🔗 Get Circles App: https://testflight.apple.com/join/n1sBRMG3"
+        shareText += "\n\nJoin me on Circles!"
+        
+        let activityItems: [Any] = [shareText]
+        let activityViewController = UIActivityViewController(
+            activityItems: activityItems,
+            applicationActivities: nil
+        )
+        
+        // For iPad - set the source view for the popover
+        if let popover = activityViewController.popoverPresentationController,
+           let cell = circlesCollectionView.cellForItem(at: indexPath) {
+            popover.sourceView = cell
+            popover.sourceRect = cell.bounds
+        }
+        
+        present(activityViewController, animated: true)
+    }
+    
+    private func deleteCircle(_ circle: Circle, at indexPath: IndexPath) {
+        let alert = UIAlertController(
+            title: "Delete Circle",
+            message: "Are you sure you want to delete '\(circle.name)'? This action cannot be undone.",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+            CircleService.shared.deleteCircle(id: circle.id) { result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success:
+                        self?.didDeleteCircle(circle.id)
+                    case .failure(let error):
+                        let errorAlert = UIAlertController(
+                            title: "Error",
+                            message: "Failed to delete circle: \(error.localizedDescription)",
+                            preferredStyle: .alert
+                        )
+                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                        self?.present(errorAlert, animated: true)
+                    }
+                }
+            }
+        })
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
+    }
+}
+
+// MARK: - UICollectionViewDelegateFlowLayout
+extension ProfileViewController: UICollectionViewDelegateFlowLayout {
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
+        let spacing = Constants.Spacing.medium
+        let totalWidth = collectionView.bounds.width - (spacing * 3) // left, right, and middle spacing
+        let itemWidth = (totalWidth - spacing) / 2
+        let itemHeight = itemWidth * 1.3 // Aspect ratio for circle cells
+        return CGSize(width: itemWidth, height: itemHeight)
+    }
+}
+
+// MARK: - CreateCircleDelegate
+extension ProfileViewController: CreateCircleDelegate {
+    func didCreateCircle(_ circle: Circle) {
+        circles.insert(circle, at: 0)
+        circlesCollectionView.reloadData()
+        updateCollectionViewHeight()
+        
+        // Update stats
+        circlesLabel.text = "\(circles.count)"
+    }
+}
+
+// MARK: - EditCircleDelegate
+extension ProfileViewController: EditCircleDelegate {
+    func didUpdateCircle(_ circle: Circle) {
+        if let index = circles.firstIndex(where: { $0.id == circle.id }) {
+            circles[index] = circle
+            circlesCollectionView.reloadItems(at: [IndexPath(item: index, section: 0)])
+        }
+    }
+    
+    func didDeleteCircle(_ circleId: String) {
+        if let index = circles.firstIndex(where: { $0.id == circleId }) {
+            circles.remove(at: index)
+            circlesCollectionView.deleteItems(at: [IndexPath(item: index, section: 0)])
+            updateCollectionViewHeight()
+            
+            // Update stats
+            circlesLabel.text = "\(circles.count)"
+        }
+    }
+}
+
+// MARK: - UICollectionViewDragDelegate
+extension ProfileViewController: UICollectionViewDragDelegate {
+    func collectionView(_ collectionView: UICollectionView, itemsForBeginning session: UIDragSession, at indexPath: IndexPath) -> [UIDragItem] {
+        let circle = circles[indexPath.item]
+        let itemProvider = NSItemProvider(object: circle.id as NSString)
+        let dragItem = UIDragItem(itemProvider: itemProvider)
+        dragItem.localObject = circle
+        return [dragItem]
+    }
+}
+
+// MARK: - UICollectionViewDropDelegate
+extension ProfileViewController: UICollectionViewDropDelegate {
+    func collectionView(_ collectionView: UICollectionView, dropSessionDidUpdate session: UIDropSession, withDestinationIndexPath destinationIndexPath: IndexPath?) -> UICollectionViewDropProposal {
+        if collectionView.hasActiveDrag {
+            return UICollectionViewDropProposal(operation: .move, intent: .insertAtDestinationIndexPath)
+        }
+        return UICollectionViewDropProposal(operation: .forbidden)
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, performDropWith coordinator: UICollectionViewDropCoordinator) {
+        var destinationIndexPath: IndexPath
+        
+        if let indexPath = coordinator.destinationIndexPath {
+            destinationIndexPath = indexPath
+        } else {
+            let row = collectionView.numberOfItems(inSection: 0)
+            destinationIndexPath = IndexPath(item: row - 1, section: 0)
+        }
+        
+        if coordinator.proposal.operation == .move {
+            self.reorderItems(coordinator: coordinator, destinationIndexPath: destinationIndexPath, collectionView: collectionView)
+        }
+    }
+    
+    private func reorderItems(coordinator: UICollectionViewDropCoordinator, destinationIndexPath: IndexPath, collectionView: UICollectionView) {
+        if let item = coordinator.items.first,
+           let sourceIndexPath = item.sourceIndexPath {
+            
+            collectionView.performBatchUpdates({
+                // Update the data model
+                let movedCircle = circles.remove(at: sourceIndexPath.item)
+                circles.insert(movedCircle, at: destinationIndexPath.item)
+                
+                // Update the collection view
+                collectionView.deleteItems(at: [sourceIndexPath])
+                collectionView.insertItems(at: [destinationIndexPath])
+            }, completion: { [weak self] _ in
+                // Save the new order to the backend
+                self?.saveCircleOrder()
+            })
+            
+            coordinator.drop(item.dragItem, toItemAt: destinationIndexPath)
+        }
+    }
+    
+    private func saveCircleOrder() {
+        // Extract the circle IDs in their new order
+        let circleIds = circles.map { $0.id }
+        
+        // Call the API to save the new order
+        UserService.shared.reorderCircles(circleIds: circleIds) { [weak self] error in
+            if let error = error {
+                print("Failed to save circle order: \(error)")
+                // Optionally reload circles to restore original order
+                self?.loadUserCircles()
+            } else {
+                print("Circle order saved successfully")
+            }
+        }
+    }
+    
+    private func loadUserCircles() {
+        guard let userId = user?.id else { return }
+        
+        // Fetch circles (same logic as in fetchUserStats)
+        CircleService.shared.fetchUserCircles { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let circles):
+                    self?.circles = circles
+                    self?.circlesLabel.text = "\(circles.count)"
+                    self?.circlesCollectionView.reloadData()
+                    self?.updateCollectionViewHeight()
+                case .failure:
+                    self?.circles = []
+                    self?.circlesLabel.text = "0"
+                    self?.circlesCollectionView.reloadData()
+                    self?.updateCollectionViewHeight()
+                }
+            }
         }
     }
 }

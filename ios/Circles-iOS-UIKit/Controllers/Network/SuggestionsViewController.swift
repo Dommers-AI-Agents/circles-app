@@ -407,8 +407,3 @@ extension SuggestionsViewController: SuggestionTableViewCellDelegate {
     }
 }
 
-// MARK: - Notification Names
-extension Notification.Name {
-    static let clearSuggestionsBadge = Notification.Name("clearSuggestionsBadge")
-    static let suggestionsBadgeUpdate = Notification.Name("suggestionsBadgeUpdate")
-}

@@ -15,7 +15,13 @@ const uploadImage = async (base64Data, filename) => {
     // Get storage bucket
     const storage = getStorage();
     
-    // Check for Firebase Storage configuration
+    // CRITICAL: Firebase Storage Bucket Configuration
+    // The FIREBASE_STORAGE_BUCKET environment variable MUST be set in Cloud Run
+    // To fix upload errors, run:
+    // gcloud run services update circles-backend --update-env-vars FIREBASE_STORAGE_BUCKET=circles-app-83b67.appspot.com --region us-central1
+    // 
+    // The bucket name should match your Firebase project ID with .appspot.com suffix
+    // Current project ID: circles-app-83b67
     const bucketName = process.env.FIREBASE_STORAGE_BUCKET || 
                       process.env.GCS_BUCKET_NAME || 
                       (process.env.FIREBASE_PROJECT_ID ? `${process.env.FIREBASE_PROJECT_ID}.appspot.com` : null);

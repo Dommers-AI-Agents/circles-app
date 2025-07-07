@@ -172,15 +172,6 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         return button
     }()
     
-    private let mapExpandButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "arrow.up.left.and.arrow.down.right"), for: .normal)
-        button.tintColor = .white
-        button.backgroundColor = UIColor.black.withAlphaComponent(0.6)
-        button.layer.cornerRadius = 18
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
     
     // MARK: - Init
     
@@ -205,6 +196,10 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         setupLocationManager()
         fetchPlaces()
         setupNotificationObservers()
+        
+        // Configure scroll view to avoid bottom overlap with Add Place button
+        scrollView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 80, right: 0)
+        scrollView.scrollIndicatorInsets = scrollView.contentInset
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -256,7 +251,6 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         contentView.addSubview(placesLabel)
         contentView.addSubview(categoryFilterButton)
         contentView.addSubview(mapView)
-        contentView.addSubview(mapExpandButton)
         contentView.addSubview(tableView)
         
         view.addSubview(addPlaceButton)
@@ -301,7 +295,6 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             // Category label
             categoryLabel.topAnchor.constraint(equalTo: nameLabel.topAnchor),
             categoryLabel.trailingAnchor.constraint(equalTo: circleInfoView.trailingAnchor, constant: -Constants.Spacing.large),
-            categoryLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 80),
             categoryLabel.heightAnchor.constraint(equalToConstant: 24),
             
             // Description label
@@ -341,17 +334,11 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             mapView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             mapView.heightAnchor.constraint(equalToConstant: 200),
             
-            // Map expand button
-            mapExpandButton.topAnchor.constraint(equalTo: mapView.topAnchor, constant: Constants.Spacing.small),
-            mapExpandButton.trailingAnchor.constraint(equalTo: mapView.trailingAnchor, constant: -Constants.Spacing.small),
-            mapExpandButton.widthAnchor.constraint(equalToConstant: 36),
-            mapExpandButton.heightAnchor.constraint(equalToConstant: 36),
-            
             // Table view
             tableView.topAnchor.constraint(equalTo: mapView.bottomAnchor, constant: Constants.Spacing.large),
             tableView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             tableView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            tableView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.xxxlarge),
+            tableView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -100), // Increased bottom padding for Add Place button
             
             // Add place button
             addPlaceButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.large),
@@ -365,7 +352,6 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         
         // Setup button actions
         addPlaceButton.addTarget(self, action: #selector(addPlaceButtonTapped), for: .touchUpInside)
-        mapExpandButton.addTarget(self, action: #selector(expandMapButtonTapped), for: .touchUpInside)
         categoryFilterButton.addTarget(self, action: #selector(categoryFilterButtonTapped), for: .touchUpInside)
         
         // Add tap gesture to map
@@ -439,7 +425,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         }
         
         // Category
-        categoryLabel.text = circle.category.rawValue.capitalized
+        categoryLabel.text = "  \(circle.category.rawValue.capitalized)  " // Add padding with spaces
         
         // Set category color
         switch circle.category {
@@ -472,6 +458,15 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             DispatchQueue.main.async {
                 switch result {
                 case .success(let places):
+                    // Debug logging
+                    print("🔍 CircleDetailViewController - Fetched \(places.count) places")
+                    for (index, place) in places.enumerated() {
+                        print("  Place \(index + 1): \(place.name)")
+                        print("    - ID: \(place.id)")
+                        print("    - Has photos: \(place.hasPhotos)")
+                        print("    - Photos: \(place.photos ?? [])")
+                    }
+                    
                     // Places are already ordered by the backend based on the circle's places array
                     self?.places = places
                     self?.applyFilter()
@@ -849,14 +844,28 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         
         // Adjust map to show all annotations
         if !mapRect.isNull {
-            let padding = UIEdgeInsets(top: 50, left: 50, bottom: 50, right: 50)
+            // Calculate the current rect size
+            let rectWidth = mapRect.width
+            let rectHeight = mapRect.height
+            
+            // If the rect is very small (places are close together), expand it
+            let minSize: Double = 10000 // Minimum 10km
+            if rectWidth < minSize || rectHeight < minSize {
+                // Expand the rect to have a minimum size
+                let expandX = max(0, (minSize - rectWidth) / 2)
+                let expandY = max(0, (minSize - rectHeight) / 2)
+                mapRect = mapRect.insetBy(dx: -expandX, dy: -expandY)
+            }
+            
+            // Reduce padding for a tighter view
+            let padding = UIEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
             mapView.setVisibleMapRect(mapRect, edgePadding: padding, animated: true)
         } else if let userLocation = locationManager.location {
             // Center on user location if no places
             let region = MKCoordinateRegion(
                 center: userLocation.coordinate,
-                latitudinalMeters: 5000,
-                longitudinalMeters: 5000
+                latitudinalMeters: 2000,  // Reduced from 5000 to 2000 meters
+                longitudinalMeters: 2000
             )
             mapView.setRegion(region, animated: true)
         }
@@ -929,7 +938,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         case .work:
             return UIColor(hex: "#38A169") // Green
         case .other:
-            return UIColor(hex: "#718096") // Gray
+            return UIColor(hex: "#38A169") // Green
         }
     }
     
@@ -1084,10 +1093,6 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         navigationController?.pushViewController(addPlaceVC, animated: true)
     }
     
-    @objc private func expandMapButtonTapped() {
-        presentFullScreenMap()
-    }
-    
     @objc private func mapViewTapped() {
         presentFullScreenMap()
     }
@@ -1153,6 +1158,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     private func presentFullScreenMap() {
         let fullScreenMapVC = FullScreenMapViewController(places: filteredPlaces, initialRegion: mapView.region, selectedCategory: selectedCategory)
         fullScreenMapVC.delegate = self
+        fullScreenMapVC.isPresentedModally = true
         present(fullScreenMapVC, animated: true)
     }
     
@@ -1310,6 +1316,42 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         
         mapItem.openInMaps(launchOptions: launchOptions)
     }
+    
+    private func likePlace(_ place: Place) {
+        // Disable interaction while processing
+        view.isUserInteractionEnabled = false
+        
+        PlaceService.shared.likePlace(id: place.id) { [weak self] result in
+            DispatchQueue.main.async {
+                self?.view.isUserInteractionEnabled = true
+                
+                switch result {
+                case .success(let updatedPlace):
+                    // Update the place in our filtered list
+                    if let index = self?.filteredPlaces.firstIndex(where: { $0.id == place.id }) {
+                        self?.filteredPlaces[index] = updatedPlace
+                        self?.tableView.reloadRows(at: [IndexPath(row: index, section: 0)], with: .none)
+                    }
+                case .failure(let error):
+                    print("Failed to like place: \(error)")
+                    // Show error alert
+                    let alert = UIAlertController(
+                        title: "Error",
+                        message: "Failed to like place. Please try again.",
+                        preferredStyle: .alert
+                    )
+                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    self?.present(alert, animated: true)
+                }
+            }
+        }
+    }
+    
+    private func showComments(for place: Place) {
+        let commentsVC = PlaceCommentsViewController(place: place)
+        let navController = UINavigationController(rootViewController: commentsVC)
+        present(navController, animated: true)
+    }
 }
 
 // MARK: - UITableViewDelegate & UITableViewDataSource
@@ -1336,6 +1378,16 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
             self?.openPlaceInMaps(place)
         }
         
+        // Set up like button action
+        cell.onLikeTapped = { [weak self] place in
+            self?.likePlace(place)
+        }
+        
+        // Set up comment button action
+        cell.onCommentTapped = { [weak self] place in
+            self?.showComments(for: place)
+        }
+        
         return cell
     }
     
@@ -1347,6 +1399,15 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
         tableView.deselectRow(at: indexPath, animated: true)
         
         let place = filteredPlaces[indexPath.row]
+        
+        // Debug logging
+        print("🔍 CircleDetailViewController - Selected place:")
+        print("  - Place name: \(place.name)")
+        print("  - Place ID: \(place.id)")
+        print("  - Has photos: \(place.hasPhotos)")
+        print("  - Photos array: \(place.photos ?? [])")
+        print("  - Photos count: \(place.photos?.count ?? 0)")
+        
         let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
         navigationController?.pushViewController(placeDetailVC, animated: true)
     }
@@ -1610,7 +1671,7 @@ class PlaceTableViewCell: UITableViewCell {
     
     private let ratingLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small, weight: .semibold)
+        label.font = UIFont.systemFont(ofSize: 11, weight: .semibold)
         label.textColor = Constants.Colors.label
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -1634,9 +1695,47 @@ class PlaceTableViewCell: UITableViewCell {
         return button
     }()
     
+    private let likeButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "heart"), for: .normal)
+        button.tintColor = Constants.Colors.primary
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.contentMode = .scaleAspectFit
+        return button
+    }()
+    
+    private let likeCountLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 11)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.textAlignment = .left
+        return label
+    }()
+    
+    private let commentButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "bubble.right"), for: .normal)
+        button.tintColor = Constants.Colors.primary
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.contentMode = .scaleAspectFit
+        return button
+    }()
+    
+    private let commentCountLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 11)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.textAlignment = .left
+        return label
+    }()
+    
     // Closure for share action
     var onShareTapped: ((Place) -> Void)?
     var onDirectionsTapped: ((Place) -> Void)?
+    var onLikeTapped: ((Place) -> Void)?
+    var onCommentTapped: ((Place) -> Void)?
     private var place: Place?
     private var photoLoadingTask: URLSessionDataTask?
     
@@ -1670,6 +1769,10 @@ class PlaceTableViewCell: UITableViewCell {
         containerView.addSubview(ratingView)
         containerView.addSubview(shareButton)
         containerView.addSubview(directionsButton)
+        containerView.addSubview(likeButton)
+        containerView.addSubview(likeCountLabel)
+        containerView.addSubview(commentButton)
+        containerView.addSubview(commentCountLabel)
         
         ratingView.addSubview(ratingImageView)
         ratingView.addSubview(ratingLabel)
@@ -1678,6 +1781,10 @@ class PlaceTableViewCell: UITableViewCell {
         shareButton.addTarget(self, action: #selector(shareButtonTapped), for: .touchUpInside)
         // Add target for directions button
         directionsButton.addTarget(self, action: #selector(directionsButtonTapped), for: .touchUpInside)
+        // Add target for like button
+        likeButton.addTarget(self, action: #selector(likeButtonTapped), for: .touchUpInside)
+        // Add target for comment button
+        commentButton.addTarget(self, action: #selector(commentButtonTapped), for: .touchUpInside)
         
         NSLayoutConstraint.activate([
             // Container view
@@ -1691,6 +1798,7 @@ class PlaceTableViewCell: UITableViewCell {
             placeImageView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: Constants.Spacing.small),
             placeImageView.widthAnchor.constraint(equalToConstant: 80),
             placeImageView.heightAnchor.constraint(equalToConstant: 80),
+            placeImageView.bottomAnchor.constraint(lessThanOrEqualTo: containerView.bottomAnchor, constant: -Constants.Spacing.small),
             
             // Image gradient view (same as image view)
             imageGradientView.topAnchor.constraint(equalTo: placeImageView.topAnchor),
@@ -1728,7 +1836,6 @@ class PlaceTableViewCell: UITableViewCell {
             // Category label
             categoryLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
             categoryLabel.leadingAnchor.constraint(equalTo: placeImageView.trailingAnchor, constant: Constants.Spacing.small),
-            categoryLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 100),
             categoryLabel.heightAnchor.constraint(equalToConstant: 20),
             
             // Address label
@@ -1739,18 +1846,40 @@ class PlaceTableViewCell: UITableViewCell {
             // Rating view
             ratingView.topAnchor.constraint(equalTo: addressLabel.bottomAnchor, constant: Constants.Spacing.small),
             ratingView.leadingAnchor.constraint(equalTo: placeImageView.trailingAnchor, constant: Constants.Spacing.small),
-            ratingView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -Constants.Spacing.small),
-            ratingView.widthAnchor.constraint(equalToConstant: 65),
-            ratingView.heightAnchor.constraint(equalToConstant: 24),
+            ratingView.widthAnchor.constraint(equalToConstant: 60),
+            ratingView.heightAnchor.constraint(equalToConstant: 22),
+            
+            // Like button - reduced spacing and size
+            likeButton.leadingAnchor.constraint(equalTo: ratingView.trailingAnchor, constant: Constants.Spacing.small),
+            likeButton.centerYAnchor.constraint(equalTo: ratingView.centerYAnchor),
+            likeButton.widthAnchor.constraint(equalToConstant: 20),
+            likeButton.heightAnchor.constraint(equalToConstant: 20),
+            
+            // Like count label - reduced spacing and width constraint
+            likeCountLabel.leadingAnchor.constraint(equalTo: likeButton.trailingAnchor, constant: 2),
+            likeCountLabel.centerYAnchor.constraint(equalTo: likeButton.centerYAnchor),
+            likeCountLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 24),
+            
+            // Comment button - reduced spacing and size
+            commentButton.leadingAnchor.constraint(equalTo: likeCountLabel.trailingAnchor, constant: Constants.Spacing.xsmall),
+            commentButton.centerYAnchor.constraint(equalTo: ratingView.centerYAnchor),
+            commentButton.widthAnchor.constraint(equalToConstant: 20),
+            commentButton.heightAnchor.constraint(equalToConstant: 20),
+            
+            // Comment count label - reduced spacing and width constraint
+            commentCountLabel.leadingAnchor.constraint(equalTo: commentButton.trailingAnchor, constant: 2),
+            commentCountLabel.centerYAnchor.constraint(equalTo: commentButton.centerYAnchor),
+            commentCountLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 24),
+            commentCountLabel.trailingAnchor.constraint(lessThanOrEqualTo: containerView.trailingAnchor, constant: -Constants.Spacing.small),
             
             // Rating image view
             ratingImageView.leadingAnchor.constraint(equalTo: ratingView.leadingAnchor, constant: Constants.Spacing.tiny),
             ratingImageView.centerYAnchor.constraint(equalTo: ratingView.centerYAnchor),
-            ratingImageView.widthAnchor.constraint(equalToConstant: 16),
-            ratingImageView.heightAnchor.constraint(equalToConstant: 16),
+            ratingImageView.widthAnchor.constraint(equalToConstant: 14),
+            ratingImageView.heightAnchor.constraint(equalToConstant: 14),
             
             // Rating label
-            ratingLabel.leadingAnchor.constraint(equalTo: ratingImageView.trailingAnchor, constant: Constants.Spacing.tiny),
+            ratingLabel.leadingAnchor.constraint(equalTo: ratingImageView.trailingAnchor, constant: 2),
             ratingLabel.trailingAnchor.constraint(equalTo: ratingView.trailingAnchor, constant: -Constants.Spacing.tiny),
             ratingLabel.centerYAnchor.constraint(equalTo: ratingView.centerYAnchor)
         ])
@@ -1761,8 +1890,34 @@ class PlaceTableViewCell: UITableViewCell {
         self.place = place
         nameLabel.text = place.name.isEmpty ? "Unnamed Place" : place.name
         
+        // Highlight new places
+        if place.isNew == true {
+            containerView.layer.borderColor = Constants.Colors.primary.cgColor
+            containerView.layer.borderWidth = 2
+            containerView.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.05)
+            
+            // Add new badge to name
+            let attributedString = NSMutableAttributedString(string: nameLabel.text ?? "")
+            let newBadge = NSAttributedString(
+                string: " NEW",
+                attributes: [
+                    .font: UIFont.systemFont(ofSize: 10, weight: .bold),
+                    .foregroundColor: Constants.Colors.primary,
+                    .backgroundColor: Constants.Colors.primary.withAlphaComponent(0.1)
+                ]
+            )
+            attributedString.append(newBadge)
+            nameLabel.attributedText = attributedString
+        } else {
+            containerView.layer.borderColor = Constants.Colors.separator.cgColor
+            containerView.layer.borderWidth = 1
+            containerView.backgroundColor = Constants.Colors.secondaryBackground
+            nameLabel.attributedText = nil
+            nameLabel.text = place.name.isEmpty ? "Unnamed Place" : place.name
+        }
+        
         // Category label
-        categoryLabel.text = " \(place.displayCategory) "
+        categoryLabel.text = "  \(place.displayCategory)  " // Add padding with spaces
         
         // Set category color and icon
         setCategoryAppearance(for: place.category)
@@ -1794,6 +1949,17 @@ class PlaceTableViewCell: UITableViewCell {
         } else {
             ratingLabel.text = "N/A"
         }
+        
+        // Like button and count
+        let isLiked = place.isLikedByCurrentUser
+        likeButton.setImage(UIImage(systemName: isLiked ? "heart.fill" : "heart"), for: .normal)
+        likeButton.tintColor = isLiked ? .systemRed : Constants.Colors.primary
+        
+        let likeCount = place.likesCount ?? 0
+        likeCountLabel.text = likeCount > 0 ? "\(likeCount)" : ""
+        
+        // Comment count (will need to fetch separately)
+        commentCountLabel.text = ""
         
         // Show/hide directions button based on location availability
         directionsButton.isHidden = (place.location == nil)
@@ -1911,7 +2077,7 @@ class PlaceTableViewCell: UITableViewCell {
             categoryLabel.backgroundColor = UIColor(hex: "#38A169") // Green
             categoryIconView.image = UIImage(systemName: "building.2")
         case .other:
-            categoryLabel.backgroundColor = UIColor(hex: "#718096") // Gray
+            categoryLabel.backgroundColor = UIColor(hex: "#38A169") // Green
             categoryIconView.image = UIImage(systemName: "mappin")
         }
     }
@@ -1925,6 +2091,16 @@ class PlaceTableViewCell: UITableViewCell {
     @objc private func directionsButtonTapped() {
         guard let place = place else { return }
         onDirectionsTapped?(place)
+    }
+    
+    @objc private func likeButtonTapped() {
+        guard let place = place else { return }
+        onLikeTapped?(place)
+    }
+    
+    @objc private func commentButtonTapped() {
+        guard let place = place else { return }
+        onCommentTapped?(place)
     }
     
     override func prepareForReuse() {

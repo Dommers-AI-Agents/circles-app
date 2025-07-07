@@ -1,5 +1,5 @@
 import UIKit
-import GoogleMaps
+import MapKit
 import PhotosUI
 
 class PlaceDetailViewController: UIViewController {
@@ -38,6 +38,8 @@ class PlaceDetailViewController: UIViewController {
         return place.circleId.isEmpty && (place.id == "home-place" || place.id == "work-place")
     }
     private var isLoadingPhoto = false
+    private var placePhotos: [UIImage] = []
+    private var currentPhotoIndex = 0
     
     private let streetViewToggleButton: UIButton = {
         let button = UIButton(type: .system)
@@ -106,6 +108,39 @@ class PlaceDetailViewController: UIViewController {
         return view
     }()
     
+    // Creator info view
+    private let creatorInfoView: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.secondaryBackground
+        view.layer.cornerRadius = 8
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let creatorLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    // Add to Circle button
+    private let addToCircleButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Add to My Circle", for: .normal)
+        button.setImage(UIImage(systemName: "plus.circle.fill"), for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = Constants.Colors.primary
+        button.layer.cornerRadius = 20
+        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
+        button.contentEdgeInsets = UIEdgeInsets(top: 10, left: 20, bottom: 10, right: 20)
+        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 0)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isHidden = true // Hidden by default
+        return button
+    }()
+    
     private let ratingImageView: UIImageView = {
         let imageView = UIImageView()
         imageView.image = UIImage(systemName: "star.fill")
@@ -150,9 +185,12 @@ class PlaceDetailViewController: UIViewController {
         return label
     }()
     
-    private let mapView: GMSMapView = {
-        let mapView = GMSMapView()
-        mapView.camera = GMSCameraPosition.camera(withLatitude: 40.7128, longitude: -74.0060, zoom: 15.0)
+    private let mapView: MKMapView = {
+        let mapView = MKMapView()
+        mapView.isScrollEnabled = false
+        mapView.isZoomEnabled = false
+        mapView.isPitchEnabled = false
+        mapView.isRotateEnabled = false
         mapView.layer.cornerRadius = 12
         mapView.clipsToBounds = true
         mapView.translatesAutoresizingMaskIntoConstraints = false
@@ -319,6 +357,14 @@ class PlaceDetailViewController: UIViewController {
         self.place = place
         self.circle = circle
         super.init(nibName: nil, bundle: nil)
+        
+        // Debug logging
+        print("🔍 PlaceDetailViewController init:")
+        print("  - Place name: \(place.name)")
+        print("  - Place ID: \(place.id)")
+        print("  - Has photos property: \(place.hasPhotos)")
+        print("  - Photos array: \(place.photos ?? [])")
+        print("  - Photos count: \(place.photos?.count ?? 0)")
     }
     
     required init?(coder: NSCoder) {
@@ -330,6 +376,10 @@ class PlaceDetailViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         
+        // Configure scroll view behavior
+        scrollView.contentInsetAdjustmentBehavior = .automatic
+        scrollView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 20, right: 0)
+        
         // If circle is not provided and circleId is not empty, fetch it
         if circle == nil && !place.circleId.isEmpty {
             fetchCircle()
@@ -340,10 +390,8 @@ class PlaceDetailViewController: UIViewController {
         setupMap()
         checkStreetViewAvailability()
         
-        // Auto-load street view for Home/Work places
-        if isHomeOrWorkPlace {
-            autoLoadStreetViewForHomeWork()
-        }
+        // Auto-load street view for all places
+        autoLoadStreetView()
         
         // Show edit image button for all places
         editImageButton.isHidden = false
@@ -387,8 +435,11 @@ class PlaceDetailViewController: UIViewController {
         
         infoContainerView.addSubview(nameLabel)
         infoContainerView.addSubview(categoryLabel)
+        infoContainerView.addSubview(creatorInfoView)
+        creatorInfoView.addSubview(creatorLabel)
         infoContainerView.addSubview(ratingView)
         infoContainerView.addSubview(descriptionLabel)
+        infoContainerView.addSubview(addToCircleButton)
         infoContainerView.addSubview(addressTitleLabel)
         infoContainerView.addSubview(addressLabel)
         infoContainerView.addSubview(mapView)
@@ -483,7 +534,7 @@ class PlaceDetailViewController: UIViewController {
             editImageButton.heightAnchor.constraint(equalToConstant: 32),
             
             // Info container view
-            infoContainerView.topAnchor.constraint(equalTo: imageView.bottomAnchor, constant: -20),
+            infoContainerView.topAnchor.constraint(equalTo: imageView.bottomAnchor, constant: 0),
             infoContainerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             infoContainerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             infoContainerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
@@ -491,16 +542,26 @@ class PlaceDetailViewController: UIViewController {
             // Name label
             nameLabel.topAnchor.constraint(equalTo: infoContainerView.topAnchor, constant: Constants.Spacing.large),
             nameLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
-            nameLabel.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.large),
+            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: categoryLabel.leadingAnchor, constant: -Constants.Spacing.small),
             
             // Category label
             categoryLabel.topAnchor.constraint(equalTo: nameLabel.topAnchor),
             categoryLabel.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.large),
-            categoryLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 80),
             categoryLabel.heightAnchor.constraint(equalToConstant: 24),
             
+            // Creator info view
+            creatorInfoView.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: Constants.Spacing.small),
+            creatorInfoView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
+            creatorInfoView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.large),
+            creatorInfoView.heightAnchor.constraint(equalToConstant: 30),
+            
+            // Creator label
+            creatorLabel.leadingAnchor.constraint(equalTo: creatorInfoView.leadingAnchor, constant: Constants.Spacing.small),
+            creatorLabel.trailingAnchor.constraint(equalTo: creatorInfoView.trailingAnchor, constant: -Constants.Spacing.small),
+            creatorLabel.centerYAnchor.constraint(equalTo: creatorInfoView.centerYAnchor),
+            
             // Rating view
-            ratingView.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: Constants.Spacing.medium),
+            ratingView.topAnchor.constraint(equalTo: creatorInfoView.bottomAnchor, constant: Constants.Spacing.small),
             ratingView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
             ratingView.heightAnchor.constraint(equalToConstant: 30),
             
@@ -523,8 +584,13 @@ class PlaceDetailViewController: UIViewController {
             descriptionLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
             descriptionLabel.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.large),
             
-            // Address title label
-            addressTitleLabel.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: Constants.Spacing.large),
+            // Add to Circle button
+            addToCircleButton.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: Constants.Spacing.medium),
+            addToCircleButton.centerXAnchor.constraint(equalTo: infoContainerView.centerXAnchor),
+            addToCircleButton.heightAnchor.constraint(equalToConstant: 40),
+            addToCircleButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 180),
+            
+            // Address title label - anchor to addToCircleButton if visible, otherwise descriptionLabel
             addressTitleLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
             
             // Address label
@@ -639,8 +705,14 @@ class PlaceDetailViewController: UIViewController {
         // Set place details
         nameLabel.text = place.name
         
+        // Creator info
+        configureCreatorInfo()
+        
+        // Add to Circle button
+        configureAddToCircleButton()
+        
         // Category
-        categoryLabel.text = place.displayCategory
+        categoryLabel.text = "  \(place.displayCategory)  " // Add padding with spaces
         
         // Set category color and icon
         switch place.category {
@@ -677,7 +749,7 @@ class PlaceDetailViewController: UIViewController {
         case .work:
             categoryLabel.backgroundColor = UIColor(hex: "#38A169") // Green
         case .other:
-            categoryLabel.backgroundColor = UIColor(hex: "#718096") // Gray
+            categoryLabel.backgroundColor = UIColor(hex: "#38A169") // Green
         }
         
         // Set default image
@@ -817,28 +889,166 @@ class PlaceDetailViewController: UIViewController {
     }
     
     private func setupMap() {
-        // Add marker for the place location
+        // Add annotation for the place location
         if let location = place.location?.clLocation {
-            let marker = GMSMarker()
-            marker.position = location.coordinate
-            marker.title = place.name
-            marker.snippet = place.displayCategory
-            marker.map = mapView
+            // Create annotation
+            let annotation = MKPointAnnotation()
+            annotation.coordinate = location.coordinate
+            annotation.title = place.name
+            annotation.subtitle = place.displayCategory
+            mapView.addAnnotation(annotation)
             
-            // Custom marker color
-            marker.icon = GMSMarker.markerImage(with: UIColor(red: 0.0, green: 122.0/255.0, blue: 1.0, alpha: 1.0))
-            
-            // Center camera on the place
-            let camera = GMSCameraPosition.camera(
-                withLatitude: location.coordinate.latitude,
-                longitude: location.coordinate.longitude,
-                zoom: 16.0
+            // Set map region
+            let region = MKCoordinateRegion(
+                center: location.coordinate,
+                latitudinalMeters: 500,
+                longitudinalMeters: 500
             )
-            mapView.animate(to: camera)
+            mapView.setRegion(region, animated: false)
+            
+            // Select the annotation to show callout
+            mapView.selectAnnotation(annotation, animated: false)
+        }
+    }
+    
+    // MARK: - Configuration Helpers
+    
+    private func configureCreatorInfo() {
+        var creatorText = ""
+        
+        if let addedByUser = place.addedByUser {
+            creatorText = "Added by \(addedByUser.displayName)"
+        } else {
+            // If addedByUser is not populated, check if it's the current user
+            let currentUserId = AuthService.shared.getUserId() ?? ""
+            if place.addedBy == currentUserId {
+                creatorText = "Added by you"
+            } else {
+                // Try to find the user in the circle
+                if let circle = circle {
+                    if circle.owner == place.addedBy {
+                        if let ownerDetails = circle.ownerDetails {
+                            creatorText = "Added by \(ownerDetails.displayName)"
+                        } else {
+                            creatorText = "Added by circle owner"
+                        }
+                    } else {
+                        creatorText = "Added by a member"
+                    }
+                } else {
+                    creatorText = "Added by a connection"
+                }
+            }
+        }
+        
+        creatorLabel.text = creatorText
+    }
+    
+    private func configureAddToCircleButton() {
+        // Check if the current user already has this place in any of their circles
+        let currentUserId = AuthService.shared.getUserId() ?? ""
+        
+        // Hide button if:
+        // 1. User created this place themselves
+        // 2. Place is already in one of user's circles
+        // 3. User doesn't have any circles to add to
+        
+        if place.addedBy == currentUserId {
+            // User created this place
+            addToCircleButton.isHidden = true
+            return
+        }
+        
+        // Check if user already has this place
+        CircleService.shared.fetchUserCircles { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                
+                switch result {
+                case .success(let userCircles):
+                    // Check if any of user's circles contain this place
+                    let hasPlace = userCircles.contains { circle in
+                        circle.places?.contains(self.place.id) ?? false
+                    }
+                    
+                    if hasPlace {
+                        self.addToCircleButton.isHidden = true
+                    } else if userCircles.isEmpty {
+                        // User has no circles
+                        self.addToCircleButton.isHidden = true
+                    } else {
+                        // Show the button
+                        self.addToCircleButton.isHidden = false
+                        self.addToCircleButton.addTarget(self, action: #selector(self.addToCircleButtonTapped), for: .touchUpInside)
+                        
+                        // Update address title label constraint
+                        self.updateAddressTitleConstraint()
+                    }
+                    
+                case .failure:
+                    self.addToCircleButton.isHidden = true
+                }
+            }
+        }
+    }
+    
+    private func updateAddressTitleConstraint() {
+        // Remove existing top constraint
+        addressTitleLabel.constraints.forEach { constraint in
+            if constraint.firstAttribute == .top {
+                constraint.isActive = false
+            }
+        }
+        
+        // Add new constraint based on button visibility
+        if addToCircleButton.isHidden {
+            addressTitleLabel.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: Constants.Spacing.large).isActive = true
+        } else {
+            addressTitleLabel.topAnchor.constraint(equalTo: addToCircleButton.bottomAnchor, constant: Constants.Spacing.large).isActive = true
         }
     }
     
     // MARK: - Actions
+    
+    @objc private func addToCircleButtonTapped() {
+        // Fetch user's circles to show in picker
+        CircleService.shared.fetchUserCircles { [weak self] result in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let circles):
+                    if circles.isEmpty {
+                        // No circles available
+                        let alert = UIAlertController(
+                            title: "No Circles",
+                            message: "You need to create a circle first before adding places to it.",
+                            preferredStyle: .alert
+                        )
+                        alert.addAction(UIAlertAction(title: "OK", style: .default))
+                        self.present(alert, animated: true)
+                    } else {
+                        // Show circle picker
+                        let pickerVC = CirclePickerViewController(circles: circles)
+                        pickerVC.onCircleSelected = { [weak self] selectedCircle in
+                            self?.addPlaceToCircle(selectedCircle)
+                        }
+                        let navController = UINavigationController(rootViewController: pickerVC)
+                        self.present(navController, animated: true)
+                    }
+                    
+                case .failure(let error):
+                    let alert = UIAlertController(
+                        title: "Error",
+                        message: "Failed to load circles: \(error.localizedDescription)",
+                        preferredStyle: .alert
+                    )
+                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    self.present(alert, animated: true)
+                }
+            }
+        }
+    }
     
     @objc private func shareButtonTapped() {
         // Create a formatted string with place details
@@ -948,72 +1158,146 @@ class PlaceDetailViewController: UIViewController {
     }
     
     @objc private func streetViewToggleButtonTapped() {
-        showingStreetView.toggle()
-        updateImageView()
+        print("🔘 PlaceDetailViewController: Street view toggle button tapped")
+        print("  - Current state - showingStreetView: \(showingStreetView)")
+        print("  - placePhotos.count: \(placePhotos.count)")
+        print("  - currentPhotoIndex: \(currentPhotoIndex)")
         
-        if showingStreetView && streetViewImage == nil {
-            loadStreetViewImage()
+        // Cycle through available images
+        if placePhotos.count > 1 {
+            // Multiple photos - cycle through them and optionally street view
+            if showingStreetView {
+                // Currently showing street view, go back to first photo
+                showingStreetView = false
+                currentPhotoIndex = 0
+                imageView.image = placePhotos[0]
+                imageView.contentMode = .scaleAspectFill
+                streetViewToggleButton.setTitle("Next Photo", for: .normal)
+                streetViewToggleButton.setImage(UIImage(systemName: "photo.on.rectangle"), for: .normal)
+            } else {
+                // Currently showing a photo
+                currentPhotoIndex = (currentPhotoIndex + 1) % placePhotos.count
+                imageView.image = placePhotos[currentPhotoIndex]
+                imageView.contentMode = .scaleAspectFill
+                
+                // Update button for next action
+                if currentPhotoIndex < placePhotos.count - 1 {
+                    streetViewToggleButton.setTitle("Next Photo", for: .normal)
+                    streetViewToggleButton.setImage(UIImage(systemName: "photo.on.rectangle"), for: .normal)
+                } else if isStreetViewAvailable {
+                    // Last photo, next tap will show street view
+                    streetViewToggleButton.setTitle("Look Around", for: .normal)
+                    streetViewToggleButton.setImage(UIImage(systemName: "eye.circle"), for: .normal)
+                } else {
+                    // Last photo, next tap will go back to first
+                    streetViewToggleButton.setTitle("First Photo", for: .normal)
+                    streetViewToggleButton.setImage(UIImage(systemName: "photo"), for: .normal)
+                }
+            }
+        } else if placePhotos.count == 1 && isStreetViewAvailable {
+            // Single photo and street view available - toggle between them
+            if showingStreetView {
+                // Show the photo
+                showingStreetView = false
+                imageView.image = placePhotos[0]
+                imageView.contentMode = .scaleAspectFill
+                streetViewToggleButton.setTitle("Look Around", for: .normal)
+                streetViewToggleButton.setImage(UIImage(systemName: "eye.circle"), for: .normal)
+            } else {
+                // Show street view
+                showingStreetView = true
+                if streetViewImage == nil {
+                    loadStreetViewImage()
+                } else {
+                    updateImageView()
+                }
+            }
+        } else if placePhotos.isEmpty && isStreetViewAvailable {
+            // No photos but street view is available - just toggle street view
+            showingStreetView.toggle()
+            updateImageView()
+            
+            if showingStreetView && streetViewImage == nil {
+                loadStreetViewImage()
+            }
         }
     }
     
     private func checkStreetViewAvailability() {
-        guard let location = place.location?.clLocation else { return }
+        guard let location = place.location?.clLocation else { 
+            print("⚠️ PlaceDetailViewController: No location available for street view check")
+            return 
+        }
         
-        GoogleStreetViewService.shared.checkStreetViewAvailability(at: location.coordinate) { [weak self] available in
-            DispatchQueue.main.async {
-                self?.isStreetViewAvailable = available
-                self?.streetViewToggleButton.isHidden = !available
+        if #available(iOS 16.0, *) {
+            print("🔍 PlaceDetailViewController: Checking Look Around availability for \(place.name)")
+            Task {
+                let available = await AppleLookAroundService.shared.checkLookAroundAvailability(at: location.coordinate)
+                await MainActor.run {
+                    print("📍 PlaceDetailViewController: Look Around available: \(available)")
+                    self.isStreetViewAvailable = available
+                    self.updateToggleButtonVisibility()
+                }
             }
+        } else {
+            // Look Around not available on iOS < 16
+            print("⚠️ PlaceDetailViewController: iOS < 16.0, Look Around not available")
+            isStreetViewAvailable = false
+            updateToggleButtonVisibility()
         }
     }
     
     private func loadStreetViewImage() {
         guard let location = place.location?.clLocation else { return }
         
-        let imageSize = CGSize(width: UIScreen.main.bounds.width, height: 250)
-        let parameters = GoogleStreetViewService.StreetViewParameters(
-            location: location.coordinate,
-            size: imageSize
-        )
-        
-        GoogleStreetViewService.shared.downloadStreetViewImage(parameters: parameters) { [weak self] imageData in
-            guard let data = imageData, let image = UIImage(data: data) else { return }
+        if #available(iOS 16.0, *) {
+            let imageSize = CGSize(width: UIScreen.main.bounds.width, height: 250)
             
-            DispatchQueue.main.async {
-                self?.streetViewImage = image
-                if self?.showingStreetView == true {
-                    self?.updateImageView()
+            Task {
+                do {
+                    let image = try await AppleLookAroundService.shared.getLookAroundSnapshot(
+                        at: location.coordinate,
+                        size: imageSize
+                    )
+                    await MainActor.run {
+                        self.streetViewImage = image
+                        if self.showingStreetView == true {
+                            self.updateImageView()
+                        }
+                    }
+                } catch {
+                    print("Failed to load Look Around: \(error)")
                 }
             }
         }
     }
     
-    private func autoLoadStreetViewForHomeWork() {
+    private func autoLoadStreetView() {
         guard let location = place.location?.clLocation else { return }
         
-        // Check if street view is available first
-        GoogleStreetViewService.shared.checkStreetViewAvailability(at: location.coordinate) { [weak self] available in
-            guard let self = self, available else { return }
-            
-            DispatchQueue.main.async {
-                // Load street view image
-                let imageSize = CGSize(width: UIScreen.main.bounds.width, height: 250)
-                let parameters = GoogleStreetViewService.StreetViewParameters(
-                    location: location.coordinate,
-                    size: imageSize
-                )
+        if #available(iOS 16.0, *) {
+            Task {
+                // Check if Look Around is available first
+                let available = await AppleLookAroundService.shared.checkLookAroundAvailability(at: location.coordinate)
+                guard available else { return }
                 
-                GoogleStreetViewService.shared.downloadStreetViewImage(parameters: parameters) { [weak self] imageData in
-                    guard let data = imageData, let image = UIImage(data: data) else { return }
-                    
-                    DispatchQueue.main.async {
-                        self?.streetViewImage = image
-                        self?.showingStreetView = true
-                        self?.updateImageView()
+                let imageSize = CGSize(width: UIScreen.main.bounds.width, height: 250)
+                
+                do {
+                    let image = try await AppleLookAroundService.shared.getLookAroundSnapshot(
+                        at: location.coordinate,
+                        size: imageSize
+                    )
+                    await MainActor.run {
+                        self.streetViewImage = image
+                        self.showingStreetView = true
+                        self.updateImageView()
                         // Update button state
-                        self?.streetViewToggleButton.setTitle("Photos", for: .normal)
-                        self?.streetViewToggleButton.setImage(UIImage(systemName: "photo"), for: .normal)
+                        self.streetViewToggleButton.setTitle("Photos", for: .normal)
+                        self.streetViewToggleButton.setImage(UIImage(systemName: "photo"), for: .normal)
                     }
+                } catch {
+                    print("Failed to auto-load Look Around: \(error)")
                 }
             }
         }
@@ -1023,13 +1307,33 @@ class PlaceDetailViewController: UIViewController {
         if showingStreetView, let streetViewImage = streetViewImage {
             imageView.image = streetViewImage
             imageView.contentMode = .scaleAspectFill
-            streetViewToggleButton.setTitle("Photos", for: .normal)
-            streetViewToggleButton.setImage(UIImage(systemName: "photo"), for: .normal)
+            
+            // Update button based on whether we have photos to go back to
+            if !placePhotos.isEmpty || customImage != nil {
+                streetViewToggleButton.setTitle("Photos", for: .normal)
+                streetViewToggleButton.setImage(UIImage(systemName: "photo"), for: .normal)
+            } else {
+                // No photos, so button should show as "Hide Look Around" or similar
+                streetViewToggleButton.setTitle("Close", for: .normal)
+                streetViewToggleButton.setImage(UIImage(systemName: "xmark.circle"), for: .normal)
+            }
         } else {
             // Reset to original photo or icon
-            configureDefaultImage()
-            streetViewToggleButton.setTitle("Street View", for: .normal)
-            streetViewToggleButton.setImage(UIImage(systemName: "person.and.arrow.left.and.arrow.right"), for: .normal)
+            if !placePhotos.isEmpty && currentPhotoIndex < placePhotos.count {
+                imageView.image = placePhotos[currentPhotoIndex]
+                imageView.contentMode = .scaleAspectFill
+            } else if customImage != nil {
+                imageView.image = customImage
+                imageView.contentMode = .scaleAspectFill
+            } else {
+                // No photos available, show default icon
+                configureDefaultImage()
+            }
+            
+            if isStreetViewAvailable {
+                streetViewToggleButton.setTitle("Look Around", for: .normal)
+                streetViewToggleButton.setImage(UIImage(systemName: "eye.circle"), for: .normal)
+            }
         }
     }
     
@@ -1339,19 +1643,62 @@ class PlaceDetailViewController: UIViewController {
     
     private func loadPlacePhotos() {
         // First check if place has photos from the API
-        if let photos = place.photos, !photos.isEmpty, let firstPhotoUrl = photos.first, let url = URL(string: firstPhotoUrl) {
-            // Load the first photo from the API
-            URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
-                if let data = data, let image = UIImage(data: data) {
-                    DispatchQueue.main.async {
-                        self?.customImage = image
-                        self?.imageView.image = image
-                        self?.imageView.contentMode = .scaleAspectFill
-                        // Update button title
-                        self?.editImageButton.setTitle("Change Photo", for: .normal)
-                    }
+        if let photos = place.photos, !photos.isEmpty {
+            print("🖼️ PlaceDetailViewController: Loading \(photos.count) photos for place: \(place.name)")
+            for (index, photo) in photos.enumerated() {
+                print("  Photo \(index + 1): \(photo)")
+            }
+            
+            // Load all photos from the API
+            placePhotos.removeAll()
+            let loadGroup = DispatchGroup()
+            
+            for (index, photoUrl) in photos.enumerated() {
+                guard let url = URL(string: photoUrl) else { 
+                    print("❌ PlaceDetailViewController: Invalid photo URL at index \(index): \(photoUrl)")
+                    continue 
                 }
-            }.resume()
+                
+                loadGroup.enter()
+                URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
+                    if let error = error {
+                        print("❌ PlaceDetailViewController: Error loading photo \(index): \(error)")
+                    }
+                    
+                    if let httpResponse = response as? HTTPURLResponse {
+                        print("📡 PlaceDetailViewController: Photo \(index) HTTP Status: \(httpResponse.statusCode)")
+                    }
+                    
+                    if let data = data, let image = UIImage(data: data) {
+                        print("✅ PlaceDetailViewController: Successfully loaded photo \(index)")
+                        DispatchQueue.main.async {
+                            self?.placePhotos.append(image)
+                        }
+                    } else {
+                        print("❌ PlaceDetailViewController: Failed to create image from data for photo \(index)")
+                    }
+                    loadGroup.leave()
+                }.resume()
+            }
+            
+            loadGroup.notify(queue: .main) { [weak self] in
+                guard let self = self else { return }
+                
+                print("🏁 PlaceDetailViewController: Finished loading photos. Total loaded: \(self.placePhotos.count)")
+                
+                // Show first photo if available
+                if let firstPhoto = self.placePhotos.first {
+                    self.customImage = firstPhoto
+                    self.imageView.image = firstPhoto
+                    self.imageView.contentMode = .scaleAspectFill
+                    self.editImageButton.setTitle("Change Photo", for: .normal)
+                } else {
+                    print("⚠️ PlaceDetailViewController: No photos were successfully loaded")
+                }
+                
+                // Update street view toggle button visibility
+                self.updateToggleButtonVisibility()
+            }
         } else if isHomeOrWorkPlace {
             // For home/work places, check local storage
             loadSavedImage()
@@ -1359,6 +1706,36 @@ class PlaceDetailViewController: UIViewController {
             if customImage != nil {
                 editImageButton.setTitle("Change Photo", for: .normal)
             }
+            updateToggleButtonVisibility()
+        } else {
+            updateToggleButtonVisibility()
+        }
+    }
+    
+    private func updateToggleButtonVisibility() {
+        // Show toggle button if:
+        // 1. Apple Look Around is available, OR
+        // 2. There are multiple photos, OR
+        // 3. There's at least one photo AND Look Around is available
+        let hasPhotos = !placePhotos.isEmpty || customImage != nil
+        let hasMultiplePhotos = placePhotos.count > 1
+        let shouldShowToggle = isStreetViewAvailable || hasMultiplePhotos || (hasPhotos && isStreetViewAvailable)
+        
+        print("🔘 PlaceDetailViewController: Toggle button visibility check:")
+        print("  - hasPhotos: \(hasPhotos)")
+        print("  - hasMultiplePhotos: \(hasMultiplePhotos)")
+        print("  - isStreetViewAvailable: \(isStreetViewAvailable)")
+        print("  - shouldShowToggle: \(shouldShowToggle)")
+        
+        streetViewToggleButton.isHidden = !shouldShowToggle
+        
+        // Update button title based on what's available
+        if hasMultiplePhotos && currentPhotoIndex < placePhotos.count - 1 {
+            streetViewToggleButton.setTitle("Next Photo", for: .normal)
+            streetViewToggleButton.setImage(UIImage(systemName: "photo.on.rectangle"), for: .normal)
+        } else if isStreetViewAvailable {
+            streetViewToggleButton.setTitle("Look Around", for: .normal)
+            streetViewToggleButton.setImage(UIImage(systemName: "eye.circle"), for: .normal)
         }
     }
     
@@ -1490,6 +1867,65 @@ extension PlaceDetailViewController: PHPickerViewControllerDelegate {
                     self?.imageView.contentMode = .scaleAspectFill
                     self?.editImageButton.setTitle("Change Photo", for: .normal)
                     self?.saveImage(image)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Add Place to Circle
+extension PlaceDetailViewController {
+    private func addPlaceToCircle(_ circle: Circle) {
+        // Show loading indicator
+        let loadingAlert = UIAlertController(title: "Adding Place", message: "Please wait...", preferredStyle: .alert)
+        present(loadingAlert, animated: true)
+        
+        // Add the place to the selected circle
+        PlaceService.shared.addExistingPlaceToCircle(placeId: place.id, circleId: circle.id) { [weak self] result in
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    switch result {
+                    case .success:
+                        // Hide the add button
+                        self?.addToCircleButton.isHidden = true
+                        self?.updateAddressTitleConstraint()
+                        
+                        // Show success message
+                        let alert = UIAlertController(
+                            title: "Success",
+                            message: "Place added to \(circle.name)",
+                            preferredStyle: .alert
+                        )
+                        alert.addAction(UIAlertAction(title: "OK", style: .default))
+                        self?.present(alert, animated: true)
+                        
+                        // Post notification to refresh circles if needed
+                        NotificationCenter.default.post(name: NSNotification.Name("RefreshCircles"), object: nil)
+                        
+                    case .failure(let error):
+                        // Provide more specific error messages
+                        var errorMessage = "Failed to add place"
+                        
+                        if let placeError = error as? PlaceError {
+                            errorMessage = placeError.errorDescription ?? errorMessage
+                        } else if (error as NSError).code == 401 {
+                            errorMessage = "You don't have permission to add places to this circle"
+                        } else if (error as NSError).code == 404 {
+                            errorMessage = "The place or circle was not found"
+                        } else if (error as NSError).code == 400 {
+                            errorMessage = "This place is already in the selected circle"
+                        } else {
+                            errorMessage = "Failed to add place: \(error.localizedDescription)"
+                        }
+                        
+                        let alert = UIAlertController(
+                            title: "Error",
+                            message: errorMessage,
+                            preferredStyle: .alert
+                        )
+                        alert.addAction(UIAlertAction(title: "OK", style: .default))
+                        self?.present(alert, animated: true)
+                    }
                 }
             }
         }

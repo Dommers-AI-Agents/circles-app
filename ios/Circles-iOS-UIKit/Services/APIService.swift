@@ -130,6 +130,7 @@ class APIService {
         // Load saved tokens from Keychain if available
         authToken = keychainService.getAuthToken()
         refreshToken = keychainService.getRefreshToken()
+        print("🔐 APIService: Initialized with auth token: \(authToken != nil)")
         
         // Monitor network status
         NetworkMonitor.shared.addObserver(id: networkMonitorId) { isConnected in
@@ -154,6 +155,7 @@ class APIService {
     }
     
     func setAuthToken(_ token: String) {
+        print("🔐 APIService: Setting auth token")
         self.authToken = token
         keychainService.saveAuthToken(token)
     }
@@ -180,8 +182,11 @@ class APIService {
         requiresAuth: Bool = true,
         completion: @escaping (Result<T, APIError>) -> Void
     ) {
+        // Removed verbose logging: Making request to endpoint
+        
         // Check internet connection
         guard NetworkMonitor.shared.isConnected else {
+            print("❌ APIService: No internet connection")
             completion(.failure(.noInternet))
             return
         }
@@ -254,8 +259,15 @@ class APIService {
         request.httpMethod = method.rawValue
         
         // Add auth token if required and available
-        if requiresAuth, let token = authToken {
-            request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if requiresAuth {
+            if let token = authToken {
+                request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                // Auth token added to request
+            } else {
+                print("⚠️ APIService: No auth token available for protected endpoint \(endpoint)")
+                completion(.failure(.unauthorized))
+                return
+            }
         }
         
         // Add default headers

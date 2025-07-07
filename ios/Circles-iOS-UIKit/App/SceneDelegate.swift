@@ -23,9 +23,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Configure API environment
         #if DEBUG
         // Use production environment even in DEBUG to connect to Firebase backend
-        APIService.shared.configure(environment: .production)
+        APIService.shared.configure(environment: .production, loggingEnabled: false)
         #else
-        APIService.shared.configure(environment: .production)
+        APIService.shared.configure(environment: .production, loggingEnabled: false)
         #endif
         
         // Check if there's a deep link to handle

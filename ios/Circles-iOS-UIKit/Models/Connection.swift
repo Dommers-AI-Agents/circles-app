@@ -25,11 +25,11 @@ struct Connection: Codable, Identifiable {
     let interactionCount: Int?
     let lastAccessedCircles: [CircleAccess]?
     let recentActivity: [UserActivity]?
-    let hasNewActivity: Bool?
+    var hasNewActivity: Bool?
     let viewCount: Int?
     let lastViewedAt: Date?
     let totalPlaces: Int? // Populated by backend
-    let hasRecentPlace: Bool? // Populated by backend
+    var hasRecentPlace: Bool? // Populated by backend
     let createdAt: Date
     let acceptedAt: Date?
     let updatedAt: Date
@@ -54,6 +54,11 @@ struct Connection: Codable, Identifiable {
     
     var sharedCircleCount: Int {
         return sharedCircles?.count ?? 0
+    }
+    
+    // Get the other user's ID (not the current user)
+    func otherUserId(currentUserId: String) -> String {
+        return userId == currentUserId ? connectedUserId : userId
     }
 }
 

@@ -655,7 +655,7 @@ class FeaturedCircleCell: UICollectionViewCell {
         case .entertainment:
             categoryLabel.backgroundColor = UIColor(hex: "#D69E2E") // Yellow
         case .other:
-            categoryLabel.backgroundColor = UIColor(hex: "#718096") // Gray
+            categoryLabel.backgroundColor = UIColor(hex: "#38A169") // Green
         }
         
         // Cover image (would be loaded from URL in real app)
@@ -860,7 +860,7 @@ class CategoryCell: UICollectionViewCell {
             iconImageView.tintColor = UIColor(hex: "#D69E2E") // Yellow
         case .other:
             iconImageView.image = UIImage(systemName: "square.stack.3d.up.fill")
-            iconImageView.tintColor = UIColor(hex: "#718096") // Gray
+            iconImageView.tintColor = UIColor(hex: "#38A169") // Green
         }
     }
     

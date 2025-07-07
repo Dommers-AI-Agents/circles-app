@@ -227,10 +227,12 @@ class ConnectionDetailViewController: UIViewController {
     }
     
     private func loadConnectionCircles() {
-        guard let userId = connection?.connectedUserId else { 
-            print("Error: No connected user ID found")
+        guard let connection = connection,
+              let currentUserId = AuthService.shared.getUserId() else { 
+            print("Error: No connection or current user ID found")
             return 
         }
+        let userId = connection.otherUserId(currentUserId: currentUserId)
         
         print("Loading circles for user: \(userId)")
         
@@ -287,7 +289,9 @@ class ConnectionDetailViewController: UIViewController {
     
     // MARK: - Actions
     @objc private func messageButtonTapped() {
-        guard let userId = connection?.connectedUserId else { return }
+        guard let connection = connection,
+              let currentUserId = AuthService.shared.getUserId() else { return }
+        let userId = connection.otherUserId(currentUserId: currentUserId)
         
         // Create or get conversation
         MessagingManager.shared.createOrGetDirectConversation(with: userId) { [weak self] result in

@@ -111,6 +111,8 @@ const createPlace = (placeData, circleId, addedBy) => {
     reviews: placeData.reviews || [],
     openingHours: placeData.openingHours || null,
     priceLevel: placeData.priceLevel || null,
+    likes: placeData.likes || [],
+    likesCount: placeData.likesCount || 0,
     circleId: circleId,
     addedBy: addedBy,
     privacy: placeData.privacy || 'followCircle', // followCircle, public, myNetwork, private
@@ -336,7 +338,7 @@ const createConversation = (conversationData) => {
     name: conversationData.name || null, // For group chats
     avatar: conversationData.avatar || null, // For group chats
     lastMessage: conversationData.lastMessage || null,
-    lastMessageTime: conversationData.lastMessageTime || null,
+    lastMessageTime: conversationData.lastMessageTime || now, // Initialize with current time if not provided
     lastMessageSenderId: conversationData.lastMessageSenderId || null,
     unreadCounts: conversationData.unreadCounts || {}, // Map of userId to unread count
     createdAt: now,
@@ -408,7 +410,7 @@ const validateMessage = (message) => {
     errors.push('Message must have a sender');
   }
   
-  if (!message.type || !['text', 'image', 'location', 'circle_share', 'place_share'].includes(message.type)) {
+  if (!message.type || !['text', 'image', 'location', 'circle_share', 'place_share', 'connection_request'].includes(message.type)) {
     errors.push('Invalid message type');
   }
   

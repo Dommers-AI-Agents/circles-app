@@ -9,12 +9,13 @@ class CirclesHomeViewController: UIViewController {
     private var circles: [Circle] = []
     private var networkCircles: [Circle] = []
     private var isShowingNetworkCircles = false
-    private let refreshControl = UIRefreshControl()
     private var allPlaces: [Place] = []
     private var filteredPlaces: [Place] = []
     private var isSearching = false
-    private var isShowingMap = true
     private var selectedCategory: PlaceCategory?
+    private var mapUpdateTimer: Timer? // Debounce timer for map updates
+    private var isInitialLoading = false // Prevent duplicate fetches during initial load
+    private var isReturningFromFullScreenMap = false // Prevent map updates when returning from full screen
     
     // Define response structure for network circles
     private struct NetworkCirclesResponse: Codable {
@@ -108,16 +109,6 @@ class CirclesHomeViewController: UIViewController {
         return view
     }()
     
-    private let tableView: UITableView = {
-        let tableView = UITableView()
-        tableView.backgroundColor = Constants.Colors.background
-        tableView.separatorStyle = .none
-        tableView.register(CircleTableViewCell.self, forCellReuseIdentifier: "CircleCell")
-        tableView.register(PlaceSearchResultCell.self, forCellReuseIdentifier: "PlaceSearchResultCell")
-        tableView.translatesAutoresizingMaskIntoConstraints = false
-        tableView.isHidden = true  // Start hidden since map is default
-        return tableView
-    }()
     
     private let emptyStateView: UIView = {
         let view = UIView()
@@ -170,29 +161,6 @@ class CirclesHomeViewController: UIViewController {
         return button
     }()
     
-    private let mapToggleButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "list.bullet"), for: .normal)
-        button.setTitle("List", for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
-        button.backgroundColor = Constants.Colors.secondaryBackground
-        button.layer.cornerRadius = 16
-        button.layer.borderWidth = 1
-        button.layer.borderColor = Constants.Colors.separator.cgColor
-        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.semanticContentAttribute = .forceLeftToRight
-        
-        // Configure spacing
-        if #available(iOS 15.0, *) {
-            var configuration = UIButton.Configuration.plain()
-            configuration.imagePadding = 6
-            configuration.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12)
-            button.configuration = configuration
-        }
-        
-        return button
-    }()
     
     private let mapContainerView: UIView = {
         let view = UIView()
@@ -202,13 +170,23 @@ class CirclesHomeViewController: UIViewController {
         return view
     }()
     
+    private let mapExpandButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "arrow.up.left.and.arrow.down.right"), for: .normal)
+        button.tintColor = .white
+        button.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+        button.layer.cornerRadius = 18
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
     private var mapViewController: FullScreenMapViewController?
     
     private let filterStackView: UIStackView = {
         let stack = UIStackView()
         stack.axis = .horizontal
-        stack.spacing = 12
-        stack.distribution = .fillProportionally
+        stack.spacing = 8
+        stack.distribution = .fillEqually
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.isHidden = false
         return stack
@@ -216,7 +194,7 @@ class CirclesHomeViewController: UIViewController {
     
     private let connectionFilterButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setTitle("All Connections", for: .normal)
+        button.setTitle("My Places Only", for: .normal)
         button.setImage(UIImage(systemName: "chevron.down"), for: .normal)
         button.semanticContentAttribute = .forceRightToLeft
         button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
@@ -247,7 +225,8 @@ class CirclesHomeViewController: UIViewController {
         let tableView = UITableView()
         tableView.backgroundColor = .clear
         tableView.separatorStyle = .none
-        tableView.rowHeight = 44
+        tableView.rowHeight = UITableView.automaticDimension
+        tableView.estimatedRowHeight = 44
         tableView.showsVerticalScrollIndicator = true
         tableView.translatesAutoresizingMaskIntoConstraints = false
         tableView.layer.cornerRadius = 12
@@ -257,7 +236,25 @@ class CirclesHomeViewController: UIViewController {
     
     private var isConnectionDropdownOpen = false
     private var connectionDropdownHeightConstraint: NSLayoutConstraint?
-    private var selectedConnectionId: String?
+    private var selectedConnectionId: String? = "my_places_only" // Default to My Places Only
+    
+    // Search results table view
+    private let searchResultsTableView: UITableView = {
+        let tableView = UITableView()
+        tableView.translatesAutoresizingMaskIntoConstraints = false
+        tableView.backgroundColor = Constants.Colors.background
+        tableView.layer.cornerRadius = 12
+        tableView.layer.shadowColor = UIColor.black.cgColor
+        tableView.layer.shadowOpacity = 0.15
+        tableView.layer.shadowOffset = CGSize(width: 0, height: 4)
+        tableView.layer.shadowRadius = 8
+        tableView.isHidden = true
+        tableView.alpha = 0
+        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "SearchResultCell")
+        return tableView
+    }()
+    
+    private var searchResultsHeightConstraint: NSLayoutConstraint?
     
     private let categoryFilterButton: UIButton = {
         let button = UIButton(type: .system)
@@ -275,6 +272,20 @@ class CirclesHomeViewController: UIViewController {
     }()
     
     // Dropdown views for filters
+    
+    
+    
+    
+    private let locationStatusLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 12, weight: .medium)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.isHidden = true
+        return label
+    }()
+    
     private let categoryDropdownView: UIView = {
         let view = UIView()
         view.backgroundColor = Constants.Colors.secondaryBackground
@@ -293,7 +304,8 @@ class CirclesHomeViewController: UIViewController {
         let tableView = UITableView()
         tableView.backgroundColor = .clear
         tableView.separatorStyle = .none
-        tableView.rowHeight = 44
+        tableView.rowHeight = UITableView.automaticDimension
+        tableView.estimatedRowHeight = 44
         tableView.showsVerticalScrollIndicator = true
         tableView.translatesAutoresizingMaskIntoConstraints = false
         tableView.layer.cornerRadius = 12
@@ -309,50 +321,46 @@ class CirclesHomeViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        // Load saved view preference
-        if let savedView = UserDefaults.standard.string(forKey: "defaultHomeView") {
-            isShowingMap = (savedView == "map")
-        } else if let userPreferences = AuthService.shared.currentUser?.preferences {
-            isShowingMap = (userPreferences.defaultHomeView == "map")
-        }
-        
         setupUI()
-        setupTableView()
         setupNotifications()
         setupSearchBar()
+        setupDropdownViews()
         
         // Setup user list delegate
         userListView.delegate = self
         
-        // Set initial visibility state based on preference
-        tableView.isHidden = isShowingMap
-        mapContainerView.isHidden = !isShowingMap
-        filterStackView.isHidden = !isShowingMap
-        filterContainer.isHidden = false  // Keep visible for map toggle button
-        
-        // Update button appearance
-        updateMapToggleButtonAppearance()
-        
-        // Show hint for first-time users
-        if UserDefaults.standard.string(forKey: "defaultHomeView") == nil && !UserDefaults.standard.bool(forKey: "hasSeenMapToggleHint") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                self?.showFirstTimeHint()
-            }
-        }
+        // Map is always visible
+        mapContainerView.isHidden = false
+        filterStackView.isHidden = false
+        filterContainer.isHidden = false
+    }
+    
+    deinit {
+        // Clean up timer
+        mapUpdateTimer?.invalidate()
+        // Remove notification observers
+        NotificationCenter.default.removeObserver(self)
     }
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        fetchCircles()
-        fetchNetworkCircles() // Always fetch network circles for map
         
-        // Update map if it's showing
-        if isShowingMap {
-            updateMapPlaces()
-            // Ensure filter stack is visible
-            filterStackView.isHidden = false
-            filterStackView.alpha = 1.0
+        // If returning from full screen map, skip updates
+        if isReturningFromFullScreenMap {
+            isReturningFromFullScreenMap = false
+            return
         }
+        
+        // Only fetch data if not already loading
+        if !isInitialLoading {
+            isInitialLoading = true
+            fetchCircles()
+            fetchNetworkCircles() // Always fetch network circles for map
+        }
+        
+        // Ensure filter stack is visible
+        filterStackView.isHidden = false
+        filterStackView.alpha = 1.0
     }
     
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
@@ -371,7 +379,6 @@ class CirclesHomeViewController: UIViewController {
         quickAccessContainer.layer.shadowColor = Constants.Colors.label.cgColor
         categoryFilterButton.layer.borderColor = Constants.Colors.separator.cgColor
         connectionFilterButton.layer.borderColor = Constants.Colors.separator.cgColor
-        mapToggleButton.layer.borderColor = Constants.Colors.separator.cgColor
     }
     
     // MARK: - UI Setup
@@ -405,11 +412,11 @@ class CirclesHomeViewController: UIViewController {
         view.addSubview(userListView)
         view.addSubview(filterContainer)
         view.addSubview(mapContainerView)
+        view.addSubview(mapExpandButton)
         view.addSubview(filterStackView)
+        view.addSubview(locationStatusLabel)
         filterStackView.addArrangedSubview(categoryFilterButton)
         filterStackView.addArrangedSubview(connectionFilterButton)
-        filterContainer.addSubview(mapToggleButton)
-        view.addSubview(tableView)
         view.addSubview(emptyStateView)
         
         // Add dropdown views
@@ -418,13 +425,16 @@ class CirclesHomeViewController: UIViewController {
         categoryDropdownView.addSubview(categoryDropdownTableView)
         connectionDropdownView.addSubview(connectionDropdownTableView)
         
+        // Add search results table view
+        view.addSubview(searchResultsTableView)
+        
         // Bring filter stack to front to ensure visibility
         view.bringSubviewToFront(filterStackView)
-        view.bringSubviewToFront(mapToggleButton)
         
         // Add tap gesture to dismiss dropdowns when clicking outside
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissDropdowns))
         tapGesture.cancelsTouchesInView = false
+        tapGesture.delegate = self
         view.addGestureRecognizer(tapGesture)
         
         NSLayoutConstraint.activate([
@@ -494,22 +504,9 @@ class CirclesHomeViewController: UIViewController {
             filterContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             filterContainer.heightAnchor.constraint(equalToConstant: 60),
             
-            // Map toggle button
-            mapToggleButton.leadingAnchor.constraint(equalTo: filterContainer.leadingAnchor, constant: Constants.Spacing.large),
-            mapToggleButton.centerYAnchor.constraint(equalTo: filterContainer.centerYAnchor),
-            mapToggleButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 80),
-            mapToggleButton.heightAnchor.constraint(equalToConstant: 36),
-            
-            // Table view
-            tableView.topAnchor.constraint(equalTo: filterContainer.bottomAnchor),
-            tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            
-            // Filter stack - position to the right of map toggle button
+            // Filter stack - center in filter container
             filterStackView.centerYAnchor.constraint(equalTo: filterContainer.centerYAnchor),
-            filterStackView.leadingAnchor.constraint(equalTo: mapToggleButton.trailingAnchor, constant: Constants.Spacing.medium),
-            filterStackView.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -Constants.Spacing.large),
+            filterStackView.centerXAnchor.constraint(equalTo: filterContainer.centerXAnchor),
             filterStackView.heightAnchor.constraint(equalToConstant: 36),
             
             // Map container - connect to filter container bottom
@@ -517,6 +514,12 @@ class CirclesHomeViewController: UIViewController {
             mapContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             mapContainerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             mapContainerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            
+            // Map expand button
+            mapExpandButton.topAnchor.constraint(equalTo: mapContainerView.topAnchor, constant: Constants.Spacing.small),
+            mapExpandButton.trailingAnchor.constraint(equalTo: mapContainerView.trailingAnchor, constant: -Constants.Spacing.small),
+            mapExpandButton.widthAnchor.constraint(equalToConstant: 36),
+            mapExpandButton.heightAnchor.constraint(equalToConstant: 36),
             
             emptyStateView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             emptyStateView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
@@ -560,7 +563,12 @@ class CirclesHomeViewController: UIViewController {
             connectionDropdownTableView.topAnchor.constraint(equalTo: connectionDropdownView.topAnchor),
             connectionDropdownTableView.leadingAnchor.constraint(equalTo: connectionDropdownView.leadingAnchor),
             connectionDropdownTableView.trailingAnchor.constraint(equalTo: connectionDropdownView.trailingAnchor),
-            connectionDropdownTableView.bottomAnchor.constraint(equalTo: connectionDropdownView.bottomAnchor)
+            connectionDropdownTableView.bottomAnchor.constraint(equalTo: connectionDropdownView.bottomAnchor),
+            
+            // Location status label
+            locationStatusLabel.topAnchor.constraint(equalTo: mapContainerView.topAnchor, constant: 16),
+            locationStatusLabel.trailingAnchor.constraint(equalTo: mapContainerView.trailingAnchor, constant: -16),
+            locationStatusLabel.heightAnchor.constraint(equalToConstant: 28)
         ])
         
         // Create height constraints for dropdowns
@@ -570,16 +578,27 @@ class CirclesHomeViewController: UIViewController {
         connectionDropdownHeightConstraint = connectionDropdownView.heightAnchor.constraint(equalToConstant: 0)
         connectionDropdownHeightConstraint?.isActive = true
         
+        // Search results table view constraints
+        NSLayoutConstraint.activate([
+            searchResultsTableView.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 8),
+            searchResultsTableView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Constants.Spacing.medium),
+            searchResultsTableView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.medium)
+        ])
+        
+        searchResultsHeightConstraint = searchResultsTableView.heightAnchor.constraint(equalToConstant: 0)
+        searchResultsHeightConstraint?.isActive = true
+        
+        // Setup search results table view
+        searchResultsTableView.delegate = self
+        searchResultsTableView.dataSource = self
+        searchResultsTableView.rowHeight = UITableView.automaticDimension
+        searchResultsTableView.estimatedRowHeight = 60
+        
         createCircleButton.addTarget(self, action: #selector(createCircleButtonTapped), for: .touchUpInside)
         quickAddPlaceButton.addTarget(self, action: #selector(quickAddPlaceButtonTapped), for: .touchUpInside)
-        mapToggleButton.addTarget(self, action: #selector(mapToggleButtonTapped), for: .touchUpInside)
+        mapExpandButton.addTarget(self, action: #selector(expandMapButtonTapped), for: .touchUpInside)
         categoryFilterButton.addTarget(self, action: #selector(categoryFilterButtonTapped), for: .touchUpInside)
         connectionFilterButton.addTarget(self, action: #selector(connectionFilterButtonTapped), for: .touchUpInside)
-        
-        // Add long press gesture to map toggle button
-        let longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(mapToggleButtonLongPressed))
-        longPressGesture.minimumPressDuration = 0.5
-        mapToggleButton.addGestureRecognizer(longPressGesture)
         
         setupMapView()
     }
@@ -603,24 +622,25 @@ class CirclesHomeViewController: UIViewController {
         mapViewController = mapVC
     }
     
-    private func setupTableView() {
-        tableView.delegate = self
-        tableView.dataSource = self
-        tableView.dragDelegate = self
-        tableView.dropDelegate = self
-        tableView.dragInteractionEnabled = true
-        
-        refreshControl.addTarget(self, action: #selector(refreshData), for: .valueChanged)
-        tableView.refreshControl = refreshControl
-        
+    private func setupDropdownViews() {
         // Setup dropdown table views
         categoryDropdownTableView.delegate = self
         categoryDropdownTableView.dataSource = self
         categoryDropdownTableView.register(UITableViewCell.self, forCellReuseIdentifier: "CategoryDropdownCell")
+        categoryDropdownTableView.delaysContentTouches = false
+        categoryDropdownTableView.canCancelContentTouches = true
         
         connectionDropdownTableView.delegate = self
         connectionDropdownTableView.dataSource = self
         connectionDropdownTableView.register(UITableViewCell.self, forCellReuseIdentifier: "ConnectionDropdownCell")
+        connectionDropdownTableView.delaysContentTouches = false
+        connectionDropdownTableView.canCancelContentTouches = true
+        
+        // Also configure search results table view
+        searchResultsTableView.delegate = self
+        searchResultsTableView.dataSource = self
+        searchResultsTableView.delaysContentTouches = false
+        searchResultsTableView.canCancelContentTouches = true
     }
     
     private func setupSearchBar() {
@@ -687,9 +707,9 @@ class CirclesHomeViewController: UIViewController {
                     self?.allPlaces = []
                 }
                 
-                self?.tableView.reloadData()
                 self?.updateEmptyState()
-                self?.refreshControl.endRefreshing()
+                // Reset loading flag after data is loaded
+                self?.isInitialLoading = false
             }
         }
     }
@@ -712,19 +732,13 @@ class CirclesHomeViewController: UIViewController {
                         }
                     }
                     self?.networkCircles = response.data
-                    self?.tableView.reloadData()
                     self?.updateEmptyState()
-                    // Update map if showing
-                    if self?.isShowingMap == true {
-                        self?.updateMapPlaces()
-                    }
+                    self?.updateMapPlaces()
                 case .failure(let error):
                     print("❌ Error fetching network circles: \(error.localizedDescription)")
                     self?.networkCircles = []
-                    self?.tableView.reloadData()
                     self?.updateEmptyState()
                 }
-                self?.refreshControl.endRefreshing()
             }
         }
     }
@@ -822,15 +836,10 @@ class CirclesHomeViewController: UIViewController {
     private func updateEmptyState() {
         if isSearching {
             emptyStateView.isHidden = !filteredPlaces.isEmpty
-            tableView.isHidden = filteredPlaces.isEmpty || isShowingMap
             emptyStateLabel.text = "No places found"
         } else {
             let isEmpty = isShowingNetworkCircles ? networkCircles.isEmpty : circles.isEmpty
             emptyStateView.isHidden = !isEmpty
-            // Only update table visibility if we're not showing the map
-            if !isShowingMap {
-                tableView.isHidden = isEmpty
-            }
             
             // Update empty state message based on filter
             if isShowingNetworkCircles {
@@ -843,7 +852,6 @@ class CirclesHomeViewController: UIViewController {
     
     private func fetchAllPlacesFromCircles() {
         var allFetchedPlaces: [Place] = []
-        var connectionPlaces: [String: [Place]] = [:]
         let group = DispatchGroup()
         
         print("📍 fetchAllPlacesFromCircles called")
@@ -861,9 +869,14 @@ class CirclesHomeViewController: UIViewController {
             PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
                 switch result {
                 case .success(let places):
+                    print("✅ Fetched \(places.count) places from circle '\(circle.name)':")
+                    for place in places {
+                        let hasLocation = place.location?.clLocation != nil
+                        print("   - '\(place.name)' (hasLocation: \(hasLocation), addedBy: \(place.addedBy))")
+                    }
                     allFetchedPlaces.append(contentsOf: places)
                 case .failure(let error):
-                    print("Failed to fetch places for circle \(circle.id): \(error)")
+                    print("❌ Failed to fetch places for circle '\(circle.name)' (id: \(circle.id)): \(error)")
                 }
                 group.leave()
             }
@@ -888,12 +901,8 @@ class CirclesHomeViewController: UIViewController {
                         PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
                             switch result {
                             case .success(let places):
-                                // Group places by owner/connection
-                                let ownerId = circle.owner
-                                if connectionPlaces[ownerId] == nil {
-                                    connectionPlaces[ownerId] = []
-                                }
-                                connectionPlaces[ownerId]?.append(contentsOf: places)
+                                print("✅ Found \(places.count) places in network circle: \(circle.name)")
+                                print("   Circle owner ID: \(circle.owner)")
                                 allFetchedPlaces.append(contentsOf: places)
                             case .failure(let error):
                                 print("Failed to fetch places for network circle \(circle.id): \(error)")
@@ -915,12 +924,7 @@ class CirclesHomeViewController: UIViewController {
                     switch result {
                     case .success(let places):
                         print("✅ Found \(places.count) places in network circle: \(circle.name)")
-                        // Group places by owner/connection
-                        let ownerId = circle.owner
-                        if connectionPlaces[ownerId] == nil {
-                            connectionPlaces[ownerId] = []
-                        }
-                        connectionPlaces[ownerId]?.append(contentsOf: places)
+                        print("   Circle owner ID: \(circle.owner)")
                         allFetchedPlaces.append(contentsOf: places)
                     case .failure(let error):
                         print("❌ Failed to fetch places for network circle \(circle.name) (\(circle.id)): \(error)")
@@ -930,44 +934,118 @@ class CirclesHomeViewController: UIViewController {
             }
         }
         
-        // Get connections to pass to map
-        let connections = NetworkManager.shared.connections
-        
-        group.notify(queue: .main) { [weak self] in
+        group.notify(queue: .main, execute: { [weak self] in
             guard let self = self else { return }
             
             self.allPlaces = allFetchedPlaces
             
-            if self.isShowingMap {
-                // Apply connection filter if selected
-                var filteredPlaces = allFetchedPlaces
+            print("🔍 Fetched Places Summary:")
+            print("   Total places fetched: \(allFetchedPlaces.count)")
+            
+            // Apply connection filter if selected
+            var filteredPlaces = allFetchedPlaces
+                
+                print("📍 Connection filter - selectedConnectionId: \(self.selectedConnectionId ?? "nil")")
                 
                 if let connectionId = self.selectedConnectionId {
                     if connectionId == "my_places_only" {
                         // Show only user's own places
                         let currentUserId = AuthService.shared.getUserId() ?? ""
                         filteredPlaces = allFetchedPlaces.filter { $0.addedBy == currentUserId }
+                        print("   Filtered to user's places (userId: \(currentUserId)): \(filteredPlaces.count) places")
+                        print("   ⚠️ DEFAULT FILTER IS SET TO 'MY PLACES ONLY' - This is why network places don't show!")
                     } else {
                         // Show only places from the selected connection
-                        filteredPlaces = connectionPlaces[connectionId] ?? []
+                        // Get all places from circles owned by this connection
+                        filteredPlaces = allFetchedPlaces.filter { place in
+                            // Find the circle this place belongs to
+                            if let circle = self.networkCircles.first(where: { $0.id == place.circleId }) {
+                                return circle.owner == connectionId
+                            }
+                            return false
+                        }
+                        print("   Filtered to connection '\(connectionId)': \(filteredPlaces.count) places")
                     }
+                } else {
+                    // "All Connections" selected - show all places (user's + connections')
+                    filteredPlaces = allFetchedPlaces
+                    print("   Showing all connections' places: \(filteredPlaces.count) places")
                 }
                 
                 // Apply category filter
                 if let category = self.selectedCategory {
+                    let beforeCategoryFilter = filteredPlaces.count
                     filteredPlaces = filteredPlaces.filter { $0.category == category }
+                    print("   Category filter '\(category.rawValue)' applied: \(beforeCategoryFilter) → \(filteredPlaces.count) places")
+                }
+                
+                
+                print("   Final places sent to map: \(filteredPlaces.count)")
+                
+                // Update location status label
+                let placesWithLocation = filteredPlaces.filter { $0.location?.clLocation != nil }.count
+                let placesWithoutLocation = filteredPlaces.count - placesWithLocation
+                
+                if placesWithoutLocation > 0 {
+                    self.locationStatusLabel.text = "⚠️ \(placesWithoutLocation) places missing location"
+                    self.locationStatusLabel.backgroundColor = UIColor.systemOrange.withAlphaComponent(0.9)
+                    self.locationStatusLabel.textColor = .white
+                    self.locationStatusLabel.layer.cornerRadius = 14
+                    self.locationStatusLabel.layer.masksToBounds = true
+                    self.locationStatusLabel.isHidden = false
+                    
+                    // Add padding to the label
+                    if self.locationStatusLabel.constraints.first(where: { $0.firstAttribute == .width }) == nil {
+                        self.locationStatusLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 180).isActive = true
+                    }
+                } else {
+                    self.locationStatusLabel.isHidden = true
                 }
                 
                 // Pass filtered places to map
                 self.mapViewController?.updatePlaces(filteredPlaces)
-            }
-        }
+        })
     }
     
     // MARK: - Notifications
     
     private func setupNotifications() {
-        // Notifications setup if needed
+        // Listen for circle deletion notifications
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleCircleDeleted(_:)),
+            name: .circleDeleted,
+            object: nil
+        )
+    }
+    
+    @objc private func handleCircleDeleted(_ notification: Notification) {
+        guard let circleId = notification.userInfo?["circleId"] as? String else { return }
+        
+        DispatchQueue.main.async { [weak self] in
+            // Remove the circle from our local array
+            if let index = self?.circles.firstIndex(where: { $0.id == circleId }) {
+                self?.circles.remove(at: index)
+                
+                // Reload UI
+                if self?.isShowingNetworkCircles == false {
+                    self?.fetchAllPlacesFromCircles()
+                }
+            }
+            
+            // Also remove from network circles if present
+            if let index = self?.networkCircles.firstIndex(where: { $0.id == circleId }) {
+                self?.networkCircles.remove(at: index)
+            }
+            
+            // Update CircleManager's cached circles
+            if let index = CircleManager.shared.circles.firstIndex(where: { $0.id == circleId }) {
+                CircleManager.shared.circles.remove(at: index)
+            }
+            
+            // Update empty state
+            self?.updateEmptyState()
+        }
     }
     
     // MARK: - Actions
@@ -981,6 +1059,26 @@ class CirclesHomeViewController: UIViewController {
         let createCircleVC = CreateCircleViewController()
         createCircleVC.delegate = self
         navigationController?.pushViewController(createCircleVC, animated: true)
+    }
+    
+    @objc private func expandMapButtonTapped() {
+        // Set flag to prevent map updates when returning
+        isReturningFromFullScreenMap = true
+        
+        // Present full screen map with all places
+        let fullScreenMap = FullScreenMapViewController(places: allPlaces)
+        fullScreenMap.viewMode = .allPlaces
+        fullScreenMap.isPresentedModally = true
+        fullScreenMap.updatePlacesWithConnections(
+            allPlaces.filter { place in
+                // Filter user's own places
+                place.addedBy == AuthService.shared.getUserId()
+            },
+            connections: [],
+            connectionPlaces: [:]
+        )
+        fullScreenMap.modalPresentationStyle = .fullScreen
+        present(fullScreenMap, animated: true)
     }
     
     @objc private func quickAddPlaceButtonTapped() {
@@ -1035,172 +1133,39 @@ class CirclesHomeViewController: UIViewController {
         present(navController, animated: true)
     }
     
-    @objc private func mapToggleButtonTapped() {
-        // Check if user has set a default preference
-        let hasSetDefault = UserDefaults.standard.string(forKey: "defaultHomeView") != nil
-        
-        if hasSetDefault {
-            // Just toggle the view
-            isShowingMap.toggle()
-            updateMapVisibility()
-        } else {
-            // Show the menu for first-time users
-            showViewSelectionMenu()
-        }
-    }
     
-    @objc private func mapToggleButtonLongPressed(_ gesture: UILongPressGestureRecognizer) {
-        // Only show menu when gesture begins to avoid multiple calls
-        if gesture.state == .began {
-            showViewSelectionMenu()
-        }
-    }
-    
-    private func showViewSelectionMenu() {
-        let hasSetDefault = UserDefaults.standard.string(forKey: "defaultHomeView") != nil
-        let currentDefault = UserDefaults.standard.string(forKey: "defaultHomeView") ?? "map"
-        
-        let title = hasSetDefault ? "View Settings" : "Choose View"
-        let message = hasSetDefault ? "Long press to access view settings" : "Select your preferred view"
-        
-        let actionSheet = UIAlertController(title: title, message: message, preferredStyle: .actionSheet)
-        
-        // List option
-        let listAction = UIAlertAction(title: "List View", style: .default) { [weak self] _ in
-            self?.switchToListView()
-        }
-        listAction.setValue(UIImage(systemName: "list.bullet"), forKey: "image")
-        if !isShowingMap {
-            listAction.setValue(true, forKey: "checked")
-        }
-        
-        // Map option
-        let mapAction = UIAlertAction(title: "Map View", style: .default) { [weak self] _ in
-            self?.switchToMapView()
-        }
-        mapAction.setValue(UIImage(systemName: "map"), forKey: "image")
-        if isShowingMap {
-            mapAction.setValue(true, forKey: "checked")
-        }
-        
-        // Set as default option
-        let currentView = isShowingMap ? "Map" : "List"
-        let defaultTitle = currentDefault == currentView.lowercased() ? 
-            "✓ \(currentView) View is Default" : 
-            "Set \(currentView) View as Default"
-        
-        let setDefaultAction = UIAlertAction(title: defaultTitle, style: .default) { [weak self] _ in
-            if currentDefault != currentView.lowercased() {
-                self?.saveDefaultView()
-            }
-        }
-        setDefaultAction.setValue(UIImage(systemName: "star.fill"), forKey: "image")
-        
-        // Cancel
-        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel)
-        
-        actionSheet.addAction(listAction)
-        actionSheet.addAction(mapAction)
-        actionSheet.addAction(setDefaultAction)
-        actionSheet.addAction(cancelAction)
-        
-        // For iPad
-        if let popover = actionSheet.popoverPresentationController {
-            popover.sourceView = mapToggleButton
-            popover.sourceRect = mapToggleButton.bounds
-        }
-        
-        present(actionSheet, animated: true)
-    }
-    
-    private func switchToListView() {
-        isShowingMap = false
-        updateMapVisibility()
-        UserDefaults.standard.set("list", forKey: "defaultHomeView")
-    }
-    
-    private func switchToMapView() {
-        isShowingMap = true
-        updateMapVisibility()
-        UserDefaults.standard.set("map", forKey: "defaultHomeView")
-    }
-    
-    private func saveDefaultView() {
-        let viewType = isShowingMap ? "map" : "list"
-        
-        // Save locally
-        UserDefaults.standard.set(viewType, forKey: "defaultHomeView")
-        
-        // Save to backend
-        UserService.shared.updateUserPreferences(defaultHomeView: viewType) { [weak self] result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success:
-                    self?.showToast("Default view saved as \(viewType == "map" ? "Map" : "List")")
-                case .failure:
-                    // Silently fail, local preference is saved
-                    print("Failed to save preference to backend")
-                }
-            }
-        }
-    }
     
     private func updateMapVisibility() {
-        UIView.animate(withDuration: 0.3) {
-            self.tableView.isHidden = self.isShowingMap
-            self.mapContainerView.isHidden = !self.isShowingMap
-            self.filterStackView.isHidden = !self.isShowingMap
-            
-            // Keep filterContainer visible in both modes (contains suggestions and map toggle)
-            self.filterContainer.isHidden = false
-            
-            // Update button appearance
-            self.updateMapToggleButtonAppearance()
-        }
-        
-        if isShowingMap {
-            updateMapPlaces()
-        }
+        // Map is always visible, just ensure it's shown
+        mapContainerView.isHidden = false
+        filterStackView.isHidden = false
+        filterContainer.isHidden = false
+        updateMapPlaces()
     }
     
-    private func updateMapToggleButtonAppearance() {
-        let title = isShowingMap ? "List" : "Map"
-        let icon = isShowingMap ? "list.bullet" : "map"
-        
-        if #available(iOS 15.0, *) {
-            var configuration = mapToggleButton.configuration ?? UIButton.Configuration.plain()
-            configuration.title = title
-            configuration.image = UIImage(systemName: icon)
-            configuration.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 14)
-            configuration.imagePlacement = .leading
-            configuration.imagePadding = 6
-            configuration.titleAlignment = .leading
-            
-            mapToggleButton.configuration = configuration
-        } else {
-            mapToggleButton.setTitle(title, for: .normal)
-            mapToggleButton.setImage(UIImage(systemName: icon), for: .normal)
-        }
-        
-        // Add tooltip if available (iOS 15+)
-        if #available(iOS 15.0, *) {
-            let hasDefault = UserDefaults.standard.string(forKey: "defaultHomeView") != nil
-            mapToggleButton.toolTip = hasDefault ? 
-                "Tap to toggle view • Long press for settings" : 
-                "Tap to choose default view"
-        }
-    }
     
     private func updateMapPlaces() {
-        // Re-fetch all places to ensure we have the latest data with connections
-        fetchAllPlacesFromCircles()
+        // Skip update if returning from full screen map
+        if isReturningFromFullScreenMap {
+            return
+        }
+        
+        // Cancel any existing timer
+        mapUpdateTimer?.invalidate()
+        
+        // Create a new timer with a 0.3 second delay to debounce rapid updates
+        mapUpdateTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
+            // Re-fetch all places to ensure we have the latest data with connections
+            self?.fetchAllPlacesFromCircles()
+        }
     }
+    
     
     @objc private func categoryFilterButtonTapped() {
         isCategoryDropdownOpen.toggle()
         
         if isCategoryDropdownOpen {
-            // Close connection dropdown if open
+            // Close other dropdowns if open
             if isConnectionDropdownOpen {
                 isConnectionDropdownOpen = false
                 hideConnectionDropdown()
@@ -1624,6 +1589,35 @@ class CirclesHomeViewController: UIViewController {
         present(alert, animated: true)
     }
     
+    // MARK: - Search Results
+    private func showSearchResults() {
+        // Calculate height based on number of results (max 5 visible)
+        let maxVisibleResults = 5
+        let cellHeight: CGFloat = 60
+        let numberOfResults = min(filteredPlaces.count, maxVisibleResults)
+        let height = CGFloat(numberOfResults) * cellHeight
+        
+        searchResultsTableView.isHidden = false
+        searchResultsHeightConstraint?.constant = height
+        
+        UIView.animate(withDuration: 0.3) {
+            self.searchResultsTableView.alpha = 1
+            self.view.layoutIfNeeded()
+        }
+        
+        searchResultsTableView.reloadData()
+    }
+    
+    private func hideSearchResults() {
+        UIView.animate(withDuration: 0.3) {
+            self.searchResultsTableView.alpha = 0
+            self.searchResultsHeightConstraint?.constant = 0
+            self.view.layoutIfNeeded()
+        } completion: { _ in
+            self.searchResultsTableView.isHidden = true
+        }
+    }
+    
     // MARK: - Circle Management
     private func editCircle(at indexPath: IndexPath) {
         let circle = circles[indexPath.row]
@@ -1656,7 +1650,6 @@ class CirclesHomeViewController: UIViewController {
                 switch result {
                 case .success(_):
                     self?.circles.remove(at: indexPath.row)
-                    self?.tableView.deleteRows(at: [indexPath], with: .fade)
                     self?.updateEmptyState()
                     
                 case .failure(let error):
@@ -1676,17 +1669,17 @@ class CirclesHomeViewController: UIViewController {
     }
 }
 
-// MARK: - UITableViewDelegate & UITableViewDataSource
-extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource, UITableViewDragDelegate, UITableViewDropDelegate {
+// MARK: - Dropdown TableView Delegate & DataSource
+extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         if tableView == categoryDropdownTableView {
             return availableCategories.count + 1 // +1 for "All Categories"
         } else if tableView == connectionDropdownTableView {
             return NetworkManager.shared.connections.count + 2 // +2 for "All Connections" and "My Places Only"
-        } else if isSearching {
+        } else if tableView == searchResultsTableView {
             return filteredPlaces.count
         }
-        return isShowingNetworkCircles ? networkCircles.count : circles.count
+        return 0
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
@@ -1695,7 +1688,12 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource,
             
             cell.backgroundColor = .clear
             cell.textLabel?.font = UIFont.systemFont(ofSize: 15, weight: .medium)
-            cell.selectionStyle = .none
+            cell.selectionStyle = .default
+            
+            // Set selection background color
+            let selectedView = UIView()
+            selectedView.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.1)
+            cell.selectedBackgroundView = selectedView
             
             if indexPath.row == 0 {
                 cell.textLabel?.text = "All Categories"
@@ -1714,7 +1712,12 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource,
             
             cell.backgroundColor = .clear
             cell.textLabel?.font = UIFont.systemFont(ofSize: 15, weight: .medium)
-            cell.selectionStyle = .none
+            cell.selectionStyle = .default
+            
+            // Set selection background color
+            let selectedView = UIView()
+            selectedView.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.1)
+            cell.selectedBackgroundView = selectedView
             
             if indexPath.row == 0 {
                 cell.textLabel?.text = "All Connections"
@@ -1728,38 +1731,100 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource,
                 let connection = NetworkManager.shared.connections[indexPath.row - 2]
                 let userName = connection.connectedUser?.displayName ?? "Unknown"
                 cell.textLabel?.text = userName
-                cell.textLabel?.textColor = selectedConnectionId == connection.connectedUserId ? Constants.Colors.primary : Constants.Colors.label
-                cell.accessoryType = selectedConnectionId == connection.connectedUserId ? .checkmark : .none
+                // Compare with the other user's ID
+                let currentUserId = AuthService.shared.getUserId() ?? ""
+                let otherUserId = connection.otherUserId(currentUserId: currentUserId)
+                cell.textLabel?.textColor = selectedConnectionId == otherUserId ? Constants.Colors.primary : Constants.Colors.label
+                cell.accessoryType = selectedConnectionId == otherUserId ? .checkmark : .none
             }
             
             return cell
-        } else if isSearching {
-            guard let cell = tableView.dequeueReusableCell(withIdentifier: "PlaceSearchResultCell", for: indexPath) as? PlaceSearchResultCell else {
-                return UITableViewCell()
-            }
+        } else if tableView == searchResultsTableView {
+            let cell = tableView.dequeueReusableCell(withIdentifier: "SearchResultCell", for: indexPath)
             let place = filteredPlaces[indexPath.row]
-            cell.configure(with: place)
-            return cell
-        } else {
-            guard let cell = tableView.dequeueReusableCell(withIdentifier: "CircleCell", for: indexPath) as? CircleTableViewCell else {
-                return UITableViewCell()
+            
+            var content = cell.defaultContentConfiguration()
+            content.text = place.name
+            
+            // Show creator name and circle info
+            var subtitle = ""
+            
+            // Check if it's the current user first
+            let currentUserId = AuthService.shared.getUserId() ?? ""
+            if place.addedBy == currentUserId {
+                subtitle = "Added by you"
+            } else {
+                // Try to find the connection name from network circles
+                var connectionName: String? = nil
+                
+                // Look through network circles to find the owner
+                for networkCircle in networkCircles {
+                    if networkCircle.id == place.circleId {
+                        // Found the circle, get the owner's name
+                        if let ownerDetails = networkCircle.ownerDetails {
+                            connectionName = ownerDetails.displayName
+                        } else {
+                            // Try to find from connections list
+                            if let connection = NetworkManager.shared.connections.first(where: { $0.connectedUserId == networkCircle.owner }) {
+                                connectionName = connection.connectedUser?.displayName
+                            }
+                        }
+                        break
+                    }
+                }
+                
+                if let name = connectionName {
+                    subtitle = "Added by \(name)"
+                } else {
+                    subtitle = "Added by a connection"
+                }
             }
             
-            let circle = isShowingNetworkCircles ? networkCircles[indexPath.row] : circles[indexPath.row]
-            cell.configure(with: circle)
-            cell.delegate = self
+            // Add circle name
+            if let circle = circles.first(where: { $0.id == place.circleId }) {
+                subtitle += " • \(circle.name)"
+            } else if let networkCircle = networkCircles.first(where: { $0.id == place.circleId }) {
+                subtitle += " • \(networkCircle.name)"
+            }
+            
+            content.secondaryText = subtitle
+            content.secondaryTextProperties.color = Constants.Colors.secondaryLabel
+            content.secondaryTextProperties.font = UIFont.systemFont(ofSize: 13)
+            
+            // Add category icon
+            let iconName: String
+            switch place.category {
+            case .restaurant, .cafe, .bar: iconName = "fork.knife"
+            case .hotel: iconName = "bed.double"
+            case .retail: iconName = "bag"
+            case .service: iconName = "wrench.and.screwdriver"
+            case .attraction: iconName = "star"
+            case .entertainment: iconName = "tv"
+            case .healthcare: iconName = "heart"
+            case .fitness: iconName = "figure.walk"
+            case .education: iconName = "graduationcap"
+            case .outdoor: iconName = "tree"
+            case .transport: iconName = "car"
+            case .finance: iconName = "dollarsign.circle"
+            case .home: iconName = "house"
+            case .work: iconName = "building.2"
+            case .other: iconName = "circle.grid.3x3"
+            }
+            content.image = UIImage(systemName: iconName)
+            content.imageProperties.tintColor = Constants.Colors.primary
+            
+            cell.contentConfiguration = content
+            cell.accessoryType = .disclosureIndicator
             
             return cell
         }
+        
+        return UITableViewCell()
     }
     
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        if tableView == categoryDropdownTableView || tableView == connectionDropdownTableView {
-            return 44
-        } else if isSearching {
-            return 80
-        }
-        return 160
+        // Use automatic dimensions for all table views to avoid constraint conflicts
+        return UITableView.automaticDimension
     }
     
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
@@ -1793,8 +1858,9 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource,
             } else {
                 // Specific connection selected
                 let connection = NetworkManager.shared.connections[indexPath.row - 2]
-                // Use the connected user's ID, not the connection ID
-                selectedConnectionId = connection.connectedUserId
+                // Use the other user's ID (not the current user's ID)
+                let currentUserId = AuthService.shared.getUserId() ?? ""
+                selectedConnectionId = connection.otherUserId(currentUserId: currentUserId)
                 let userName = connection.connectedUser?.displayName ?? "Unknown"
                 connectionFilterButton.setTitle(userName, for: .normal)
             }
@@ -1803,422 +1869,30 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource,
             updateMapPlaces()
             hideConnectionDropdown()
             isConnectionDropdownOpen = false
-            
-        } else if isSearching {
+        } else if tableView == searchResultsTableView {
             let place = filteredPlaces[indexPath.row]
+            
             // Find the circle this place belongs to
-            if let circle = circles.first(where: { $0.places?.contains(place.id) == true }) {
+            var circle: Circle?
+            if let userCircle = circles.first(where: { $0.id == place.circleId }) {
+                circle = userCircle
+            } else if let networkCircle = networkCircles.first(where: { $0.id == place.circleId }) {
+                circle = networkCircle
+            }
+            
+            if let circle = circle {
+                // Navigate to place detail
                 let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
                 navigationController?.pushViewController(placeDetailVC, animated: true)
-            }
-        } else {
-            let circle = isShowingNetworkCircles ? networkCircles[indexPath.row] : circles[indexPath.row]
-            let detailVC = CircleDetailViewController(circle: circle)
-            navigationController?.pushViewController(detailVC, animated: true)
-        }
-    }
-    
-    func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
-        // Don't allow swipe actions when searching
-        if isSearching {
-            return nil
-        }
-        
-        // Don't allow editing/deleting network circles
-        if isShowingNetworkCircles {
-            return nil
-        }
-        
-        // Edit action
-        let editAction = UIContextualAction(style: .normal, title: "Edit") { [weak self] _, _, completion in
-            self?.editCircle(at: indexPath)
-            completion(true)
-        }
-        editAction.backgroundColor = Constants.Colors.primary
-        editAction.image = UIImage(systemName: "pencil")
-        
-        // Delete action
-        let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, completion in
-            self?.deleteCircle(at: indexPath)
-            completion(true)
-        }
-        deleteAction.image = UIImage(systemName: "trash")
-        
-        let configuration = UISwipeActionsConfiguration(actions: [deleteAction, editAction])
-        configuration.performsFirstActionWithFullSwipe = false
-        
-        return configuration
-    }
-    
-    func tableView(_ tableView: UITableView, contextMenuConfigurationForRowAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
-        let circle = isShowingNetworkCircles ? networkCircles[indexPath.row] : circles[indexPath.row]
-        
-        // Don't show edit/delete options for network circles
-        if isShowingNetworkCircles {
-            return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
-                let viewAction = UIAction(
-                    title: "View Circle",
-                    image: UIImage(systemName: "eye")
-                ) { [weak self] _ in
-                    let detailVC = CircleDetailViewController(circle: circle)
-                    self?.navigationController?.pushViewController(detailVC, animated: true)
-                }
                 
-                return UIMenu(title: circle.name, children: [viewAction])
+                // Clear search
+                searchBar.text = ""
+                searchBar.resignFirstResponder()
+                isSearching = false
+                filteredPlaces = []
+                hideSearchResults()
             }
         }
-        
-        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
-            let editAction = UIAction(
-                title: "Edit Circle",
-                image: UIImage(systemName: "pencil")
-            ) { _ in
-                self?.editCircle(at: indexPath)
-            }
-            
-            let deleteAction = UIAction(
-                title: "Delete Circle",
-                image: UIImage(systemName: "trash"),
-                attributes: .destructive
-            ) { _ in
-                self?.deleteCircle(at: indexPath)
-            }
-            
-            return UIMenu(title: circle.name, children: [editAction, deleteAction])
-        }
-    }
-    
-    // MARK: - Drag Delegate
-    func tableView(_ tableView: UITableView, itemsForBeginning session: UIDragSession, at indexPath: IndexPath) -> [UIDragItem] {
-        // Disable drag when showing network circles
-        guard !isShowingNetworkCircles else { return [] }
-        
-        let circle = circles[indexPath.row]
-        let itemProvider = NSItemProvider(object: circle.id as NSString)
-        let dragItem = UIDragItem(itemProvider: itemProvider)
-        dragItem.localObject = circle
-        return [dragItem]
-    }
-    
-    // MARK: - Drop Delegate
-    func tableView(_ tableView: UITableView, canHandle session: UIDropSession) -> Bool {
-        return session.hasItemsConforming(toTypeIdentifiers: [UTType.text.identifier])
-    }
-    
-    func tableView(_ tableView: UITableView, dropSessionDidUpdate session: UIDropSession, withDestinationIndexPath destinationIndexPath: IndexPath?) -> UITableViewDropProposal {
-        if tableView.hasActiveDrag {
-            if session.items.count > 1 {
-                return UITableViewDropProposal(operation: .cancel)
-            } else {
-                return UITableViewDropProposal(operation: .move, intent: .insertAtDestinationIndexPath)
-            }
-        } else {
-            return UITableViewDropProposal(operation: .forbidden)
-        }
-    }
-    
-    func tableView(_ tableView: UITableView, performDropWith coordinator: UITableViewDropCoordinator) {
-        guard let destinationIndexPath = coordinator.destinationIndexPath else { return }
-        
-        for item in coordinator.items {
-            guard let sourceIndexPath = item.sourceIndexPath else { continue }
-            
-            tableView.performBatchUpdates({
-                let movedCircle = circles.remove(at: sourceIndexPath.row)
-                circles.insert(movedCircle, at: destinationIndexPath.row)
-                tableView.moveRow(at: sourceIndexPath, to: destinationIndexPath)
-            })
-            
-            coordinator.drop(item.dragItem, toRowAt: destinationIndexPath)
-            
-            // Update the order in the backend
-            updateCircleOrder()
-        }
-    }
-    
-    // MARK: - Helper method to update circle order
-    private func updateCircleOrder() {
-        // Update the order of circles in the backend
-        Task {
-            do {
-                // Create an array of circle IDs in the new order
-                let orderedCircleIds = circles.map { $0.id }
-                
-                // Call the API to update the order
-                try await CircleService.shared.updateCircleOrder(circleIds: orderedCircleIds)
-                
-                print("Circle order updated successfully")
-            } catch {
-                print("Failed to update circle order: \(error)")
-                // Optionally, revert the changes if the API call fails
-                await MainActor.run {
-                    self.fetchCircles()
-                }
-            }
-        }
-    }
-}
-
-// MARK: - CircleTableViewCellDelegate
-protocol CircleTableViewCellDelegate: AnyObject {
-    func circleTableViewCell(_ cell: CircleTableViewCell, didTapShareForCircle circle: Circle)
-}
-
-// MARK: - CircleTableViewCell
-class CircleTableViewCell: UITableViewCell {
-    
-    weak var delegate: CircleTableViewCellDelegate?
-    private var circle: Circle?
-    
-    // MARK: - UI Elements
-    private let containerView: UIView = {
-        let view = UIView()
-        view.backgroundColor = Constants.Colors.secondaryBackground
-        view.layer.cornerRadius = 12
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.addShadow(opacity: 0.1, radius: 5, offset: CGSize(width: 0, height: 2))
-        return view
-    }()
-    
-    private let coverImageView: UIImageView = {
-        let imageView = UIImageView()
-        imageView.contentMode = .scaleAspectFill
-        imageView.clipsToBounds = true
-        imageView.backgroundColor = Constants.Colors.tertiaryBackground
-        imageView.layer.cornerRadius = 8
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        return imageView
-    }()
-    
-    private let nameLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.large, weight: .bold)
-        label.textColor = Constants.Colors.label
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let descriptionLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
-        label.textColor = Constants.Colors.secondaryLabel
-        label.numberOfLines = 2
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let placeCountLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        label.textColor = Constants.Colors.primary
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let privacyImageView: UIImageView = {
-        let imageView = UIImageView()
-        imageView.contentMode = .scaleAspectFit
-        imageView.tintColor = Constants.Colors.secondaryLabel
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        return imageView
-    }()
-    
-    private let categoryLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        label.textColor = Constants.Colors.white
-        label.textAlignment = .center
-        label.layer.cornerRadius = 4
-        label.clipsToBounds = true
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private(set) var shareButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "square.and.arrow.up"), for: .normal)
-        button.setTitle(" Share", for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
-        button.backgroundColor = Constants.Colors.primary
-        button.tintColor = .white
-        button.layer.cornerRadius = 15
-        button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-    
-    // MARK: - Init
-    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
-        super.init(style: style, reuseIdentifier: reuseIdentifier)
-        setupCell()
-    }
-    
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-    
-    // MARK: - Reuse
-    override func prepareForReuse() {
-        super.prepareForReuse()
-        coverImageView.image = nil
-        nameLabel.text = nil
-        descriptionLabel.text = nil
-        placeCountLabel.text = nil
-        privacyImageView.image = nil
-        categoryLabel.text = nil
-        categoryLabel.backgroundColor = nil
-    }
-    
-    // MARK: - Setup
-    private func setupCell() {
-        backgroundColor = Constants.Colors.background
-        selectionStyle = .none
-        
-        contentView.addSubview(containerView)
-        
-        containerView.addSubview(coverImageView)
-        containerView.addSubview(nameLabel)
-        containerView.addSubview(descriptionLabel)
-        containerView.addSubview(placeCountLabel)
-        containerView.addSubview(privacyImageView)
-        containerView.addSubview(categoryLabel)
-        containerView.addSubview(shareButton)
-        
-        // Add target for share button
-        shareButton.addTarget(self, action: #selector(shareButtonTapped), for: .touchUpInside)
-        
-        NSLayoutConstraint.activate([
-            containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Constants.Spacing.small),
-            containerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
-            containerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
-            containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.small),
-            
-            coverImageView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: Constants.Spacing.medium),
-            coverImageView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: Constants.Spacing.medium),
-            coverImageView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -Constants.Spacing.medium),
-            coverImageView.widthAnchor.constraint(equalTo: coverImageView.heightAnchor),
-            
-            nameLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: Constants.Spacing.medium),
-            nameLabel.leadingAnchor.constraint(equalTo: coverImageView.trailingAnchor, constant: Constants.Spacing.medium),
-            nameLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Constants.Spacing.medium),
-            
-            categoryLabel.centerYAnchor.constraint(equalTo: nameLabel.centerYAnchor),
-            categoryLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Constants.Spacing.medium),
-            categoryLabel.heightAnchor.constraint(equalToConstant: 20),
-            categoryLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 60),
-            
-            descriptionLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: Constants.Spacing.small),
-            descriptionLabel.leadingAnchor.constraint(equalTo: coverImageView.trailingAnchor, constant: Constants.Spacing.medium),
-            descriptionLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Constants.Spacing.medium),
-            
-            placeCountLabel.leadingAnchor.constraint(equalTo: coverImageView.trailingAnchor, constant: Constants.Spacing.medium),
-            placeCountLabel.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -Constants.Spacing.medium),
-            
-            shareButton.centerYAnchor.constraint(equalTo: placeCountLabel.centerYAnchor),
-            shareButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Constants.Spacing.medium),
-            shareButton.heightAnchor.constraint(equalToConstant: 30),
-            
-            privacyImageView.centerYAnchor.constraint(equalTo: placeCountLabel.centerYAnchor),
-            privacyImageView.trailingAnchor.constraint(equalTo: shareButton.leadingAnchor, constant: -Constants.Spacing.small),
-            privacyImageView.widthAnchor.constraint(equalToConstant: 16),
-            privacyImageView.heightAnchor.constraint(equalToConstant: 16)
-        ])
-    }
-    
-    // MARK: - Configure
-    func configure(with circle: Circle) {
-        self.circle = circle
-        nameLabel.text = circle.name
-        descriptionLabel.text = circle.description
-        
-        // Place count
-        if let places = circle.places {
-            placeCountLabel.text = "\(places.count) place\(places.count != 1 ? "s" : "")"
-        } else {
-            placeCountLabel.text = "0 places"
-        }
-        
-        // Privacy icon
-        switch circle.privacy {
-        case .public:
-            privacyImageView.image = UIImage(systemName: "globe")
-        case .myNetwork:
-            privacyImageView.image = UIImage(systemName: "person.2")
-        case .private:
-            privacyImageView.image = UIImage(systemName: "lock")
-        }
-        
-        
-        // Category label
-        categoryLabel.text = circle.category.rawValue.capitalized
-        
-        // Category color
-        switch circle.category {
-        case .travel:
-            categoryLabel.backgroundColor = UIColor(hex: "#3182CE") // Blue
-        case .food:
-            categoryLabel.backgroundColor = UIColor(hex: "#E53E3E") // Red
-        case .services:
-            categoryLabel.backgroundColor = UIColor(hex: "#38A169") // Green
-        case .shopping:
-            categoryLabel.backgroundColor = UIColor(hex: "#805AD5") // Purple
-        case .healthcare:
-            categoryLabel.backgroundColor = UIColor(hex: "#DD6B20") // Orange
-        case .entertainment:
-            categoryLabel.backgroundColor = UIColor(hex: "#D69E2E") // Yellow
-        case .other:
-            categoryLabel.backgroundColor = UIColor(hex: "#718096") // Gray
-        }
-        
-        // Cover image
-        if let coverImageUrl = circle.coverImage {
-            print("📷 Loading image for circle '\(circle.name)' from URL: \(coverImageUrl)")
-            // Load image from URL
-            ImageService.shared.loadImage(from: coverImageUrl) { [weak self] image in
-                DispatchQueue.main.async {
-                    if let image = image {
-                        print("✅ Successfully loaded image for circle '\(circle.name)'")
-                        self?.coverImageView.image = image
-                        self?.coverImageView.contentMode = .scaleAspectFill
-                    } else {
-                        print("❌ Failed to load image for circle '\(circle.name)'")
-                        // Fall back to default icon
-                        self?.setDefaultIcon(for: circle.category)
-                    }
-                }
-            }
-        } else {
-            print("ℹ️ No cover image URL for circle '\(circle.name)'")
-            // Default image based on category
-            setDefaultIcon(for: circle.category)
-        }
-    }
-    
-    private func setDefaultIcon(for category: CircleCategory) {
-        switch category {
-        case .travel:
-            coverImageView.image = UIImage(systemName: "airplane.departure")
-        case .food:
-            coverImageView.image = UIImage(systemName: "fork.knife.circle.fill")
-        case .services:
-            coverImageView.image = UIImage(systemName: "wrench.and.screwdriver.fill")
-        case .shopping:
-            coverImageView.image = UIImage(systemName: "bag.fill")
-        case .healthcare:
-            coverImageView.image = UIImage(systemName: "heart.text.square.fill")
-        case .entertainment:
-            coverImageView.image = UIImage(systemName: "music.note.tv.fill")
-        case .other:
-            coverImageView.image = UIImage(systemName: "square.stack.3d.up.fill")
-        }
-        coverImageView.tintColor = Constants.Colors.primary
-        coverImageView.contentMode = .scaleAspectFit
-    }
-    
-    // MARK: - Actions
-    @objc private func shareButtonTapped() {
-        guard let circle = circle else { return }
-        delegate?.circleTableViewCell(self, didTapShareForCircle: circle)
     }
 }
 
@@ -2230,8 +1904,8 @@ protocol CreateCircleDelegate: AnyObject {
 extension CirclesHomeViewController: CreateCircleDelegate {
     func didCreateCircle(_ circle: Circle) {
         circles.insert(circle, at: 0)
-        tableView.reloadData()
         updateEmptyState()
+        updateMapPlaces()
     }
 }
 
@@ -2241,7 +1915,7 @@ extension CirclesHomeViewController: EditCircleDelegate {
         // Find and update the circle in the array
         if let index = circles.firstIndex(where: { $0.id == circle.id }) {
             circles[index] = circle
-            tableView.reloadRows(at: [IndexPath(row: index, section: 0)], with: .none)
+            updateMapPlaces()
         }
     }
     
@@ -2249,8 +1923,8 @@ extension CirclesHomeViewController: EditCircleDelegate {
         // Find and remove the circle from the array
         if let index = circles.firstIndex(where: { $0.id == circleId }) {
             circles.remove(at: index)
-            tableView.deleteRows(at: [IndexPath(row: index, section: 0)], with: .fade)
             updateEmptyState()
+            updateMapPlaces()
         }
     }
 }
@@ -2271,341 +1945,64 @@ extension CirclesHomeViewController: FullScreenMapViewControllerDelegate {
     }
 }
 
-// MARK: - CircleTableViewCellDelegate
-extension CirclesHomeViewController: CircleTableViewCellDelegate {
-    func circleTableViewCell(_ cell: CircleTableViewCell, didTapShareForCircle circle: Circle) {
-        // Create action sheet to let user choose share option
-        let actionSheet = UIAlertController(title: "Share Circle", message: "Choose how you want to share this circle", preferredStyle: .actionSheet)
-        
-        // Share Circle Link option
-        let shareLinkAction = UIAlertAction(title: "Share Circle Link", style: .default) { [weak self] _ in
-            self?.shareCircleLink(circle: circle, from: cell)
-        }
-        shareLinkAction.setValue(UIImage(systemName: "link"), forKey: "image")
-        
-        // Share with Places option
-        let sharePlacesAction = UIAlertAction(title: "Share with Places", style: .default) { [weak self] _ in
-            self?.shareCircleWithPlaces(circle: circle, from: cell)
-        }
-        sharePlacesAction.setValue(UIImage(systemName: "mappin.and.ellipse"), forKey: "image")
-        
-        // Cancel action
-        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel)
-        
-        actionSheet.addAction(shareLinkAction)
-        actionSheet.addAction(sharePlacesAction)
-        actionSheet.addAction(cancelAction)
-        
-        // For iPad - set the source view for the popover
-        if let popover = actionSheet.popoverPresentationController {
-            popover.sourceView = cell.shareButton
-            popover.sourceRect = cell.shareButton.bounds
-        }
-        
-        present(actionSheet, animated: true)
-    }
-    
-    private func shareCircleLink(circle: Circle, from cell: CircleTableViewCell) {
-        // Create a formatted string with circle details
-        var shareText = "🔵 \(circle.name)\n"
-        
-        if let description = circle.description, !description.isEmpty {
-            shareText += "\(description)\n"
-        }
-        
-        // Calculate member count from sharedWith and followers
-        let memberCount = 1 + (circle.sharedWith?.count ?? 0) + (circle.followers?.count ?? 0)
-        shareText += "\n👥 \(memberCount) members"
-        shareText += "\n📍 \(circle.places?.count ?? 0) places"
-        
-        // Add privacy info
-        switch circle.privacy {
-        case .public:
-            shareText += "\n🌐 Public Circle"
-        case .myNetwork:
-            shareText += "\n👥 My Network"
-        case .private:
-            shareText += "\n🔒 Private Circle"
-        }
-        
-        // Add deep link and web link
-        shareText += "\n\n📱 Open in Circles: circles://circle/\(circle.id)"
-        
-        // Add TestFlight link
-        shareText += "\n\n🔗 Get Circles App: https://testflight.apple.com/join/n1sBRMG3"
-        
-        shareText += "\n\nJoin me on Circles!"
-        
-        var activityItems: [Any] = [shareText]
-        
-        // Function to present the share sheet
-        let presentShareSheet = { [weak self] in
-            let activityViewController = UIActivityViewController(
-                activityItems: activityItems,
-                applicationActivities: nil
-            )
-            
-            // For iPad - set the source view for the popover
-            if let popover = activityViewController.popoverPresentationController {
-                popover.sourceView = cell.shareButton
-                popover.sourceRect = cell.shareButton.bounds
-            }
-            
-            self?.present(activityViewController, animated: true)
-        }
-        
-        // Add cover image if available (load asynchronously)
-        if let coverImageUrl = circle.coverImage,
-           let url = URL(string: coverImageUrl) {
-            URLSession.shared.dataTask(with: url) { data, _, _ in
-                DispatchQueue.main.async {
-                    if let data = data, let image = UIImage(data: data) {
-                        activityItems.append(image)
-                    }
-                    presentShareSheet()
-                }
-            }.resume()
+
+// MARK: - UISearchBarDelegate
+extension CirclesHomeViewController: UISearchBarDelegate {
+    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+        if searchText.isEmpty {
+            isSearching = false
+            filteredPlaces = []
+            hideSearchResults()
         } else {
-            presentShareSheet()
-        }
-    }
-    
-    private func shareCircleWithPlaces(circle: Circle, from cell: CircleTableViewCell) {
-        // Show loading indicator
-        let loadingAlert = UIAlertController(title: nil, message: "Loading places...", preferredStyle: .alert)
-        let loadingIndicator = UIActivityIndicatorView(frame: CGRect(x: 10, y: 5, width: 50, height: 50))
-        loadingIndicator.hidesWhenStopped = true
-        loadingIndicator.style = .medium
-        loadingIndicator.startAnimating()
-        loadingAlert.view.addSubview(loadingIndicator)
-        present(loadingAlert, animated: true)
-        
-        // Fetch places for the circle
-        PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { [weak self] result in
-            DispatchQueue.main.async {
-                // Dismiss loading
-                loadingAlert.dismiss(animated: true) {
-                    switch result {
-                    case .success(let places):
-                        self?.shareCircleWithPlacesData(circle: circle, places: places, from: cell)
-                    case .failure(let error):
-                        // Show error and fall back to regular share
-                        let errorAlert = UIAlertController(
-                            title: "Error",
-                            message: "Failed to load places. Sharing circle link instead.",
-                            preferredStyle: .alert
-                        )
-                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default) { _ in
-                            self?.shareCircleLink(circle: circle, from: cell)
-                        })
-                        self?.present(errorAlert, animated: true)
-                    }
-                }
-            }
-        }
-    }
-    
-    private func shareCircleWithPlacesData(circle: Circle, places: [Place], from cell: CircleTableViewCell) {
-        // Start with circle info
-        var shareText = "🔵 \(circle.name)\n"
-        
-        if let description = circle.description, !description.isEmpty {
-            shareText += "\(description)\n"
-        }
-        
-        // Calculate member count from sharedWith and followers
-        let memberCount = 1 + (circle.sharedWith?.count ?? 0) + (circle.followers?.count ?? 0)
-        shareText += "\n👥 \(memberCount) members"
-        shareText += "\n📍 \(places.count) places"
-        
-        // Add privacy info
-        switch circle.privacy {
-        case .public:
-            shareText += "\n🌐 Public Circle"
-        case .myNetwork:
-            shareText += "\n👥 My Network"
-        case .private:
-            shareText += "\n🔒 Private Circle"
-        }
-        
-        // Add places details
-        if !places.isEmpty {
-            shareText += "\n\n━━━━━━━━━━━━━━━━━━━━"
-            shareText += "\n📍 PLACES IN THIS CIRCLE:"
-            shareText += "\n━━━━━━━━━━━━━━━━━━━━\n"
-            
-            for (index, place) in places.enumerated() {
-                shareText += "\n\(index + 1). \(place.name)"
-                shareText += "\n   📍 \(place.address)"
-                
-                if let phone = place.phone, !phone.isEmpty {
-                    shareText += "\n   📞 \(phone)"
-                }
-                
-                if let website = place.website, !website.isEmpty {
-                    shareText += "\n   🌐 \(website)"
-                }
-                
-                if let notes = place.publicNotes ?? place.notes, !notes.isEmpty {
-                    shareText += "\n   📝 \(notes)"
-                }
-                
-                shareText += "\n   🏷️ \(place.category.displayName)"
-                
-                if index < places.count - 1 {
-                    shareText += "\n"
-                }
-            }
-        }
-        
-        // Add deep link and web link
-        shareText += "\n\n━━━━━━━━━━━━━━━━━━━━"
-        shareText += "\n📱 Open in Circles: circles://circle/\(circle.id)"
-        shareText += "\n🔗 Get Circles App: https://testflight.apple.com/join/n1sBRMG3"
-        shareText += "\n\nJoin me on Circles!"
-        
-        var activityItems: [Any] = [shareText]
-        
-        // Function to present the share sheet
-        let presentShareSheet = { [weak self] in
-            let activityViewController = UIActivityViewController(
-                activityItems: activityItems,
-                applicationActivities: nil
-            )
-            
-            // For iPad - set the source view for the popover
-            if let popover = activityViewController.popoverPresentationController {
-                popover.sourceView = cell.shareButton
-                popover.sourceRect = cell.shareButton.bounds
+            isSearching = true
+            filteredPlaces = allPlaces.filter { place in
+                place.name.localizedCaseInsensitiveContains(searchText) ||
+                (place.address).localizedCaseInsensitiveContains(searchText) ||
+                (place.description ?? "").localizedCaseInsensitiveContains(searchText)
             }
             
-            self?.present(activityViewController, animated: true)
-        }
-        
-        // Add cover image if available (load asynchronously)
-        if let coverImageUrl = circle.coverImage,
-           let url = URL(string: coverImageUrl) {
-            URLSession.shared.dataTask(with: url) { data, _, _ in
-                DispatchQueue.main.async {
-                    if let data = data, let image = UIImage(data: data) {
-                        activityItems.append(image)
-                    }
-                    presentShareSheet()
-                }
-            }.resume()
-        } else {
-            presentShareSheet()
-        }
-    }
-    
-    // MARK: - Helper Methods
-    
-    private func showFirstTimeHint() {
-        let hintView = UIView()
-        hintView.backgroundColor = Constants.Colors.primary
-        hintView.layer.cornerRadius = 8
-        hintView.translatesAutoresizingMaskIntoConstraints = false
-        
-        let label = UILabel()
-        label.text = "Tap to set your default view"
-        label.textColor = .white
-        label.font = UIFont.systemFont(ofSize: 13, weight: .medium)
-        label.translatesAutoresizingMaskIntoConstraints = false
-        
-        hintView.addSubview(label)
-        view.addSubview(hintView)
-        
-        // Create arrow pointing to button
-        let arrowPath = UIBezierPath()
-        let arrowLayer = CAShapeLayer()
-        arrowPath.move(to: CGPoint(x: 10, y: 0))
-        arrowPath.addLine(to: CGPoint(x: 20, y: 0))
-        arrowPath.addLine(to: CGPoint(x: 15, y: 8))
-        arrowPath.close()
-        arrowLayer.path = arrowPath.cgPath
-        arrowLayer.fillColor = Constants.Colors.primary.cgColor
-        
-        let arrowView = UIView()
-        arrowView.layer.addSublayer(arrowLayer)
-        arrowView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(arrowView)
-        
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: hintView.leadingAnchor, constant: 12),
-            label.trailingAnchor.constraint(equalTo: hintView.trailingAnchor, constant: -12),
-            label.topAnchor.constraint(equalTo: hintView.topAnchor, constant: 8),
-            label.bottomAnchor.constraint(equalTo: hintView.bottomAnchor, constant: -8),
-            
-            hintView.bottomAnchor.constraint(equalTo: mapToggleButton.topAnchor, constant: -12),
-            hintView.centerXAnchor.constraint(equalTo: mapToggleButton.centerXAnchor),
-            
-            arrowView.topAnchor.constraint(equalTo: hintView.bottomAnchor),
-            arrowView.centerXAnchor.constraint(equalTo: hintView.centerXAnchor),
-            arrowView.widthAnchor.constraint(equalToConstant: 30),
-            arrowView.heightAnchor.constraint(equalToConstant: 10)
-        ])
-        
-        hintView.alpha = 0
-        arrowView.alpha = 0
-        
-        UIView.animate(withDuration: 0.3, animations: {
-            hintView.alpha = 1
-            arrowView.alpha = 1
-        }) { _ in
-            UIView.animate(withDuration: 0.3, delay: 3.0, options: [], animations: {
-                hintView.alpha = 0
-                arrowView.alpha = 0
-            }) { _ in
-                hintView.removeFromSuperview()
-                arrowView.removeFromSuperview()
-                UserDefaults.standard.set(true, forKey: "hasSeenMapToggleHint")
+            if !filteredPlaces.isEmpty {
+                showSearchResults()
+            } else {
+                hideSearchResults()
             }
         }
+        updateEmptyState()
     }
     
-    private func showToast(_ message: String) {
-        let toastView = UIView()
-        toastView.backgroundColor = UIColor.black.withAlphaComponent(0.8)
-        toastView.layer.cornerRadius = 20
-        toastView.translatesAutoresizingMaskIntoConstraints = false
-        
-        let label = UILabel()
-        label.text = message
-        label.textColor = .white
-        label.font = UIFont.systemFont(ofSize: 14, weight: .medium)
-        label.numberOfLines = 0
-        label.textAlignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        
-        toastView.addSubview(label)
-        view.addSubview(toastView)
-        
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: toastView.leadingAnchor, constant: 16),
-            label.trailingAnchor.constraint(equalTo: toastView.trailingAnchor, constant: -16),
-            label.topAnchor.constraint(equalTo: toastView.topAnchor, constant: 12),
-            label.bottomAnchor.constraint(equalTo: toastView.bottomAnchor, constant: -12),
-            
-            toastView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            toastView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -100),
-            toastView.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 40),
-            toastView.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -40)
-        ])
-        
-        toastView.alpha = 0
-        UIView.animate(withDuration: 0.3, animations: {
-            toastView.alpha = 1
-        }) { _ in
-            UIView.animate(withDuration: 0.3, delay: 2.0, options: [], animations: {
-                toastView.alpha = 0
-            }) { _ in
-                toastView.removeFromSuperview()
-            }
-        }
+    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+        searchBar.resignFirstResponder()
     }
     
-    // MARK: - Navigation from Notifications
+    func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
+        searchBar.text = ""
+        searchBar.resignFirstResponder()
+        isSearching = false
+        filteredPlaces = []
+        hideSearchResults()
+        updateEmptyState()
+    }
     
+    func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
+        searchBar.setShowsCancelButton(true, animated: true)
+    }
+    
+    func searchBarTextDidEndEditing(_ searchBar: UISearchBar) {
+        searchBar.setShowsCancelButton(false, animated: true)
+    }
+}
+
+// MARK: - HorizontalUserListViewDelegate
+extension CirclesHomeViewController: HorizontalUserListViewDelegate {
+    func didSelectUser(_ user: User, connectionId: String) {
+        // Navigate to user's circles
+        let userCirclesVC = UserCirclesViewController(userId: user.id ?? "", userName: user.displayName, connectionId: connectionId)
+        navigationController?.pushViewController(userCirclesVC, animated: true)
+    }
+}
+
+// MARK: - Navigation from Notifications
+extension CirclesHomeViewController {
     func navigateToCircle(withId circleId: String) {
         // Find the circle in our data
         guard let circle = circles.first(where: { $0.id == circleId }) else {
@@ -2646,176 +2043,30 @@ extension CirclesHomeViewController: CircleTableViewCellDelegate {
     }
 }
 
-// MARK: - UISearchBarDelegate
-extension CirclesHomeViewController: UISearchBarDelegate {
-    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
-        if searchText.isEmpty {
-            isSearching = false
-            filteredPlaces = []
-        } else {
-            isSearching = true
-            filteredPlaces = allPlaces.filter { place in
-                place.name.localizedCaseInsensitiveContains(searchText) ||
-                (place.address).localizedCaseInsensitiveContains(searchText) ||
-                (place.description ?? "").localizedCaseInsensitiveContains(searchText)
+// MARK: - UIGestureRecognizerDelegate
+extension CirclesHomeViewController: UIGestureRecognizerDelegate {
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        // Don't intercept touches on the dropdown table views
+        if let touchView = touch.view {
+            if touchView.isDescendant(of: categoryDropdownTableView) ||
+               touchView.isDescendant(of: connectionDropdownTableView) ||
+               touchView.isDescendant(of: searchResultsTableView) {
+                return false
             }
         }
-        tableView.reloadData()
-        updateEmptyState()
-    }
-    
-    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
-        searchBar.resignFirstResponder()
-    }
-    
-    func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
-        searchBar.text = ""
-        searchBar.resignFirstResponder()
-        isSearching = false
-        filteredPlaces = []
-        tableView.reloadData()
-        updateEmptyState()
-    }
-    
-    func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
-        searchBar.setShowsCancelButton(true, animated: true)
-    }
-    
-    func searchBarTextDidEndEditing(_ searchBar: UISearchBar) {
-        searchBar.setShowsCancelButton(false, animated: true)
-    }
-}
-
-// MARK: - PlaceSearchResultCell
-class PlaceSearchResultCell: UITableViewCell {
-    
-    // MARK: - UI Elements
-    private let containerView: UIView = {
-        let view = UIView()
-        view.backgroundColor = Constants.Colors.secondaryBackground
-        view.layer.cornerRadius = 8
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
-    
-    private let placeImageView: UIImageView = {
-        let imageView = UIImageView()
-        imageView.contentMode = .scaleAspectFill
-        imageView.clipsToBounds = true
-        imageView.backgroundColor = Constants.Colors.tertiaryBackground
-        imageView.layer.cornerRadius = 6
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        return imageView
-    }()
-    
-    private let nameLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-        label.textColor = Constants.Colors.label
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let addressLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 14)
-        label.textColor = Constants.Colors.secondaryLabel
-        label.numberOfLines = 1
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let categoryLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 12)
-        label.textColor = Constants.Colors.tertiaryLabel
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    // MARK: - Init
-    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
-        super.init(style: style, reuseIdentifier: reuseIdentifier)
-        setupCell()
-    }
-    
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-    
-    // MARK: - Setup
-    private func setupCell() {
-        backgroundColor = Constants.Colors.background
-        selectionStyle = .none
         
-        contentView.addSubview(containerView)
-        containerView.addSubview(placeImageView)
-        containerView.addSubview(nameLabel)
-        containerView.addSubview(addressLabel)
-        containerView.addSubview(categoryLabel)
-        
-        NSLayoutConstraint.activate([
-            containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
-            containerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            containerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
-            
-            placeImageView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 12),
-            placeImageView.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
-            placeImageView.widthAnchor.constraint(equalToConstant: 50),
-            placeImageView.heightAnchor.constraint(equalToConstant: 50),
-            
-            nameLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 12),
-            nameLabel.leadingAnchor.constraint(equalTo: placeImageView.trailingAnchor, constant: 12),
-            nameLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
-            
-            addressLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 2),
-            addressLabel.leadingAnchor.constraint(equalTo: placeImageView.trailingAnchor, constant: 12),
-            addressLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
-            
-            categoryLabel.topAnchor.constraint(equalTo: addressLabel.bottomAnchor, constant: 2),
-            categoryLabel.leadingAnchor.constraint(equalTo: placeImageView.trailingAnchor, constant: 12),
-            categoryLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
-            categoryLabel.bottomAnchor.constraint(lessThanOrEqualTo: containerView.bottomAnchor, constant: -12)
-        ])
-    }
-    
-    // MARK: - Configure
-    func configure(with place: Place) {
-        nameLabel.text = place.name
-        addressLabel.text = place.address.isEmpty ? "No address" : place.address
-        categoryLabel.text = place.category.rawValue.capitalized
-        
-        // Load place image
-        if let photos = place.photos, !photos.isEmpty, let firstPhoto = photos.first {
-            ImageService.shared.loadImage(from: firstPhoto) { [weak self] image in
-                DispatchQueue.main.async {
-                    self?.placeImageView.image = image ?? UIImage(systemName: "mappin.circle.fill")
-                    if image == nil {
-                        self?.placeImageView.tintColor = Constants.Colors.primary
-                    }
-                }
-            }
-        } else {
-            placeImageView.image = UIImage(systemName: "mappin.circle.fill")
-            placeImageView.tintColor = Constants.Colors.primary
+        // Don't intercept touches on the dropdown containers themselves
+        let location = touch.location(in: view)
+        if !categoryDropdownView.isHidden && categoryDropdownView.frame.contains(location) {
+            return false
         }
-    }
-    
-    override func prepareForReuse() {
-        super.prepareForReuse()
-        placeImageView.image = nil
-        nameLabel.text = nil
-        addressLabel.text = nil
-        categoryLabel.text = nil
-    }
-}
-
-// MARK: - HorizontalUserListViewDelegate
-extension CirclesHomeViewController: HorizontalUserListViewDelegate {
-    func didSelectUser(_ user: User, connectionId: String) {
-        // Navigate to user's circles
-        let userCirclesVC = UserCirclesViewController(userId: user.id ?? "", userName: user.displayName)
-        navigationController?.pushViewController(userCirclesVC, animated: true)
+        if !connectionDropdownView.isHidden && connectionDropdownView.frame.contains(location) {
+            return false
+        }
+        if !searchResultsTableView.isHidden && searchResultsTableView.frame.contains(location) {
+            return false
+        }
+        
+        return true
     }
 }

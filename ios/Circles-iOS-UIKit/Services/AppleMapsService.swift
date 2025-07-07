@@ -2,6 +2,17 @@ import Foundation
 import MapKit
 import CoreLocation
 
+// ✅ PREFERRED SERVICE FOR ALL MAP OPERATIONS
+// 
+// This is the PRIMARY service for all map-related operations:
+// - Place search and discovery
+// - Geocoding and reverse geocoding
+// - Navigation and directions
+// - Points of Interest (POI)
+// 
+// Only use GooglePlacesService for fetching photos
+// See APIUsageGuidelines.md for full policy
+
 class AppleMapsService {
     static let shared = AppleMapsService()
     
@@ -118,6 +129,215 @@ class AppleMapsService {
             category: category,
             poiCategory: mapItem.pointOfInterestCategory
         )
+    }
+    
+    // MARK: - Convert POI to Place (iOS 16+)
+    
+    @available(iOS 16.0, *)
+    func convertPOIToPlace(
+        from featureAnnotation: MKMapFeatureAnnotation,
+        circleId: String,
+        notes: String? = nil,
+        completion: @escaping (Result<Place, Error>) -> Void
+    ) {
+        // Extract basic information
+        let name = featureAnnotation.title ?? "Unknown Place"
+        let coordinate = featureAnnotation.coordinate
+        let category = mapPointOfInterestCategoryToPlaceCategory(featureAnnotation.pointOfInterestCategory)
+        
+        // First, try to get more details using MKLocalSearch
+        searchForPOIDetails(name: name, coordinate: coordinate) { [weak self] detailedItem in
+            
+            // Get address using reverse geocoding
+            let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+            let geocoder = CLGeocoder()
+            
+            geocoder.reverseGeocodeLocation(location) { placemarks, error in
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+                
+                // Extract address from placemark
+                let address = self?.formatAddress(from: placemarks?.first) ?? "Unknown Address"
+                
+                // Use detailed information if available
+                let phoneNumber = detailedItem?.phoneNumber
+                let website = detailedItem?.url?.absoluteString
+                let detailedName = detailedItem?.name ?? name
+                
+                // Note: Apple Maps doesn't provide business hours through MKMapItem
+                // Business hours will be obtained through web scraping
+                
+                // Create description with category info
+                let categoryDescription = self?.getCategoryDescription(for: featureAnnotation.pointOfInterestCategory) ?? ""
+                let description = featureAnnotation.subtitle ?? categoryDescription
+                
+                // Try to enrich with web data if we don't have complete information
+                if phoneNumber == nil || website == nil {
+                    PlaceEnrichmentService.shared.enrichPlaceDetails(
+                        name: detailedName,
+                        address: address,
+                        category: category,
+                        coordinate: (latitude: coordinate.latitude, longitude: coordinate.longitude)
+                    ) { enrichResult in
+                        switch enrichResult {
+                        case .success(let enrichedData):
+                            let enrichedPhone = enrichedData.phone ?? phoneNumber
+                            let enrichedWebsite = enrichedData.website ?? website
+                            let enrichedHours = enrichedData.hours
+                            
+                            self?.createPlaceFromEnrichedData(
+                                name: detailedName,
+                                description: description,
+                                address: address,
+                                coordinate: coordinate,
+                                category: category,
+                                phoneNumber: enrichedPhone,
+                                website: enrichedWebsite,
+                                businessHoursString: enrichedHours,
+                                circleId: circleId,
+                                notes: notes,
+                                completion: completion
+                            )
+                        case .failure:
+                            // If enrichment fails, use what we have
+                            self?.createPlaceFromEnrichedData(
+                                name: detailedName,
+                                description: description,
+                                address: address,
+                                coordinate: coordinate,
+                                category: category,
+                                phoneNumber: phoneNumber,
+                                website: website,
+                                businessHoursString: nil,
+                                circleId: circleId,
+                                notes: notes,
+                                completion: completion
+                            )
+                        }
+                    }
+                } else {
+                    self?.createPlaceFromEnrichedData(
+                        name: detailedName,
+                        description: description,
+                        address: address,
+                        coordinate: coordinate,
+                        category: category,
+                        phoneNumber: phoneNumber,
+                        website: website,
+                        businessHoursString: nil,
+                        circleId: circleId,
+                        notes: notes,
+                        completion: completion
+                    )
+                }
+            }
+        }
+    }
+    
+    private func createPlaceFromEnrichedData(
+        name: String,
+        description: String,
+        address: String,
+        coordinate: CLLocationCoordinate2D,
+        category: PlaceCategory,
+        phoneNumber: String?,
+        website: String?,
+        businessHoursString: String?,
+        circleId: String,
+        notes: String?,
+        completion: @escaping (Result<Place, Error>) -> Void
+    ) {
+        let place = Place(
+            id: UUID().uuidString, // Temporary ID - backend will assign real one
+            name: name,
+            description: description,
+            address: address,
+            location: GeoLocation(
+                type: "Point",
+                coordinates: [coordinate.longitude, coordinate.latitude]
+            ),
+            website: website,
+            phone: phoneNumber,
+            googlePlaceId: nil, // No Google Place ID for Apple Maps POIs
+            photos: nil,
+            category: category,
+            customCategory: nil,
+            subcategory: nil,
+            rating: nil,
+            userRatingsTotal: nil,
+            notes: businessHoursString, // Store hours as notes for now
+            privateNotes: notes,
+            publicNotes: nil,
+            tags: nil,
+            reviews: nil,
+            openingHours: nil, // Business hours will be enriched via web scraping
+            priceLevel: nil,
+            likes: [],
+            likesCount: 0,
+            circleId: circleId,
+            addedBy: AuthService.shared.getUserId() ?? "",
+            addedByUser: nil,
+            privacy: .followCirclePrivacy,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+        
+        completion(.success(place))
+    }
+    
+    private func searchForPOIDetails(name: String, coordinate: CLLocationCoordinate2D, completion: @escaping (MKMapItem?) -> Void) {
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = name
+        
+        // Create a small region around the coordinate for precise search
+        let region = MKCoordinateRegion(
+            center: coordinate,
+            latitudinalMeters: 100, // 100 meter radius
+            longitudinalMeters: 100
+        )
+        request.region = region
+        
+        let search = MKLocalSearch(request: request)
+        search.start { response, error in
+            if let error = error {
+                print("Failed to search for POI details: \(error)")
+                completion(nil)
+                return
+            }
+            
+            // Find the closest matching item
+            if let mapItems = response?.mapItems {
+                let closestItem = mapItems.first { item in
+                    // Check if coordinates match closely (within ~10 meters)
+                    let distance = CLLocation(
+                        latitude: item.placemark.coordinate.latitude,
+                        longitude: item.placemark.coordinate.longitude
+                    ).distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
+                    return distance < 10
+                }
+                completion(closestItem ?? mapItems.first)
+            } else {
+                completion(nil)
+            }
+        }
+    }
+    
+    
+    private func formatAddress(from placemark: CLPlacemark?) -> String {
+        guard let placemark = placemark else { return "Unknown Address" }
+        
+        let components = [
+            placemark.subThoroughfare,
+            placemark.thoroughfare,
+            placemark.locality,
+            placemark.administrativeArea,
+            placemark.postalCode,
+            placemark.country
+        ].compactMap { $0 }
+        
+        return components.isEmpty ? "Unknown Address" : components.joined(separator: ", ")
     }
     
     // MARK: - Helper Methods

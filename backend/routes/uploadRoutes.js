@@ -31,15 +31,22 @@ router.post('/image', async (req, res, next) => {
       });
     }
     
-    // Check if image is too large (should be much smaller now with compression)
+    // CRITICAL: Image Size Validation
+    // Max size is 1MB for base64 encoded images to prevent storage costs
+    // This limit is coordinated with iOS app compression in PlaceService.swift
+    // DO NOT increase without updating iOS compression logic
     const imageSizeMB = image.length / (1024 * 1024);
     const imageSizeKB = image.length / 1024;
     
-    if (imageSizeMB > 5) {
-      console.error(`Image unexpectedly large: ${imageSizeMB.toFixed(2)} MB`);
+    // Base64 encoding adds ~33% overhead, so 1MB limit for encoded data
+    // This translates to roughly 750KB for the actual image
+    const maxSizeMB = 1; // 1MB - DO NOT CHANGE without updating iOS
+    
+    if (imageSizeMB > maxSizeMB) {
+      console.error(`Image too large: ${imageSizeMB.toFixed(2)} MB (${imageSizeKB.toFixed(0)} KB)`);
       return res.status(413).json({
         success: false,
-        message: `Image too large: ${imageSizeMB.toFixed(2)} MB. Images should be under 1 MB after compression.`
+        message: `Image too large: ${imageSizeMB.toFixed(2)} MB. Maximum allowed size is ${maxSizeMB} MB. Please ensure iOS app is compressing images properly.`
       });
     }
     

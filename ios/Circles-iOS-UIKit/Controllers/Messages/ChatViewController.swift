@@ -75,6 +75,7 @@ class ChatViewController: UIViewController {
     private var keyboardHeight: CGFloat = 0
     private var messageInputBottomConstraint: NSLayoutConstraint!
     private let cellIdentifier = "MessageCell"
+    private let connectionRequestCellIdentifier = "ConnectionRequestMessageCell"
     private var temporaryText: String = "" // Store text to prevent loss
     
     // MARK: - Lifecycle
@@ -120,6 +121,7 @@ class ChatViewController: UIViewController {
         tableView.delegate = self
         tableView.dataSource = self
         tableView.register(MessageCell.self, forCellReuseIdentifier: cellIdentifier)
+        tableView.register(ConnectionRequestMessageCell.self, forCellReuseIdentifier: connectionRequestCellIdentifier)
         tableView.contentInset = UIEdgeInsets(top: 8, left: 0, bottom: 8, right: 0)
         
         NSLayoutConstraint.activate([
@@ -329,11 +331,20 @@ extension ChatViewController: UITableViewDataSource {
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: cellIdentifier, for: indexPath) as! MessageCell
         let message = messages[messages.count - 1 - indexPath.row] // Reverse order due to inverted table
-        cell.configure(with: message)
-        cell.transform = CGAffineTransform(scaleX: 1, y: -1) // Invert cell
-        return cell
+        
+        if message.type == .connectionRequest {
+            let cell = tableView.dequeueReusableCell(withIdentifier: connectionRequestCellIdentifier, for: indexPath) as! ConnectionRequestMessageCell
+            cell.configure(with: message)
+            cell.delegate = self
+            cell.transform = CGAffineTransform(scaleX: 1, y: -1) // Invert cell
+            return cell
+        } else {
+            let cell = tableView.dequeueReusableCell(withIdentifier: cellIdentifier, for: indexPath) as! MessageCell
+            cell.configure(with: message)
+            cell.transform = CGAffineTransform(scaleX: 1, y: -1) // Invert cell
+            return cell
+        }
     }
 }
 
@@ -350,8 +361,8 @@ extension ChatViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
         let message = messages[messages.count - 1 - indexPath.row]
         
-        // Only allow deletion of user's own messages
-        guard message.isCurrentUserMessage else { return nil }
+        // Allow deletion of user's own messages OR connection request messages
+        guard message.isCurrentUserMessage || message.type == .connectionRequest else { return nil }
         
         let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, completionHandler in
             self?.deleteMessage(at: indexPath)
@@ -415,6 +426,75 @@ extension ChatViewController: UITextViewDelegate {
         
         // Force layout update to prevent RTI issues
         textView.layoutIfNeeded()
+    }
+}
+
+// MARK: - ConnectionRequestMessageCellDelegate
+extension ChatViewController: ConnectionRequestMessageCellDelegate {
+    func connectionRequestCell(_ cell: ConnectionRequestMessageCell, didAcceptConnectionId connectionId: String) {
+        // Accept the connection request
+        NetworkManager.shared.acceptConnection(connectionId) { [weak self] result in
+            switch result {
+            case .success:
+                // Update the message to mark as handled
+                if let indexPath = self?.tableView.indexPath(for: cell) {
+                    let messageIndex = (self?.messages.count ?? 0) - 1 - indexPath.row
+                    if messageIndex >= 0 && messageIndex < (self?.messages.count ?? 0) {
+                        // Simply reload the cell - the button state will be updated based on the connection status
+                        self?.tableView.reloadRows(at: [indexPath], with: .fade)
+                    }
+                }
+                
+                // Show success message
+                DispatchQueue.main.async {
+                    let alert = UIAlertController(title: "Success", message: "Connection request accepted", preferredStyle: .alert)
+                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    self?.present(alert, animated: true)
+                }
+                
+            case .failure(let error):
+                DispatchQueue.main.async {
+                    self?.showError("Failed to accept connection: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    
+    func connectionRequestCell(_ cell: ConnectionRequestMessageCell, didDeclineConnectionId connectionId: String) {
+        // Decline the connection request
+        NetworkManager.shared.declineConnection(connectionId) { [weak self] result in
+            switch result {
+            case .success:
+                // Update the message to mark as handled
+                if let indexPath = self?.tableView.indexPath(for: cell) {
+                    let messageIndex = (self?.messages.count ?? 0) - 1 - indexPath.row
+                    if messageIndex >= 0 && messageIndex < (self?.messages.count ?? 0) {
+                        // Simply reload the cell - the button state will be updated based on the connection status
+                        self?.tableView.reloadRows(at: [indexPath], with: .fade)
+                    }
+                }
+                
+                // Show success message
+                DispatchQueue.main.async {
+                    let alert = UIAlertController(title: "Success", message: "Connection request declined", preferredStyle: .alert)
+                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    self?.present(alert, animated: true)
+                }
+                
+            case .failure(let error):
+                DispatchQueue.main.async {
+                    self?.showError("Failed to decline connection: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    
+    func connectionRequestCellDidTapDelete(_ cell: ConnectionRequestMessageCell) {
+        // Find the index path for this cell
+        if let indexPath = tableView.indexPath(for: cell) {
+            // Delete the message
+            deleteMessage(at: indexPath)
+        }
     }
 }
 

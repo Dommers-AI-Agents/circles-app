@@ -85,7 +85,9 @@ class AuthManager: ObservableObject {
     }
     
     func checkAuthenticationStatus() {
+        print("🔍 AuthManager: Checking authentication status")
         isAuthenticated = authService.isLoggedIn
+        print("🔍 AuthManager: isAuthenticated = \(isAuthenticated)")
         if isAuthenticated {
             fetchCurrentUser()
         }

@@ -253,6 +253,8 @@ struct PlaceDetailView_Previews: PreviewProvider {
                 reviews: nil,
                 openingHours: nil,
                 priceLevel: PriceLevel.moderate,
+                likes: [],
+                likesCount: 0,
                 circleId: "1",
                 addedBy: "user1",
                 addedByUser: nil,

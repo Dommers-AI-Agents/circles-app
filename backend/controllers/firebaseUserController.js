@@ -6,6 +6,7 @@ const {
   serializeDoc,
   serializeQuerySnapshot 
 } = require('../models/FirestoreModels');
+const { normalizeUserId, isSameUser } = require('../services/idService');
 
 const db = getFirestore();
 
@@ -14,23 +15,14 @@ const db = getFirestore();
 // @access  Private
 exports.getUser = async (req, res, next) => {
   try {
-    let userId = req.params.id === 'me' ? req.user.uid : req.params.id;
-    
-    // Parse the actual Firebase UID from complex format if needed
-    if (userId && userId.includes('.')) {
-      // Handle format like "000454.9b5eeac93282416c9bc6dcecbc49b40f.2127"
-      const parts = userId.split('.');
-      if (parts.length >= 2) {
-        userId = parts[1]; // Use the middle part as Firebase UID
-        console.log(`🔐 getUser: Parsed Firebase UID: ${userId} from complex ID: ${req.params.id}`);
-      }
-    }
+    // Normalize user ID using centralized service
+    let userId = req.params.id === 'me' ? req.user.uid : normalizeUserId(req.params.id);
     
     console.log('🔍 DEBUG getUser:', {
       paramId: req.params.id,
+      normalizedId: userId,
       userUid: req.user.uid,
-      userId: userId,
-      userObject: req.user
+      isMe: req.params.id === 'me'
     });
     
     if (!userId) {
@@ -55,7 +47,7 @@ exports.getUser = async (req, res, next) => {
     const isOwnProfile = userId === req.user.uid;
     
     const profileData = {
-      _id: user.id,
+      _id: normalizeUserId(user.id), // Always return normalized ID
       displayName: user.displayName,
       profilePicture: user.profilePicture,
       bio: user.bio,
@@ -160,7 +152,7 @@ exports.getFriends = async (req, res, next) => {
       if (friendDoc.exists) {
         const friend = serializeDoc(friendDoc);
         friendProfiles.push({
-          _id: friend.id,
+          _id: normalizeUserId(friend.id), // Always return normalized ID
           displayName: friend.displayName,
           profilePicture: friend.profilePicture,
           bio: friend.bio,
@@ -194,15 +186,9 @@ exports.sendFriendRequest = async (req, res, next) => {
       });
     }
 
-    // Parse the actual Firebase UID from complex format if needed
-    if (userId && userId.includes('.')) {
-      // Handle format like "000454.9b5eeac93282416c9bc6dcecbc49b40f.2127"
-      const parts = userId.split('.');
-      if (parts.length >= 2) {
-        userId = parts[1]; // Use the middle part as Firebase UID
-        console.log(`🔐 sendFriendRequest: Parsed Firebase UID: ${userId} from complex ID: ${req.body.userId}`);
-      }
-    }
+    // Normalize user ID
+    userId = normalizeUserId(userId);
+    console.log(`🔐 sendFriendRequest: Normalized user ID: ${userId} from ${req.body.userId}`);
 
     if (userId === req.user.uid) {
       return res.status(400).json({
@@ -281,7 +267,7 @@ exports.getFriendRequests = async (req, res, next) => {
         friendRequests.push({
           id: request.id,
           from: {
-            _id: sender.id,
+            _id: normalizeUserId(sender.id), // Always return normalized ID
             displayName: sender.displayName,
             profilePicture: sender.profilePicture
           },
@@ -383,15 +369,9 @@ exports.removeFriend = async (req, res, next) => {
   try {
     let friendId = req.params.id;
 
-    // Parse the actual Firebase UID from complex format if needed
-    if (friendId && friendId.includes('.')) {
-      // Handle format like "000454.9b5eeac93282416c9bc6dcecbc49b40f.2127"
-      const parts = friendId.split('.');
-      if (parts.length >= 2) {
-        friendId = parts[1]; // Use the middle part as Firebase UID
-        console.log(`🔐 removeFriend: Parsed Firebase UID: ${friendId} from complex ID: ${req.params.id}`);
-      }
-    }
+    // Normalize friend ID
+    friendId = normalizeUserId(friendId);
+    console.log(`🔐 removeFriend: Normalized friend ID: ${friendId} from ${req.params.id}`);
 
     if (friendId === req.user.uid) {
       return res.status(400).json({
@@ -451,16 +431,105 @@ exports.removeFriend = async (req, res, next) => {
 exports.searchUsers = async (req, res, next) => {
   try {
     const { query } = req.query;
+    const currentUserId = req.user.uid; // Already normalized by middleware
     
-    if (!query || query.trim().length < 1) {
-      return res.status(400).json({
-        success: false,
-        message: 'Search query must be at least 1 character'
+    console.log(`🔍 searchUsers - currentUserId: ${currentUserId}, query: '${query}'`);
+    
+    // If no query provided, return all users sorted alphabetically
+    if (!query || query.trim().length === 0) {
+      const usersSnapshot = await db.collection(COLLECTIONS.USERS).get();
+      
+      const allUsers = [];
+      console.log(`Found ${usersSnapshot.size} total users in database`);
+      
+      // Get all connections for current user
+      const connectionQueries = await Promise.all([
+        db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', currentUserId).get(),
+        db.collection(COLLECTIONS.CONNECTIONS).where('connectedUserId', '==', currentUserId).get()
+      ]);
+      
+      const allConnections = new Set();
+      connectionQueries.forEach(query => {
+        query.docs.forEach(doc => allConnections.add(doc.id));
+      });
+      
+      console.log(`Current user ${currentUserId} has ${allConnections.size} total connections`);
+      
+      // Log a sample connection for debugging
+      if (allConnections.size > 0) {
+        const firstConnDoc = connectionQueries.find(q => q.size > 0)?.docs[0];
+        if (firstConnDoc) {
+          console.log('Sample connection:', firstConnDoc.data());
+        }
+      }
+      
+      for (const doc of usersSnapshot.docs) {
+        const user = serializeDoc(doc);
+        
+        // Skip current user - use isSameUser to handle all ID formats
+        if (isSameUser(user.id, currentUserId)) {
+          console.log(`Skipping current user: ${user.id}`);
+          continue;
+        }
+        
+        // Check connection status using normalized IDs
+        const targetUserId = normalizeUserId(user.id);
+        
+        // Check both directions for connection
+        const connectionChecks = await Promise.all([
+          db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', currentUserId).where('connectedUserId', '==', targetUserId).get(),
+          db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', targetUserId).where('connectedUserId', '==', currentUserId).get()
+        ]);
+        
+        let connectionStatus = 'none';
+        let connectionDirection = null; // 'incoming' or 'outgoing' for pending requests
+        let connectionId = null;
+        
+        for (let i = 0; i < connectionChecks.length; i++) {
+          const query = connectionChecks[i];
+          if (!query.empty) {
+            const connectionData = query.docs[0].data();
+            connectionStatus = connectionData.status;
+            connectionId = query.docs[0].id;
+            
+            // Determine direction for pending connections
+            if (connectionStatus === 'pending') {
+              // i === 0: current user is userId (outgoing request)
+              // i === 1: current user is connectedUserId (incoming request)
+              connectionDirection = i === 0 ? 'outgoing' : 'incoming';
+            }
+            break;
+          }
+        }
+        
+        allUsers.push({
+          _id: normalizeUserId(user.id), // Always return normalized ID
+          displayName: user.displayName,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          profilePicture: user.profilePicture,
+          connectionStatus: connectionStatus,
+          connectionDirection: connectionDirection,
+          connectionId: connectionId
+        });
+      }
+      
+      // Sort alphabetically by display name
+      allUsers.sort((a, b) => {
+        const nameA = a.displayName || '';
+        const nameB = b.displayName || '';
+        return nameA.localeCompare(nameB);
+      });
+      
+      return res.status(200).json({
+        success: true,
+        count: allUsers.length,
+        users: allUsers
       });
     }
 
     const searchTerm = query.trim().toLowerCase();
-    const currentUserId = req.user.uid;
     
     // Search users by email, name, or phone
     const usersSnapshot = await db.collection(COLLECTIONS.USERS).get();
@@ -469,8 +538,20 @@ exports.searchUsers = async (req, res, next) => {
     for (const doc of usersSnapshot.docs) {
       const user = serializeDoc(doc);
       
-      // Skip current user
-      if (user.id === currentUserId) continue;
+      // Skip current user - check both complex and simple ID formats
+      if (user.id === currentUserId || user.id === simpleUserId) continue;
+      
+      // Also check if the complex ID contains the simple ID
+      if (user.id && user.id.includes('.') && simpleUserId) {
+        const parts = user.id.split('.');
+        if (parts.length >= 2 && parts[1] === simpleUserId) continue;
+      }
+      
+      // Also check the reverse - if current user has complex ID and we're comparing with simple ID
+      if (currentUserId && currentUserId.includes('.')) {
+        const currentUserParts = currentUserId.split('.');
+        if (currentUserParts.length >= 2 && user.id === currentUserParts[1]) continue;
+      }
       
       // Check if query matches email, name, or phone (using startsWith for better UX)
       const emailMatch = user.email && user.email.toLowerCase().startsWith(searchTerm);
@@ -484,28 +565,46 @@ exports.searchUsers = async (req, res, next) => {
       const wordMatch = displayNameWords.some(word => word.startsWith(searchTerm));
       
       if (emailMatch || displayNameMatch || firstNameMatch || lastNameMatch || phoneMatch || wordMatch) {
-        // Check connection status
-        const connectionQuery = await db.collection(COLLECTIONS.CONNECTIONS)
-          .where('participants', 'array-contains', currentUserId)
-          .get();
+        // Check connection status using normalized IDs
+        const targetUserId = normalizeUserId(user.id);
+        
+        // Check both directions for connection
+        const connectionChecks = await Promise.all([
+          db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', currentUserId).where('connectedUserId', '==', targetUserId).get(),
+          db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', targetUserId).where('connectedUserId', '==', currentUserId).get()
+        ]);
         
         let connectionStatus = 'none';
-        for (const connDoc of connectionQuery.docs) {
-          const conn = connDoc.data();
-          if (conn.participants.includes(user.id)) {
-            connectionStatus = conn.status;
+        let connectionDirection = null; // 'incoming' or 'outgoing' for pending requests
+        let connectionId = null;
+        
+        for (let i = 0; i < connectionChecks.length; i++) {
+          const query = connectionChecks[i];
+          if (!query.empty) {
+            const connectionData = query.docs[0].data();
+            connectionStatus = connectionData.status;
+            connectionId = query.docs[0].id;
+            
+            // Determine direction for pending connections
+            if (connectionStatus === 'pending') {
+              // i === 0: current user is userId (outgoing request)
+              // i === 1: current user is connectedUserId (incoming request)
+              connectionDirection = i === 0 ? 'outgoing' : 'incoming';
+            }
             break;
           }
         }
         
         matchingUsers.push({
-          _id: user.id,
+          _id: normalizeUserId(user.id), // Always return normalized ID
           displayName: user.displayName,
           firstName: user.firstName,
           lastName: user.lastName,
           email: user.email,
           profilePicture: user.profilePicture,
-          connectionStatus: connectionStatus
+          connectionStatus: connectionStatus,
+          connectionDirection: connectionDirection,
+          connectionId: connectionId
         });
       }
     }
@@ -788,6 +887,147 @@ exports.getUserPublicCircles = async (req, res, next) => {
     });
   } catch (error) {
     console.error('Error fetching user public circles:', error);
+    next(error);
+  }
+};
+
+// @desc    Find and merge duplicate user accounts
+// @route   POST /api/users/find-duplicates
+// @access  Private (Admin only)
+exports.findDuplicateAccounts = async (req, res, next) => {
+  try {
+    // This endpoint should be restricted to admin users
+    // For now, we'll just log the duplicates
+    
+    const usersSnapshot = await db.collection(COLLECTIONS.USERS).get();
+    const usersByEmail = new Map();
+    const duplicates = [];
+    
+    // Group users by email
+    usersSnapshot.docs.forEach(doc => {
+      const user = serializeDoc(doc);
+      if (user.email) {
+        const email = user.email.toLowerCase();
+        if (!usersByEmail.has(email)) {
+          usersByEmail.set(email, []);
+        }
+        usersByEmail.get(email).push({
+          id: user.id,
+          email: user.email,
+          displayName: user.displayName,
+          createdAt: user.createdAt
+        });
+      }
+    });
+    
+    // Find accounts with multiple entries
+    for (const [email, users] of usersByEmail) {
+      if (users.length > 1) {
+        // Sort by creation date to identify the primary account
+        users.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        
+        duplicates.push({
+          email: email,
+          accounts: users,
+          primaryAccount: users[0], // Oldest account
+          duplicateCount: users.length - 1
+        });
+      }
+    }
+    
+    console.log(`Found ${duplicates.length} email addresses with duplicate accounts`);
+    
+    res.status(200).json({
+      success: true,
+      duplicatesFound: duplicates.length,
+      duplicates: duplicates
+    });
+  } catch (error) {
+    console.error('Error finding duplicate accounts:', error);
+    next(error);
+  }
+};
+
+// @desc    Get potential duplicate connections for a user
+// @route   GET /api/users/me/duplicate-connections
+// @access  Private
+exports.checkDuplicateConnections = async (req, res, next) => {
+  try {
+    const currentUserId = req.user.uid;
+    const currentUserEmail = req.user.email;
+    
+    // Find all users with the same email
+    const sameEmailUsers = [];
+    const usersSnapshot = await db.collection(COLLECTIONS.USERS).get();
+    
+    usersSnapshot.docs.forEach(doc => {
+      const user = serializeDoc(doc);
+      if (user.email && user.email.toLowerCase() === currentUserEmail.toLowerCase() && user.id !== currentUserId) {
+        sameEmailUsers.push({
+          id: user.id,
+          email: user.email,
+          displayName: user.displayName
+        });
+      }
+    });
+    
+    if (sameEmailUsers.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'No duplicate accounts found',
+        duplicates: []
+      });
+    }
+    
+    // Get connections for all accounts with this email
+    const allConnections = new Map();
+    
+    // Get connections for current user
+    const currentUserConnections = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', currentUserId).get(),
+      db.collection(COLLECTIONS.CONNECTIONS).where('connectedUserId', '==', currentUserId).get()
+    ]);
+    
+    currentUserConnections.forEach(snapshot => {
+      snapshot.docs.forEach(doc => {
+        const conn = doc.data();
+        const otherUserId = conn.userId === currentUserId ? conn.connectedUserId : conn.userId;
+        allConnections.set(otherUserId, {
+          connectionId: doc.id,
+          status: conn.status,
+          fromAccount: currentUserId
+        });
+      });
+    });
+    
+    // Get connections for duplicate accounts
+    for (const dupUser of sameEmailUsers) {
+      const dupConnections = await Promise.all([
+        db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', dupUser.id).get(),
+        db.collection(COLLECTIONS.CONNECTIONS).where('connectedUserId', '==', dupUser.id).get()
+      ]);
+      
+      dupConnections.forEach(snapshot => {
+        snapshot.docs.forEach(doc => {
+          const conn = doc.data();
+          const otherUserId = conn.userId === dupUser.id ? conn.connectedUserId : conn.userId;
+          
+          // Check if this connection already exists from another account
+          if (allConnections.has(otherUserId)) {
+            console.log(`Duplicate connection found: ${otherUserId} connected to both ${currentUserId} and ${dupUser.id}`);
+          }
+        });
+      });
+    }
+    
+    res.status(200).json({
+      success: true,
+      currentUserId: currentUserId,
+      duplicateAccounts: sameEmailUsers,
+      message: `Found ${sameEmailUsers.length} other accounts with email ${currentUserEmail}`
+    });
+  } catch (error) {
+    console.error('Error checking duplicate connections:', error);
     next(error);
   }
 };

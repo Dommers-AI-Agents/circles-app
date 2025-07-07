@@ -28,9 +28,14 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
     private var connections: [Connection] = []
     private var connectionPlaces: [String: [Place]] = [:] // connectionId -> places
     private let locationManager = CLLocationManager()
+    private var pendingPOIAnnotation: Any? // MKMapFeatureAnnotation for iOS 16+
+    private var pendingPOINotes: String? // Temporary storage for notes when creating new circle
+    private var isAdjustingRegion = false // Prevent concurrent region adjustments
+    private var hasInitiallyZoomed = false // Track if we've done the initial zoom
     
     weak var delegate: FullScreenMapViewControllerDelegate?
     var viewMode: MapViewMode = .circle
+    var isPresentedModally: Bool = false
     
     // MARK: - UI Elements
     private let mapView: MKMapView = {
@@ -196,6 +201,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
         self.filteredPlaces = newPlaces
         updatePlacesCount()
         addAnnotationsToMap()
+        // adjustMapRegion is already called in addAnnotationsToMap, no need to call it again
     }
     
     func updatePlacesWithConnections(_ userPlaces: [Place], connections: [Connection], connectionPlaces: [String: [Place]]) {
@@ -243,13 +249,10 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
         // Add map view
         view.addSubview(mapView)
         
-        // Add close button
-        view.addSubview(closeButton)
-        closeButton.addTarget(self, action: #selector(closeButtonTapped), for: .touchUpInside)
-        
-        // Hide close button if in allPlaces mode
-        if viewMode == .allPlaces {
-            closeButton.isHidden = true
+        // Add close button only if presented modally
+        if isPresentedModally {
+            view.addSubview(closeButton)
+            closeButton.addTarget(self, action: #selector(closeButtonTapped), for: .touchUpInside)
         }
         
         // Add places count label
@@ -276,18 +279,22 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
             mapView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             mapView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             
-            // Close button - top right
-            closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
-            closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            closeButton.widthAnchor.constraint(equalToConstant: 44),
-            closeButton.heightAnchor.constraint(equalToConstant: 44),
-            
             // Places count label - top left
             placesCountLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
             placesCountLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             placesCountLabel.heightAnchor.constraint(equalToConstant: 32),
-            placesCountLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 80)
+            placesCountLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 180)
         ]
+        
+        // Add close button constraints only if presented modally
+        if isPresentedModally {
+            constraints.append(contentsOf: [
+                closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+                closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+                closeButton.widthAnchor.constraint(equalToConstant: 44),
+                closeButton.heightAnchor.constraint(equalToConstant: 44)
+            ])
+        }
         
         // Add category table view constraints only if NOT in allPlaces mode
         if viewMode != .allPlaces {
@@ -341,6 +348,11 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
     private func setupMap() {
         mapView.delegate = self
         
+        // Enable POI selection for iOS 16+
+        if #available(iOS 16.0, *) {
+            mapView.selectableMapFeatures = [.pointsOfInterest]
+        }
+        
         // Request location permission and zoom to user location if available
         locationManager.delegate = self
         locationManager.requestWhenInUseAuthorization()
@@ -352,8 +364,10 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
                 longitudinalMeters: 5000
             )
             mapView.setRegion(region, animated: false)
+            hasInitiallyZoomed = true
         } else {
             mapView.setRegion(initialRegion, animated: false)
+            hasInitiallyZoomed = true
         }
     }
     
@@ -376,11 +390,18 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
         annotationPlaceMap.removeAll()
         
         var mapRect = MKMapRect.null
+        var placesWithLocation = 0
+        var placesWithoutLocation = 0
         
         // Add annotations for each place
         for place in filteredPlaces {
-            guard let location = place.location?.clLocation else { continue }
+            guard let location = place.location?.clLocation else { 
+                placesWithoutLocation += 1
+                print("⚠️ Skipping place without location: '\(place.name)' (id: \(place.id))")
+                continue 
+            }
             
+            placesWithLocation += 1
             let annotation = PlaceAnnotation(place: place)
             mapView.addAnnotation(annotation)
             
@@ -393,10 +414,101 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
             mapRect = mapRect.union(rect)
         }
         
-        // Adjust region to show all annotations
-        if !mapRect.isNull && filteredPlaces.count > 1 {
-            let padding = UIEdgeInsets(top: 100, left: 100, bottom: 100, right: 100)
-            mapView.setVisibleMapRect(mapRect, edgePadding: padding, animated: true)
+        // Log summary
+        print("📍 Map Update Summary:")
+        print("   Total filtered places: \(filteredPlaces.count)")
+        print("   Places with location: \(placesWithLocation)")
+        print("   Places without location: \(placesWithoutLocation)")
+        
+        // Adjust region based on user location and places
+        adjustMapRegion()
+    }
+    
+    private func adjustMapRegion() {
+        // Prevent concurrent adjustments
+        guard !isAdjustingRegion else { return }
+        isAdjustingRegion = true
+        
+        // Get user location
+        let userLocation = locationManager.location ?? mapView.userLocation.location
+        
+        if let userLocation = userLocation {
+            // Start with 25 mile radius (40233.6 meters)
+            let initialRadius: CLLocationDistance = 40233.6
+            
+            // Count places within initial radius
+            let placesWithinRadius = filteredPlaces.filter { place in
+                guard let placeLocation = place.location?.clLocation else { return false }
+                return userLocation.distance(from: placeLocation) <= initialRadius
+            }
+            
+            if placesWithinRadius.count >= 10 || filteredPlaces.count <= 10 {
+                // Show 25 mile radius or all places if less than 10 total
+                let region = MKCoordinateRegion(
+                    center: userLocation.coordinate,
+                    latitudinalMeters: initialRadius * 2,
+                    longitudinalMeters: initialRadius * 2
+                )
+                mapView.setRegion(region, animated: !hasInitiallyZoomed)
+                hasInitiallyZoomed = true
+            } else {
+                // Expand radius to show at least 10 closest places
+                let sortedPlaces = filteredPlaces
+                    .compactMap { place -> (place: Place, distance: CLLocationDistance)? in
+                        guard let placeLocation = place.location?.clLocation else { return nil }
+                        return (place, userLocation.distance(from: placeLocation))
+                    }
+                    .sorted { $0.distance < $1.distance }
+                
+                // Get the 10th closest place (or last if less than 10)
+                let targetIndex = min(9, sortedPlaces.count - 1)
+                if targetIndex >= 0 {
+                    let requiredRadius = sortedPlaces[targetIndex].distance * 1.2 // Add 20% padding
+                    
+                    let region = MKCoordinateRegion(
+                        center: userLocation.coordinate,
+                        latitudinalMeters: requiredRadius * 2,
+                        longitudinalMeters: requiredRadius * 2
+                    )
+                    mapView.setRegion(region, animated: !hasInitiallyZoomed)
+                    hasInitiallyZoomed = true
+                }
+            }
+        } else if filteredPlaces.count > 0 {
+            // No user location - show all places
+            var coordinates: [CLLocationCoordinate2D] = []
+            for place in filteredPlaces {
+                if let location = place.location?.clLocation {
+                    coordinates.append(location.coordinate)
+                }
+            }
+            
+            if !coordinates.isEmpty {
+                // Calculate center and span to show all places
+                let minLat = coordinates.map { $0.latitude }.min() ?? 0
+                let maxLat = coordinates.map { $0.latitude }.max() ?? 0
+                let minLon = coordinates.map { $0.longitude }.min() ?? 0
+                let maxLon = coordinates.map { $0.longitude }.max() ?? 0
+                
+                let center = CLLocationCoordinate2D(
+                    latitude: (minLat + maxLat) / 2,
+                    longitude: (minLon + maxLon) / 2
+                )
+                
+                let span = MKCoordinateSpan(
+                    latitudeDelta: (maxLat - minLat) * 1.3,
+                    longitudeDelta: (maxLon - minLon) * 1.3
+                )
+                
+                let region = MKCoordinateRegion(center: center, span: span)
+                mapView.setRegion(region, animated: !hasInitiallyZoomed)
+                hasInitiallyZoomed = true
+            }
+        }
+        
+        // Reset the flag after a delay to allow the animation to complete
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.isAdjustingRegion = false
         }
     }
     
@@ -447,6 +559,179 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
         }
     }
     
+    func mapView(_ mapView: MKMapView, didSelect annotation: MKAnnotation) {
+        // Handle POI selection for iOS 16+
+        if #available(iOS 16.0, *) {
+            if let featureAnnotation = annotation as? MKMapFeatureAnnotation {
+                handlePOISelection(featureAnnotation)
+                return
+            }
+        }
+        
+        // Handle regular place annotations
+        if let placeAnnotation = annotation as? PlaceAnnotation {
+            // Existing behavior - show callout
+        }
+    }
+    
+    @available(iOS 16.0, *)
+    private func handlePOISelection(_ featureAnnotation: MKMapFeatureAnnotation) {
+        // Get POI details
+        let poiName = featureAnnotation.title ?? "Unknown Place"
+        let poiSubtitle = featureAnnotation.subtitle ?? ""
+        let coordinate = featureAnnotation.coordinate
+        
+        // Show custom action sheet with options
+        let alertController = UIAlertController(
+            title: poiName,
+            message: poiSubtitle,
+            preferredStyle: .actionSheet
+        )
+        
+        // Add to Circle action
+        let addToCircleAction = UIAlertAction(title: "Add to Circle", style: .default) { [weak self] _ in
+            self?.showCirclePickerForPOI(featureAnnotation)
+        }
+        alertController.addAction(addToCircleAction)
+        
+        // Cancel action
+        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in
+            self?.mapView.deselectAnnotation(featureAnnotation, animated: true)
+        }
+        alertController.addAction(cancelAction)
+        
+        // For iPad
+        if let popover = alertController.popoverPresentationController {
+            popover.sourceView = mapView
+            let point = mapView.convert(coordinate, toPointTo: mapView)
+            popover.sourceRect = CGRect(x: point.x, y: point.y, width: 0, height: 0)
+        }
+        
+        present(alertController, animated: true)
+    }
+    
+    @available(iOS 16.0, *)
+    private func showCirclePickerForPOI(_ featureAnnotation: MKMapFeatureAnnotation) {
+        // First, load user's circles
+        let loadingAlert = UIAlertController(title: "Loading", message: "Fetching your circles...", preferredStyle: .alert)
+        present(loadingAlert, animated: true)
+        
+        CircleService.shared.fetchUserCircles { [weak self] (result: Result<[Circle], Error>) in
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    switch result {
+                    case .success(let circles):
+                        self?.presentCirclePicker(for: featureAnnotation, circles: circles)
+                    case .failure(let error):
+                        self?.showError("Failed to load circles: \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
+    }
+    
+    @available(iOS 16.0, *)
+    private func presentCirclePicker(for featureAnnotation: MKMapFeatureAnnotation, circles: [Circle]) {
+        // Store the POI annotation for later use
+        pendingPOIAnnotation = featureAnnotation
+        
+        // Create and configure the vertical slider picker
+        let circlePicker = CirclePickerSliderView()
+        circlePicker.delegate = self
+        circlePicker.configure(with: circles)
+        
+        // Show the picker
+        if let window = view.window {
+            circlePicker.show(in: window)
+        }
+    }
+    
+    @available(iOS 16.0, *)
+    private func addPOIToCircle(_ featureAnnotation: MKMapFeatureAnnotation, circle: Circle, notes: String? = nil) {
+        // Show loading
+        let loadingAlert = UIAlertController(title: "Adding Place", message: "Please wait...", preferredStyle: .alert)
+        present(loadingAlert, animated: true)
+        
+        // Convert POI to Place
+        AppleMapsService.shared.convertPOIToPlace(
+            from: featureAnnotation,
+            circleId: circle.id,
+            notes: notes
+        ) { [weak self] result in
+            switch result {
+            case .success(let place):
+                // Add place to circle using PlaceService
+                PlaceService.shared.addPlaceFromPOI(
+                    name: place.name,
+                    address: place.address,
+                    location: place.location,
+                    category: place.category,
+                    website: place.website,
+                    phone: place.phone,
+                    description: place.description,
+                    circleId: circle.id,
+                    notes: place.notes,
+                    googlePlaceId: place.googlePlaceId
+                ) { addResult in
+                    DispatchQueue.main.async {
+                        loadingAlert.dismiss(animated: true) {
+                            switch addResult {
+                            case .success:
+                                self?.showSuccess("Added to \(circle.name)")
+                                self?.mapView.deselectAnnotation(featureAnnotation, animated: true)
+                                // Refresh map to show new place
+                                self?.loadPlacesForCurrentView()
+                            case .failure(let error):
+                                self?.showError("Failed to add place: \(error.localizedDescription)")
+                            }
+                        }
+                    }
+                }
+            case .failure(let error):
+                DispatchQueue.main.async {
+                    loadingAlert.dismiss(animated: true) {
+                        self?.showError("Failed to get place details: \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
+    }
+    
+    @available(iOS 16.0, *)
+    private func createNewCircleForPOI(_ featureAnnotation: MKMapFeatureAnnotation) {
+        // Navigate to create circle view controller
+        let createCircleVC = CreateCircleViewController()
+        createCircleVC.delegate = self
+        
+        // Store the POI annotation to add after circle creation
+        self.pendingPOIAnnotation = featureAnnotation
+        
+        let navController = UINavigationController(rootViewController: createCircleVC)
+        present(navController, animated: true)
+    }
+    
+    private func showSuccess(_ message: String) {
+        let alert = UIAlertController(title: "Success", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+    
+    private func showError(_ message: String) {
+        let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+    
+    private func loadPlacesForCurrentView() {
+        // Reload places based on current view mode
+        if viewMode == .circle {
+            addAnnotationsToMap()
+        } else {
+            // In allPlaces mode, reload from connections
+            // This would need to be implemented based on your data source
+        }
+    }
+    
     private func categoryColor(for category: PlaceCategory) -> UIColor {
         switch category {
         case .restaurant:
@@ -482,7 +767,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
         case .work:
             return UIColor(hex: "#2D3748") // Darker Gray
         case .other:
-            return UIColor(hex: "#718096") // Gray
+            return UIColor(hex: "#38A169") // Green
         }
     }
     
@@ -698,7 +983,15 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
     }
     
     private func updatePlacesCount() {
-        placesCountLabel.text = "\(filteredPlaces.count) places"
+        let totalPlaces = filteredPlaces.count
+        let placesWithLocation = filteredPlaces.filter { $0.location?.clLocation != nil }.count
+        let placesWithoutLocation = totalPlaces - placesWithLocation
+        
+        if placesWithoutLocation > 0 {
+            placesCountLabel.text = "\(placesWithLocation) of \(totalPlaces) places on map"
+        } else {
+            placesCountLabel.text = "\(totalPlaces) places"
+        }
     }
 }
 
@@ -707,15 +1000,18 @@ extension FullScreenMapViewController: CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
         
-        // Zoom to user location
-        let region = MKCoordinateRegion(
-            center: location.coordinate,
-            latitudinalMeters: 5000,
-            longitudinalMeters: 5000
-        )
-        mapView.setRegion(region, animated: true)
+        // Only zoom to user location if we haven't initially zoomed yet
+        if !hasInitiallyZoomed {
+            let region = MKCoordinateRegion(
+                center: location.coordinate,
+                latitudinalMeters: 5000,
+                longitudinalMeters: 5000
+            )
+            mapView.setRegion(region, animated: false)
+            hasInitiallyZoomed = true
+        }
         
-        // Stop updating location
+        // Stop updating location after first update
         manager.stopUpdatingLocation()
     }
     
@@ -802,6 +1098,53 @@ extension FullScreenMapViewController: UITableViewDelegate {
             } else {
                 let connection = connections[indexPath.row - 2]
                 selectConnection(connection.id)
+            }
+        }
+    }
+}
+
+// MARK: - CreateCircleDelegate
+extension FullScreenMapViewController: CreateCircleDelegate {
+    func didCreateCircle(_ circle: Circle) {
+        // If we have a pending POI annotation, add it to the newly created circle
+        if #available(iOS 16.0, *) {
+            if let pendingPOI = pendingPOIAnnotation as? MKMapFeatureAnnotation {
+                addPOIToCircle(pendingPOI, circle: circle, notes: pendingPOINotes)
+                pendingPOIAnnotation = nil
+                pendingPOINotes = nil
+            }
+        }
+    }
+}
+
+// MARK: - CirclePickerSliderViewDelegate
+extension FullScreenMapViewController: CirclePickerSliderViewDelegate {
+    func circlePickerDidSelectCircle(_ circle: Circle, notes: String?) {
+        // Add the POI to the selected circle
+        if #available(iOS 16.0, *) {
+            if let pendingPOI = pendingPOIAnnotation as? MKMapFeatureAnnotation {
+                addPOIToCircle(pendingPOI, circle: circle, notes: notes)
+            }
+        }
+    }
+    
+    func circlePickerDidSelectCreateNew(notes: String?) {
+        // Create a new circle for the POI
+        if #available(iOS 16.0, *) {
+            if let pendingPOI = pendingPOIAnnotation as? MKMapFeatureAnnotation {
+                // Store notes temporarily to use after circle creation
+                pendingPOINotes = notes
+                createNewCircleForPOI(pendingPOI)
+            }
+        }
+    }
+    
+    func circlePickerDidCancel() {
+        // Deselect the annotation
+        if #available(iOS 16.0, *) {
+            if let pendingPOI = pendingPOIAnnotation as? MKMapFeatureAnnotation {
+                mapView.deselectAnnotation(pendingPOI, animated: true)
+                pendingPOIAnnotation = nil
             }
         }
     }

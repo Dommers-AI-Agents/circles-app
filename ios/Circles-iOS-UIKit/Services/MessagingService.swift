@@ -9,6 +9,11 @@ class MessagingService {
     // MARK: - Conversations
     
     func fetchConversations(completion: @escaping (Result<[Conversation], Error>) -> Void) {
+        print("🔍 MessagingService: fetchConversations called")
+        print("🔐 MessagingService: Auth token available: \(AuthService.shared.getToken() != nil)")
+        print("🔐 MessagingService: Auth token value: \(AuthService.shared.getToken()?.prefix(20) ?? "nil")...")
+        print("🔍 MessagingService: Making API request to messages/conversations")
+        
         apiService.request(
             endpoint: "messages/conversations",
             method: .get,
@@ -16,8 +21,25 @@ class MessagingService {
         ) { (result: Result<ConversationsResponse, APIError>) in
             switch result {
             case .success(let response):
+                print("✅ MessagingService: Successfully fetched \(response.conversations.count) conversations")
+                print("🔍 MessagingService: Response: \(response)")
                 completion(.success(response.conversations))
             case .failure(let error):
+                print("❌ MessagingService: Failed to fetch conversations: \(error.localizedDescription)")
+                print("❌ MessagingService: Error details: \(error)")
+                print("❌ MessagingService: Error type: \(type(of: error))")
+                if case let APIError.httpError(statusCode, data) = error {
+                    print("❌ MessagingService: HTTP error - Status: \(statusCode)")
+                    if let data = data, let message = String(data: data, encoding: .utf8) {
+                        print("❌ MessagingService: Error message: \(message)")
+                    }
+                } else if case APIError.noInternet = error {
+                    print("❌ MessagingService: No internet connection")
+                } else if case APIError.unauthorized = error {
+                    print("❌ MessagingService: Unauthorized - auth token may be invalid")
+                } else if case APIError.serverError = error {
+                    print("❌ MessagingService: Server error")
+                }
                 completion(.failure(error))
             }
         }
@@ -199,23 +221,42 @@ class MessagingService {
         }
     }
     
+    func deleteConversation(
+        conversationId: String,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        apiService.request(
+            endpoint: "messages/conversations/\(conversationId)",
+            method: .delete,
+            requiresAuth: true
+        ) { (result: Result<EmptyResponse, APIError>) in
+            switch result {
+            case .success:
+                completion(.success(()))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
     // MARK: - Helper Methods
     
     func getOrCreateDirectConversation(
         with userId: String,
         completion: @escaping (Result<Conversation, Error>) -> Void
     ) {
-        guard let currentUserId = AuthService.shared.getUserId() else {
-            completion(.failure(NSError(domain: "MessagingService", code: 0, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])))
-            return
+        apiService.request(
+            endpoint: "messages/conversations/direct/\(userId)",
+            method: .post,
+            requiresAuth: true
+        ) { (result: Result<ConversationResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.conversation))
+            case .failure(let error):
+                completion(.failure(error))
+            }
         }
-        
-        // Create a direct conversation (backend will return existing if one exists)
-        createConversation(
-            type: .direct,
-            participants: [currentUserId, userId],
-            completion: completion
-        )
     }
 }
 

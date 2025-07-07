@@ -2,6 +2,18 @@ import Foundation
 import GooglePlaces
 import CoreLocation
 
+// ⚠️ WARNING: ONLY USE THIS SERVICE FOR FETCHING PHOTOS ⚠️
+// 
+// IMPORTANT: Due to cost considerations, Google Places API should ONLY be used for:
+// - Fetching place photos (loadPhoto method)
+// 
+// DO NOT USE for:
+// - Place search (use Apple Maps MKLocalSearch instead)
+// - Geocoding (use Apple Maps CLGeocoder instead)
+// - Place details (use Apple Maps MKMapItem instead)
+// 
+// See APIUsageGuidelines.md for full policy details
+
 class GooglePlacesService {
     static let shared = GooglePlacesService()
     
@@ -215,6 +227,56 @@ class GooglePlacesService {
             code: -1,
             userInfo: [NSLocalizedDescriptionKey: "Nearby search not implemented in this version"]
         )))
+    }
+    
+    // MARK: - Search for Place by Name and Location
+    
+    /// Searches for a Google Place by name near a specific location
+    /// Used to find Google Place ID for places selected from Apple Maps
+    func searchPlaceByNameAndLocation(name: String, coordinate: CLLocationCoordinate2D, completion: @escaping (Result<GMSAutocompletePrediction?, Error>) -> Void) {
+        let filter = GMSAutocompleteFilter()
+        filter.types = ["establishment"] // Search for businesses only
+        
+        // Create a small rectangular bias around the coordinate (approximately 500m x 500m)
+        let latDelta = 0.0045 // ~500m
+        let lonDelta = 0.0045 / cos(coordinate.latitude * .pi / 180)
+        
+        filter.locationBias = GMSPlaceRectangularLocationOption(
+            CLLocationCoordinate2D(latitude: coordinate.latitude - latDelta, longitude: coordinate.longitude - lonDelta),
+            CLLocationCoordinate2D(latitude: coordinate.latitude + latDelta, longitude: coordinate.longitude + lonDelta)
+        )
+        
+        print("🔍 GooglePlacesService: Searching for '\(name)' near \(coordinate.latitude), \(coordinate.longitude)")
+        
+        placesClient.findAutocompletePredictions(
+            fromQuery: name,
+            filter: filter,
+            sessionToken: nil,
+            callback: { predictions, error in
+                if let error = error {
+                    print("❌ GooglePlacesService: Search error: \(error)")
+                    completion(.failure(error))
+                } else if let predictions = predictions, !predictions.isEmpty {
+                    print("✅ GooglePlacesService: Found \(predictions.count) predictions")
+                    
+                    // Try to find the best match
+                    // First, look for exact name match
+                    if let exactMatch = predictions.first(where: { $0.attributedPrimaryText.string.lowercased() == name.lowercased() }) {
+                        print("✅ Found exact match: \(exactMatch.attributedPrimaryText.string)")
+                        completion(.success(exactMatch))
+                        return
+                    }
+                    
+                    // Otherwise, return the first result (most relevant)
+                    let bestMatch = predictions[0]
+                    print("✅ Using best match: \(bestMatch.attributedPrimaryText.string)")
+                    completion(.success(bestMatch))
+                } else {
+                    print("⚠️ GooglePlacesService: No predictions found for '\(name)'")
+                    completion(.success(nil))
+                }
+            }
+        )
     }
     
     // MARK: - Helper Methods

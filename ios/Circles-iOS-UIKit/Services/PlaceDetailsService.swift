@@ -164,7 +164,17 @@ struct EnrichedPlaceDetails {
     }
     
     var address: String {
-        return mapItem.placemark.formattedAddress
+        let placemark = mapItem.placemark
+        let addressComponents = [
+            placemark.subThoroughfare,
+            placemark.thoroughfare,
+            placemark.locality,
+            placemark.administrativeArea,
+            placemark.postalCode,
+            placemark.country
+        ].compactMap { $0 }
+        
+        return addressComponents.joined(separator: ", ")
     }
     
     var coordinate: CLLocationCoordinate2D {

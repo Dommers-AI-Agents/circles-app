@@ -1,6 +1,7 @@
 // backend/services/notificationService.js
 const { getFirestore, getMessaging } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
+const emailService = require('./emailService');
 
 const db = getFirestore();
 const messaging = getMessaging();
@@ -8,6 +9,7 @@ const messaging = getMessaging();
 class NotificationService {
   constructor() {
     this.messaging = messaging;
+    this.db = db;
   }
 
   // Send notification to a specific user
@@ -226,7 +228,11 @@ class NotificationService {
   async notifyConnectionRequest(fromUserId, toUserId) {
     const fromUserDoc = await db.collection(COLLECTIONS.USERS).doc(fromUserId).get();
     const fromUserName = fromUserDoc.exists ? fromUserDoc.data().displayName : 'Someone';
+    
+    const toUserDoc = await db.collection(COLLECTIONS.USERS).doc(toUserId).get();
+    const toUserEmail = toUserDoc.exists ? toUserDoc.data().email : null;
 
+    // Send push notification
     await this.sendToUser(toUserId, {
       type: 'connection_request',
       title: 'New Connection Request',
@@ -236,6 +242,16 @@ class NotificationService {
         fromUserId: fromUserId
       }
     });
+    
+    // Also send email notification
+    if (toUserEmail) {
+      try {
+        await emailService.sendConnectionRequestEmail(toUserEmail, fromUserName, fromUserId);
+      } catch (emailError) {
+        console.error('Failed to send connection request email:', emailError);
+        // Don't throw - email failure shouldn't break the notification
+      }
+    }
   }
 
   async notifyCircleInvite(inviterUserId, invitedUserId, circleData) {
@@ -306,6 +322,58 @@ class NotificationService {
       console.log(`🔔 Updated badge count to ${totalUnread} for user ${userId}`);
     } catch (error) {
       console.error('🔔 Error updating badge count:', error);
+    }
+  }
+
+  async sendPlaceCommentNotification(toUserId, fromUserId, placeId, placeName, commentText) {
+    try {
+      // Get the commenting user's details
+      const userDoc = await this.db.collection(COLLECTIONS.USERS).doc(fromUserId).get();
+      if (!userDoc.exists) {
+        console.log('🔔 Commenter user not found');
+        return;
+      }
+      const fromUser = userDoc.data();
+
+      const notification = {
+        title: `${fromUser.displayName} commented on ${placeName}`,
+        body: commentText.substring(0, 100) + (commentText.length > 100 ? '...' : ''),
+        data: {
+          type: 'place_comment',
+          placeId: placeId,
+          fromUserId: fromUserId
+        }
+      };
+
+      await this.sendToUser(toUserId, notification);
+    } catch (error) {
+      console.error('🔔 Error sending place comment notification:', error);
+    }
+  }
+
+  async sendPlaceLikeNotification(toUserId, fromUserId, placeId, placeName) {
+    try {
+      // Get the liking user's details
+      const userDoc = await this.db.collection(COLLECTIONS.USERS).doc(fromUserId).get();
+      if (!userDoc.exists) {
+        console.log('🔔 Liking user not found');
+        return;
+      }
+      const fromUser = userDoc.data();
+
+      const notification = {
+        title: `${fromUser.displayName} liked ${placeName}`,
+        body: `Your place "${placeName}" received a new like!`,
+        data: {
+          type: 'place_like',
+          placeId: placeId,
+          fromUserId: fromUserId
+        }
+      };
+
+      await this.sendToUser(toUserId, notification);
+    } catch (error) {
+      console.error('🔔 Error sending place like notification:', error);
     }
   }
 }
