@@ -8,15 +8,22 @@ const db = getFirestore();
 // Track when a user adds a new circle
 const trackCircleCreated = async (circleId, createdByUserId) => {
   try {
-    // Get all connections of the user who created the circle
-    const connectionsSnapshot = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('connectedUserId', '==', createdByUserId)
-      .where('status', '==', 'accepted')
-      .get();
+    // Get all connections of the user who created the circle (both directions)
+    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', createdByUserId)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', createdByUserId)
+        .where('status', '==', 'accepted')
+        .get()
+    ]);
 
     const batch = db.batch();
+    const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
     
-    connectionsSnapshot.docs.forEach(doc => {
+    allConnections.forEach(doc => {
       const connectionRef = doc.ref;
       const activity = {
         type: 'circle',
@@ -33,7 +40,7 @@ const trackCircleCreated = async (circleId, createdByUserId) => {
     });
 
     await batch.commit();
-    console.log(`Tracked circle creation activity for ${connectionsSnapshot.size} connections`);
+    console.log(`Tracked circle creation activity for ${allConnections.length} connections`);
   } catch (error) {
     console.error('Error tracking circle creation:', error);
   }
@@ -42,15 +49,22 @@ const trackCircleCreated = async (circleId, createdByUserId) => {
 // Track when a user adds a new place
 const trackPlaceAdded = async (placeId, circleId, addedByUserId) => {
   try {
-    // Get all connections of the user who added the place
-    const connectionsSnapshot = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('connectedUserId', '==', addedByUserId)
-      .where('status', '==', 'accepted')
-      .get();
+    // Get all connections of the user who added the place (both directions)
+    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', addedByUserId)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', addedByUserId)
+        .where('status', '==', 'accepted')
+        .get()
+    ]);
 
     const batch = db.batch();
+    const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
     
-    connectionsSnapshot.docs.forEach(doc => {
+    allConnections.forEach(doc => {
       const connectionRef = doc.ref;
       const activity = {
         type: 'place',
@@ -62,13 +76,14 @@ const trackPlaceAdded = async (placeId, circleId, addedByUserId) => {
       // Update connection with new activity
       batch.update(connectionRef, {
         hasNewActivity: true,
+        hasRecentPlace: true,
         recentActivity: admin.firestore.FieldValue.arrayUnion(activity),
         updatedAt: new Date().toISOString()
       });
     });
 
     await batch.commit();
-    console.log(`Tracked place addition activity for ${connectionsSnapshot.size} connections`);
+    console.log(`Tracked place addition activity for ${allConnections.length} connections`);
   } catch (error) {
     console.error('Error tracking place addition:', error);
   }
@@ -103,11 +118,22 @@ const trackConnectionView = async (viewerUserId, viewedUserId) => {
 // Clear activity notification (when user views the connection)
 const clearActivityNotification = async (userId, connectedUserId) => {
   try {
-    const connectionSnapshot = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', userId)
-      .where('connectedUserId', '==', connectedUserId)
-      .limit(1)
-      .get();
+    // Check both directions since connections can be stored either way
+    const [connectionSnapshot1, connectionSnapshot2] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', userId)
+        .where('connectedUserId', '==', connectedUserId)
+        .limit(1)
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', connectedUserId)
+        .where('connectedUserId', '==', userId)
+        .limit(1)
+        .get()
+    ]);
+
+    // Update whichever direction exists
+    const connectionSnapshot = !connectionSnapshot1.empty ? connectionSnapshot1 : connectionSnapshot2;
 
     if (!connectionSnapshot.empty) {
       const connectionRef = connectionSnapshot.docs[0].ref;
@@ -119,6 +145,10 @@ const clearActivityNotification = async (userId, connectedUserId) => {
         recentActivity: [], // Clear recent activity after viewing
         updatedAt: new Date().toISOString()
       });
+      
+      console.log(`Cleared activity notification for connection between ${userId} and ${connectedUserId}`);
+    } else {
+      console.log(`No connection found between ${userId} and ${connectedUserId}`);
     }
   } catch (error) {
     console.error('Error clearing activity notification:', error);

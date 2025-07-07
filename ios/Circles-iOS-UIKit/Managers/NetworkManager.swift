@@ -1,38 +1,38 @@
 import Foundation
-import Combine
 
-class NetworkManager: ObservableObject {
+class NetworkManager {
     static let shared = NetworkManager()
     
-    @Published var connections: [Connection] = []
-    @Published var pendingConnections: [Connection] = []
-    @Published var sharedCircles: [CircleShare] = []
-    @Published var editableCirclesFromOthers: [Circle] = []
-    @Published var isLoading = false
-    @Published var error: String?
+    private(set) var connections: [Connection] = []
+    private(set) var pendingConnections: [Connection] = []
+    private(set) var sharedCircles: [CircleShare] = []
+    private(set) var editableCirclesFromOthers: [Circle] = []
+    private(set) var isLoading = false
+    private(set) var error: String?
     
     private let apiService = APIService.shared
-    private var cancellables = Set<AnyCancellable>()
+    private var authObserverId = "NetworkManager"
     
     private init() {
         // Defer setup until Firebase is configured
     }
     
     func configure() {
-        setupSubscribers()
+        setupAuthListener()
     }
     
-    private func setupSubscribers() {
+    private func setupAuthListener() {
         // Listen for authentication changes
-        AuthManager.shared.$isAuthenticated
-            .sink { [weak self] isAuthenticated in
-                if isAuthenticated {
+        AuthService.shared.addAuthStateListener(id: authObserverId) { [weak self] isAuthenticated in
+            if isAuthenticated {
+                // Add a small delay to avoid duplicate request blocking
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     self?.loadNetworkData()
-                } else {
-                    self?.clearData()
                 }
+            } else {
+                self?.clearData()
             }
-            .store(in: &cancellables)
+        }
     }
     
     // MARK: - Data Loading
@@ -182,7 +182,7 @@ class NetworkManager: ObservableObject {
         
         print("🔗 NetworkManager: Generating connection invite link")
         print("🔗 NetworkManager: Current user ID from AuthService: \(userId)")
-        print("🔗 NetworkManager: Current user from AuthManager: \(AuthManager.shared.currentUser?.id ?? "nil")")
+        print("🔗 NetworkManager: Current user from AuthService: \(AuthService.shared.currentUser?.id ?? "nil")")
         
         // Parse the user ID to ensure we use simple format in the link
         var simpleUserId = userId
@@ -202,7 +202,7 @@ class NetworkManager: ObservableObject {
     }
     
     func shareConnectionInvite() -> [Any] {
-        guard let currentUser = AuthManager.shared.currentUser else {
+        guard let currentUser = AuthService.shared.currentUser else {
             return ["Join me on Circles!"]
         }
         
@@ -529,10 +529,7 @@ class NetworkManager: ObservableObject {
                 case .success(let response):
                     if let share = response.shares.first {
                         completion(.success(share))
-                        // Reload circles to include the newly shared one
-                        Task {
-                            await CircleManager.shared.fetchCircles()
-                        }
+                        // Note: Circle refresh removed - UI should handle updates
                     } else {
                         completion(.failure(APIError.invalidResponse))
                     }

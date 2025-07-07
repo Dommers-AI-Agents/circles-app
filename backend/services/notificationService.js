@@ -42,7 +42,7 @@ class NotificationService {
         return;
       }
 
-      // Prepare the message
+      // Prepare the message with enhanced iOS configuration
       const message = {
         notification: {
           title: notification.title,
@@ -53,10 +53,21 @@ class NotificationService {
         apns: {
           payload: {
             aps: {
+              alert: {
+                title: notification.title,
+                body: notification.body,
+                sound: 'default'
+              },
               badge: notification.badge || 1,
               sound: 'default',
-              'content-available': 1
+              'content-available': 1,
+              'mutable-content': 1, // Allows notification service extension to modify content
+              'interruption-level': 'active' // iOS 15+ for prominent notifications
             }
+          },
+          headers: {
+            'apns-priority': '10', // High priority for immediate delivery
+            'apns-push-type': 'alert' // Explicitly set as alert notification
           }
         }
       };
@@ -180,14 +191,33 @@ class NotificationService {
     const senderDoc = await db.collection(COLLECTIONS.USERS).doc(senderId).get();
     const senderName = senderDoc.exists ? senderDoc.data().displayName : 'Someone';
 
+    // Format the message body based on type
+    let notificationBody = message.content || 'Sent a message';
+    
+    // Handle different message types
+    if (message.type === 'suggestion') {
+      notificationBody = '📍 Sent a place suggestion';
+    } else if (message.type === 'connection_request') {
+      notificationBody = '👋 Wants to connect with you';
+    } else if (message.mediaUrl) {
+      notificationBody = '📷 Sent a photo';
+    }
+    
+    // Truncate long messages for notification
+    if (notificationBody.length > 100) {
+      notificationBody = notificationBody.substring(0, 97) + '...';
+    }
+
     await this.sendToUser(recipientId, {
       type: 'new_message',
-      title: senderName,
-      body: message.text || 'Sent a message',
+      title: `💬 ${senderName}`,
+      body: notificationBody,
+      badge: 1, // This will increment the app badge
       data: {
         type: 'new_message',
         senderId: senderId,
-        messageId: message.id
+        messageId: message.id,
+        conversationId: message.conversationId
       }
     });
   }

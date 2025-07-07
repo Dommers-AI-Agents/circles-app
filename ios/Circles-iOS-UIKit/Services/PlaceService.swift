@@ -137,7 +137,7 @@ class PlaceService {
         if let providedLocation = location {
             // If we have location and googlePlaceId but no photos, use addPlaceFromPOI to fetch photos
             if googlePlaceId != nil && (photoUrls?.isEmpty ?? true) && (photos?.isEmpty ?? true) {
-                print("📸 Using addPlaceFromPOI to fetch photos for Google Place ID: \(googlePlaceId!)")
+                Logger.debug("Using addPlaceFromPOI to fetch photos for Google Place ID: \(googlePlaceId!)")
                 let geoLocation = GeoLocation(type: "Point", coordinates: [providedLocation.longitude, providedLocation.latitude])
                 self.addPlaceFromPOI(
                     name: name,
@@ -206,7 +206,7 @@ class PlaceService {
     private func continueCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photos: [Data]?, photoUrls: [String]?, completion: @escaping (Result<Place, Error>) -> Void) {
         // If we already have photo URLs, use them directly
         if let urls = photoUrls, !urls.isEmpty {
-            print("📸 Using \(urls.count) pre-uploaded photo URLs")
+            Logger.debug("Using \(urls.count) pre-uploaded photo URLs")
             self.performCreatePlace(
                 name: name,
                 description: description,
@@ -226,7 +226,7 @@ class PlaceService {
         }
         // Otherwise upload photos if provided
         else if let photoDataArray = photos, !photoDataArray.isEmpty {
-            print("📸 Uploading \(photoDataArray.count) photos")
+            Logger.info("Uploading \(photoDataArray.count) photos")
             self.uploadMultipleImages(photoDataArray) { photoUrlsResult in
                 switch photoUrlsResult {
                 case .success(let photoUrls):
@@ -248,8 +248,8 @@ class PlaceService {
                         completion: completion
                     )
                 case .failure(let error):
-                    print("❌ PlaceService: Failed to upload images: \(error)")
-                    print("⚠️ PlaceService: Will create place without images")
+                    Logger.error("PlaceService: Failed to upload images: \(error)")
+                    Logger.warning("PlaceService: Will create place without images")
                     // Continue creating the place without photos
                     self.performCreatePlace(
                         name: name,
@@ -271,7 +271,7 @@ class PlaceService {
             }
         } else {
             // Create place with location but no photos
-            print("📸 Creating place without photos")
+            Logger.debug("Creating place without photos")
             self.performCreatePlace(
                 name: name,
                 description: description,
@@ -372,12 +372,8 @@ class PlaceService {
     
     // MARK: - Add Place from POI
     
-    func addPlaceFromPOI(name: String, address: String, location: GeoLocation?, category: PlaceCategory, website: String? = nil, phone: String? = nil, description: String? = nil, circleId: String, notes: String?, googlePlaceId: String? = nil, preUploadedPhotoUrls: [String]? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
-        print("🚀 PlaceService.addPlaceFromPOI called with:")
-        print("  Name: \(name)")
-        print("  GooglePlaceId: \(googlePlaceId ?? "nil")")
-        print("  Location: \(location?.coordinates ?? [])")
-        print("  Pre-uploaded photos: \(preUploadedPhotoUrls?.count ?? 0)")
+    func addPlaceFromPOI(name: String, address: String, location: GeoLocation?, category: PlaceCategory, website: String? = nil, phone: String? = nil, description: String? = nil, circleId: String, notes: String?, googlePlaceId: String? = nil, preUploadedPhotoUrls: [String]? = nil, rating: Double? = nil, userRatingsTotal: Int? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
+        Logger.debug("PlaceService.addPlaceFromPOI called with name: \(name), googlePlaceId: \(googlePlaceId ?? "nil"), photos: \(preUploadedPhotoUrls?.count ?? 0)")
         
         var body: [String: Any] = [
             "name": name,
@@ -414,16 +410,22 @@ class PlaceService {
             body["googlePlaceId"] = googlePlaceId
         }
         
-        // If we have pre-uploaded photos, use them directly
-        if let preUploadedUrls = preUploadedPhotoUrls, !preUploadedUrls.isEmpty {
-            print("📸 Using \(preUploadedUrls.count) pre-uploaded photos")
-            body["photos"] = preUploadedUrls
-            createPlaceWithBody(body, completion: completion)
-            return
+        if let rating = rating {
+            body["rating"] = rating
         }
         
-        // Otherwise, collect images from both Apple Look Around and Google Places
+        if let userRatingsTotal = userRatingsTotal {
+            body["userRatingsTotal"] = userRatingsTotal
+        }
+        
+        // Start with pre-uploaded photos if available
         var collectedImageUrls: [String] = []
+        if let preUploadedUrls = preUploadedPhotoUrls, !preUploadedUrls.isEmpty {
+            Logger.debug("Starting with \(preUploadedUrls.count) pre-uploaded photos")
+            collectedImageUrls.append(contentsOf: preUploadedUrls)
+        }
+        
+        // Always try to collect Apple Look Around in addition to any pre-uploaded photos
         let imageCollectionGroup = DispatchGroup()
         
         // Try to get Apple Look Around image if location is available
@@ -434,17 +436,17 @@ class PlaceService {
             
             // Collect Apple Look Around image
             if #available(iOS 16.0, *) {
-                print("🔍 PlaceService: Checking Apple Look Around availability at \(coordinate)")
+                Logger.debug("Checking Apple Look Around availability at \(coordinate)")
                 imageCollectionGroup.enter()
                 Task {
                     let hasLookAround = await AppleLookAroundService.shared.checkLookAroundAvailability(at: coordinate)
                     
                     if hasLookAround {
-                        print("✅ PlaceService: Look Around is available")
+                        Logger.debug("Look Around is available")
                         do {
                             // Get the Look Around snapshot
                             let lookAroundImage = try await AppleLookAroundService.shared.getLookAroundSnapshot(at: coordinate)
-                            print("📸 PlaceService: Got Look Around snapshot")
+                            Logger.debug("Got Look Around snapshot")
                             
                             // Convert to JPEG data
                             if let imageData = lookAroundImage.jpegData(compressionQuality: 0.8) {
@@ -453,23 +455,23 @@ class PlaceService {
                                     switch uploadResult {
                                     case .success(let imageUrl):
                                         collectedImageUrls.append(imageUrl)
-                                        print("✅ PlaceService: Apple Look Around image uploaded successfully: \(imageUrl)")
+                                        Logger.debug("Apple Look Around image uploaded successfully: \(imageUrl)")
                                     case .failure(let error):
-                                        print("❌ PlaceService: Failed to upload Look Around image: \(error)")
-                                        print("⚠️ PlaceService: Will continue place creation without this image")
+                                        Logger.error("Failed to upload Look Around image: \(error)")
+                                        Logger.warning("Will continue place creation without this image")
                                     }
                                     imageCollectionGroup.leave()
                                 }
                             } else {
-                                print("❌ PlaceService: Failed to convert Look Around image to JPEG")
+                                Logger.error("Failed to convert Look Around image to JPEG")
                                 imageCollectionGroup.leave()
                             }
                         } catch {
-                            print("❌ PlaceService: Failed to get Look Around snapshot: \(error)")
+                            Logger.error("Failed to get Look Around snapshot: \(error)")
                             imageCollectionGroup.leave()
                         }
                     } else {
-                        print("⚠️ PlaceService: Look Around is NOT available at this location")
+                        Logger.debug("Look Around is NOT available at this location")
                         imageCollectionGroup.leave()
                     }
                 }
@@ -478,8 +480,9 @@ class PlaceService {
             }
         }
         
-        // Try to get Google Places photo if googlePlaceId is available
-        if let googlePlaceId = googlePlaceId, !googlePlaceId.isEmpty {
+        // Try to get Google Places photo if googlePlaceId is available and we don't already have Google photos
+        // Skip if we already have pre-uploaded photos (which are likely Google Places photos)
+        if let googlePlaceId = googlePlaceId, !googlePlaceId.isEmpty, collectedImageUrls.isEmpty {
             print("🔍 PlaceService: Fetching Google Places photo for placeId: \(googlePlaceId)")
             imageCollectionGroup.enter()
             
@@ -533,7 +536,11 @@ class PlaceService {
                 }
             }
         } else {
-            print("⚠️ PlaceService: No googlePlaceId provided or empty, skipping Google Places photo")
+            if !collectedImageUrls.isEmpty {
+                print("⚠️ PlaceService: Skipping Google Places photo - already have pre-uploaded photos")
+            } else {
+                print("⚠️ PlaceService: No googlePlaceId provided or empty, skipping Google Places photo")
+            }
         }
         
         // Wait for all image collection tasks to complete
@@ -945,7 +952,7 @@ class PlaceService {
         case .unauthorized:
             return .permissionDenied
             
-        case .noInternet, .requestFailed, .invalidURL, .invalidResponse, .decodingFailed:
+        case .noInternet, .requestFailed, .invalidURL, .invalidResponse, .decodingFailed, .duplicateRequest:
             return .networkError(error)
             
         case .serverError, .unknown:

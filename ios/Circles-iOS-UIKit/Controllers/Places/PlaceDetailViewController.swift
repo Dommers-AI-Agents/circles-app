@@ -27,6 +27,7 @@ class PlaceDetailViewController: UIViewController {
         imageView.clipsToBounds = true
         imageView.backgroundColor = Constants.Colors.lightGray
         imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.layer.masksToBounds = true
         return imageView
     }()
     
@@ -45,46 +46,57 @@ class PlaceDetailViewController: UIViewController {
         let button = UIButton(type: .system)
         button.setTitle("Street View", for: .normal)
         button.setImage(UIImage(systemName: "person.and.arrow.left.and.arrow.right"), for: .normal)
-        button.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+        button.backgroundColor = UIColor.black.withAlphaComponent(0.8)
         button.setTitleColor(.white, for: .normal)
         button.tintColor = .white
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 12, weight: .medium)
-        button.layer.cornerRadius = 20
-        button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .medium)
+        button.layer.cornerRadius = 16
+        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.isHidden = true
+        // Add shadow for better visibility
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOpacity = 0.5
+        button.layer.shadowOffset = CGSize(width: 0, height: 3)
+        button.layer.shadowRadius = 6
         return button
     }()
     
     private let editImageButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setTitle("Add Photo", for: .normal)
+        button.setTitle("Change Photo", for: .normal)
         button.setImage(UIImage(systemName: "camera.fill"), for: .normal)
-        button.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+        button.backgroundColor = UIColor.black.withAlphaComponent(0.8)
         button.setTitleColor(.white, for: .normal)
         button.tintColor = .white
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 12, weight: .medium)
-        button.layer.cornerRadius = 20
-        button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .medium)
+        button.layer.cornerRadius = 16
+        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
         button.translatesAutoresizingMaskIntoConstraints = false
-        button.isHidden = true
+        button.isHidden = false  // Show by default
+        // Add shadow for better visibility
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOpacity = 0.5
+        button.layer.shadowOffset = CGSize(width: 0, height: 3)
+        button.layer.shadowRadius = 6
         return button
     }()
     
     private let infoContainerView: UIView = {
         let view = UIView()
-        view.backgroundColor = Constants.Colors.white
+        view.backgroundColor = Constants.Colors.background
         view.layer.cornerRadius = 16
         view.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        view.clipsToBounds = true
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
     
     private let nameLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.xxlarge, weight: .bold)
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.xlarge, weight: .bold)
         label.textColor = Constants.Colors.darkGray
-        label.numberOfLines = 0
+        label.numberOfLines = 2
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -132,12 +144,18 @@ class PlaceDetailViewController: UIViewController {
         button.setImage(UIImage(systemName: "plus.circle.fill"), for: .normal)
         button.setTitleColor(.white, for: .normal)
         button.backgroundColor = Constants.Colors.primary
-        button.layer.cornerRadius = 20
+        button.layer.cornerRadius = 22
         button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
-        button.contentEdgeInsets = UIEdgeInsets(top: 10, left: 20, bottom: 10, right: 20)
+        button.contentEdgeInsets = UIEdgeInsets(top: 12, left: 24, bottom: 12, right: 24)
         button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 0)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.isHidden = true // Hidden by default
+        button.tintColor = .white
+        // Add shadow
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOpacity = 0.2
+        button.layer.shadowOffset = CGSize(width: 0, height: 2)
+        button.layer.shadowRadius = 4
         return button
     }()
     
@@ -205,9 +223,14 @@ class PlaceDetailViewController: UIViewController {
         button.backgroundColor = Constants.Colors.primary
         button.layer.cornerRadius = 25
         button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
-        button.contentEdgeInsets = UIEdgeInsets(top: 10, left: 20, bottom: 10, right: 20)
+        button.contentEdgeInsets = UIEdgeInsets(top: 12, left: 24, bottom: 12, right: 24)
         button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 0)
         button.translatesAutoresizingMaskIntoConstraints = false
+        // Add shadow for better visibility
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOpacity = 0.2
+        button.layer.shadowOffset = CGSize(width: 0, height: 2)
+        button.layer.shadowRadius = 4
         return button
     }()
     
@@ -301,19 +324,18 @@ class PlaceDetailViewController: UIViewController {
         return stackView
     }()
     
-    private let contactSectionView: UIView = {
-        let view = UIView()
-        view.backgroundColor = Constants.Colors.lightGray.withAlphaComponent(0.3)
-        view.layer.cornerRadius = 8
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
     
     private let websiteButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle("Visit Website", for: .normal)
         button.setImage(UIImage(systemName: "globe"), for: .normal)
-        button.tintColor = Constants.Colors.primary
+        button.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+        button.setTitleColor(.white, for: .normal)
+        button.tintColor = .white
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+        button.layer.cornerRadius = 18
+        button.contentEdgeInsets = UIEdgeInsets(top: 10, left: 16, bottom: 10, right: 16)
+        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 0)
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
@@ -322,7 +344,13 @@ class PlaceDetailViewController: UIViewController {
         let button = UIButton(type: .system)
         button.setTitle("Call", for: .normal)
         button.setImage(UIImage(systemName: "phone"), for: .normal)
-        button.tintColor = Constants.Colors.primary
+        button.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+        button.setTitleColor(.white, for: .normal)
+        button.tintColor = .white
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+        button.layer.cornerRadius = 18
+        button.contentEdgeInsets = UIEdgeInsets(top: 10, left: 16, bottom: 10, right: 16)
+        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 0)
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
@@ -347,6 +375,7 @@ class PlaceDetailViewController: UIViewController {
         let button = UIButton(type: .system)
         button.setTitle("View Circle", for: .normal)
         button.setTitleColor(Constants.Colors.primary, for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.small, weight: .semibold)
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
@@ -358,13 +387,7 @@ class PlaceDetailViewController: UIViewController {
         self.circle = circle
         super.init(nibName: nil, bundle: nil)
         
-        // Debug logging
-        print("🔍 PlaceDetailViewController init:")
-        print("  - Place name: \(place.name)")
-        print("  - Place ID: \(place.id)")
-        print("  - Has photos property: \(place.hasPhotos)")
-        print("  - Photos array: \(place.photos ?? [])")
-        print("  - Photos count: \(place.photos?.count ?? 0)")
+        Logger.debug("PlaceDetailViewController init for place: \(place.name)")
     }
     
     required init?(coder: NSCoder) {
@@ -375,6 +398,7 @@ class PlaceDetailViewController: UIViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
+        Logger.debug("PlaceDetailViewController viewDidLoad")
         
         // Configure scroll view behavior
         scrollView.contentInsetAdjustmentBehavior = .automatic
@@ -393,11 +417,42 @@ class PlaceDetailViewController: UIViewController {
         // Auto-load street view for all places
         autoLoadStreetView()
         
-        // Show edit image button for all places
-        editImageButton.isHidden = false
+        // Fetch rating if not available
+        if place.rating == nil || place.rating == 0 {
+            fetchPlaceRating()
+        }
     }
     
     // MARK: - Data Fetching
+    
+    private func fetchPlaceRating() {
+        // Use PlaceEnrichmentService to fetch rating from Google Places
+        PlaceEnrichmentService.shared.enrichPlaceDetails(
+            name: place.name,
+            address: place.address,
+            category: place.category,
+            coordinate: (latitude: place.location?.coordinates[1] ?? 0, longitude: place.location?.coordinates[0] ?? 0)
+        ) { [weak self] result in
+            switch result {
+            case .success(let enrichedData):
+                if let rating = enrichedData.rating, rating > 0 {
+                    DispatchQueue.main.async {
+                        self?.updateRatingDisplay(rating: rating, userRatingsTotal: enrichedData.userRatingsTotal)
+                    }
+                }
+            case .failure(let error):
+                print("Failed to fetch rating: \(error)")
+            }
+        }
+    }
+    
+    private func updateRatingDisplay(rating: Double, userRatingsTotal: Int?) {
+        ratingLabel.text = String(format: "%.1f", rating)
+        if let userRatingsTotal = userRatingsTotal, userRatingsTotal > 0 {
+            ratingLabel.text = (ratingLabel.text ?? "") + " (\(userRatingsTotal) reviews)"
+        }
+        ratingView.isHidden = false
+    }
     
     private func fetchCircle() {
         // In a real app, we would fetch circle details from the API using the circle ID
@@ -428,9 +483,15 @@ class PlaceDetailViewController: UIViewController {
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
         
+        // Add image view first
         contentView.addSubview(imageView)
-        contentView.addSubview(streetViewToggleButton)
-        contentView.addSubview(editImageButton)
+        
+        // Add photo control buttons on top of image view
+        imageView.addSubview(streetViewToggleButton)
+        imageView.addSubview(editImageButton)
+        imageView.isUserInteractionEnabled = true
+        
+        // Add info container after image view
         contentView.addSubview(infoContainerView)
         
         infoContainerView.addSubview(nameLabel)
@@ -457,19 +518,15 @@ class PlaceDetailViewController: UIViewController {
             infoContainerView.addSubview(tagsStackView)
         }
         
-        // Add contact section if website or phone is available
-        if place.website != nil || place.phone != nil {
-            infoContainerView.addSubview(contactSectionView)
-            
-            if place.website != nil {
-                contactSectionView.addSubview(websiteButton)
-                websiteButton.addTarget(self, action: #selector(websiteButtonTapped), for: .touchUpInside)
-            }
-            
-            if place.phone != nil {
-                contactSectionView.addSubview(phoneButton)
-                phoneButton.addTarget(self, action: #selector(phoneButtonTapped), for: .touchUpInside)
-            }
+        // Add contact buttons directly to imageView if available  
+        if place.website != nil {
+            imageView.addSubview(websiteButton)
+            websiteButton.addTarget(self, action: #selector(websiteButtonTapped), for: .touchUpInside)
+        }
+        
+        if place.phone != nil {
+            imageView.addSubview(phoneButton)
+            phoneButton.addTarget(self, action: #selector(phoneButtonTapped), for: .touchUpInside)
         }
         
         // Add circle info
@@ -521,49 +578,51 @@ class PlaceDetailViewController: UIViewController {
             imageView.topAnchor.constraint(equalTo: contentView.topAnchor),
             imageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             imageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            imageView.heightAnchor.constraint(equalToConstant: 250),
+            imageView.heightAnchor.constraint(equalToConstant: 300),
             
-            // Street View toggle button
-            streetViewToggleButton.topAnchor.constraint(equalTo: imageView.topAnchor, constant: 12),
-            streetViewToggleButton.trailingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: -12),
+            // Street View toggle button - positioned within imageView
+            streetViewToggleButton.topAnchor.constraint(equalTo: imageView.topAnchor, constant: 20),
+            streetViewToggleButton.trailingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: -16),
             streetViewToggleButton.heightAnchor.constraint(equalToConstant: 32),
+            streetViewToggleButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 100),
             
-            // Edit Image button
-            editImageButton.bottomAnchor.constraint(equalTo: imageView.bottomAnchor, constant: -12),
-            editImageButton.trailingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: -12),
+            // Edit Image button - positioned within imageView
+            editImageButton.bottomAnchor.constraint(equalTo: imageView.bottomAnchor, constant: -16),
+            editImageButton.trailingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: -16),
             editImageButton.heightAnchor.constraint(equalToConstant: 32),
+            editImageButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 100),
             
-            // Info container view
-            infoContainerView.topAnchor.constraint(equalTo: imageView.bottomAnchor, constant: 0),
+            // Info container view - positioned below the image with padding
+            infoContainerView.topAnchor.constraint(equalTo: imageView.bottomAnchor, constant: Constants.Spacing.medium),
             infoContainerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             infoContainerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             infoContainerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             
             // Name label
             nameLabel.topAnchor.constraint(equalTo: infoContainerView.topAnchor, constant: Constants.Spacing.large),
-            nameLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
+            nameLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
             nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: categoryLabel.leadingAnchor, constant: -Constants.Spacing.small),
             
             // Category label
             categoryLabel.topAnchor.constraint(equalTo: nameLabel.topAnchor),
-            categoryLabel.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.large),
+            categoryLabel.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
             categoryLabel.heightAnchor.constraint(equalToConstant: 24),
             
             // Creator info view
             creatorInfoView.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: Constants.Spacing.small),
-            creatorInfoView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
-            creatorInfoView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.large),
-            creatorInfoView.heightAnchor.constraint(equalToConstant: 30),
+            creatorInfoView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
+            creatorInfoView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
+            creatorInfoView.heightAnchor.constraint(equalToConstant: 24),
             
             // Creator label
             creatorLabel.leadingAnchor.constraint(equalTo: creatorInfoView.leadingAnchor, constant: Constants.Spacing.small),
             creatorLabel.trailingAnchor.constraint(equalTo: creatorInfoView.trailingAnchor, constant: -Constants.Spacing.small),
             creatorLabel.centerYAnchor.constraint(equalTo: creatorInfoView.centerYAnchor),
             
-            // Rating view
+            // Rating view - will be hidden if no rating
             ratingView.topAnchor.constraint(equalTo: creatorInfoView.bottomAnchor, constant: Constants.Spacing.small),
-            ratingView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
-            ratingView.heightAnchor.constraint(equalToConstant: 30),
+            ratingView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
+            ratingView.heightAnchor.constraint(equalToConstant: 26),
             
             // Rating image view
             ratingImageView.leadingAnchor.constraint(equalTo: ratingView.leadingAnchor, constant: Constants.Spacing.small),
@@ -579,53 +638,54 @@ class PlaceDetailViewController: UIViewController {
             // Rating view trailing constraint - let it size based on content
             ratingView.trailingAnchor.constraint(equalTo: ratingLabel.trailingAnchor, constant: Constants.Spacing.small),
             
-            // Description label
-            descriptionLabel.topAnchor.constraint(equalTo: ratingView.bottomAnchor, constant: Constants.Spacing.medium),
-            descriptionLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
-            descriptionLabel.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.large),
+            // Description label - always anchor to rating view
+            descriptionLabel.topAnchor.constraint(equalTo: ratingView.bottomAnchor, constant: Constants.Spacing.small),
+            descriptionLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
+            descriptionLabel.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
             
-            // Add to Circle button
+            // Add to Circle button - always in the layout flow, visibility controlled by isHidden
             addToCircleButton.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: Constants.Spacing.medium),
             addToCircleButton.centerXAnchor.constraint(equalTo: infoContainerView.centerXAnchor),
-            addToCircleButton.heightAnchor.constraint(equalToConstant: 40),
-            addToCircleButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 180),
+            addToCircleButton.heightAnchor.constraint(equalToConstant: 44),
+            addToCircleButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 200),
             
-            // Address title label - anchor to addToCircleButton if visible, otherwise descriptionLabel
-            addressTitleLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
+            // Address title label
+            addressTitleLabel.topAnchor.constraint(equalTo: addToCircleButton.bottomAnchor, constant: Constants.Spacing.large),
+            addressTitleLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
             
             // Address label
-            addressLabel.topAnchor.constraint(equalTo: addressTitleLabel.bottomAnchor, constant: Constants.Spacing.small),
-            addressLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
-            addressLabel.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.large),
+            addressLabel.topAnchor.constraint(equalTo: addressTitleLabel.bottomAnchor, constant: Constants.Spacing.tiny),
+            addressLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
+            addressLabel.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
             
             // Map view
             mapView.topAnchor.constraint(equalTo: addressLabel.bottomAnchor, constant: Constants.Spacing.medium),
-            mapView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
-            mapView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.large),
-            mapView.heightAnchor.constraint(equalToConstant: 180),
+            mapView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
+            mapView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
+            mapView.heightAnchor.constraint(equalToConstant: 160),
             
             // Navigate button
             navigateButton.topAnchor.constraint(equalTo: mapView.bottomAnchor, constant: Constants.Spacing.medium),
             navigateButton.centerXAnchor.constraint(equalTo: infoContainerView.centerXAnchor),
             navigateButton.heightAnchor.constraint(equalToConstant: 50),
-            navigateButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 150)
+            navigateButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 160)
         ])
         
         // Dynamic constraints based on available data
         var lastAnchor: NSLayoutYAxisAnchor = navigateButton.bottomAnchor
-        var additionalSpacing: CGFloat = Constants.Spacing.large
+        var additionalSpacing: CGFloat = Constants.Spacing.medium
         
         // Always set up notes constraints - visibility controlled in configureUI
         NSLayoutConstraint.activate([
             notesTitleLabel.topAnchor.constraint(equalTo: lastAnchor, constant: additionalSpacing),
-            notesTitleLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
+            notesTitleLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
             
             notesButtonsStackView.centerYAnchor.constraint(equalTo: notesTitleLabel.centerYAnchor),
-            notesButtonsStackView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.large),
+            notesButtonsStackView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
             
-            notesLabel.topAnchor.constraint(equalTo: notesTitleLabel.bottomAnchor, constant: Constants.Spacing.small),
-            notesLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
-            notesLabel.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.large)
+            notesLabel.topAnchor.constraint(equalTo: notesTitleLabel.bottomAnchor, constant: Constants.Spacing.tiny),
+            notesLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
+            notesLabel.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium)
         ])
         
         lastAnchor = notesLabel.bottomAnchor
@@ -634,57 +694,50 @@ class PlaceDetailViewController: UIViewController {
         if let tags = place.tags, !tags.isEmpty {
             NSLayoutConstraint.activate([
                 tagsTitleLabel.topAnchor.constraint(equalTo: lastAnchor, constant: additionalSpacing),
-                tagsTitleLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
+                tagsTitleLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
                 
-                tagsStackView.topAnchor.constraint(equalTo: tagsTitleLabel.bottomAnchor, constant: Constants.Spacing.small),
-                tagsStackView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
-                tagsStackView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.large)
+                tagsStackView.topAnchor.constraint(equalTo: tagsTitleLabel.bottomAnchor, constant: Constants.Spacing.tiny),
+                tagsStackView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
+                tagsStackView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium)
             ])
             
             lastAnchor = tagsStackView.bottomAnchor
         }
         
-        // Add contact section if available
-        if place.website != nil || place.phone != nil {
+        // Add contact button constraints - positioned on the image
+        if place.website != nil && place.phone != nil {
+            // Both buttons - position side by side
             NSLayoutConstraint.activate([
-                contactSectionView.topAnchor.constraint(equalTo: lastAnchor, constant: additionalSpacing),
-                contactSectionView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
-                contactSectionView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.large),
-                contactSectionView.heightAnchor.constraint(equalToConstant: 50)
+                websiteButton.leadingAnchor.constraint(equalTo: imageView.leadingAnchor, constant: 16),
+                websiteButton.bottomAnchor.constraint(equalTo: imageView.bottomAnchor, constant: -16),
+                websiteButton.heightAnchor.constraint(equalToConstant: 36),
+                
+                phoneButton.leadingAnchor.constraint(equalTo: websiteButton.trailingAnchor, constant: 8),
+                phoneButton.bottomAnchor.constraint(equalTo: imageView.bottomAnchor, constant: -16),
+                phoneButton.heightAnchor.constraint(equalToConstant: 36)
             ])
-            
-            if place.website != nil && place.phone != nil {
-                // Both website and phone are available
-                NSLayoutConstraint.activate([
-                    websiteButton.leadingAnchor.constraint(equalTo: contactSectionView.leadingAnchor, constant: Constants.Spacing.medium),
-                    websiteButton.centerYAnchor.constraint(equalTo: contactSectionView.centerYAnchor),
-                    
-                    phoneButton.trailingAnchor.constraint(equalTo: contactSectionView.trailingAnchor, constant: -Constants.Spacing.medium),
-                    phoneButton.centerYAnchor.constraint(equalTo: contactSectionView.centerYAnchor)
-                ])
-            } else if place.website != nil {
-                // Only website is available
-                NSLayoutConstraint.activate([
-                    websiteButton.centerXAnchor.constraint(equalTo: contactSectionView.centerXAnchor),
-                    websiteButton.centerYAnchor.constraint(equalTo: contactSectionView.centerYAnchor)
-                ])
-            } else if place.phone != nil {
-                // Only phone is available
-                NSLayoutConstraint.activate([
-                    phoneButton.centerXAnchor.constraint(equalTo: contactSectionView.centerXAnchor),
-                    phoneButton.centerYAnchor.constraint(equalTo: contactSectionView.centerYAnchor)
-                ])
-            }
-            
-            lastAnchor = contactSectionView.bottomAnchor
+        } else if place.website != nil {
+            // Only website button
+            NSLayoutConstraint.activate([
+                websiteButton.leadingAnchor.constraint(equalTo: imageView.leadingAnchor, constant: 16),
+                websiteButton.bottomAnchor.constraint(equalTo: imageView.bottomAnchor, constant: -16),
+                websiteButton.heightAnchor.constraint(equalToConstant: 36)
+            ])
+        } else if place.phone != nil {
+            // Only phone button
+            NSLayoutConstraint.activate([
+                phoneButton.leadingAnchor.constraint(equalTo: imageView.leadingAnchor, constant: 16),
+                phoneButton.bottomAnchor.constraint(equalTo: imageView.bottomAnchor, constant: -16),
+                phoneButton.heightAnchor.constraint(equalToConstant: 36)
+            ])
         }
         
         // Add circle info only if we have a circle or circleId
         if circle != nil || !place.circleId.isEmpty {
             NSLayoutConstraint.activate([
-                circleInfoView.topAnchor.constraint(equalTo: lastAnchor, constant: additionalSpacing),
-                circleInfoView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.large),
-                circleInfoView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.large),
+                circleInfoView.topAnchor.constraint(equalTo: lastAnchor, constant: Constants.Spacing.large),
+                circleInfoView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
+                circleInfoView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
                 circleInfoView.heightAnchor.constraint(equalToConstant: 50),
                 
                 circleNameLabel.leadingAnchor.constraint(equalTo: circleInfoView.leadingAnchor, constant: Constants.Spacing.medium),
@@ -693,12 +746,22 @@ class PlaceDetailViewController: UIViewController {
                 circleButton.trailingAnchor.constraint(equalTo: circleInfoView.trailingAnchor, constant: -Constants.Spacing.medium),
                 circleButton.centerYAnchor.constraint(equalTo: circleInfoView.centerYAnchor),
                 
-                circleInfoView.bottomAnchor.constraint(equalTo: infoContainerView.bottomAnchor, constant: -Constants.Spacing.large)
+                circleInfoView.bottomAnchor.constraint(equalTo: infoContainerView.bottomAnchor, constant: -Constants.Spacing.medium)
             ])
         } else {
             // No circle info, just add bottom constraint
-            lastAnchor.constraint(equalTo: infoContainerView.bottomAnchor, constant: -Constants.Spacing.large).isActive = true
+            lastAnchor.constraint(equalTo: infoContainerView.bottomAnchor, constant: -Constants.Spacing.medium).isActive = true
         }
+        
+        // Ensure all buttons on imageView are interactive
+        if place.website != nil {
+            imageView.bringSubviewToFront(websiteButton)
+        }
+        if place.phone != nil {
+            imageView.bringSubviewToFront(phoneButton)
+        }
+        imageView.bringSubviewToFront(streetViewToggleButton)
+        imageView.bringSubviewToFront(editImageButton)
     }
     
     private func configureUI() {
@@ -755,14 +818,22 @@ class PlaceDetailViewController: UIViewController {
         // Set default image
         configureDefaultImage()
         
-        // Description
-        descriptionLabel.text = place.description ?? "No description available"
-        
-        // Rating
-        if let rating = place.rating {
-            ratingLabel.text = String(format: "%.1f", rating)
+        // Description - only show if available
+        if let description = place.description, !description.isEmpty {
+            descriptionLabel.text = description
+            descriptionLabel.isHidden = false
         } else {
-            ratingLabel.text = "N/A"
+            descriptionLabel.isHidden = true
+        }
+        
+        // Rating - show even if no rating available
+        if let rating = place.rating, rating > 0 {
+            ratingLabel.text = String(format: "%.1f", rating)
+            ratingView.isHidden = false
+        } else {
+            // Show "No rating" when rating is not available
+            ratingLabel.text = "No rating"
+            ratingView.isHidden = false
         }
         
         // Address
@@ -827,10 +898,12 @@ class PlaceDetailViewController: UIViewController {
         }
         
         // User ratings total
-        if let userRatingsTotal = place.userRatingsTotal, userRatingsTotal > 0 {
+        if let userRatingsTotal = place.userRatingsTotal, userRatingsTotal > 0, !ratingView.isHidden {
             let ratingsText = " (\(userRatingsTotal) reviews)"
             ratingLabel.text = (ratingLabel.text ?? "") + ratingsText
         }
+        
+        // Description constraint is already set in setupUI
         
         // Opening Hours
         if let openingHours = place.openingHours, !openingHours.isEmpty {
@@ -980,9 +1053,6 @@ class PlaceDetailViewController: UIViewController {
                         // Show the button
                         self.addToCircleButton.isHidden = false
                         self.addToCircleButton.addTarget(self, action: #selector(self.addToCircleButtonTapped), for: .touchUpInside)
-                        
-                        // Update address title label constraint
-                        self.updateAddressTitleConstraint()
                     }
                     
                 case .failure:
@@ -993,19 +1063,8 @@ class PlaceDetailViewController: UIViewController {
     }
     
     private func updateAddressTitleConstraint() {
-        // Remove existing top constraint
-        addressTitleLabel.constraints.forEach { constraint in
-            if constraint.firstAttribute == .top {
-                constraint.isActive = false
-            }
-        }
-        
-        // Add new constraint based on button visibility
-        if addToCircleButton.isHidden {
-            addressTitleLabel.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: Constants.Spacing.large).isActive = true
-        } else {
-            addressTitleLabel.topAnchor.constraint(equalTo: addToCircleButton.bottomAnchor, constant: Constants.Spacing.large).isActive = true
-        }
+        // No need to update constraints dynamically anymore
+        // The constraint is set in setupUI to always anchor to addToCircleButton
     }
     
     // MARK: - Actions
@@ -1251,7 +1310,7 @@ class PlaceDetailViewController: UIViewController {
         guard let location = place.location?.clLocation else { return }
         
         if #available(iOS 16.0, *) {
-            let imageSize = CGSize(width: UIScreen.main.bounds.width, height: 250)
+            let imageSize = CGSize(width: UIScreen.main.bounds.width, height: 200)
             
             Task {
                 do {
@@ -1281,7 +1340,7 @@ class PlaceDetailViewController: UIViewController {
                 let available = await AppleLookAroundService.shared.checkLookAroundAvailability(at: location.coordinate)
                 guard available else { return }
                 
-                let imageSize = CGSize(width: UIScreen.main.bounds.width, height: 250)
+                let imageSize = CGSize(width: UIScreen.main.bounds.width, height: 200)
                 
                 do {
                     let image = try await AppleLookAroundService.shared.getLookAroundSnapshot(

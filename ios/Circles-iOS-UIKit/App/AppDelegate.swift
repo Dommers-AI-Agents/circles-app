@@ -27,11 +27,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Override point for customization after application launch.
         
+        // Suppress Google Maps SDK duplicate class warnings in debug builds
+        #if DEBUG
+        UserDefaults.standard.set(false, forKey: "_UIConstraintBasedLayoutLogUnsatisfiable")
+        #endif
+        
         // Configure Firebase first
         FirebaseApp.configure()
         
-        // Configure AuthManager Firebase listener after Firebase is initialized
-        AuthManager.shared.configureFirebaseAuth()
+        // Note: AuthManager removed - using AuthService directly
         
         // Configure NetworkManager after Firebase is initialized
         NetworkManager.shared.configure()
@@ -250,6 +254,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         let tokenParts = deviceToken.map { data in String(format: "%02.2hhx", data) }
         let token = tokenParts.joined()
         print("🔔 Device Token: \(token)")
+        
+        // Save token to UserDefaults for later use
+        UserDefaults.standard.set(token, forKey: "PushNotificationToken")
         
         // Send device token to backend
         NotificationService.shared.registerDeviceToken(token)

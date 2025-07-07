@@ -5,11 +5,30 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
     private var badgeObservers: [NSObjectProtocol] = []
     private var messagesBadgeTimer: Timer?
     private var networkBadgeTimer: Timer?
+    private var macKeyCommands: [UIKeyCommand] = []
+    
+    // Check if running on Mac
+    private var isRunningOnMac: Bool {
+        #if targetEnvironment(macCatalyst)
+        return true
+        #else
+        return ProcessInfo.processInfo.isiOSAppOnMac
+        #endif
+    }
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        setupTabs()
-        setupTabBarAppearance()
+        
+        // Use appropriate setup based on platform
+        if isRunningOnMac {
+            setupTabsForMac()
+            setupTabBarAppearanceForMac()
+            setupKeyboardShortcuts()
+        } else {
+            setupTabs()
+            setupTabBarAppearance()
+        }
+        
         setupBadgeObservers()
         setupNotificationObservers()
         
@@ -71,6 +90,68 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         
         // Set view controllers to tab bar in the new order
         self.viewControllers = [circlesVC, networkVC, messagesVC, discoverVC, profileVC]
+    }
+    
+    private func setupTabsForMac() {
+        // Create view controllers for each tab with Mac-optimized icons
+        let circlesVC = UINavigationController(rootViewController: CirclesHomeViewController())
+        let circlesImage = UIImage(systemName: "circle.grid.2x2.fill") ?? UIImage(systemName: "circle.grid.2x2")!
+        circlesVC.tabBarItem = UITabBarItem(title: nil, image: circlesImage, tag: 0)
+        
+        let networkVC = UINavigationController(rootViewController: MyNetworkViewController())
+        let networkImage = UIImage(systemName: "person.2.fill") ?? UIImage(systemName: "person.2")!
+        networkVC.tabBarItem = UITabBarItem(title: nil, image: networkImage, tag: 1)
+        
+        let messagesVC = UINavigationController(rootViewController: ConversationsListViewController())
+        let messagesImage = UIImage(systemName: "message.fill") ?? UIImage(systemName: "message")!
+        messagesVC.tabBarItem = UITabBarItem(title: nil, image: messagesImage, tag: 2)
+        
+        let discoverVC = UINavigationController(rootViewController: DiscoverViewController())
+        let discoverImage = UIImage(systemName: "magnifyingglass.circle.fill") ?? UIImage(systemName: "magnifyingglass")!
+        discoverVC.tabBarItem = UITabBarItem(title: nil, image: discoverImage, tag: 3)
+        
+        let profileVC = UINavigationController(rootViewController: ProfileViewController())
+        let profileImage = UIImage(systemName: "person.circle.fill") ?? UIImage(systemName: "person")!
+        profileVC.tabBarItem = UITabBarItem(title: nil, image: profileImage, tag: 4)
+        
+        // Set view controllers
+        self.viewControllers = [circlesVC, networkVC, messagesVC, discoverVC, profileVC]
+        
+        // Configure icon sizes for Mac
+        if #available(iOS 13.0, *) {
+            let iconSize = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
+            viewControllers?.forEach { vc in
+                vc.tabBarItem.image = vc.tabBarItem.image?.withConfiguration(iconSize)
+            }
+        }
+    }
+    
+    private func setupTabBarAppearanceForMac() {
+        // Customize tab bar appearance for Mac with compact design
+        let appearance = UITabBarAppearance()
+        appearance.configureWithDefaultBackground()
+        appearance.backgroundColor = Constants.Colors.secondaryBackground
+        
+        // Make the tab bar more compact
+        appearance.compactInlineLayoutAppearance = appearance.inlineLayoutAppearance
+        appearance.stackedLayoutAppearance.normal.iconColor = Constants.Colors.secondaryLabel
+        appearance.stackedLayoutAppearance.selected.iconColor = Constants.Colors.primary
+        
+        // Remove title positioning to save space
+        appearance.stackedLayoutAppearance.normal.titlePositionAdjustment = UIOffset(horizontal: 0, vertical: 100)
+        appearance.stackedLayoutAppearance.selected.titlePositionAdjustment = UIOffset(horizontal: 0, vertical: 100)
+        
+        tabBar.standardAppearance = appearance
+        if #available(iOS 15.0, *) {
+            tabBar.scrollEdgeAppearance = appearance
+        }
+        
+        // Set tint color for selected items
+        tabBar.tintColor = Constants.Colors.primary
+        
+        // Additional Mac-specific adjustments
+        tabBar.itemPositioning = .centered
+        tabBar.itemSpacing = 20 // Tighter spacing between items
     }
     
     // MARK: - Badge Management
@@ -199,5 +280,44 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         // Update MessagingManager based on selected tab
         let isMessagesTab = tabBarController.selectedIndex == 2
         MessagingManager.shared.setMessagesTabActive(isMessagesTab)
+    }
+    
+    // MARK: - Keyboard Shortcuts for Mac
+    
+    private func setupKeyboardShortcuts() {
+        #if targetEnvironment(macCatalyst)
+        // Add keyboard shortcuts for tab navigation
+        macKeyCommands = [
+            UIKeyCommand(title: "My Circles", action: #selector(selectTab1), input: "1", modifierFlags: .command),
+            UIKeyCommand(title: "My Network", action: #selector(selectTab2), input: "2", modifierFlags: .command),
+            UIKeyCommand(title: "Messages", action: #selector(selectTab3), input: "3", modifierFlags: .command),
+            UIKeyCommand(title: "Discover", action: #selector(selectTab4), input: "4", modifierFlags: .command),
+            UIKeyCommand(title: "Profile", action: #selector(selectTab5), input: "5", modifierFlags: .command)
+        ]
+        #endif
+    }
+    
+    override var keyCommands: [UIKeyCommand]? {
+        return isRunningOnMac ? macKeyCommands : nil
+    }
+    
+    @objc private func selectTab1() {
+        selectedIndex = 0
+    }
+    
+    @objc private func selectTab2() {
+        selectedIndex = 1
+    }
+    
+    @objc private func selectTab3() {
+        selectedIndex = 2
+    }
+    
+    @objc private func selectTab4() {
+        selectedIndex = 3
+    }
+    
+    @objc private func selectTab5() {
+        selectedIndex = 4
     }
 }

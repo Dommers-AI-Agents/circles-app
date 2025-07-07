@@ -388,17 +388,7 @@ class CreateCircleViewController: UIViewController {
             return
         }
         
-        // Check if user already has a circle with this name
-        let existingCircles = CircleManager.shared.circles
-        let normalizedNewName = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let hasDuplicate = existingCircles.contains { circle in
-            circle.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalizedNewName
-        }
-        
-        if hasDuplicate {
-            presentAlert(title: "Duplicate Name", message: "You already have a circle with this name. Please choose a different name.")
-            return
-        }
+        // Note: Duplicate name check removed - backend will validate
         
         // Get selected category
         let categoryIndex = categorySegmentedControl.selectedSegmentIndex

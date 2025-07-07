@@ -510,7 +510,7 @@ class CircleService {
         case .unauthorized:
             return .permissionDenied
             
-        case .noInternet, .requestFailed, .invalidURL, .invalidResponse, .decodingFailed:
+        case .noInternet, .requestFailed, .invalidURL, .invalidResponse, .decodingFailed, .duplicateRequest:
             return .networkError(error)
             
         case .serverError, .unknown:

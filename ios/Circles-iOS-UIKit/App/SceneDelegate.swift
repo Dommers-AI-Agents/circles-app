@@ -30,11 +30,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         
         // Check if there's a deep link to handle
         if let url = connectionOptions.urlContexts.first?.url {
-            print("📱 SceneDelegate: URL received on launch: \(url.absoluteString)")
+            Logger.debug("SceneDelegate: URL received on launch: \(url.absoluteString)")
             
             // Check if it's a LinkedIn callback
             if url.scheme == "com.favcircles.circles" && url.absoluteString.contains("linkedin") {
-                print("🔗 LinkedIn callback detected on app launch")
+                Logger.debug("LinkedIn callback detected on app launch")
                 // Delay handling to ensure SocialAuthService is ready
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     _ = SocialAuthService.shared.handleLinkedInCallback(url: url)
@@ -60,46 +60,49 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             window?.rootViewController = loadingVC
             
             // Perform token refresh on app launch if user is logged in
-            print("🎬 User is logged in, checking token validity")
+            Logger.debug("User is logged in, checking token validity")
             
             // Check if token is expired first
             if AuthService.shared.isTokenExpired() {
-                print("🎬 Token is expired, logging out immediately")
+                Logger.info("Token is expired, logging out immediately")
                 AuthService.shared.logout()
             } else if AuthService.shared.shouldRefreshToken() {
                 // Token is not expired but should be refreshed soon
-                print("🎬 Token needs refresh, refreshing...")
+                Logger.info("Token needs refresh, refreshing...")
                 AuthService.shared.refreshToken { result in
                     switch result {
                     case .success:
-                        print("🎬 Token refreshed successfully on app launch")
+                        Logger.info("Token refreshed successfully on app launch")
                     case .failure(let error):
-                        print("🎬 Token refresh failed: \(error)")
+                        Logger.error("Token refresh failed: \(error)")
                         // Don't force logout here - let 401 handling take care of it
                     }
                 }
             } else {
-                print("🎬 Token is still valid")
+                Logger.debug("Token is still valid")
             }
             
             // Try to restore Google Sign-In session if user previously signed in with Google
-            if AuthService.shared.getAuthProvider() == "google" {
-                print("🎬 User previously signed in with Google, attempting to restore session")
+            // BUT only if the token is valid (not expired)
+            if AuthService.shared.getAuthProvider() == "google" && !AuthService.shared.isTokenExpired() {
+                Logger.debug("User previously signed in with Google and token is valid, attempting to restore session")
                 SocialAuthService.shared.restoreGoogleSignInSession { result in
                     switch result {
                     case .success:
-                        print("🎬 Google session restored successfully")
+                        Logger.debug("Google session restored successfully")
                     case .failure(let error):
-                        print("🎬 Google session restoration failed: \(error)")
+                        Logger.warning("Google session restoration failed: \(error)")
                         // The backend token might still be valid even if Google session expired
                     }
                 }
+            } else if AuthService.shared.getAuthProvider() == "google" && AuthService.shared.isTokenExpired() {
+                Logger.debug("User previously signed in with Google but token is expired, skipping Google session restoration")
             }
         }
         
         // Add authentication state listener
         AuthService.shared.addAuthStateListener(id: authListenerId) { [weak self] isLoggedIn in
-            print("🎬 SceneDelegate auth state listener called with isLoggedIn: \(isLoggedIn)")
+            Logger.debug("SceneDelegate auth state listener called with isLoggedIn: \(isLoggedIn)")
             self?.updateRootViewController(isLoggedIn: isLoggedIn)
         }
         

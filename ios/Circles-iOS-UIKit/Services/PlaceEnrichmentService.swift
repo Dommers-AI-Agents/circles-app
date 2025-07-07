@@ -2,6 +2,7 @@ import Foundation
 import WebKit
 import MapKit
 import CoreLocation
+import GooglePlaces
 
 class PlaceEnrichmentService {
     static let shared = PlaceEnrichmentService()
@@ -17,36 +18,99 @@ class PlaceEnrichmentService {
         coordinate: (latitude: Double, longitude: Double),
         completion: @escaping (Result<WebEnrichedPlaceDetails, Error>) -> Void
     ) {
-        // Create search query
-        let searchQuery = "\(name) \(address)"
-        let encodedQuery = searchQuery.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        
-        // Search for place information using DuckDuckGo (privacy-focused)
-        let searchURL = "https://duckduckgo.com/?q=\(encodedQuery)"
-        
-        // For now, we'll use a web view to fetch structured data
-        fetchWebPageData(url: searchURL) { [weak self] result in
-            switch result {
-            case .success(let html):
-                let enrichedDetails = self?.parseEnrichedDetails(from: html, placeName: name) ?? WebEnrichedPlaceDetails()
-                
-                // Try to get additional details from a business search
-                self?.searchBusinessDetails(name: name, address: address) { businessResult in
-                    switch businessResult {
-                    case .success(let businessDetails):
-                        // Merge details
-                        var finalDetails = enrichedDetails
-                        finalDetails.website = businessDetails.website ?? enrichedDetails.website
-                        finalDetails.phone = businessDetails.phone ?? enrichedDetails.phone
-                        finalDetails.hours = businessDetails.hours ?? enrichedDetails.hours
-                        completion(.success(finalDetails))
-                    case .failure:
-                        // Return what we have
-                        completion(.success(enrichedDetails))
+        // First try to get rating from Google Places
+        fetchGooglePlacesRating(name: name, coordinate: coordinate) { [weak self] ratingResult in
+            var baseDetails = WebEnrichedPlaceDetails()
+            
+            // Add rating if available
+            if case .success(let ratingInfo) = ratingResult {
+                baseDetails.rating = ratingInfo.rating
+                baseDetails.userRatingsTotal = ratingInfo.userRatingsTotal
+            }
+            
+            // Create search query for web enrichment
+            let searchQuery = "\(name) \(address)"
+            let encodedQuery = searchQuery.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            
+            // Search for place information using DuckDuckGo (privacy-focused)
+            let searchURL = "https://duckduckgo.com/?q=\(encodedQuery)"
+            
+            // For now, we'll use a web view to fetch structured data
+            self?.fetchWebPageData(url: searchURL) { result in
+                switch result {
+                case .success(let html):
+                    var enrichedDetails = self?.parseEnrichedDetails(from: html, placeName: name) ?? WebEnrichedPlaceDetails()
+                    
+                    // Add rating data from Google Places
+                    enrichedDetails.rating = baseDetails.rating
+                    enrichedDetails.userRatingsTotal = baseDetails.userRatingsTotal
+                    
+                    // Try to get additional details from a business search
+                    self?.searchBusinessDetails(name: name, address: address) { businessResult in
+                        switch businessResult {
+                        case .success(let businessDetails):
+                            // Merge details
+                            var finalDetails = enrichedDetails
+                            finalDetails.website = businessDetails.website ?? enrichedDetails.website
+                            finalDetails.phone = businessDetails.phone ?? enrichedDetails.phone
+                            finalDetails.hours = businessDetails.hours ?? enrichedDetails.hours
+                            // Prefer Google Places rating over web-scraped rating
+                            if finalDetails.rating == nil {
+                                finalDetails.rating = businessDetails.rating
+                            }
+                            completion(.success(finalDetails))
+                        case .failure:
+                            // Return what we have
+                            completion(.success(enrichedDetails))
+                        }
                     }
+                case .failure(let error):
+                    // Still return rating data even if web enrichment fails
+                    completion(.success(baseDetails))
+                }
+            }
+        }
+    }
+    
+    // MARK: - Google Places Rating Fetch
+    
+    private func fetchGooglePlacesRating(
+        name: String,
+        coordinate: (latitude: Double, longitude: Double),
+        completion: @escaping (Result<(rating: Double?, userRatingsTotal: Int?), Error>) -> Void
+    ) {
+        // Find the place using Google Places search
+        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        
+        print("🌟 Fetching rating for: \(name) at \(coordinate)")
+        
+        GooglePlacesService.shared.searchPlaces(query: name, location: location) { result in
+            switch result {
+            case .success(let predictions):
+                if let firstPrediction = predictions.first {
+                    // We found a matching place, now get its details including rating
+                    GooglePlacesService.shared.fetchPlaceDetails(placeID: firstPrediction.placeID) { detailsResult in
+                        switch detailsResult {
+                        case .success(let place):
+                            let rating = place.rating > 0 ? Double(place.rating) : nil
+                            let userRatingsTotal = place.userRatingsTotal > 0 ? Int(place.userRatingsTotal) : nil
+                            print("✅ Got rating: \(rating ?? 0) from \(userRatingsTotal ?? 0) reviews")
+                            completion(.success((rating: rating, userRatingsTotal: userRatingsTotal)))
+                        case .failure(let error):
+                            print("❌ Failed to fetch place details for rating: \(error)")
+                            // Don't fail the entire enrichment process
+                            completion(.success((rating: nil, userRatingsTotal: nil)))
+                        }
+                    }
+                } else {
+                    // No matching place found
+                    print("⚠️ No matching place found for rating lookup")
+                    completion(.success((rating: nil, userRatingsTotal: nil)))
                 }
             case .failure(let error):
-                completion(.failure(error))
+                print("❌ Failed to search for place: \(error)")
+                // Don't fail the entire enrichment process, just return nil ratings
+                completion(.success((rating: nil, userRatingsTotal: nil)))
             }
         }
     }
@@ -211,6 +275,8 @@ struct WebEnrichedPlaceDetails {
     var description: String?
     var priceRange: String?
     var features: [String]?
+    var rating: Double?
+    var userRatingsTotal: Int?
 }
 
 struct BusinessDetails {

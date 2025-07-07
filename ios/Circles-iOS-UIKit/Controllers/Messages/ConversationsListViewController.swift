@@ -1,5 +1,4 @@
 import UIKit
-import Combine
 
 class ConversationsListViewController: UIViewController {
     
@@ -98,7 +97,7 @@ class ConversationsListViewController: UIViewController {
     
     // MARK: - Properties
     private let messagingManager = MessagingManager.shared
-    private var cancellables = Set<AnyCancellable>()
+    private var conversationUpdateTimer: Timer?
     private let cellIdentifier = "ConversationCell"
     
     // MARK: - Lifecycle
@@ -130,10 +129,9 @@ class ConversationsListViewController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         print("🔍 ConversationsListViewController: viewWillAppear called")
-        print("🔍 ConversationsListViewController: Auth status: \(AuthManager.shared.isAuthenticated)")
         print("🔍 ConversationsListViewController: Auth token available: \(AuthService.shared.getToken() != nil)")
         
-        // Always load conversations if we have a token, regardless of AuthManager state
+        // Always load conversations if we have a token
         if AuthService.shared.getToken() != nil {
             print("🔍 ConversationsListViewController: Token exists, ensuring initialized and loading conversations")
             messagingManager.ensureInitialized()
@@ -141,13 +139,13 @@ class ConversationsListViewController: UIViewController {
             messagingManager.updateUnreadCount()
         }
         
-        // Also check auth status to ensure MessagingManager is properly initialized
-        if AuthService.shared.getToken() != nil && !AuthManager.shared.isAuthenticated {
-            print("⚠️ ConversationsListViewController: Token exists but auth not detected, forcing auth check")
-            AuthManager.shared.checkAuthenticationStatus()
-        }
-        
         checkForNewSuggestions()
+    }
+    
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        conversationUpdateTimer?.invalidate()
+        conversationUpdateTimer = nil
     }
     
     // MARK: - Setup
@@ -239,23 +237,18 @@ class ConversationsListViewController: UIViewController {
     }
     
     private func setupSubscribers() {
-        messagingManager.$conversations
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] conversations in
-                print("🔍 ConversationsListViewController: Received \(conversations.count) conversations")
-                self?.tableView.reloadData()
-                self?.updateEmptyState()
+        // Poll for conversation updates
+        conversationUpdateTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            let conversations = self.messagingManager.conversations
+            print("🔍 ConversationsListViewController: Checking conversations: \(conversations.count)")
+            self.tableView.reloadData()
+            self.updateEmptyState()
+            
+            if !self.messagingManager.isLoadingConversations {
+                self.tableView.refreshControl?.endRefreshing()
             }
-            .store(in: &cancellables)
-        
-        messagingManager.$isLoadingConversations
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] isLoading in
-                if !isLoading {
-                    self?.tableView.refreshControl?.endRefreshing()
-                }
-            }
-            .store(in: &cancellables)
+        }
     }
     
     // MARK: - Data Loading

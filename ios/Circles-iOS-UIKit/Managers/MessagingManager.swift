@@ -1,38 +1,35 @@
 import Foundation
-import Combine
 
-class MessagingManager: ObservableObject {
+class MessagingManager {
     static let shared = MessagingManager()
     
-    @Published var conversations: [Conversation] = []
-    @Published var activeMessages: [String: [Message]] = [:] // conversationId: messages
-    @Published var unreadCount: Int = 0
-    @Published var isLoadingConversations = false
-    @Published var isLoadingMessages = false
-    @Published var error: String?
+    private(set) var conversations: [Conversation] = []
+    private(set) var activeMessages: [String: [Message]] = [:] // conversationId: messages
+    private(set) var unreadCount: Int = 0
+    private(set) var isLoadingConversations = false
+    private(set) var isLoadingMessages = false
+    private(set) var error: String?
     
     private let messagingService = MessagingService.shared
-    private var cancellables = Set<AnyCancellable>()
+    private var authObserverId = "MessagingManager"
     private var messagePollingTimer: Timer?
     private var isMessagesTabActive = false
     
     private init() {
-        setupSubscribers()
+        setupAuthListener()
     }
     
-    private func setupSubscribers() {
+    private func setupAuthListener() {
         // Listen for authentication changes
-        print("🔍 MessagingManager: Setting up auth subscriber")
-        AuthManager.shared.$isAuthenticated
-            .sink { [weak self] isAuthenticated in
-                print("🔍 MessagingManager: Auth state changed to: \(isAuthenticated)")
-                if isAuthenticated {
-                    self?.startMessaging()
-                } else {
-                    self?.stopMessaging()
-                }
+        print("🔍 MessagingManager: Setting up auth listener")
+        AuthService.shared.addAuthStateListener(id: authObserverId) { [weak self] isAuthenticated in
+            print("🔍 MessagingManager: Auth state changed to: \(isAuthenticated)")
+            if isAuthenticated {
+                self?.startMessaging()
+            } else {
+                self?.stopMessaging()
             }
-            .store(in: &cancellables)
+        }
     }
     
     // MARK: - Messaging Lifecycle
@@ -47,7 +44,6 @@ class MessagingManager: ObservableObject {
     // Public method to force initialization when we know we're authenticated
     func ensureInitialized() {
         print("🔍 MessagingManager: ensureInitialized called")
-        print("🔍 MessagingManager: Current auth state = \(AuthManager.shared.isAuthenticated)")
         print("🔍 MessagingManager: Has token = \(AuthService.shared.getToken() != nil)")
         
         // If we have a token but messaging hasn't started, start it now
@@ -104,7 +100,6 @@ class MessagingManager: ObservableObject {
     
     func loadConversations() {
         print("🔍 MessagingManager: loadConversations called")
-        print("🔍 MessagingManager: isAuthenticated = \(AuthManager.shared.isAuthenticated)")
         print("🔍 MessagingManager: Has auth token = \(AuthService.shared.getToken() != nil)")
         
         // Skip auth check if we have a token - this is a workaround for auth state detection issues

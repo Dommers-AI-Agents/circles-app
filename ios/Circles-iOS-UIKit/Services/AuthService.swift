@@ -1,5 +1,4 @@
 import Foundation
-import Combine
 
 // Authentication-related errors
 enum AuthError: Error, LocalizedError, Equatable {
@@ -86,8 +85,7 @@ class AuthService {
     // Update current user
     func updateCurrentUser(_ user: User) {
         _currentUser = user
-        // Notify AuthManager about the update
-        AuthManager.shared.updateCurrentUser(user)
+        // Note: AuthManager removed - listeners notified via authStateListeners
     }
     
     // Auth state change listeners
@@ -384,28 +382,26 @@ class AuthService {
         }
     }
     
-    func verifyFirebaseToken(_ token: String) -> AnyPublisher<User, Error> {
+    func verifyFirebaseToken(_ token: String, completion: @escaping (Result<User, Error>) -> Void) {
         let body: [String: Any] = ["firebaseIdToken": token]
         
-        return Future<User, Error> { promise in
-            APIService.shared.request(
-                endpoint: "auth/firebase/verify",
-                method: .post,
-                body: body,
-                requiresAuth: false
-            ) { [weak self] (result: Result<AuthResponse, APIError>) in
-                switch result {
-                case .success(let response):
-                    self?.handleAuthResponse(response) { _ in }
+        APIService.shared.request(
+            endpoint: "auth/firebase/verify",
+            method: .post,
+            body: body,
+            requiresAuth: false
+        ) { [weak self] (result: Result<AuthResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                self?.handleAuthResponse(response) { _ in }
                 self?.saveAuthProvider("firebase")
-                    promise(.success(response.user))
-                    
-                case .failure(let error):
-                    let authError = self?.mapAPIErrorToAuthError(error, context: .login) ?? .unknown("Unknown error")
-                    promise(.failure(authError))
-                }
+                completion(.success(response.user))
+                
+            case .failure(let error):
+                let authError = self?.mapAPIErrorToAuthError(error, context: .login) ?? .unknown("Unknown error")
+                completion(.failure(authError))
             }
-        }.eraseToAnyPublisher()
+        }
     }
     
     // MARK: - Helper Methods
@@ -446,6 +442,11 @@ class AuthService {
             // Notify auth state change
             print("🔐 About to notify auth state change - isLoggedIn: true")
             notifyAuthStateChange(isLoggedIn: true)
+            
+            // Register device token if available
+            if let savedToken = UserDefaults.standard.string(forKey: "PushNotificationToken") {
+                NotificationService.shared.registerDeviceToken(savedToken)
+            }
             
             completion(.success(response.user))
         } else {
@@ -580,7 +581,7 @@ class AuthService {
         case .unauthorized:
             return .tokenExpired
             
-        case .noInternet, .requestFailed, .invalidURL, .invalidResponse, .decodingFailed:
+        case .noInternet, .requestFailed, .invalidURL, .invalidResponse, .decodingFailed, .duplicateRequest:
             return .networkError(error)
             
         case .serverError, .unknown:

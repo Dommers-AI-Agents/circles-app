@@ -1,5 +1,4 @@
 import UIKit
-import SwiftUI
 import CoreLocation
 import UniformTypeIdentifiers
 
@@ -953,7 +952,6 @@ class CirclesHomeViewController: UIViewController {
                         let currentUserId = AuthService.shared.getUserId() ?? ""
                         filteredPlaces = allFetchedPlaces.filter { $0.addedBy == currentUserId }
                         print("   Filtered to user's places (userId: \(currentUserId)): \(filteredPlaces.count) places")
-                        print("   ⚠️ DEFAULT FILTER IS SET TO 'MY PLACES ONLY' - This is why network places don't show!")
                     } else {
                         // Show only places from the selected connection
                         // Get all places from circles owned by this connection
@@ -1038,10 +1036,7 @@ class CirclesHomeViewController: UIViewController {
                 self?.networkCircles.remove(at: index)
             }
             
-            // Update CircleManager's cached circles
-            if let index = CircleManager.shared.circles.firstIndex(where: { $0.id == circleId }) {
-                CircleManager.shared.circles.remove(at: index)
-            }
+            // Note: CircleManager caching removed - using local arrays only
             
             // Update empty state
             self?.updateEmptyState()

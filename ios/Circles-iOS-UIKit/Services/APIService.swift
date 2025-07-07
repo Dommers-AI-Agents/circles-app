@@ -10,6 +10,7 @@ enum APIError: Error, LocalizedError {
     case noInternet
     case unauthorized
     case serverError
+    case duplicateRequest
     case unknown
     
     public var errorDescription: String? {
@@ -30,6 +31,8 @@ enum APIError: Error, LocalizedError {
             return "You are not authorized to perform this action"
         case .serverError:
             return "Server error occurred"
+        case .duplicateRequest:
+            return "Duplicate request prevented"
         case .unknown:
             return "Unknown error occurred"
         }
@@ -94,6 +97,10 @@ class APIService {
     // Network status
     private var networkMonitorId = "APIService"
     
+    // Request deduplication (simple approach)
+    private var pendingGETRequests = Set<String>()
+    private var pendingRequestTimers = [String: Timer]()
+    
     private init() {
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 30
@@ -130,15 +137,15 @@ class APIService {
         // Load saved tokens from Keychain if available
         authToken = keychainService.getAuthToken()
         refreshToken = keychainService.getRefreshToken()
-        print("🔐 APIService: Initialized with auth token: \(authToken != nil)")
+        Logger.debug("APIService: Initialized with auth token: \(authToken != nil)")
         
         // Monitor network status
         NetworkMonitor.shared.addObserver(id: networkMonitorId) { isConnected in
             // If connection restored, we could potentially retry failed requests
             if isConnected {
-                print("🌐 Network connection restored")
+                Logger.info("Network connection restored")
             } else {
-                print("⚠️ Network connection lost")
+                Logger.warning("Network connection lost")
             }
         }
     }
@@ -155,7 +162,7 @@ class APIService {
     }
     
     func setAuthToken(_ token: String) {
-        print("🔐 APIService: Setting auth token")
+        Logger.debug("APIService: Setting auth token")
         self.authToken = token
         keychainService.saveAuthToken(token)
     }
@@ -171,6 +178,14 @@ class APIService {
         keychainService.clearAllTokens()
     }
     
+    // MARK: - Request Deduplication
+    
+    private func createRequestKey(endpoint: String, method: RequestMethod, body: [String: Any]?) -> String {
+        let bodyData = body?.compactMapValues { $0 } ?? [:]
+        let bodyString = bodyData.keys.sorted().map { "\($0)=\(bodyData[$0] ?? "")" }.joined(separator: "&")
+        return "\(method.rawValue):\(endpoint):\(bodyString)"
+    }
+    
     // MARK: - Request Methods
     
     func request<T: Decodable>(
@@ -182,11 +197,30 @@ class APIService {
         requiresAuth: Bool = true,
         completion: @escaping (Result<T, APIError>) -> Void
     ) {
-        // Removed verbose logging: Making request to endpoint
+        // Simple duplicate request prevention (only for GET requests)
+        if method == .get {
+            let requestKey = createRequestKey(endpoint: endpoint, method: method, body: body)
+            
+            if pendingGETRequests.contains(requestKey) {
+                Logger.debug("Preventing duplicate GET request: \(requestKey)")
+                completion(.failure(.duplicateRequest))
+                return
+            }
+            
+            pendingGETRequests.insert(requestKey)
+            
+            // Set a timer to clean up the pending request after 30 seconds
+            let timer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: false) { [weak self] _ in
+                self?.pendingGETRequests.remove(requestKey)
+                self?.pendingRequestTimers.removeValue(forKey: requestKey)
+                Logger.debug("Cleaned up stale pending request: \(requestKey)")
+            }
+            pendingRequestTimers[requestKey] = timer
+        }
         
         // Check internet connection
         guard NetworkMonitor.shared.isConnected else {
-            print("❌ APIService: No internet connection")
+            Logger.error("APIService: No internet connection")
             completion(.failure(.noInternet))
             return
         }
@@ -198,7 +232,7 @@ class APIService {
                 // Wait until rate limit resets
                 let delay = resetDate.timeIntervalSince(currentDate)
                 if isLoggingEnabled {
-                    print("⚠️ Rate limit almost exceeded. Delaying request for \(Int(delay)) seconds.")
+                    Logger.warning("Rate limit almost exceeded. Delaying request for \(Int(delay)) seconds.")
                 }
                 
                 DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [weak self] in
@@ -264,7 +298,7 @@ class APIService {
                 request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
                 // Auth token added to request
             } else {
-                print("⚠️ APIService: No auth token available for protected endpoint \(endpoint)")
+                Logger.warning("APIService: No auth token available for protected endpoint \(endpoint)")
                 completion(.failure(.unauthorized))
                 return
             }
@@ -316,6 +350,15 @@ class APIService {
                 }
                 
                 self.logError(apiError)
+                
+                // Clean up pending request tracking for GET requests
+                if method == .get {
+                    let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
+                    self.pendingGETRequests.remove(requestKey)
+                    self.pendingRequestTimers[requestKey]?.invalidate()
+                    self.pendingRequestTimers.removeValue(forKey: requestKey)
+                }
+                
                 completion(.failure(apiError))
                 return
             }
@@ -337,7 +380,7 @@ class APIService {
                 self.rateLimitReset = Date(timeIntervalSince1970: resetTimestamp)
                 
                 if self.isLoggingEnabled && remaining < 20 {
-                    print("⚠️ Rate limit warning: \(remaining) requests remaining")
+                    Logger.warning("Rate limit warning: \(remaining) requests remaining")
                 }
             }
             
@@ -399,7 +442,7 @@ class APIService {
                     let delay = resetDate.timeIntervalSince(Date())
                     
                     if self.isLoggingEnabled {
-                        print("⚠️ Rate limit exceeded. Retrying in \(Int(delay)) seconds.")
+                        Logger.warning("Rate limit exceeded. Retrying in \(Int(delay)) seconds.")
                     }
                     
                     // Retry after the rate limit resets
@@ -438,41 +481,50 @@ class APIService {
             // Parse the data
             do {
                 let result = try self.decoder.decode(T.self, from: data)
+                // Remove from pending requests if it was a GET request
+                if method == .get {
+                    let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
+                    self.pendingGETRequests.remove(requestKey)
+                    // Cancel and remove the timer
+                    self.pendingRequestTimers[requestKey]?.invalidate()
+                    self.pendingRequestTimers.removeValue(forKey: requestKey)
+                }
                 completion(.success(result))
             } catch {
-                print("🔍 =================== DECODING ERROR ===================")
-                print("🔍 ERROR: \(error)")
-                print("🔍 ERROR DESCRIPTION: \(error.localizedDescription)")
+                Logger.error("Decoding error: \(error.localizedDescription)")
                 
                 if let decodingError = error as? DecodingError {
                     switch decodingError {
                     case .keyNotFound(let key, let context):
-                        print("🔍 Missing key: '\(key.stringValue)' at path: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
-                        print("🔍 Context: \(context.debugDescription)")
+                        Logger.debug("Missing key: '\(key.stringValue)' at path: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
                     case .typeMismatch(let type, let context):
-                        print("🔍 Type mismatch for \(type) at path: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
-                        print("🔍 Context: \(context.debugDescription)")
+                        Logger.debug("Type mismatch for \(type) at path: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
                     case .valueNotFound(let type, let context):
-                        print("🔍 Value not found for \(type) at path: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
-                        print("🔍 Context: \(context.debugDescription)")
+                        Logger.debug("Value not found for \(type) at path: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
                     case .dataCorrupted(let context):
-                        print("🔍 Data corrupted at path: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
-                        print("🔍 Context: \(context.debugDescription)")
+                        Logger.debug("Data corrupted at path: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
                     @unknown default:
-                        print("🔍 Unknown decoding error")
+                        Logger.debug("Unknown decoding error")
                     }
                 }
                 
-                // Always print the raw JSON data for debugging
+                // Always log the raw JSON data for debugging
                 if let jsonString = String(data: data, encoding: .utf8) {
-                    print("🔍 RAW JSON RESPONSE:")
-                    print(jsonString)
+                    Logger.debug("RAW JSON RESPONSE: \(jsonString)")
                 } else {
-                    print("🔍 Could not convert data to string")
+                    Logger.debug("Could not convert data to string")
                 }
-                print("🔍 ===================================================")
                 
                 self.logError(APIError.decodingFailed(error))
+                
+                // Remove from pending requests if it was a GET request
+                if method == .get {
+                    let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
+                    self.pendingGETRequests.remove(requestKey)
+                    // Cancel and remove the timer
+                    self.pendingRequestTimers[requestKey]?.invalidate()
+                    self.pendingRequestTimers.removeValue(forKey: requestKey)
+                }
                 
                 completion(.failure(.decodingFailed(error)))
             }
@@ -514,45 +566,40 @@ class APIService {
     // MARK: - Logging Utilities
     
     private func logRequest(_ request: URLRequest) {
-        print("📤 REQUEST: \(request.httpMethod ?? "GET") \(request.url?.absoluteString ?? "no_url")")
+        Logger.debug("REQUEST: \(request.httpMethod ?? "GET") \(request.url?.absoluteString ?? "no_url")")
         
         if let headers = request.allHTTPHeaderFields, !headers.isEmpty {
-            print("📋 HEADERS:")
-            headers.forEach { print("  \($0.key): \($0.value)") }
+            Logger.debug("HEADERS: \(headers)")
         }
         
         if let body = request.httpBody, !body.isEmpty {
-            printJSON(from: body, prefix: "📦 BODY: ")
+            logJSON(from: body, prefix: "BODY: ")
         }
     }
     
     private func logResponse(_ response: HTTPURLResponse, data: Data?) {
-        print("📥 RESPONSE: \(response.statusCode) - \(response.url?.absoluteString ?? "no_url")")
+        let level: LogLevel = response.statusCode >= 400 ? .warning : .debug
+        Logger.log(level: level, message: "RESPONSE: \(response.statusCode) - \(response.url?.absoluteString ?? "no_url")")
         
-        if let headers = response.allHeaderFields as? [String: Any], !headers.isEmpty {
-            print("📋 HEADERS:")
-            headers.forEach { print("  \($0.key): \($0.value)") }
-        }
-        
-        if let data = data, !data.isEmpty {
-            printJSON(from: data, prefix: "📦 BODY: ")
+        if response.statusCode >= 400, let data = data, !data.isEmpty {
+            logJSON(from: data, prefix: "ERROR BODY: ")
         }
     }
     
     private func logError(_ error: APIError) {
-        print("❌ API ERROR: \(error.localizedDescription)")
+        Logger.error("API ERROR: \(error.localizedDescription)")
     }
     
-    private func printJSON(from data: Data, prefix: String = "") {
+    private func logJSON(from data: Data, prefix: String = "") {
         do {
             let json = try JSONSerialization.jsonObject(with: data)
             let prettyData = try JSONSerialization.data(withJSONObject: json, options: .prettyPrinted)
             if let prettyString = String(data: prettyData, encoding: .utf8) {
-                print("\(prefix)\(prettyString)")
+                Logger.debug("\(prefix)\(prettyString)")
             }
         } catch {
             if let string = String(data: data, encoding: .utf8) {
-                print("\(prefix)\(string)")
+                Logger.debug("\(prefix)\(string)")
             }
         }
     }

@@ -1,10 +1,9 @@
 import UIKit
 import MapKit
-import SwiftUI
 import UniformTypeIdentifiers
 import CoreLocation
 
-class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocationManagerDelegate {
+class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocationManagerDelegate, UIGestureRecognizerDelegate {
     
     // MARK: - Properties
     private var circle: Circle
@@ -142,9 +141,46 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         mapView.isScrollEnabled = true
         mapView.isPitchEnabled = true
         mapView.isRotateEnabled = true
-        mapView.showsUserLocation = true
+        
+        // Show points of interest on the map
+        mapView.showsPointsOfInterest = true
+        mapView.showsBuildings = true
+        
+        // Enable POI selection (iOS 16+)
+        if #available(iOS 16.0, *) {
+            mapView.selectableMapFeatures = [.pointsOfInterest]
+            print("✅ POI selection enabled in map view init")
+        }
         
         return mapView
+    }()
+    
+    private let expandMapButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "arrow.up.left.and.arrow.down.right"), for: .normal)
+        button.tintColor = .systemBlue
+        button.backgroundColor = .white
+        button.layer.cornerRadius = 15
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOpacity = 0.2
+        button.layer.shadowOffset = CGSize(width: 0, height: 2)
+        button.layer.shadowRadius = 4
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let zoomToMeButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "location.fill"), for: .normal)
+        button.tintColor = .systemBlue
+        button.backgroundColor = .white
+        button.layer.cornerRadius = 15
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOpacity = 0.2
+        button.layer.shadowOffset = CGSize(width: 0, height: 2)
+        button.layer.shadowRadius = 4
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
     }()
     
     private let tableView: UITableView = {
@@ -204,7 +240,8 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        // Refresh places when returning to this view
+        // Refresh places when returning to this view (e.g., after adding a new place)
+        // This ensures the list is always up to date
         fetchPlaces()
     }
     
@@ -232,6 +269,11 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     private func setupUI() {
         view.backgroundColor = Constants.Colors.background
         
+        // Add refresh control
+        let refreshControl = UIRefreshControl()
+        refreshControl.addTarget(self, action: #selector(refreshPlaces), for: .valueChanged)
+        scrollView.refreshControl = refreshControl
+        
         // Add subviews
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
@@ -251,6 +293,8 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         contentView.addSubview(placesLabel)
         contentView.addSubview(categoryFilterButton)
         contentView.addSubview(mapView)
+        contentView.addSubview(expandMapButton)
+        contentView.addSubview(zoomToMeButton)
         contentView.addSubview(tableView)
         
         view.addSubview(addPlaceButton)
@@ -334,6 +378,18 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             mapView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             mapView.heightAnchor.constraint(equalToConstant: 200),
             
+            // Expand map button
+            expandMapButton.topAnchor.constraint(equalTo: mapView.topAnchor, constant: 10),
+            expandMapButton.trailingAnchor.constraint(equalTo: mapView.trailingAnchor, constant: -10),
+            expandMapButton.widthAnchor.constraint(equalToConstant: 30),
+            expandMapButton.heightAnchor.constraint(equalToConstant: 30),
+            
+            // Zoom to me button
+            zoomToMeButton.bottomAnchor.constraint(equalTo: mapView.bottomAnchor, constant: -10),
+            zoomToMeButton.trailingAnchor.constraint(equalTo: mapView.trailingAnchor, constant: -10),
+            zoomToMeButton.widthAnchor.constraint(equalToConstant: 30),
+            zoomToMeButton.heightAnchor.constraint(equalToConstant: 30),
+            
             // Table view
             tableView.topAnchor.constraint(equalTo: mapView.bottomAnchor, constant: Constants.Spacing.large),
             tableView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
@@ -353,10 +409,8 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         // Setup button actions
         addPlaceButton.addTarget(self, action: #selector(addPlaceButtonTapped), for: .touchUpInside)
         categoryFilterButton.addTarget(self, action: #selector(categoryFilterButtonTapped), for: .touchUpInside)
-        
-        // Add tap gesture to map
-        let mapTapGesture = UITapGestureRecognizer(target: self, action: #selector(mapViewTapped))
-        mapView.addGestureRecognizer(mapTapGesture)
+        expandMapButton.addTarget(self, action: #selector(expandMapButtonTapped), for: .touchUpInside)
+        zoomToMeButton.addTarget(self, action: #selector(zoomToMeButtonTapped), for: .touchUpInside)
         
         // Setup table view
         tableView.delegate = self
@@ -366,6 +420,58 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         
         // Setup map view delegate
         mapView.delegate = self
+        
+        // Add a tap gesture recognizer to debug POI selection
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleMapTap(_:)))
+        tapGesture.delegate = self
+        mapView.addGestureRecognizer(tapGesture)
+    }
+    
+    @objc private func handleMapTap(_ gesture: UITapGestureRecognizer) {
+        let location = gesture.location(in: mapView)
+        let coordinate = mapView.convert(location, toCoordinateFrom: mapView)
+        print("🗺️ Map tapped at coordinate: \(coordinate.latitude), \(coordinate.longitude)")
+        
+        // Check if we tapped on any annotations
+        let point = gesture.location(in: mapView)
+        if let tappedViews = mapView.hitTest(point, with: nil) {
+            print("   Tapped views: \(tappedViews)")
+        }
+        
+        // On iOS < 16 or if POI selection isn't working, offer to add a place at the tapped location
+        if #available(iOS 16.0, *) {
+            // POI selection should handle this on iOS 16+
+            print("   iOS 16+ - POI selection should handle taps on POIs")
+        } else {
+            // For older iOS versions, allow adding a place at tapped location
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                guard let self = self else { return }
+                
+                // Check if any annotation was selected in the last 0.5 seconds
+                if self.mapView.selectedAnnotations.isEmpty {
+                    // No annotation selected, offer to add place at this location
+                    let alert = UIAlertController(
+                        title: "Add Place Here?",
+                        message: "Would you like to add a place at this location?",
+                        preferredStyle: .alert
+                    )
+                    
+                    alert.addAction(UIAlertAction(title: "Add Place", style: .default) { _ in
+                        let addPlaceVC = AddPlaceViewController(circleId: self.circle.id)
+                        self.navigationController?.pushViewController(addPlaceVC, animated: true)
+                        
+                        // Prefill with the tapped coordinate
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            addPlaceVC.prefillSearchWithPlace(name: "", coordinate: coordinate)
+                        }
+                    })
+                    
+                    alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+                    
+                    self.present(alert, animated: true)
+                }
+            }
+        }
     }
     
     private func configureUI() {
@@ -450,35 +556,47 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
         mapView.delegate = self
+        
+        // Ensure map is interactive
+        mapView.isUserInteractionEnabled = true
+        mapView.isScrollEnabled = true
+        mapView.isZoomEnabled = true
+        
+        // Debug: Print all gesture recognizers
+        print("🗺️ Map gesture recognizers: \(mapView.gestureRecognizers?.count ?? 0)")
+        if let gestures = mapView.gestureRecognizers {
+            for (index, gesture) in gestures.enumerated() {
+                print("  Gesture \(index): \(type(of: gesture)) - enabled: \(gesture.isEnabled)")
+            }
+        }
     }
     
     // MARK: - Data Fetching
+    @objc private func refreshPlaces() {
+        fetchPlaces()
+    }
+    
     private func fetchPlaces() {
         PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let places):
-                    // Debug logging
-                    print("🔍 CircleDetailViewController - Fetched \(places.count) places")
-                    for (index, place) in places.enumerated() {
-                        print("  Place \(index + 1): \(place.name)")
-                        print("    - ID: \(place.id)")
-                        print("    - Has photos: \(place.hasPhotos)")
-                        print("    - Photos: \(place.photos ?? [])")
-                    }
+                    Logger.info("Fetched \(places.count) places for circle: \(self?.circle.name ?? "")")
                     
                     // Places are already ordered by the backend based on the circle's places array
                     self?.places = places
                     self?.applyFilter()
                 case .failure(let error):
-                    print("❌ Error fetching places: \(error.localizedDescription)")
-                    print("❌ Full error: \(error)")
+                    Logger.error("Failed to fetch places: \(error.localizedDescription)")
                     // Don't use sample places - show empty state instead
                     self?.places = []
                     self?.filteredPlaces = []
                 }
                 
                 self?.tableView.reloadData()
+                
+                // End refresh animation
+                self?.scrollView.refreshControl?.endRefreshing()
                 
                 // Force layout update to calculate correct content size
                 DispatchQueue.main.async {
@@ -825,8 +943,9 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         mapView.removeAnnotations(mapView.annotations)
         annotationPlaceMap.removeAll()
         
-        var mapRect = MKMapRect.null
+        var coordinates: [CLLocationCoordinate2D] = []
         
+        // Add place annotations
         for place in filteredPlaces {
             if let location = place.location?.clLocation {
                 let annotation = PlaceAnnotation(place: place)
@@ -835,37 +954,72 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                 // Store the place reference
                 annotationPlaceMap[ObjectIdentifier(annotation)] = place
                 
-                // Update map rect
-                let point = MKMapPoint(location.coordinate)
-                let rect = MKMapRect(x: point.x, y: point.y, width: 0, height: 0)
-                mapRect = mapRect.union(rect)
+                // Add coordinate to array
+                coordinates.append(location.coordinate)
             }
         }
         
-        // Adjust map to show all annotations
-        if !mapRect.isNull {
-            // Calculate the current rect size
-            let rectWidth = mapRect.width
-            let rectHeight = mapRect.height
-            
-            // If the rect is very small (places are close together), expand it
-            let minSize: Double = 10000 // Minimum 10km
-            if rectWidth < minSize || rectHeight < minSize {
-                // Expand the rect to have a minimum size
-                let expandX = max(0, (minSize - rectWidth) / 2)
-                let expandY = max(0, (minSize - rectHeight) / 2)
-                mapRect = mapRect.insetBy(dx: -expandX, dy: -expandY)
+        // Include user location if available
+        if let userLocation = locationManager.location {
+            coordinates.append(userLocation.coordinate)
+            print("📍 User location added to map: \(userLocation.coordinate.latitude), \(userLocation.coordinate.longitude)")
+        } else if let userLocation = self.userLocation {
+            coordinates.append(userLocation.coordinate)
+            print("📍 Cached user location added to map: \(userLocation.coordinate.latitude), \(userLocation.coordinate.longitude)")
+        } else {
+            print("⚠️ No user location available")
+        }
+        
+        print("🗺️ Total coordinates to show: \(coordinates.count)")
+        
+        // Adjust map to show annotations
+        if !coordinates.isEmpty {
+            if coordinates.count == 1 {
+                // Only one coordinate, show it with reasonable zoom
+                let region = MKCoordinateRegion(
+                    center: coordinates[0],
+                    latitudinalMeters: 2000,
+                    longitudinalMeters: 2000
+                )
+                mapView.setRegion(region, animated: true)
+            } else {
+                // Multiple coordinates - fit them all
+                var minLat = coordinates[0].latitude
+                var maxLat = coordinates[0].latitude
+                var minLon = coordinates[0].longitude
+                var maxLon = coordinates[0].longitude
+                
+                for coordinate in coordinates {
+                    minLat = min(minLat, coordinate.latitude)
+                    maxLat = max(maxLat, coordinate.latitude)
+                    minLon = min(minLon, coordinate.longitude)
+                    maxLon = max(maxLon, coordinate.longitude)
+                }
+                
+                let centerLat = (minLat + maxLat) / 2
+                let centerLon = (minLon + maxLon) / 2
+                let center = CLLocationCoordinate2D(latitude: centerLat, longitude: centerLon)
+                
+                let latDelta = (maxLat - minLat) * 1.4 // Add 40% padding
+                let lonDelta = (maxLon - minLon) * 1.4
+                
+                // Ensure minimum visible area
+                let minDelta = 0.01
+                let span = MKCoordinateSpan(
+                    latitudeDelta: max(latDelta, minDelta),
+                    longitudeDelta: max(lonDelta, minDelta)
+                )
+                
+                let region = MKCoordinateRegion(center: center, span: span)
+                mapView.setRegion(region, animated: true)
             }
-            
-            // Reduce padding for a tighter view
-            let padding = UIEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
-            mapView.setVisibleMapRect(mapRect, edgePadding: padding, animated: true)
-        } else if let userLocation = locationManager.location {
-            // Center on user location if no places
+        } else {
+            // No places or user location, show default region
+            let defaultCenter = CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060) // NYC
             let region = MKCoordinateRegion(
-                center: userLocation.coordinate,
-                latitudinalMeters: 2000,  // Reduced from 5000 to 2000 meters
-                longitudinalMeters: 2000
+                center: defaultCenter,
+                latitudinalMeters: 5000,
+                longitudinalMeters: 5000
             )
             mapView.setRegion(region, animated: true)
         }
@@ -1093,8 +1247,23 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         navigationController?.pushViewController(addPlaceVC, animated: true)
     }
     
-    @objc private func mapViewTapped() {
+    @objc private func expandMapButtonTapped() {
         presentFullScreenMap()
+    }
+    
+    @objc private func zoomToMeButtonTapped() {
+        guard let userLocation = locationManager.location else {
+            // Request location permission if not available
+            locationManager.requestWhenInUseAuthorization()
+            return
+        }
+        
+        let region = MKCoordinateRegion(
+            center: userLocation.coordinate,
+            latitudinalMeters: 1000,
+            longitudinalMeters: 1000
+        )
+        mapView.setRegion(region, animated: true)
     }
     
     @objc private func categoryFilterButtonTapped() {
@@ -1171,6 +1340,14 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             object: nil
         )
         
+        // Observe when a new place is added to the circle
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handlePlaceAdded(_:)),
+            name: Notification.Name("PlaceAddedToCircle"),
+            object: nil
+        )
+        
         // Observe when user wants to add a POI from full-screen map
         NotificationCenter.default.addObserver(
             self,
@@ -1184,6 +1361,16 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         guard let place = notification.userInfo?["place"] as? Place else { return }
         let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
         navigationController?.pushViewController(placeDetailVC, animated: true)
+    }
+    
+    @objc private func handlePlaceAdded(_ notification: Notification) {
+        // Check if the notification is for this circle
+        guard let circleId = notification.userInfo?["circleId"] as? String,
+              circleId == self.circle.id else { return }
+        
+        // Refresh the places list
+        Logger.info("New place added to circle, refreshing list")
+        fetchPlaces()
     }
     
     @objc private func handleAddPOIToCircle(_ notification: Notification) {
@@ -2481,8 +2668,8 @@ extension CircleDetailViewController {
         
         userLocation = location
         
-        // Don't automatically center on user location - let the map show all places
-        // User can tap the my location button to zoom to their location
+        // Update map to show user location and places
+        addAnnotationsToMap()
         
         // Stop updating to save battery
         manager.stopUpdatingLocation()
@@ -2510,8 +2697,84 @@ extension CircleDetailViewController {
 }
 
 
+// MARK: - UIGestureRecognizerDelegate
+extension CircleDetailViewController {
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        // Allow our tap gesture to work alongside the map's gestures
+        return true
+    }
+}
+
 // MARK: - MKMapViewDelegate
 extension CircleDetailViewController {
+    
+    // Handle annotation selection
+    func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
+        print("🗺️ Map annotation selected: \(type(of: view.annotation))")
+        print("   Annotation: \(view.annotation?.description ?? "nil")")
+        
+        // Handle POI selection for iOS 16+
+        if #available(iOS 16.0, *) {
+            print("📱 iOS 16+ device - checking for POI")
+            if let featureAnnotation = view.annotation as? MKMapFeatureAnnotation {
+                print("✅ POI feature annotation detected")
+                print("   Feature type: \(featureAnnotation.featureType.rawValue)")
+                print("   Title: \(featureAnnotation.title ?? "nil")")
+                handlePOISelection(featureAnnotation)
+                return
+            } else {
+                print("❌ Not a MKMapFeatureAnnotation")
+            }
+        } else {
+            print("⚠️ iOS version < 16, POI selection not available")
+        }
+        
+        // For regular place annotations, navigate to place detail
+        if let placeAnnotation = view.annotation as? PlaceAnnotation {
+            print("📍 Place annotation selected: \(placeAnnotation.place.name)")
+            let placeDetailVC = PlaceDetailViewController(place: placeAnnotation.place, circle: circle)
+            navigationController?.pushViewController(placeDetailVC, animated: true)
+            // Deselect the annotation
+            mapView.deselectAnnotation(placeAnnotation, animated: true)
+        } else if view.annotation is MKUserLocation {
+            print("👤 User location selected")
+        } else {
+            print("❓ Unknown annotation type: \(type(of: view.annotation))")
+        }
+    }
+    
+    @available(iOS 16.0, *)
+    private func handlePOISelection(_ featureAnnotation: MKMapFeatureAnnotation) {
+        print("🗺️ POI Selected: \(featureAnnotation.featureType.rawValue)")
+        
+        let poiName = featureAnnotation.title ?? "Unknown Place"
+        let poiSubtitle = featureAnnotation.subtitle ?? ""
+        let coordinate = featureAnnotation.coordinate
+        
+        print("📍 POI Details:")
+        print("   Name: \(poiName)")
+        print("   Subtitle: \(poiSubtitle)")
+        print("   Coordinate: \(coordinate.latitude), \(coordinate.longitude)")
+        print("   Feature Type: \(featureAnnotation.featureType.rawValue)")
+        
+        // Navigate to AddPlaceViewController with pre-filled data
+        // DO NOT create the place yet - just pass the POI data
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            // Navigate to AddPlaceViewController with pre-filled data
+            let addPlaceVC = AddPlaceViewController(circleId: self.circle.id)
+            self.navigationController?.pushViewController(addPlaceVC, animated: true)
+            
+            // Deselect the POI annotation
+            self.mapView.deselectAnnotation(featureAnnotation, animated: true)
+            
+            // Prefill the search with the POI name and coordinate
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                addPlaceVC.prefillSearchWithPlace(name: poiName, coordinate: coordinate)
+            }
+        }
+    }
     
     func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
         // Skip user location
@@ -2548,7 +2811,9 @@ extension CircleDetailViewController {
     
     func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView, calloutAccessoryControlTapped control: UIControl) {
         guard let placeAnnotation = view.annotation as? PlaceAnnotation else { return }
-        showPlaceActionSheet(for: placeAnnotation.place)
+        // Navigate directly to place details instead of showing action sheet
+        let placeDetailVC = PlaceDetailViewController(place: placeAnnotation.place, circle: circle)
+        navigationController?.pushViewController(placeDetailVC, animated: true)
     }
     
     // Handle map region changes for better performance

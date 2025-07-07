@@ -186,6 +186,8 @@ class AppleMapsService {
                             let enrichedPhone = enrichedData.phone ?? phoneNumber
                             let enrichedWebsite = enrichedData.website ?? website
                             let enrichedHours = enrichedData.hours
+                            let enrichedRating = enrichedData.rating
+                            let enrichedUserRatingsTotal = enrichedData.userRatingsTotal
                             
                             self?.createPlaceFromEnrichedData(
                                 name: detailedName,
@@ -196,6 +198,8 @@ class AppleMapsService {
                                 phoneNumber: enrichedPhone,
                                 website: enrichedWebsite,
                                 businessHoursString: enrichedHours,
+                                rating: enrichedRating,
+                                userRatingsTotal: enrichedUserRatingsTotal,
                                 circleId: circleId,
                                 notes: notes,
                                 completion: completion
@@ -211,6 +215,8 @@ class AppleMapsService {
                                 phoneNumber: phoneNumber,
                                 website: website,
                                 businessHoursString: nil,
+                                rating: nil,
+                                userRatingsTotal: nil,
                                 circleId: circleId,
                                 notes: notes,
                                 completion: completion
@@ -227,6 +233,8 @@ class AppleMapsService {
                         phoneNumber: phoneNumber,
                         website: website,
                         businessHoursString: nil,
+                        rating: nil,
+                        userRatingsTotal: nil,
                         circleId: circleId,
                         notes: notes,
                         completion: completion
@@ -245,46 +253,34 @@ class AppleMapsService {
         phoneNumber: String?,
         website: String?,
         businessHoursString: String?,
+        rating: Double?,
+        userRatingsTotal: Int?,
         circleId: String,
         notes: String?,
         completion: @escaping (Result<Place, Error>) -> Void
     ) {
-        let place = Place(
-            id: UUID().uuidString, // Temporary ID - backend will assign real one
-            name: name,
-            description: description,
-            address: address,
-            location: GeoLocation(
-                type: "Point",
-                coordinates: [coordinate.longitude, coordinate.latitude]
-            ),
-            website: website,
-            phone: phoneNumber,
-            googlePlaceId: nil, // No Google Place ID for Apple Maps POIs
-            photos: nil,
-            category: category,
-            customCategory: nil,
-            subcategory: nil,
-            rating: nil,
-            userRatingsTotal: nil,
-            notes: businessHoursString, // Store hours as notes for now
-            privateNotes: notes,
-            publicNotes: nil,
-            tags: nil,
-            reviews: nil,
-            openingHours: nil, // Business hours will be enriched via web scraping
-            priceLevel: nil,
-            likes: [],
-            likesCount: 0,
-            circleId: circleId,
-            addedBy: AuthService.shared.getUserId() ?? "",
-            addedByUser: nil,
-            privacy: .followCirclePrivacy,
-            createdAt: Date(),
-            updatedAt: Date()
+        // Use PlaceService to create the place with proper enrichment
+        let location = GeoLocation(
+            type: "Point",
+            coordinates: [coordinate.longitude, coordinate.latitude]
         )
         
-        completion(.success(place))
+        PlaceService.shared.addPlaceFromPOI(
+            name: name,
+            address: address,
+            location: location,
+            category: category,
+            website: website,
+            phone: phoneNumber,
+            description: description,
+            circleId: circleId,
+            notes: notes,
+            googlePlaceId: nil,
+            preUploadedPhotoUrls: nil,
+            rating: rating,
+            userRatingsTotal: userRatingsTotal,
+            completion: completion
+        )
     }
     
     private func searchForPOIDetails(name: String, coordinate: CLLocationCoordinate2D, completion: @escaping (MKMapItem?) -> Void) {

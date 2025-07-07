@@ -529,21 +529,7 @@ class EditCircleViewController: UIViewController {
             return
         }
         
-        // Check if user is trying to use a duplicate name
-        if name != circle.name {  // Only check if name has changed
-            let existingCircles = CircleManager.shared.circles
-            let normalizedNewName = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            let hasDuplicate = existingCircles.contains { otherCircle in
-                // Check against other circles (not the current one)
-                otherCircle.id != circle.id &&
-                otherCircle.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalizedNewName
-            }
-            
-            if hasDuplicate {
-                presentAlert(title: "Duplicate Name", message: "You already have another circle with this name. Please choose a different name.")
-                return
-            }
-        }
+        // Note: Duplicate name check removed - backend will validate
         
         // Get form data
         let description = descriptionTextView.text?.isEmpty == false ? descriptionTextView.text : nil

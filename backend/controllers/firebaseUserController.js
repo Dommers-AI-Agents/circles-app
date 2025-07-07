@@ -22,6 +22,7 @@ exports.getUser = async (req, res, next) => {
       paramId: req.params.id,
       normalizedId: userId,
       userUid: req.user.uid,
+      originalUid: req.user.originalUid,
       isMe: req.params.id === 'me'
     });
     
@@ -32,9 +33,31 @@ exports.getUser = async (req, res, next) => {
       });
     }
     
-    const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+    // First try with the normalized ID
+    let userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+    
+    // If not found and this is a 'me' request, try original UID
+    if (!userDoc.exists && req.params.id === 'me' && req.user.originalUid && req.user.originalUid !== userId) {
+      console.log(`⚠️ User doc not found with normalized ID ${userId}, trying original ${req.user.originalUid}`);
+      userDoc = await db.collection(COLLECTIONS.USERS).doc(req.user.originalUid).get();
+    }
+    
+    // If still not found and we have an email, try that
+    if (!userDoc.exists && req.params.id === 'me' && req.user.email) {
+      console.log(`⚠️ User doc not found by ID, trying email ${req.user.email}`);
+      const usersWithEmail = await db.collection(COLLECTIONS.USERS)
+        .where('email', '==', req.user.email)
+        .limit(1)
+        .get();
+      
+      if (!usersWithEmail.empty) {
+        userDoc = usersWithEmail.docs[0];
+        console.log(`✅ Found user by email, doc ID: ${userDoc.id}`);
+      }
+    }
     
     if (!userDoc.exists) {
+      console.error(`❌ User document not found. Tried IDs: ${userId}, ${req.user.originalUid}, email: ${req.user.email}`);
       return res.status(404).json({
         success: false,
         message: 'User not found'
@@ -91,8 +114,48 @@ exports.updateUser = async (req, res, next) => {
     if (location !== undefined) updateData.location = location;
     if (profilePicture !== undefined) updateData.profilePicture = profilePicture;
 
-    const userRef = db.collection(COLLECTIONS.USERS).doc(req.user.uid);
+    console.log('🔄 Updating user profile:', {
+      userId: req.user.uid,
+      originalUid: req.user.originalUid,
+      updateData: updateData
+    });
+
+    // First check if the document exists with the normalized ID
+    let userRef = db.collection(COLLECTIONS.USERS).doc(req.user.uid);
+    let userDoc = await userRef.get();
+    
+    // If not found with normalized ID and we have an original UID, try that
+    if (!userDoc.exists && req.user.originalUid && req.user.originalUid !== req.user.uid) {
+      console.log(`⚠️ User doc not found with normalized ID ${req.user.uid}, trying original ${req.user.originalUid}`);
+      userRef = db.collection(COLLECTIONS.USERS).doc(req.user.originalUid);
+      userDoc = await userRef.get();
+    }
+    
+    // If still not found, try to find by email
+    if (!userDoc.exists && req.user.email) {
+      console.log(`⚠️ User doc not found by ID, trying email ${req.user.email}`);
+      const usersWithEmail = await db.collection(COLLECTIONS.USERS)
+        .where('email', '==', req.user.email)
+        .limit(1)
+        .get();
+      
+      if (!usersWithEmail.empty) {
+        userDoc = usersWithEmail.docs[0];
+        userRef = userDoc.ref;
+        console.log(`✅ Found user by email, doc ID: ${userDoc.id}`);
+      }
+    }
+    
+    if (!userDoc.exists) {
+      console.error(`❌ User document not found for update. Tried IDs: ${req.user.uid}, ${req.user.originalUid}, email: ${req.user.email}`);
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
     await userRef.update(updateData);
+    console.log(`✅ User profile updated successfully for doc ID: ${userDoc.id}`);
 
     // Get updated user
     const updatedUserDoc = await userRef.get();

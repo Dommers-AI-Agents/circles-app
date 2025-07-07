@@ -120,15 +120,15 @@ class SharedCircleDetailViewController: UIViewController {
     private func loadPlaces() {
         guard let circleId = circleShare?.circle?.id else { return }
         
-        Task {
-            do {
-                let fetchedPlaces = try await PlaceManager.shared.fetchPlaces(for: circleId)
-                await MainActor.run {
-                    self.places = fetchedPlaces
-                    self.tableView.reloadData()
+        PlaceService.shared.fetchPlacesByCircleId(circleId: circleId) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let fetchedPlaces):
+                    self?.places = fetchedPlaces
+                    self?.tableView.reloadData()
+                case .failure(let error):
+                    print("Error loading places: \(error)")
                 }
-            } catch {
-                print("Error loading places: \(error)")
             }
         }
     }

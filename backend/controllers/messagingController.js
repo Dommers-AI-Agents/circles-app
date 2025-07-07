@@ -538,8 +538,22 @@ const sendMessage = async (req, res) => {
       message.senderDetails = serializeDoc(senderDoc);
     }
 
-    // TODO: Send push notifications to other participants
-    // This would be implemented with FCM (Firebase Cloud Messaging)
+    // Send push notifications to other participants
+    const notificationService = require('../services/notificationService');
+    
+    // Get recipient IDs (everyone except the sender)
+    const recipientIds = conversation.participants.filter(participantId => participantId !== userId);
+    
+    // Send notification to each recipient
+    for (const recipientId of recipientIds) {
+      try {
+        await notificationService.notifyNewMessage(userId, recipientId, message);
+        console.log(`🔔 Sent message notification to user ${recipientId}`);
+      } catch (notificationError) {
+        console.error(`🔔 Failed to send notification to ${recipientId}:`, notificationError);
+        // Don't fail the whole request if notification fails
+      }
+    }
 
     res.status(201).json({
       success: true,

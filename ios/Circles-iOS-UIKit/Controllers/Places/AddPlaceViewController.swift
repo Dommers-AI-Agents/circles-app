@@ -1270,6 +1270,13 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
                                 // PlaceService.shared.updatePlace(id: place.id, publicNotes: publicNotes) { _ in }
                             }
                             
+                            // Post notification that a place was added
+                            NotificationCenter.default.post(
+                                name: Notification.Name("PlaceAddedToCircle"),
+                                object: nil,
+                                userInfo: ["circleId": self?.circleId ?? "", "place": place]
+                            )
+                            
                             self?.presentAlert(title: "Success", message: "Place added successfully") { _ in
                                 self?.navigationController?.popViewController(animated: true)
                             }
@@ -1306,6 +1313,13 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
                         switch result {
                         case .success(let place):
                             print("✅ Place created successfully with photos: \(place.photos ?? [])")
+                            // Post notification that a place was added
+                            NotificationCenter.default.post(
+                                name: Notification.Name("PlaceAddedToCircle"),
+                                object: nil,
+                                userInfo: ["circleId": self?.circleId ?? "", "place": place]
+                            )
+                            
                             self?.presentAlert(title: "Success", message: "Place added successfully") { _ in
                                 self?.navigationController?.popViewController(animated: true)
                             }
@@ -2826,6 +2840,42 @@ extension AddPlaceViewController: MKMapViewDelegate {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         self?.scrollToFormTop()
                     }
+                    
+                    // Search for Google Place to get photos
+                    let placeName = place.name
+                    if !placeName.isEmpty {
+                        print("🔍 Searching Google Places for POI: \(placeName)")
+                        GooglePlacesService.shared.searchPlaceByNameAndLocation(
+                            name: placeName,
+                            coordinate: coordinate
+                        ) { [weak self] result in
+                            switch result {
+                            case .success(let prediction):
+                                if let prediction = prediction {
+                                    print("✅ Found Google Place match for POI: \(prediction.attributedPrimaryText.string)")
+                                    // Fetch place details to get photos
+                                    GooglePlacesService.shared.fetchPlaceDetails(placeID: prediction.placeID) { detailsResult in
+                                        switch detailsResult {
+                                        case .success(let place):
+                                            let googleDetails = GooglePlaceDetails(from: place)
+                                            DispatchQueue.main.async {
+                                                // Store the Google Place details for later use
+                                                self?.selectedGooglePlaceDetails = googleDetails
+                                                // Preload and upload photos
+                                                self?.preloadAndUploadPhotosForPlace(googleDetails)
+                                            }
+                                        case .failure(let error):
+                                            print("❌ Failed to fetch Google Place details for POI: \(error)")
+                                        }
+                                    }
+                                } else {
+                                    print("⚠️ No Google Place match found for POI: \(placeName)")
+                                }
+                            case .failure(let error):
+                                print("❌ Failed to search Google Places for POI: \(error)")
+                            }
+                        }
+                    }
                 }
             case .failure(let error):
                 print("❌ Failed to convert POI to place: \(error)")
@@ -2855,6 +2905,41 @@ extension AddPlaceViewController: MKMapViewDelegate {
                     // Scroll to form
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         self?.scrollToFormTop()
+                    }
+                    
+                    // Search for Google Place to get photos even in fallback case
+                    if !poiName.isEmpty {
+                        print("🔍 Searching Google Places for POI (fallback): \(poiName)")
+                        GooglePlacesService.shared.searchPlaceByNameAndLocation(
+                            name: poiName,
+                            coordinate: coordinate
+                        ) { [weak self] result in
+                            switch result {
+                            case .success(let prediction):
+                                if let prediction = prediction {
+                                    print("✅ Found Google Place match for POI (fallback): \(prediction.attributedPrimaryText.string)")
+                                    // Fetch place details to get photos
+                                    GooglePlacesService.shared.fetchPlaceDetails(placeID: prediction.placeID) { detailsResult in
+                                        switch detailsResult {
+                                        case .success(let place):
+                                            let googleDetails = GooglePlaceDetails(from: place)
+                                            DispatchQueue.main.async {
+                                                // Store the Google Place details for later use
+                                                self?.selectedGooglePlaceDetails = googleDetails
+                                                // Preload and upload photos
+                                                self?.preloadAndUploadPhotosForPlace(googleDetails)
+                                            }
+                                        case .failure(let error):
+                                            print("❌ Failed to fetch Google Place details for POI (fallback): \(error)")
+                                        }
+                                    }
+                                } else {
+                                    print("⚠️ No Google Place match found for POI (fallback): \(poiName)")
+                                }
+                            case .failure(let error):
+                                print("❌ Failed to search Google Places for POI (fallback): \(error)")
+                            }
+                        }
                     }
                 }
             }
@@ -3290,6 +3375,15 @@ extension AddPlaceViewController: UIGestureRecognizerDelegate {
         if gestureRecognizer is UITapGestureRecognizer && gestureRecognizer.view == mapView {
             let location = touch.location(in: mapView)
             
+            // Check if tap is on a POI (iOS 16+)
+            if #available(iOS 16.0, *) {
+                // Check if any subview was hit (which could be a POI marker)
+                if let hitView = mapView.hitTest(location, with: nil), hitView != mapView {
+                    print("🚫 Tap on POI detected, allowing map to handle it")
+                    return false // Let the map handle POI selection
+                }
+            }
+            
             // Check if tap is on an annotation view
             for annotation in mapView.annotations {
                 if let annotationView = mapView.view(for: annotation) {
@@ -3363,6 +3457,142 @@ extension AddPlaceViewController: PHPickerViewControllerDelegate {
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Public Methods for Prefilling
+
+extension AddPlaceViewController {
+    /// Prefills the search bar with a place name and triggers search
+    func prefillSearchWithPlace(name: String, coordinate: CLLocationCoordinate2D? = nil) {
+        // Wait for view to load if needed
+        guard isViewLoaded else {
+            // Store for later use after view loads
+            DispatchQueue.main.async { [weak self] in
+                self?.prefillSearchWithPlace(name: name, coordinate: coordinate)
+            }
+            return
+        }
+        
+        // Set search text
+        searchBar.text = name
+        
+        // Store the coordinate for auto-selection
+        self.selectedLocation = coordinate
+        
+        // If coordinate provided, center map on it
+        if let coordinate = coordinate {
+            let region = MKCoordinateRegion(
+                center: coordinate,
+                latitudinalMeters: 1000,
+                longitudinalMeters: 1000
+            )
+            mapView.setRegion(region, animated: true)
+            
+            // Add a temporary annotation to show the location
+            let tempAnnotation = PlaceSearchAnnotation()
+            tempAnnotation.coordinate = coordinate
+            tempAnnotation.title = name
+            tempAnnotation.isTemporary = true
+            mapView.addAnnotation(tempAnnotation)
+        }
+        
+        // Trigger search after a short delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self = self else { return }
+            
+            // Perform the search
+            self.performAppleMapsSearch(name)
+            
+            // After search completes, directly trigger the search and fill form
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                // If we have a coordinate, search for the place and fill form
+                if let coordinate = coordinate, !name.isEmpty {
+                    // Create a search request for the specific place
+                    let request = MKLocalSearch.Request()
+                    request.naturalLanguageQuery = name
+                    request.region = MKCoordinateRegion(
+                        center: coordinate,
+                        latitudinalMeters: 200, // Small radius for precise search
+                        longitudinalMeters: 200
+                    )
+                    
+                    let search = MKLocalSearch(request: request)
+                    search.start { [weak self] response, error in
+                        guard let self = self else { return }
+                        
+                        if let error = error {
+                            print("❌ POI search error: \(error.localizedDescription)")
+                            // Still enable form for manual entry
+                            self.enableManualEntry()
+                            return
+                        }
+                        
+                        // Find the closest match to our POI
+                        if let mapItems = response?.mapItems {
+                            let targetLocation = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+                            let closestItem = mapItems.min(by: { item1, item2 in
+                                let dist1 = targetLocation.distance(from: CLLocation(
+                                    latitude: item1.placemark.coordinate.latitude,
+                                    longitude: item1.placemark.coordinate.longitude
+                                ))
+                                let dist2 = targetLocation.distance(from: CLLocation(
+                                    latitude: item2.placemark.coordinate.latitude,
+                                    longitude: item2.placemark.coordinate.longitude
+                                ))
+                                return dist1 < dist2
+                            })
+                            
+                            if let mapItem = closestItem {
+                                print("✅ Found POI match: \(mapItem.name ?? name)")
+                                
+                                DispatchQueue.main.async {
+                                    // Enable form and fill it
+                                    self.enableManualEntry()
+                                    self.fillFormWithMapItem(mapItem)
+                                    
+                                    // Update map to show the place
+                                    self.showBothUserAndPlace(placeCoordinate: mapItem.placemark.coordinate)
+                                    
+                                    // Add annotation for the selected place
+                                    let annotation = PlaceSearchAnnotation()
+                                    annotation.coordinate = mapItem.placemark.coordinate
+                                    annotation.title = mapItem.name ?? name
+                                    annotation.subtitle = self.formatAddress(for: mapItem.placemark)
+                                    annotation.mapItem = mapItem
+                                    
+                                    // Remove previous annotations except user location and temporary
+                                    let annotationsToRemove = self.mapView.annotations.filter { 
+                                        !($0 is MKUserLocation) && 
+                                        !(($0 as? PlaceSearchAnnotation)?.isTemporary ?? false) 
+                                    }
+                                    self.mapView.removeAnnotations(annotationsToRemove)
+                                    
+                                    self.mapView.addAnnotation(annotation)
+                                    self.annotations = [annotation]
+                                    
+                                    // Select the annotation to show callout
+                                    self.mapView.selectAnnotation(annotation, animated: true)
+                                    
+                                    // Scroll to form
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                        self.scrollToFormTop()
+                                    }
+                                }
+                            } else {
+                                print("⚠️ No matching POI found nearby")
+                                self.enableManualEntry()
+                            }
+                        }
+                    }
+                } else if !name.isEmpty {
+                    // No coordinate, just select first search result
+                    if self.searchResults.count > 0 {
+                        self.selectSearchResult(self.searchResults[0])
                     }
                 }
             }

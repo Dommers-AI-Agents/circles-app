@@ -1,12 +1,11 @@
-import SwiftUI
+import Foundation
 import Network
-import Combine
 
-class NetworkMonitor: ObservableObject {
+class NetworkMonitor {
     static let shared = NetworkMonitor()
     
-    @Published var isConnected = true
-    @Published var connectionType: ConnectionType = .unknown
+    private(set) var isConnected = true
+    private(set) var connectionType: ConnectionType = .unknown
     
     private let monitor = NWPathMonitor()
     private let queue = DispatchQueue(label: "NetworkMonitor")
@@ -66,47 +65,3 @@ enum ConnectionType {
     case unknown
 }
 
-// MARK: - Network Alert View Modifier
-struct NetworkAlertModifier: ViewModifier {
-    @ObservedObject var networkMonitor = NetworkMonitor.shared
-    @State private var showingAlert = false
-    
-    func body(content: Content) -> some View {
-        if #available(iOS 17.0, *) {
-            content
-                .onChange(of: networkMonitor.isConnected) { _, newValue in
-                    if !newValue {
-                        showingAlert = true
-                    }
-                }
-                .alert("No Internet Connection", isPresented: $showingAlert) {
-                    Button("OK") {
-                        showingAlert = false
-                    }
-                } message: {
-                    Text("Please check your internet connection and try again.")
-                }
-        } else {
-            // Fallback for iOS 16 and earlier
-            content
-                .onChange(of: networkMonitor.isConnected) { newValue in
-                    if !newValue {
-                        showingAlert = true
-                    }
-                }
-                .alert("No Internet Connection", isPresented: $showingAlert) {
-                    Button("OK") {
-                        showingAlert = false
-                    }
-                } message: {
-                    Text("Please check your internet connection and try again.")
-                }
-        }
-    }
-}
-
-extension View {
-    func networkAlert() -> some View {
-        modifier(NetworkAlertModifier())
-    }
-}

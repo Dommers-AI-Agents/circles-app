@@ -1,5 +1,4 @@
 import UIKit
-import Combine
 
 class ChatViewController: UIViewController {
     
@@ -70,7 +69,7 @@ class ChatViewController: UIViewController {
     // MARK: - Properties
     var conversation: Conversation?
     private let messagingManager = MessagingManager.shared
-    private var cancellables = Set<AnyCancellable>()
+    private var messageUpdateTimer: Timer?
     private var messages: [Message] = []
     private var keyboardHeight: CGFloat = 0
     private var messageInputBottomConstraint: NSLayoutConstraint!
@@ -98,6 +97,8 @@ class ChatViewController: UIViewController {
         super.viewWillDisappear(animated)
         markMessagesAsRead()
         removeKeyboardHandling()
+        messageUpdateTimer?.invalidate()
+        messageUpdateTimer = nil
     }
     
     // MARK: - Setup
@@ -175,16 +176,17 @@ class ChatViewController: UIViewController {
     private func setupSubscribers() {
         guard let conversationId = conversation?.id else { return }
         
-        // Subscribe to message updates
-        messagingManager.$activeMessages
-            .compactMap { $0[conversationId] }
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] messages in
-                self?.messages = messages
-                self?.tableView.reloadData()
-                self?.scrollToBottom(animated: true)
+        // Poll for message updates
+        messageUpdateTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            if let messages = self.messagingManager.activeMessages[conversationId] {
+                if messages.count != self.messages.count {
+                    self.messages = messages
+                    self.tableView.reloadData()
+                    self.scrollToBottom(animated: true)
+                }
             }
-            .store(in: &cancellables)
+        }
     }
     
     // MARK: - Data Loading
