@@ -1151,19 +1151,29 @@ exports.addExistingPlaceToCircle = async (req, res, next) => {
     
     // Create the new place
     const newPlaceRef = await db.collection(COLLECTIONS.PLACES).add(newPlaceData);
+    const newPlaceId = newPlaceRef.id; // Get the ID directly from the reference
+    
+    console.log('🆕 New place created with ID:', newPlaceId);
+    
+    // Verify the place was created successfully
+    if (!newPlaceId) {
+      throw new Error('Failed to create new place - no document ID generated');
+    }
+    
+    // Get the created place document
     const newPlaceDoc = await newPlaceRef.get();
     const newPlace = serializeDoc(newPlaceDoc);
     
-    // Update circle's places array
+    // Update circle's places array using the direct ID
     const currentPlaces = circle.places || [];
     await circleRef.update({
-      places: [...currentPlaces, newPlace._id],
+      places: [...currentPlaces, newPlaceId], // Use the ID we got from the reference
       updatedAt: new Date().toISOString()
     });
     
     // Track activity
     if (trackPlaceAdded) {
-      await trackPlaceAdded(userId, circleId, newPlace._id);
+      await trackPlaceAdded(userId, circleId, newPlaceId);
     }
     
     res.status(201).json({
