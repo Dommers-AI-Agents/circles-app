@@ -99,6 +99,7 @@ class ConversationsListViewController: UIViewController {
     private let messagingManager = MessagingManager.shared
     private var conversationUpdateTimer: Timer?
     private let cellIdentifier = "ConversationCell"
+    private var isInitialLoadComplete = false
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
@@ -111,25 +112,15 @@ class ConversationsListViewController: UIViewController {
         setupSubscribers()
         checkForNewSuggestions()
         
-        // Check if we already have auth - if so, ensure messaging is initialized
-        if AuthService.shared.getToken() != nil {
-            print("🔍 ConversationsListViewController: Token available, ensuring MessagingManager is initialized")
-            messagingManager.ensureInitialized()
-            
-            // Load conversations after a slight delay to ensure UI is ready
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                print("🔍 ConversationsListViewController: Initial load of conversations")
-                self?.loadConversations()
-            }
-        } else {
-            print("🔍 ConversationsListViewController: No token yet, waiting for auth")
-        }
+        // Don't load conversations here - let viewWillAppear handle it
+        // This prevents duplicate loading when the tab is first opened
     }
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         print("🔍 ConversationsListViewController: viewWillAppear called")
         print("🔍 ConversationsListViewController: Auth token available: \(AuthService.shared.getToken() != nil)")
+        print("🔍 ConversationsListViewController: Initial load complete: \(isInitialLoadComplete)")
         
         // Notify MessagingManager that Messages tab is active
         messagingManager.setMessagesTabActive(true)
@@ -138,11 +129,37 @@ class ConversationsListViewController: UIViewController {
         if AuthService.shared.getToken() != nil {
             print("🔍 ConversationsListViewController: Token exists, ensuring initialized and loading conversations")
             messagingManager.ensureInitialized()
+            
+            // Show loading indicator on first load
+            if !isInitialLoadComplete {
+                showLoadingIndicator()
+            }
+            
             messagingManager.loadConversations()
             messagingManager.updateUnreadCount()
+            
+            // Mark initial load as complete after a short delay
+            if !isInitialLoadComplete {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    self?.isInitialLoadComplete = true
+                    self?.hideLoadingIndicator()
+                }
+            }
         }
         
         checkForNewSuggestions()
+    }
+    
+    private func showLoadingIndicator() {
+        // Show a loading state in the table view
+        let activityIndicator = UIActivityIndicatorView(style: .medium)
+        activityIndicator.startAnimating()
+        activityIndicator.frame = CGRect(x: 0, y: 0, width: tableView.bounds.width, height: 44)
+        tableView.tableHeaderView = activityIndicator
+    }
+    
+    private func hideLoadingIndicator() {
+        tableView.tableHeaderView = nil
     }
     
     override func viewWillDisappear(_ animated: Bool) {
@@ -256,15 +273,25 @@ class ConversationsListViewController: UIViewController {
             object: nil
         )
         
-        // Poll for conversation updates
-        conversationUpdateTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+        // Start polling timer only after initial data load
+        // Using 5 second interval for better performance
+        startPollingTimer()
+    }
+    
+    private func startPollingTimer() {
+        // Cancel any existing timer
+        conversationUpdateTimer?.invalidate()
+        
+        // Poll for conversation updates every 5 seconds (reduced from 2 seconds)
+        conversationUpdateTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
-            let conversations = self.messagingManager.conversations
-            print("🔍 ConversationsListViewController: Checking conversations: \(conversations.count)")
-            self.tableView.reloadData()
-            self.updateEmptyState()
             
+            // Only update if we have conversations and not currently loading
             if !self.messagingManager.isLoadingConversations {
+                let conversations = self.messagingManager.conversations
+                print("🔍 ConversationsListViewController: Polling update - \(conversations.count) conversations")
+                self.tableView.reloadData()
+                self.updateEmptyState()
                 self.tableView.refreshControl?.endRefreshing()
             }
         }
@@ -284,7 +311,7 @@ class ConversationsListViewController: UIViewController {
     
     @objc private func refreshConversations() {
         print("🔍 ConversationsListViewController: Pull to refresh triggered")
-        messagingManager.loadConversations()
+        messagingManager.loadConversations(forceRefresh: true)
     }
     
     // MARK: - Actions
@@ -568,6 +595,9 @@ class ConversationCell: UITableViewCell {
         nameLabel.text = conversation.displayName
         messageLabel.text = conversation.lastMessage ?? "No messages yet"
         timeLabel.text = conversation.formattedLastMessageTime ?? ""
+        
+        // Log unread count for debugging
+        print("📱 ConversationCell: \(conversation.displayName) - unreadCount: \(conversation.unreadCount), hasUnread: \(conversation.hasUnreadMessages)")
         
         // Configure avatar
         if let avatarURL = conversation.displayAvatar {

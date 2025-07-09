@@ -44,20 +44,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             }
         }
         
-        // Show a loading screen initially if user is logged in
+        // Show a splash screen initially if user is logged in
         if AuthService.shared.isLoggedIn {
-            let loadingVC = UIViewController()
-            loadingVC.view.backgroundColor = Constants.Colors.background
-            let activityIndicator = UIActivityIndicatorView(style: .large)
-            activityIndicator.color = Constants.Colors.primary
-            activityIndicator.translatesAutoresizingMaskIntoConstraints = false
-            loadingVC.view.addSubview(activityIndicator)
-            NSLayoutConstraint.activate([
-                activityIndicator.centerXAnchor.constraint(equalTo: loadingVC.view.centerXAnchor),
-                activityIndicator.centerYAnchor.constraint(equalTo: loadingVC.view.centerYAnchor)
-            ])
-            activityIndicator.startAnimating()
-            window?.rootViewController = loadingVC
+            let splashVC = SplashScreenViewController()
+            window?.rootViewController = splashVC
             
             // Perform token refresh on app launch if user is logged in
             Logger.debug("User is logged in, checking token validity")
@@ -144,61 +134,84 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     
     private func updateRootViewController(isLoggedIn: Bool) {
         if isLoggedIn {
-            // First, fetch the current user to ensure profile data is available
-            // Add a timeout to prevent indefinite loading
-            var didTimeout = false
-            let timeoutWorkItem = DispatchWorkItem { [weak self] in
-                didTimeout = true
-                print("⏰ User fetch timed out, forcing logout")
-                DispatchQueue.main.async {
-                    AuthService.shared.logout()
-                }
+            // Show splash screen with preloading
+            let splashVC = SplashScreenViewController()
+            
+            // Animate transition if there's an existing view controller
+            if window?.rootViewController != nil {
+                UIView.transition(with: window!, duration: 0.3, options: .transitionCrossDissolve, animations: {
+                    self.window?.rootViewController = splashVC
+                }, completion: nil)
+            } else {
+                window?.rootViewController = splashVC
             }
             
-            // Set a 10-second timeout
-            DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: timeoutWorkItem)
-            
-            AuthService.shared.fetchCurrentUser { [weak self] result in
-                // Cancel the timeout if we got a response
-                timeoutWorkItem.cancel()
-                
-                DispatchQueue.main.async {
-                    guard let self = self, !didTimeout else { return }
-                    
+            // Start preloading all data
+            PreloadManager.shared.preloadAllData(
+                progressHandler: { progress, status in
+                    print("🚦 Progress update: \(progress) - \(status)")
+                    splashVC.updateProgress(progress, status: status)
+                },
+                completion: { [weak self] result in
+                    print("🚦 PreloadManager completion called with result: \(result)")
                     switch result {
-                    case .success:
-                        // User data loaded successfully, show main interface
-                        let mainTabController = CirclesTabBarController()
-                        
-                        // Animate transition if there's an existing view controller
-                        if self.window?.rootViewController != nil {
-                            UIView.transition(with: self.window!, duration: 0.3, options: .transitionCrossDissolve, animations: {
-                                self.window?.rootViewController = mainTabController
-                            }, completion: { _ in
-                                // Check for pending deep links after login
-                                self.handlePendingDeepLink()
-                                // Process any pending connection invites
-                                NetworkManager.shared.processPendingConnectionInvite()
-                            })
-                        } else {
-                            self.window?.rootViewController = mainTabController
-                            // Check for pending deep links after login
-                            self.handlePendingDeepLink()
-                            // Process any pending connection invites
-                            NetworkManager.shared.processPendingConnectionInvite()
+                    case .success(let preloadedData):
+                        // Data loaded successfully, show main interface
+                        print("🚦 Success - showing main interface")
+                        DispatchQueue.main.async {
+                            guard let self = self else { 
+                                print("❌ Self is nil in completion")
+                                return 
+                            }
+                            
+                            let mainTabController = CirclesTabBarController()
+                            
+                            // Pass preloaded data to the circles home view controller
+                            if let navController = mainTabController.viewControllers?[0] as? UINavigationController,
+                               let circlesVC = navController.topViewController as? CirclesHomeViewController {
+                                circlesVC.setPreloadedData(preloadedData)
+                            }
+                            
+                            // Complete splash animation and transition
+                            splashVC.completeLoading {
+                                UIView.transition(with: self.window!, duration: 0.5, options: .transitionCrossDissolve, animations: {
+                                    self.window?.rootViewController = mainTabController
+                                }, completion: { _ in
+                                    // Check for pending deep links after login
+                                    self.handlePendingDeepLink()
+                                    // Process any pending connection invites
+                                    NetworkManager.shared.processPendingConnectionInvite()
+                                })
+                            }
                         }
                         
                     case .failure(let error):
-                        // Failed to load user data, clear session and show login
-                        print("Failed to load user data on session restore: \(error)")
-                        // The AuthService will already clear the session if it's a 404, 
-                        // but we'll ensure logout is called for other errors
-                        if !(error is AuthError && error as! AuthError == .userNotFound) {
+                        // Failed to load data, show error and logout
+                        print("Failed to preload data: \(error)")
+                        
+                        // If it's a user not found error, logout immediately
+                        if error is AuthError && (error as! AuthError) == .userNotFound {
                             AuthService.shared.logout()
+                        } else {
+                            // For other errors, show an alert first
+                            DispatchQueue.main.async { [weak self] in
+                                let alert = UIAlertController(
+                                    title: "Loading Error",
+                                    message: "Unable to load your data. Please try again.",
+                                    preferredStyle: .alert
+                                )
+                                alert.addAction(UIAlertAction(title: "Retry", style: .default) { [weak self] _ in
+                                    self?.updateRootViewController(isLoggedIn: true)
+                                })
+                                alert.addAction(UIAlertAction(title: "Logout", style: .destructive) { _ in
+                                    AuthService.shared.logout()
+                                })
+                                splashVC.present(alert, animated: true)
+                            }
                         }
                     }
                 }
-            }
+            )
         } else {
             // User is not logged in, show authentication flow
             let loginVC = LoginViewController()

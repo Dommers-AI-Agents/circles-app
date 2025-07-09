@@ -23,6 +23,7 @@ class CirclesHomeViewController: UIViewController {
     private static var isCurrentlyLoading = false // Global flag to prevent concurrent loads
     private var hasStartedLoading = false // Instance flag to prevent multiple loads in the same instance
     private var loadDebounceTimer: Timer? // Debounce timer to prevent rapid successive loads
+    private var preloadedData: PreloadedData? // Store preloaded data from splash screen
     
     override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
         super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
@@ -474,10 +475,19 @@ class CirclesHomeViewController: UIViewController {
         print("   isReturningFromFullScreenMap: \(isReturningFromFullScreenMap)")
         print("   circles.count: \(circles.count)")
         print("   allPlaces.count: \(allPlaces.count)")
+        print("   preloadedData: \(preloadedData != nil)")
         
         // If returning from full screen map, skip updates
         if isReturningFromFullScreenMap {
             isReturningFromFullScreenMap = false
+            return
+        }
+        
+        // If we have preloaded data, use it instead of loading
+        if let preloadedData = preloadedData {
+            print("🟢 Using preloaded data from splash screen")
+            usePreloadedData(preloadedData)
+            self.preloadedData = nil // Clear after use
             return
         }
         
@@ -875,6 +885,50 @@ class CirclesHomeViewController: UIViewController {
     }
     
     // Navigation title tap removed since we no longer show the title
+    
+    // MARK: - Preloaded Data
+    func setPreloadedData(_ data: PreloadedData) {
+        self.preloadedData = data
+    }
+    
+    private func usePreloadedData(_ data: PreloadedData) {
+        // Set circles and places
+        self.circles = data.circles
+        self.allPlaces = data.allPlaces
+        
+        // Update cached places
+        CirclesHomeViewController.cachedPlaces = data.allPlaces
+        CirclesHomeViewController.hasLoadedInitialData = true
+        
+        // Mark that we've loaded
+        hasStartedLoading = true
+        
+        // Update UI
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            // Show map and filter UI
+            self.mapContainerView.isHidden = false
+            self.filterStackView.isHidden = false
+            self.filterContainer.isHidden = false
+            self.mapExpandButton.isHidden = false
+            
+            // Set default filter (My Places Only)
+            self.selectedConnectionId = "my_places_only"
+            self.connectionFilterButton.setTitle("My Places Only", for: .normal)
+            
+            // Apply filters and update map
+            self.updateMapPlaces()
+            
+            // Update empty state visibility
+            self.updateEmptyState()
+            
+            print("✅ Preloaded data applied successfully")
+            print("   - Circles: \(self.circles.count)")
+            print("   - Places: \(self.allPlaces.count)")
+            print("   - Filtered places: \(self.filteredPlaces.count)")
+        }
+    }
     
     // MARK: - Data Fetching
     private func performInitialDataLoad() {

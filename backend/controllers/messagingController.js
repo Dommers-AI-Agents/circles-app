@@ -42,28 +42,40 @@ const getConversations = async (req, res) => {
     // Populate participant details for each conversation
     const populatedConversations = await Promise.all(
       conversations.map(async (conversation) => {
+        // Log unreadCounts for debugging
+        if (conversation.unreadCounts && Object.keys(conversation.unreadCounts).length > 0) {
+          console.log(`📊 Conversation ${conversation.id} unreadCounts for user ${userId}:`, conversation.unreadCounts[userId] || 0);
+        }
+        
         // Clean up unreadCounts to ensure it's a flat structure
         if (conversation.unreadCounts) {
           const cleanedUnreadCounts = {};
           for (const [key, value] of Object.entries(conversation.unreadCounts)) {
-            // Only keep entries where value is a number
-            if (typeof value === 'number') {
+            // Only keep entries where value is a number and >= 0
+            if (typeof value === 'number' && value >= 0) {
               cleanedUnreadCounts[key] = value;
+            } else if (value !== undefined && value !== null) {
+              console.log(`⚠️ Removing invalid unreadCount for user ${key}:`, value);
             }
           }
           conversation.unreadCounts = cleanedUnreadCounts;
         }
         
-        // Get participant details
-        const participantIds = conversation.participants.filter(id => id !== userId);
-        const participantPromises = participantIds.map(id => 
-          db.collection(COLLECTIONS.USERS).doc(id).get()
-        );
-        
-        const participantDocs = await Promise.all(participantPromises);
-        conversation.participantDetails = participantDocs
-          .filter(doc => doc.exists)
-          .map(doc => serializeDoc(doc));
+        // Get participant details (limit to direct conversations for performance)
+        if (conversation.type === 'direct') {
+          const participantIds = conversation.participants.filter(id => id !== userId);
+          const participantPromises = participantIds.map(id => 
+            db.collection(COLLECTIONS.USERS).doc(id).get()
+          );
+          
+          const participantDocs = await Promise.all(participantPromises);
+          conversation.participantDetails = participantDocs
+            .filter(doc => doc.exists)
+            .map(doc => serializeDoc(doc));
+        } else {
+          // For group conversations, we'll fetch details on demand
+          conversation.participantDetails = [];
+        }
 
         // If the last message is a connection request sent by the current user,
         // we need to fetch the previous message to show in the conversation list
@@ -518,7 +530,10 @@ const sendMessage = async (req, res) => {
     // Update unread counts for other participants
     conversation.participants.forEach(participantId => {
       if (participantId !== userId) {
-        conversationUpdate[`unreadCounts.${participantId}`] = (conversation.unreadCounts?.[participantId] || 0) + 1;
+        const currentUnread = conversation.unreadCounts?.[participantId] || 0;
+        const newUnread = currentUnread + 1;
+        conversationUpdate[`unreadCounts.${participantId}`] = newUnread;
+        console.log(`📨 Updating unread count for ${participantId}: ${currentUnread} -> ${newUnread}`);
       }
     });
 
@@ -755,6 +770,9 @@ const markMessagesAsRead = async (req, res) => {
       const conversationRef = db.collection(COLLECTIONS.CONVERSATIONS).doc(conversationId);
       const currentUnreadCount = conversation.unreadCounts?.[userId] || 0;
       const newUnreadCount = Math.max(0, currentUnreadCount - validMessageCount);
+      
+      console.log(`✅ Marking ${validMessageCount} messages as read for user ${userId}`);
+      console.log(`📊 Updating unread count: ${currentUnreadCount} -> ${newUnreadCount}`);
       
       batch.update(conversationRef, {
         [`unreadCounts.${userId}`]: newUnreadCount,

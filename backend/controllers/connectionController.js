@@ -96,17 +96,25 @@ const getConnections = async (req, res) => {
             }
             
             // Check if user recently added a place (within last 7 days)
-            // ALWAYS calculate from recentActivity, ignore persisted hasRecentPlace value
+            // ALWAYS calculate from recentActivity array, never use persisted value
             const sevenDaysAgo = new Date();
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-            const calculatedHasRecentPlace = connection.recentActivity?.some(activity => 
+            
+            // Ensure we have recentActivity array and calculate dynamically
+            const recentActivity = connection.recentActivity || [];
+            const calculatedHasRecentPlace = recentActivity.some(activity => 
               activity.type === 'place' && 
               new Date(activity.createdAt) > sevenDaysAgo
-            ) || false;
+            );
             
-            // Add stats to connection
+            // Add stats to connection - ALWAYS override with calculated value
             connection.totalPlaces = totalPlaces;
-            connection.hasRecentPlace = calculatedHasRecentPlace; // Use calculated value, not persisted
+            connection.hasRecentPlace = calculatedHasRecentPlace; // Always use calculated value
+            
+            // Log for debugging
+            if (connection.hasRecentPlace !== calculatedHasRecentPlace) {
+              console.log(`🔧 Overriding persisted hasRecentPlace (${connection.hasRecentPlace}) with calculated value (${calculatedHasRecentPlace}) for connection ${connection.id}`);
+            }
             connection.viewCount = connection.viewCount || 0;
             
             console.log(`📊 Stats for ${connection.connectedUser.displayName}: Places=${totalPlaces}, Views=${connection.viewCount}, Recent=${calculatedHasRecentPlace}`);

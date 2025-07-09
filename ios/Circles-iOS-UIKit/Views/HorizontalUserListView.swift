@@ -219,6 +219,12 @@ extension HorizontalUserListView: UICollectionViewDelegate {
             if connection.hasNewActivity ?? false || connection.hasRecentPlace ?? false {
                 // Just call clearActivityForConnection which now handles everything
                 clearActivityForConnection(connection.id)
+                
+                // Refresh all connections after viewing to ensure UI stays in sync
+                // This fixes the issue where all dots become solid after viewing one connection
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    self?.refresh()
+                }
             }
         }
     }

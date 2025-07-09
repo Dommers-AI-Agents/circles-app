@@ -74,9 +74,10 @@ const trackPlaceAdded = async (placeId, circleId, addedByUserId) => {
       };
       
       // Update connection with new activity
+      // Don't persist hasRecentPlace - it will be calculated dynamically
       batch.update(connectionRef, {
         hasNewActivity: true,
-        hasRecentPlace: true,
+        // hasRecentPlace: true, // REMOVED - calculated dynamically in getConnections
         recentActivity: admin.firestore.FieldValue.arrayUnion(activity),
         updatedAt: new Date().toISOString()
       });
@@ -139,10 +140,10 @@ const clearActivityNotification = async (userId, connectedUserId) => {
       const connectionRef = connectionSnapshot.docs[0].ref;
       
       // Clear activity indicators but keep activity history
-      // Only clear the flags, not the actual activity data
+      // Only clear hasNewActivity - hasRecentPlace is calculated dynamically
       await connectionRef.update({
         hasNewActivity: false,
-        hasRecentPlace: false, // Clear the flag but keep recentActivity for history
+        // hasRecentPlace is not persisted anymore - calculated from recentActivity
         // Don't clear recentActivity array - we need it for proper calculation
         updatedAt: new Date().toISOString()
       });

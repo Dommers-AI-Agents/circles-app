@@ -15,6 +15,11 @@ class MessagingManager {
     private var messagePollingTimer: Timer?
     private var isMessagesTabActive = false
     
+    // Cache properties
+    private var conversationsCache: [Conversation]?
+    private var conversationsCacheTime: Date?
+    private let cacheValidityDuration: TimeInterval = 30 // 30 seconds cache
+    
     private init() {
         setupAuthListener()
     }
@@ -62,6 +67,8 @@ class MessagingManager {
         conversations = []
         activeMessages = [:]
         unreadCount = 0
+        conversationsCache = nil
+        conversationsCacheTime = nil
     }
     
     // MARK: - Tab Management
@@ -138,14 +145,24 @@ class MessagingManager {
     
     // MARK: - Conversations
     
-    func loadConversations() {
-        // print("🔍 MessagingManager: loadConversations called")
+    func loadConversations(forceRefresh: Bool = false) {
+        // print("🔍 MessagingManager: loadConversations called (forceRefresh: \(forceRefresh))")
         // print("🔍 MessagingManager: Has auth token = \(AuthService.shared.getToken() != nil)")
         
         // Skip auth check if we have a token - this is a workaround for auth state detection issues
         guard AuthService.shared.getToken() != nil else {
             // print("⚠️ MessagingManager: No auth token, skipping conversation load")
             return
+        }
+        
+        // Check cache validity unless force refresh is requested
+        if !forceRefresh, let cachedConversations = conversationsCache, let cacheTime = conversationsCacheTime {
+            let cacheAge = Date().timeIntervalSince(cacheTime)
+            if cacheAge < cacheValidityDuration {
+                print("🔍 MessagingManager: Using cached conversations (age: \(Int(cacheAge))s)")
+                self.conversations = cachedConversations
+                return
+            }
         }
         
         // Don't load if already loading
@@ -163,12 +180,18 @@ class MessagingManager {
                 switch result {
                 case .success(let conversations):
                     // print("🔍 MessagingManager: Fetched \(conversations.count) conversations successfully")
-                    self?.conversations = conversations.sorted { conv1, conv2 in
+                    let sortedConversations = conversations.sorted { conv1, conv2 in
                         // Sort by last message time, most recent first
                         let time1 = conv1.lastMessageTime ?? conv1.createdAt
                         let time2 = conv2.lastMessageTime ?? conv2.createdAt
                         return time1 > time2
                     }
+                    
+                    // Update cache
+                    self?.conversationsCache = sortedConversations
+                    self?.conversationsCacheTime = Date()
+                    
+                    self?.conversations = sortedConversations
                 case .failure(let error):
                     // print("⚠️ MessagingManager: Failed to fetch conversations: \(error.localizedDescription)")
                     self?.error = error.localizedDescription
