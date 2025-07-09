@@ -108,6 +108,12 @@ class NetworkManager {
                         name: .pendingConnectionsCountChanged,
                         object: nil
                     )
+                    
+                    // Post notification for all connections loaded
+                    NotificationCenter.default.post(
+                        name: .connectionsLoaded,
+                        object: nil
+                    )
                 case .failure(let error):
                     print("❌ NetworkManager: Failed to load connections: \(error)")
                     self?.error = error.localizedDescription

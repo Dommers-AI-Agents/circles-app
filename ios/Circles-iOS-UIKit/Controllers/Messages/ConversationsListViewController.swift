@@ -131,6 +131,9 @@ class ConversationsListViewController: UIViewController {
         print("🔍 ConversationsListViewController: viewWillAppear called")
         print("🔍 ConversationsListViewController: Auth token available: \(AuthService.shared.getToken() != nil)")
         
+        // Notify MessagingManager that Messages tab is active
+        messagingManager.setMessagesTabActive(true)
+        
         // Always load conversations if we have a token
         if AuthService.shared.getToken() != nil {
             print("🔍 ConversationsListViewController: Token exists, ensuring initialized and loading conversations")
@@ -146,6 +149,14 @@ class ConversationsListViewController: UIViewController {
         super.viewWillDisappear(animated)
         conversationUpdateTimer?.invalidate()
         conversationUpdateTimer = nil
+        
+        // Notify MessagingManager that Messages tab is no longer active
+        messagingManager.setMessagesTabActive(false)
+    }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        conversationUpdateTimer?.invalidate()
     }
     
     // MARK: - Setup
@@ -237,6 +248,14 @@ class ConversationsListViewController: UIViewController {
     }
     
     private func setupSubscribers() {
+        // Listen for new messages notification
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleNewMessages),
+            name: Notification.Name("NewMessagesReceived"),
+            object: nil
+        )
+        
         // Poll for conversation updates
         conversationUpdateTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
@@ -249,6 +268,11 @@ class ConversationsListViewController: UIViewController {
                 self.tableView.refreshControl?.endRefreshing()
             }
         }
+    }
+    
+    @objc private func handleNewMessages() {
+        // Reload conversations when new messages arrive
+        messagingManager.loadConversations()
     }
     
     // MARK: - Data Loading

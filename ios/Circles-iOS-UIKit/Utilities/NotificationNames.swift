@@ -4,6 +4,7 @@ import Foundation
 extension Notification.Name {
     // Network notifications
     static let pendingConnectionsCountChanged = Notification.Name("PendingConnectionsCountChanged")
+    static let connectionsLoaded = Notification.Name("ConnectionsLoaded")
     
     // Message notifications
     static let unreadMessagesCountChanged = Notification.Name("UnreadMessagesCountChanged")

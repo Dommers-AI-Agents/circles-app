@@ -257,7 +257,12 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
         
         // Add places count label
         view.addSubview(placesCountLabel)
-        placesCountLabel.text = "\(places.count) places"
+        // Show place count if we already have places, otherwise show loading
+        if places.isEmpty {
+            placesCountLabel.text = "Loading..."
+        } else {
+            placesCountLabel.text = "\(places.count) places"
+        }
         
         // Only add category filter button if NOT in allPlaces mode (to avoid redundancy)
         if viewMode != .allPlaces {

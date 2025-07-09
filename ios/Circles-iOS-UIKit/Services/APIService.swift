@@ -209,8 +209,8 @@ class APIService {
             
             pendingGETRequests.insert(requestKey)
             
-            // Set a timer to clean up the pending request after 5 seconds
-            let timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
+            // Set a timer to clean up the pending request after 1 second
+            let timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
                 self?.pendingGETRequests.remove(requestKey)
                 self?.pendingRequestTimers.removeValue(forKey: requestKey)
                 Logger.debug("Cleaned up stale pending request: \(requestKey)")
@@ -366,6 +366,15 @@ class APIService {
             // Validate HTTP response
             guard let httpResponse = response as? HTTPURLResponse else {
                 self.logError(APIError.invalidResponse)
+                
+                // Clean up pending request tracking for GET requests
+                if method == .get {
+                    let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
+                    self.pendingGETRequests.remove(requestKey)
+                    self.pendingRequestTimers[requestKey]?.invalidate()
+                    self.pendingRequestTimers.removeValue(forKey: requestKey)
+                }
+                
                 completion(.failure(.invalidResponse))
                 return
             }
@@ -434,6 +443,15 @@ class APIService {
                 if let data = data, let errorString = String(data: data, encoding: .utf8) {
                     Logger.error("HTTP \(httpResponse.statusCode) Error Response: \(errorString)")
                 }
+                
+                // Clean up pending request tracking for GET requests
+                if method == .get {
+                    let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
+                    self.pendingGETRequests.remove(requestKey)
+                    self.pendingRequestTimers[requestKey]?.invalidate()
+                    self.pendingRequestTimers.removeValue(forKey: requestKey)
+                }
+                
                 completion(.failure(.httpError(httpResponse.statusCode, data)))
                 return
                 
@@ -472,6 +490,15 @@ class APIService {
                 if let data = data, let errorString = String(data: data, encoding: .utf8) {
                     Logger.error("HTTP \(httpResponse.statusCode) Server Error: \(errorString)")
                 }
+                
+                // Clean up pending request tracking for GET requests
+                if method == .get {
+                    let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
+                    self.pendingGETRequests.remove(requestKey)
+                    self.pendingRequestTimers[requestKey]?.invalidate()
+                    self.pendingRequestTimers.removeValue(forKey: requestKey)
+                }
+                
                 completion(.failure(.serverError))
                 return
                 
@@ -480,6 +507,15 @@ class APIService {
                 if let data = data, let errorString = String(data: data, encoding: .utf8) {
                     Logger.error("HTTP \(httpResponse.statusCode) Unexpected Error: \(errorString)")
                 }
+                
+                // Clean up pending request tracking for GET requests
+                if method == .get {
+                    let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
+                    self.pendingGETRequests.remove(requestKey)
+                    self.pendingRequestTimers[requestKey]?.invalidate()
+                    self.pendingRequestTimers.removeValue(forKey: requestKey)
+                }
+                
                 completion(.failure(.httpError(httpResponse.statusCode, data)))
                 return
             }

@@ -1,5 +1,56 @@
 import UIKit
 
+// MARK: - StatView
+class StatView: UIView {
+    private let numberLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
+        label.textColor = Constants.Colors.label
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let titleLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 14)
+        label.textColor = Constants.Colors.label
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupView()
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    private func setupView() {
+        addSubview(numberLabel)
+        addSubview(titleLabel)
+        
+        NSLayoutConstraint.activate([
+            numberLabel.topAnchor.constraint(equalTo: topAnchor),
+            numberLabel.leadingAnchor.constraint(equalTo: leadingAnchor),
+            numberLabel.trailingAnchor.constraint(equalTo: trailingAnchor),
+            
+            titleLabel.topAnchor.constraint(equalTo: numberLabel.bottomAnchor, constant: 2),
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor),
+            titleLabel.trailingAnchor.constraint(equalTo: trailingAnchor),
+            titleLabel.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+    }
+    
+    func configure(number: String, title: String) {
+        numberLabel.text = number
+        titleLabel.text = title
+    }
+}
+
 class ProfileViewController: UIViewController {
     
     // MARK: - Properties
@@ -10,6 +61,7 @@ class ProfileViewController: UIViewController {
     private let scrollView: UIScrollView = {
         let scrollView = UIScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.showsVerticalScrollIndicator = false
         return scrollView
     }()
     
@@ -19,9 +71,9 @@ class ProfileViewController: UIViewController {
         return view
     }()
     
+    // Profile Header Section
     private let profileHeaderView: UIView = {
         let view = UIView()
-        view.backgroundColor = Constants.Colors.secondaryBackground
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -31,152 +83,112 @@ class ProfileViewController: UIViewController {
         imageView.contentMode = .scaleAspectFill
         imageView.clipsToBounds = true
         imageView.backgroundColor = Constants.Colors.tertiaryBackground
-        imageView.layer.cornerRadius = 50
-        imageView.layer.borderWidth = 3
-        imageView.layer.borderColor = Constants.Colors.background.cgColor
+        imageView.layer.cornerRadius = 45
+        imageView.layer.borderWidth = 1
+        imageView.layer.borderColor = UIColor.separator.cgColor
         imageView.translatesAutoresizingMaskIntoConstraints = false
         return imageView
     }()
     
-    private let displayNameLabel: UILabel = {
+    // Username at top
+    private let usernameLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.xxlarge, weight: .bold)
+        label.font = UIFont.systemFont(ofSize: 20, weight: .semibold)
         label.textColor = Constants.Colors.label
-        label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
     
+    // Stats container
+    private let statsContainer: UIView = {
+        let view = UIView()
+        view.backgroundColor = .clear
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    // Individual stat views
+    private let circlesStatView: StatView = {
+        let view = StatView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let placesStatView: StatView = {
+        let view = StatView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let connectionsStatView: StatView = {
+        let view = StatView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    // Bio section
     private let fullNameLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
-        label.textColor = Constants.Colors.secondaryLabel
-        label.textAlignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let emailLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
-        label.textColor = Constants.Colors.secondaryLabel
-        label.textAlignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let locationLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
-        label.textColor = Constants.Colors.secondaryLabel
-        label.textAlignment = .center
+        label.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
+        label.textColor = Constants.Colors.label
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
     
     private let bioLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
+        label.font = UIFont.systemFont(ofSize: 14)
         label.textColor = Constants.Colors.label
-        label.textAlignment = .center
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
     
+    // Buttons container
+    private let buttonsContainer: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
     private let editProfileButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setTitle("Edit Profile", for: .normal)
-        button.setTitleColor(Constants.Colors.primary, for: .normal)
-        button.layer.cornerRadius = 8
+        button.setTitle("Edit profile", for: .normal)
+        button.setTitleColor(Constants.Colors.label, for: .normal)
+        button.backgroundColor = .clear
+        button.layer.cornerRadius = 6
         button.layer.borderWidth = 1
-        button.layer.borderColor = Constants.Colors.primary.cgColor
-        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
+        button.layer.borderColor = UIColor.separator.cgColor
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
     
-    private let statsView: UIView = {
-        let view = UIView()
-        view.backgroundColor = Constants.Colors.secondaryBackground
-        view.layer.cornerRadius = 12
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
+    private let shareProfileButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Share profile", for: .normal)
+        button.setTitleColor(Constants.Colors.label, for: .normal)
+        button.backgroundColor = .clear
+        button.layer.cornerRadius = 6
+        button.layer.borderWidth = 1
+        button.layer.borderColor = UIColor.separator.cgColor
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
     }()
     
-    private let circlesLabel: UILabel = {
-        let label = UILabel()
-        label.text = "3"
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.xlarge, weight: .bold)
-        label.textColor = Constants.Colors.label
-        label.textAlignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
+    private let suggestedButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "person.badge.plus"), for: .normal)
+        button.tintColor = Constants.Colors.label
+        button.backgroundColor = .clear
+        button.layer.cornerRadius = 6
+        button.layer.borderWidth = 1
+        button.layer.borderColor = UIColor.separator.cgColor
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
     }()
     
-    private let circlesTitleLabel: UILabel = {
-        let label = UILabel()
-        label.text = "Circles"
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        label.textColor = Constants.Colors.secondaryLabel
-        label.textAlignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let placesLabel: UILabel = {
-        let label = UILabel()
-        label.text = "12"
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.xlarge, weight: .bold)
-        label.textColor = Constants.Colors.label
-        label.textAlignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let placesTitleLabel: UILabel = {
-        let label = UILabel()
-        label.text = "Places"
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        label.textColor = Constants.Colors.secondaryLabel
-        label.textAlignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let friendsLabel: UILabel = {
-        let label = UILabel()
-        label.text = "42"
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.xlarge, weight: .bold)
-        label.textColor = Constants.Colors.label
-        label.textAlignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let friendsTitleLabel: UILabel = {
-        let label = UILabel()
-        label.text = "Friends"
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        label.textColor = Constants.Colors.secondaryLabel
-        label.textAlignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let divider1View: UIView = {
-        let view = UIView()
-        view.backgroundColor = Constants.Colors.separator
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
-    
-    private let divider2View: UIView = {
-        let view = UIView()
-        view.backgroundColor = Constants.Colors.separator
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
     
     private let logoutButton: UIButton = {
         let button = UIButton(type: .system)
@@ -196,6 +208,14 @@ class ProfileViewController: UIViewController {
         return label
     }()
     
+    // Separator line
+    private let separatorLine: UIView = {
+        let view = UIView()
+        view.backgroundColor = .separator
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
     // Circles list section
     private let circlesHeaderView: UIView = {
         let view = UIView()
@@ -206,7 +226,7 @@ class ProfileViewController: UIViewController {
     
     private let circlesHeaderLabel: UILabel = {
         let label = UILabel()
-        label.text = "My Circles"
+        label.text = "" // No text for Instagram style
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.xlarge, weight: .bold)
         label.textColor = Constants.Colors.label
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -215,8 +235,14 @@ class ProfileViewController: UIViewController {
     
     private let addCircleButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "plus.circle.fill"), for: .normal)
-        button.tintColor = Constants.Colors.primary
+        button.setImage(UIImage(systemName: "plus"), for: .normal)
+        button.tintColor = .white
+        button.backgroundColor = Constants.Colors.primary
+        button.layer.cornerRadius = 25
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOffset = CGSize(width: 0, height: 2)
+        button.layer.shadowRadius = 4
+        button.layer.shadowOpacity = 0.3
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
@@ -224,9 +250,9 @@ class ProfileViewController: UIViewController {
     private let circlesCollectionView: UICollectionView = {
         let layout = UICollectionViewFlowLayout()
         layout.scrollDirection = .vertical
-        layout.minimumInteritemSpacing = Constants.Spacing.medium
-        layout.minimumLineSpacing = Constants.Spacing.medium
-        layout.sectionInset = UIEdgeInsets(top: 0, left: Constants.Spacing.medium, bottom: Constants.Spacing.medium, right: Constants.Spacing.medium)
+        layout.minimumInteritemSpacing = 1
+        layout.minimumLineSpacing = 1
+        layout.sectionInset = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
         
         let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
         collectionView.backgroundColor = Constants.Colors.background
@@ -258,6 +284,15 @@ class ProfileViewController: UIViewController {
         setupNotificationObservers()
     }
     
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        
+        // Refresh stats when returning to profile page
+        if let userId = self.user?.id {
+            fetchUserStats(userId: userId)
+        }
+    }
+    
     deinit {
         NotificationCenter.default.removeObserver(self)
     }
@@ -273,8 +308,10 @@ class ProfileViewController: UIViewController {
     
     private func updateAppearance() {
         // Update border colors that don't automatically adapt
-        profileImageView.layer.borderColor = Constants.Colors.background.cgColor
-        editProfileButton.layer.borderColor = Constants.Colors.primary.cgColor
+        profileImageView.layer.borderColor = UIColor.separator.cgColor
+        editProfileButton.layer.borderColor = UIColor.separator.cgColor
+        shareProfileButton.layer.borderColor = UIColor.separator.cgColor
+        suggestedButton.layer.borderColor = UIColor.separator.cgColor
     }
     
     // MARK: - UI Setup
@@ -291,30 +328,27 @@ class ProfileViewController: UIViewController {
         scrollView.addSubview(contentView)
         
         contentView.addSubview(profileHeaderView)
+        profileHeaderView.addSubview(usernameLabel)
         profileHeaderView.addSubview(profileImageView)
-        profileHeaderView.addSubview(displayNameLabel)
-        profileHeaderView.addSubview(fullNameLabel)
-        profileHeaderView.addSubview(emailLabel)
-        profileHeaderView.addSubview(locationLabel)
+        profileHeaderView.addSubview(statsContainer)
+        statsContainer.addSubview(circlesStatView)
+        statsContainer.addSubview(placesStatView)
+        statsContainer.addSubview(connectionsStatView)
         profileHeaderView.addSubview(bioLabel)
-        profileHeaderView.addSubview(editProfileButton)
+        profileHeaderView.addSubview(buttonsContainer)
+        buttonsContainer.addSubview(editProfileButton)
+        buttonsContainer.addSubview(shareProfileButton)
+        buttonsContainer.addSubview(suggestedButton)
         
-        contentView.addSubview(statsView)
-        statsView.addSubview(circlesLabel)
-        statsView.addSubview(circlesTitleLabel)
-        statsView.addSubview(placesLabel)
-        statsView.addSubview(placesTitleLabel)
-        statsView.addSubview(friendsLabel)
-        statsView.addSubview(friendsTitleLabel)
-        statsView.addSubview(divider1View)
-        statsView.addSubview(divider2View)
-        
+        contentView.addSubview(separatorLine)
         contentView.addSubview(circlesHeaderView)
         circlesHeaderView.addSubview(circlesHeaderLabel)
-        circlesHeaderView.addSubview(addCircleButton)
         contentView.addSubview(circlesCollectionView)
         contentView.addSubview(logoutButton)
         contentView.addSubview(versionLabel)
+        
+        // Add floating add button last so it's on top
+        view.addSubview(addCircleButton)
         
         // Layout constraints
         NSLayoutConstraint.activate([
@@ -333,99 +367,95 @@ class ProfileViewController: UIViewController {
             
             // Profile header view
             profileHeaderView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Constants.Spacing.medium),
-            profileHeaderView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
-            profileHeaderView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+            profileHeaderView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            profileHeaderView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             
-            // Profile image view
-            profileImageView.topAnchor.constraint(equalTo: profileHeaderView.topAnchor, constant: Constants.Spacing.large),
-            profileImageView.centerXAnchor.constraint(equalTo: profileHeaderView.centerXAnchor),
-            profileImageView.widthAnchor.constraint(equalToConstant: 100),
-            profileImageView.heightAnchor.constraint(equalToConstant: 100),
+            // Username at top
+            usernameLabel.topAnchor.constraint(equalTo: profileHeaderView.topAnchor, constant: Constants.Spacing.medium),
+            usernameLabel.leadingAnchor.constraint(equalTo: profileHeaderView.leadingAnchor, constant: Constants.Spacing.medium),
+            usernameLabel.trailingAnchor.constraint(equalTo: profileHeaderView.trailingAnchor, constant: -Constants.Spacing.medium),
             
-            // Display name label
-            displayNameLabel.topAnchor.constraint(equalTo: profileImageView.bottomAnchor, constant: Constants.Spacing.medium),
-            displayNameLabel.leadingAnchor.constraint(equalTo: profileHeaderView.leadingAnchor, constant: Constants.Spacing.medium),
-            displayNameLabel.trailingAnchor.constraint(equalTo: profileHeaderView.trailingAnchor, constant: -Constants.Spacing.medium),
+            // Profile image view (Instagram style - smaller, on the left)
+            profileImageView.topAnchor.constraint(equalTo: usernameLabel.bottomAnchor, constant: Constants.Spacing.medium),
+            profileImageView.leadingAnchor.constraint(equalTo: profileHeaderView.leadingAnchor, constant: Constants.Spacing.medium),
+            profileImageView.widthAnchor.constraint(equalToConstant: 90),
+            profileImageView.heightAnchor.constraint(equalToConstant: 90),
             
-            // Full name label
-            fullNameLabel.topAnchor.constraint(equalTo: displayNameLabel.bottomAnchor, constant: Constants.Spacing.tiny),
-            fullNameLabel.leadingAnchor.constraint(equalTo: profileHeaderView.leadingAnchor, constant: Constants.Spacing.medium),
-            fullNameLabel.trailingAnchor.constraint(equalTo: profileHeaderView.trailingAnchor, constant: -Constants.Spacing.medium),
+            // Stats container (to the right of profile image)
+            statsContainer.centerYAnchor.constraint(equalTo: profileImageView.centerYAnchor),
+            statsContainer.leadingAnchor.constraint(equalTo: profileImageView.trailingAnchor, constant: Constants.Spacing.large),
+            statsContainer.trailingAnchor.constraint(equalTo: profileHeaderView.trailingAnchor, constant: -Constants.Spacing.medium),
+            statsContainer.heightAnchor.constraint(equalToConstant: 60),
             
-            // Email label
-            emailLabel.topAnchor.constraint(equalTo: fullNameLabel.bottomAnchor, constant: Constants.Spacing.small),
-            emailLabel.leadingAnchor.constraint(equalTo: profileHeaderView.leadingAnchor, constant: Constants.Spacing.medium),
-            emailLabel.trailingAnchor.constraint(equalTo: profileHeaderView.trailingAnchor, constant: -Constants.Spacing.medium),
+            // Stats views (evenly distributed)
+            circlesStatView.leadingAnchor.constraint(equalTo: statsContainer.leadingAnchor),
+            circlesStatView.topAnchor.constraint(equalTo: statsContainer.topAnchor),
+            circlesStatView.bottomAnchor.constraint(equalTo: statsContainer.bottomAnchor),
+            circlesStatView.widthAnchor.constraint(equalTo: statsContainer.widthAnchor, multiplier: 0.33),
             
-            // Location label
-            locationLabel.topAnchor.constraint(equalTo: emailLabel.bottomAnchor, constant: Constants.Spacing.small),
-            locationLabel.leadingAnchor.constraint(equalTo: profileHeaderView.leadingAnchor, constant: Constants.Spacing.medium),
-            locationLabel.trailingAnchor.constraint(equalTo: profileHeaderView.trailingAnchor, constant: -Constants.Spacing.medium),
+            placesStatView.centerXAnchor.constraint(equalTo: statsContainer.centerXAnchor),
+            placesStatView.topAnchor.constraint(equalTo: statsContainer.topAnchor),
+            placesStatView.bottomAnchor.constraint(equalTo: statsContainer.bottomAnchor),
+            placesStatView.widthAnchor.constraint(equalTo: statsContainer.widthAnchor, multiplier: 0.33),
+            
+            connectionsStatView.trailingAnchor.constraint(equalTo: statsContainer.trailingAnchor),
+            connectionsStatView.topAnchor.constraint(equalTo: statsContainer.topAnchor),
+            connectionsStatView.bottomAnchor.constraint(equalTo: statsContainer.bottomAnchor),
+            connectionsStatView.widthAnchor.constraint(equalTo: statsContainer.widthAnchor, multiplier: 0.33),
             
             // Bio label
-            bioLabel.topAnchor.constraint(equalTo: locationLabel.bottomAnchor, constant: Constants.Spacing.medium),
+            bioLabel.topAnchor.constraint(equalTo: profileImageView.bottomAnchor, constant: Constants.Spacing.medium),
             bioLabel.leadingAnchor.constraint(equalTo: profileHeaderView.leadingAnchor, constant: Constants.Spacing.medium),
             bioLabel.trailingAnchor.constraint(equalTo: profileHeaderView.trailingAnchor, constant: -Constants.Spacing.medium),
             
+            // Buttons container
+            buttonsContainer.topAnchor.constraint(equalTo: bioLabel.bottomAnchor, constant: Constants.Spacing.medium),
+            buttonsContainer.leadingAnchor.constraint(equalTo: profileHeaderView.leadingAnchor, constant: Constants.Spacing.medium),
+            buttonsContainer.trailingAnchor.constraint(equalTo: profileHeaderView.trailingAnchor, constant: -Constants.Spacing.medium),
+            buttonsContainer.heightAnchor.constraint(equalToConstant: 30),
+            buttonsContainer.bottomAnchor.constraint(equalTo: profileHeaderView.bottomAnchor, constant: -Constants.Spacing.medium),
+            
             // Edit profile button
-            editProfileButton.topAnchor.constraint(equalTo: bioLabel.bottomAnchor, constant: Constants.Spacing.large),
-            editProfileButton.centerXAnchor.constraint(equalTo: profileHeaderView.centerXAnchor),
-            editProfileButton.widthAnchor.constraint(equalToConstant: 150),
-            editProfileButton.heightAnchor.constraint(equalToConstant: 40),
-            editProfileButton.bottomAnchor.constraint(equalTo: profileHeaderView.bottomAnchor, constant: -Constants.Spacing.large),
+            editProfileButton.leadingAnchor.constraint(equalTo: buttonsContainer.leadingAnchor),
+            editProfileButton.topAnchor.constraint(equalTo: buttonsContainer.topAnchor),
+            editProfileButton.bottomAnchor.constraint(equalTo: buttonsContainer.bottomAnchor),
+            editProfileButton.widthAnchor.constraint(equalTo: buttonsContainer.widthAnchor, multiplier: 0.44),
             
-            // Stats view
-            statsView.topAnchor.constraint(equalTo: profileHeaderView.bottomAnchor, constant: Constants.Spacing.large),
-            statsView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
-            statsView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
-            statsView.heightAnchor.constraint(equalToConstant: 100),
+            // Share profile button
+            shareProfileButton.leadingAnchor.constraint(equalTo: editProfileButton.trailingAnchor, constant: 6),
+            shareProfileButton.topAnchor.constraint(equalTo: buttonsContainer.topAnchor),
+            shareProfileButton.bottomAnchor.constraint(equalTo: buttonsContainer.bottomAnchor),
+            shareProfileButton.widthAnchor.constraint(equalTo: buttonsContainer.widthAnchor, multiplier: 0.44),
             
-            // Circles label
-            circlesLabel.topAnchor.constraint(equalTo: statsView.topAnchor, constant: Constants.Spacing.medium),
-            // Using fractional multipliers instead of bounds which aren't available yet
+            // Suggested button
+            suggestedButton.trailingAnchor.constraint(equalTo: buttonsContainer.trailingAnchor),
+            suggestedButton.topAnchor.constraint(equalTo: buttonsContainer.topAnchor),
+            suggestedButton.bottomAnchor.constraint(equalTo: buttonsContainer.bottomAnchor),
+            suggestedButton.widthAnchor.constraint(equalToConstant: 30),
             
-            // Divider 1
-            divider1View.topAnchor.constraint(equalTo: statsView.topAnchor, constant: Constants.Spacing.medium),
-            divider1View.centerXAnchor.constraint(equalTo: statsView.centerXAnchor),
-            divider1View.widthAnchor.constraint(equalToConstant: 1),
-            divider1View.bottomAnchor.constraint(equalTo: statsView.bottomAnchor, constant: -Constants.Spacing.medium),
-            
-            // Places label
-            placesLabel.topAnchor.constraint(equalTo: statsView.topAnchor, constant: Constants.Spacing.medium),
-            placesLabel.centerXAnchor.constraint(equalTo: statsView.centerXAnchor),
-            
-            // Places title label
-            placesTitleLabel.topAnchor.constraint(equalTo: placesLabel.bottomAnchor, constant: Constants.Spacing.tiny),
-            placesTitleLabel.centerXAnchor.constraint(equalTo: placesLabel.centerXAnchor),
-            
-            // Divider 2
-            divider2View.topAnchor.constraint(equalTo: statsView.topAnchor, constant: Constants.Spacing.medium),
-            divider2View.widthAnchor.constraint(equalToConstant: 1),
-            divider2View.bottomAnchor.constraint(equalTo: statsView.bottomAnchor, constant: -Constants.Spacing.medium),
-            
-            // Friends label
-            friendsLabel.topAnchor.constraint(equalTo: statsView.topAnchor, constant: Constants.Spacing.medium),
-            
-            // Friends title label
-            friendsTitleLabel.topAnchor.constraint(equalTo: friendsLabel.bottomAnchor, constant: Constants.Spacing.tiny),
-            friendsTitleLabel.centerXAnchor.constraint(equalTo: friendsLabel.centerXAnchor),
+            // Separator line
+            separatorLine.topAnchor.constraint(equalTo: profileHeaderView.bottomAnchor, constant: Constants.Spacing.medium),
+            separatorLine.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            separatorLine.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            separatorLine.heightAnchor.constraint(equalToConstant: 0.5),
             
             // Circles header
-            circlesHeaderView.topAnchor.constraint(equalTo: statsView.bottomAnchor, constant: Constants.Spacing.xlarge),
+            circlesHeaderView.topAnchor.constraint(equalTo: separatorLine.bottomAnchor),
             circlesHeaderView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             circlesHeaderView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            circlesHeaderView.heightAnchor.constraint(equalToConstant: 50),
+            circlesHeaderView.heightAnchor.constraint(equalToConstant: 0), // Hide header for Instagram style
             
             circlesHeaderLabel.centerYAnchor.constraint(equalTo: circlesHeaderView.centerYAnchor),
             circlesHeaderLabel.leadingAnchor.constraint(equalTo: circlesHeaderView.leadingAnchor, constant: Constants.Spacing.medium),
             
-            addCircleButton.centerYAnchor.constraint(equalTo: circlesHeaderView.centerYAnchor),
-            addCircleButton.trailingAnchor.constraint(equalTo: circlesHeaderView.trailingAnchor, constant: -Constants.Spacing.medium),
-            addCircleButton.widthAnchor.constraint(equalToConstant: 30),
-            addCircleButton.heightAnchor.constraint(equalToConstant: 30),
+            // Floating add button
+            addCircleButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -100),
+            addCircleButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.medium),
+            addCircleButton.widthAnchor.constraint(equalToConstant: 50),
+            addCircleButton.heightAnchor.constraint(equalToConstant: 50),
             
             // Circles collection view
-            circlesCollectionView.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor, constant: Constants.Spacing.small),
+            circlesCollectionView.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor),
             circlesCollectionView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             circlesCollectionView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             
@@ -442,27 +472,6 @@ class ProfileViewController: UIViewController {
             versionLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
             versionLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
         ])
-        
-        // Create constraints using proportional horizontal distribution
-        DispatchQueue.main.async {
-            let statsWidth = self.statsView.frame.width
-            
-            // Position the elements using a proportional layout
-            NSLayoutConstraint.activate([
-                // Position circles at 1/6 of the width from the left
-                self.circlesLabel.centerXAnchor.constraint(equalTo: self.statsView.leadingAnchor, constant: statsWidth/6),
-                self.circlesTitleLabel.centerXAnchor.constraint(equalTo: self.circlesLabel.centerXAnchor),
-                
-                // Position divider2 at 2/3 of the width from the left
-                self.divider2View.centerXAnchor.constraint(equalTo: self.statsView.leadingAnchor, constant: statsWidth*2/3),
-                
-                // Position friends at 5/6 of the width from the left
-                self.friendsLabel.centerXAnchor.constraint(equalTo: self.statsView.leadingAnchor, constant: statsWidth*5/6),
-                self.friendsTitleLabel.centerXAnchor.constraint(equalTo: self.friendsLabel.centerXAnchor)
-            ])
-            
-            self.view.layoutIfNeeded()
-        }
         
         // Create height constraint for collection view
         circlesCollectionHeightConstraint = circlesCollectionView.heightAnchor.constraint(equalToConstant: 200)
@@ -481,6 +490,8 @@ class ProfileViewController: UIViewController {
     
     private func setupActions() {
         editProfileButton.addTarget(self, action: #selector(editProfileButtonTapped), for: .touchUpInside)
+        shareProfileButton.addTarget(self, action: #selector(shareProfileButtonTapped), for: .touchUpInside)
+        suggestedButton.addTarget(self, action: #selector(suggestedButtonTapped), for: .touchUpInside)
         logoutButton.addTarget(self, action: #selector(logoutButtonTapped), for: .touchUpInside)
         addCircleButton.addTarget(self, action: #selector(addCircleButtonTapped), for: .touchUpInside)
         
@@ -492,6 +503,28 @@ class ProfileViewController: UIViewController {
     @objc private func editProfileButtonTapped() {
         let editProfileVC = EditProfileViewController()
         navigationController?.pushViewController(editProfileVC, animated: true)
+    }
+    
+    @objc private func shareProfileButtonTapped() {
+        // Share profile functionality
+        guard let user = user else { return }
+        
+        let shareText = "Check out my Circles profile: @\(user.displayName)"
+        let activityController = UIActivityViewController(activityItems: [shareText], applicationActivities: nil)
+        
+        // For iPad
+        if let popover = activityController.popoverPresentationController {
+            popover.sourceView = shareProfileButton
+            popover.sourceRect = shareProfileButton.bounds
+        }
+        
+        present(activityController, animated: true)
+    }
+    
+    @objc private func suggestedButtonTapped() {
+        // Navigate to suggested connections
+        let suggestionsVC = SuggestionsViewController()
+        navigationController?.pushViewController(suggestionsVC, animated: true)
     }
     
     @objc private func logoutButtonTapped() {
@@ -568,29 +601,34 @@ class ProfileViewController: UIViewController {
             profileImageView.tintColor = Constants.Colors.primary
         }
         
-        // Display user's name - show display name and full name separately
-        displayNameLabel.text = user.displayName
+        // Display username at the top
+        usernameLabel.text = user.displayName
         
-        // Show full name if available
+        // Combine full name and bio like Instagram
+        var bioText = ""
         if let firstName = user.firstName, let lastName = user.lastName {
-            fullNameLabel.text = "\(firstName) \(lastName)"
-            fullNameLabel.isHidden = false
+            bioText = "\(firstName) \(lastName)"
         } else if let firstName = user.firstName {
-            fullNameLabel.text = firstName
-            fullNameLabel.isHidden = false
+            bioText = firstName
         } else if let lastName = user.lastName {
-            fullNameLabel.text = lastName
-            fullNameLabel.isHidden = false
-        } else {
-            fullNameLabel.isHidden = true
+            bioText = lastName
         }
         
-        emailLabel.text = user.email
-        locationLabel.text = user.location
-        bioLabel.text = user.bio
+        if let bio = user.bio, !bio.isEmpty {
+            if !bioText.isEmpty {
+                bioText += "\n\(bio)"
+            } else {
+                bioText = bio
+            }
+        }
         
-        // Show/hide edit button based on whether this is the current user
-        editProfileButton.isHidden = user.id != AuthService.shared.getUserId()
+        bioLabel.text = bioText.isEmpty ? nil : bioText
+        
+        // Show/hide buttons based on whether this is the current user
+        let isCurrentUser = user.id == AuthService.shared.getUserId()
+        editProfileButton.isHidden = !isCurrentUser
+        shareProfileButton.isHidden = !isCurrentUser
+        suggestedButton.isHidden = !isCurrentUser
     }
     
     private func fetchUserStats(userId: String) {
@@ -602,40 +640,43 @@ class ProfileViewController: UIViewController {
                     switch result {
                     case .success(let circles):
                         self?.circles = circles
-                        self?.circlesLabel.text = "\(circles.count)"
+                        print("🔍 ProfileViewController - Fetched \(circles.count) circles")
+                        
+                        // Calculate total places from the same fetch
+                        var totalPlaces = 0
+                        for circle in circles {
+                            let placeCount = circle.placesCount ?? circle.places?.count ?? 0
+                            totalPlaces += placeCount
+                            print("   Circle '\(circle.name)': placesCount=\(circle.placesCount ?? -1), places array=\(circle.places?.count ?? 0)")
+                        }
+                        
+                        // Update both stats
+                        self?.circlesStatView.configure(number: "\(circles.count)", title: "Circles")
+                        self?.placesStatView.configure(number: "\(totalPlaces)", title: "Places")
+                        print("   Total places calculated: \(totalPlaces)")
+                        
                         self?.circlesCollectionView.reloadData()
                         self?.updateCollectionViewHeight()
                     case .failure:
                         self?.circles = []
-                        self?.circlesLabel.text = "0"
+                        self?.circlesStatView.configure(number: "0", title: "Circles")
+                        self?.placesStatView.configure(number: "0", title: "Places")
                         self?.circlesCollectionView.reloadData()
                         self?.updateCollectionViewHeight()
-                    }
-                }
-            }
-            
-            // Fetch places count from circles
-            CircleService.shared.fetchUserCircles { [weak self] result in
-                DispatchQueue.main.async {
-                    switch result {
-                    case .success(let circles):
-                        let totalPlaces = circles.reduce(0) { $0 + ($1.places?.count ?? 0) }
-                        self?.placesLabel.text = "\(totalPlaces)"
-                    case .failure:
-                        self?.placesLabel.text = "0"
                     }
                 }
             }
             
             // Fetch connections count
             let connectionsCount = NetworkManager.shared.connections.count
-            friendsLabel.text = "\(connectionsCount)"
+            print("🔍 ProfileViewController - Connections count: \(connectionsCount)")
+            connectionsStatView.configure(number: "\(connectionsCount)", title: "Connections")
         } else {
             // For other users, show default stats
             // In a real app, you might have an endpoint to fetch public stats
-            circlesLabel.text = "0"
-            placesLabel.text = "0"
-            friendsLabel.text = "0"
+            circlesStatView.configure(number: "0", title: "Circles")
+            placesStatView.configure(number: "0", title: "Places")
+            connectionsStatView.configure(number: "0", title: "Connections")
         }
     }
     
@@ -644,15 +685,12 @@ class ProfileViewController: UIViewController {
         profileImageView.image = UIImage(systemName: "person.circle.fill")
         profileImageView.tintColor = Constants.Colors.primary
         
-        displayNameLabel.text = "User"
-        fullNameLabel.isHidden = true
-        emailLabel.text = "No email available"
-        locationLabel.text = "No location available"
+        usernameLabel.text = "User"
         bioLabel.text = "No bio available"
         
-        circlesLabel.text = "0"
-        placesLabel.text = "0"
-        friendsLabel.text = "0"
+        circlesStatView.configure(number: "0", title: "Circles")
+        placesStatView.configure(number: "0", title: "Places")
+        connectionsStatView.configure(number: "0", title: "Connections")
     }
     
     private func displayAppVersion() {
@@ -671,6 +709,22 @@ class ProfileViewController: UIViewController {
             name: .circleDeleted,
             object: nil
         )
+        
+        // Listen for refresh circles notification (e.g., when a place is added)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleRefreshCircles),
+            name: NSNotification.Name("RefreshCircles"),
+            object: nil
+        )
+        
+        // Listen for connections loaded notification
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleConnectionsLoaded),
+            name: .connectionsLoaded,
+            object: nil
+        )
     }
     
     @objc private func handleCircleDeleted(_ notification: Notification) {
@@ -684,8 +738,24 @@ class ProfileViewController: UIViewController {
                 self?.updateCollectionViewHeight()
                 
                 // Update stats
-                self?.circlesLabel.text = "\(self?.circles.count ?? 0)"
+                self?.circlesStatView.configure(number: "\(self?.circles.count ?? 0)", title: "Circles")
             }
+        }
+    }
+    
+    @objc private func handleRefreshCircles() {
+        // Refresh user stats to get updated circle counts
+        if let userId = self.user?.id {
+            fetchUserStats(userId: userId)
+        }
+    }
+    
+    @objc private func handleConnectionsLoaded() {
+        // Update connections count when NetworkManager finishes loading
+        if let userId = self.user?.id, userId == AuthService.shared.getUserId() {
+            let connectionsCount = NetworkManager.shared.connections.count
+            print("🔍 ProfileViewController - Updated connections count after load: \(connectionsCount)")
+            connectionsStatView.configure(number: "\(connectionsCount)", title: "Connections")
         }
     }
     
@@ -706,12 +776,11 @@ class ProfileViewController: UIViewController {
     }
     
     private func updateCollectionViewHeight() {
-        // Calculate required height based on number of circles
-        let itemsPerRow: CGFloat = 2
-        let spacing = Constants.Spacing.medium
-        let totalWidth = view.bounds.width - (spacing * 3) // left, right, and middle spacing
-        let itemWidth = (totalWidth - spacing) / itemsPerRow
-        let itemHeight = itemWidth * 1.3 // Aspect ratio
+        // Calculate required height based on number of circles (3-column grid)
+        let itemsPerRow: CGFloat = 3
+        let spacing: CGFloat = 1
+        let itemWidth = (view.bounds.width - (spacing * 2)) / itemsPerRow
+        let itemHeight = itemWidth // Square cells
         
         let rows = ceil(CGFloat(circles.count) / itemsPerRow)
         let totalHeight = (rows * itemHeight) + ((rows - 1) * spacing)
@@ -862,10 +931,12 @@ extension ProfileViewController: UICollectionViewDelegate {
 // MARK: - UICollectionViewDelegateFlowLayout
 extension ProfileViewController: UICollectionViewDelegateFlowLayout {
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
-        let spacing = Constants.Spacing.medium
-        let totalWidth = collectionView.bounds.width - (spacing * 3) // left, right, and middle spacing
-        let itemWidth = (totalWidth - spacing) / 2
-        let itemHeight = itemWidth * 1.3 // Aspect ratio for circle cells
+        // Instagram-style 3-column grid
+        let spacing: CGFloat = 1
+        let numberOfColumns: CGFloat = 3
+        let totalSpacing = spacing * (numberOfColumns - 1)
+        let itemWidth = (collectionView.bounds.width - totalSpacing) / numberOfColumns
+        let itemHeight = itemWidth // Square cells
         return CGSize(width: itemWidth, height: itemHeight)
     }
 }
@@ -878,7 +949,7 @@ extension ProfileViewController: CreateCircleDelegate {
         updateCollectionViewHeight()
         
         // Update stats
-        circlesLabel.text = "\(circles.count)"
+        circlesStatView.configure(number: "\(circles.count)", title: "Circles")
     }
 }
 
@@ -898,7 +969,7 @@ extension ProfileViewController: EditCircleDelegate {
             updateCollectionViewHeight()
             
             // Update stats
-            circlesLabel.text = "\(circles.count)"
+            circlesStatView.configure(number: "\(circles.count)", title: "Circles")
         }
     }
 }
@@ -984,12 +1055,12 @@ extension ProfileViewController: UICollectionViewDropDelegate {
                 switch result {
                 case .success(let circles):
                     self?.circles = circles
-                    self?.circlesLabel.text = "\(circles.count)"
+                    self?.circlesStatView.configure(number: "\(circles.count)", title: "Circles")
                     self?.circlesCollectionView.reloadData()
                     self?.updateCollectionViewHeight()
                 case .failure:
                     self?.circles = []
-                    self?.circlesLabel.text = "0"
+                    self?.circlesStatView.configure(number: "0", title: "Circles")
                     self?.circlesCollectionView.reloadData()
                     self?.updateCollectionViewHeight()
                 }

@@ -462,6 +462,32 @@ transporter = nodemailer.createTransport({
 });
 ```
 
+### 5. Efficient Places Count with placesCount Field (July 2025)
+**Problem**: Profile page showed 0 places despite users having many places. Counting places by fetching all data was inefficient for scalability.
+**Solution**: Added `placesCount` field to circles for O(1) counting
+```javascript
+// Backend: Added to Circle model
+placesCount: circleData.placesCount || 0, // Count of places for efficient display
+
+// Increment when adding places
+await db.collection(COLLECTIONS.CIRCLES).doc(circleId).update({
+    places: [place.id, ...currentPlaces],
+    placesCount: (circle.placesCount || 0) + 1,
+    updatedAt: new Date().toISOString()
+});
+```
+**Migration**: Run `node scripts/migrate_places_count.js` to populate existing data
+
+### 6. Instagram-style Profile Page UI (July 2025)
+**Implementation**:
+- 3-column grid for circles (like Instagram posts)
+- Square cells with overlay text
+- Stats bar showing Circles, Places, Connections
+- Floating add button with shadow
+- Removed section headers for cleaner look
+- Combined full name with bio text
+**Note**: Fixed duplicate API call issue - APIService blocks duplicate GET requests
+
 ## Deployment Guide
 
 ### Backend Deployment to Google Cloud Run
@@ -842,3 +868,116 @@ let resizeDimensions: [CGFloat] = [2048, 1920, 1280, 1024, 800, 640]
 - ❌ ONLY Google: Fetching place photos
 
 Remember: The app is actively used, so maintain backwards compatibility and test thoroughly before deploying changes.
+
+## AI Assistant Guidelines
+
+### Key Principles for AI Assistants
+
+1. **Always Check for Duplicate Requests**
+   - APIService blocks duplicate GET requests to prevent server overload
+   - If you need the same data multiple times, fetch once and reuse
+   - Example: Don't call `fetchUserCircles` twice - calculate all stats from one fetch
+
+2. **Understand the Dual ID System**
+   - Users can have simple IDs: `9b5eeac93282416c9bc6dcecbc49b40f`
+   - Or complex IDs: `000454.9b5eeac93282416c9bc6dcecbc49b40f.2127`
+   - Always check both formats when querying
+
+3. **Performance & Scalability First**
+   - Use dedicated counter fields (like `placesCount`) instead of array lengths
+   - Avoid fetching all data just to count items
+   - Think about millions of users with thousands of items each
+
+4. **Follow Existing Patterns**
+   - Check how similar features are implemented before creating new ones
+   - Use the Service/Manager pattern consistently
+   - Maintain the MVC architecture in iOS code
+
+5. **Debug Effectively**
+   - Add console.log/print statements to trace data flow
+   - Check Cloud Run logs: `gcloud run services logs read circles-backend --limit=30 --region us-central1`
+   - Use Xcode console for iOS debugging
+
+6. **Common Pitfalls to Avoid**
+   - Don't create new files unless absolutely necessary
+   - Don't use `--set-env-vars` (it deletes all existing vars)
+   - Don't assume a library is available - check package.json/Podfile first
+   - Don't force unwrap optionals in Swift
+   - Don't forget to update both iOS models when changing backend models
+
+7. **Testing Checklist**
+   - [ ] Test on real device (not just simulator)
+   - [ ] Check both light and dark mode
+   - [ ] Verify offline behavior
+   - [ ] Test with empty states (no circles, no places, etc.)
+   - [ ] Verify proper error handling
+   - [ ] Check memory usage and performance
+
+8. **When Making UI Changes**
+   - Follow iOS Human Interface Guidelines
+   - Maintain consistency with existing UI patterns
+   - Test on different screen sizes (iPhone SE to Pro Max)
+   - Consider accessibility (VoiceOver, Dynamic Type)
+
+9. **Backend Best Practices**
+   - Always use transactions for multi-document updates
+   - Implement proper error handling with meaningful messages
+   - Add indexes for Firestore queries (check firestore.indexes.json)
+   - Use batch operations when updating multiple documents
+
+10. **Deployment Process**
+    - Build and test locally first
+    - Deploy backend: build Docker image → deploy to Cloud Run
+    - For iOS: increment build number → archive → upload to TestFlight
+    - Monitor logs after deployment for any issues
+
+### Quick Reference Commands
+
+```bash
+# Backend deployment
+cd backend
+gcloud builds submit --tag gcr.io/circles-app-83b67/circles-api --project circles-app-83b67
+gcloud run deploy circles-backend --image gcr.io/circles-app-83b67/circles-api --platform managed --region us-central1 --project circles-app-83b67
+
+# View logs
+gcloud run services logs read circles-backend --limit=50 --region us-central1
+
+# Update env vars (NEVER use --set-env-vars)
+gcloud run services update circles-backend --update-env-vars KEY=value --region us-central1
+
+# iOS build
+cd ios
+xcodebuild -project Circles-iOS.xcodeproj -scheme Circles-iOS -sdk iphonesimulator build
+```
+
+### Architecture Decision Records
+
+1. **Why UIKit instead of SwiftUI?**
+   - Project started before SwiftUI was mature
+   - Better performance for complex layouts
+   - More control over animations and transitions
+
+2. **Why Firebase Firestore?**
+   - Real-time capabilities for future features
+   - Good iOS/Android SDK support
+   - Scalable NoSQL structure fits the data model
+
+3. **Why separate placesCount field?**
+   - O(1) time complexity for counting
+   - Reduces data transfer (don't need to fetch all places)
+   - Better for pagination and infinite scroll
+
+4. **Why Google Cloud Run?**
+   - Serverless scaling
+   - Pay only for what you use
+   - Easy integration with Firebase
+   - Good cold start performance
+
+### Future Considerations
+
+- Consider implementing GraphQL for more efficient data fetching
+- Add Redis caching layer for frequently accessed data
+- Implement WebSocket for real-time features
+- Consider moving to Swift Concurrency (async/await)
+- Add comprehensive unit and integration tests
+- Implement CI/CD pipeline with GitHub Actions

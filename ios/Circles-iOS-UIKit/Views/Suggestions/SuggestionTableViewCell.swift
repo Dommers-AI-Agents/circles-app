@@ -60,8 +60,10 @@ class SuggestionTableViewCell: UITableViewCell {
     
     private let placeContainerView: UIView = {
         let view = UIView()
-        view.backgroundColor = .tertiarySystemGroupedBackground
+        view.backgroundColor = .systemBackground
         view.layer.cornerRadius = 8
+        view.layer.borderWidth = 1
+        view.layer.borderColor = Constants.Colors.primary.cgColor
         view.isHidden = true
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
@@ -90,6 +92,15 @@ class SuggestionTableViewCell: UITableViewCell {
         label.textColor = .secondaryLabel
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
+    }()
+    
+    private let placeChevronImageView: UIImageView = {
+        let imageView = UIImageView()
+        imageView.image = UIImage(systemName: "chevron.right")
+        imageView.tintColor = Constants.Colors.primary
+        imageView.contentMode = .scaleAspectFit
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        return imageView
     }()
     
     private let suggestionImageView: UIImageView = {
@@ -152,6 +163,7 @@ class SuggestionTableViewCell: UITableViewCell {
         placeContainerView.addSubview(placeIconImageView)
         placeContainerView.addSubview(placeNameLabel)
         placeContainerView.addSubview(placeAddressLabel)
+        placeContainerView.addSubview(placeChevronImageView)
         
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
@@ -187,11 +199,16 @@ class SuggestionTableViewCell: UITableViewCell {
             
             placeNameLabel.topAnchor.constraint(equalTo: placeContainerView.topAnchor, constant: 8),
             placeNameLabel.leadingAnchor.constraint(equalTo: placeIconImageView.trailingAnchor, constant: 8),
-            placeNameLabel.trailingAnchor.constraint(equalTo: placeContainerView.trailingAnchor, constant: -8),
+            placeNameLabel.trailingAnchor.constraint(equalTo: placeChevronImageView.leadingAnchor, constant: -8),
             
             placeAddressLabel.topAnchor.constraint(equalTo: placeNameLabel.bottomAnchor, constant: 2),
             placeAddressLabel.leadingAnchor.constraint(equalTo: placeNameLabel.leadingAnchor),
             placeAddressLabel.trailingAnchor.constraint(equalTo: placeNameLabel.trailingAnchor),
+            
+            placeChevronImageView.centerYAnchor.constraint(equalTo: placeContainerView.centerYAnchor),
+            placeChevronImageView.trailingAnchor.constraint(equalTo: placeContainerView.trailingAnchor, constant: -8),
+            placeChevronImageView.widthAnchor.constraint(equalToConstant: 16),
+            placeChevronImageView.heightAnchor.constraint(equalToConstant: 16),
             
             suggestionImageView.topAnchor.constraint(equalTo: placeContainerView.bottomAnchor, constant: 8),
             suggestionImageView.leadingAnchor.constraint(equalTo: messageLabel.leadingAnchor),
@@ -320,6 +337,18 @@ class SuggestionTableViewCell: UITableViewCell {
     // MARK: - Actions
     @objc private func placeTapped() {
         guard let place = suggestion?.placeDetails else { return }
+        
+        // Animate the tap
+        UIView.animate(withDuration: 0.1, animations: {
+            self.placeContainerView.transform = CGAffineTransform(scaleX: 0.95, y: 0.95)
+            self.placeContainerView.alpha = 0.8
+        }) { _ in
+            UIView.animate(withDuration: 0.1) {
+                self.placeContainerView.transform = .identity
+                self.placeContainerView.alpha = 1.0
+            }
+        }
+        
         delegate?.suggestionTableViewCell(self, didTapPlace: place)
     }
     

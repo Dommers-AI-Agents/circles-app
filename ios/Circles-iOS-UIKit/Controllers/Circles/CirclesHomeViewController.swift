@@ -13,8 +13,24 @@ class CirclesHomeViewController: UIViewController {
     private var isSearching = false
     private var selectedCategory: PlaceCategory?
     private var mapUpdateTimer: Timer? // Debounce timer for map updates
-    private var isInitialLoading = false // Prevent duplicate fetches during initial load
     private var isReturningFromFullScreenMap = false // Prevent map updates when returning from full screen
+    private var isLoadingCircles = false // Track when circles are being loaded
+    private var isLoadingPlaces = false // Track when places are being loaded
+    private var isPerformingInitialLoad = false // Track if we're in the middle of initial loading
+    private var isShowingLoadingUI = false // Track if loading UI is currently shown
+    private static var hasLoadedInitialData = false // Track if we've loaded data at least once this session
+    private static var cachedPlaces: [Place] = [] // Cache places to show immediately on subsequent views
+    private static var isCurrentlyLoading = false // Global flag to prevent concurrent loads
+    private var hasStartedLoading = false // Instance flag to prevent multiple loads in the same instance
+    private var loadDebounceTimer: Timer? // Debounce timer to prevent rapid successive loads
+    
+    override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
+        super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
+    }
+    
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+    }
     
     // Define response structure for network circles
     private struct NetworkCirclesResponse: Codable {
@@ -169,6 +185,33 @@ class CirclesHomeViewController: UIViewController {
         return view
     }()
     
+    private let mapLoadingView: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.secondaryBackground
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.layer.cornerRadius = 12
+        view.clipsToBounds = true
+        return view
+    }()
+    
+    private let mapLoadingIndicator: UIActivityIndicatorView = {
+        let indicator = UIActivityIndicatorView(style: .large)
+        indicator.color = Constants.Colors.primary
+        indicator.translatesAutoresizingMaskIntoConstraints = false
+        indicator.hidesWhenStopped = true
+        return indicator
+    }()
+    
+    private let mapLoadingLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Loading your places..."
+        label.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
     private let mapExpandButton: UIButton = {
         let button = UIButton(type: .system)
         button.setImage(UIImage(systemName: "arrow.up.left.and.arrow.down.right"), for: .normal)
@@ -285,6 +328,44 @@ class CirclesHomeViewController: UIViewController {
         return label
     }()
     
+    private let loadingIndicator: UIActivityIndicatorView = {
+        let indicator = UIActivityIndicatorView(style: .large)
+        indicator.color = Constants.Colors.primary
+        indicator.translatesAutoresizingMaskIntoConstraints = false
+        indicator.hidesWhenStopped = true
+        return indicator
+    }()
+    
+    private let loadingLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Loading places..."
+        label.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        label.textColor = Constants.Colors.label
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let loadingContentView: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.secondaryBackground
+        view.layer.cornerRadius = 16
+        view.layer.shadowColor = UIColor.black.cgColor
+        view.layer.shadowOpacity = 0.1
+        view.layer.shadowOffset = CGSize(width: 0, height: 2)
+        view.layer.shadowRadius = 8
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let loadingContainerView: UIView = {
+        let view = UIView()
+        view.backgroundColor = UIColor.black.withAlphaComponent(0.3)
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isHidden = true
+        return view
+    }()
+    
     private let categoryDropdownView: UIView = {
         let view = UIView()
         view.backgroundColor = Constants.Colors.secondaryBackground
@@ -320,6 +401,9 @@ class CirclesHomeViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         
+        print("🟡 CirclesHomeViewController viewDidLoad called")
+        print("🟡 Instance: \(ObjectIdentifier(self))")
+        
         setupUI()
         setupNotifications()
         setupSearchBar()
@@ -328,21 +412,68 @@ class CirclesHomeViewController: UIViewController {
         // Setup user list delegate
         userListView.delegate = self
         
-        // Map is always visible
-        mapContainerView.isHidden = false
-        filterStackView.isHidden = false
-        filterContainer.isHidden = false
+        // Hide map initially until data loads
+        mapContainerView.isHidden = true
+        filterStackView.isHidden = true
+        filterContainer.isHidden = true
+        mapExpandButton.isHidden = true
+        
+        // Ensure map loading view is hidden initially
+        mapLoadingView.isHidden = true
+        mapLoadingIndicator.stopAnimating()
+        
+        // Load connections immediately
+        userListView.refresh()
+        
+        // Don't show loading state here - let fetchCircles handle it
+        // The loading will be shown when fetchAllPlacesFromCircles is called
+        
+        // Start with empty state hidden until data loads
+        emptyStateView.isHidden = true
+        
+        // If we have cached places, show them immediately without filtering
+        // The proper filter will be applied when circles are loaded
+        if !CirclesHomeViewController.cachedPlaces.isEmpty {
+            print("🟡 Found cached places: \(CirclesHomeViewController.cachedPlaces.count)")
+            self.allPlaces = CirclesHomeViewController.cachedPlaces
+            
+            // Show all cached places initially - proper filter will be applied when circles load
+            print("🟡 Showing all cached places initially (filter will be applied after circles load)")
+            self.mapViewController?.updatePlaces(CirclesHomeViewController.cachedPlaces)
+            
+            // Show map immediately since we have cached data
+            mapContainerView.isHidden = false
+            filterStackView.isHidden = false
+            filterContainer.isHidden = false
+            mapExpandButton.isHidden = false
+            mapLoadingView.isHidden = true
+        }
+        // Don't show loading state here - performInitialDataLoad will handle it
+        
+        // Don't fetch circles here - it will be called in viewWillAppear
     }
     
     deinit {
-        // Clean up timer
+        // Clean up timers
         mapUpdateTimer?.invalidate()
+        loadDebounceTimer?.invalidate()
         // Remove notification observers
         NotificationCenter.default.removeObserver(self)
+        // Reset loading flag if this instance was loading
+        if isPerformingInitialLoad {
+            isPerformingInitialLoad = false
+        }
     }
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        
+        print("🟢 CirclesHomeViewController viewWillAppear called")
+        print("🟢 Instance: \(ObjectIdentifier(self))")
+        print("   hasStartedLoading: \(hasStartedLoading)")
+        print("   isReturningFromFullScreenMap: \(isReturningFromFullScreenMap)")
+        print("   circles.count: \(circles.count)")
+        print("   allPlaces.count: \(allPlaces.count)")
         
         // If returning from full screen map, skip updates
         if isReturningFromFullScreenMap {
@@ -350,16 +481,28 @@ class CirclesHomeViewController: UIViewController {
             return
         }
         
-        // Only fetch data if not already loading
-        if !isInitialLoading {
-            isInitialLoading = true
-            fetchCircles()
-            fetchNetworkCircles() // Always fetch network circles for map
+        // Simple check: if this instance has already started loading, don't load again
+        if hasStartedLoading {
+            print("🟢 Skipping load - this instance has already started loading")
+            return
         }
         
-        // Ensure filter stack is visible
-        filterStackView.isHidden = false
-        filterStackView.alpha = 1.0
+        // Mark that this instance has started loading
+        hasStartedLoading = true
+        
+        // Cancel any existing timer
+        loadDebounceTimer?.invalidate()
+        
+        // Debounce the load to prevent rapid successive calls
+        loadDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
+            print("🟢 Starting initial data load (after debounce)")
+            // Use unified loading method
+            self?.performInitialDataLoad()
+            self?.userListView.refresh() // Refresh connections list
+        }
+        
+        // Don't show filter stack here - let hideMapLoadingState handle it
+        // This prevents the filter from showing then hiding again
     }
     
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
@@ -411,12 +554,21 @@ class CirclesHomeViewController: UIViewController {
         view.addSubview(userListView)
         view.addSubview(filterContainer)
         view.addSubview(mapContainerView)
+        view.addSubview(mapLoadingView)
+        mapLoadingView.addSubview(mapLoadingIndicator)
+        mapLoadingView.addSubview(mapLoadingLabel)
         view.addSubview(mapExpandButton)
         view.addSubview(filterStackView)
         view.addSubview(locationStatusLabel)
         filterStackView.addArrangedSubview(categoryFilterButton)
         filterStackView.addArrangedSubview(connectionFilterButton)
         view.addSubview(emptyStateView)
+        
+        // Add loading container
+        view.addSubview(loadingContainerView)
+        loadingContainerView.addSubview(loadingContentView)
+        loadingContentView.addSubview(loadingIndicator)
+        loadingContentView.addSubview(loadingLabel)
         
         // Add dropdown views
         view.addSubview(categoryDropdownView)
@@ -429,6 +581,9 @@ class CirclesHomeViewController: UIViewController {
         
         // Bring filter stack to front to ensure visibility
         view.bringSubviewToFront(filterStackView)
+        
+        // Ensure loading view is on top
+        view.bringSubviewToFront(loadingContainerView)
         
         // Add tap gesture to dismiss dropdowns when clicking outside
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissDropdowns))
@@ -514,6 +669,21 @@ class CirclesHomeViewController: UIViewController {
             mapContainerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             mapContainerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             
+            // Map loading view - same position as map container
+            mapLoadingView.topAnchor.constraint(equalTo: filterContainer.bottomAnchor),
+            mapLoadingView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            mapLoadingView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            mapLoadingView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            
+            // Map loading indicator
+            mapLoadingIndicator.centerXAnchor.constraint(equalTo: mapLoadingView.centerXAnchor),
+            mapLoadingIndicator.centerYAnchor.constraint(equalTo: mapLoadingView.centerYAnchor, constant: -20),
+            
+            // Map loading label
+            mapLoadingLabel.topAnchor.constraint(equalTo: mapLoadingIndicator.bottomAnchor, constant: 16),
+            mapLoadingLabel.leadingAnchor.constraint(equalTo: mapLoadingView.leadingAnchor, constant: 20),
+            mapLoadingLabel.trailingAnchor.constraint(equalTo: mapLoadingView.trailingAnchor, constant: -20),
+            
             // Map expand button
             mapExpandButton.topAnchor.constraint(equalTo: mapContainerView.topAnchor, constant: Constants.Spacing.small),
             mapExpandButton.trailingAnchor.constraint(equalTo: mapContainerView.trailingAnchor, constant: -Constants.Spacing.small),
@@ -539,6 +709,26 @@ class CirclesHomeViewController: UIViewController {
             createCircleButton.widthAnchor.constraint(equalTo: emptyStateView.widthAnchor, multiplier: 0.8),
             createCircleButton.heightAnchor.constraint(equalToConstant: 44),
             createCircleButton.bottomAnchor.constraint(equalTo: emptyStateView.bottomAnchor),
+            
+            // Loading container constraints - full screen overlay
+            loadingContainerView.topAnchor.constraint(equalTo: view.topAnchor),
+            loadingContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            loadingContainerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            loadingContainerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            
+            // Loading content view - centered card
+            loadingContentView.centerXAnchor.constraint(equalTo: loadingContainerView.centerXAnchor),
+            loadingContentView.centerYAnchor.constraint(equalTo: loadingContainerView.centerYAnchor),
+            loadingContentView.widthAnchor.constraint(equalToConstant: 200),
+            loadingContentView.heightAnchor.constraint(equalToConstant: 120),
+            
+            loadingIndicator.centerXAnchor.constraint(equalTo: loadingContentView.centerXAnchor),
+            loadingIndicator.topAnchor.constraint(equalTo: loadingContentView.topAnchor, constant: 20),
+            
+            loadingLabel.topAnchor.constraint(equalTo: loadingIndicator.bottomAnchor, constant: 12),
+            loadingLabel.leadingAnchor.constraint(equalTo: loadingContentView.leadingAnchor, constant: 16),
+            loadingLabel.trailingAnchor.constraint(equalTo: loadingContentView.trailingAnchor, constant: -16),
+            loadingLabel.bottomAnchor.constraint(lessThanOrEqualTo: loadingContentView.bottomAnchor, constant: -20),
             
             // Filter button width constraints
             categoryFilterButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 120),
@@ -687,37 +877,91 @@ class CirclesHomeViewController: UIViewController {
     // Navigation title tap removed since we no longer show the title
     
     // MARK: - Data Fetching
+    private func performInitialDataLoad() {
+        // Set the global loading flag
+        CirclesHomeViewController.isCurrentlyLoading = true
+        
+        // Unified method to load both circles and places
+        print("🔄 Starting initial data load")
+        
+        // Show loading state once if not already showing and no cached data
+        if CirclesHomeViewController.cachedPlaces.isEmpty {
+            // Only show loading states if we don't have cached data
+            showLoadingState()
+            showMapLoadingState()
+        }
+        
+        fetchCircles()
+    }
+    
+    private func showMapLoadingState() {
+        // Prevent showing loading state multiple times
+        guard !isShowingLoadingUI else { 
+            print("🗺️ Map loading state already showing")
+            return 
+        }
+        
+        print("🗺️ Showing map loading state")
+        isShowingLoadingUI = true
+        mapLoadingView.isHidden = false
+        mapLoadingIndicator.startAnimating()
+        mapContainerView.isHidden = true
+        filterStackView.isHidden = true
+        filterContainer.isHidden = true
+        mapExpandButton.isHidden = true
+    }
+    
+    private func hideMapLoadingState() {
+        print("🗺️ Hiding map loading state, showing map")
+        isShowingLoadingUI = false
+        mapLoadingView.isHidden = true
+        mapLoadingIndicator.stopAnimating()
+        mapContainerView.isHidden = false
+        filterStackView.isHidden = false
+        filterContainer.isHidden = false
+        mapExpandButton.isHidden = false
+    }
+    
     private func fetchCircles() {
+        // Only show loading state on the very first app launch
+        isLoadingCircles = true
+        
         CircleService.shared.fetchUserCircles { [weak self] result in
             DispatchQueue.main.async {
+                self?.isLoadingCircles = false
+                
                 switch result {
                 case .success(let circles):
                     print("✅ Successfully fetched \(circles.count) circles")
-                    for circle in circles {
-                        print("Circle: \(circle.name), coverImage: \(circle.coverImage ?? "nil")")
-                    }
                     self?.circles = circles
                     self?.fetchAllPlacesFromCircles()
+                    // Don't mark as loaded here - wait until places are fetched
                 case .failure(let error):
                     print("❌ Error fetching circles: \(error.localizedDescription)")
                     print("❌ Full error: \(error)")
                     
-                    // If it's a duplicate request error, retry after a short delay
+                    // If it's a duplicate request error, still need to clean up state
                     if case .duplicateRequest = error as? APIError {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            self?.fetchCircles()
-                        }
+                        print("❌ Duplicate request detected - cleaning up state")
+                        self?.isLoadingCircles = false
+                        self?.isPerformingInitialLoad = false
+                        CirclesHomeViewController.isCurrentlyLoading = false
+                        self?.hideLoadingState()
+                        self?.hideMapLoadingState()
                         return
                     }
                     
                     // Don't use sample circles - show empty state instead
                     self?.circles = []
                     self?.allPlaces = []
+                    self?.isLoadingCircles = false
+                    self?.isPerformingInitialLoad = false
+                    CirclesHomeViewController.isCurrentlyLoading = false
+                    self?.hideLoadingState()
+                    self?.hideMapLoadingState()
                 }
                 
                 self?.updateEmptyState()
-                // Reset loading flag after data is loaded
-                self?.isInitialLoading = false
             }
         }
     }
@@ -741,15 +985,12 @@ class CirclesHomeViewController: UIViewController {
                     }
                     self?.networkCircles = response.data
                     self?.updateEmptyState()
-                    self?.updateMapPlaces()
+                    // Don't call updateMapPlaces here - fetchAllPlacesFromCircles handles everything
                 case .failure(let error):
                     print("❌ Error fetching network circles: \(error.localizedDescription)")
                     
-                    // If it's a duplicate request error, retry after a short delay
+                    // If it's a duplicate request error, just ignore it
                     if case .duplicateRequest = error {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            self?.fetchNetworkCircles()
-                        }
                         return
                     }
                     
@@ -776,6 +1017,7 @@ class CirclesHomeViewController: UIViewController {
             editors: nil,
             editorsDetails: nil,
             places: ["place1", "place2", "place3"],
+            placesCount: 3,
             placesWithDetails: nil,
             privacy: .private,
             allowNetworkEdit: false,
@@ -803,6 +1045,7 @@ class CirclesHomeViewController: UIViewController {
             editors: nil,
             editorsDetails: nil,
             places: ["place4", "place5"],
+            placesCount: 2,
             placesWithDetails: nil,
             privacy: .myNetwork,
             allowNetworkEdit: true,
@@ -830,6 +1073,7 @@ class CirclesHomeViewController: UIViewController {
             editors: nil,
             editorsDetails: nil,
             places: ["place6", "place7", "place8", "place9"],
+            placesCount: 4,
             placesWithDetails: nil,
             privacy: .public,
             allowNetworkEdit: false,
@@ -851,6 +1095,12 @@ class CirclesHomeViewController: UIViewController {
     }
     
     private func updateEmptyState() {
+        // Hide empty state if loading
+        if isLoadingCircles || isLoadingPlaces {
+            emptyStateView.isHidden = true
+            return
+        }
+        
         if isSearching {
             emptyStateView.isHidden = !filteredPlaces.isEmpty
             emptyStateLabel.text = "No places found"
@@ -867,13 +1117,66 @@ class CirclesHomeViewController: UIViewController {
         }
     }
     
+    private func showLoadingState() {
+        loadingContainerView.alpha = 0
+        loadingContainerView.isHidden = false
+        loadingIndicator.startAnimating()
+        emptyStateView.isHidden = true
+        
+        // Update loading message based on what's loading
+        if isLoadingCircles && isLoadingPlaces {
+            loadingLabel.text = "Loading your circles and places..."
+        } else if isLoadingCircles {
+            loadingLabel.text = "Loading your circles..."
+        } else if isLoadingPlaces {
+            loadingLabel.text = "Loading places..."
+        } else {
+            loadingLabel.text = "Loading..."
+        }
+        
+        // Fade in animation
+        UIView.animate(withDuration: 0.3) {
+            self.loadingContainerView.alpha = 1
+        }
+    }
+    
+    private func hideLoadingState() {
+        UIView.animate(withDuration: 0.3, animations: {
+            self.loadingContainerView.alpha = 0
+        }) { _ in
+            self.loadingContainerView.isHidden = true
+            self.loadingIndicator.stopAnimating()
+        }
+        updateEmptyState()
+    }
+    
     private func fetchAllPlacesFromCircles() {
         var allFetchedPlaces: [Place] = []
         let group = DispatchGroup()
         
+        // Show loading state for places
+        isLoadingPlaces = true
+        
+        // Loading state is already shown by performInitialDataLoad, don't show again
+        
         print("📍 fetchAllPlacesFromCircles called")
         print("📍 User circles count: \(circles.count)")
         print("📍 Network circles count: \(networkCircles.count)")
+        
+        // If no circles at all, just update UI and return
+        if circles.isEmpty && networkCircles.isEmpty {
+            print("📍 No circles to fetch places from")
+            self.allPlaces = []
+            self.mapViewController?.updatePlaces([])
+            self.isLoadingPlaces = false
+            self.isPerformingInitialLoad = false
+            CirclesHomeViewController.isCurrentlyLoading = false
+            self.hideLoadingState()
+            self.hideMapLoadingState() // Show empty map
+            self.updateEmptyState()
+            // Don't set hasLoadedInitialData here - we have no data
+            return
+        }
         
         // Debug network circles
         for circle in networkCircles {
@@ -962,6 +1265,9 @@ class CirclesHomeViewController: UIViewController {
             
             self.allPlaces = allFetchedPlaces
             
+            // Cache the places for instant display on subsequent views
+            CirclesHomeViewController.cachedPlaces = allFetchedPlaces
+            
             print("🔍 Fetched Places Summary:")
             print("   Total places fetched: \(allFetchedPlaces.count)")
             
@@ -972,10 +1278,17 @@ class CirclesHomeViewController: UIViewController {
                 
                 if let connectionId = self.selectedConnectionId {
                     if connectionId == "my_places_only" {
-                        // Show only user's own places
-                        let currentUserId = AuthService.shared.getUserId() ?? ""
-                        filteredPlaces = allFetchedPlaces.filter { $0.addedBy == currentUserId }
-                        print("   Filtered to user's places (userId: \(currentUserId)): \(filteredPlaces.count) places")
+                        // Show all places from user's own circles
+                        let userCircleIds = self.circles.map { $0.id }
+                        if userCircleIds.isEmpty {
+                            print("⚠️ Warning: User circles not loaded yet, showing all places")
+                            filteredPlaces = allFetchedPlaces
+                        } else {
+                            filteredPlaces = allFetchedPlaces.filter { place in
+                                userCircleIds.contains(place.circleId)
+                            }
+                            print("   Filtered to user's circles (\(userCircleIds.count) circles): \(filteredPlaces.count) places")
+                        }
                     } else {
                         // Show only places from the selected connection
                         // Get all places from circles owned by this connection
@@ -1025,7 +1338,22 @@ class CirclesHomeViewController: UIViewController {
                 }
                 
                 // Pass filtered places to map
+                print("🗺️ Updating map with \(filteredPlaces.count) places")
                 self.mapViewController?.updatePlaces(filteredPlaces)
+                
+                // Hide loading state
+                self.isLoadingPlaces = false
+                self.isPerformingInitialLoad = false // Reset initial load flag
+                CirclesHomeViewController.isCurrentlyLoading = false // Reset global loading flag
+                self.hideLoadingState()
+                
+                // Hide map loading state and show the map now that data is ready
+                self.hideMapLoadingState()
+                
+                // Mark that we've loaded data only if we actually have data
+                if !self.circles.isEmpty || !allFetchedPlaces.isEmpty {
+                    CirclesHomeViewController.hasLoadedInitialData = true
+                }
         })
     }
     
@@ -1037,6 +1365,14 @@ class CirclesHomeViewController: UIViewController {
             self,
             selector: #selector(handleCircleDeleted(_:)),
             name: .circleDeleted,
+            object: nil
+        )
+        
+        // Listen for refresh circles notification (e.g., when a place is added)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleRefreshCircles),
+            name: NSNotification.Name("RefreshCircles"),
             object: nil
         )
     }
@@ -1065,6 +1401,11 @@ class CirclesHomeViewController: UIViewController {
             // Update empty state
             self?.updateEmptyState()
         }
+    }
+    
+    @objc private func handleRefreshCircles() {
+        // Refresh circles to get updated place counts
+        refreshData()
     }
     
     // MARK: - Actions
@@ -1169,13 +1510,20 @@ class CirclesHomeViewController: UIViewController {
             return
         }
         
+        // Don't trigger another fetch if we're already loading
+        if isLoadingPlaces || isPerformingInitialLoad {
+            return
+        }
+        
         // Cancel any existing timer
         mapUpdateTimer?.invalidate()
         
         // Create a new timer with a 0.3 second delay to debounce rapid updates
         mapUpdateTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
-            // Re-fetch all places to ensure we have the latest data with connections
-            self?.fetchAllPlacesFromCircles()
+            // Only fetch if not already loading
+            if !(self?.isLoadingPlaces ?? false) && !(self?.isPerformingInitialLoad ?? false) {
+                self?.fetchAllPlacesFromCircles()
+            }
         }
     }
     

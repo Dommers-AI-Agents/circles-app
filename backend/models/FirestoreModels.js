@@ -66,6 +66,7 @@ const createCircle = (circleData, ownerId) => {
     owner: ownerId,
     editors: circleData.editors || [], // Array of user IDs who can edit this circle
     places: circleData.places || [],
+    placesCount: circleData.placesCount || 0, // Count of places for efficient display
     privacy: circleData.privacy || 'myNetwork', // public, myNetwork, private
     allowNetworkEdit: circleData.allowNetworkEdit || false,
     category: circleData.category || 'other', // travel, food, services, shopping, healthcare, entertainment, other

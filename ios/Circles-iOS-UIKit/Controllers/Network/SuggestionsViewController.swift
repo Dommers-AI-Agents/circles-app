@@ -71,7 +71,7 @@ class SuggestionsViewController: UIViewController {
         setupView()
         setupTableView()
         setupEmptyState()
-        loadSuggestions()
+        // Removed loadSuggestions() to prevent duplicate request - it's called in viewWillAppear
         
         // Mark suggestions as viewed
         SuggestionService.shared.markSuggestionsAsViewed()
@@ -342,7 +342,9 @@ extension SuggestionsViewController: CreateSuggestionViewControllerDelegate {
 // MARK: - SuggestionTableViewCellDelegate
 extension SuggestionsViewController: SuggestionTableViewCellDelegate {
     func suggestionTableViewCell(_ cell: SuggestionTableViewCell, didTapPlace place: Place) {
-        openPlaceInGoogleMaps(place)
+        // Navigate to place detail view
+        let placeDetailVC = PlaceDetailViewController(place: place)
+        navigationController?.pushViewController(placeDetailVC, animated: true)
     }
     
     func suggestionTableViewCell(_ cell: SuggestionTableViewCell, didTapPlaceId placeId: String) {
@@ -396,7 +398,8 @@ extension SuggestionsViewController: SuggestionTableViewCellDelegate {
                 loadingAlert.dismiss(animated: true, completion: {
                     switch result {
                     case .success(let place):
-                        self?.openPlaceInGoogleMaps(place)
+                        let placeDetailVC = PlaceDetailViewController(place: place)
+                        self?.navigationController?.pushViewController(placeDetailVC, animated: true)
                     case .failure(let error):
                         print("Error fetching place: \(error)")
                         self?.showError("Could not load place details")

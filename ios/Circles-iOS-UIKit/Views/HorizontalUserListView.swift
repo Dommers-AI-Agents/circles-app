@@ -44,6 +44,8 @@ class HorizontalUserListView: UIView {
         return label
     }()
     
+    private var hasLoadedConnections = false
+    
     // MARK: - Init
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -93,10 +95,12 @@ class HorizontalUserListView: UIView {
     private func loadActiveConnections() {
         loadingIndicator.startAnimating()
         collectionView.isHidden = true
+        emptyStateLabel.isHidden = true // Hide empty state while loading
         
         // Use the regular connections endpoint that works
         NetworkManager.shared.fetchConnections { [weak self] connections, error in
             self?.loadingIndicator.stopAnimating()
+            self?.hasLoadedConnections = true
             
             if let connections = connections, !connections.isEmpty {
                 // Filter for accepted connections only
@@ -144,6 +148,7 @@ class HorizontalUserListView: UIView {
                 self?.emptyStateLabel.isHidden = true
             } else {
                 self?.collectionView.isHidden = true
+                // Only show empty state if we've actually loaded connections
                 self?.emptyStateLabel.isHidden = false
             }
         }
@@ -156,15 +161,27 @@ class HorizontalUserListView: UIView {
     
     func clearActivityForConnection(_ connectionId: String) {
         if let index = connections.firstIndex(where: { $0.id == connectionId }) {
+            // Update local state immediately
+            var updatedConnection = connections[index]
+            updatedConnection.hasRecentPlace = false
+            updatedConnection.hasNewActivity = false
+            connections[index] = updatedConnection
+            
             // Update UI immediately
             if let cell = collectionView.cellForItem(at: IndexPath(item: index, section: 0)) as? UserActivityCell {
-                cell.configure(with: connections[index])
+                cell.configure(with: updatedConnection)
             }
             
             // Clear on server
-            NetworkManager.shared.clearConnectionActivity(connectionId: connectionId) { error in
+            NetworkManager.shared.clearConnectionActivity(connectionId: connectionId) { [weak self] error in
                 if let error = error {
                     print("Error clearing activity: \(error)")
+                } else {
+                    // Refresh all connections to get latest state after clearing
+                    // This ensures we get the properly calculated hasRecentPlace values
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        self?.refresh()
+                    }
                 }
             }
         }
@@ -200,20 +217,8 @@ extension HorizontalUserListView: UICollectionViewDelegate {
             
             // Clear activity notification after viewing if they had new activity or recent place
             if connection.hasNewActivity ?? false || connection.hasRecentPlace ?? false {
+                // Just call clearActivityForConnection which now handles everything
                 clearActivityForConnection(connection.id)
-                
-                // Update the local connection data immediately
-                if let index = connections.firstIndex(where: { $0.id == connection.id }) {
-                    var updatedConnection = connections[index]
-                    updatedConnection.hasNewActivity = false
-                    updatedConnection.hasRecentPlace = false
-                    connections[index] = updatedConnection
-                    
-                    // Update the cell immediately
-                    if let cell = collectionView.cellForItem(at: IndexPath(item: index, section: 0)) as? UserActivityCell {
-                        cell.configure(with: updatedConnection)
-                    }
-                }
             }
         }
     }

@@ -8,6 +8,7 @@ class AllUsersListViewController: UIViewController {
         table.translatesAutoresizingMaskIntoConstraints = false
         table.backgroundColor = .systemGroupedBackground
         table.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 8, right: 0)
+        table.isHidden = true // Start hidden to prevent flash of empty content
         return table
     }()
     
@@ -37,6 +38,24 @@ class AllUsersListViewController: UIViewController {
         return label
     }()
     
+    private let emptySubtitleLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Start building your network by inviting people to connect with you."
+        label.font = .systemFont(ofSize: 14)
+        label.textColor = .secondaryLabel
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let loadingIndicator: UIActivityIndicatorView = {
+        let indicator = UIActivityIndicatorView(style: .large)
+        indicator.hidesWhenStopped = true
+        indicator.translatesAutoresizingMaskIntoConstraints = false
+        return indicator
+    }()
+    
     // MARK: - Properties
     private var allUsers: [User] = []
     private var connectedUsers: [User] = []
@@ -48,19 +67,52 @@ class AllUsersListViewController: UIViewController {
     
     private let cellIdentifier = "UserCell"
     private var searchQuery: String = ""
+    private var isLoadingData = false
+    private var hasLoadedInitialData = false
+    private static var hasEverLoadedConnections = false
+    private var minimumLoadingTimer: Timer?
     
     // MARK: - Lifecycle
+    override func loadView() {
+        super.loadView()
+        
+        // Set initial loading state before any views are added
+        if !hasLoadedInitialData {
+            isLoadingData = true
+        }
+    }
+    
     override func viewDidLoad() {
         super.viewDidLoad()
+        
         setupView()
         setupTableView()
         setupEmptyState()
+        
+        // Show loading state if needed
+        if !hasLoadedInitialData {
+            showLoadingState()
+        }
+        
         loadAllUsers()
     }
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        loadAllUsers()
+        
+        // If we haven't loaded initial data yet, ensure proper loading state
+        if !hasLoadedInitialData {
+            tableView.isHidden = true
+            emptyStateView.isHidden = true
+            loadingIndicator.startAnimating()
+            // Don't load again - viewDidLoad already started the load
+            return
+        }
+        
+        // Only refresh if we're not currently loading
+        if !isLoadingData {
+            loadAllUsers()
+        }
     }
     
     // MARK: - Setup
@@ -69,6 +121,7 @@ class AllUsersListViewController: UIViewController {
         
         view.addSubview(tableView)
         view.addSubview(emptyStateView)
+        view.addSubview(loadingIndicator)
         
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: view.topAnchor),
@@ -79,8 +132,17 @@ class AllUsersListViewController: UIViewController {
             emptyStateView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             emptyStateView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             emptyStateView.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 40),
-            emptyStateView.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -40)
+            emptyStateView.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -40),
+            
+            loadingIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            loadingIndicator.centerYAnchor.constraint(equalTo: view.centerYAnchor)
         ])
+        
+        // Start with loading state to prevent flash of empty content
+        if !hasLoadedInitialData {
+            // Table and empty state are already hidden from initialization
+            loadingIndicator.startAnimating()
+        }
     }
     
     private func setupTableView() {
@@ -97,6 +159,7 @@ class AllUsersListViewController: UIViewController {
     private func setupEmptyState() {
         emptyStateView.addSubview(emptyImageView)
         emptyStateView.addSubview(emptyTitleLabel)
+        emptyStateView.addSubview(emptySubtitleLabel)
         
         NSLayoutConstraint.activate([
             emptyImageView.topAnchor.constraint(equalTo: emptyStateView.topAnchor),
@@ -107,35 +170,89 @@ class AllUsersListViewController: UIViewController {
             emptyTitleLabel.topAnchor.constraint(equalTo: emptyImageView.bottomAnchor, constant: 24),
             emptyTitleLabel.leadingAnchor.constraint(equalTo: emptyStateView.leadingAnchor),
             emptyTitleLabel.trailingAnchor.constraint(equalTo: emptyStateView.trailingAnchor),
-            emptyTitleLabel.bottomAnchor.constraint(equalTo: emptyStateView.bottomAnchor)
+            
+            emptySubtitleLabel.topAnchor.constraint(equalTo: emptyTitleLabel.bottomAnchor, constant: 8),
+            emptySubtitleLabel.leadingAnchor.constraint(equalTo: emptyStateView.leadingAnchor),
+            emptySubtitleLabel.trailingAnchor.constraint(equalTo: emptyStateView.trailingAnchor),
+            emptySubtitleLabel.bottomAnchor.constraint(equalTo: emptyStateView.bottomAnchor)
         ])
     }
     
     // MARK: - Data Loading
     func loadAllUsers() {
+        // Show loading indicator only on initial load
+        if !hasLoadedInitialData && !isLoadingData {
+            showLoadingState()
+            
+            // Start minimum loading timer to prevent jarring transitions
+            minimumLoadingTimer?.invalidate()
+            minimumLoadingTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { _ in
+                // Timer will be checked when data loads
+            }
+        }
+        
+        isLoadingData = true
+        
         // Load all users (empty query returns all)
         UserService.shared.searchUsers(query: "") { [weak self] result in
             DispatchQueue.main.async {
                 self?.tableView.refreshControl?.endRefreshing()
                 
-                switch result {
-                case .success(let users):
-                    self?.allUsers = users
-                    self?.sortAndFilterUsers()
-                    self?.tableView.reloadData()
+                // Wait for minimum loading time if this is initial load
+                let completion = {
+                    self?.isLoadingData = false
+                    self?.hasLoadedInitialData = true
+                    self?.hideLoadingState()
                     
-                    if users.isEmpty {
-                        self?.showEmptyState()
-                    } else {
-                        self?.hideEmptyState()
+                    switch result {
+                    case .success(let users):
+                        self?.allUsers = users
+                        self?.sortAndFilterUsers()
+                        self?.tableView.reloadData()
+                        
+                        // Track if we've ever had connections
+                        if let hasConnections = self?.connectedUsers.isEmpty, !hasConnections {
+                            AllUsersListViewController.hasEverLoadedConnections = true
+                        }
+                        
+                        // Only show empty state if we have no connections (not no users)
+                        if self?.connectedUsers.isEmpty == true && self?.pendingIncomingUsers.isEmpty == true {
+                            self?.showNoConnectionsState()
+                        } else {
+                            self?.hideEmptyState()
+                        }
+                        
+                    case .failure(let error):
+                        print("Failed to load users: \(error)")
+                        
+                        // Check if it's a duplicate request error
+                        if case .duplicateRequest = error as? APIError {
+                            // Don't show empty state for duplicate requests
+                            // Keep the loading state active - the other request will complete
+                            print("Ignoring duplicate request error - keeping loading state")
+                            // Don't update any state, just return
+                            return
+                        }
+                        
+                        self?.allUsers = []
+                        self?.sortAndFilterUsers()
+                        self?.tableView.reloadData()
+                        
+                        // Show error state only if we have no cached data
+                        if self?.connectedUsers.isEmpty == true && self?.pendingIncomingUsers.isEmpty == true {
+                            self?.showEmptyState()
+                        }
                     }
-                    
-                case .failure(let error):
-                    print("Failed to load users: \(error)")
-                    self?.allUsers = []
-                    self?.sortAndFilterUsers()
-                    self?.tableView.reloadData()
-                    self?.showEmptyState()
+                }
+                
+                // If minimum loading timer is still active, wait for it
+                if let timer = self?.minimumLoadingTimer, timer.isValid {
+                    timer.invalidate()
+                    self?.minimumLoadingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: false) { _ in
+                        completion()
+                    }
+                } else {
+                    completion()
                 }
             }
         }
@@ -202,19 +319,53 @@ class AllUsersListViewController: UIViewController {
     
     // MARK: - Empty State
     private func showEmptyState() {
+        // Never show empty state while loading
+        guard !isLoadingData else { return }
+        
         emptyStateView.isHidden = false
         tableView.isHidden = true
+        emptyImageView.image = UIImage(systemName: "person.2.slash")
+        emptyTitleLabel.text = "No Users Found"
+        emptySubtitleLabel.text = "There are no users in the system yet."
+        emptySubtitleLabel.isHidden = false
+    }
+    
+    private func showNoConnectionsState() {
+        // Never show empty state while loading
+        guard !isLoadingData else { return }
+        
+        emptyStateView.isHidden = false
+        tableView.isHidden = true
+        emptyImageView.image = UIImage(systemName: "person.2.badge.gearshape")
+        emptyTitleLabel.text = "No Connections Yet"
+        emptySubtitleLabel.text = "Start building your network by inviting people to connect with you."
+        emptySubtitleLabel.isHidden = false
     }
     
     private func hideEmptyState() {
         emptyStateView.isHidden = true
         tableView.isHidden = false
     }
+    
+    private func showLoadingState() {
+        tableView.isHidden = true
+        emptyStateView.isHidden = true
+        loadingIndicator.startAnimating()
+    }
+    
+    private func hideLoadingState() {
+        loadingIndicator.stopAnimating()
+    }
 }
 
 // MARK: - UITableViewDataSource
 extension AllUsersListViewController: UITableViewDataSource {
     func numberOfSections(in tableView: UITableView) -> Int {
+        // Don't show sections while loading
+        if isLoadingData && !hasLoadedInitialData {
+            return 0
+        }
+        
         var sections = 0
         if !filteredPendingIncomingUsers.isEmpty { sections += 1 }
         if !filteredConnectedUsers.isEmpty { sections += 1 }

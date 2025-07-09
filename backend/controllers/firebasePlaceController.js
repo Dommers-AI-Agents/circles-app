@@ -291,11 +291,12 @@ exports.createPlace = async (req, res, next) => {
     const createdPlace = await placeRef.get();
     const place = serializeDoc(createdPlace);
 
-    // Update circle's places array (only add if place.id is defined)
+    // Update circle's places array and increment count (only add if place.id is defined)
     const currentPlaces = circle.places || [];
     if (place.id) {
       await db.collection(COLLECTIONS.CIRCLES).doc(circleId).update({
         places: [place.id, ...currentPlaces], // Add new place at the beginning
+        placesCount: (circle.placesCount || 0) + 1, // Increment places count
         updatedAt: new Date().toISOString()
       });
     }
@@ -447,12 +448,13 @@ exports.deletePlace = async (req, res, next) => {
       });
     }
 
-    // Remove place from circle's places array
+    // Remove place from circle's places array and decrement count
     const currentPlaces = circle.places || [];
     const updatedPlaces = currentPlaces.filter(placeId => placeId !== req.params.id);
     
     await db.collection(COLLECTIONS.CIRCLES).doc(place.circleId).update({
       places: updatedPlaces,
+      placesCount: Math.max(0, (circle.placesCount || 0) - 1), // Decrement places count (never go below 0)
       updatedAt: new Date().toISOString()
     });
 
@@ -1193,10 +1195,11 @@ exports.addExistingPlaceToCircle = async (req, res, next) => {
     const newPlaceDoc = await newPlaceRef.get();
     const newPlace = serializeDoc(newPlaceDoc);
     
-    // Update circle's places array using the direct ID
+    // Update circle's places array and increment count using the direct ID
     const currentPlaces = circle.places || [];
     await circleRef.update({
       places: [...currentPlaces, newPlaceId], // Use the ID we got from the reference
+      placesCount: (circle.placesCount || 0) + 1, // Increment places count
       updatedAt: new Date().toISOString()
     });
     

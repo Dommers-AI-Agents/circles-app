@@ -10,6 +10,7 @@ struct Circle: Codable, Identifiable {
     let editors: [String]? // Array of user IDs who can edit
     let editorsDetails: [User]? // Full user objects when populated
     let places: [String]?
+    let placesCount: Int? // Efficient count of places without loading them all
     let placesWithDetails: [Place]? // Populated with full place details including who added them
     let privacy: PrivacyLevel
     let allowNetworkEdit: Bool? // Allow network connections to edit this circle
@@ -32,7 +33,7 @@ struct Circle: Codable, Identifiable {
         case id = "_id"
         case name, description, coverImage, owner, ownerDetails
         case editors, editorsDetails
-        case places, placesWithDetails, privacy, allowNetworkEdit, category
+        case places, placesCount, placesWithDetails, privacy, allowNetworkEdit, category
         case location, tags, sharedWith, followers, activeShares, shareSettings
         case isSharedWithMe, sharedBy, myAccessLevel
         case createdAt, updatedAt, isNew
@@ -50,6 +51,7 @@ struct Circle: Codable, Identifiable {
         editors = try container.decodeIfPresent([String].self, forKey: .editors)
         editorsDetails = try container.decodeIfPresent([User].self, forKey: .editorsDetails)
         places = try container.decodeIfPresent([String].self, forKey: .places)
+        placesCount = try container.decodeIfPresent(Int.self, forKey: .placesCount)
         placesWithDetails = try container.decodeIfPresent([Place].self, forKey: .placesWithDetails)
         privacy = try container.decode(PrivacyLevel.self, forKey: .privacy)
         allowNetworkEdit = try container.decodeIfPresent(Bool.self, forKey: .allowNetworkEdit)
@@ -83,7 +85,7 @@ struct Circle: Codable, Identifiable {
     // Add manual init for creating circles in code
     init(id: String, name: String, description: String?, coverImage: String?, owner: String,
          ownerDetails: User?, editors: [String]?, editorsDetails: [User]?,
-         places: [String]?, placesWithDetails: [Place]?,
+         places: [String]?, placesCount: Int?, placesWithDetails: [Place]?,
          privacy: PrivacyLevel, allowNetworkEdit: Bool?, category: CircleCategory, location: String?,
          tags: [String]?, sharedWith: [String]?, followers: [String]?,
          activeShares: [CircleShare]?, shareSettings: ShareSettings?,
@@ -98,6 +100,7 @@ struct Circle: Codable, Identifiable {
         self.editors = editors
         self.editorsDetails = editorsDetails
         self.places = places
+        self.placesCount = placesCount
         self.placesWithDetails = placesWithDetails
         self.privacy = privacy
         self.allowNetworkEdit = allowNetworkEdit

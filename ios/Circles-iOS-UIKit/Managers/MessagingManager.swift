@@ -21,9 +21,9 @@ class MessagingManager {
     
     private func setupAuthListener() {
         // Listen for authentication changes
-        print("🔍 MessagingManager: Setting up auth listener")
+        // print("🔍 MessagingManager: Setting up auth listener")
         AuthService.shared.addAuthStateListener(id: authObserverId) { [weak self] isAuthenticated in
-            print("🔍 MessagingManager: Auth state changed to: \(isAuthenticated)")
+            // print("🔍 MessagingManager: Auth state changed to: \(isAuthenticated)")
             if isAuthenticated {
                 self?.startMessaging()
             } else {
@@ -35,7 +35,7 @@ class MessagingManager {
     // MARK: - Messaging Lifecycle
     
     private func startMessaging() {
-        print("🔍 MessagingManager: startMessaging called")
+        // print("🔍 MessagingManager: startMessaging called")
         loadConversations()
         startMessagePolling()
         updateUnreadCount()
@@ -43,12 +43,12 @@ class MessagingManager {
     
     // Public method to force initialization when we know we're authenticated
     func ensureInitialized() {
-        print("🔍 MessagingManager: ensureInitialized called")
-        print("🔍 MessagingManager: Has token = \(AuthService.shared.getToken() != nil)")
+        // print("🔍 MessagingManager: ensureInitialized called")
+        // print("🔍 MessagingManager: Has token = \(AuthService.shared.getToken() != nil)")
         
         // If we have a token but messaging hasn't started, start it now
         if AuthService.shared.getToken() != nil && messagePollingTimer == nil {
-            print("🔍 MessagingManager: Token exists but messaging not started, starting now")
+            // print("🔍 MessagingManager: Token exists but messaging not started, starting now")
             startMessaging()
         }
     }
@@ -62,6 +62,20 @@ class MessagingManager {
         conversations = []
         activeMessages = [:]
         unreadCount = 0
+    }
+    
+    // MARK: - Tab Management
+    
+    func setMessagesTabActive(_ isActive: Bool) {
+        // print("🔍 MessagingManager: Messages tab active: \(isActive)")
+        isMessagesTabActive = isActive
+        updatePollingInterval()
+        
+        // Force refresh when tab becomes active
+        if isActive {
+            loadConversations()
+            updateUnreadCount()
+        }
     }
     
     // MARK: - Polling (temporary until real-time is implemented)
@@ -79,6 +93,8 @@ class MessagingManager {
         
         // Start new timer with appropriate interval
         messagePollingTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            // Refresh both conversations list and active messages
+            self?.loadConversations()
             self?.refreshActiveConversations()
             self?.updateUnreadCount()
         }
@@ -92,25 +108,49 @@ class MessagingManager {
     private func refreshActiveConversations() {
         // Refresh messages for active conversations
         for conversationId in activeMessages.keys {
-            loadMessages(for: conversationId, showLoading: false)
+            messagingService.fetchMessages(conversationId: conversationId, limit: 50, before: nil) { [weak self] result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(let messages):
+                        // Check if there are new messages
+                        let oldCount = self?.activeMessages[conversationId]?.count ?? 0
+                        let newCount = messages.count
+                        
+                        // Update messages
+                        self?.activeMessages[conversationId] = messages
+                        
+                        // Post notification if there are new messages
+                        if newCount > oldCount {
+                            NotificationCenter.default.post(
+                                name: Notification.Name("NewMessagesReceived"),
+                                object: nil,
+                                userInfo: ["conversationId": conversationId]
+                            )
+                        }
+                    case .failure(let error):
+                        // print("⚠️ MessagingManager: Failed to refresh messages for conversation \(conversationId): \(error)")
+                        break
+                    }
+                }
+            }
         }
     }
     
     // MARK: - Conversations
     
     func loadConversations() {
-        print("🔍 MessagingManager: loadConversations called")
-        print("🔍 MessagingManager: Has auth token = \(AuthService.shared.getToken() != nil)")
+        // print("🔍 MessagingManager: loadConversations called")
+        // print("🔍 MessagingManager: Has auth token = \(AuthService.shared.getToken() != nil)")
         
         // Skip auth check if we have a token - this is a workaround for auth state detection issues
         guard AuthService.shared.getToken() != nil else {
-            print("⚠️ MessagingManager: No auth token, skipping conversation load")
+            // print("⚠️ MessagingManager: No auth token, skipping conversation load")
             return
         }
         
         // Don't load if already loading
         guard !isLoadingConversations else {
-            print("🔍 MessagingManager: Already loading conversations, skipping duplicate request")
+            // print("🔍 MessagingManager: Already loading conversations, skipping duplicate request")
             return
         }
         
@@ -122,7 +162,7 @@ class MessagingManager {
                 
                 switch result {
                 case .success(let conversations):
-                    print("🔍 MessagingManager: Fetched \(conversations.count) conversations successfully")
+                    // print("🔍 MessagingManager: Fetched \(conversations.count) conversations successfully")
                     self?.conversations = conversations.sorted { conv1, conv2 in
                         // Sort by last message time, most recent first
                         let time1 = conv1.lastMessageTime ?? conv1.createdAt
@@ -130,7 +170,7 @@ class MessagingManager {
                         return time1 > time2
                     }
                 case .failure(let error):
-                    print("⚠️ MessagingManager: Failed to fetch conversations: \(error.localizedDescription)")
+                    // print("⚠️ MessagingManager: Failed to fetch conversations: \(error.localizedDescription)")
                     self?.error = error.localizedDescription
                 }
             }
@@ -346,16 +386,4 @@ class MessagingManager {
         }
     }
     
-    // MARK: - Tab Management
-    
-    func setMessagesTabActive(_ isActive: Bool) {
-        guard isMessagesTabActive != isActive else { return }
-        
-        isMessagesTabActive = isActive
-        
-        // Update polling interval if we're currently polling
-        if messagePollingTimer != nil {
-            updatePollingInterval()
-        }
-    }
 }

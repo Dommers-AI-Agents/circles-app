@@ -8,12 +8,20 @@ class PlacePickerViewController: UIViewController {
     
     weak var delegate: PlacePickerViewControllerDelegate?
     private var places: [Place] = []
+    private var isLoading = false
     
     // MARK: - UI Elements
     private let tableView: UITableView = {
         let table = UITableView()
         table.translatesAutoresizingMaskIntoConstraints = false
         return table
+    }()
+    
+    private let loadingView: UIActivityIndicatorView = {
+        let indicator = UIActivityIndicatorView(style: .large)
+        indicator.hidesWhenStopped = true
+        indicator.translatesAutoresizingMaskIntoConstraints = false
+        return indicator
     }()
     
     private let emptyStateLabel: UILabel = {
@@ -57,6 +65,7 @@ class PlacePickerViewController: UIViewController {
         
         view.addSubview(tableView)
         view.addSubview(emptyStateLabel)
+        view.addSubview(loadingView)
         
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
@@ -67,7 +76,10 @@ class PlacePickerViewController: UIViewController {
             emptyStateLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             emptyStateLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             emptyStateLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
-            emptyStateLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32)
+            emptyStateLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
+            
+            loadingView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            loadingView.centerYAnchor.constraint(equalTo: view.centerYAnchor)
         ])
         
         tableView.delegate = self
@@ -91,27 +103,55 @@ class PlacePickerViewController: UIViewController {
     
     // MARK: - Data Loading
     private func loadPlaces() {
-        // Load places from user's circles
+        guard !isLoading else { return }
+        
+        isLoading = true
+        loadingView.startAnimating()
+        tableView.isHidden = true
+        emptyStateLabel.isHidden = true
+        
+        // First, fetch user's circles to get circle IDs
         CircleService.shared.fetchUserCircles { [weak self] result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let circles):
-                    // Extract all unique places from circles
-                    var allPlaces: [Place] = []
-                    for circle in circles {
-                        if let placesWithDetails = circle.placesWithDetails {
-                            allPlaces.append(contentsOf: placesWithDetails)
+            switch result {
+            case .success(let circles):
+                // Now fetch places for each circle
+                let group = DispatchGroup()
+                var allFetchedPlaces: [Place] = []
+                
+                for circle in circles {
+                    group.enter()
+                    PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { placeResult in
+                        switch placeResult {
+                        case .success(let places):
+                            allFetchedPlaces.append(contentsOf: places)
+                        case .failure(let error):
+                            print("Error fetching places for circle \(circle.id): \(error)")
                         }
+                        group.leave()
                     }
+                }
+                
+                group.notify(queue: .main) { [weak self] in
+                    guard let self = self else { return }
+                    
+                    self.isLoading = false
+                    self.loadingView.stopAnimating()
+                    self.tableView.isHidden = false
                     
                     // Remove duplicates based on place ID
-                    let uniquePlaces = Array(Set(allPlaces))
-                    self?.places = uniquePlaces.sorted { $0.name < $1.name }
-                    self?.tableView.reloadData()
-                    self?.updateEmptyState()
-                    
-                case .failure(let error):
-                    print("Error loading places: \(error)")
+                    let uniquePlaces = Array(Set(allFetchedPlaces))
+                    self.places = uniquePlaces.sorted { $0.name < $1.name }
+                    self.tableView.reloadData()
+                    self.updateEmptyState()
+                }
+                
+            case .failure(let error):
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    print("Error loading circles: \(error)")
+                    self.isLoading = false
+                    self.loadingView.stopAnimating()
+                    self.updateEmptyState()
                 }
             }
         }

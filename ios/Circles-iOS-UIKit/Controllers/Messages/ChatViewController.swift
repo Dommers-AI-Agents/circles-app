@@ -101,6 +101,11 @@ class ChatViewController: UIViewController {
         messageUpdateTimer = nil
     }
     
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        messageUpdateTimer?.invalidate()
+    }
+    
     // MARK: - Setup
     private func setupView() {
         view.backgroundColor = .systemBackground
@@ -176,7 +181,15 @@ class ChatViewController: UIViewController {
     private func setupSubscribers() {
         guard let conversationId = conversation?.id else { return }
         
-        // Poll for message updates
+        // Listen for new messages notification
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleNewMessages(_:)),
+            name: Notification.Name("NewMessagesReceived"),
+            object: nil
+        )
+        
+        // Poll for message updates (as backup)
         messageUpdateTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             if let messages = self.messagingManager.activeMessages[conversationId] {
@@ -186,6 +199,19 @@ class ChatViewController: UIViewController {
                     self.scrollToBottom(animated: true)
                 }
             }
+        }
+    }
+    
+    @objc private func handleNewMessages(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let notificationConversationId = userInfo["conversationId"] as? String,
+              notificationConversationId == conversation?.id else { return }
+        
+        // Refresh messages from MessagingManager
+        if let messages = messagingManager.activeMessages[notificationConversationId] {
+            self.messages = messages
+            tableView.reloadData()
+            scrollToBottom(animated: true)
         }
     }
     

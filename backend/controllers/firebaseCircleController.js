@@ -36,6 +36,15 @@ exports.getMyCircles = async (req, res, next) => {
 
     const circles = serializeQuerySnapshot(snapshot);
     
+    // Debug: Log the first circle to check placesCount
+    if (circles.length > 0) {
+      console.log('🔍 DEBUG - First circle data:', {
+        name: circles[0].name,
+        placesCount: circles[0].placesCount,
+        placesArrayLength: circles[0].places?.length
+      });
+    }
+    
     // Get user's circle order preference
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(req.user.uid).get();
     const userData = userDoc.exists ? serializeDoc(userDoc) : null;

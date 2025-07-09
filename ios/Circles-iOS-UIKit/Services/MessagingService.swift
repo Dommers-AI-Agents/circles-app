@@ -9,10 +9,10 @@ class MessagingService {
     // MARK: - Conversations
     
     func fetchConversations(completion: @escaping (Result<[Conversation], Error>) -> Void) {
-        print("🔍 MessagingService: fetchConversations called")
-        print("🔐 MessagingService: Auth token available: \(AuthService.shared.getToken() != nil)")
-        print("🔐 MessagingService: Auth token value: \(AuthService.shared.getToken()?.prefix(20) ?? "nil")...")
-        print("🔍 MessagingService: Making API request to messages/conversations")
+        // print("🔍 MessagingService: fetchConversations called")
+        // print("🔐 MessagingService: Auth token available: \(AuthService.shared.getToken() != nil)")
+        // print("🔐 MessagingService: Auth token value: \(AuthService.shared.getToken()?.prefix(20) ?? "nil")...")
+        // print("🔍 MessagingService: Making API request to messages/conversations")
         
         apiService.request(
             endpoint: "messages/conversations",
@@ -21,24 +21,24 @@ class MessagingService {
         ) { (result: Result<ConversationsResponse, APIError>) in
             switch result {
             case .success(let response):
-                print("✅ MessagingService: Successfully fetched \(response.conversations.count) conversations")
-                print("🔍 MessagingService: Response: \(response)")
+                // print("✅ MessagingService: Successfully fetched \(response.conversations.count) conversations")
+                // print("🔍 MessagingService: Response: \(response)")
                 completion(.success(response.conversations))
             case .failure(let error):
-                print("❌ MessagingService: Failed to fetch conversations: \(error.localizedDescription)")
-                print("❌ MessagingService: Error details: \(error)")
-                print("❌ MessagingService: Error type: \(type(of: error))")
+                // print("❌ MessagingService: Failed to fetch conversations: \(error.localizedDescription)")
+                // print("❌ MessagingService: Error details: \(error)")
+                // print("❌ MessagingService: Error type: \(type(of: error))")
                 if case let APIError.httpError(statusCode, data) = error {
-                    print("❌ MessagingService: HTTP error - Status: \(statusCode)")
+                    // print("❌ MessagingService: HTTP error - Status: \(statusCode)")
                     if let data = data, let message = String(data: data, encoding: .utf8) {
-                        print("❌ MessagingService: Error message: \(message)")
+                        // print("❌ MessagingService: Error message: \(message)")
                     }
                 } else if case APIError.noInternet = error {
-                    print("❌ MessagingService: No internet connection")
+                    // print("❌ MessagingService: No internet connection")
                 } else if case APIError.unauthorized = error {
-                    print("❌ MessagingService: Unauthorized - auth token may be invalid")
+                    // print("❌ MessagingService: Unauthorized - auth token may be invalid")
                 } else if case APIError.serverError = error {
-                    print("❌ MessagingService: Server error")
+                    // print("❌ MessagingService: Server error")
                 }
                 completion(.failure(error))
             }

@@ -67,7 +67,7 @@ class CreateSuggestionViewController: UIViewController {
         return button
     }()
     
-    // Removed place display UI elements - places are now inserted as links directly in the message
+    // Place display is handled by the button state change
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
@@ -193,14 +193,52 @@ class CreateSuggestionViewController: UIViewController {
     }
     
     @objc private func addPlaceTapped() {
+        // If a place is already selected, show options
+        if selectedPlace != nil {
+            let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+            
+            alert.addAction(UIAlertAction(title: "Change Place", style: .default) { [weak self] _ in
+                self?.showPlacePicker()
+            })
+            
+            alert.addAction(UIAlertAction(title: "Remove Place", style: .destructive) { [weak self] _ in
+                self?.removeSelectedPlace()
+            })
+            
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            
+            // For iPad
+            if let popover = alert.popoverPresentationController {
+                popover.sourceView = addPlaceButton
+                popover.sourceRect = addPlaceButton.bounds
+            }
+            
+            present(alert, animated: true)
+        } else {
+            showPlacePicker()
+        }
+    }
+    
+    private func showPlacePicker() {
         let placePickerVC = PlacePickerViewController()
         placePickerVC.delegate = self
         let navVC = UINavigationController(rootViewController: placePickerVC)
         present(navVC, animated: true)
     }
     
-    @objc private func removePlaceTapped() {
-        // No longer needed since we insert places as links directly
+    private func removeSelectedPlace() {
+        selectedPlace = nil
+        
+        // Reset button to original state
+        var config = addPlaceButton.configuration
+        config?.title = "Select Place"
+        config?.subtitle = nil
+        config?.image = UIImage(systemName: "magnifyingglass")
+        config?.baseBackgroundColor = .tertiarySystemGroupedBackground
+        config?.baseForegroundColor = Constants.Colors.primary
+        addPlaceButton.configuration = config
+        
+        updateShareButtonState()
     }
     
     @objc private func keyboardWillShow(notification: NSNotification) {
@@ -224,10 +262,6 @@ class CreateSuggestionViewController: UIViewController {
         let count = messageTextView.text.count
         characterCountLabel.text = "\(count)/500"
         characterCountLabel.textColor = count > 500 ? .systemRed : .secondaryLabel
-    }
-    
-    private func updatePlaceDisplay() {
-        // No longer needed since we insert places as links directly
     }
     
     private func showError(_ message: String) {
@@ -255,37 +289,19 @@ extension CreateSuggestionViewController: UITextViewDelegate {
 // MARK: - PlacePickerViewControllerDelegate
 extension CreateSuggestionViewController: PlacePickerViewControllerDelegate {
     func placePickerViewController(_ controller: PlacePickerViewController, didSelectPlace place: Place) {
-        // Insert place as hyperlink in the message
-        let placeLinkText = " [\(place.name)]"
-        
-        // Get current text and cursor position
-        if let selectedRange = messageTextView.selectedTextRange {
-            let cursorPosition = messageTextView.offset(from: messageTextView.beginningOfDocument, to: selectedRange.start)
-            let currentText = messageTextView.text ?? ""
-            
-            // Insert the place link at cursor position
-            let index = currentText.index(currentText.startIndex, offsetBy: cursorPosition)
-            var newText = currentText
-            newText.insert(contentsOf: placeLinkText, at: index)
-            
-            // Update text view
-            messageTextView.text = newText
-            
-            // Move cursor after the inserted link
-            if let newPosition = messageTextView.position(from: messageTextView.beginningOfDocument, offset: cursorPosition + placeLinkText.count) {
-                messageTextView.selectedTextRange = messageTextView.textRange(from: newPosition, to: newPosition)
-            }
-        } else {
-            // If no selection, append to end
-            messageTextView.text = (messageTextView.text ?? "") + placeLinkText
-        }
-        
         // Store the selected place for backend processing
         selectedPlace = place
         
+        // Update the button to show the selected place
+        var config = addPlaceButton.configuration
+        config?.title = place.name
+        config?.subtitle = "Tap to change"
+        config?.image = UIImage(systemName: "checkmark.circle.fill")
+        config?.baseBackgroundColor = Constants.Colors.primary.withAlphaComponent(0.1)
+        config?.baseForegroundColor = Constants.Colors.primary
+        addPlaceButton.configuration = config
+        
         // Update UI
-        placeholderLabel.isHidden = !messageTextView.text.isEmpty
-        updateCharacterCount()
         updateShareButtonState()
         
         controller.dismiss(animated: true)
