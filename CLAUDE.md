@@ -349,6 +349,7 @@ circles-app/
 - `PUT /api/circles/:circleId` - Update circle
 - `DELETE /api/circles/:circleId` - Delete circle
 - `PUT /api/circles/reorder` - Reorder circles
+- `POST /api/circles/:circleId/track-view` - Track circle view (for activity tracking)
 
 ### Places
 - `GET /api/circles/:circleId/places` - Get places in circle
@@ -358,6 +359,7 @@ circles-app/
 - `POST /api/places/:placeId/like` - Like/unlike place
 - `GET /api/places/:placeId/comments` - Get place comments
 - `POST /api/places/:placeId/comment` - Add comment
+- `POST /api/places/:placeId/track-view` - Track place view (for activity tracking)
 
 ### Connections
 - `GET /api/connections` - Get user's connections
@@ -418,6 +420,18 @@ gcloud run services update circles-backend \
 // Show destination view, not current view
 let title = isShowingMap ? "List" : "Map"
 ```
+
+### 5. Activity Tracking Red Dots (Fixed January 2025)
+**Issue**: Red dots showed for any activity within 7 days, not since last login
+**Solution**: Track lastLogin timestamp and calculate hasRecentPlace dynamically
+```javascript
+// Now uses lastLogin instead of hardcoded 7 days
+hasRecentPlace = recentActivity.some(activity => 
+  activity.type === 'place' && 
+  new Date(activity.createdAt) > lastLoginDate
+);
+```
+**See**: Activity Tracking System implementation above
 
 ## Recent Feature Implementations
 
@@ -487,6 +501,105 @@ await db.collection(COLLECTIONS.CIRCLES).doc(circleId).update({
 - Removed section headers for cleaner look
 - Combined full name with bio text
 **Note**: Fixed duplicate API call issue - APIService blocks duplicate GET requests
+
+### 7. Activity Tracking System for New Places (January 2025)
+**Problem**: Red dots incorrectly showed for any place added within 7 days, not just since last login. Red dots didn't clear when navigating through the hierarchy.
+**Solution**: Comprehensive activity tracking with lastLogin-based detection and hierarchical clearing
+
+#### Backend Implementation:
+1. **Last Login Tracking**:
+```javascript
+// In firebaseAuthController.js - tracks when user logs in
+const now = new Date().toISOString();
+await userRef.update({
+  lastLogin: now,
+  updatedAt: now
+});
+```
+
+2. **Enhanced Activity Tracking**:
+```javascript
+// In activityService.js - tracks place with context
+const activity = {
+  type: 'place',
+  entityId: placeId,
+  circleId: circleId,
+  placeName: placeName || 'Unknown Place',
+  circleName: circleName || 'Unknown Circle',
+  createdAt: new Date().toISOString(),
+  viewedAt: null // Tracks when viewed
+};
+```
+
+3. **Dynamic hasRecentPlace Calculation**:
+```javascript
+// In connectionController.js - uses lastLogin instead of 7 days
+const lastLoginDate = new Date(lastLogin);
+hasRecentPlace = connectionData.recentActivity?.some(activity => 
+  activity.type === 'place' && 
+  new Date(activity.createdAt) > lastLoginDate
+) || false;
+```
+
+4. **Circle-level New Place Indicators**:
+```javascript
+// In circleSharingController.js - adds hasNewPlaces to circles
+circle.hasNewPlaces = newPlacesByCircle.has(circle._id);
+circle.newPlacesCount = newPlacesByCircle.get(circle._id)?.length || 0;
+```
+
+#### New API Endpoints:
+- `POST /api/circles/:id/track-view` - Track when a circle with new places is viewed
+  - Body: `{ connectionUserId: "userId" }`
+  - Marks activities in that circle as viewed
+- `POST /api/places/:id/track-view` - Track when a specific place is viewed
+  - Body: `{ connectionUserId: "userId" }`
+  - Marks that place activity as viewed
+
+#### iOS Implementation:
+1. **Circle Model Updates**:
+```swift
+// Added to Circle model
+var hasNewPlaces: Bool? // Indicates if circle has new places since last login
+var newPlacesCount: Int? // Number of new places since last login
+```
+
+2. **Red Dot UI Components**:
+- **CircleCell**: Shows red dot when `hasNewPlaces == true`
+- **PlaceTableViewCell**: Shows red dot and "NEW" badge when `isNew == true`
+
+3. **Navigation Flow**:
+```swift
+// HorizontalUserListView - Connection click
+NetworkManager.shared.trackConnectionView(connectionId: connection.id)
+
+// UserCirclesViewController - Circle click
+if circle.hasNewPlaces == true {
+    trackCircleView(circleId: circle.id)
+}
+
+// Tracks view and clears circle-level activity
+APIService.shared.request(
+    endpoint: "circles/\(circleId)/track-view",
+    method: .post,
+    body: ["connectionUserId": userId]
+)
+```
+
+#### Activity Flow:
+1. User A adds a new place to a circle
+2. User B (connected to A) logs in and sees:
+   - Red dot on User A's connection icon (hasRecentPlace = true)
+   - Clicking the connection → navigates to UserCirclesViewController
+   - Red dot on circles containing new places (hasNewPlaces = true)
+   - Clicking a circle → tracks view and navigates to CircleDetailViewController
+   - New places show with red dots and "NEW" badges (isNew = true)
+3. Activity clears progressively as user navigates deeper
+
+#### Migration Notes:
+- Existing connections will show no activity until users log in (lastLogin populated)
+- Activity older than 30 days is automatically cleaned up
+- recentActivity array stores all activity types (circles, places)
 
 ## Deployment Guide
 
