@@ -53,6 +53,15 @@ class CircleCell: UICollectionViewCell {
         return imageView
     }()
     
+    private let activityIndicatorView: UIView = {
+        let view = UIView()
+        view.backgroundColor = .systemRed
+        view.layer.cornerRadius = 4
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isHidden = true
+        return view
+    }()
+    
     // MARK: - Init
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -70,6 +79,7 @@ class CircleCell: UICollectionViewCell {
         containerView.addSubview(nameLabel)
         containerView.addSubview(placeCountLabel)
         containerView.addSubview(privacyImageView)
+        containerView.addSubview(activityIndicatorView)
         
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor),
@@ -94,7 +104,13 @@ class CircleCell: UICollectionViewCell {
             privacyImageView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 4),
             privacyImageView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -4),
             privacyImageView.widthAnchor.constraint(equalToConstant: 16),
-            privacyImageView.heightAnchor.constraint(equalToConstant: 16)
+            privacyImageView.heightAnchor.constraint(equalToConstant: 16),
+            
+            // Activity indicator in top left corner
+            activityIndicatorView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 8),
+            activityIndicatorView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
+            activityIndicatorView.widthAnchor.constraint(equalToConstant: 8),
+            activityIndicatorView.heightAnchor.constraint(equalToConstant: 8)
         ])
     }
     
@@ -105,6 +121,9 @@ class CircleCell: UICollectionViewCell {
         // Use placesCount if available, otherwise fall back to places array count
         let placeCount = circle.placesCount ?? circle.places?.count ?? 0
         placeCountLabel.text = "  \(placeCount) \(placeCount == 1 ? "place" : "places")  " // Add padding
+        
+        // Show/hide activity indicator based on hasNewPlaces
+        activityIndicatorView.isHidden = !(circle.hasNewPlaces ?? false)
         
         // Set privacy icon
         switch circle.privacy {
@@ -150,5 +169,6 @@ class CircleCell: UICollectionViewCell {
         nameLabel.text = nil
         placeCountLabel.text = nil
         privacyImageView.image = nil
+        activityIndicatorView.isHidden = true
     }
 }

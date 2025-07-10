@@ -725,26 +725,42 @@ const getUserCircles = async (req, res) => {
 
     // Get recent activity from connection data
     const recentActivity = connectionData.recentActivity || [];
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     
-    // Filter recent activity within last 7 days
-    const recentActivityWithinWeek = recentActivity.filter(activity => 
-      new Date(activity.createdAt) > sevenDaysAgo
-    );
+    // Get the current user's lastLogin to determine what's "new"
+    const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(currentUserId).get();
+    const lastLogin = currentUserDoc.exists ? currentUserDoc.data().lastLogin : null;
+    
+    let recentActivitySinceLogin = [];
+    if (lastLogin) {
+      const lastLoginDate = new Date(lastLogin);
+      recentActivitySinceLogin = recentActivity.filter(activity => 
+        new Date(activity.createdAt) > lastLoginDate
+      );
+    }
     
     // Create sets of recent circle and place IDs for easy lookup
     const recentCircleIds = new Set(
-      recentActivityWithinWeek
+      recentActivitySinceLogin
         .filter(a => a.type === 'circle')
         .map(a => a.entityId)
     );
     
     const recentPlaceIds = new Set(
-      recentActivityWithinWeek
+      recentActivitySinceLogin
         .filter(a => a.type === 'place')
         .map(a => a.entityId)
     );
+    
+    // Create a map of circleId -> array of new place activities
+    const newPlacesByCircle = new Map();
+    recentActivitySinceLogin
+      .filter(a => a.type === 'place' && a.circleId)
+      .forEach(activity => {
+        if (!newPlacesByCircle.has(activity.circleId)) {
+          newPlacesByCircle.set(activity.circleId, []);
+        }
+        newPlacesByCircle.get(activity.circleId).push(activity);
+      });
 
     // Fetch places for each circle
     const circles = await Promise.all(sortedDocs.map(async doc => {
@@ -753,6 +769,10 @@ const getUserCircles = async (req, res) => {
       
       // Mark if this circle is new
       circle.isNew = recentCircleIds.has(circle._id);
+      
+      // Check if this circle has any new places
+      circle.hasNewPlaces = newPlacesByCircle.has(circle._id);
+      circle.newPlacesCount = newPlacesByCircle.get(circle._id)?.length || 0;
       
       // Only fetch places for circles with appropriate privacy settings
       if (circle.privacy === 'myNetwork' || circle.privacy === 'public') {

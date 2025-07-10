@@ -144,6 +144,12 @@ class ConversationsListViewController: UIViewController {
                     self?.isInitialLoadComplete = true
                     self?.hideLoadingIndicator()
                 }
+            } else {
+                // If returning from chat, immediately reload table to show updated read status
+                // The local state should already be correct from markConversationAsReadLocally
+                DispatchQueue.main.async { [weak self] in
+                    self?.tableView.reloadData()
+                }
             }
         }
         
@@ -273,6 +279,14 @@ class ConversationsListViewController: UIViewController {
             object: nil
         )
         
+        // Listen for conversations update notification (when messages are marked as read)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleConversationsUpdate),
+            name: Notification.Name("ConversationsUpdated"),
+            object: nil
+        )
+        
         // Start polling timer only after initial data load
         // Using 5 second interval for better performance
         startPollingTimer()
@@ -290,9 +304,17 @@ class ConversationsListViewController: UIViewController {
             if !self.messagingManager.isLoadingConversations {
                 let conversations = self.messagingManager.conversations
                 print("🔍 ConversationsListViewController: Polling update - \(conversations.count) conversations")
+                
+                // Disable interaction during reload to prevent selection issues
+                self.tableView.isUserInteractionEnabled = false
                 self.tableView.reloadData()
                 self.updateEmptyState()
                 self.tableView.refreshControl?.endRefreshing()
+                
+                // Re-enable interaction after a brief delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self.tableView.isUserInteractionEnabled = true
+                }
             }
         }
     }
@@ -300,6 +322,17 @@ class ConversationsListViewController: UIViewController {
     @objc private func handleNewMessages() {
         // Reload conversations when new messages arrive
         messagingManager.loadConversations()
+    }
+    
+    @objc private func handleConversationsUpdate() {
+        // Update the table view immediately when conversations are updated (e.g., messages marked as read)
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            print("🔍 ConversationsListViewController: Conversations updated, reloading table")
+            self.tableView.reloadData()
+            self.updateEmptyState()
+        }
     }
     
     // MARK: - Data Loading
@@ -352,9 +385,32 @@ class ConversationsListViewController: UIViewController {
     
     // MARK: - Navigation
     private func showConversation(_ conversation: Conversation) {
-        let chatVC = ChatViewController()
-        chatVC.conversation = conversation
-        navigationController?.pushViewController(chatVC, animated: true)
+        // Immediately mark conversation as read locally for instant UI feedback
+        messagingManager.markConversationAsReadLocally(conversation.id)
+        
+        // Show a brief loading indicator before navigation
+        let loadingAlert = UIAlertController(title: nil, message: "Loading...", preferredStyle: .alert)
+        let loadingIndicator = UIActivityIndicatorView(style: .medium)
+        loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
+        loadingIndicator.startAnimating()
+        loadingAlert.view.addSubview(loadingIndicator)
+        NSLayoutConstraint.activate([
+            loadingIndicator.centerXAnchor.constraint(equalTo: loadingAlert.view.centerXAnchor),
+            loadingIndicator.bottomAnchor.constraint(equalTo: loadingAlert.view.bottomAnchor, constant: -20)
+        ])
+        
+        present(loadingAlert, animated: true) { [weak self] in
+            // Create and configure the chat view controller
+            let chatVC = ChatViewController()
+            chatVC.conversation = conversation
+            
+            // Navigate after a brief delay to show loading
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                loadingAlert.dismiss(animated: false) {
+                    self?.navigationController?.pushViewController(chatVC, animated: true)
+                }
+            }
+        }
     }
 }
 
@@ -376,7 +432,21 @@ extension ConversationsListViewController: UITableViewDataSource {
 extension ConversationsListViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        let conversation = messagingManager.conversations[indexPath.row]
+        
+        // Get the cell to retrieve the conversation ID for stable selection
+        guard let cell = tableView.cellForRow(at: indexPath) as? ConversationCell,
+              let conversationId = cell.conversationId else {
+            print("⚠️ ConversationsListViewController: Could not get conversation ID from cell")
+            return
+        }
+        
+        // Find the conversation by ID instead of index to avoid race conditions
+        guard let conversation = messagingManager.conversations.first(where: { $0.id == conversationId }) else {
+            print("⚠️ ConversationsListViewController: Could not find conversation with ID: \(conversationId)")
+            return
+        }
+        
+        print("✅ ConversationsListViewController: Selected conversation: \(conversation.displayName)")
         showConversation(conversation)
     }
     
@@ -492,6 +562,9 @@ extension ConversationsListViewController: SelectConnectionViewControllerDelegat
 // MARK: - ConversationCell
 class ConversationCell: UITableViewCell {
     
+    // Store the conversation ID for stable selection
+    private(set) var conversationId: String?
+    
     private let avatarImageView: UIImageView = {
         let imageView = UIImageView()
         imageView.contentMode = .scaleAspectFill
@@ -592,6 +665,9 @@ class ConversationCell: UITableViewCell {
     }
     
     func configure(with conversation: Conversation) {
+        // Store the conversation ID for stable selection
+        self.conversationId = conversation.id
+        
         nameLabel.text = conversation.displayName
         messageLabel.text = conversation.lastMessage ?? "No messages yet"
         timeLabel.text = conversation.formattedLastMessageTime ?? ""

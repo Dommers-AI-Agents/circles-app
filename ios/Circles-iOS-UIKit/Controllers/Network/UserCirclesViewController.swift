@@ -190,6 +190,21 @@ class UserCirclesViewController: UIViewController {
         present(alert, animated: true)
     }
     
+    private func trackCircleView(circleId: String) {
+        // Track that this circle was viewed to clear the activity indicator
+        APIService.shared.request(
+            endpoint: "circles/\(circleId)/track-view",
+            method: .post,
+            body: ["connectionUserId": userId],
+            requiresAuth: true
+        ) { (result: Result<APIResponse, APIError>) in
+            // Silent tracking - no need to handle response
+            if case .failure(let error) = result {
+                print("Failed to track circle view: \(error)")
+            }
+        }
+    }
+    
     private func showActivityBanner() {
         let bannerView = UIView()
         bannerView.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.1)
@@ -306,6 +321,12 @@ extension UserCirclesViewController: UITableViewDelegate {
         tableView.deselectRow(at: indexPath, animated: true)
         
         let circle = userCircles[indexPath.row]
+        
+        // Track circle view if it has new places
+        if circle.hasNewPlaces == true {
+            trackCircleView(circleId: circle.id)
+        }
+        
         let detailVC = CircleDetailViewController(circle: circle)
         navigationController?.pushViewController(detailVC, animated: true)
     }

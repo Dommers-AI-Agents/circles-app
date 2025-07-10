@@ -20,6 +20,9 @@ class MessagingManager {
     private var conversationsCacheTime: Date?
     private let cacheValidityDuration: TimeInterval = 30 // 30 seconds cache
     
+    // Track conversations marked as read locally to prevent server overwrite
+    private var locallyMarkedAsRead: Set<String> = []
+    
     private init() {
         setupAuthListener()
     }
@@ -80,7 +83,7 @@ class MessagingManager {
         
         // Force refresh when tab becomes active
         if isActive {
-            loadConversations()
+            loadConversations(forceRefresh: true)
             updateUnreadCount()
         }
     }
@@ -128,6 +131,10 @@ class MessagingManager {
                         
                         // Post notification if there are new messages
                         if newCount > oldCount {
+                            // Invalidate conversation cache when new messages arrive
+                            self?.conversationsCache = nil
+                            self?.conversationsCacheTime = nil
+                            
                             NotificationCenter.default.post(
                                 name: Notification.Name("NewMessagesReceived"),
                                 object: nil,
@@ -178,9 +185,23 @@ class MessagingManager {
                 self?.isLoadingConversations = false
                 
                 switch result {
-                case .success(let conversations):
-                    // print("🔍 MessagingManager: Fetched \(conversations.count) conversations successfully")
-                    let sortedConversations = conversations.sorted { conv1, conv2 in
+                case .success(let fetchedConversations):
+                    // print("🔍 MessagingManager: Fetched \(fetchedConversations.count) conversations successfully")
+                    
+                    // Preserve locally marked as read status
+                    var updatedConversations = fetchedConversations
+                    if let currentUserId = AuthService.shared.getUserId() {
+                        for i in 0..<updatedConversations.count {
+                            let conversationId = updatedConversations[i].id
+                            if self?.locallyMarkedAsRead.contains(conversationId) == true {
+                                // Preserve the local read status
+                                updatedConversations[i].unreadCounts?[currentUserId] = 0
+                                print("🔍 MessagingManager: Preserving local read status for conversation \(conversationId)")
+                            }
+                        }
+                    }
+                    
+                    let sortedConversations = updatedConversations.sorted { conv1, conv2 in
                         // Sort by last message time, most recent first
                         let time1 = conv1.lastMessageTime ?? conv1.createdAt
                         let time2 = conv2.lastMessageTime ?? conv2.createdAt
@@ -284,6 +305,9 @@ class MessagingManager {
                             // Move to top of list
                             self?.conversations.remove(at: index)
                             self?.conversations.insert(updatedConversation, at: 0)
+                            
+                            // Update cache with the reordered conversations
+                            self?.conversationsCache = self?.conversations
                         }
                     }
                     
@@ -309,6 +333,18 @@ class MessagingManager {
                         
                         if let updatedConversation = conversation {
                             self?.conversations[index] = updatedConversation
+                            // Update cache with the modified conversation
+                            self?.conversationsCache = self?.conversations
+                            
+                            // Remove from locally marked set since it's now synced with server
+                            self?.locallyMarkedAsRead.remove(conversationId)
+                            
+                            // Post notification that conversations have been updated
+                            NotificationCenter.default.post(
+                                name: Notification.Name("ConversationsUpdated"),
+                                object: nil,
+                                userInfo: ["conversationId": conversationId]
+                            )
                         }
                     }
                     
@@ -330,6 +366,10 @@ class MessagingManager {
                     
                     // Post notification if count changed
                     if oldCount != response.totalUnread {
+                        // Invalidate cache when unread count changes
+                        self?.conversationsCache = nil
+                        self?.conversationsCacheTime = nil
+                        
                         NotificationCenter.default.post(
                             name: Notification.Name("UnreadMessagesCountChanged"),
                             object: nil
@@ -348,6 +388,51 @@ class MessagingManager {
     
     func getConversation(by id: String) -> Conversation? {
         return conversations.first { $0.id == id }
+    }
+    
+    // Mark conversation as read locally (optimistic update)
+    func markConversationAsReadLocally(_ conversationId: String) {
+        guard let currentUserId = AuthService.shared.getUserId(),
+              let index = conversations.firstIndex(where: { $0.id == conversationId }) else { 
+            print("⚠️ MessagingManager: Could not find conversation or user ID")
+            return 
+        }
+        
+        var conversation = conversations[index]
+        let previousUnreadCount = conversation.unreadCounts?[currentUserId] ?? 0
+        
+        print("🔍 MessagingManager: Marking conversation \(conversationId) as read locally. Previous unread count: \(previousUnreadCount)")
+        
+        // Only update if there were unread messages
+        if previousUnreadCount > 0 {
+            // Update the conversation's unread count
+            conversation.unreadCounts?[currentUserId] = 0
+            conversations[index] = conversation
+            
+            // Track this conversation as locally marked read
+            locallyMarkedAsRead.insert(conversationId)
+            
+            // Update cache with new data
+            conversationsCache = conversations
+            conversationsCacheTime = Date() // Reset cache time
+            
+            print("✅ MessagingManager: Updated conversation unread count to 0 and cache")
+            
+            // Update global unread count
+            unreadCount = max(0, unreadCount - previousUnreadCount)
+            
+            // Post notifications
+            NotificationCenter.default.post(
+                name: Notification.Name("UnreadMessagesCountChanged"),
+                object: nil
+            )
+            
+            NotificationCenter.default.post(
+                name: Notification.Name("ConversationsUpdated"),
+                object: nil,
+                userInfo: ["conversationId": conversationId]
+            )
+        }
     }
     
     func deleteMessage(messageId: String, conversationId: String) {

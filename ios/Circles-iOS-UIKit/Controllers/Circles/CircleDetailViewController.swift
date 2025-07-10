@@ -1340,6 +1340,14 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             object: nil
         )
         
+        // Observe when a place is deleted to refresh the list
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handlePlaceDeleted(_:)),
+            name: Notification.Name("PlaceDeleted"),
+            object: nil
+        )
+        
         // Observe when a new place is added to the circle
         NotificationCenter.default.addObserver(
             self,
@@ -1371,6 +1379,17 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         // Refresh the places list
         Logger.info("New place added to circle, refreshing list")
         fetchPlaces()
+    }
+    
+    @objc private func handlePlaceDeleted(_ notification: Notification) {
+        // Refresh the places list when any place is deleted
+        // This ensures the UI is in sync after deletion
+        Logger.info("Place deleted, refreshing list")
+        
+        // Add a small delay to allow backend propagation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.fetchPlaces()
+        }
     }
     
     @objc private func handleAddPOIToCircle(_ notification: Notification) {
@@ -1801,6 +1820,15 @@ class PlaceTableViewCell: UITableViewCell {
         return view
     }()
     
+    private let activityIndicatorView: UIView = {
+        let view = UIView()
+        view.backgroundColor = .systemRed
+        view.layer.cornerRadius = 4
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isHidden = true
+        return view
+    }()
+    
     private let nameLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
@@ -1960,6 +1988,7 @@ class PlaceTableViewCell: UITableViewCell {
         containerView.addSubview(likeCountLabel)
         containerView.addSubview(commentButton)
         containerView.addSubview(commentCountLabel)
+        containerView.addSubview(activityIndicatorView)
         
         ratingView.addSubview(ratingImageView)
         ratingView.addSubview(ratingLabel)
@@ -2068,7 +2097,13 @@ class PlaceTableViewCell: UITableViewCell {
             // Rating label
             ratingLabel.leadingAnchor.constraint(equalTo: ratingImageView.trailingAnchor, constant: 2),
             ratingLabel.trailingAnchor.constraint(equalTo: ratingView.trailingAnchor, constant: -Constants.Spacing.tiny),
-            ratingLabel.centerYAnchor.constraint(equalTo: ratingView.centerYAnchor)
+            ratingLabel.centerYAnchor.constraint(equalTo: ratingView.centerYAnchor),
+            
+            // Activity indicator in top left corner of place image
+            activityIndicatorView.topAnchor.constraint(equalTo: placeImageView.topAnchor, constant: 4),
+            activityIndicatorView.leadingAnchor.constraint(equalTo: placeImageView.leadingAnchor, constant: 4),
+            activityIndicatorView.widthAnchor.constraint(equalToConstant: 8),
+            activityIndicatorView.heightAnchor.constraint(equalToConstant: 8)
         ])
     }
     
@@ -2082,6 +2117,7 @@ class PlaceTableViewCell: UITableViewCell {
             containerView.layer.borderColor = Constants.Colors.primary.cgColor
             containerView.layer.borderWidth = 2
             containerView.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.05)
+            activityIndicatorView.isHidden = false
             
             // Add new badge to name
             let attributedString = NSMutableAttributedString(string: nameLabel.text ?? "")
@@ -2099,6 +2135,7 @@ class PlaceTableViewCell: UITableViewCell {
             containerView.layer.borderColor = Constants.Colors.separator.cgColor
             containerView.layer.borderWidth = 1
             containerView.backgroundColor = Constants.Colors.secondaryBackground
+            activityIndicatorView.isHidden = true
             nameLabel.attributedText = nil
             nameLabel.text = place.name.isEmpty ? "Unnamed Place" : place.name
         }
@@ -2300,6 +2337,7 @@ class PlaceTableViewCell: UITableViewCell {
         categoryIconView.isHidden = false
         imageGradientView.isHidden = true
         directionsButton.isHidden = false
+        activityIndicatorView.isHidden = true
         photoLoadingTask?.cancel()
         imageLoadingIndicator.stopAnimating()
     }

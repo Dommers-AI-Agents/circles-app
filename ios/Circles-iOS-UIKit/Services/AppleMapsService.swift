@@ -2,6 +2,20 @@ import Foundation
 import MapKit
 import CoreLocation
 
+// Structure to hold POI data without saving to backend
+struct POIPlaceData {
+    let name: String
+    let description: String
+    let address: String
+    let coordinate: CLLocationCoordinate2D
+    let category: PlaceCategory
+    let phoneNumber: String?
+    let website: String?
+    let businessHoursString: String?
+    let rating: Double?
+    let userRatingsTotal: Int?
+}
+
 // ✅ PREFERRED SERVICE FOR ALL MAP OPERATIONS
 // 
 // This is the PRIMARY service for all map-related operations:
@@ -134,6 +148,79 @@ class AppleMapsService {
     // MARK: - Convert POI to Place (iOS 16+)
     
     @available(iOS 16.0, *)
+    // New method that only extracts POI data without saving
+    func extractPOIData(
+        from featureAnnotation: MKMapFeatureAnnotation,
+        completion: @escaping (Result<POIPlaceData, Error>) -> Void
+    ) {
+        // Extract basic information
+        let name = featureAnnotation.title ?? "Unknown Place"
+        let coordinate = featureAnnotation.coordinate
+        let category = mapPointOfInterestCategoryToPlaceCategory(featureAnnotation.pointOfInterestCategory)
+        
+        // First, try to get more details using MKLocalSearch
+        searchForPOIDetails(name: name, coordinate: coordinate) { [weak self] detailedItem in
+            
+            // Get address using reverse geocoding
+            self?.getAddress(for: coordinate) { address in
+                let finalAddress = address ?? "Address not available"
+                
+                // If we found detailed information from MKMapItem
+                if let detailedItem = detailedItem {
+                    let phoneNumber = detailedItem.phoneNumber
+                    let website = detailedItem.url?.absoluteString
+                    
+                    // Try to get business hours if available
+                    var businessHoursString: String? = nil
+                    if #available(iOS 16.0, *) {
+                        if let businessHours = detailedItem.pointOfInterestCategory {
+                            // Note: Business hours aren't directly available from MKMapItem
+                            // This would need additional API calls to get
+                        }
+                    }
+                    
+                    // Get rating and review count if available (not directly available from MKMapItem)
+                    let rating: Double? = nil
+                    let userRatingsTotal: Int? = nil
+                    
+                    let poiData = POIPlaceData(
+                        name: detailedItem.name ?? name,
+                        description: "Place added from Apple Maps",
+                        address: finalAddress,
+                        coordinate: coordinate,
+                        category: category,
+                        phoneNumber: phoneNumber,
+                        website: website,
+                        businessHoursString: businessHoursString,
+                        rating: rating,
+                        userRatingsTotal: userRatingsTotal
+                    )
+                    
+                    completion(.success(poiData))
+                } else {
+                    // Use basic information if detailed search failed
+                    let poiData = POIPlaceData(
+                        name: name,
+                        description: "Place added from Apple Maps",
+                        address: finalAddress,
+                        coordinate: coordinate,
+                        category: category,
+                        phoneNumber: nil,
+                        website: nil,
+                        businessHoursString: nil,
+                        rating: nil,
+                        userRatingsTotal: nil
+                    )
+                    
+                    completion(.success(poiData))
+                }
+            }
+        }
+    }
+    
+    // Keep the old method for backward compatibility but mark as deprecated
+    @available(iOS 16.0, *)
+    @available(*, deprecated, message: "Use extractPOIData instead to avoid saving places prematurely")
     func convertPOIToPlace(
         from featureAnnotation: MKMapFeatureAnnotation,
         circleId: String,
@@ -320,6 +407,26 @@ class AppleMapsService {
         }
     }
     
+    
+    private func getAddress(for coordinate: CLLocationCoordinate2D, completion: @escaping (String?) -> Void) {
+        let geocoder = CLGeocoder()
+        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        
+        geocoder.reverseGeocodeLocation(location) { placemarks, error in
+            if let error = error {
+                print("Reverse geocoding error: \(error)")
+                completion(nil)
+                return
+            }
+            
+            guard let placemark = placemarks?.first else {
+                completion(nil)
+                return
+            }
+            
+            completion(self.formatAddress(from: placemark))
+        }
+    }
     
     private func formatAddress(from placemark: CLPlacemark?) -> String {
         guard let placemark = placemark else { return "Unknown Address" }

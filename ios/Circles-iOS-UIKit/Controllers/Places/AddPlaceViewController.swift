@@ -25,6 +25,7 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
     private let locationManager = CLLocationManager()
     private var userLocation: CLLocation?
     private var selectedLocation: CLLocationCoordinate2D?
+    private var currentPOIData: POIPlaceData?
     private var searchCompleter = MKLocalSearchCompleter()
     private var searchResults: [MKLocalSearchCompletion] = []
     private var showPlaceTypeSuggestion = false
@@ -517,6 +518,13 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
         view.backgroundColor = UIColor.systemGray6
         title = "Add Place"
         
+        // Add Cancel button to navigation bar
+        navigationItem.leftBarButtonItem = UIBarButtonItem(
+            barButtonSystemItem: .cancel,
+            target: self,
+            action: #selector(cancelButtonTapped)
+        )
+        
         // Add subviews
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
@@ -956,6 +964,35 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
             case .failure(let error):
                 print("❌ Failed to search nearby places: \(error)")
             }
+        }
+    }
+    
+    @objc private func cancelButtonTapped() {
+        // Show confirmation if user has entered data
+        let hasEnteredData = !(nameTextField.text?.isEmpty ?? true) ||
+                            !addressTextView.text.isEmpty ||
+                            !descriptionTextView.text.isEmpty ||
+                            !privateNotesTextView.text.isEmpty ||
+                            !publicNotesTextView.text.isEmpty ||
+                            selectedImage != nil ||
+                            selectedLocation != nil
+        
+        if hasEnteredData {
+            let alert = UIAlertController(
+                title: "Cancel Adding Place?",
+                message: "You have unsaved changes. Are you sure you want to cancel?",
+                preferredStyle: .alert
+            )
+            
+            alert.addAction(UIAlertAction(title: "Keep Editing", style: .cancel))
+            alert.addAction(UIAlertAction(title: "Discard", style: .destructive) { [weak self] _ in
+                self?.navigationController?.popViewController(animated: true)
+            })
+            
+            present(alert, animated: true)
+        } else {
+            // No data entered, go back immediately
+            navigationController?.popViewController(animated: true)
         }
     }
     
@@ -2800,20 +2837,21 @@ extension AddPlaceViewController: MKMapViewDelegate {
         // Enable form first
         enableManualEntry()
         
-        // Convert POI to place details using Apple Maps
-        AppleMapsService.shared.convertPOIToPlace(
-            from: featureAnnotation,
-            circleId: circleId,
-            notes: nil
+        // Extract POI data without saving to backend
+        AppleMapsService.shared.extractPOIData(
+            from: featureAnnotation
         ) { [weak self] result in
             switch result {
-            case .success(let place):
+            case .success(let poiData):
                 DispatchQueue.main.async {
-                    // Fill form with POI details
-                    self?.nameTextField.text = place.name
-                    self?.addressTextView.text = place.address
-                    self?.selectedCategory = place.category
+                    // Fill form with POI details (without saving to backend)
+                    self?.nameTextField.text = poiData.name
+                    self?.addressTextView.text = poiData.address
+                    self?.selectedCategory = poiData.category
                     self?.updateCategoryButtonTitle()
+                    
+                    // Store additional data for later use when saving
+                    self?.currentPOIData = poiData
                     
                     // Update location
                     self?.selectedLocation = coordinate
@@ -2842,7 +2880,7 @@ extension AddPlaceViewController: MKMapViewDelegate {
                     }
                     
                     // Search for Google Place to get photos
-                    let placeName = place.name
+                    let placeName = poiData.name
                     if !placeName.isEmpty {
                         print("🔍 Searching Google Places for POI: \(placeName)")
                         GooglePlacesService.shared.searchPlaceByNameAndLocation(

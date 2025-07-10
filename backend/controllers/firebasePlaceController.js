@@ -10,7 +10,7 @@ const {
 const { Client } = require('@googlemaps/google-maps-services-js');
 const { googleMapsApiKey } = require('../config/config');
 const notificationService = require('../services/notificationService');
-const { trackPlaceAdded } = require('../services/activityService');
+const { trackPlaceAdded, trackPlaceView } = require('../services/activityService');
 
 const db = getFirestore();
 const googleMapsClient = new Client({});
@@ -281,6 +281,37 @@ exports.createPlace = async (req, res, next) => {
       });
     }
 
+    // Check for duplicates before creating
+    const { googlePlaceId, name, address } = req.body;
+    
+    if (googlePlaceId) {
+      const existingPlace = await db.collection(COLLECTIONS.PLACES)
+        .where('circleId', '==', circleId)
+        .where('googlePlaceId', '==', googlePlaceId)
+        .get();
+        
+      if (!existingPlace.empty) {
+        return res.status(400).json({
+          success: false,
+          message: 'This place already exists in the selected circle'
+        });
+      }
+    } else if (name && address) {
+      // For custom places without googlePlaceId
+      const existingPlace = await db.collection(COLLECTIONS.PLACES)
+        .where('circleId', '==', circleId)
+        .where('name', '==', name)
+        .where('address', '==', address)
+        .get();
+        
+      if (!existingPlace.empty) {
+        return res.status(400).json({
+          success: false,
+          message: 'This place already exists in the selected circle'
+        });
+      }
+    }
+
     // Create place data
     const placeData = createPlace(req.body, circleId, req.user.uid);
     
@@ -307,7 +338,7 @@ exports.createPlace = async (req, res, next) => {
     });
 
     // Track activity for network connections
-    await trackPlaceAdded(placeRef.id, circleId, req.user.uid);
+    await trackPlaceAdded(placeRef.id, circleId, place.name, circle.name, req.user.uid);
 
     // Send notifications to interested users
     try {
@@ -448,23 +479,61 @@ exports.deletePlace = async (req, res, next) => {
       });
     }
 
+    // Use a batch write for atomic operation
+    const batch = db.batch();
+    
     // Remove place from circle's places array and decrement count
     const currentPlaces = circle.places || [];
     const updatedPlaces = currentPlaces.filter(placeId => placeId !== req.params.id);
     
-    await db.collection(COLLECTIONS.CIRCLES).doc(place.circleId).update({
-      places: updatedPlaces,
-      placesCount: Math.max(0, (circle.placesCount || 0) - 1), // Decrement places count (never go below 0)
-      updatedAt: new Date().toISOString()
-    });
+    // Store the original circle state for potential rollback
+    const originalCircleState = {
+      places: currentPlaces,
+      placesCount: circle.placesCount || 0
+    };
+    
+    try {
+      // Update circle in the batch
+      const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(place.circleId);
+      batch.update(circleRef, {
+        places: updatedPlaces,
+        placesCount: Math.max(0, (circle.placesCount || 0) - 1), // Decrement places count (never go below 0)
+        updatedAt: new Date().toISOString()
+      });
+      
+      // Delete the place in the batch
+      batch.delete(placeRef);
+      
+      // Commit the batch
+      await batch.commit();
+      
+      console.log('✅ Place deleted successfully:', req.params.id);
+      
+      // Add a small delay to allow Firestore to propagate the deletion
+      // This helps prevent "place already exists" errors when immediately re-adding
+      await new Promise(resolve => setTimeout(resolve, 500));
 
-    // Delete the place
-    await placeRef.delete();
-
-    res.status(200).json({
-      success: true,
-      message: 'Place deleted successfully'
-    });
+      res.status(200).json({
+        success: true,
+        message: 'Place deleted successfully'
+      });
+    } catch (batchError) {
+      // If batch operation fails, attempt to restore the original state
+      console.error('❌ Batch delete failed, attempting rollback:', batchError);
+      
+      try {
+        await db.collection(COLLECTIONS.CIRCLES).doc(place.circleId).update({
+          places: originalCircleState.places,
+          placesCount: originalCircleState.placesCount,
+          updatedAt: new Date().toISOString()
+        });
+        console.log('✅ Rollback successful');
+      } catch (rollbackError) {
+        console.error('❌ Rollback failed:', rollbackError);
+      }
+      
+      throw batchError;
+    }
   } catch (error) {
     console.error('Error deleting place:', error);
     next(error);
@@ -1135,17 +1204,44 @@ exports.addExistingPlaceToCircle = async (req, res, next) => {
     }
     
     // Check if place already exists in this circle
+    console.log('🔍 Checking for duplicate place:', {
+      circleId,
+      placeId,
+      googlePlaceId: originalPlace.googlePlaceId,
+      name: originalPlace.name,
+      address: originalPlace.address
+    });
+    
     if (originalPlace.googlePlaceId) {
       const existingPlace = await db.collection(COLLECTIONS.PLACES)
         .where('circleId', '==', circleId)
         .where('googlePlaceId', '==', originalPlace.googlePlaceId)
         .get();
         
+      console.log('🔍 Google Place ID duplicate check:', {
+        googlePlaceId: originalPlace.googlePlaceId,
+        foundDuplicates: !existingPlace.empty,
+        duplicateCount: existingPlace.size
+      });
+        
       if (!existingPlace.empty) {
-        return res.status(400).json({
-          success: false,
-          message: 'This place already exists in the selected circle'
-        });
+        // Double-check if the document actually exists (not just in query cache)
+        const firstDoc = existingPlace.docs[0];
+        const docStillExists = await db.collection(COLLECTIONS.PLACES).doc(firstDoc.id).get();
+        
+        if (docStillExists.exists) {
+          console.log('⚠️ Duplicate place found:', {
+            duplicateId: firstDoc.id,
+            duplicateData: firstDoc.data()
+          });
+          
+          return res.status(400).json({
+            success: false,
+            message: 'This place already exists in the selected circle'
+          });
+        } else {
+          console.log('✅ False positive - document was deleted but still in query cache');
+        }
       }
     } else {
       // For places without googlePlaceId, check by name and address
@@ -1155,11 +1251,31 @@ exports.addExistingPlaceToCircle = async (req, res, next) => {
         .where('address', '==', originalPlace.address)
         .get();
         
+      console.log('🔍 Name/Address duplicate check:', {
+        name: originalPlace.name,
+        address: originalPlace.address,
+        foundDuplicates: !existingPlace.empty,
+        duplicateCount: existingPlace.size
+      });
+        
       if (!existingPlace.empty) {
-        return res.status(400).json({
-          success: false,
-          message: 'This place already exists in the selected circle'
-        });
+        // Double-check if the document actually exists (not just in query cache)
+        const firstDoc = existingPlace.docs[0];
+        const docStillExists = await db.collection(COLLECTIONS.PLACES).doc(firstDoc.id).get();
+        
+        if (docStillExists.exists) {
+          console.log('⚠️ Duplicate place found:', {
+            duplicateId: firstDoc.id,
+            duplicateData: firstDoc.data()
+          });
+          
+          return res.status(400).json({
+            success: false,
+            message: 'This place already exists in the selected circle'
+          });
+        } else {
+          console.log('✅ False positive - document was deleted but still in query cache');
+        }
       }
     }
     
@@ -1205,7 +1321,7 @@ exports.addExistingPlaceToCircle = async (req, res, next) => {
     
     // Track activity
     if (trackPlaceAdded) {
-      await trackPlaceAdded(userId, circleId, newPlaceId);
+      await trackPlaceAdded(newPlaceId, circleId, newPlace.name, circle.name, userId);
     }
     
     res.status(201).json({
@@ -1230,5 +1346,34 @@ exports.addExistingPlaceToCircle = async (req, res, next) => {
       message: 'Failed to add place to circle',
       error: error.message
     });
+  }
+};
+
+// @desc    Track when a user views a place
+// @route   POST /api/places/:id/track-view
+// @access  Private
+exports.trackPlaceView = async (req, res, next) => {
+  try {
+    const placeId = req.params.id;
+    const viewerUserId = req.user.firebaseDocId || req.user.uid;
+    const { connectionUserId } = req.body;
+    
+    if (!connectionUserId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Connection user ID is required'
+      });
+    }
+    
+    // Track the view in activity service
+    await trackPlaceView(viewerUserId, placeId, connectionUserId);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Place view tracked'
+    });
+  } catch (error) {
+    console.error('Error tracking place view:', error);
+    next(error);
   }
 };

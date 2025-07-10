@@ -737,6 +737,12 @@ class PlaceService {
         ) { [weak self] (result: Result<EmptyResponse, APIError>) in
             switch result {
             case .success(_):
+                // Post notification to refresh circles data
+                NotificationCenter.default.post(
+                    name: Notification.Name("PlaceDeleted"),
+                    object: nil,
+                    userInfo: ["placeId": id]
+                )
                 completion(.success(true))
             case .failure(let error):
                 let mappedError = self?.mapAPIErrorToPlaceError(error)

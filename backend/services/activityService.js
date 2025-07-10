@@ -47,7 +47,7 @@ const trackCircleCreated = async (circleId, createdByUserId) => {
 };
 
 // Track when a user adds a new place
-const trackPlaceAdded = async (placeId, circleId, addedByUserId) => {
+const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedByUserId) => {
   try {
     // Get all connections of the user who added the place (both directions)
     const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
@@ -70,7 +70,10 @@ const trackPlaceAdded = async (placeId, circleId, addedByUserId) => {
         type: 'place',
         entityId: placeId,
         circleId: circleId,
-        createdAt: new Date().toISOString()
+        placeName: placeName || 'Unknown Place',
+        circleName: circleName || 'Unknown Circle',
+        createdAt: new Date().toISOString(),
+        viewedAt: null // Track when this specific activity was viewed
       };
       
       // Update connection with new activity
@@ -214,13 +217,25 @@ const getConnectionsWithStats = async (userId) => {
           totalPlaces += (circleData.places || []).length;
         }
         
-        // Check if user recently added a place (within last 7 days)
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        const hasRecentPlace = connectionData.recentActivity?.some(activity => 
-          activity.type === 'place' && 
-          new Date(activity.createdAt) > sevenDaysAgo
-        ) || false;
+        // Get the current user's lastLogin to check for new places since then
+        const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+        const lastLogin = currentUserDoc.exists ? currentUserDoc.data().lastLogin : null;
+        
+        // Check if user added a place since the current user's last login
+        let hasRecentPlace = false;
+        
+        if (lastLogin) {
+          const lastLoginDate = new Date(lastLogin);
+          hasRecentPlace = connectionData.recentActivity?.some(activity => 
+            activity.type === 'place' && 
+            new Date(activity.createdAt) > lastLoginDate
+          ) || false;
+          console.log(`📅 Activity check - places since ${lastLogin}: ${hasRecentPlace}`);
+        } else {
+          // No lastLogin, don't show activity indicators
+          console.log(`⚠️ No lastLogin for user ${userId}, no activity indicators`);
+          hasRecentPlace = false;
+        }
         
         // Properly serialize the connection document
         const serializedConnection = serializeDoc(doc);
@@ -311,10 +326,106 @@ const cleanupOldActivity = async (daysToKeep = 30) => {
   }
 };
 
+// Track when a user views a circle with new places
+const trackCircleView = async (viewerUserId, circleId, connectionUserId) => {
+  try {
+    // Find the connection between these users
+    const [connectionSnapshot1, connectionSnapshot2] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', viewerUserId)
+        .where('connectedUserId', '==', connectionUserId)
+        .where('status', '==', 'accepted')
+        .limit(1)
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', connectionUserId)
+        .where('connectedUserId', '==', viewerUserId)
+        .where('status', '==', 'accepted')
+        .limit(1)
+        .get()
+    ]);
+
+    const connectionSnapshot = !connectionSnapshot1.empty ? connectionSnapshot1 : connectionSnapshot2;
+
+    if (!connectionSnapshot.empty) {
+      const connectionRef = connectionSnapshot.docs[0].ref;
+      const connectionData = connectionSnapshot.docs[0].data();
+      
+      // Mark activities for this circle as viewed
+      if (connectionData.recentActivity && connectionData.recentActivity.length > 0) {
+        const updatedActivities = connectionData.recentActivity.map(activity => {
+          if (activity.circleId === circleId && activity.type === 'place' && !activity.viewedAt) {
+            return { ...activity, viewedAt: new Date().toISOString() };
+          }
+          return activity;
+        });
+        
+        await connectionRef.update({
+          recentActivity: updatedActivities,
+          updatedAt: new Date().toISOString()
+        });
+        
+        console.log(`Marked circle ${circleId} activities as viewed for connection`);
+      }
+    }
+  } catch (error) {
+    console.error('Error tracking circle view:', error);
+  }
+};
+
+// Track when a user views a specific place
+const trackPlaceView = async (viewerUserId, placeId, connectionUserId) => {
+  try {
+    // Find the connection between these users
+    const [connectionSnapshot1, connectionSnapshot2] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', viewerUserId)
+        .where('connectedUserId', '==', connectionUserId)
+        .where('status', '==', 'accepted')
+        .limit(1)
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', connectionUserId)
+        .where('connectedUserId', '==', viewerUserId)
+        .where('status', '==', 'accepted')
+        .limit(1)
+        .get()
+    ]);
+
+    const connectionSnapshot = !connectionSnapshot1.empty ? connectionSnapshot1 : connectionSnapshot2;
+
+    if (!connectionSnapshot.empty) {
+      const connectionRef = connectionSnapshot.docs[0].ref;
+      const connectionData = connectionSnapshot.docs[0].data();
+      
+      // Mark this specific place activity as viewed
+      if (connectionData.recentActivity && connectionData.recentActivity.length > 0) {
+        const updatedActivities = connectionData.recentActivity.map(activity => {
+          if (activity.entityId === placeId && activity.type === 'place' && !activity.viewedAt) {
+            return { ...activity, viewedAt: new Date().toISOString() };
+          }
+          return activity;
+        });
+        
+        await connectionRef.update({
+          recentActivity: updatedActivities,
+          updatedAt: new Date().toISOString()
+        });
+        
+        console.log(`Marked place ${placeId} as viewed for connection`);
+      }
+    }
+  } catch (error) {
+    console.error('Error tracking place view:', error);
+  }
+};
+
 module.exports = {
   trackCircleCreated,
   trackPlaceAdded,
   trackConnectionView,
+  trackCircleView,
+  trackPlaceView,
   clearActivityNotification,
   getConnectionsWithStats,
   cleanupOldActivity

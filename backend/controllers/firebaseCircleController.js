@@ -7,7 +7,7 @@ const {
   serializeDoc,
   serializeQuerySnapshot 
 } = require('../models/FirestoreModels');
-const { trackCircleCreated } = require('../services/activityService');
+const { trackCircleCreated, trackCircleView } = require('../services/activityService');
 
 const db = getFirestore();
 
@@ -710,6 +710,35 @@ exports.getEditors = async (req, res, next) => {
     });
   } catch (error) {
     console.error('Error getting editors:', error);
+    next(error);
+  }
+};
+
+// @desc    Track when a user views a circle
+// @route   POST /api/circles/:id/track-view
+// @access  Private
+exports.trackCircleView = async (req, res, next) => {
+  try {
+    const circleId = req.params.id;
+    const viewerUserId = req.user.firebaseDocId || req.user.uid;
+    const { connectionUserId } = req.body;
+    
+    if (!connectionUserId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Connection user ID is required'
+      });
+    }
+    
+    // Track the view in activity service
+    await trackCircleView(viewerUserId, circleId, connectionUserId);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Circle view tracked'
+    });
+  } catch (error) {
+    console.error('Error tracking circle view:', error);
     next(error);
   }
 };

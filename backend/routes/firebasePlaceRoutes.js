@@ -11,7 +11,8 @@ const {
   likePlace,
   getPlaceComments,
   addPlaceComment,
-  addExistingPlaceToCircle
+  addExistingPlaceToCircle,
+  trackPlaceView
 } = require('../controllers/firebasePlaceController');
 const { protect } = require('../middleware/firebaseAuth');
 
@@ -40,6 +41,9 @@ router.route('/:id/comments')
 
 router.route('/:id/add-to-circle/:circleId')
   .post(addExistingPlaceToCircle);
+
+router.route('/:id/track-view')
+  .post(trackPlaceView);
 
 router.route('/:id')
   .get(getPlace)

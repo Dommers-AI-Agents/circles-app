@@ -12,7 +12,8 @@ const {
   unfollowCircle,
   addEditor,
   removeEditor,
-  getEditors
+  getEditors,
+  trackCircleView
 } = require('../controllers/firebaseCircleController');
 const {
   shareCircle: newShareCircle,
@@ -70,5 +71,9 @@ router.route('/:id/editors')
 
 router.route('/:id/editors/:userId')
   .delete(removeEditor);
+
+// Activity tracking routes
+router.route('/:id/track-view')
+  .post(trackCircleView);
 
 module.exports = router;

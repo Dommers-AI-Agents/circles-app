@@ -400,6 +400,14 @@ exports.firebaseAuth = async (req, res, next) => {
       }
     }
 
+    // Update lastLogin timestamp
+    const now = new Date().toISOString();
+    await userRef.update({
+      lastLogin: now,
+      updatedAt: now
+    });
+    console.log(`📅 Updated lastLogin for user ${user.id}`);
+
     // Create JWT token for API access with normalized ID
     const normalizedId = normalizeUserId(user.id || user.uid);
     logNormalization('Firebase Auth Response', user.id || user.uid, normalizedId);
@@ -698,9 +706,11 @@ exports.login = async (req, res, next) => {
       const linkedProviders = user.linkedProviders || {};
       linkedProviders.manual = userRecord.uid;
       
+      const now = new Date().toISOString();
       await userRef.update({
         linkedProviders,
-        updatedAt: new Date().toISOString()
+        lastLogin: now,
+        updatedAt: now
       });
       
       // Re-fetch the updated user
@@ -724,6 +734,13 @@ exports.login = async (req, res, next) => {
         user = { id: userRecord.uid, ...userData };
       } else {
         user = serializeDoc(userDoc);
+        
+        // Update lastLogin for existing user
+        const now = new Date().toISOString();
+        await userRef.update({
+          lastLogin: now,
+          updatedAt: now
+        });
       }
     }
       

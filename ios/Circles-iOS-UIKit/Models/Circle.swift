@@ -28,6 +28,8 @@ struct Circle: Codable, Identifiable {
     let createdAt: Date
     let updatedAt: Date
     var isNew: Bool? // Indicates if this is new activity
+    var hasNewPlaces: Bool? // Indicates if circle has new places since last login
+    var newPlacesCount: Int? // Number of new places since last login
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -36,7 +38,7 @@ struct Circle: Codable, Identifiable {
         case places, placesCount, placesWithDetails, privacy, allowNetworkEdit, category
         case location, tags, sharedWith, followers, activeShares, shareSettings
         case isSharedWithMe, sharedBy, myAccessLevel
-        case createdAt, updatedAt, isNew
+        case createdAt, updatedAt, isNew, hasNewPlaces, newPlacesCount
     }
     
     init(from decoder: Decoder) throws {
@@ -80,6 +82,8 @@ struct Circle: Codable, Identifiable {
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
         isNew = try container.decodeIfPresent(Bool.self, forKey: .isNew)
+        hasNewPlaces = try container.decodeIfPresent(Bool.self, forKey: .hasNewPlaces)
+        newPlacesCount = try container.decodeIfPresent(Int.self, forKey: .newPlacesCount)
     }
     
     // Add manual init for creating circles in code
@@ -90,7 +94,8 @@ struct Circle: Codable, Identifiable {
          tags: [String]?, sharedWith: [String]?, followers: [String]?,
          activeShares: [CircleShare]?, shareSettings: ShareSettings?,
          isSharedWithMe: Bool?, sharedBy: User?, myAccessLevel: AccessLevel?,
-         createdAt: Date, updatedAt: Date, isNew: Bool? = nil) {
+         createdAt: Date, updatedAt: Date, isNew: Bool? = nil,
+         hasNewPlaces: Bool? = nil, newPlacesCount: Int? = nil) {
         self.id = id
         self.name = name
         self.description = description
@@ -118,6 +123,8 @@ struct Circle: Codable, Identifiable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.isNew = isNew
+        self.hasNewPlaces = hasNewPlaces
+        self.newPlacesCount = newPlacesCount
     }
     
     // Helper computed properties

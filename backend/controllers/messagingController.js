@@ -411,36 +411,8 @@ const getMessages = async (req, res) => {
       return true;
     });
 
-    // Mark messages as read
-    const unreadMessages = messages.filter(msg => 
-      msg.senderId !== userId && !msg.readBy.includes(userId)
-    );
-
-    if (unreadMessages.length > 0) {
-      const batch = db.batch();
-      
-      // Update messages to mark as read
-      unreadMessages.forEach(msg => {
-        const msgRef = db.collection(COLLECTIONS.MESSAGES).doc(msg.id);
-        batch.update(msgRef, {
-          readBy: [...msg.readBy, userId]
-        });
-
-        // Create read receipt
-        const readReceipt = createMessageRead(msg.id, userId, conversationId);
-        const readRef = db.collection(COLLECTIONS.MESSAGE_READS).doc();
-        batch.set(readRef, readReceipt);
-      });
-
-      // Update conversation unread count
-      const conversationRef = db.collection(COLLECTIONS.CONVERSATIONS).doc(conversationId);
-      batch.update(conversationRef, {
-        [`unreadCounts.${userId}`]: 0,
-        updatedAt: new Date().toISOString()
-      });
-
-      await batch.commit();
-    }
+    // Don't automatically mark messages as read when fetching
+    // This should only happen when explicitly requested via markMessagesAsRead endpoint
 
     // Populate sender details
     const populatedMessages = await Promise.all(

@@ -1999,7 +1999,7 @@ extension PlaceDetailViewController {
                         } else if (error as NSError).code == 404 {
                             errorMessage = "The place or circle was not found"
                         } else if (error as NSError).code == 400 {
-                            errorMessage = "This place is already in the selected circle"
+                            errorMessage = "This place is already in the selected circle. If you just deleted it, please wait a moment and try again."
                         } else {
                             errorMessage = "Failed to add place: \(error.localizedDescription)"
                         }

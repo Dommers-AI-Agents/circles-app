@@ -66,6 +66,20 @@ class ChatViewController: UIViewController {
         return button
     }()
     
+    private let loadingView: UIView = {
+        let view = UIView()
+        view.backgroundColor = .systemBackground
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let loadingIndicator: UIActivityIndicatorView = {
+        let indicator = UIActivityIndicatorView(style: .large)
+        indicator.translatesAutoresizingMaskIntoConstraints = false
+        indicator.hidesWhenStopped = true
+        return indicator
+    }()
+    
     // MARK: - Properties
     var conversation: Conversation?
     private let messagingManager = MessagingManager.shared
@@ -121,6 +135,23 @@ class ChatViewController: UIViewController {
         
         view.addSubview(tableView)
         view.addSubview(messageInputContainer)
+        
+        // Add loading view
+        view.addSubview(loadingView)
+        loadingView.addSubview(loadingIndicator)
+        
+        NSLayoutConstraint.activate([
+            loadingView.topAnchor.constraint(equalTo: view.topAnchor),
+            loadingView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            loadingView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            loadingView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            
+            loadingIndicator.centerXAnchor.constraint(equalTo: loadingView.centerXAnchor),
+            loadingIndicator.centerYAnchor.constraint(equalTo: loadingView.centerYAnchor)
+        ])
+        
+        // Show loading initially
+        showLoading()
     }
     
     private func setupTableView() {
@@ -193,6 +224,11 @@ class ChatViewController: UIViewController {
         messageUpdateTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             if let messages = self.messagingManager.activeMessages[conversationId] {
+                // Hide loading on first load
+                if self.messages.isEmpty && !messages.isEmpty {
+                    self.hideLoading()
+                }
+                
                 if messages.count != self.messages.count {
                     self.messages = messages
                     self.tableView.reloadData()
@@ -209,6 +245,11 @@ class ChatViewController: UIViewController {
         
         // Refresh messages from MessagingManager
         if let messages = messagingManager.activeMessages[notificationConversationId] {
+            // Hide loading on first load
+            if self.messages.isEmpty && !messages.isEmpty {
+                self.hideLoading()
+            }
+            
             self.messages = messages
             tableView.reloadData()
             scrollToBottom(animated: true)
@@ -218,7 +259,27 @@ class ChatViewController: UIViewController {
     // MARK: - Data Loading
     private func loadMessages() {
         guard let conversationId = conversation?.id else { return }
+        
+        // Show loading on initial load
+        if messages.isEmpty {
+            showLoading()
+        }
+        
         messagingManager.loadMessages(for: conversationId)
+    }
+    
+    private func showLoading() {
+        loadingView.isHidden = false
+        loadingIndicator.startAnimating()
+        tableView.isHidden = true
+        messageInputContainer.isHidden = true
+    }
+    
+    private func hideLoading() {
+        loadingView.isHidden = true
+        loadingIndicator.stopAnimating()
+        tableView.isHidden = false
+        messageInputContainer.isHidden = false
     }
     
     private func markMessagesAsRead() {

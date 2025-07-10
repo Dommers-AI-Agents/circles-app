@@ -95,17 +95,28 @@ const getConnections = async (req, res) => {
               totalPlaces += (circleData.places || []).length;
             }
             
-            // Check if user recently added a place (within last 7 days)
-            // ALWAYS calculate from recentActivity array, never use persisted value
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            // Get the current user's lastLogin to check for new places since then
+            const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+            const lastLogin = currentUserDoc.exists ? currentUserDoc.data().lastLogin : null;
             
-            // Ensure we have recentActivity array and calculate dynamically
-            const recentActivity = connection.recentActivity || [];
-            const calculatedHasRecentPlace = recentActivity.some(activity => 
-              activity.type === 'place' && 
-              new Date(activity.createdAt) > sevenDaysAgo
-            );
+            // Check if user added a place since the current user's last login
+            // ALWAYS calculate from recentActivity array, never use persisted value
+            let calculatedHasRecentPlace = false;
+            
+            if (lastLogin) {
+              const lastLoginDate = new Date(lastLogin);
+              const recentActivity = connection.recentActivity || [];
+              calculatedHasRecentPlace = recentActivity.some(activity => 
+                activity.type === 'place' && 
+                new Date(activity.createdAt) > lastLoginDate
+              );
+              
+              console.log(`📅 Checking places since last login: ${lastLogin}, found new places: ${calculatedHasRecentPlace}`);
+            } else {
+              // Fallback: if no lastLogin, don't show any red dots
+              console.log(`⚠️ No lastLogin found for user ${userId}, not showing activity indicators`);
+              calculatedHasRecentPlace = false;
+            }
             
             // Add stats to connection - ALWAYS override with calculated value
             connection.totalPlaces = totalPlaces;
