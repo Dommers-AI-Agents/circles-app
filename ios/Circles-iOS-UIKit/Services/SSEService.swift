@@ -78,8 +78,15 @@ class SSEService: NSObject {
         reconnectTimer?.invalidate()
         reconnectTimer = nil
         
-        // Create SSE request
-        guard let url = URL(string: "\(APIService.shared.baseURL)/sse/stream") else {
+        // Create SSE request with correct base URL
+        // Using production URL directly since APIService uses production even in DEBUG
+        #if DEBUG
+        let baseURL = "https://circles-backend-196924649787.us-central1.run.app/api"
+        #else
+        let baseURL = "https://circles-backend-196924649787.us-central1.run.app/api"
+        #endif
+        
+        guard let url = URL(string: "\(baseURL)/sse/stream") else {
             print("📡 SSE: Invalid URL")
             return
         }
