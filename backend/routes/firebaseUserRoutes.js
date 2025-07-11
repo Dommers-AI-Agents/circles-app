@@ -15,7 +15,15 @@ const {
   updateNotificationPreferences,
   getUserPublicCircles,
   findDuplicateAccounts,
-  checkDuplicateConnections
+  checkDuplicateConnections,
+  followUser,
+  unfollowUser,
+  getUserFollowers,
+  getUserFollowing,
+  addPinnedPlace,
+  removePinnedPlace,
+  getPinnedPlaces,
+  reorderPinnedPlaces
 } = require('../controllers/firebaseUserController');
 const { protect } = require('../middleware/firebaseAuth');
 
@@ -71,6 +79,31 @@ router.route('/:id/circles')
 
 router.route('/:id')
   .get(getUser);
+
+// Follow/unfollow routes
+router.route('/:id/follow')
+  .post(followUser);
+
+router.route('/:id/unfollow')
+  .post(unfollowUser);
+
+// Get followers/following (owner only)
+router.route('/:id/followers')
+  .get(getUserFollowers);
+
+router.route('/:id/following')
+  .get(getUserFollowing);
+
+// Pinned places routes
+router.route('/me/pinned-places')
+  .get(getPinnedPlaces)
+  .post(addPinnedPlace);
+
+router.route('/me/pinned-places/reorder')
+  .put(reorderPinnedPlaces);
+
+router.route('/me/pinned-places/:placeId')
+  .delete(removePinnedPlace);
 
 // Import getUserCircles from circleSharingController
 const { getUserCircles } = require('../controllers/circleSharingController');

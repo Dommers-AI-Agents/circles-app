@@ -2,6 +2,9 @@ import UIKit
 
 class ConversationsListViewController: UIViewController {
     
+    // MARK: - SSE Integration
+    private var sseConnected = false
+    
     // MARK: - UI Elements
     private let headerContainer: UIView = {
         let view = UIView()
@@ -111,6 +114,7 @@ class ConversationsListViewController: UIViewController {
         setupNewMessageButton()
         setupSubscribers()
         checkForNewSuggestions()
+        setupSSE()
         
         // Don't load conversations here - let viewWillAppear handle it
         // This prevents duplicate loading when the tab is first opened
@@ -703,6 +707,111 @@ class ConversationCell: UITableViewCell {
         } else {
             unreadBadge.isHidden = true
             messageLabel.font = .systemFont(ofSize: 14)
+        }
+    }
+}
+
+// MARK: - SSE Setup
+extension ConversationsListViewController {
+    private func setupSSE() {
+        SSEService.shared.addDelegate(self)
+    }
+}
+
+// MARK: - SSEServiceDelegate
+extension ConversationsListViewController: SSEServiceDelegate {
+    func sseService(_ service: SSEService, didReceiveEvent event: SSEEvent) {
+        print("📡 Conversations: Received SSE event: \(event.type)")
+        
+        switch event.type {
+        case .newMessage:
+            // New message received
+            handleNewMessage(event.data)
+            
+        case .newSuggestion:
+            // New suggestion received
+            handleNewSuggestion(event.data)
+            
+        default:
+            break
+        }
+    }
+    
+    func sseServiceDidConnect(_ service: SSEService) {
+        print("📡 Conversations: SSE connected")
+        sseConnected = true
+    }
+    
+    func sseServiceDidDisconnect(_ service: SSEService, error: Error?) {
+        print("📡 Conversations: SSE disconnected")
+        sseConnected = false
+    }
+    
+    // MARK: - Event Handlers
+    private func handleNewMessage(_ data: [String: Any]) {
+        DispatchQueue.main.async { [weak self] in
+            // Force refresh conversations to show new message
+            self?.messagingManager.loadConversations(forceRefresh: true)
+            
+            // Show visual feedback
+            self?.showNewMessageBanner(data)
+            
+            // Update badge count
+            self?.messagingManager.updateUnreadCount()
+        }
+    }
+    
+    private func handleNewSuggestion(_ data: [String: Any]) {
+        DispatchQueue.main.async { [weak self] in
+            // Refresh suggestions count
+            self?.checkForNewSuggestions()
+        }
+    }
+    
+    private func showNewMessageBanner(_ data: [String: Any]) {
+        // Create a banner notification
+        let banner = UIView()
+        banner.backgroundColor = Constants.Colors.primary
+        banner.layer.cornerRadius = 8
+        banner.translatesAutoresizingMaskIntoConstraints = false
+        
+        let label = UILabel()
+        let senderName = data["senderName"] as? String ?? "Someone"
+        label.text = "New message from \(senderName)"
+        label.textColor = .white
+        label.font = .systemFont(ofSize: 14, weight: .medium)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        
+        banner.addSubview(label)
+        view.addSubview(banner)
+        
+        NSLayoutConstraint.activate([
+            banner.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            banner.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            banner.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            banner.heightAnchor.constraint(equalToConstant: 44),
+            
+            label.centerXAnchor.constraint(equalTo: banner.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: banner.centerYAnchor)
+        ])
+        
+        // Animate in
+        banner.alpha = 0
+        banner.transform = CGAffineTransform(translationX: 0, y: -20)
+        
+        UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseOut) {
+            banner.alpha = 1
+            banner.transform = .identity
+        }
+        
+        // Auto-dismiss after 3 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            UIView.animate(withDuration: 0.3, animations: {
+                banner.alpha = 0
+                banner.transform = CGAffineTransform(translationX: 0, y: -20)
+            }) { _ in
+                banner.removeFromSuperview()
+            }
         }
     }
 }

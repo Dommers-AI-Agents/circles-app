@@ -9,6 +9,7 @@ const {
 } = require('../models/FirestoreModels');
 const activityService = require('../services/activityService');
 const notificationService = require('../services/notificationService');
+const sseService = require('../services/sseService');
 
 const db = getFirestore();
 
@@ -392,6 +393,13 @@ const sendConnectionRequest = async (req, res) => {
       try {
         await notificationService.notifyConnectionRequest(userId, targetUserDocId);
         
+        // Send real-time SSE notification
+        sseService.notifyUser(targetUserDocId, 'connection_request', {
+          connectionId: connection.id,
+          from: connection.connectedUser,
+          message: message || null
+        });
+        
         // Also create a system message in the user's inbox
         const senderDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
         const senderName = senderDoc.exists ? senderDoc.data().displayName : 'Someone';
@@ -563,6 +571,15 @@ const acceptConnection = async (req, res) => {
         }
       });
       
+      // Send real-time SSE notification
+      sseService.notifyUser(connection.userId, 'connection_accepted', {
+        connectionId: connectionId,
+        acceptedBy: {
+          id: userId,
+          displayName: acceptingUserName
+        }
+      });
+      
       // Send email notification
       const requesterDoc = await db.collection(COLLECTIONS.USERS).doc(connection.userId).get();
       if (requesterDoc.exists && requesterDoc.data().email) {
@@ -632,6 +649,13 @@ const declineConnection = async (req, res) => {
     res.status(200).json({
       success: true,
       message: 'Connection request declined'
+    });
+
+    // Send SSE notification to the other party
+    const otherUserId = isSameUser(connection.userId, userId) ? connection.connectedUserId : connection.userId;
+    sseService.notifyUser(otherUserId, 'connection_declined', {
+      connectionId: connectionId,
+      declinedBy: userId
     });
 
   } catch (error) {

@@ -45,7 +45,8 @@ class MessagingManager {
     private func startMessaging() {
         // print("🔍 MessagingManager: startMessaging called")
         loadConversations()
-        startMessagePolling()
+        // Message polling disabled - using SSE for real-time updates
+        // startMessagePolling()
         updateUnreadCount()
     }
     
@@ -166,7 +167,7 @@ class MessagingManager {
         if !forceRefresh, let cachedConversations = conversationsCache, let cacheTime = conversationsCacheTime {
             let cacheAge = Date().timeIntervalSince(cacheTime)
             if cacheAge < cacheValidityDuration {
-                print("🔍 MessagingManager: Using cached conversations (age: \(Int(cacheAge))s)")
+                // Using cached conversations
                 self.conversations = cachedConversations
                 return
             }

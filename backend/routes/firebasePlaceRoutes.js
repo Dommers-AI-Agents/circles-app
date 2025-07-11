@@ -11,6 +11,7 @@ const {
   likePlace,
   getPlaceComments,
   addPlaceComment,
+  deletePlaceComment,
   addExistingPlaceToCircle,
   trackPlaceView
 } = require('../controllers/firebasePlaceController');
@@ -38,6 +39,9 @@ router.route('/:id/like')
 router.route('/:id/comments')
   .get(getPlaceComments)
   .post(addPlaceComment);
+
+router.route('/:placeId/comments/:commentId')
+  .delete(deletePlaceComment);
 
 router.route('/:id/add-to-circle/:circleId')
   .post(addExistingPlaceToCircle);

@@ -3343,20 +3343,34 @@ extension AddPlaceViewController: UITableViewDataSource, UITableViewDelegate {
                 present(navController, animated: true)
             } else {
                 // Normal category selection
-                selectedCategory = item.category
-                selectedSubcategory = item.subcategory
-                
-                // Update button title
-                if let subcategory = item.subcategory {
-                    categoryButton.setTitle("\(item.category.displayName) - \(subcategory)", for: .normal)
+                if item.category == .other && item.subcategory == nil {
+                    // User selected "Other" from dropdown - show category picker for custom input
+                    categoryButtonTapped() // Hide dropdown first
+                    
+                    let categoryPicker = CategoryPickerViewController(
+                        selectedCategory: .other,
+                        selectedSubcategory: nil
+                    )
+                    categoryPicker.delegate = self
+                    let navController = UINavigationController(rootViewController: categoryPicker)
+                    present(navController, animated: true)
                 } else {
-                    categoryButton.setTitle(item.category.displayName, for: .normal)
+                    // Regular category/subcategory selection
+                    selectedCategory = item.category
+                    selectedSubcategory = item.subcategory
+                    
+                    // Update button title
+                    if let subcategory = item.subcategory {
+                        categoryButton.setTitle("\(item.category.displayName) - \(subcategory)", for: .normal)
+                    } else {
+                        categoryButton.setTitle(item.category.displayName, for: .normal)
+                    }
+                    
+                    // Hide dropdown
+                    categoryButtonTapped()
+                    
+                    tableView.reloadData()
                 }
-                
-                // Hide dropdown
-                categoryButtonTapped()
-                
-                tableView.reloadData()
             }
         } else {
             // Handle place type suggestion
@@ -3375,9 +3389,15 @@ extension AddPlaceViewController: UITableViewDataSource, UITableViewDelegate {
 // MARK: - CategoryPickerDelegate
 
 extension AddPlaceViewController {
-    func categoryPicker(_ picker: CategoryPickerViewController, didSelectCategory category: PlaceCategory, subcategory: String?) {
+    func categoryPicker(_ picker: CategoryPickerViewController, didSelectCategory category: PlaceCategory, subcategory: String?, customCategory: String?) {
         selectedCategory = category
-        selectedSubcategory = subcategory
+        
+        // Handle custom category for "Other"
+        if category == .other && customCategory != nil {
+            selectedSubcategory = customCategory
+        } else {
+            selectedSubcategory = subcategory
+        }
         
         // Update button title
         updateCategoryButtonTitle()

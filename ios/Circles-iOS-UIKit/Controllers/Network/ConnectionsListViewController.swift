@@ -158,9 +158,11 @@ class ConnectionsListViewController: UIViewController {
     
     // MARK: - Navigation
     private func showConnectionDetail(_ connection: Connection) {
-        let detailVC = ConnectionDetailViewController()
-        detailVC.connection = connection
-        navigationController?.pushViewController(detailVC, animated: true)
+        // Use ProfileViewController for viewing connection profiles
+        guard let connectedUser = connection.connectedUser else { return }
+        let profileVC = ProfileViewController()
+        profileVC.configureWith(user: connectedUser)
+        navigationController?.pushViewController(profileVC, animated: true)
     }
 }
 

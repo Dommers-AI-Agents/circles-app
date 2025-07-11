@@ -68,6 +68,34 @@ class ConnectionDetailViewController: UIViewController {
         return button
     }()
     
+    private let followButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Follow", for: .normal)
+        button.setImage(UIImage(systemName: "plus"), for: .normal)
+        button.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
+        button.tintColor = Constants.Colors.primary
+        button.backgroundColor = .clear
+        button.layer.borderWidth = 1
+        button.layer.borderColor = Constants.Colors.primary.cgColor
+        button.layer.cornerRadius = 8
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 0)
+        return button
+    }()
+    
+    private let connectButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Connect", for: .normal)
+        button.setImage(UIImage(systemName: "person.badge.plus"), for: .normal)
+        button.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
+        button.tintColor = .white
+        button.backgroundColor = Constants.Colors.secondary
+        button.layer.cornerRadius = 8
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 0)
+        return button
+    }()
+
     private let removeButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle("Remove Connection", for: .normal)
@@ -87,13 +115,16 @@ class ConnectionDetailViewController: UIViewController {
     
     private let circlesCollectionView: UICollectionView = {
         let layout = UICollectionViewFlowLayout()
-        layout.scrollDirection = .horizontal
-        layout.minimumLineSpacing = 12
-        layout.itemSize = CGSize(width: 140, height: 180)
+        layout.scrollDirection = .vertical
+        layout.minimumLineSpacing = 16
+        layout.minimumInteritemSpacing = 16
+        let screenWidth = UIScreen.main.bounds.width
+        let itemWidth = (screenWidth - 60) / 2 // 20 margin + 20 margin + 16 spacing = 56, remaining space / 2
+        layout.itemSize = CGSize(width: itemWidth, height: itemWidth + 40) // Extra height for labels
         
         let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
         collectionView.backgroundColor = .clear
-        collectionView.showsHorizontalScrollIndicator = false
+        collectionView.showsVerticalScrollIndicator = false
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         return collectionView
     }()
@@ -111,6 +142,8 @@ class ConnectionDetailViewController: UIViewController {
     
     // MARK: - Properties
     private var connectionCircles: [Circle] = []
+    private var isFollowing: Bool = false
+    private var connectionUser: User?
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
@@ -132,6 +165,8 @@ class ConnectionDetailViewController: UIViewController {
         contentView.addSubview(emailLabel)
         contentView.addSubview(connectionDateLabel)
         contentView.addSubview(messageButton)
+        contentView.addSubview(followButton)
+        contentView.addSubview(connectButton)
         contentView.addSubview(removeButton)
         contentView.addSubview(circlesSectionLabel)
         contentView.addSubview(circlesCollectionView)
@@ -168,8 +203,18 @@ class ConnectionDetailViewController: UIViewController {
             
             messageButton.topAnchor.constraint(equalTo: connectionDateLabel.bottomAnchor, constant: 24),
             messageButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            messageButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            messageButton.trailingAnchor.constraint(equalTo: contentView.centerXAnchor, constant: -8),
             messageButton.heightAnchor.constraint(equalToConstant: 48),
+            
+            followButton.topAnchor.constraint(equalTo: connectionDateLabel.bottomAnchor, constant: 24),
+            followButton.leadingAnchor.constraint(equalTo: contentView.centerXAnchor, constant: 8),
+            followButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            followButton.heightAnchor.constraint(equalToConstant: 48),
+            
+            connectButton.topAnchor.constraint(equalTo: connectionDateLabel.bottomAnchor, constant: 24),
+            connectButton.leadingAnchor.constraint(equalTo: contentView.centerXAnchor, constant: 8),
+            connectButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            connectButton.heightAnchor.constraint(equalToConstant: 48),
             
             removeButton.topAnchor.constraint(equalTo: messageButton.bottomAnchor, constant: 16),
             removeButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
@@ -180,8 +225,8 @@ class ConnectionDetailViewController: UIViewController {
             
             circlesCollectionView.topAnchor.constraint(equalTo: circlesSectionLabel.bottomAnchor, constant: 12),
             circlesCollectionView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            circlesCollectionView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            circlesCollectionView.heightAnchor.constraint(equalToConstant: 200),
+            circlesCollectionView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            circlesCollectionView.heightAnchor.constraint(greaterThanOrEqualToConstant: 200),
             
             noCirclesLabel.centerXAnchor.constraint(equalTo: circlesCollectionView.centerXAnchor),
             noCirclesLabel.centerYAnchor.constraint(equalTo: circlesCollectionView.centerYAnchor),
@@ -192,6 +237,8 @@ class ConnectionDetailViewController: UIViewController {
         ])
         
         messageButton.addTarget(self, action: #selector(messageButtonTapped), for: .touchUpInside)
+        followButton.addTarget(self, action: #selector(followButtonTapped), for: .touchUpInside)
+        connectButton.addTarget(self, action: #selector(connectButtonTapped), for: .touchUpInside)
         removeButton.addTarget(self, action: #selector(removeConnectionTapped), for: .touchUpInside)
         
         // Setup collection view
@@ -222,8 +269,10 @@ class ConnectionDetailViewController: UIViewController {
             connectionDateLabel.text = "Connected since \\(formatter.string(from: acceptedAt))"
         }
         
-        // Load connection's circles
+        // Load connection's circles and check follow status
         loadConnectionCircles()
+        checkFollowStatus()
+        updateButtonVisibility()
     }
     
     private func loadConnectionCircles() {
@@ -287,7 +336,84 @@ class ConnectionDetailViewController: UIViewController {
         }
     }
     
+    private func checkFollowStatus() {
+        // This should be updated when we implement follow checking
+        // For now, default to not following
+        isFollowing = false
+    }
+    
+    private func updateButtonVisibility() {
+        guard let connection = connection else { return }
+        
+        let isConnected = connection.status == .accepted
+        
+        // Show/hide buttons based on connection status
+        messageButton.isHidden = !isConnected
+        removeButton.isHidden = !isConnected
+        
+        // For connected users, show follow button but not connect button
+        followButton.isHidden = !isConnected
+        connectButton.isHidden = isConnected
+        
+        // Update follow button text based on follow status
+        if isFollowing {
+            followButton.setTitle("Following", for: .normal)
+            followButton.backgroundColor = Constants.Colors.primary
+            followButton.tintColor = .white
+            followButton.layer.borderWidth = 0
+        } else {
+            followButton.setTitle("Follow", for: .normal)
+            followButton.backgroundColor = .clear
+            followButton.tintColor = Constants.Colors.primary
+            followButton.layer.borderWidth = 1
+        }
+    }
+    
     // MARK: - Actions
+    @objc private func followButtonTapped() {
+        guard let connection = connection,
+              let currentUserId = AuthService.shared.getUserId() else { return }
+        let userId = connection.otherUserId(currentUserId: currentUserId)
+        
+        let endpoint = isFollowing ? "users/\(userId)/unfollow" : "users/\(userId)/follow"
+        
+        APIService.shared.request(
+            endpoint: endpoint,
+            method: .post,
+            requiresAuth: true
+        ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    self?.isFollowing.toggle()
+                    self?.updateButtonVisibility()
+                case .failure(let error):
+                    self?.showAlert(title: "Error", message: "Failed to \(self?.isFollowing == true ? "unfollow" : "follow") user: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    
+    @objc private func connectButtonTapped() {
+        guard let connection = connection,
+              let currentUserId = AuthService.shared.getUserId() else { return }
+        let userId = connection.otherUserId(currentUserId: currentUserId)
+        
+        // Send connection request
+        NetworkManager.shared.sendConnectionRequest(to: userId) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    self?.showAlert(title: "Success", message: "Connection request sent!")
+                    // Update button visibility
+                    self?.updateButtonVisibility()
+                case .failure(let error):
+                    self?.showAlert(title: "Error", message: "Failed to send connection request: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
     @objc private func messageButtonTapped() {
         guard let connection = connection,
               let currentUserId = AuthService.shared.getUserId() else { return }
@@ -369,7 +495,14 @@ extension ConnectionDetailViewController: UICollectionViewDelegate {
 
 // MARK: - UICollectionViewDelegateFlowLayout
 extension ConnectionDetailViewController: UICollectionViewDelegateFlowLayout {
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
+        let availableWidth = collectionView.frame.width
+        let itemWidth = (availableWidth - 16) / 2 // 16 for spacing between items
+        let itemHeight = itemWidth + 40 // Extra height for labels below circles
+        return CGSize(width: itemWidth, height: itemHeight)
+    }
+    
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, insetForSectionAt section: Int) -> UIEdgeInsets {
-        return UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 20)
+        return UIEdgeInsets(top: 0, left: 0, bottom: 20, right: 0)
     }
 }

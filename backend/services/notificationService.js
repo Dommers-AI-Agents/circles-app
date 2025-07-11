@@ -1,6 +1,6 @@
 // backend/services/notificationService.js
 const { getFirestore, getMessaging } = require('../config/firebase');
-const { COLLECTIONS } = require('../models/FirestoreModels');
+const { COLLECTIONS, createNotification, validateNotification } = require('../models/FirestoreModels');
 const emailService = require('./emailService');
 
 const db = getFirestore();
@@ -391,9 +391,38 @@ class NotificationService {
       }
       const fromUser = userDoc.data();
 
-      const notification = {
-        title: `${fromUser.displayName} liked ${placeName}`,
-        body: `Your place "${placeName}" received a new like!`,
+      // Get the place details to find circleId
+      const placeDoc = await this.db.collection(COLLECTIONS.PLACES).doc(placeId).get();
+      const place = placeDoc.exists ? placeDoc.data() : {};
+
+      const notificationTitle = `${fromUser.displayName} liked ${placeName}`;
+      const notificationBody = `Your place "${placeName}" received a new like!`;
+
+      // Save notification to Firestore
+      const notificationData = createNotification({
+        userId: toUserId,
+        type: 'place_like',
+        title: notificationTitle,
+        body: notificationBody,
+        data: {
+          fromUserId: fromUserId,
+          fromUserName: fromUser.displayName,
+          fromUserPhoto: fromUser.profilePicture || null,
+          placeId: placeId,
+          placeName: placeName,
+          circleId: place.circleId || null
+        }
+      });
+
+      const validationErrors = validateNotification(notificationData);
+      if (validationErrors.length === 0) {
+        await this.db.collection(COLLECTIONS.NOTIFICATIONS).add(notificationData);
+      }
+
+      // Also send push notification
+      const pushNotification = {
+        title: notificationTitle,
+        body: notificationBody,
         data: {
           type: 'place_like',
           placeId: placeId,
@@ -401,9 +430,123 @@ class NotificationService {
         }
       };
 
-      await this.sendToUser(toUserId, notification);
+      await this.sendToUser(toUserId, pushNotification);
     } catch (error) {
       console.error('🔔 Error sending place like notification:', error);
+    }
+  }
+
+  async sendPlaceCommentNotification(toUserId, fromUserId, placeId, placeName, commentText) {
+    try {
+      // Get the commenting user's details
+      const userDoc = await this.db.collection(COLLECTIONS.USERS).doc(fromUserId).get();
+      if (!userDoc.exists) {
+        console.log('🔔 Commenting user not found');
+        return;
+      }
+      const fromUser = userDoc.data();
+
+      // Get the place details to find circleId
+      const placeDoc = await this.db.collection(COLLECTIONS.PLACES).doc(placeId).get();
+      const place = placeDoc.exists ? placeDoc.data() : {};
+
+      const notificationTitle = `${fromUser.displayName} commented on ${placeName}`;
+      const notificationBody = commentText.length > 50 ? commentText.substring(0, 50) + '...' : commentText;
+
+      // Save notification to Firestore
+      const notificationData = createNotification({
+        userId: toUserId,
+        type: 'place_comment',
+        title: notificationTitle,
+        body: notificationBody,
+        data: {
+          fromUserId: fromUserId,
+          fromUserName: fromUser.displayName,
+          fromUserPhoto: fromUser.profilePicture || null,
+          placeId: placeId,
+          placeName: placeName,
+          circleId: place.circleId || null,
+          commentText: commentText
+        }
+      });
+
+      const validationErrors = validateNotification(notificationData);
+      if (validationErrors.length === 0) {
+        await this.db.collection(COLLECTIONS.NOTIFICATIONS).add(notificationData);
+      }
+
+      // Also send push notification
+      const pushNotification = {
+        title: notificationTitle,
+        body: notificationBody,
+        data: {
+          type: 'place_comment',
+          placeId: placeId,
+          fromUserId: fromUserId
+        }
+      };
+
+      await this.sendToUser(toUserId, pushNotification);
+    } catch (error) {
+      console.error('🔔 Error sending place comment notification:', error);
+    }
+  }
+
+  // Send notification for new follower
+  async sendFollowerNotification(toUserId, fromUserId, fromUserName) {
+    try {
+      // Get the recipient user to check notification preferences
+      const toUserDoc = await this.db.collection(COLLECTIONS.USERS).doc(toUserId).get();
+      if (!toUserDoc.exists) {
+        console.log('🔔 Recipient user not found for follower notification');
+        return { success: false, message: 'Recipient user not found' };
+      }
+
+      const toUser = toUserDoc.data();
+
+      // Check if user wants follower notifications
+      if (toUser.notificationPreferences && !toUser.notificationPreferences.newFollowers) {
+        console.log('🔔 User has disabled follower notifications');
+        return { success: false, message: 'User has disabled follower notifications' };
+      }
+
+      // Create notification title and body
+      const notificationTitle = 'New Follower';
+      const notificationBody = `${fromUserName} started following you`;
+
+      // Save notification to Firestore
+      const notificationData = createNotification({
+        userId: toUserId,
+        type: 'new_follower',
+        title: notificationTitle,
+        body: notificationBody,
+        data: {
+          fromUserId: fromUserId,
+          fromUserName: fromUserName
+        }
+      });
+
+      const validationErrors = validateNotification(notificationData);
+      if (validationErrors.length === 0) {
+        await this.db.collection(COLLECTIONS.NOTIFICATIONS).add(notificationData);
+      }
+
+      // Send push notification
+      const pushNotification = {
+        title: notificationTitle,
+        body: notificationBody,
+        data: {
+          type: 'new_follower',
+          fromUserId: fromUserId
+        }
+      };
+
+      await this.sendToUser(toUserId, pushNotification);
+
+      return { success: true, message: 'Follower notification sent' };
+    } catch (error) {
+      console.error('🔔 Error sending follower notification:', error);
+      return { success: false, message: 'Failed to send notification', error };
     }
   }
 }

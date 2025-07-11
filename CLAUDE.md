@@ -1086,11 +1086,153 @@ xcodebuild -project Circles-iOS.xcodeproj -scheme Circles-iOS -sdk iphonesimulat
    - Easy integration with Firebase
    - Good cold start performance
 
+### 8. Real-Time SSE Notification System (July 2025)
+**Problem**: Users had to manually refresh or exit/re-enter views to see new connection requests, messages, and other activities. Message polling was inefficient and caused excessive logging.
+
+**Solution**: Implemented Server-Sent Events (SSE) for real-time notifications across the app.
+
+#### Backend SSE Implementation:
+
+1. **SSE Service** (`/backend/services/sseService.js`):
+```javascript
+// Manages SSE connections for each user
+class SSEService {
+  addClient(userId, res) // Add SSE client
+  removeClient(userId, res) // Remove on disconnect
+  setupListeners(userId) // Set up Firestore listeners
+  notifyUser(userId, eventType, data) // Send event to user
+}
+
+// Event types supported:
+- connection_request: New connection request received
+- connection_accepted: Connection request was accepted
+- connection_declined: Connection request was declined
+- new_message: New message received
+- new_suggestion: New place suggestion received
+```
+
+2. **SSE Endpoint** (`/api/sse/stream`):
+- Maintains persistent connection with clients
+- Sends heartbeat every 30 seconds to keep alive
+- Automatically sets up Firestore listeners for the authenticated user
+- Handles reconnection gracefully
+
+3. **Integration in Controllers**:
+```javascript
+// connectionController.js - Send SSE on new connection request
+sseService.notifyUser(targetUserId, 'connection_request', {
+  connectionId: connection.id,
+  from: connection.connectedUser,
+  message: message || null
+});
+
+// messagingController.js - Send SSE on new message
+sseService.notifyUser(recipientId, 'new_message', {
+  messageId: message.id,
+  conversationId: conversationId,
+  senderId: userId,
+  senderName: senderName,
+  content: content,
+  type: type
+});
+```
+
+#### iOS SSE Implementation:
+
+1. **SSE Service** (`/ios/Services/SSEService.swift`):
+```swift
+// Singleton service for SSE connections
+class SSEService: NSObject {
+  static let shared = SSEService()
+  
+  func connect() // Establish SSE connection
+  func disconnect() // Close connection
+  func addDelegate(_ delegate: SSEServiceDelegate) // Add listener
+  
+  // Automatic features:
+  - Reconnection with exponential backoff
+  - Authentication integration
+  - Event parsing and dispatching
+  - Heartbeat handling
+}
+
+// SSE Event Types
+enum SSEEventType: String {
+  case connected
+  case connectionRequest
+  case connectionAccepted
+  case connectionDeclined
+  case newMessage
+  case newSuggestion
+}
+```
+
+2. **View Controller Integration**:
+```swift
+// MyNetworkViewController - Real-time connection updates
+extension MyNetworkViewController: SSEServiceDelegate {
+  func sseService(_ service: SSEService, didReceiveEvent event: SSEEvent) {
+    switch event.type {
+    case .connectionRequest:
+      // Refresh connections list automatically
+      NetworkManager.shared.loadConnections()
+      showNewConnectionBanner(event.data)
+    }
+  }
+}
+
+// ConversationsListViewController - Real-time message updates
+extension ConversationsListViewController: SSEServiceDelegate {
+  func sseService(_ service: SSEService, didReceiveEvent event: SSEEvent) {
+    switch event.type {
+    case .newMessage:
+      // Refresh conversations automatically
+      messagingManager.loadConversations(forceRefresh: true)
+      showNewMessageBanner(event.data)
+    }
+  }
+}
+```
+
+3. **App Startup** (AppDelegate.swift):
+```swift
+// SSE starts automatically on app launch
+SSEService.shared.connect()
+```
+
+#### Benefits of SSE System:
+
+1. **Real-Time Updates**: Users see changes instantly without manual refresh
+2. **No More Polling**: Eliminated inefficient message polling timer
+3. **Better Performance**: Reduced server load and battery consumption
+4. **Clean Logs**: Removed excessive "Using cached conversations" and "Network connection restored" logging
+5. **Unified System**: All real-time updates flow through one infrastructure
+
+#### SSE vs WebSocket Decision:
+- Chose SSE over WebSocket because:
+  - One-way communication (server to client) is sufficient
+  - Simpler implementation and debugging
+  - Built-in reconnection in browsers/URLSession
+  - Lower server resource usage
+  - Works better with Cloud Run's request timeout
+
+#### Usage Notes:
+- SSE connection automatically established when user logs in
+- Reconnects automatically with exponential backoff on disconnect
+- Each user can have multiple connected devices (all receive events)
+- Events are not persisted - only for real-time updates
+- Push notifications still sent for offline users
+
 ### Future Considerations
 
 - Consider implementing GraphQL for more efficient data fetching
 - Add Redis caching layer for frequently accessed data
-- Implement WebSocket for real-time features
+- ~~Implement WebSocket for real-time features~~ ✅ Implemented SSE instead (July 2025)
 - Consider moving to Swift Concurrency (async/await)
 - Add comprehensive unit and integration tests
 - Implement CI/CD pipeline with GitHub Actions
+- Consider adding SSE events for:
+  - Circle updates (when someone adds a place to a shared circle)
+  - Like notifications
+  - Comment notifications
+  - User online/offline status

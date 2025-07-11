@@ -233,8 +233,9 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         fetchPlaces()
         setupNotificationObservers()
         
-        // Configure scroll view to avoid bottom overlap with Add Place button
-        scrollView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 80, right: 0)
+        // Configure scroll view to avoid bottom overlap with Add Place button if shown
+        let bottomInset: CGFloat = circle.canAddPlaces ? 80 : 20
+        scrollView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: bottomInset, right: 0)
         scrollView.scrollIndicatorInsets = scrollView.contentInset
     }
     
@@ -297,7 +298,10 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         contentView.addSubview(zoomToMeButton)
         contentView.addSubview(tableView)
         
-        view.addSubview(addPlaceButton)
+        // Only add the add place button if user can add places
+        if circle.canAddPlaces {
+            view.addSubview(addPlaceButton)
+        }
         
         // Layout constraints
         NSLayoutConstraint.activate([
@@ -394,20 +398,26 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             tableView.topAnchor.constraint(equalTo: mapView.bottomAnchor, constant: Constants.Spacing.large),
             tableView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             tableView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            tableView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -100), // Increased bottom padding for Add Place button
-            
-            // Add place button
-            addPlaceButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.large),
-            addPlaceButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -Constants.Spacing.medium),
-            addPlaceButton.widthAnchor.constraint(equalToConstant: 120),
-            addPlaceButton.heightAnchor.constraint(equalToConstant: 50)
+            tableView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: circle.canAddPlaces ? -100 : -20) // Adjust padding based on button visibility
         ])
+        
+        // Add constraints for add place button if it exists
+        if circle.canAddPlaces {
+            NSLayoutConstraint.activate([
+                addPlaceButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.large),
+                addPlaceButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -Constants.Spacing.medium),
+                addPlaceButton.widthAnchor.constraint(equalToConstant: 120),
+                addPlaceButton.heightAnchor.constraint(equalToConstant: 50)
+            ])
+        }
         
         // Set initial table view height
         tableView.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
         
         // Setup button actions
-        addPlaceButton.addTarget(self, action: #selector(addPlaceButtonTapped), for: .touchUpInside)
+        if circle.canAddPlaces {
+            addPlaceButton.addTarget(self, action: #selector(addPlaceButtonTapped), for: .touchUpInside)
+        }
         categoryFilterButton.addTarget(self, action: #selector(categoryFilterButtonTapped), for: .touchUpInside)
         expandMapButton.addTarget(self, action: #selector(expandMapButtonTapped), for: .touchUpInside)
         zoomToMeButton.addTarget(self, action: #selector(zoomToMeButtonTapped), for: .touchUpInside)
@@ -478,9 +488,19 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         title = circle.name
         
         // Navigation bar buttons
+        var rightBarButtons: [UIBarButtonItem] = []
+        
+        // Always show share button
         let shareButton = UIBarButtonItem(barButtonSystemItem: .action, target: self, action: #selector(shareButtonTapped))
-        let editButton = UIBarButtonItem(barButtonSystemItem: .edit, target: self, action: #selector(editButtonTapped))
-        navigationItem.rightBarButtonItems = [shareButton, editButton]
+        rightBarButtons.append(shareButton)
+        
+        // Only show edit button if user can edit
+        if circle.canEdit {
+            let editButton = UIBarButtonItem(barButtonSystemItem: .edit, target: self, action: #selector(editButtonTapped))
+            rightBarButtons.append(editButton)
+        }
+        
+        navigationItem.rightBarButtonItems = rightBarButtons
         
         // Cover image
         if let coverImageUrl = circle.coverImage {
@@ -528,6 +548,22 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         case .private:
             privacyImageView.image = UIImage(systemName: "lock")
             privacyLabel.text = "Private"
+        }
+        
+        // Show shared circle info if applicable
+        if !circle.isOwner {
+            var sharedInfo = "Shared by \(circle.displayOwnerName)"
+            if let accessLevel = circle.myAccessLevel {
+                switch accessLevel {
+                case .viewOnly:
+                    sharedInfo += " • View Only"
+                case .canAddPlaces:
+                    sharedInfo += " • Can Add Places"
+                case .canEdit:
+                    sharedInfo += " • Can Edit"
+                }
+            }
+            descriptionLabel.text = sharedInfo + "\n\n" + (circle.description ?? "No description provided")
         }
         
         // Category
@@ -1620,8 +1656,8 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
     
     // MARK: - Swipe Actions
     func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
-        // Only allow deletion for own circles
-        guard circle.isOwner else { return nil }
+        // Only allow deletion if user can edit
+        guard circle.canEdit else { return nil }
         
         let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, completion in
             self?.confirmDeletePlace(at: indexPath, completion: completion)
@@ -1702,6 +1738,9 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
     func tableView(_ tableView: UITableView, itemsForBeginning session: UIDragSession, at indexPath: IndexPath) -> [UIDragItem] {
         // Disable drag when filtering
         guard selectedCategory == nil else { return [] }
+        
+        // Only allow drag if user can edit the circle
+        guard circle.canEdit else { return [] }
         
         let place = filteredPlaces[indexPath.row]
         let itemProvider = NSItemProvider(object: place.id as NSString)
@@ -1869,7 +1908,7 @@ class PlaceTableViewCell: UITableViewCell {
     
     private let ratingView: UIView = {
         let view = UIView()
-        view.backgroundColor = Constants.Colors.tertiaryBackground
+        view.backgroundColor = UIColor.black.withAlphaComponent(0.6)
         view.layer.cornerRadius = 4
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
@@ -1887,7 +1926,7 @@ class PlaceTableViewCell: UITableViewCell {
     private let ratingLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: 11, weight: .semibold)
-        label.textColor = Constants.Colors.label
+        label.textColor = .white
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -1981,7 +2020,6 @@ class PlaceTableViewCell: UITableViewCell {
         containerView.addSubview(nameLabel)
         containerView.addSubview(categoryLabel)
         containerView.addSubview(addressLabel)
-        containerView.addSubview(ratingView)
         containerView.addSubview(shareButton)
         containerView.addSubview(directionsButton)
         containerView.addSubview(likeButton)
@@ -1990,6 +2028,8 @@ class PlaceTableViewCell: UITableViewCell {
         containerView.addSubview(commentCountLabel)
         containerView.addSubview(activityIndicatorView)
         
+        // Add rating view as overlay on image
+        placeImageView.addSubview(ratingView)
         ratingView.addSubview(ratingImageView)
         ratingView.addSubview(ratingLabel)
         
@@ -2035,7 +2075,7 @@ class PlaceTableViewCell: UITableViewCell {
             // Name label
             nameLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: Constants.Spacing.small),
             nameLabel.leadingAnchor.constraint(equalTo: placeImageView.trailingAnchor, constant: Constants.Spacing.small),
-            nameLabel.trailingAnchor.constraint(equalTo: directionsButton.leadingAnchor, constant: -Constants.Spacing.small),
+            nameLabel.trailingAnchor.constraint(equalTo: likeCountLabel.leadingAnchor, constant: -Constants.Spacing.small),
             
             // Directions button
             directionsButton.topAnchor.constraint(equalTo: containerView.topAnchor, constant: Constants.Spacing.small),
@@ -2059,44 +2099,43 @@ class PlaceTableViewCell: UITableViewCell {
             addressLabel.leadingAnchor.constraint(equalTo: placeImageView.trailingAnchor, constant: Constants.Spacing.small),
             addressLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Constants.Spacing.small),
             
-            // Rating view
-            ratingView.topAnchor.constraint(equalTo: addressLabel.bottomAnchor, constant: Constants.Spacing.small),
-            ratingView.leadingAnchor.constraint(equalTo: placeImageView.trailingAnchor, constant: Constants.Spacing.small),
-            ratingView.widthAnchor.constraint(equalToConstant: 60),
-            ratingView.heightAnchor.constraint(equalToConstant: 22),
+            // Rating view - now overlay on bottom-left of image
+            ratingView.bottomAnchor.constraint(equalTo: placeImageView.bottomAnchor, constant: -4),
+            ratingView.leadingAnchor.constraint(equalTo: placeImageView.leadingAnchor, constant: 4),
+            ratingView.widthAnchor.constraint(equalToConstant: 50),
+            ratingView.heightAnchor.constraint(equalToConstant: 20),
             
-            // Like button - reduced spacing and size
-            likeButton.leadingAnchor.constraint(equalTo: ratingView.trailingAnchor, constant: Constants.Spacing.small),
-            likeButton.centerYAnchor.constraint(equalTo: ratingView.centerYAnchor),
-            likeButton.widthAnchor.constraint(equalToConstant: 20),
-            likeButton.heightAnchor.constraint(equalToConstant: 20),
+            // Like button - now below directions button
+            likeButton.topAnchor.constraint(equalTo: directionsButton.bottomAnchor, constant: Constants.Spacing.tiny),
+            likeButton.trailingAnchor.constraint(equalTo: directionsButton.trailingAnchor),
+            likeButton.widthAnchor.constraint(equalToConstant: 30),
+            likeButton.heightAnchor.constraint(equalToConstant: 30),
             
-            // Like count label - reduced spacing and width constraint
-            likeCountLabel.leadingAnchor.constraint(equalTo: likeButton.trailingAnchor, constant: 2),
+            // Like count label - to the left of like button
+            likeCountLabel.trailingAnchor.constraint(equalTo: likeButton.leadingAnchor, constant: -2),
             likeCountLabel.centerYAnchor.constraint(equalTo: likeButton.centerYAnchor),
             likeCountLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 24),
             
-            // Comment button - reduced spacing and size
-            commentButton.leadingAnchor.constraint(equalTo: likeCountLabel.trailingAnchor, constant: Constants.Spacing.xsmall),
-            commentButton.centerYAnchor.constraint(equalTo: ratingView.centerYAnchor),
-            commentButton.widthAnchor.constraint(equalToConstant: 20),
-            commentButton.heightAnchor.constraint(equalToConstant: 20),
+            // Comment button - below share button
+            commentButton.topAnchor.constraint(equalTo: shareButton.bottomAnchor, constant: Constants.Spacing.tiny),
+            commentButton.trailingAnchor.constraint(equalTo: shareButton.trailingAnchor),
+            commentButton.widthAnchor.constraint(equalToConstant: 30),
+            commentButton.heightAnchor.constraint(equalToConstant: 30),
             
-            // Comment count label - reduced spacing and width constraint
-            commentCountLabel.leadingAnchor.constraint(equalTo: commentButton.trailingAnchor, constant: 2),
+            // Comment count label - to the left of comment button
+            commentCountLabel.trailingAnchor.constraint(equalTo: commentButton.leadingAnchor, constant: -2),
             commentCountLabel.centerYAnchor.constraint(equalTo: commentButton.centerYAnchor),
             commentCountLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 24),
-            commentCountLabel.trailingAnchor.constraint(lessThanOrEqualTo: containerView.trailingAnchor, constant: -Constants.Spacing.small),
             
             // Rating image view
-            ratingImageView.leadingAnchor.constraint(equalTo: ratingView.leadingAnchor, constant: Constants.Spacing.tiny),
+            ratingImageView.leadingAnchor.constraint(equalTo: ratingView.leadingAnchor, constant: 4),
             ratingImageView.centerYAnchor.constraint(equalTo: ratingView.centerYAnchor),
-            ratingImageView.widthAnchor.constraint(equalToConstant: 14),
-            ratingImageView.heightAnchor.constraint(equalToConstant: 14),
+            ratingImageView.widthAnchor.constraint(equalToConstant: 12),
+            ratingImageView.heightAnchor.constraint(equalToConstant: 12),
             
             // Rating label
             ratingLabel.leadingAnchor.constraint(equalTo: ratingImageView.trailingAnchor, constant: 2),
-            ratingLabel.trailingAnchor.constraint(equalTo: ratingView.trailingAnchor, constant: -Constants.Spacing.tiny),
+            ratingLabel.trailingAnchor.constraint(equalTo: ratingView.trailingAnchor, constant: -4),
             ratingLabel.centerYAnchor.constraint(equalTo: ratingView.centerYAnchor),
             
             // Activity indicator in top left corner of place image
@@ -2170,8 +2209,10 @@ class PlaceTableViewCell: UITableViewCell {
         // Rating
         if let rating = place.rating {
             ratingLabel.text = String(format: "%.1f", rating)
+            ratingView.isHidden = false
         } else {
             ratingLabel.text = "N/A"
+            ratingView.isHidden = true
         }
         
         // Like button and count
@@ -2219,6 +2260,10 @@ class PlaceTableViewCell: UITableViewCell {
                 self.placeImageView.image = image
                 self.categoryIconView.isHidden = true
                 self.imageGradientView.isHidden = false
+                // Show rating view if we have a rating
+                if self.place?.rating != nil {
+                    self.ratingView.isHidden = false
+                }
             } else {
                 self.showCategoryIcon()
             }
@@ -2230,6 +2275,8 @@ class PlaceTableViewCell: UITableViewCell {
         categoryIconView.isHidden = false
         placeImageView.image = nil
         imageGradientView.isHidden = true
+        // Hide rating view when showing category icon
+        ratingView.isHidden = true
     }
     
     private func setupGradientLayer() {

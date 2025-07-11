@@ -11,6 +11,7 @@ const {
   serializeQuerySnapshot 
 } = require('../models/FirestoreModels');
 const { normalizeUserId, isSameUser } = require('../services/idService');
+const sseService = require('../services/sseService');
 
 const db = getFirestore();
 
@@ -536,6 +537,16 @@ const sendMessage = async (req, res) => {
       try {
         await notificationService.notifyNewMessage(userId, recipientId, message);
         console.log(`🔔 Sent message notification to user ${recipientId}`);
+        
+        // Send real-time SSE notification
+        sseService.notifyUser(recipientId, 'new_message', {
+          messageId: message.id,
+          conversationId: conversationId,
+          senderId: userId,
+          senderName: message.senderDetails?.displayName || 'Someone',
+          content: content,
+          type: type
+        });
       } catch (notificationError) {
         console.error(`🔔 Failed to send notification to ${recipientId}:`, notificationError);
         // Don't fail the whole request if notification fails

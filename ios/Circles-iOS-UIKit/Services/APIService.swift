@@ -143,7 +143,7 @@ class APIService {
         NetworkMonitor.shared.addObserver(id: networkMonitorId) { isConnected in
             // If connection restored, we could potentially retry failed requests
             if isConnected {
-                Logger.info("Network connection restored")
+                // Network connection restored
             } else {
                 Logger.warning("Network connection lost")
             }
@@ -292,6 +292,11 @@ class APIService {
         var request = URLRequest(url: url)
         request.httpMethod = method.rawValue
         
+        // Disable caching for GET requests to ensure fresh data
+        if method == .get {
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+        }
+        
         // Add auth token if required and available
         if requiresAuth {
             if let token = authToken {
@@ -307,6 +312,12 @@ class APIService {
         // Add default headers
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
         request.addValue("application/json", forHTTPHeaderField: "Accept")
+        
+        // Add cache control headers to prevent 304 responses
+        if method == .get {
+            request.addValue("no-cache", forHTTPHeaderField: "Cache-Control")
+            request.addValue("no-cache", forHTTPHeaderField: "Pragma")
+        }
         
         // Add custom headers if provided
         if let headers = headers {

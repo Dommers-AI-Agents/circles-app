@@ -1,5 +1,22 @@
 import UIKit
 
+// MARK: - Response Types
+struct UserCirclesResponse: Codable {
+    let success: Bool
+    let data: UserCirclesData
+}
+
+struct UserCirclesData: Codable {
+    let user: User
+    let circles: [Circle]
+}
+
+// MARK: - FollowListType
+enum FollowListType {
+    case followers
+    case following
+}
+
 // MARK: - StatView
 class StatView: UIView {
     private let numberLabel: UILabel = {
@@ -56,6 +73,14 @@ class ProfileViewController: UIViewController {
     // MARK: - Properties
     private var user: User?
     private var circles: [Circle] = []
+    
+    // MARK: - Public Methods
+    func configureWith(user: User) {
+        self.user = user
+        if isViewLoaded {
+            loadUserProfile()
+        }
+    }
     
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
@@ -126,6 +151,18 @@ class ProfileViewController: UIViewController {
         return view
     }()
     
+    private let followersStatView: StatView = {
+        let view = StatView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let followingStatView: StatView = {
+        let view = StatView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
     // Bio section
     private let fullNameLabel: UILabel = {
         let label = UILabel()
@@ -186,6 +223,45 @@ class ProfileViewController: UIViewController {
         button.layer.borderWidth = 1
         button.layer.borderColor = UIColor.separator.cgColor
         button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    // Buttons for viewing other users (connections)
+    private let messageButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Message", for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = Constants.Colors.primary
+        button.layer.cornerRadius = 6
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isHidden = true
+        return button
+    }()
+    
+    private let followButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Follow", for: .normal)
+        button.setTitleColor(Constants.Colors.primary, for: .normal)
+        button.backgroundColor = .clear
+        button.layer.cornerRadius = 6
+        button.layer.borderWidth = 1
+        button.layer.borderColor = Constants.Colors.primary.cgColor
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isHidden = true
+        return button
+    }()
+    
+    private let connectButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Connect", for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = Constants.Colors.secondary
+        button.layer.cornerRadius = 6
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isHidden = true
         return button
     }()
     
@@ -264,6 +340,10 @@ class ProfileViewController: UIViewController {
     
     private var circlesCollectionHeightConstraint: NSLayoutConstraint?
     
+    // State tracking for other users
+    private var isFollowing: Bool = false
+    private var connectionStatus: ConnectionStatus?
+    
     // MARK: - Lifecycle
     
     init(user: User? = nil) {
@@ -334,11 +414,16 @@ class ProfileViewController: UIViewController {
         statsContainer.addSubview(circlesStatView)
         statsContainer.addSubview(placesStatView)
         statsContainer.addSubview(connectionsStatView)
+        statsContainer.addSubview(followersStatView)
+        statsContainer.addSubview(followingStatView)
         profileHeaderView.addSubview(bioLabel)
         profileHeaderView.addSubview(buttonsContainer)
         buttonsContainer.addSubview(editProfileButton)
         buttonsContainer.addSubview(shareProfileButton)
         buttonsContainer.addSubview(suggestedButton)
+        buttonsContainer.addSubview(messageButton)
+        buttonsContainer.addSubview(followButton)
+        buttonsContainer.addSubview(connectButton)
         
         contentView.addSubview(separatorLine)
         contentView.addSubview(circlesHeaderView)
@@ -387,21 +472,31 @@ class ProfileViewController: UIViewController {
             statsContainer.trailingAnchor.constraint(equalTo: profileHeaderView.trailingAnchor, constant: -Constants.Spacing.medium),
             statsContainer.heightAnchor.constraint(equalToConstant: 60),
             
-            // Stats views (evenly distributed)
+            // Stats views (evenly distributed across 5 stats)
             circlesStatView.leadingAnchor.constraint(equalTo: statsContainer.leadingAnchor),
             circlesStatView.topAnchor.constraint(equalTo: statsContainer.topAnchor),
             circlesStatView.bottomAnchor.constraint(equalTo: statsContainer.bottomAnchor),
-            circlesStatView.widthAnchor.constraint(equalTo: statsContainer.widthAnchor, multiplier: 0.33),
+            circlesStatView.widthAnchor.constraint(equalTo: statsContainer.widthAnchor, multiplier: 0.2),
             
-            placesStatView.centerXAnchor.constraint(equalTo: statsContainer.centerXAnchor),
+            placesStatView.leadingAnchor.constraint(equalTo: circlesStatView.trailingAnchor),
             placesStatView.topAnchor.constraint(equalTo: statsContainer.topAnchor),
             placesStatView.bottomAnchor.constraint(equalTo: statsContainer.bottomAnchor),
-            placesStatView.widthAnchor.constraint(equalTo: statsContainer.widthAnchor, multiplier: 0.33),
+            placesStatView.widthAnchor.constraint(equalTo: statsContainer.widthAnchor, multiplier: 0.2),
             
-            connectionsStatView.trailingAnchor.constraint(equalTo: statsContainer.trailingAnchor),
+            connectionsStatView.leadingAnchor.constraint(equalTo: placesStatView.trailingAnchor),
             connectionsStatView.topAnchor.constraint(equalTo: statsContainer.topAnchor),
             connectionsStatView.bottomAnchor.constraint(equalTo: statsContainer.bottomAnchor),
-            connectionsStatView.widthAnchor.constraint(equalTo: statsContainer.widthAnchor, multiplier: 0.33),
+            connectionsStatView.widthAnchor.constraint(equalTo: statsContainer.widthAnchor, multiplier: 0.2),
+            
+            followersStatView.leadingAnchor.constraint(equalTo: connectionsStatView.trailingAnchor),
+            followersStatView.topAnchor.constraint(equalTo: statsContainer.topAnchor),
+            followersStatView.bottomAnchor.constraint(equalTo: statsContainer.bottomAnchor),
+            followersStatView.widthAnchor.constraint(equalTo: statsContainer.widthAnchor, multiplier: 0.2),
+            
+            followingStatView.leadingAnchor.constraint(equalTo: followersStatView.trailingAnchor),
+            followingStatView.topAnchor.constraint(equalTo: statsContainer.topAnchor),
+            followingStatView.bottomAnchor.constraint(equalTo: statsContainer.bottomAnchor),
+            followingStatView.widthAnchor.constraint(equalTo: statsContainer.widthAnchor, multiplier: 0.2),
             
             // Bio label
             bioLabel.topAnchor.constraint(equalTo: profileImageView.bottomAnchor, constant: Constants.Spacing.medium),
@@ -432,6 +527,24 @@ class ProfileViewController: UIViewController {
             suggestedButton.topAnchor.constraint(equalTo: buttonsContainer.topAnchor),
             suggestedButton.bottomAnchor.constraint(equalTo: buttonsContainer.bottomAnchor),
             suggestedButton.widthAnchor.constraint(equalToConstant: 30),
+            
+            // Message button (for other users)
+            messageButton.leadingAnchor.constraint(equalTo: buttonsContainer.leadingAnchor),
+            messageButton.topAnchor.constraint(equalTo: buttonsContainer.topAnchor),
+            messageButton.bottomAnchor.constraint(equalTo: buttonsContainer.bottomAnchor),
+            messageButton.widthAnchor.constraint(equalTo: buttonsContainer.widthAnchor, multiplier: 0.48),
+            
+            // Follow button (for other users)
+            followButton.leadingAnchor.constraint(equalTo: messageButton.trailingAnchor, constant: 6),
+            followButton.topAnchor.constraint(equalTo: buttonsContainer.topAnchor),
+            followButton.bottomAnchor.constraint(equalTo: buttonsContainer.bottomAnchor),
+            followButton.widthAnchor.constraint(equalTo: buttonsContainer.widthAnchor, multiplier: 0.48),
+            
+            // Connect button (for other users) - alternative to follow button
+            connectButton.leadingAnchor.constraint(equalTo: messageButton.trailingAnchor, constant: 6),
+            connectButton.topAnchor.constraint(equalTo: buttonsContainer.topAnchor),
+            connectButton.bottomAnchor.constraint(equalTo: buttonsContainer.bottomAnchor),
+            connectButton.widthAnchor.constraint(equalTo: buttonsContainer.widthAnchor, multiplier: 0.48),
             
             // Separator line
             separatorLine.topAnchor.constraint(equalTo: profileHeaderView.bottomAnchor, constant: Constants.Spacing.medium),
@@ -495,6 +608,20 @@ class ProfileViewController: UIViewController {
         logoutButton.addTarget(self, action: #selector(logoutButtonTapped), for: .touchUpInside)
         addCircleButton.addTarget(self, action: #selector(addCircleButtonTapped), for: .touchUpInside)
         
+        // Connection-related buttons for viewing other users
+        messageButton.addTarget(self, action: #selector(messageButtonTapped), for: .touchUpInside)
+        followButton.addTarget(self, action: #selector(followButtonTapped), for: .touchUpInside)
+        connectButton.addTarget(self, action: #selector(connectButtonTapped), for: .touchUpInside)
+        
+        // Add tap gestures for followers/following stats (owner only)
+        let followersTapGesture = UITapGestureRecognizer(target: self, action: #selector(followersStatTapped))
+        followersStatView.addGestureRecognizer(followersTapGesture)
+        followersStatView.isUserInteractionEnabled = true
+        
+        let followingTapGesture = UITapGestureRecognizer(target: self, action: #selector(followingStatTapped))
+        followingStatView.addGestureRecognizer(followingTapGesture)
+        followingStatView.isUserInteractionEnabled = true
+        
         // Apply initial appearance
         updateAppearance()
     }
@@ -506,25 +633,32 @@ class ProfileViewController: UIViewController {
     }
     
     @objc private func shareProfileButtonTapped() {
-        // Share profile functionality
         guard let user = user else { return }
         
-        let shareText = "Check out my Circles profile: @\(user.displayName)"
-        let activityController = UIActivityViewController(activityItems: [shareText], applicationActivities: nil)
-        
-        // For iPad
-        if let popover = activityController.popoverPresentationController {
-            popover.sourceView = shareProfileButton
-            popover.sourceRect = shareProfileButton.bounds
-        }
-        
-        present(activityController, animated: true)
+        let shareProfileVC = ShareProfileViewController(user: user)
+        shareProfileVC.modalPresentationStyle = .overFullScreen
+        shareProfileVC.modalTransitionStyle = .crossDissolve
+        present(shareProfileVC, animated: true)
     }
     
     @objc private func suggestedButtonTapped() {
-        // Navigate to suggested connections
-        let suggestionsVC = SuggestionsViewController()
-        navigationController?.pushViewController(suggestionsVC, animated: true)
+        shareConnectionInvite()
+    }
+    
+    private func shareConnectionInvite() {
+        let shareItems = NetworkManager.shared.shareConnectionInvite()
+        let activityViewController = UIActivityViewController(
+            activityItems: shareItems,
+            applicationActivities: nil
+        )
+        
+        // For iPad
+        if let popover = activityViewController.popoverPresentationController {
+            popover.sourceView = suggestedButton
+            popover.sourceRect = suggestedButton.bounds
+        }
+        
+        present(activityViewController, animated: true)
     }
     
     @objc private func logoutButtonTapped() {
@@ -548,6 +682,158 @@ class ProfileViewController: UIViewController {
         createCircleVC.delegate = self
         let navController = UINavigationController(rootViewController: createCircleVC)
         present(navController, animated: true)
+    }
+    
+    @objc private func followersStatTapped() {
+        guard let user = user,
+              user.id == AuthService.shared.getUserId() else {
+            // Only allow owner to view their followers list
+            return
+        }
+        
+        // Show followers list
+        showFollowersList(userId: user.id, listType: .followers)
+    }
+    
+    @objc private func followingStatTapped() {
+        guard let user = user,
+              user.id == AuthService.shared.getUserId() else {
+            // Only allow owner to view their following list
+            return
+        }
+        
+        // Show following list
+        showFollowersList(userId: user.id, listType: .following)
+    }
+    
+    private func showFollowersList(userId: String, listType: FollowListType) {
+        // TODO: Implement FollowersListViewController
+        let title = listType == .followers ? "Followers" : "Following"
+        let alert = UIAlertController(title: title, message: "This feature will be implemented soon.", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+        
+        // Future implementation:
+        // let followersVC = FollowersListViewController()
+        // followersVC.userId = userId
+        // followersVC.listType = listType
+        // navigationController?.pushViewController(followersVC, animated: true)
+    }
+    
+    @objc private func messageButtonTapped() {
+        guard let user = user else { return }
+        
+        // Create or get conversation with this user
+        MessagingManager.shared.createOrGetDirectConversation(with: user.id) { [weak self] result in
+            switch result {
+            case .success(let conversation):
+                DispatchQueue.main.async {
+                    let chatVC = ChatViewController()
+                    chatVC.conversation = conversation
+                    self?.navigationController?.pushViewController(chatVC, animated: true)
+                }
+            case .failure(let error):
+                DispatchQueue.main.async {
+                    self?.showAlert(title: "Error", message: "Failed to start conversation: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    
+    @objc private func followButtonTapped() {
+        guard let user = user else { return }
+        
+        let endpoint = isFollowing ? "users/\(user.id)/unfollow" : "users/\(user.id)/follow"
+        
+        APIService.shared.request(
+            endpoint: endpoint,
+            method: .post,
+            requiresAuth: true
+        ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    self?.isFollowing.toggle()
+                    self?.updateButtonVisibility()
+                case .failure(let error):
+                    self?.showAlert(title: "Error", message: "Failed to \(self?.isFollowing == true ? "unfollow" : "follow") user: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    
+    @objc private func connectButtonTapped() {
+        guard let user = user else { return }
+        
+        // Send connection request
+        NetworkManager.shared.sendConnectionRequest(to: user.id) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    self?.showAlert(title: "Success", message: "Connection request sent!")
+                    self?.updateButtonVisibility()
+                case .failure(let error):
+                    self?.showAlert(title: "Error", message: "Failed to send connection request: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    
+    private func showAlert(title: String, message: String) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+    
+    private func checkConnectionAndFollowStatus() {
+        guard let user = user else { return }
+        
+        // Check if user is in current user's connections
+        let connections = NetworkManager.shared.connections
+        let connection = connections.first { $0.otherUserId(currentUserId: AuthService.shared.getUserId() ?? "") == user.id }
+        
+        connectionStatus = connection?.status
+        
+        // Check follow status (this would need to be implemented when we add follower checking)
+        isFollowing = false // Default for now
+        
+        updateButtonVisibility()
+    }
+    
+    private func updateButtonVisibility() {
+        guard let user = user else { return }
+        let isCurrentUser = user.id == AuthService.shared.getUserId()
+        
+        // Don't show connection buttons for current user
+        if isCurrentUser {
+            messageButton.isHidden = true
+            followButton.isHidden = true
+            connectButton.isHidden = true
+            return
+        }
+        
+        // Show message and follow buttons for connected users
+        let isConnected = connectionStatus == .accepted
+        messageButton.isHidden = !isConnected
+        
+        // Show connect button for non-connected users
+        connectButton.isHidden = isConnected
+        
+        // Always show follow button (can follow anyone)
+        followButton.isHidden = false
+        
+        // Update follow button text based on follow status
+        followButton.setTitle(isFollowing ? "Following" : "Follow", for: .normal)
+        if isFollowing {
+            followButton.backgroundColor = Constants.Colors.primary
+            followButton.setTitleColor(.white, for: .normal)
+            followButton.layer.borderWidth = 0
+        } else {
+            followButton.backgroundColor = .clear
+            followButton.setTitleColor(Constants.Colors.primary, for: .normal)
+            followButton.layer.borderWidth = 1
+            followButton.layer.borderColor = Constants.Colors.primary.cgColor
+        }
     }
     
     // MARK: - Data Loading
@@ -629,6 +915,16 @@ class ProfileViewController: UIViewController {
         editProfileButton.isHidden = !isCurrentUser
         shareProfileButton.isHidden = !isCurrentUser
         suggestedButton.isHidden = !isCurrentUser
+        
+        // Show connection buttons for other users
+        messageButton.isHidden = isCurrentUser
+        followButton.isHidden = isCurrentUser
+        connectButton.isHidden = isCurrentUser
+        
+        // For other users, check connection status and follow status
+        if !isCurrentUser {
+            checkConnectionAndFollowStatus()
+        }
     }
     
     private func fetchUserStats(userId: String) {
@@ -671,13 +967,76 @@ class ProfileViewController: UIViewController {
             let connectionsCount = NetworkManager.shared.connections.count
             print("🔍 ProfileViewController - Connections count: \(connectionsCount)")
             connectionsStatView.configure(number: "\(connectionsCount)", title: "Connections")
+            
+            // Add followers/following stats from user data
+            if let user = self.user {
+                let followersCount = user.followersCount ?? 0
+                let followingCount = user.followingCount ?? 0
+                followersStatView.configure(number: "\(followersCount)", title: "Followers")
+                followingStatView.configure(number: "\(followingCount)", title: "Following")
+                print("🔍 ProfileViewController - Followers: \(followersCount), Following: \(followingCount)")
+            } else {
+                followersStatView.configure(number: "0", title: "Followers")
+                followingStatView.configure(number: "0", title: "Following")
+            }
         } else {
-            // For other users, show default stats
-            // In a real app, you might have an endpoint to fetch public stats
-            circlesStatView.configure(number: "0", title: "Circles")
-            placesStatView.configure(number: "0", title: "Places")
-            connectionsStatView.configure(number: "0", title: "Connections")
+            // For other users, fetch their public circles
+            fetchOtherUserCircles(userId: userId)
         }
+    }
+    
+    private func fetchOtherUserCircles(userId: String) {
+        // Fetch circles from network endpoint for other users
+        APIService.shared.request(
+            endpoint: "network/user-circles/\(userId)",
+            method: .get,
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<UserCirclesResponse, APIError>) in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(let response):
+                        self?.circles = response.data.circles
+                        
+                        // Calculate total places
+                        var totalPlaces = 0
+                        for circle in response.data.circles {
+                            let placeCount = circle.placesCount ?? circle.places?.count ?? 0
+                            totalPlaces += placeCount
+                        }
+                        
+                        // Update stats
+                        self?.circlesStatView.configure(number: "\(response.data.circles.count)", title: "Circles")
+                        self?.placesStatView.configure(number: "\(totalPlaces)", title: "Places")
+                    
+                    // Use user data for followers/following/connections
+                    let user = response.data.user
+                    let connectionsCount = user.connectionsCount ?? 0
+                    let followersCount = user.followersCount ?? 0
+                    let followingCount = user.followingCount ?? 0
+                    
+                    self?.connectionsStatView.configure(number: "\(connectionsCount)", title: "Connections")
+                    self?.followersStatView.configure(number: "\(followersCount)", title: "Followers")
+                    self?.followingStatView.configure(number: "\(followingCount)", title: "Following")
+                    
+                    self?.circlesCollectionView.reloadData()
+                    self?.updateCollectionViewHeight()
+                    
+                case .failure(let error):
+                    print("Failed to load other user circles: \(error)")
+                    
+                    // Show default stats on error
+                    self?.circlesStatView.configure(number: "0", title: "Circles")
+                    self?.placesStatView.configure(number: "0", title: "Places")
+                    self?.connectionsStatView.configure(number: "0", title: "Connections")
+                    self?.followersStatView.configure(number: "0", title: "Followers")
+                    self?.followingStatView.configure(number: "0", title: "Following")
+                    
+                    self?.circles = []
+                    self?.circlesCollectionView.reloadData()
+                    self?.updateCollectionViewHeight()
+                }
+            }
+        })
     }
     
     private func displayDefaultProfile() {
@@ -691,6 +1050,8 @@ class ProfileViewController: UIViewController {
         circlesStatView.configure(number: "0", title: "Circles")
         placesStatView.configure(number: "0", title: "Places")
         connectionsStatView.configure(number: "0", title: "Connections")
+        followersStatView.configure(number: "0", title: "Followers")
+        followingStatView.configure(number: "0", title: "Following")
     }
     
     private func displayAppVersion() {
@@ -931,13 +1292,21 @@ extension ProfileViewController: UICollectionViewDelegate {
 // MARK: - UICollectionViewDelegateFlowLayout
 extension ProfileViewController: UICollectionViewDelegateFlowLayout {
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
-        // Instagram-style 3-column grid
-        let spacing: CGFloat = 1
+        // Circular grid with 3 columns
+        let spacing: CGFloat = 12
         let numberOfColumns: CGFloat = 3
         let totalSpacing = spacing * (numberOfColumns - 1)
         let itemWidth = (collectionView.bounds.width - totalSpacing) / numberOfColumns
-        let itemHeight = itemWidth // Square cells
+        let itemHeight = itemWidth + 50 // Extra height for labels below circles
         return CGSize(width: itemWidth, height: itemHeight)
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumLineSpacingForSectionAt section: Int) -> CGFloat {
+        return 16
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumInteritemSpacingForSectionAt section: Int) -> CGFloat {
+        return 12
     }
 }
 

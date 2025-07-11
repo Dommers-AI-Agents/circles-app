@@ -2,6 +2,9 @@ import UIKit
 
 class MyNetworkViewController: UIViewController {
     
+    // MARK: - SSE Integration
+    private var sseConnected = false
+    
     // MARK: - UI Elements
     private let searchBar: UISearchBar = {
         let searchBar = UISearchBar()
@@ -42,6 +45,7 @@ class MyNetworkViewController: UIViewController {
         setupNavigationBar()
         setupChildViewControllers()
         showConnectionsList()
+        setupSSE()
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -254,6 +258,133 @@ extension MyNetworkViewController: UISearchBarDelegate {
     
     func searchBarTextDidEndEditing(_ searchBar: UISearchBar) {
         searchBar.setShowsCancelButton(false, animated: true)
+    }
+}
+
+// MARK: - SSE Setup
+extension MyNetworkViewController {
+    private func setupSSE() {
+        SSEService.shared.addDelegate(self)
+    }
+}
+
+// MARK: - SSEServiceDelegate
+extension MyNetworkViewController: SSEServiceDelegate {
+    func sseService(_ service: SSEService, didReceiveEvent event: SSEEvent) {
+        print("📡 MyNetwork: Received SSE event: \(event.type)")
+        
+        switch event.type {
+        case .connectionRequest:
+            // New connection request received
+            handleNewConnectionRequest(event.data)
+            
+        case .connectionAccepted:
+            // Connection was accepted
+            handleConnectionAccepted(event.data)
+            
+        case .connectionDeclined:
+            // Connection was declined
+            handleConnectionDeclined(event.data)
+            
+        default:
+            break
+        }
+    }
+    
+    func sseServiceDidConnect(_ service: SSEService) {
+        print("📡 MyNetwork: SSE connected")
+        sseConnected = true
+    }
+    
+    func sseServiceDidDisconnect(_ service: SSEService, error: Error?) {
+        print("📡 MyNetwork: SSE disconnected")
+        sseConnected = false
+    }
+    
+    // MARK: - Event Handlers
+    private func handleNewConnectionRequest(_ data: [String: Any]) {
+        DispatchQueue.main.async { [weak self] in
+            // Refresh the connections list to show new request
+            NetworkManager.shared.loadConnections()
+            
+            // If showing all users list, refresh it
+            if self?.segmentedControl.selectedSegmentIndex == 0 {
+                self?.allUsersListVC?.loadAllUsers()
+            }
+            
+            // Show visual feedback - could add a badge or notification banner
+            self?.showNewConnectionBanner(data)
+        }
+    }
+    
+    private func handleConnectionAccepted(_ data: [String: Any]) {
+        DispatchQueue.main.async { [weak self] in
+            // Refresh connections
+            NetworkManager.shared.loadConnections()
+            
+            // Refresh the current view
+            if self?.segmentedControl.selectedSegmentIndex == 0 {
+                self?.allUsersListVC?.loadAllUsers()
+            }
+        }
+    }
+    
+    private func handleConnectionDeclined(_ data: [String: Any]) {
+        DispatchQueue.main.async { [weak self] in
+            // Refresh connections
+            NetworkManager.shared.loadConnections()
+            
+            // Refresh the current view
+            if self?.segmentedControl.selectedSegmentIndex == 0 {
+                self?.allUsersListVC?.loadAllUsers()
+            }
+        }
+    }
+    
+    private func showNewConnectionBanner(_ data: [String: Any]) {
+        // Create a banner notification
+        let banner = UIView()
+        banner.backgroundColor = Constants.Colors.primary
+        banner.layer.cornerRadius = 8
+        banner.translatesAutoresizingMaskIntoConstraints = false
+        
+        let label = UILabel()
+        label.text = "New connection request!"
+        label.textColor = .white
+        label.font = .systemFont(ofSize: 14, weight: .medium)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        
+        banner.addSubview(label)
+        view.addSubview(banner)
+        
+        NSLayoutConstraint.activate([
+            banner.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            banner.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            banner.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            banner.heightAnchor.constraint(equalToConstant: 44),
+            
+            label.centerXAnchor.constraint(equalTo: banner.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: banner.centerYAnchor)
+        ])
+        
+        // Animate in
+        banner.alpha = 0
+        banner.transform = CGAffineTransform(translationX: 0, y: -20)
+        
+        UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseOut) {
+            banner.alpha = 1
+            banner.transform = .identity
+        }
+        
+        // Auto-dismiss after 3 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            UIView.animate(withDuration: 0.3, animations: {
+                banner.alpha = 0
+                banner.transform = CGAffineTransform(translationX: 0, y: -20)
+            }) { _ in
+                banner.removeFromSuperview()
+            }
+        }
     }
 }
 

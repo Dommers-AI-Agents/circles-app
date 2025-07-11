@@ -40,6 +40,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         // Configure NetworkManager after Firebase is initialized
         NetworkManager.shared.configure()
         
+        // Start SSE service for real-time updates
+        SSEService.shared.connect()
+        
         // Set up Apple ID credential state observer
         NotificationCenter.default.addObserver(
             self,

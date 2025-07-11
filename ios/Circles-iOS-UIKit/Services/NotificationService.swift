@@ -183,4 +183,79 @@ extension NotificationService {
             }
         }
     }
+    
+    // MARK: - In-App Notifications
+    
+    func getNotifications(limit: Int = 50, offset: Int = 0, completion: @escaping (Result<NotificationsResponse, Error>) -> Void) {
+        let queryParams: [String: String] = [
+            "limit": "\(limit)",
+            "offset": "\(offset)"
+        ]
+        
+        APIService.shared.request(
+            endpoint: "notifications",
+            method: .get,
+            queryParams: queryParams,
+            requiresAuth: true
+        ) { (result: Result<NotificationsResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    func markNotificationAsRead(notificationId: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "notifications/\(notificationId)/read",
+            method: .put,
+            requiresAuth: true
+        ) { (result: Result<EmptyResponse, APIError>) in
+            switch result {
+            case .success:
+                completion(.success(()))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    func getUnreadNotificationCount(completion: @escaping (Result<Int, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "notifications/unread-count",
+            method: .get,
+            requiresAuth: true
+        ) { (result: Result<NotificationUnreadCountResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.unreadCount))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    func markAllNotificationsAsRead(completion: @escaping (Result<Void, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "notifications/read-all",
+            method: .put,
+            requiresAuth: true
+        ) { (result: Result<EmptyResponse, APIError>) in
+            switch result {
+            case .success:
+                completion(.success(()))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+}
+
+// MARK: - Response Models
+
+private struct NotificationUnreadCountResponse: Codable {
+    let success: Bool
+    let unreadCount: Int
 }

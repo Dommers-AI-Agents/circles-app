@@ -6,6 +6,7 @@ class PlaceCommentsViewController: UIViewController {
     private let place: Place
     private var comments: [PlaceComment] = []
     private let refreshControl = UIRefreshControl()
+    var onCommentsUpdated: ((Int) -> Void)?
     
     // MARK: - UI Elements
     private let tableView: UITableView = {
@@ -183,6 +184,7 @@ class PlaceCommentsViewController: UIViewController {
                     self?.sendButton.isEnabled = false
                     self?.comments.insert(comment, at: 0)
                     self?.tableView.insertRows(at: [IndexPath(row: 0, section: 0)], with: .automatic)
+                    self?.onCommentsUpdated?(self?.comments.count ?? 0)
                 case .failure(let error):
                     print("Failed to add comment: \(error)")
                     let alert = UIAlertController(
@@ -228,6 +230,7 @@ class PlaceCommentsViewController: UIViewController {
                 case .success(let comments):
                     self?.comments = comments
                     self?.tableView.reloadData()
+                    self?.onCommentsUpdated?(comments.count)
                 case .failure(let error):
                     print("Failed to fetch comments: \(error)")
                 }
@@ -245,8 +248,64 @@ extension PlaceCommentsViewController: UITableViewDelegate, UITableViewDataSourc
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "CommentCell", for: indexPath) as! CommentCell
         let comment = comments[indexPath.row]
-        cell.configure(with: comment)
+        let currentUserId = AuthService.shared.getUserId() ?? ""
+        let canDelete = comment.userId == currentUserId || place.addedBy == currentUserId
+        cell.configure(with: comment, canDelete: canDelete)
+        cell.delegate = self
         return cell
+    }
+    
+    func tableView(_ tableView: UITableView, canEditRowAt indexPath: IndexPath) -> Bool {
+        let comment = comments[indexPath.row]
+        let currentUserId = AuthService.shared.getUserId() ?? ""
+        
+        // User can delete if they are the comment author or the place owner
+        return comment.userId == currentUserId || place.addedBy == currentUserId
+    }
+    
+    func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        let comment = comments[indexPath.row]
+        let currentUserId = AuthService.shared.getUserId() ?? ""
+        
+        // Only show delete if user can delete
+        guard comment.userId == currentUserId || place.addedBy == currentUserId else {
+            return nil
+        }
+        
+        let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, completionHandler in
+            self?.deleteComment(at: indexPath, completionHandler: completionHandler)
+        }
+        deleteAction.backgroundColor = .systemRed
+        deleteAction.image = UIImage(systemName: "trash")
+        
+        return UISwipeActionsConfiguration(actions: [deleteAction])
+    }
+    
+    private func deleteComment(at indexPath: IndexPath, completionHandler: @escaping (Bool) -> Void) {
+        let comment = comments[indexPath.row]
+        
+        PlaceService.shared.deletePlaceComment(placeId: place.id, commentId: comment.id) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    // Remove comment from array and table
+                    self?.comments.remove(at: indexPath.row)
+                    self?.tableView.deleteRows(at: [indexPath], with: .automatic)
+                    self?.onCommentsUpdated?(self?.comments.count ?? 0)
+                    completionHandler(true)
+                case .failure(let error):
+                    print("Failed to delete comment: \(error)")
+                    let alert = UIAlertController(
+                        title: "Error",
+                        message: "Failed to delete comment. Please try again.",
+                        preferredStyle: .alert
+                    )
+                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    self?.present(alert, animated: true)
+                    completionHandler(false)
+                }
+            }
+        }
     }
 }
 
@@ -262,6 +321,19 @@ extension PlaceCommentsViewController: UITextFieldDelegate {
 
 // MARK: - CommentCell
 class CommentCell: UITableViewCell {
+    
+    // Delete button for comment owners
+    private let moreButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "ellipsis"), for: .normal)
+        button.tintColor = Constants.Colors.secondaryLabel
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isHidden = true
+        return button
+    }()
+    
+    weak var delegate: CommentCellDelegate?
+    private var comment: PlaceComment?
     
     private let containerView: UIView = {
         let view = UIView()
@@ -326,6 +398,9 @@ class CommentCell: UITableViewCell {
         containerView.addSubview(nameLabel)
         containerView.addSubview(timeLabel)
         containerView.addSubview(commentLabel)
+        containerView.addSubview(moreButton)
+        
+        moreButton.addTarget(self, action: #selector(moreButtonTapped), for: .touchUpInside)
         
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
@@ -343,7 +418,12 @@ class CommentCell: UITableViewCell {
             nameLabel.trailingAnchor.constraint(equalTo: timeLabel.leadingAnchor, constant: -8),
             
             timeLabel.centerYAnchor.constraint(equalTo: nameLabel.centerYAnchor),
-            timeLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
+            timeLabel.trailingAnchor.constraint(equalTo: moreButton.leadingAnchor, constant: -8),
+            
+            moreButton.centerYAnchor.constraint(equalTo: nameLabel.centerYAnchor),
+            moreButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
+            moreButton.widthAnchor.constraint(equalToConstant: 24),
+            moreButton.heightAnchor.constraint(equalToConstant: 24),
             
             commentLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
             commentLabel.leadingAnchor.constraint(equalTo: avatarImageView.trailingAnchor, constant: 12),
@@ -352,7 +432,8 @@ class CommentCell: UITableViewCell {
         ])
     }
     
-    func configure(with comment: PlaceComment) {
+    func configure(with comment: PlaceComment, canDelete: Bool = false) {
+        self.comment = comment
         nameLabel.text = comment.user?.displayName ?? "Unknown User"
         commentLabel.text = comment.text
         
@@ -371,5 +452,43 @@ class CommentCell: UITableViewCell {
                 }
             }.resume()
         }
+        
+        // Show more button if user can delete
+        moreButton.isHidden = !canDelete
+    }
+    
+    @objc private func moreButtonTapped() {
+        guard let comment = comment else { return }
+        delegate?.commentCell(self, didTapMoreButton: comment)
+    }
+}
+
+// MARK: - CommentCellDelegate
+protocol CommentCellDelegate: AnyObject {
+    func commentCell(_ cell: CommentCell, didTapMoreButton comment: PlaceComment)
+}
+
+// MARK: - CommentCellDelegate
+extension PlaceCommentsViewController: CommentCellDelegate {
+    func commentCell(_ cell: CommentCell, didTapMoreButton comment: PlaceComment) {
+        let actionSheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        
+        let deleteAction = UIAlertAction(title: "Delete Comment", style: .destructive) { [weak self] _ in
+            guard let indexPath = self?.tableView.indexPath(for: cell) else { return }
+            self?.deleteComment(at: indexPath) { _ in }
+        }
+        
+        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel)
+        
+        actionSheet.addAction(deleteAction)
+        actionSheet.addAction(cancelAction)
+        
+        // For iPad
+        if let popover = actionSheet.popoverPresentationController {
+            popover.sourceView = cell
+            popover.sourceRect = cell.bounds
+        }
+        
+        present(actionSheet, animated: true)
     }
 }

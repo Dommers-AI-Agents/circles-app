@@ -5,7 +5,7 @@ import PhotosUI
 class PlaceDetailViewController: UIViewController {
     
     // MARK: - Properties
-    private let place: Place
+    private var place: Place
     private var circle: Circle?
     
     // MARK: - UI Elements
@@ -74,6 +74,26 @@ class PlaceDetailViewController: UIViewController {
         button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.isHidden = false  // Show by default
+        // Add shadow for better visibility
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOpacity = 0.5
+        button.layer.shadowOffset = CGSize(width: 0, height: 3)
+        button.layer.shadowRadius = 6
+        return button
+    }()
+    
+    private let updateInfoButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Update Place Info", for: .normal)
+        button.setImage(UIImage(systemName: "arrow.clockwise"), for: .normal)
+        button.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.9)
+        button.setTitleColor(.white, for: .normal)
+        button.tintColor = .white
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 12, weight: .medium)
+        button.layer.cornerRadius = 14
+        button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isHidden = true  // Hidden by default
         // Add shadow for better visibility
         button.layer.shadowColor = UIColor.black.cgColor
         button.layer.shadowOpacity = 0.5
@@ -159,6 +179,64 @@ class PlaceDetailViewController: UIViewController {
         return button
     }()
     
+    // MARK: - Action Buttons Container
+    private let actionButtonsContainer: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.background
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let likeButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "heart"), for: .normal)
+        button.tintColor = Constants.Colors.gray
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let likeCountLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
+        label.textColor = Constants.Colors.gray
+        label.text = "0"
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let commentButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "bubble.left"), for: .normal)
+        button.tintColor = Constants.Colors.gray
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let commentCountLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
+        label.textColor = Constants.Colors.gray
+        label.text = "0"
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let shareButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "square.and.arrow.up"), for: .normal)
+        button.tintColor = Constants.Colors.gray
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let directionsButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "location.north.line"), for: .normal)
+        button.tintColor = Constants.Colors.gray
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
     private let ratingImageView: UIImageView = {
         let imageView = UIImageView()
         imageView.image = UIImage(systemName: "star.fill")
@@ -197,6 +275,15 @@ class PlaceDetailViewController: UIViewController {
     private let addressLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
+        label.textColor = Constants.Colors.gray
+        label.numberOfLines = 0
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let hoursLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
         label.textColor = Constants.Colors.gray
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -447,10 +534,11 @@ class PlaceDetailViewController: UIViewController {
     }
     
     private func updateRatingDisplay(rating: Double, userRatingsTotal: Int?) {
-        ratingLabel.text = String(format: "%.1f", rating)
+        var ratingText = String(format: "%.1f", rating)
         if let userRatingsTotal = userRatingsTotal, userRatingsTotal > 0 {
-            ratingLabel.text = (ratingLabel.text ?? "") + " (\(userRatingsTotal) reviews)"
+            ratingText += " (\(userRatingsTotal) review\(userRatingsTotal == 1 ? "" : "s"))"
         }
+        ratingLabel.text = ratingText
         ratingView.isHidden = false
     }
     
@@ -476,8 +564,8 @@ class PlaceDetailViewController: UIViewController {
         title = place.name
         
         // Add share button to navigation bar
-        let shareButton = UIBarButtonItem(barButtonSystemItem: .action, target: self, action: #selector(shareButtonTapped))
-        navigationItem.rightBarButtonItem = shareButton
+        let shareBarButton = UIBarButtonItem(barButtonSystemItem: .action, target: self, action: #selector(shareButtonTapped))
+        navigationItem.rightBarButtonItem = shareBarButton
         
         // Add subviews
         view.addSubview(scrollView)
@@ -489,6 +577,7 @@ class PlaceDetailViewController: UIViewController {
         // Add photo control buttons on top of image view
         imageView.addSubview(streetViewToggleButton)
         imageView.addSubview(editImageButton)
+        imageView.addSubview(updateInfoButton)
         imageView.isUserInteractionEnabled = true
         
         // Add info container after image view
@@ -503,6 +592,7 @@ class PlaceDetailViewController: UIViewController {
         infoContainerView.addSubview(addToCircleButton)
         infoContainerView.addSubview(addressTitleLabel)
         infoContainerView.addSubview(addressLabel)
+        infoContainerView.addSubview(hoursLabel)
         infoContainerView.addSubview(mapView)
         infoContainerView.addSubview(navigateButton)
         
@@ -529,6 +619,21 @@ class PlaceDetailViewController: UIViewController {
             phoneButton.addTarget(self, action: #selector(phoneButtonTapped), for: .touchUpInside)
         }
         
+        // Add action buttons container before circle info
+        infoContainerView.addSubview(actionButtonsContainer)
+        actionButtonsContainer.addSubview(likeButton)
+        actionButtonsContainer.addSubview(likeCountLabel)
+        actionButtonsContainer.addSubview(commentButton)
+        actionButtonsContainer.addSubview(commentCountLabel)
+        actionButtonsContainer.addSubview(shareButton)
+        actionButtonsContainer.addSubview(directionsButton)
+        
+        // Add targets for action buttons
+        likeButton.addTarget(self, action: #selector(likeButtonTapped), for: .touchUpInside)
+        commentButton.addTarget(self, action: #selector(commentButtonTapped), for: .touchUpInside)
+        shareButton.addTarget(self, action: #selector(shareButtonTapped), for: .touchUpInside)
+        directionsButton.addTarget(self, action: #selector(directionsButtonTapped), for: .touchUpInside)
+        
         // Add circle info
         infoContainerView.addSubview(circleInfoView)
         circleInfoView.addSubview(circleNameLabel)
@@ -537,6 +642,9 @@ class PlaceDetailViewController: UIViewController {
         
         // Add target for street view toggle
         streetViewToggleButton.addTarget(self, action: #selector(streetViewToggleButtonTapped), for: .touchUpInside)
+        
+        // Add target for update info button
+        updateInfoButton.addTarget(self, action: #selector(updateInfoButtonTapped), for: .touchUpInside)
         
         // Add target for edit image button
         editImageButton.addTarget(self, action: #selector(editImageButtonTapped), for: .touchUpInside)
@@ -592,6 +700,12 @@ class PlaceDetailViewController: UIViewController {
             editImageButton.heightAnchor.constraint(equalToConstant: 32),
             editImageButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 100),
             
+            // Update Info button - positioned to the left of Edit Image button
+            updateInfoButton.bottomAnchor.constraint(equalTo: imageView.bottomAnchor, constant: -16),
+            updateInfoButton.trailingAnchor.constraint(equalTo: editImageButton.leadingAnchor, constant: -8),
+            updateInfoButton.heightAnchor.constraint(equalToConstant: 32),
+            updateInfoButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 100),
+            
             // Info container view - positioned below the image with padding
             infoContainerView.topAnchor.constraint(equalTo: imageView.bottomAnchor, constant: Constants.Spacing.medium),
             infoContainerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
@@ -619,8 +733,44 @@ class PlaceDetailViewController: UIViewController {
             creatorLabel.trailingAnchor.constraint(equalTo: creatorInfoView.trailingAnchor, constant: -Constants.Spacing.small),
             creatorLabel.centerYAnchor.constraint(equalTo: creatorInfoView.centerYAnchor),
             
+            // Action buttons container
+            actionButtonsContainer.topAnchor.constraint(equalTo: creatorInfoView.bottomAnchor, constant: Constants.Spacing.medium),
+            actionButtonsContainer.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor),
+            actionButtonsContainer.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor),
+            actionButtonsContainer.heightAnchor.constraint(equalToConstant: 44),
+            
+            // Like button and count
+            likeButton.leadingAnchor.constraint(equalTo: actionButtonsContainer.leadingAnchor, constant: Constants.Spacing.medium),
+            likeButton.centerYAnchor.constraint(equalTo: actionButtonsContainer.centerYAnchor),
+            likeButton.widthAnchor.constraint(equalToConstant: 30),
+            likeButton.heightAnchor.constraint(equalToConstant: 30),
+            
+            likeCountLabel.leadingAnchor.constraint(equalTo: likeButton.trailingAnchor, constant: 4),
+            likeCountLabel.centerYAnchor.constraint(equalTo: actionButtonsContainer.centerYAnchor),
+            
+            // Comment button and count
+            commentButton.leadingAnchor.constraint(equalTo: likeCountLabel.trailingAnchor, constant: Constants.Spacing.medium),
+            commentButton.centerYAnchor.constraint(equalTo: actionButtonsContainer.centerYAnchor),
+            commentButton.widthAnchor.constraint(equalToConstant: 30),
+            commentButton.heightAnchor.constraint(equalToConstant: 30),
+            
+            commentCountLabel.leadingAnchor.constraint(equalTo: commentButton.trailingAnchor, constant: 4),
+            commentCountLabel.centerYAnchor.constraint(equalTo: actionButtonsContainer.centerYAnchor),
+            
+            // Share button
+            shareButton.leadingAnchor.constraint(equalTo: commentCountLabel.trailingAnchor, constant: Constants.Spacing.medium),
+            shareButton.centerYAnchor.constraint(equalTo: actionButtonsContainer.centerYAnchor),
+            shareButton.widthAnchor.constraint(equalToConstant: 30),
+            shareButton.heightAnchor.constraint(equalToConstant: 30),
+            
+            // Directions button on the right
+            directionsButton.trailingAnchor.constraint(equalTo: actionButtonsContainer.trailingAnchor, constant: -Constants.Spacing.medium),
+            directionsButton.centerYAnchor.constraint(equalTo: actionButtonsContainer.centerYAnchor),
+            directionsButton.widthAnchor.constraint(equalToConstant: 30),
+            directionsButton.heightAnchor.constraint(equalToConstant: 30),
+            
             // Rating view - will be hidden if no rating
-            ratingView.topAnchor.constraint(equalTo: creatorInfoView.bottomAnchor, constant: Constants.Spacing.small),
+            ratingView.topAnchor.constraint(equalTo: actionButtonsContainer.bottomAnchor, constant: Constants.Spacing.small),
             ratingView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
             ratingView.heightAnchor.constraint(equalToConstant: 26),
             
@@ -658,8 +808,13 @@ class PlaceDetailViewController: UIViewController {
             addressLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
             addressLabel.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
             
+            // Hours label - will be hidden if no hours available
+            hoursLabel.topAnchor.constraint(equalTo: addressLabel.bottomAnchor, constant: Constants.Spacing.small),
+            hoursLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
+            hoursLabel.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
+            
             // Map view
-            mapView.topAnchor.constraint(equalTo: addressLabel.bottomAnchor, constant: Constants.Spacing.medium),
+            mapView.topAnchor.constraint(equalTo: hoursLabel.bottomAnchor, constant: Constants.Spacing.medium),
             mapView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
             mapView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
             mapView.heightAnchor.constraint(equalToConstant: 160),
@@ -762,6 +917,7 @@ class PlaceDetailViewController: UIViewController {
         }
         imageView.bringSubviewToFront(streetViewToggleButton)
         imageView.bringSubviewToFront(editImageButton)
+        imageView.bringSubviewToFront(updateInfoButton)
     }
     
     private func configureUI() {
@@ -822,6 +978,16 @@ class PlaceDetailViewController: UIViewController {
         let canEdit = place.isAddedByCurrentUser || isHomeOrWorkPlace
         editImageButton.isHidden = !canEdit
         
+        // Show update info button for places showing default category image that can be enriched with Google data
+        // (no custom image, no API photos, and no street view)
+        let hasCustomImage = customImage != nil || isHomeOrWorkPlace
+        let hasAPIPhotos = (place.photos?.count ?? 0) > 0
+        let isShowingDefaultIcon = !hasCustomImage && !hasAPIPhotos && !showingStreetView
+        
+        // Show button if showing default icon AND either has googlePlaceId OR has location coordinates
+        let canSearchGooglePlaces = place.googlePlaceId != nil || place.location != nil
+        updateInfoButton.isHidden = !isShowingDefaultIcon || !canSearchGooglePlaces
+        
         // Description - only show if available
         if let description = place.description, !description.isEmpty {
             descriptionLabel.text = description
@@ -830,14 +996,17 @@ class PlaceDetailViewController: UIViewController {
             descriptionLabel.isHidden = true
         }
         
-        // Rating - show even if no rating available
+        // Rating - only show if available
         if let rating = place.rating, rating > 0 {
-            ratingLabel.text = String(format: "%.1f", rating)
+            var ratingText = String(format: "%.1f", rating)
+            if let userRatingsTotal = place.userRatingsTotal, userRatingsTotal > 0 {
+                ratingText += " (\(userRatingsTotal) review\(userRatingsTotal == 1 ? "" : "s"))"
+            }
+            ratingLabel.text = ratingText
             ratingView.isHidden = false
         } else {
-            // Show "No rating" when rating is not available
-            ratingLabel.text = "No rating"
-            ratingView.isHidden = false
+            // Hide rating view when no rating is available
+            ratingView.isHidden = true
         }
         
         // Address
@@ -886,13 +1055,13 @@ class PlaceDetailViewController: UIViewController {
             setupTagsView(tags: tags)
         }
         
-        // Website and phone
+        // Website and phone buttons
         if let website = place.website {
             websiteButton.setTitle("Visit Website", for: .normal)
         }
         
         if let phone = place.phone {
-            phoneButton.setTitle("Call \(phone)", for: .normal)
+            phoneButton.setTitle("Call", for: .normal)
         }
         
         // Price Level
@@ -901,22 +1070,23 @@ class PlaceDetailViewController: UIViewController {
             // Could add a price level label here if UI element exists
         }
         
-        // User ratings total
-        if let userRatingsTotal = place.userRatingsTotal, userRatingsTotal > 0, !ratingView.isHidden {
-            let ratingsText = " (\(userRatingsTotal) reviews)"
-            ratingLabel.text = (ratingLabel.text ?? "") + ratingsText
-        }
         
         // Description constraint is already set in setupUI
         
         // Opening Hours
         if let openingHours = place.openingHours, !openingHours.isEmpty {
-            // Could add opening hours display here if UI element exists
-            print("Place has opening hours: \(openingHours.count) entries")
+            hoursLabel.text = formatOpeningHours(openingHours)
+            hoursLabel.isHidden = false
+        } else {
+            hoursLabel.isHidden = true
         }
         
         // Circle info
         updateCircleInfo()
+        
+        // Update likes and comments UI
+        updateLikeButton()
+        fetchCommentCount()
         
         // Load place photos if available
         loadPlacePhotos()
@@ -977,6 +1147,54 @@ class PlaceDetailViewController: UIViewController {
         }
     }
     
+    private func formatOpeningHours(_ hours: [OpeningHour]) -> String {
+        let calendar = Calendar.current
+        let today = calendar.component(.weekday, from: Date()) - 1 // 0 for Sunday, 1 for Monday, etc.
+        
+        // Find today's hours
+        if let todayHours = hours.first(where: { $0.day == today }) {
+            var hoursText = ""
+            
+            // Check if it's closed
+            if todayHours.isClosed == true || (todayHours.open == "00:00" && todayHours.close == "00:00") {
+                hoursText = "Closed today"
+            } else if todayHours.open == "00:00" && todayHours.close == "23:59" {
+                hoursText = "Open 24 hours"
+            } else if let open = todayHours.open, let close = todayHours.close {
+                // Format the hours
+                let openTime = formatTime(open)
+                let closeTime = formatTime(close)
+                hoursText = "Open today: \(openTime) - \(closeTime)"
+            } else if let hoursString = todayHours.hours {
+                // Fallback to legacy hours string
+                hoursText = hoursString
+            }
+            
+            return hoursText
+        }
+        
+        return "Hours not available"
+    }
+    
+    private func formatTime(_ time: String) -> String {
+        // Convert 24-hour format to 12-hour format
+        let components = time.split(separator: ":")
+        guard components.count == 2,
+              let hour = Int(components[0]),
+              let minute = Int(components[1]) else {
+            return time
+        }
+        
+        let period = hour >= 12 ? "PM" : "AM"
+        let displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour)
+        
+        if minute == 0 {
+            return "\(displayHour) \(period)"
+        } else {
+            return String(format: "%d:%02d %@", displayHour, minute, period)
+        }
+    }
+    
     private func setupMap() {
         // Add annotation for the place location
         if let location = place.location?.clLocation {
@@ -1029,6 +1247,13 @@ class PlaceDetailViewController: UIViewController {
                 }
             }
         }
+        
+        // Add the date when the place was added
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .medium
+        dateFormatter.timeStyle = .none
+        let dateString = dateFormatter.string(from: place.createdAt)
+        creatorText += " • \(dateString)"
         
         creatorLabel.text = creatorText
     }
@@ -1209,8 +1434,11 @@ class PlaceDetailViewController: UIViewController {
     }
     
     @objc private func phoneButtonTapped() {
-        if let phoneString = place.phone, let url = URL(string: "tel://\(phoneString.replacingOccurrences(of: " ", with: ""))") {
-            UIApplication.shared.open(url)
+        if let phoneString = place.phone {
+            let cleanedPhone = phoneString.replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "-", with: "").replacingOccurrences(of: "(", with: "").replacingOccurrences(of: ")", with: "")
+            if let url = URL(string: "tel://\(cleanedPhone)") {
+                UIApplication.shared.open(url)
+            }
         }
     }
     
@@ -1229,6 +1457,52 @@ class PlaceDetailViewController: UIViewController {
         let editPlaceVC = EditPlaceViewController(place: place)
         editPlaceVC.delegate = self
         let navController = UINavigationController(rootViewController: editPlaceVC)
+        present(navController, animated: true)
+    }
+    
+    @objc private func likeButtonTapped() {
+        // Haptic feedback
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.prepare()
+        generator.impactOccurred()
+        
+        // Call API to toggle like
+        PlaceService.shared.likePlace(id: place.id) { [weak self] result in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let updatedPlace):
+                    // Update local place data
+                    self.place = updatedPlace
+                    
+                    // Update UI
+                    self.updateLikeButton()
+                    
+                    // Show animation
+                    UIView.animate(withDuration: 0.1, animations: {
+                        self.likeButton.transform = CGAffineTransform(scaleX: 1.3, y: 1.3)
+                    }) { _ in
+                        UIView.animate(withDuration: 0.1) {
+                            self.likeButton.transform = .identity
+                        }
+                    }
+                    
+                case .failure(let error):
+                    Logger.error("Failed to toggle like: \(error)")
+                    self.showAlert(title: "Error", message: "Failed to update like. Please try again.")
+                }
+            }
+        }
+    }
+    
+    @objc private func commentButtonTapped() {
+        // Present comments view controller
+        let commentsVC = PlaceCommentsViewController(place: place)
+        commentsVC.onCommentsUpdated = { [weak self] updatedCommentCount in
+            self?.updateCommentCount(updatedCommentCount)
+        }
+        let navController = UINavigationController(rootViewController: commentsVC)
         present(navController, animated: true)
     }
     
@@ -1374,6 +1648,8 @@ class PlaceDetailViewController: UIViewController {
                             self.showingStreetView = true
                             self.updateImageView()
                             self.streetViewToggleButton.isHidden = true // Hide toggle when street view is the only option
+                            // Hide update info button since we now have street view
+                            self.updateInfoButton.isHidden = true
                             Logger.debug("PlaceDetailViewController: Auto-showing street view for place without photos")
                         } else {
                             // Has photos, just store street view for toggle option
@@ -1897,6 +2173,97 @@ class PlaceDetailViewController: UIViewController {
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
     }
+    
+    // MARK: - Actions
+    
+    @objc private func updateInfoButtonTapped() {
+        // Show loading alert
+        let loadingAlert = UIAlertController(title: "Updating Place Info", message: "Fetching latest information from Google Places...", preferredStyle: .alert)
+        present(loadingAlert, animated: true)
+        
+        // Call the refresh endpoint
+        PlaceService.shared.refreshPlaceFromGoogle(id: place.id) { [weak self] result in
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    switch result {
+                    case .success(let updatedPlace):
+                        // Update the UI with new place data
+                        self?.updateUIWithRefreshedPlace(updatedPlace)
+                        
+                        // Show success message
+                        let successAlert = UIAlertController(
+                            title: "Success",
+                            message: "Place information has been updated",
+                            preferredStyle: .alert
+                        )
+                        successAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                        self?.present(successAlert, animated: true)
+                        
+                    case .failure(let error):
+                        // Show error message
+                        var errorMessage = "Failed to update place information"
+                        
+                        if let placeError = error as? PlaceError {
+                            errorMessage = placeError.errorDescription ?? error.localizedDescription
+                        } else {
+                            errorMessage = "Failed to update place information: \(error.localizedDescription)"
+                        }
+                        
+                        let errorAlert = UIAlertController(
+                            title: "Unable to Update",
+                            message: errorMessage,
+                            preferredStyle: .alert
+                        )
+                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                        self?.present(errorAlert, animated: true)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func updateUIWithRefreshedPlace(_ updatedPlace: Place) {
+        // Update place reference
+        self.place = updatedPlace
+        
+        // Update UI elements
+        nameLabel.text = updatedPlace.name
+        addressLabel.text = updatedPlace.address
+        
+        // Update phone and website buttons if they were fetched
+        if let phone = updatedPlace.phone {
+            phoneButton.setTitle("Call", for: .normal)
+        }
+        
+        if let website = updatedPlace.website {
+            websiteButton.setTitle("Visit Website", for: .normal)
+        }
+        
+        // Update photos if new ones were fetched
+        if let photos = updatedPlace.photos, !photos.isEmpty {
+            // Load the new photos
+            placePhotos.removeAll()
+            loadPlacePhotos()
+            
+            // Hide the update info button since we now have photos
+            updateInfoButton.isHidden = true
+        }
+        
+        // Update rating if available
+        if let rating = updatedPlace.rating, rating > 0 {
+            var ratingText = String(format: "%.1f", rating)
+            if let userRatingsTotal = updatedPlace.userRatingsTotal, userRatingsTotal > 0 {
+                ratingText += " (\(userRatingsTotal) review\(userRatingsTotal == 1 ? "" : "s"))"
+            }
+            ratingLabel.text = ratingText
+            ratingView.isHidden = false
+        } else {
+            ratingView.isHidden = true
+        }
+        
+        // Post notification to refresh any lists
+        NotificationCenter.default.post(name: NSNotification.Name("PlaceUpdated"), object: nil, userInfo: ["place": updatedPlace])
+    }
 }
 
 // MARK: - EditPlaceDelegate
@@ -2015,5 +2382,40 @@ extension PlaceDetailViewController {
                 }
             }
         }
+    }
+}
+
+// MARK: - Like and Comment Helpers
+extension PlaceDetailViewController {
+    private func updateLikeButton() {
+        let currentUserId = AuthService.shared.getUserId() ?? ""
+        let isLiked = place.likes?.contains(currentUserId) ?? false
+        
+        // Update heart icon
+        let heartImage = isLiked ? "heart.fill" : "heart"
+        likeButton.setImage(UIImage(systemName: heartImage), for: .normal)
+        likeButton.tintColor = isLiked ? UIColor.systemRed : Constants.Colors.gray
+        
+        // Update like count
+        let likeCount = place.likesCount ?? place.likes?.count ?? 0
+        likeCountLabel.text = "\(likeCount)"
+    }
+    
+    private func fetchCommentCount() {
+        PlaceService.shared.getPlaceComments(placeId: place.id) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let comments):
+                    self?.updateCommentCount(comments.count)
+                case .failure(let error):
+                    Logger.error("Failed to fetch comments: \(error)")
+                    self?.commentCountLabel.text = "0"
+                }
+            }
+        }
+    }
+    
+    private func updateCommentCount(_ count: Int) {
+        commentCountLabel.text = "\(count)"
     }
 }

@@ -206,8 +206,10 @@ class AllUsersListViewController: UIViewController {
                     
                     switch result {
                     case .success(let users):
+                        print("🔍 AllUsersListVC: Received \(users.count) users from server")
                         self?.allUsers = users
                         self?.sortAndFilterUsers()
+                        print("🔍 AllUsersListVC: After filtering - Connected: \(self?.connectedUsers.count ?? 0), Pending: \(self?.pendingIncomingUsers.count ?? 0), Others: \(self?.nonConnectedUsers.count ?? 0)")
                         self?.tableView.reloadData()
                         
                         // Track if we've ever had connections
@@ -215,9 +217,9 @@ class AllUsersListViewController: UIViewController {
                             AllUsersListViewController.hasEverLoadedConnections = true
                         }
                         
-                        // Only show empty state if we have no connections (not no users)
-                        if self?.connectedUsers.isEmpty == true && self?.pendingIncomingUsers.isEmpty == true {
-                            self?.showNoConnectionsState()
+                        // Only show empty state if we have no users at all
+                        if self?.allUsers.isEmpty == true {
+                            self?.showEmptyState()
                         } else {
                             self?.hideEmptyState()
                         }
@@ -238,8 +240,8 @@ class AllUsersListViewController: UIViewController {
                         self?.sortAndFilterUsers()
                         self?.tableView.reloadData()
                         
-                        // Show error state only if we have no cached data
-                        if self?.connectedUsers.isEmpty == true && self?.pendingIncomingUsers.isEmpty == true {
+                        // Show error state only if we have no users at all
+                        if self?.allUsers.isEmpty == true {
                             self?.showEmptyState()
                         }
                     }
@@ -485,32 +487,9 @@ extension AllUsersListViewController: AllUsersCellDelegate {
     }
     
     private func viewUserProfile(_ user: User) {
-        // Create a temporary connection object for navigation
-        let connection = Connection(
-            id: "",
-            userId: AuthService.shared.getUserId() ?? "",
-            connectedUserId: user.id,
-            connectedUser: user,
-            status: .accepted,
-            sharedCircles: nil,
-            lastInteractionAt: nil,
-            interactionCount: nil,
-            lastAccessedCircles: nil,
-            recentActivity: nil,
-            hasNewActivity: false,
-            viewCount: 0,
-            lastViewedAt: nil,
-            totalPlaces: nil,
-            hasRecentPlace: nil,
-            createdAt: Date(),
-            acceptedAt: Date(),
-            updatedAt: Date()
-        )
-        
-        // Navigate to connection detail view
-        let connectionDetailVC = ConnectionDetailViewController()
-        connectionDetailVC.connection = connection
-        navigationController?.pushViewController(connectionDetailVC, animated: true)
+        // Navigate to profile view
+        let profileVC = ProfileViewController(user: user)
+        navigationController?.pushViewController(profileVC, animated: true)
     }
     
     private func sendConnectionRequest(to user: User) {

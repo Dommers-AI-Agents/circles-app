@@ -98,18 +98,28 @@ class UserActivityCell: UICollectionViewCell {
         if let user = connection.connectedUser {
             nameLabel.text = user.firstName ?? user.displayName
             
-            // Load profile image
-            if let profilePicture = user.profilePicture, let url = URL(string: profilePicture) {
-                URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-                    if let data = data, let image = UIImage(data: data) {
-                        DispatchQueue.main.async {
-                            self?.profileImageView.image = image
+            // Set placeholder first
+            profileImageView.image = createInitialsImage(for: user.displayName)
+            
+            // Load profile image using ImageService with caching
+            if let profilePicture = user.profilePicture {
+                // Store the current user ID to check later
+                let currentUserId = user.id
+                
+                ImageService.shared.loadImage(from: profilePicture) { [weak self] image in
+                    DispatchQueue.main.async {
+                        // Check if the cell is still displaying the same user
+                        guard let self = self,
+                              let currentConnection = self.connection,
+                              currentConnection.connectedUser?.id == currentUserId else {
+                            return
+                        }
+                        
+                        if let image = image {
+                            self.profileImageView.image = image
                         }
                     }
-                }.resume()
-            } else {
-                // Set placeholder image with initials
-                profileImageView.image = createInitialsImage(for: user.displayName)
+                }
             }
         }
         
@@ -167,10 +177,14 @@ class UserActivityCell: UICollectionViewCell {
     // MARK: - Reuse
     override func prepareForReuse() {
         super.prepareForReuse()
+        
+        // Cancel any pending image loads by clearing the connection first
+        connection = nil
+        
+        // Clear UI elements
         profileImageView.image = nil
         activityDotView.isHidden = true
         activityDotView.layer.removeAllAnimations()
         nameLabel.text = nil
-        connection = nil
     }
 }

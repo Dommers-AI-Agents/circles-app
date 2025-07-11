@@ -23,13 +23,25 @@ struct User: Codable, Identifiable {
     let connectionDirection: String? // "incoming" or "outgoing" for pending connections
     let connectionId: String? // ID of the connection document
     
+    // Instagram-style follower system
+    let followers: [String]?
+    let following: [String]?
+    let followersCount: Int?
+    let followingCount: Int?
+    
+    // Connections count (LinkedIn-style professional network)
+    let connectionsCount: Int?
+    
+    // Pinned places (max 6)
+    let pinnedPlaces: [String]?
+    
     enum CodingKeys: String, CodingKey {
         case id = "_id"
-        case email, displayName, firstName, lastName, phoneNumber, profilePicture, bio, location, friends, friendRequests, circleOrder, preferences, createdAt, connectionStatus, connectionDirection, connectionId
+        case email, displayName, firstName, lastName, phoneNumber, profilePicture, bio, location, friends, friendRequests, circleOrder, preferences, createdAt, connectionStatus, connectionDirection, connectionId, followers, following, followersCount, followingCount, connectionsCount, pinnedPlaces
     }
     
     // Convenience initializer for creating User objects directly
-    init(id: String, email: String, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil, connectionDirection: String? = nil, connectionId: String? = nil) {
+    init(id: String, email: String, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil, connectionDirection: String? = nil, connectionId: String? = nil, followers: [String]? = nil, following: [String]? = nil, followersCount: Int? = nil, followingCount: Int? = nil, connectionsCount: Int? = nil, pinnedPlaces: [String]? = nil) {
         self.id = id
         self.email = email
         self.displayName = displayName
@@ -47,6 +59,12 @@ struct User: Codable, Identifiable {
         self.connectionStatus = connectionStatus
         self.connectionDirection = connectionDirection
         self.connectionId = connectionId
+        self.followers = followers
+        self.following = following
+        self.followersCount = followersCount
+        self.followingCount = followingCount
+        self.connectionsCount = connectionsCount
+        self.pinnedPlaces = pinnedPlaces
     }
     
     // Custom decoder for JSON decoding
@@ -96,6 +114,18 @@ struct User: Codable, Identifiable {
         connectionStatus = try container.decodeIfPresent(String.self, forKey: .connectionStatus)
         connectionDirection = try container.decodeIfPresent(String.self, forKey: .connectionDirection)
         connectionId = try container.decodeIfPresent(String.self, forKey: .connectionId)
+        
+        // Instagram-style follower system
+        followers = try container.decodeIfPresent([String].self, forKey: .followers)
+        following = try container.decodeIfPresent([String].self, forKey: .following)
+        followersCount = try container.decodeIfPresent(Int.self, forKey: .followersCount)
+        followingCount = try container.decodeIfPresent(Int.self, forKey: .followingCount)
+        
+        // Connections count (LinkedIn-style professional network)
+        connectionsCount = try container.decodeIfPresent(Int.self, forKey: .connectionsCount)
+        
+        // Pinned places
+        pinnedPlaces = try container.decodeIfPresent([String].self, forKey: .pinnedPlaces)
         
         // Custom date decoding with multiple format support
         if let dateString = try container.decodeIfPresent(String.self, forKey: .createdAt) {

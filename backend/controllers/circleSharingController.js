@@ -710,6 +710,28 @@ const getUserCircles = async (req, res) => {
 
     const userData = serializeDoc(userDoc);
 
+    // Get the user's connections count
+    const connectionsQuery1 = await db.collection(COLLECTIONS.CONNECTIONS)
+      .where('userId', '==', targetUserId)
+      .where('status', '==', 'accepted')
+      .get();
+      
+    const connectionsQuery2 = await db.collection(COLLECTIONS.CONNECTIONS)
+      .where('connectedUserId', '==', targetUserId)
+      .where('status', '==', 'accepted')
+      .get();
+    
+    // Count unique connections (avoid duplicates)
+    const connectionIds = new Set();
+    connectionsQuery1.docs.forEach(doc => {
+      connectionIds.add(doc.data().connectedUserId);
+    });
+    connectionsQuery2.docs.forEach(doc => {
+      connectionIds.add(doc.data().userId);
+    });
+    
+    userData.connectionsCount = connectionIds.size;
+
     // Get circles from the target user with non-private privacy
     const circlesQuery = await db.collection(COLLECTIONS.CIRCLES)
       .where('owner', '==', targetUserId)

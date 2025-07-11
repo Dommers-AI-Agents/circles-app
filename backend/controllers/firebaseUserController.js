@@ -535,6 +535,7 @@ exports.searchUsers = async (req, res, next) => {
           continue;
         }
         
+        
         // Check connection status using normalized IDs
         const targetUserId = normalizeUserId(user.id);
         
@@ -954,6 +955,286 @@ exports.getUserPublicCircles = async (req, res, next) => {
   }
 };
 
+// @desc    Follow a user
+// @route   POST /api/users/:id/follow
+// @access  Private
+exports.followUser = async (req, res, next) => {
+  try {
+    const targetUserId = req.params.id;
+    const currentUserId = req.user.uid;
+    
+    // Can't follow yourself
+    if (targetUserId === currentUserId) {
+      return res.status(400).json({
+        success: false,
+        message: 'You cannot follow yourself'
+      });
+    }
+    
+    // Check if target user exists
+    const targetUserRef = db.collection(COLLECTIONS.USERS).doc(targetUserId);
+    const targetUserDoc = await targetUserRef.get();
+    
+    if (!targetUserDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    // Get current user
+    const currentUserRef = db.collection(COLLECTIONS.USERS).doc(currentUserId);
+    const currentUserDoc = await currentUserRef.get();
+    
+    if (!currentUserDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Current user not found'
+      });
+    }
+    
+    const currentUser = serializeDoc(currentUserDoc);
+    const targetUser = serializeDoc(targetUserDoc);
+    
+    // Check if already following
+    if (currentUser.following && currentUser.following.includes(targetUserId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'You are already following this user'
+      });
+    }
+    
+    // Update current user's following list
+    const currentUserFollowing = currentUser.following || [];
+    currentUserFollowing.push(targetUserId);
+    
+    await currentUserRef.update({
+      following: currentUserFollowing,
+      followingCount: currentUserFollowing.length,
+      updatedAt: new Date().toISOString()
+    });
+    
+    // Update target user's followers list
+    const targetUserFollowers = targetUser.followers || [];
+    targetUserFollowers.push(currentUserId);
+    
+    await targetUserRef.update({
+      followers: targetUserFollowers,
+      followersCount: targetUserFollowers.length,
+      updatedAt: new Date().toISOString()
+    });
+    
+    // Send notification to target user
+    const notificationService = require('../services/notificationService');
+    await notificationService.sendFollowerNotification(
+      targetUserId,
+      currentUserId,
+      currentUser.displayName
+    );
+    
+    res.status(200).json({
+      success: true,
+      message: 'Successfully followed user'
+    });
+    
+  } catch (error) {
+    console.error('Error following user:', error);
+    next(error);
+  }
+};
+
+// @desc    Unfollow a user
+// @route   POST /api/users/:id/unfollow
+// @access  Private
+exports.unfollowUser = async (req, res, next) => {
+  try {
+    const targetUserId = req.params.id;
+    const currentUserId = req.user.uid;
+    
+    // Can't unfollow yourself
+    if (targetUserId === currentUserId) {
+      return res.status(400).json({
+        success: false,
+        message: 'You cannot unfollow yourself'
+      });
+    }
+    
+    // Get current user
+    const currentUserRef = db.collection(COLLECTIONS.USERS).doc(currentUserId);
+    const currentUserDoc = await currentUserRef.get();
+    
+    if (!currentUserDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Current user not found'
+      });
+    }
+    
+    // Get target user
+    const targetUserRef = db.collection(COLLECTIONS.USERS).doc(targetUserId);
+    const targetUserDoc = await targetUserRef.get();
+    
+    if (!targetUserDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    const currentUser = serializeDoc(currentUserDoc);
+    const targetUser = serializeDoc(targetUserDoc);
+    
+    // Check if following
+    if (!currentUser.following || !currentUser.following.includes(targetUserId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'You are not following this user'
+      });
+    }
+    
+    // Update current user's following list
+    const currentUserFollowing = currentUser.following.filter(id => id !== targetUserId);
+    
+    await currentUserRef.update({
+      following: currentUserFollowing,
+      followingCount: currentUserFollowing.length,
+      updatedAt: new Date().toISOString()
+    });
+    
+    // Update target user's followers list
+    const targetUserFollowers = (targetUser.followers || []).filter(id => id !== currentUserId);
+    
+    await targetUserRef.update({
+      followers: targetUserFollowers,
+      followersCount: targetUserFollowers.length,
+      updatedAt: new Date().toISOString()
+    });
+    
+    res.status(200).json({
+      success: true,
+      message: 'Successfully unfollowed user'
+    });
+    
+  } catch (error) {
+    console.error('Error unfollowing user:', error);
+    next(error);
+  }
+};
+
+// @desc    Get user's followers (owner only)
+// @route   GET /api/users/:id/followers
+// @access  Private
+exports.getUserFollowers = async (req, res, next) => {
+  try {
+    const userId = req.params.id;
+    const currentUserId = req.user.uid;
+    
+    // Only the user can see their own followers list
+    if (userId !== currentUserId) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only view your own followers'
+      });
+    }
+    
+    // Get user
+    const userRef = db.collection(COLLECTIONS.USERS).doc(userId);
+    const userDoc = await userRef.get();
+    
+    if (!userDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    const user = serializeDoc(userDoc);
+    const followerIds = user.followers || [];
+    
+    // Get follower details
+    const followers = [];
+    for (const followerId of followerIds) {
+      const followerDoc = await db.collection(COLLECTIONS.USERS).doc(followerId).get();
+      if (followerDoc.exists) {
+        const follower = serializeDoc(followerDoc);
+        followers.push({
+          id: follower.id,
+          displayName: follower.displayName,
+          profilePicture: follower.profilePicture,
+          bio: follower.bio
+        });
+      }
+    }
+    
+    res.status(200).json({
+      success: true,
+      count: followers.length,
+      followers: followers
+    });
+    
+  } catch (error) {
+    console.error('Error fetching followers:', error);
+    next(error);
+  }
+};
+
+// @desc    Get user's following (owner only)
+// @route   GET /api/users/:id/following
+// @access  Private
+exports.getUserFollowing = async (req, res, next) => {
+  try {
+    const userId = req.params.id;
+    const currentUserId = req.user.uid;
+    
+    // Only the user can see their own following list
+    if (userId !== currentUserId) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only view your own following list'
+      });
+    }
+    
+    // Get user
+    const userRef = db.collection(COLLECTIONS.USERS).doc(userId);
+    const userDoc = await userRef.get();
+    
+    if (!userDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    const user = serializeDoc(userDoc);
+    const followingIds = user.following || [];
+    
+    // Get following details
+    const following = [];
+    for (const followingId of followingIds) {
+      const followingDoc = await db.collection(COLLECTIONS.USERS).doc(followingId).get();
+      if (followingDoc.exists) {
+        const followingUser = serializeDoc(followingDoc);
+        following.push({
+          id: followingUser.id,
+          displayName: followingUser.displayName,
+          profilePicture: followingUser.profilePicture,
+          bio: followingUser.bio
+        });
+      }
+    }
+    
+    res.status(200).json({
+      success: true,
+      count: following.length,
+      following: following
+    });
+    
+  } catch (error) {
+    console.error('Error fetching following:', error);
+    next(error);
+  }
+};
+
 // @desc    Find and merge duplicate user accounts
 // @route   POST /api/users/find-duplicates
 // @access  Private (Admin only)
@@ -1091,6 +1372,254 @@ exports.checkDuplicateConnections = async (req, res, next) => {
     });
   } catch (error) {
     console.error('Error checking duplicate connections:', error);
+    next(error);
+  }
+};
+
+// @desc    Add place to pinned places
+// @route   POST /api/users/me/pinned-places
+// @access  Private
+exports.addPinnedPlace = async (req, res, next) => {
+  try {
+    const { placeId } = req.body;
+    
+    if (!placeId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Place ID is required'
+      });
+    }
+
+    const userRef = db.collection(COLLECTIONS.USERS).doc(req.user.uid);
+    const userDoc = await userRef.get();
+    
+    if (!userDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const user = serializeDoc(userDoc);
+    const pinnedPlaces = user.pinnedPlaces || [];
+    
+    // Check if place is already pinned
+    if (pinnedPlaces.includes(placeId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Place is already pinned'
+      });
+    }
+    
+    // Check max limit (6 pinned places)
+    if (pinnedPlaces.length >= 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Maximum 6 places can be pinned'
+      });
+    }
+    
+    // Verify place exists and user has access to it
+    const placeDoc = await db.collection(COLLECTIONS.PLACES).doc(placeId).get();
+    if (!placeDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Place not found'
+      });
+    }
+    
+    const place = serializeDoc(placeDoc);
+    
+    // Check if user has access to this place (owns it or it's in their network)
+    if (place.addedBy !== req.user.uid) {
+      // Could add additional access checks here for network visibility
+      // For now, only allow pinning own places
+      return res.status(403).json({
+        success: false,
+        message: 'You can only pin places you have added'
+      });
+    }
+    
+    // Add to pinned places
+    pinnedPlaces.push(placeId);
+    
+    await userRef.update({
+      pinnedPlaces: pinnedPlaces,
+      updatedAt: new Date().toISOString()
+    });
+    
+    res.status(200).json({
+      success: true,
+      message: 'Place pinned successfully',
+      pinnedPlaces: pinnedPlaces
+    });
+    
+  } catch (error) {
+    console.error('Error adding pinned place:', error);
+    next(error);
+  }
+};
+
+// @desc    Remove place from pinned places
+// @route   DELETE /api/users/me/pinned-places/:placeId
+// @access  Private
+exports.removePinnedPlace = async (req, res, next) => {
+  try {
+    const { placeId } = req.params;
+    
+    if (!placeId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Place ID is required'
+      });
+    }
+
+    const userRef = db.collection(COLLECTIONS.USERS).doc(req.user.uid);
+    const userDoc = await userRef.get();
+    
+    if (!userDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const user = serializeDoc(userDoc);
+    const pinnedPlaces = user.pinnedPlaces || [];
+    
+    // Check if place is pinned
+    if (!pinnedPlaces.includes(placeId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Place is not pinned'
+      });
+    }
+    
+    // Remove from pinned places
+    const updatedPinnedPlaces = pinnedPlaces.filter(id => id !== placeId);
+    
+    await userRef.update({
+      pinnedPlaces: updatedPinnedPlaces,
+      updatedAt: new Date().toISOString()
+    });
+    
+    res.status(200).json({
+      success: true,
+      message: 'Place unpinned successfully',
+      pinnedPlaces: updatedPinnedPlaces
+    });
+    
+  } catch (error) {
+    console.error('Error removing pinned place:', error);
+    next(error);
+  }
+};
+
+// @desc    Get user's pinned places with details
+// @route   GET /api/users/me/pinned-places
+// @access  Private
+exports.getPinnedPlaces = async (req, res, next) => {
+  try {
+    const userRef = db.collection(COLLECTIONS.USERS).doc(req.user.uid);
+    const userDoc = await userRef.get();
+    
+    if (!userDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const user = serializeDoc(userDoc);
+    const pinnedPlaceIds = user.pinnedPlaces || [];
+    
+    if (pinnedPlaceIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        pinnedPlaces: []
+      });
+    }
+    
+    // Fetch place details
+    const pinnedPlaces = [];
+    for (const placeId of pinnedPlaceIds) {
+      const placeDoc = await db.collection(COLLECTIONS.PLACES).doc(placeId).get();
+      if (placeDoc.exists) {
+        const place = serializeDoc(placeDoc);
+        pinnedPlaces.push(place);
+      }
+    }
+    
+    res.status(200).json({
+      success: true,
+      count: pinnedPlaces.length,
+      pinnedPlaces: pinnedPlaces
+    });
+    
+  } catch (error) {
+    console.error('Error fetching pinned places:', error);
+    next(error);
+  }
+};
+
+// @desc    Reorder pinned places
+// @route   PUT /api/users/me/pinned-places/reorder
+// @access  Private
+exports.reorderPinnedPlaces = async (req, res, next) => {
+  try {
+    const { pinnedPlaces } = req.body;
+    
+    if (!Array.isArray(pinnedPlaces)) {
+      return res.status(400).json({
+        success: false,
+        message: 'pinnedPlaces must be an array'
+      });
+    }
+    
+    if (pinnedPlaces.length > 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Maximum 6 places can be pinned'
+      });
+    }
+
+    const userRef = db.collection(COLLECTIONS.USERS).doc(req.user.uid);
+    const userDoc = await userRef.get();
+    
+    if (!userDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const user = serializeDoc(userDoc);
+    const currentPinnedPlaces = user.pinnedPlaces || [];
+    
+    // Validate that all provided place IDs are currently pinned
+    for (const placeId of pinnedPlaces) {
+      if (!currentPinnedPlaces.includes(placeId)) {
+        return res.status(400).json({
+          success: false,
+          message: `Place ${placeId} is not currently pinned`
+        });
+      }
+    }
+    
+    // Update the order
+    await userRef.update({
+      pinnedPlaces: pinnedPlaces,
+      updatedAt: new Date().toISOString()
+    });
+    
+    res.status(200).json({
+      success: true,
+      message: 'Pinned places reordered successfully',
+      pinnedPlaces: pinnedPlaces
+    });
+    
+  } catch (error) {
+    console.error('Error reordering pinned places:', error);
     next(error);
   }
 };

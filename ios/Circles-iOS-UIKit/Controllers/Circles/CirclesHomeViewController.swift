@@ -24,6 +24,8 @@ class CirclesHomeViewController: UIViewController {
     private var hasStartedLoading = false // Instance flag to prevent multiple loads in the same instance
     private var loadDebounceTimer: Timer? // Debounce timer to prevent rapid successive loads
     private var preloadedData: PreloadedData? // Store preloaded data from splash screen
+    private var notificationBadgeLabel: UILabel? // Badge label for notification count
+    private var notificationBarButton: UIBarButtonItem? // Store reference to notification button
     
     override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
         super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
@@ -58,20 +60,26 @@ class CirclesHomeViewController: UIViewController {
     
     private let homeCard: UIView = {
         let view = UIView()
-        view.backgroundColor = Constants.Colors.lightGray.withAlphaComponent(0.1)
-        view.layer.cornerRadius = 12
-        view.layer.borderWidth = 1
-        view.layer.borderColor = Constants.Colors.lightGray.cgColor
+        // Google Maps blue color
+        view.backgroundColor = UIColor(red: 66/255.0, green: 133/255.0, blue: 244/255.0, alpha: 1.0) // #4285F4
+        view.layer.cornerRadius = 8
+        view.layer.shadowColor = UIColor.black.cgColor
+        view.layer.shadowOpacity = 0.1
+        view.layer.shadowOffset = CGSize(width: 0, height: 2)
+        view.layer.shadowRadius = 4
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
     
     private let workCard: UIView = {
         let view = UIView()
-        view.backgroundColor = Constants.Colors.lightGray.withAlphaComponent(0.1)
-        view.layer.cornerRadius = 12
-        view.layer.borderWidth = 1
-        view.layer.borderColor = Constants.Colors.lightGray.cgColor
+        // Google Maps blue color
+        view.backgroundColor = UIColor(red: 66/255.0, green: 133/255.0, blue: 244/255.0, alpha: 1.0) // #4285F4
+        view.layer.cornerRadius = 8
+        view.layer.shadowColor = UIColor.black.cgColor
+        view.layer.shadowOpacity = 0.1
+        view.layer.shadowOffset = CGSize(width: 0, height: 2)
+        view.layer.shadowRadius = 4
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -91,11 +99,9 @@ class CirclesHomeViewController: UIViewController {
     private let homeNavigateButton: UIButton = {
         let button = UIButton(type: .system)
         button.setImage(UIImage(systemName: "location.fill"), for: .normal)
-        button.tintColor = Constants.Colors.primary
-        button.backgroundColor = .white
-        button.layer.cornerRadius = 15
-        button.layer.borderWidth = 1
-        button.layer.borderColor = Constants.Colors.primary.cgColor
+        button.tintColor = .white
+        button.backgroundColor = UIColor.white.withAlphaComponent(0.2)
+        button.layer.cornerRadius = 12
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
@@ -103,11 +109,9 @@ class CirclesHomeViewController: UIViewController {
     private let workNavigateButton: UIButton = {
         let button = UIButton(type: .system)
         button.setImage(UIImage(systemName: "location.fill"), for: .normal)
-        button.tintColor = Constants.Colors.primary
-        button.backgroundColor = .white
-        button.layer.cornerRadius = 15
-        button.layer.borderWidth = 1
-        button.layer.borderColor = Constants.Colors.primary.cgColor
+        button.tintColor = .white
+        button.backgroundColor = UIColor.white.withAlphaComponent(0.2)
+        button.layer.cornerRadius = 12
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
@@ -466,6 +470,23 @@ class CirclesHomeViewController: UIViewController {
         }
     }
     
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        
+        // Apply gradients to cards with Google Maps blue
+        let googleMapsBlue = UIColor(red: 66/255.0, green: 133/255.0, blue: 244/255.0, alpha: 1.0)
+        
+        addGradientToCard(homeCard, colors: [
+            googleMapsBlue,
+            googleMapsBlue.withAlphaComponent(0.85)
+        ])
+        
+        addGradientToCard(workCard, colors: [
+            googleMapsBlue,
+            googleMapsBlue.withAlphaComponent(0.85)
+        ])
+    }
+    
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         
@@ -477,18 +498,25 @@ class CirclesHomeViewController: UIViewController {
         print("   allPlaces.count: \(allPlaces.count)")
         print("   preloadedData: \(preloadedData != nil)")
         
+        // Update notification badge
+        updateNotificationBadge()
+        
         // If returning from full screen map, skip updates
         if isReturningFromFullScreenMap {
             isReturningFromFullScreenMap = false
             return
         }
         
+        // Cancel any existing timer first
+        loadDebounceTimer?.invalidate()
+        
         // If we have preloaded data, use it instead of loading
         if let preloadedData = preloadedData {
             print("🟢 Using preloaded data from splash screen")
+            hasStartedLoading = true  // Mark as loaded
             usePreloadedData(preloadedData)
             self.preloadedData = nil // Clear after use
-            return
+            return  // Exit early, no timer needed
         }
         
         // Simple check: if this instance has already started loading, don't load again
@@ -500,10 +528,7 @@ class CirclesHomeViewController: UIViewController {
         // Mark that this instance has started loading
         hasStartedLoading = true
         
-        // Cancel any existing timer
-        loadDebounceTimer?.invalidate()
-        
-        // Debounce the load to prevent rapid successive calls
+        // NOW create the debounce timer (only if we didn't have preloaded data)
         loadDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
             print("🟢 Starting initial data load (after debounce)")
             // Use unified loading method
@@ -542,7 +567,16 @@ class CirclesHomeViewController: UIViewController {
         
         // Setup navigation bar
         let addButton = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(addButtonTapped))
-        navigationItem.rightBarButtonItem = addButton
+        
+        // Create notification button with bell icon
+        let notificationButton = UIBarButtonItem(image: UIImage(systemName: "bell"), style: .plain, target: self, action: #selector(notificationButtonTapped))
+        self.notificationBarButton = notificationButton
+        
+        // Create custom view for notification button with badge
+        setupNotificationBadge()
+        
+        // Set both buttons as right bar button items
+        navigationItem.rightBarButtonItems = [notificationButton, addButton]
         
         // Setup empty state view
         emptyStateView.addSubview(emptyStateImageView)
@@ -612,7 +646,7 @@ class CirclesHomeViewController: UIViewController {
             quickAccessContainer.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: Constants.Spacing.small),
             quickAccessContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             quickAccessContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            quickAccessContainer.heightAnchor.constraint(equalToConstant: 80),
+            quickAccessContainer.heightAnchor.constraint(equalToConstant: 50),
             
             // Quick Add Place button
             quickAddPlaceButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.large),
@@ -623,14 +657,14 @@ class CirclesHomeViewController: UIViewController {
             // Home card
             homeCard.leadingAnchor.constraint(equalTo: quickAccessContainer.leadingAnchor, constant: Constants.Spacing.large),
             homeCard.centerYAnchor.constraint(equalTo: quickAccessContainer.centerYAnchor),
-            homeCard.widthAnchor.constraint(equalTo: quickAccessContainer.widthAnchor, multiplier: 0.42),
-            homeCard.heightAnchor.constraint(equalToConstant: 60),
+            homeCard.widthAnchor.constraint(equalTo: quickAccessContainer.widthAnchor, multiplier: 0.35),
+            homeCard.heightAnchor.constraint(equalToConstant: 40),
             
             // Work card
             workCard.trailingAnchor.constraint(equalTo: quickAccessContainer.trailingAnchor, constant: -Constants.Spacing.large),
             workCard.centerYAnchor.constraint(equalTo: quickAccessContainer.centerYAnchor),
-            workCard.widthAnchor.constraint(equalTo: quickAccessContainer.widthAnchor, multiplier: 0.42),
-            workCard.heightAnchor.constraint(equalToConstant: 60),
+            workCard.widthAnchor.constraint(equalTo: quickAccessContainer.widthAnchor, multiplier: 0.35),
+            workCard.heightAnchor.constraint(equalToConstant: 40),
             
             // Home button (inside home card)
             homeButton.leadingAnchor.constraint(equalTo: homeCard.leadingAnchor),
@@ -641,8 +675,8 @@ class CirclesHomeViewController: UIViewController {
             // Home navigate button
             homeNavigateButton.centerYAnchor.constraint(equalTo: homeCard.centerYAnchor),
             homeNavigateButton.trailingAnchor.constraint(equalTo: homeCard.trailingAnchor, constant: -8),
-            homeNavigateButton.widthAnchor.constraint(equalToConstant: 30),
-            homeNavigateButton.heightAnchor.constraint(equalToConstant: 30),
+            homeNavigateButton.widthAnchor.constraint(equalToConstant: 24),
+            homeNavigateButton.heightAnchor.constraint(equalToConstant: 24),
             
             // Work button (inside work card)
             workButton.leadingAnchor.constraint(equalTo: workCard.leadingAnchor),
@@ -653,17 +687,17 @@ class CirclesHomeViewController: UIViewController {
             // Work navigate button
             workNavigateButton.centerYAnchor.constraint(equalTo: workCard.centerYAnchor),
             workNavigateButton.trailingAnchor.constraint(equalTo: workCard.trailingAnchor, constant: -8),
-            workNavigateButton.widthAnchor.constraint(equalToConstant: 30),
-            workNavigateButton.heightAnchor.constraint(equalToConstant: 30),
+            workNavigateButton.widthAnchor.constraint(equalToConstant: 24),
+            workNavigateButton.heightAnchor.constraint(equalToConstant: 24),
             
             // User list view
-            userListView.topAnchor.constraint(equalTo: quickAccessContainer.bottomAnchor, constant: Constants.Spacing.medium),
+            userListView.topAnchor.constraint(equalTo: quickAccessContainer.bottomAnchor, constant: Constants.Spacing.small),
             userListView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Constants.Spacing.medium),
             userListView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.medium),
             userListView.heightAnchor.constraint(equalToConstant: 124),
             
             // Filter container
-            filterContainer.topAnchor.constraint(equalTo: userListView.bottomAnchor, constant: Constants.Spacing.medium),
+            filterContainer.topAnchor.constraint(equalTo: userListView.bottomAnchor, constant: Constants.Spacing.xsmall),
             filterContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             filterContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             filterContainer.heightAnchor.constraint(equalToConstant: 60),
@@ -849,25 +883,35 @@ class CirclesHomeViewController: UIViewController {
     private func setupQuickAccessButtons() {
         // Configure Home button
         var homeConfig = UIButton.Configuration.filled()
-        homeConfig.image = UIImage(systemName: "house.fill")
+        homeConfig.image = UIImage(systemName: "house.fill")?.withConfiguration(UIImage.SymbolConfiguration(pointSize: 14, weight: .medium))
         homeConfig.title = "Home"
         homeConfig.imagePlacement = .leading
-        homeConfig.imagePadding = 8
+        homeConfig.imagePadding = 6
         homeConfig.baseBackgroundColor = .clear
-        homeConfig.baseForegroundColor = Constants.Colors.primary
-        homeConfig.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 0)
+        homeConfig.baseForegroundColor = .white
+        homeConfig.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 0)
+        homeConfig.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+            var outgoing = incoming
+            outgoing.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+            return outgoing
+        }
         homeButton.configuration = homeConfig
         homeButton.addTarget(self, action: #selector(homeButtonTapped), for: .touchUpInside)
         
         // Configure Work button
         var workConfig = UIButton.Configuration.filled()
-        workConfig.image = UIImage(systemName: "building.2.fill")
+        workConfig.image = UIImage(systemName: "building.2.fill")?.withConfiguration(UIImage.SymbolConfiguration(pointSize: 14, weight: .medium))
         workConfig.title = "Work"
         workConfig.imagePlacement = .leading
-        workConfig.imagePadding = 8
+        workConfig.imagePadding = 6
         workConfig.baseBackgroundColor = .clear
-        workConfig.baseForegroundColor = Constants.Colors.secondary
-        workConfig.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 0)
+        workConfig.baseForegroundColor = .white
+        workConfig.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 0)
+        workConfig.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+            var outgoing = incoming
+            outgoing.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+            return outgoing
+        }
         workButton.configuration = workConfig
         workButton.addTarget(self, action: #selector(workButtonTapped), for: .touchUpInside)
         
@@ -875,16 +919,28 @@ class CirclesHomeViewController: UIViewController {
         homeNavigateButton.addTarget(self, action: #selector(homeNavigateButtonTapped), for: .touchUpInside)
         workNavigateButton.addTarget(self, action: #selector(workNavigateButtonTapped), for: .touchUpInside)
         
-        // Add shadow to container
-        quickAccessContainer.layer.shadowOpacity = 0.05
-        quickAccessContainer.layer.shadowOffset = CGSize(width: 0, height: 2)
-        quickAccessContainer.layer.shadowRadius = 4
+        // Remove shadow from container since cards have their own shadows
+        quickAccessContainer.layer.shadowOpacity = 0
         
         // Apply appearance
         updateAppearance()
     }
     
     // Navigation title tap removed since we no longer show the title
+    
+    private func addGradientToCard(_ card: UIView, colors: [UIColor]) {
+        // Remove any existing gradient layers
+        card.layer.sublayers?.removeAll(where: { $0 is CAGradientLayer })
+        
+        let gradientLayer = CAGradientLayer()
+        gradientLayer.frame = card.bounds
+        gradientLayer.colors = colors.map { $0.cgColor }
+        gradientLayer.startPoint = CGPoint(x: 0, y: 0)
+        gradientLayer.endPoint = CGPoint(x: 1, y: 1)
+        gradientLayer.cornerRadius = 8
+        
+        card.layer.insertSublayer(gradientLayer, at: 0)
+    }
     
     // MARK: - Preloaded Data
     func setPreloadedData(_ data: PreloadedData) {
@@ -1747,7 +1803,72 @@ class CirclesHomeViewController: UIViewController {
         navigateToQuickAccess(type: .work)
     }
     
+    @objc private func notificationButtonTapped() {
+        let notificationsVC = NotificationsViewController()
+        navigationController?.pushViewController(notificationsVC, animated: true)
+    }
     
+    private func setupNotificationBadge() {
+        // Create a custom button with badge capability
+        let button = UIButton(type: .custom)
+        button.setImage(UIImage(systemName: "bell"), for: .normal)
+        button.addTarget(self, action: #selector(notificationButtonTapped), for: .touchUpInside)
+        button.frame = CGRect(x: 0, y: 0, width: 30, height: 30)
+        
+        // Create badge label
+        let badgeLabel = UILabel()
+        badgeLabel.backgroundColor = .systemRed
+        badgeLabel.textColor = .white
+        badgeLabel.font = .systemFont(ofSize: 10, weight: .medium)
+        badgeLabel.textAlignment = .center
+        badgeLabel.layer.cornerRadius = 8
+        badgeLabel.layer.masksToBounds = true
+        badgeLabel.isHidden = true
+        badgeLabel.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Add badge to button
+        button.addSubview(badgeLabel)
+        
+        // Constraints for badge
+        NSLayoutConstraint.activate([
+            badgeLabel.topAnchor.constraint(equalTo: button.topAnchor, constant: -4),
+            badgeLabel.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: 8),
+            badgeLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 16),
+            badgeLabel.heightAnchor.constraint(equalToConstant: 16)
+        ])
+        
+        self.notificationBadgeLabel = badgeLabel
+        
+        // Update the bar button item with custom view
+        notificationBarButton?.customView = button
+    }
+    
+    private func updateNotificationBadge() {
+        NotificationService.shared.getUnreadNotificationCount { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let count):
+                    if count > 0 {
+                        self?.notificationBadgeLabel?.text = count > 99 ? "99+" : "\(count)"
+                        self?.notificationBadgeLabel?.isHidden = false
+                        
+                        // Adjust width constraint if needed
+                        if count > 9 {
+                            self?.notificationBadgeLabel?.constraints.forEach { constraint in
+                                if constraint.firstAttribute == .width {
+                                    constraint.constant = 20
+                                }
+                            }
+                        }
+                    } else {
+                        self?.notificationBadgeLabel?.isHidden = true
+                    }
+                case .failure:
+                    self?.notificationBadgeLabel?.isHidden = true
+                }
+            }
+        }
+    }
     
     private func navigateToQuickAccess(type: QuickAccessType) {
         let key = type == .home ? "userHomeAddress" : "userWorkAddress"
@@ -2416,9 +2537,10 @@ extension CirclesHomeViewController: UISearchBarDelegate {
 // MARK: - HorizontalUserListViewDelegate
 extension CirclesHomeViewController: HorizontalUserListViewDelegate {
     func didSelectUser(_ user: User, connectionId: String) {
-        // Navigate to user's circles
-        let userCirclesVC = UserCirclesViewController(userId: user.id ?? "", userName: user.displayName, connectionId: connectionId)
-        navigationController?.pushViewController(userCirclesVC, animated: true)
+        // Navigate to user's profile
+        let profileVC = ProfileViewController()
+        profileVC.configureWith(user: user)
+        navigationController?.pushViewController(profileVC, animated: true)
     }
 }
 

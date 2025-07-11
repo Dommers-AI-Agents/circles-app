@@ -127,6 +127,8 @@
 	<string>Circles needs access to your camera to take photos for your places.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Circles needs access to your photo library to select photos for your places.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Circles would like to save your profile QR code to your photo library.</string>
 	<key>FacebookAutoLogAppEventsEnabled</key>
 	<false/>
 	<key>FacebookAdvertiserIDCollectionEnabled</key>

@@ -751,6 +751,22 @@ class PlaceService {
         }
     }
     
+    func refreshPlaceFromGoogle(id: String, completion: @escaping (Result<Place, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "places/\(id)/refresh-google",
+            method: .post,
+            requiresAuth: true
+        ) { [weak self] (result: Result<PlaceResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.place))
+            case .failure(let error):
+                let mappedError = self?.mapAPIErrorToPlaceError(error)
+                completion(.failure(mappedError ?? PlaceError.updateFailed))
+            }
+        }
+    }
+    
     // MARK: - Helper Methods
     
     private func geocodeAddress(_ address: String, completion: @escaping (Result<CLLocationCoordinate2D, Error>) -> Void) {
@@ -1044,6 +1060,22 @@ class PlaceService {
             switch result {
             case .success(let response):
                 completion(.success(response.comment))
+            case .failure(let error):
+                let mappedError = self?.mapAPIErrorToPlaceError(error)
+                completion(.failure(mappedError ?? error))
+            }
+        }
+    }
+    
+    func deletePlaceComment(placeId: String, commentId: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "places/\(placeId)/comments/\(commentId)",
+            method: .delete,
+            requiresAuth: true
+        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
+            switch result {
+            case .success:
+                completion(.success(()))
             case .failure(let error):
                 let mappedError = self?.mapAPIErrorToPlaceError(error)
                 completion(.failure(mappedError ?? error))

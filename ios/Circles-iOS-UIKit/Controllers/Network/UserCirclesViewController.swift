@@ -154,9 +154,10 @@ class UserCirclesViewController: UIViewController {
                     self?.tableView.reloadData()
                     
                     // Show activity banner if there's recent activity
-                    if self?.hasRecentActivity == true {
-                        self?.showActivityBanner()
-                    }
+                    // Temporarily disabled - showing incorrectly for all connections
+                    // if self?.hasRecentActivity == true {
+                    //     self?.showActivityBanner()
+                    // }
                 case .failure(let error):
                     print("Error loading user circles: \(error)")
                     self?.showError("Failed to load circles")
@@ -191,13 +192,17 @@ class UserCirclesViewController: UIViewController {
     }
     
     private func trackCircleView(circleId: String) {
+        struct TrackingResponse: Codable {
+            let success: Bool
+        }
+        
         // Track that this circle was viewed to clear the activity indicator
         APIService.shared.request(
             endpoint: "circles/\(circleId)/track-view",
             method: .post,
             body: ["connectionUserId": userId],
             requiresAuth: true
-        ) { (result: Result<APIResponse, APIError>) in
+        ) { (result: Result<TrackingResponse, APIError>) in
             // Silent tracking - no need to handle response
             if case .failure(let error) = result {
                 print("Failed to track circle view: \(error)")
@@ -205,6 +210,9 @@ class UserCirclesViewController: UIViewController {
         }
     }
     
+    // Temporarily disabled - showing incorrectly for all connections
+    // TODO: Fix backend activity tracking before re-enabling
+    /*
     private func showActivityBanner() {
         let bannerView = UIView()
         bannerView.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.1)
@@ -245,6 +253,7 @@ class UserCirclesViewController: UIViewController {
             }
         }
     }
+    */
 }
 
 // MARK: - UITableViewDataSource

@@ -15,7 +15,8 @@ const COLLECTIONS = {
   MESSAGES: 'messages',
   MESSAGE_READS: 'messageReads',
   SUGGESTIONS: 'suggestions',
-  COMMENTS: 'comments'
+  COMMENTS: 'comments',
+  NOTIFICATIONS: 'notifications'
 };
 
 // User model structure
@@ -35,12 +36,20 @@ const createUser = (userData) => {
     linkedProviders: userData.linkedProviders || {},
     circleOrder: userData.circleOrder || [],
     deviceTokens: userData.deviceTokens || [],
+    // Instagram-style follower system
+    followers: userData.followers || [],
+    following: userData.following || [],
+    followersCount: userData.followersCount || 0,
+    followingCount: userData.followingCount || 0,
+    // Pinned places (max 6)
+    pinnedPlaces: userData.pinnedPlaces || [],
     notificationPreferences: userData.notificationPreferences || {
       newMessages: true,
       newSuggestions: true,
       newPlaces: true,
       connectionRequests: true,
       circleInvites: true,
+      newFollowers: true,
       dailyDigest: false,
       quietHoursEnabled: false,
       quietHoursStart: '22:00',
@@ -457,6 +466,43 @@ const validateComment = (commentData) => {
   return errors;
 };
 
+// Create notification object for Firestore
+const createNotification = (notificationData) => {
+  const now = new Date().toISOString();
+  return {
+    userId: notificationData.userId, // Recipient user ID
+    type: notificationData.type, // 'place_like', 'place_comment'
+    title: notificationData.title,
+    body: notificationData.body,
+    data: notificationData.data || {}, // Additional data (fromUserId, placeId, etc.)
+    read: false,
+    createdAt: now
+  };
+};
+
+// Validate notification
+const validateNotification = (notificationData) => {
+  const errors = [];
+  
+  if (!notificationData.userId) {
+    errors.push('User ID is required');
+  }
+  
+  if (!notificationData.type || !['place_like', 'place_comment', 'new_follower'].includes(notificationData.type)) {
+    errors.push('Valid notification type is required');
+  }
+  
+  if (!notificationData.title) {
+    errors.push('Title is required');
+  }
+  
+  if (!notificationData.body) {
+    errors.push('Body is required');
+  }
+  
+  return errors;
+};
+
 module.exports = {
   COLLECTIONS,
   createUser,
@@ -470,6 +516,7 @@ module.exports = {
   createConversation,
   createMessage,
   createMessageRead,
+  createNotification,
   validateCircle,
   validatePlace,
   validateConnection,
@@ -478,6 +525,7 @@ module.exports = {
   validateComment,
   validateConversation,
   validateMessage,
+  validateNotification,
   serializeDoc,
   serializeQuerySnapshot
 };

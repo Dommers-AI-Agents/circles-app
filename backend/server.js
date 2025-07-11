@@ -41,6 +41,8 @@ const connectionRoutes = require('./routes/connectionRoutes');
 const networkRoutes = require('./routes/networkRoutes');
 const messagingRoutes = require('./routes/messagingRoutes');
 const suggestionRoutes = require('./routes/suggestionRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
+const sseRoutes = require('./routes/sseRoutes');
 
 // Import Firebase Place controller for circle-specific routes
 const { getPlacesByCircleId, reorderPlacesInCircle } = require('./controllers/firebasePlaceController');
@@ -80,6 +82,8 @@ app.use('/api/connections', connectionRoutes);
 app.use('/api/network', networkRoutes);
 app.use('/api/messages', messagingRoutes);
 app.use('/api/suggestions', suggestionRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/sse', sseRoutes);
 app.use('/api/app', require('./routes/appRoutes'));
 
 // LinkedIn OAuth callback route (outside /api prefix)

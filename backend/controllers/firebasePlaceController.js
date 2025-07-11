@@ -642,78 +642,136 @@ exports.refreshPlaceFromGoogle = async (req, res, next) => {
       });
     }
     
-    // Check if place has Google Place ID
-    if (!place.googlePlaceId) {
-      return res.status(400).json({
-        success: false,
-        message: 'This place does not have a Google Place ID'
+    // Check if Google Places API key is configured
+    if (!googleMapsApiKey) {
+      console.log('⚠️ Google Maps API key not configured, cannot refresh place details');
+      return res.status(200).json({
+        success: true,
+        message: 'Place data is up to date',
+        place: place
+      });
+    }
+    
+    let googlePlaceId = place.googlePlaceId;
+    
+    // If no googlePlaceId, try to find it using place name and location
+    if (!googlePlaceId && place.location && place.name) {
+      console.log('🔍 No Google Place ID found, searching by name and location...');
+      
+      try {
+        // Search for the place using text search
+        const searchResponse = await googleMapsClient.findPlaceFromText({
+          params: {
+            input: place.name,
+            inputtype: 'textquery',
+            fields: ['place_id', 'name', 'geometry'],
+            locationbias: place.location ? `point:${place.location.coordinates[1]},${place.location.coordinates[0]}` : undefined,
+            key: googleMapsApiKey
+          }
+        });
+        
+        if (searchResponse.data.candidates && searchResponse.data.candidates.length > 0) {
+          // Find the best match based on distance
+          let bestMatch = searchResponse.data.candidates[0];
+          
+          if (place.location && searchResponse.data.candidates.length > 1) {
+            const placeCoords = place.location.coordinates;
+            let minDistance = Infinity;
+            
+            for (const candidate of searchResponse.data.candidates) {
+              if (candidate.geometry && candidate.geometry.location) {
+                const distance = Math.sqrt(
+                  Math.pow(candidate.geometry.location.lat - placeCoords[1], 2) +
+                  Math.pow(candidate.geometry.location.lng - placeCoords[0], 2)
+                );
+                
+                if (distance < minDistance) {
+                  minDistance = distance;
+                  bestMatch = candidate;
+                }
+              }
+            }
+          }
+          
+          googlePlaceId = bestMatch.place_id;
+          console.log(`✅ Found matching Google Place: ${bestMatch.name} (ID: ${googlePlaceId})`);
+          
+          // Update the place with the found googlePlaceId
+          await placeRef.update({ googlePlaceId });
+        } else {
+          console.log('⚠️ No matching Google Place found');
+          return res.status(200).json({
+            success: true,
+            message: 'Could not find a matching Google Place for this location',
+            place: place
+          });
+        }
+      } catch (searchError) {
+        console.error('❌ Error searching for Google Place:', searchError);
+        return res.status(200).json({
+          success: true,
+          message: 'Could not search for Google Place details',
+          place: place
+        });
+      }
+    } else if (!googlePlaceId) {
+      console.log('ℹ️ Cannot refresh: no Google Place ID and insufficient data to search');
+      return res.status(200).json({
+        success: true,
+        message: 'This place does not have enough information to fetch Google details',
+        place: place
       });
     }
     
     try {
-      // Fetch fresh data from Google Places API
-      console.log('Fetching Google Place details for:', place.googlePlaceId);
-      console.log('Using API key:', googleMapsApiKey ? 'Key exists' : 'No API key!');
+      console.log('🔍 Refreshing place from Google Places API:', googlePlaceId);
       
+      // Fetch updated place details from Google
       const response = await googleMapsClient.placeDetails({
         params: {
-          place_id: place.googlePlaceId,
-          fields: [
-            'name',
-            'formatted_address',
-            'formatted_phone_number',
-            'website',
-            'rating',
-            'user_ratings_total',
-            'price_level',
-            'types',
-            'opening_hours',
-            'photos',
-            'reviews',
-            'business_status'
-          ].join(','),
+          place_id: googlePlaceId,
+          fields: ['name', 'rating', 'user_ratings_total', 'photos', 'formatted_address', 'formatted_phone_number', 'website', 'opening_hours'],
           key: googleMapsApiKey
         }
       });
       
-      const googleData = response.data.result;
+      const googlePlace = response.data.result;
+      console.log('✅ Fetched place details from Google:', {
+        name: googlePlace.name,
+        rating: googlePlace.rating,
+        photosCount: googlePlace.photos?.length || 0
+      });
       
       // Prepare update data
       const updateData = {
-        updatedAt: new Date()
+        updatedAt: new Date().toISOString()
       };
       
-      // Update fields with fresh Google data
-      if (googleData.name) updateData.name = googleData.name;
-      if (googleData.formatted_address) updateData.address = googleData.formatted_address;
-      if (googleData.formatted_phone_number) updateData.phone = googleData.formatted_phone_number;
-      if (googleData.website) updateData.website = googleData.website;
-      if (googleData.rating) updateData.rating = googleData.rating;
-      if (googleData.user_ratings_total) updateData.userRatingsTotal = googleData.user_ratings_total;
-      
-      // Update price level
-      if (googleData.price_level !== undefined) {
-        updateData.priceLevel = googleData.price_level;
+      // Update rating if available
+      if (googlePlace.rating !== undefined) {
+        updateData.rating = googlePlace.rating;
       }
       
-      // Update opening hours
-      if (googleData.opening_hours && googleData.opening_hours.periods) {
-        updateData.openingHours = googleData.opening_hours.periods.map(period => ({
-          day: period.open.day,
-          open: `${String(period.open.hours).padStart(2, '0')}:${String(period.open.minutes).padStart(2, '0')}`,
-          close: period.close ? `${String(period.close.hours).padStart(2, '0')}:${String(period.close.minutes).padStart(2, '0')}` : '23:59',
-          isClosed: false
-        }));
+      if (googlePlace.user_ratings_total !== undefined) {
+        updateData.userRatingsTotal = googlePlace.user_ratings_total;
       }
       
-      // Update reviews from Google
-      if (googleData.reviews && googleData.reviews.length > 0) {
-        updateData.reviews = googleData.reviews.map(review => ({
-          user: review.author_name,
-          rating: review.rating,
-          comment: review.text,
-          date: new Date(review.time * 1000) // Convert Unix timestamp to Date
-        }));
+      // Update photos if available and place doesn't have custom uploaded photos
+      if (googlePlace.photos && googlePlace.photos.length > 0 && (!place.photos || place.photos.length === 0)) {
+        // Get photo URLs (limit to 3 photos to avoid excessive API calls)
+        const photoUrls = [];
+        const photosToFetch = Math.min(3, googlePlace.photos.length);
+        
+        for (let i = 0; i < photosToFetch; i++) {
+          const photo = googlePlace.photos[i];
+          const photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${photo.photo_reference}&key=${googleMapsApiKey}`;
+          photoUrls.push(photoUrl);
+        }
+        
+        if (photoUrls.length > 0) {
+          updateData.photos = photoUrls;
+          console.log(`📸 Added ${photoUrls.length} Google Places photos`);
+        }
       }
       
       // Update the place in Firestore
@@ -723,27 +781,22 @@ exports.refreshPlaceFromGoogle = async (req, res, next) => {
       const updatedDoc = await placeRef.get();
       const updatedPlace = serializeDoc(updatedDoc);
       
+      console.log('✅ Place refreshed successfully');
+      
       res.status(200).json({
         success: true,
+        message: 'Place updated with latest information',
         place: updatedPlace
       });
       
     } catch (googleError) {
-      console.error('Google Places API Error:', googleError);
-      console.error('Error response data:', googleError.response?.data);
-      console.error('Error status:', googleError.response?.status);
+      console.error('❌ Google Places API error:', googleError);
       
-      // Check for specific error types
-      if (googleError.response?.status === 403) {
-        return res.status(500).json({
-          success: false,
-          message: 'Google Places API access denied. Please check API key and ensure Places API is enabled.'
-        });
-      }
-      
-      return res.status(500).json({
+      // Return the existing place even if refresh fails
+      res.status(200).json({
         success: false,
-        message: `Failed to fetch data from Google Places: ${googleError.message}`
+        message: 'Could not refresh place data at this time',
+        place: place
       });
     }
     
@@ -1346,6 +1399,76 @@ exports.addExistingPlaceToCircle = async (req, res, next) => {
       message: 'Failed to add place to circle',
       error: error.message
     });
+  }
+};
+
+// @desc    Delete a comment from a place
+// @route   DELETE /api/places/:placeId/comments/:commentId
+// @access  Private (comment owner or place owner)
+exports.deletePlaceComment = async (req, res, next) => {
+  try {
+    const { placeId, commentId } = req.params;
+    const userId = req.user.uid;
+    
+    // Get the comment
+    const commentRef = db.collection('placeComments').doc(commentId);
+    const commentDoc = await commentRef.get();
+    
+    if (!commentDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Comment not found'
+      });
+    }
+    
+    const comment = serializeDoc(commentDoc);
+    
+    // Check if comment belongs to this place
+    if (comment.placeId !== placeId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Comment does not belong to this place'
+      });
+    }
+    
+    // Get the place to check ownership
+    const placeRef = db.collection(COLLECTIONS.PLACES).doc(placeId);
+    const placeDoc = await placeRef.get();
+    
+    if (!placeDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Place not found'
+      });
+    }
+    
+    const place = serializeDoc(placeDoc);
+    
+    // Check if user can delete the comment
+    // User can delete if they are:
+    // 1. The comment author
+    // 2. The place owner
+    const isCommentAuthor = comment.userId === userId;
+    const isPlaceOwner = place.addedBy === userId;
+    
+    if (!isCommentAuthor && !isPlaceOwner) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to delete this comment'
+      });
+    }
+    
+    // Delete the comment
+    await commentRef.delete();
+    
+    res.status(200).json({
+      success: true,
+      message: 'Comment deleted successfully'
+    });
+    
+  } catch (error) {
+    console.error('Error deleting place comment:', error);
+    next(error);
   }
 };
 
