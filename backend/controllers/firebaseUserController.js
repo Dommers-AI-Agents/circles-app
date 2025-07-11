@@ -1032,6 +1032,23 @@ exports.followUser = async (req, res, next) => {
       currentUser.displayName
     );
     
+    // Send SSE events to both users
+    const sseService = require('../services/sseService');
+    
+    // Notify current user about their new following
+    sseService.notifyUser(currentUserId, 'following_added', {
+      followingCount: currentUserFollowing.length,
+      following: currentUserFollowing,
+      targetUserId: targetUserId
+    });
+    
+    // Notify target user about their new follower
+    sseService.notifyUser(targetUserId, 'follower_added', {
+      followersCount: targetUserFollowers.length,
+      followers: targetUserFollowers,
+      followerId: currentUserId
+    });
+    
     res.status(200).json({
       success: true,
       message: 'Successfully followed user'
@@ -1108,6 +1125,23 @@ exports.unfollowUser = async (req, res, next) => {
       followers: targetUserFollowers,
       followersCount: targetUserFollowers.length,
       updatedAt: new Date().toISOString()
+    });
+    
+    // Send SSE events to both users
+    const sseService = require('../services/sseService');
+    
+    // Notify current user about removing following
+    sseService.notifyUser(currentUserId, 'following_removed', {
+      followingCount: currentUserFollowing.length,
+      following: currentUserFollowing,
+      targetUserId: targetUserId
+    });
+    
+    // Notify target user about losing follower
+    sseService.notifyUser(targetUserId, 'follower_removed', {
+      followersCount: targetUserFollowers.length,
+      followers: targetUserFollowers,
+      followerId: currentUserId
     });
     
     res.status(200).json({

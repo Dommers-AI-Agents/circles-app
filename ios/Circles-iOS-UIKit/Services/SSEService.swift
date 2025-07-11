@@ -8,6 +8,10 @@ enum SSEEventType: String {
     case connectionDeclined = "connection_declined"
     case newMessage = "new_message"
     case newSuggestion = "new_suggestion"
+    case followerAdded = "follower_added"
+    case followerRemoved = "follower_removed"
+    case followingAdded = "following_added"
+    case followingRemoved = "following_removed"
 }
 
 // MARK: - SSE Event

@@ -144,6 +144,65 @@ class SSEService {
       });
     unsubscribers.push(messageListener);
 
+    // Listen for follower changes
+    const userListener = db.collection(COLLECTIONS.USERS)
+      .doc(userId)
+      .onSnapshot((snapshot) => {
+        if (snapshot.exists) {
+          const data = snapshot.data();
+          const previousData = snapshot.metadata.hasPendingWrites ? null : snapshot.data();
+          
+          // Check for follower/following changes
+          if (previousData) {
+            const prevFollowersCount = previousData.followersCount || 0;
+            const currFollowersCount = data.followersCount || 0;
+            const prevFollowingCount = previousData.followingCount || 0;
+            const currFollowingCount = data.followingCount || 0;
+            
+            if (prevFollowersCount < currFollowersCount) {
+              this.sendEvent(userId, {
+                type: 'follower_added',
+                data: {
+                  followersCount: currFollowersCount,
+                  followers: data.followers || []
+                },
+                timestamp: new Date().toISOString()
+              });
+            } else if (prevFollowersCount > currFollowersCount) {
+              this.sendEvent(userId, {
+                type: 'follower_removed',
+                data: {
+                  followersCount: currFollowersCount,
+                  followers: data.followers || []
+                },
+                timestamp: new Date().toISOString()
+              });
+            }
+            
+            if (prevFollowingCount < currFollowingCount) {
+              this.sendEvent(userId, {
+                type: 'following_added',
+                data: {
+                  followingCount: currFollowingCount,
+                  following: data.following || []
+                },
+                timestamp: new Date().toISOString()
+              });
+            } else if (prevFollowingCount > currFollowingCount) {
+              this.sendEvent(userId, {
+                type: 'following_removed',
+                data: {
+                  followingCount: currFollowingCount,
+                  following: data.following || []
+                },
+                timestamp: new Date().toISOString()
+              });
+            }
+          }
+        }
+      });
+    unsubscribers.push(userListener);
+
     // Listen for new suggestions
     const suggestionListener = db.collection(COLLECTIONS.SUGGESTIONS)
       .where('toUserId', '==', userId)

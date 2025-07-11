@@ -124,8 +124,15 @@ class ProfileViewController: UIViewController {
         return label
     }()
     
-    // Stats container
-    private let statsContainer: UIView = {
+    // Stats containers
+    private let topStatsContainer: UIView = {
+        let view = UIView()
+        view.backgroundColor = .clear
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let bottomStatsContainer: UIView = {
         let view = UIView()
         view.backgroundColor = .clear
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -362,6 +369,9 @@ class ProfileViewController: UIViewController {
         loadUserProfile()
         displayAppVersion()
         setupNotificationObservers()
+        
+        // Register for SSE events
+        SSEService.shared.addDelegate(self)
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -375,6 +385,7 @@ class ProfileViewController: UIViewController {
     
     deinit {
         NotificationCenter.default.removeObserver(self)
+        SSEService.shared.removeDelegate(self)
     }
     
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
@@ -410,12 +421,13 @@ class ProfileViewController: UIViewController {
         contentView.addSubview(profileHeaderView)
         profileHeaderView.addSubview(usernameLabel)
         profileHeaderView.addSubview(profileImageView)
-        profileHeaderView.addSubview(statsContainer)
-        statsContainer.addSubview(circlesStatView)
-        statsContainer.addSubview(placesStatView)
-        statsContainer.addSubview(connectionsStatView)
-        statsContainer.addSubview(followersStatView)
-        statsContainer.addSubview(followingStatView)
+        profileHeaderView.addSubview(topStatsContainer)
+        profileHeaderView.addSubview(bottomStatsContainer)
+        topStatsContainer.addSubview(circlesStatView)
+        topStatsContainer.addSubview(placesStatView)
+        topStatsContainer.addSubview(connectionsStatView)
+        bottomStatsContainer.addSubview(followersStatView)
+        bottomStatsContainer.addSubview(followingStatView)
         profileHeaderView.addSubview(bioLabel)
         profileHeaderView.addSubview(buttonsContainer)
         buttonsContainer.addSubview(editProfileButton)
@@ -466,37 +478,44 @@ class ProfileViewController: UIViewController {
             profileImageView.widthAnchor.constraint(equalToConstant: 90),
             profileImageView.heightAnchor.constraint(equalToConstant: 90),
             
-            // Stats container (to the right of profile image)
-            statsContainer.centerYAnchor.constraint(equalTo: profileImageView.centerYAnchor),
-            statsContainer.leadingAnchor.constraint(equalTo: profileImageView.trailingAnchor, constant: Constants.Spacing.large),
-            statsContainer.trailingAnchor.constraint(equalTo: profileHeaderView.trailingAnchor, constant: -Constants.Spacing.medium),
-            statsContainer.heightAnchor.constraint(equalToConstant: 60),
+            // Top stats container (to the right of profile image)
+            topStatsContainer.topAnchor.constraint(equalTo: profileImageView.topAnchor),
+            topStatsContainer.leadingAnchor.constraint(equalTo: profileImageView.trailingAnchor, constant: Constants.Spacing.large),
+            topStatsContainer.trailingAnchor.constraint(equalTo: profileHeaderView.trailingAnchor, constant: -Constants.Spacing.medium),
+            topStatsContainer.heightAnchor.constraint(equalToConstant: 40),
             
-            // Stats views (evenly distributed across 5 stats)
-            circlesStatView.leadingAnchor.constraint(equalTo: statsContainer.leadingAnchor),
-            circlesStatView.topAnchor.constraint(equalTo: statsContainer.topAnchor),
-            circlesStatView.bottomAnchor.constraint(equalTo: statsContainer.bottomAnchor),
-            circlesStatView.widthAnchor.constraint(equalTo: statsContainer.widthAnchor, multiplier: 0.2),
+            // Bottom stats container (below top stats)
+            bottomStatsContainer.topAnchor.constraint(equalTo: topStatsContainer.bottomAnchor, constant: Constants.Spacing.small),
+            bottomStatsContainer.leadingAnchor.constraint(equalTo: profileImageView.trailingAnchor, constant: Constants.Spacing.large),
+            bottomStatsContainer.trailingAnchor.constraint(equalTo: profileHeaderView.trailingAnchor, constant: -Constants.Spacing.medium),
+            bottomStatsContainer.heightAnchor.constraint(equalToConstant: 40),
             
-            placesStatView.leadingAnchor.constraint(equalTo: circlesStatView.trailingAnchor),
-            placesStatView.topAnchor.constraint(equalTo: statsContainer.topAnchor),
-            placesStatView.bottomAnchor.constraint(equalTo: statsContainer.bottomAnchor),
-            placesStatView.widthAnchor.constraint(equalTo: statsContainer.widthAnchor, multiplier: 0.2),
+            // Top row stats (3 items)
+            circlesStatView.leadingAnchor.constraint(equalTo: topStatsContainer.leadingAnchor),
+            circlesStatView.topAnchor.constraint(equalTo: topStatsContainer.topAnchor),
+            circlesStatView.bottomAnchor.constraint(equalTo: topStatsContainer.bottomAnchor),
+            circlesStatView.widthAnchor.constraint(equalTo: topStatsContainer.widthAnchor, multiplier: 0.33),
             
-            connectionsStatView.leadingAnchor.constraint(equalTo: placesStatView.trailingAnchor),
-            connectionsStatView.topAnchor.constraint(equalTo: statsContainer.topAnchor),
-            connectionsStatView.bottomAnchor.constraint(equalTo: statsContainer.bottomAnchor),
-            connectionsStatView.widthAnchor.constraint(equalTo: statsContainer.widthAnchor, multiplier: 0.2),
+            placesStatView.centerXAnchor.constraint(equalTo: topStatsContainer.centerXAnchor),
+            placesStatView.topAnchor.constraint(equalTo: topStatsContainer.topAnchor),
+            placesStatView.bottomAnchor.constraint(equalTo: topStatsContainer.bottomAnchor),
+            placesStatView.widthAnchor.constraint(equalTo: topStatsContainer.widthAnchor, multiplier: 0.33),
             
-            followersStatView.leadingAnchor.constraint(equalTo: connectionsStatView.trailingAnchor),
-            followersStatView.topAnchor.constraint(equalTo: statsContainer.topAnchor),
-            followersStatView.bottomAnchor.constraint(equalTo: statsContainer.bottomAnchor),
-            followersStatView.widthAnchor.constraint(equalTo: statsContainer.widthAnchor, multiplier: 0.2),
+            connectionsStatView.trailingAnchor.constraint(equalTo: topStatsContainer.trailingAnchor),
+            connectionsStatView.topAnchor.constraint(equalTo: topStatsContainer.topAnchor),
+            connectionsStatView.bottomAnchor.constraint(equalTo: topStatsContainer.bottomAnchor),
+            connectionsStatView.widthAnchor.constraint(equalTo: topStatsContainer.widthAnchor, multiplier: 0.33),
             
-            followingStatView.leadingAnchor.constraint(equalTo: followersStatView.trailingAnchor),
-            followingStatView.topAnchor.constraint(equalTo: statsContainer.topAnchor),
-            followingStatView.bottomAnchor.constraint(equalTo: statsContainer.bottomAnchor),
-            followingStatView.widthAnchor.constraint(equalTo: statsContainer.widthAnchor, multiplier: 0.2),
+            // Bottom row stats (2 items centered)
+            followersStatView.leadingAnchor.constraint(equalTo: bottomStatsContainer.leadingAnchor, constant: 20),
+            followersStatView.topAnchor.constraint(equalTo: bottomStatsContainer.topAnchor),
+            followersStatView.bottomAnchor.constraint(equalTo: bottomStatsContainer.bottomAnchor),
+            followersStatView.widthAnchor.constraint(equalTo: bottomStatsContainer.widthAnchor, multiplier: 0.4),
+            
+            followingStatView.trailingAnchor.constraint(equalTo: bottomStatsContainer.trailingAnchor, constant: -20),
+            followingStatView.topAnchor.constraint(equalTo: bottomStatsContainer.topAnchor),
+            followingStatView.bottomAnchor.constraint(equalTo: bottomStatsContainer.bottomAnchor),
+            followingStatView.widthAnchor.constraint(equalTo: bottomStatsContainer.widthAnchor, multiplier: 0.4),
             
             // Bio label
             bioLabel.topAnchor.constraint(equalTo: profileImageView.bottomAnchor, constant: Constants.Spacing.medium),
@@ -707,17 +726,10 @@ class ProfileViewController: UIViewController {
     }
     
     private func showFollowersList(userId: String, listType: FollowListType) {
-        // TODO: Implement FollowersListViewController
-        let title = listType == .followers ? "Followers" : "Following"
-        let alert = UIAlertController(title: title, message: "This feature will be implemented soon.", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-        
-        // Future implementation:
-        // let followersVC = FollowersListViewController()
-        // followersVC.userId = userId
-        // followersVC.listType = listType
-        // navigationController?.pushViewController(followersVC, animated: true)
+        let followersVC = FollowersListViewController()
+        followersVC.userId = userId
+        followersVC.listType = listType
+        navigationController?.pushViewController(followersVC, animated: true)
     }
     
     @objc private func messageButtonTapped() {
@@ -755,6 +767,8 @@ class ProfileViewController: UIViewController {
                 case .success:
                     self?.isFollowing.toggle()
                     self?.updateButtonVisibility()
+                    // Refresh current user's data to get updated following count
+                    self?.refreshCurrentUserData()
                 case .failure(let error):
                     self?.showAlert(title: "Error", message: "Failed to \(self?.isFollowing == true ? "unfollow" : "follow") user: \(error.localizedDescription)")
                 }
@@ -783,6 +797,30 @@ class ProfileViewController: UIViewController {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
+    }
+    
+    private func refreshCurrentUserData() {
+        // Fetch updated user data for the current user
+        guard let currentUserId = AuthService.shared.getUserId() else { return }
+        
+        UserService.shared.fetchUserProfile { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let updatedUser):
+                    // Update the current user's following count
+                    let followingCount = updatedUser.followingCount ?? 0
+                    self?.followingStatView.configure(number: "\(followingCount)", title: "Following")
+                    
+                    // Update cached user data if viewing own profile
+                    if self?.user?.id == currentUserId {
+                        self?.user = updatedUser
+                    }
+                case .failure:
+                    // Ignore errors for refresh
+                    break
+                }
+            }
+        }
     }
     
     private func checkConnectionAndFollowStatus() {
@@ -1435,5 +1473,40 @@ extension ProfileViewController: UICollectionViewDropDelegate {
                 }
             }
         }
+    }
+}
+
+// MARK: - SSEServiceDelegate
+extension ProfileViewController: SSEServiceDelegate {
+    func sseService(_ service: SSEService, didReceiveEvent event: SSEEvent) {
+        guard let currentUserId = AuthService.shared.getUserId(),
+              let userId = user?.id,
+              userId == currentUserId else {
+            // Only update stats for current user's profile
+            return
+        }
+        
+        DispatchQueue.main.async { [weak self] in
+            switch event.type {
+            case .followerAdded, .followerRemoved:
+                if let followersCount = event.data["followersCount"] as? Int {
+                    self?.followersStatView.configure(number: "\(followersCount)", title: "Followers")
+                }
+            case .followingAdded, .followingRemoved:
+                if let followingCount = event.data["followingCount"] as? Int {
+                    self?.followingStatView.configure(number: "\(followingCount)", title: "Following")
+                }
+            default:
+                break
+            }
+        }
+    }
+    
+    func sseServiceDidConnect(_ service: SSEService) {
+        // Connection established
+    }
+    
+    func sseServiceDidDisconnect(_ service: SSEService, error: Error?) {
+        // Connection lost
     }
 }
