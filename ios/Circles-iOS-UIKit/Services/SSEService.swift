@@ -64,7 +64,7 @@ class SSEService: NSObject {
     
     func connect() {
         guard AuthService.shared.isLoggedIn,
-              let token = AuthService.shared.currentToken else {
+              let token = AuthService.shared.getToken() else {
             print("📡 SSE: Cannot connect - user not authenticated")
             return
         }
