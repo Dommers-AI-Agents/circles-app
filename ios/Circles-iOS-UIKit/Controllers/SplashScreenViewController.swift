@@ -186,26 +186,26 @@ class SplashScreenViewController: UIViewController {
     // MARK: - Animations
     private func startAnimations() {
         // Animate logo fade in and scale
-        UIView.animate(withDuration: 0.8, delay: 0.2, options: .curveEaseOut) {
+        UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseOut) {
             self.logoImageView.alpha = 1.0
             self.logoImageView.transform = CGAffineTransform.identity
         }
         
         // Animate app name
-        UIView.animate(withDuration: 0.8, delay: 0.4, options: .curveEaseOut) {
+        UIView.animate(withDuration: 0.3, delay: 0.1, options: .curveEaseOut) {
             self.appNameLabel.alpha = 1.0
         }
         
         // Animate loading dots and status
-        UIView.animate(withDuration: 0.6, delay: 0.6, options: .curveEaseOut) {
+        UIView.animate(withDuration: 0.3, delay: 0.2, options: .curveEaseOut) {
             self.loadingDotsContainer.alpha = 1.0
             self.statusLabel.alpha = 1.0
         } completion: { _ in
             self.startLoadingDotsAnimation()
         }
         
-        // Start progress ring animation
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+        // Start progress ring animation immediately
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             self.animateProgressRing()
         }
     }
@@ -231,7 +231,7 @@ class SplashScreenViewController: UIViewController {
         let animation = CABasicAnimation(keyPath: "strokeEnd")
         animation.fromValue = 0
         animation.toValue = 1
-        animation.duration = 20.0 // Total expected load time
+        animation.duration = 5.0 // Reduced from 20 seconds
         animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
         animation.fillMode = .forwards
         animation.isRemovedOnCompletion = false
@@ -273,8 +273,8 @@ class SplashScreenViewController: UIViewController {
     func completeLoading(completion: @escaping () -> Void) {
         print("🎬 SplashScreenViewController: completeLoading called")
         
-        // Ensure minimum display time of 2 seconds
-        let minimumDisplayTime: TimeInterval = 2.0
+        // Ensure minimum display time of 0.5 seconds
+        let minimumDisplayTime: TimeInterval = 0.5
         let currentTime = CACurrentMediaTime()
         let startTime = view.layer.presentation()?.animationKeys()?.first != nil ? currentTime - 1.0 : currentTime
         let remainingTime = max(0, minimumDisplayTime - (currentTime - startTime))
@@ -284,7 +284,7 @@ class SplashScreenViewController: UIViewController {
         DispatchQueue.main.asyncAfter(deadline: .now() + remainingTime) { [weak self] in
             print("🎬 Starting final animations")
             // Final animations
-            UIView.animate(withDuration: 0.5, animations: {
+            UIView.animate(withDuration: 0.2, animations: {
                 self?.logoImageView.transform = CGAffineTransform(scaleX: 1.1, y: 1.1)
                 self?.logoImageView.alpha = 0
                 self?.appNameLabel.alpha = 0

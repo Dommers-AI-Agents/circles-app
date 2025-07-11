@@ -41,8 +41,8 @@ class PreloadManager {
         
         print("🚀 PreloadManager: Starting data preload")
         
-        // Add timeout protection - 30 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+        // Add timeout protection - 10 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
             guard let self = self, self.isPreloading else { return }
             print("⏰ PreloadManager: Timeout reached, forcing completion")
             self.isPreloading = false
@@ -115,7 +115,7 @@ class PreloadManager {
         loadGroup.enter()
         MessagingManager.shared.updateUnreadCount()
         // Give it a moment to update, then read the value
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             unreadCount = MessagingManager.shared.unreadCount
             self?.incrementProgress(status: "Checking connection requests...")
             print("✅ PreloadManager: Unread message count: \(unreadCount)")
