@@ -176,8 +176,10 @@ class ActivityFeedCell: UITableViewCell {
         }
         
         // Show comment for comment activities
-        commentLabel.isHidden = activity.type != .placeCommented
+        commentLabel.isHidden = !(activity.type == .placeCommented || activity.type == .commentLiked)
         if activity.type == .placeCommented, let comment = activity.metadata?.comment {
+            commentLabel.text = "\"" + comment + "\""
+        } else if activity.type == .commentLiked, let comment = activity.metadata?.comment {
             commentLabel.text = "\"" + comment + "\""
         }
     }

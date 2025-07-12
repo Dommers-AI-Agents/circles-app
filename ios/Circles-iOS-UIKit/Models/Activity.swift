@@ -6,6 +6,7 @@ enum ActivityType: String, Codable {
     case placeLiked = "place_liked"
     case placeCommented = "place_commented"
     case circleCreated = "circle_created"
+    case commentLiked = "comment_liked"
 }
 
 // MARK: - Activity Model
@@ -58,6 +59,8 @@ extension Activity {
             return "commented on \(targetName)"
         case .circleCreated:
             return "created a new circle \(targetName)"
+        case .commentLiked:
+            return "liked a comment on \(targetName)"
         }
     }
     

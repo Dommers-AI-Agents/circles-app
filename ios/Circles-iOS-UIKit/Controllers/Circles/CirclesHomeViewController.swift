@@ -2742,7 +2742,7 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             
             // Navigate based on activity type
             switch activity.type {
-            case .placeAdded, .placeLiked, .placeCommented:
+            case .placeAdded, .placeLiked, .placeCommented, .commentLiked:
                 // Navigate to the place
                 navigateToPlace(withId: activity.targetId)
             case .circleCreated:
