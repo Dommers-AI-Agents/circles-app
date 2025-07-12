@@ -450,6 +450,7 @@ class APIService {
                     // Non-authenticated request (like login) - preserve error message
                     // Clean up any pending GET request tracking
                     if method == .get {
+                        let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
                         self.pendingGETRequests.remove(requestKey)
                         self.pendingRequestTimers[requestKey]?.invalidate()
                         self.pendingRequestTimers.removeValue(forKey: requestKey)
