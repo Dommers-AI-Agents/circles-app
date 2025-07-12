@@ -3,7 +3,7 @@ import MapKit
 import UniformTypeIdentifiers
 import CoreLocation
 
-class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocationManagerDelegate, UIGestureRecognizerDelegate {
+class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocationManagerDelegate, UIGestureRecognizerDelegate, CircleSelectionDelegate {
     
     // MARK: - Properties
     private var circle: Circle
@@ -1656,7 +1656,7 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
     
     // MARK: - Swipe Actions
     func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
-        // Only allow deletion if user can edit
+        // Only allow actions if user can edit
         guard circle.canEdit else { return nil }
         
         let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, completion in
@@ -1664,7 +1664,14 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
         }
         deleteAction.image = UIImage(systemName: "trash")
         
-        let configuration = UISwipeActionsConfiguration(actions: [deleteAction])
+        let moveAction = UIContextualAction(style: .normal, title: "Move") { [weak self] _, _, completion in
+            self?.movePlaceToCircle(at: indexPath)
+            completion(true)
+        }
+        moveAction.image = UIImage(systemName: "arrow.right.circle")
+        moveAction.backgroundColor = .systemBlue
+        
+        let configuration = UISwipeActionsConfiguration(actions: [deleteAction, moveAction])
         configuration.performsFirstActionWithFullSwipe = false
         
         return configuration
@@ -1728,6 +1735,88 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
                         )
                         errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
                         self?.present(errorAlert, animated: true)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func movePlaceToCircle(at indexPath: IndexPath) {
+        let place = filteredPlaces[indexPath.row]
+        
+        // Create and present circle selection view controller
+        let circleSelectionVC = CircleSelectionViewController(excludedCircleId: circle.id)
+        circleSelectionVC.delegate = self
+        circleSelectionVC.placeToMove = place
+        
+        let navController = UINavigationController(rootViewController: circleSelectionVC)
+        present(navController, animated: true)
+    }
+    
+    // MARK: - CircleSelectionDelegate
+    func circleSelectionViewController(_ controller: CircleSelectionViewController, didSelectCircle circle: Circle, forPlace place: Place) {
+        controller.dismiss(animated: true) {
+            self.performMovePlace(place, to: circle)
+        }
+    }
+    
+    func circleSelectionViewController(_ controller: CircleSelectionViewController, didCreateNewCircle circle: Circle, forPlace place: Place) {
+        controller.dismiss(animated: true) {
+            self.performMovePlace(place, to: circle)
+        }
+    }
+    
+    private func performMovePlace(_ place: Place, to targetCircle: Circle) {
+        // Show loading indicator
+        let loadingAlert = UIAlertController(title: "Moving Place", message: "Moving \(place.name) to \(targetCircle.name)...", preferredStyle: .alert)
+        present(loadingAlert, animated: true)
+        
+        // Perform the move
+        PlaceService.shared.movePlaceToCircle(placeId: place.id, targetCircleId: targetCircle.id) { [weak self] result in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    switch result {
+                    case .success:
+                        // Remove from local arrays
+                        if let originalIndex = self.places.firstIndex(where: { $0.id == place.id }) {
+                            self.places.remove(at: originalIndex)
+                        }
+                        if let filteredIndex = self.filteredPlaces.firstIndex(where: { $0.id == place.id }) {
+                            self.filteredPlaces.remove(at: filteredIndex)
+                            
+                            // Update table view
+                            if filteredIndex < self.tableView.numberOfRows(inSection: 0) {
+                                self.tableView.deleteRows(at: [IndexPath(row: filteredIndex, section: 0)], with: .fade)
+                            } else {
+                                self.tableView.reloadData()
+                            }
+                        }
+                        
+                        // Update map
+                        self.addAnnotationsToMap()
+                        
+                        // Update table view height after removal
+                        self.updateTableViewHeight()
+                        
+                        // Show success message
+                        let successAlert = UIAlertController(
+                            title: "Success",
+                            message: "\(place.name) has been moved to \(targetCircle.name)",
+                            preferredStyle: .alert
+                        )
+                        successAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                        self.present(successAlert, animated: true)
+                        
+                    case .failure(let error):
+                        let errorAlert = UIAlertController(
+                            title: "Error",
+                            message: "Failed to move place: \(error.localizedDescription)",
+                            preferredStyle: .alert
+                        )
+                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                        self.present(errorAlert, animated: true)
                     }
                 }
             }
