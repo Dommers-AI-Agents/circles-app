@@ -1809,11 +1809,6 @@ class CirclesHomeViewController: UIViewController {
         present(navController, animated: true)
     }
     
-    @objc private func notificationButtonTapped() {
-        // Navigate to notifications/messages view
-        let conversationsVC = ConversationsListViewController()
-        navigationController?.pushViewController(conversationsVC, animated: true)
-    }
     
     @objc private func createCircleButtonTapped() {
         let createCircleVC = CreateCircleViewController()
