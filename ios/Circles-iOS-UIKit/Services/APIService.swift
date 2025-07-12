@@ -416,8 +416,9 @@ class APIService {
                 break
                 
             case 401:
-                // Unauthorized - try to refresh token if available
+                // Handle unauthorized based on request type
                 if requiresAuth && self.refreshToken != nil && retryCount < 1 {
+                    // Authenticated request with refresh token - try to refresh
                     self.refreshAuthToken { result in
                         switch result {
                         case .success(let newToken):
@@ -440,12 +441,20 @@ class APIService {
                         }
                     }
                     return
-                } else {
-                    // Clear tokens if we can't refresh
-                    if requiresAuth {
-                        self.clearTokens()
-                    }
+                } else if requiresAuth {
+                    // Authenticated request without refresh capability
+                    self.clearTokens()
                     completion(.failure(.unauthorized))
+                    return
+                } else {
+                    // Non-authenticated request (like login) - preserve error message
+                    // Clean up any pending GET request tracking
+                    if method == .get {
+                        self.pendingGETRequests.remove(requestKey)
+                        self.pendingRequestTimers[requestKey]?.invalidate()
+                        self.pendingRequestTimers.removeValue(forKey: requestKey)
+                    }
+                    completion(.failure(.httpError(401, data)))
                     return
                 }
                 
