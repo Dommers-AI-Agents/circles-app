@@ -3,7 +3,7 @@ import MapKit
 import UniformTypeIdentifiers
 import CoreLocation
 
-class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocationManagerDelegate, UIGestureRecognizerDelegate, CircleSelectionDelegate {
+class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocationManagerDelegate, UIGestureRecognizerDelegate, CircleSelectionWithPlaceDelegate {
     
     // MARK: - Properties
     private var circle: Circle
@@ -1753,11 +1753,21 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
         present(navController, animated: true)
     }
     
-    // MARK: - CircleSelectionDelegate
+    // MARK: - CircleSelectionWithPlaceDelegate
     func circleSelectionViewController(_ controller: CircleSelectionViewController, didSelectCircle circle: Circle, forPlace place: Place) {
         controller.dismiss(animated: true) {
             self.performMovePlace(place, to: circle)
         }
+    }
+    
+    // MARK: - CircleSelectionDelegate (base protocol)
+    func circleSelectionViewController(_ controller: CircleSelectionViewController, didSelectCircle circle: Circle) {
+        // This shouldn't be called when using placeToMove, but implement for protocol compliance
+        controller.dismiss(animated: true)
+    }
+    
+    func circleSelectionViewControllerDidCancel(_ controller: CircleSelectionViewController) {
+        controller.dismiss(animated: true)
     }
     
     func circleSelectionViewController(_ controller: CircleSelectionViewController, didCreateNewCircle circle: Circle, forPlace place: Place) {

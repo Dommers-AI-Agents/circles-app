@@ -5,10 +5,16 @@ protocol CircleSelectionDelegate: AnyObject {
     func circleSelectionViewControllerDidCancel(_ controller: CircleSelectionViewController)
 }
 
+// Extended protocol for place moving functionality
+protocol CircleSelectionWithPlaceDelegate: CircleSelectionDelegate {
+    func circleSelectionViewController(_ controller: CircleSelectionViewController, didSelectCircle circle: Circle, forPlace place: Place)
+}
+
 class CircleSelectionViewController: UIViewController {
     // MARK: - Properties
     
     weak var delegate: CircleSelectionDelegate?
+    var placeToMove: Place?
     
     private var circles: [Circle] = []
     private var excludedCircleId: String?
@@ -187,7 +193,12 @@ class CircleSelectionViewController: UIViewController {
                     
                     switch result {
                     case .success(let circle):
-                        self.delegate?.circleSelectionViewController(self, didSelectCircle: circle)
+                        if let placeDelegate = self.delegate as? CircleSelectionWithPlaceDelegate,
+                           let place = self.placeToMove {
+                            placeDelegate.circleSelectionViewController(self, didSelectCircle: circle, forPlace: place)
+                        } else {
+                            self.delegate?.circleSelectionViewController(self, didSelectCircle: circle)
+                        }
                         self.dismiss(animated: true)
                         
                     case .failure(let error):
@@ -247,7 +258,12 @@ extension CircleSelectionViewController: UITableViewDelegate {
         
         if indexPath.section == 0 {
             let selectedCircle = circles[indexPath.row]
-            delegate?.circleSelectionViewController(self, didSelectCircle: selectedCircle)
+            if let placeDelegate = delegate as? CircleSelectionWithPlaceDelegate,
+               let place = placeToMove {
+                placeDelegate.circleSelectionViewController(self, didSelectCircle: selectedCircle, forPlace: place)
+            } else {
+                delegate?.circleSelectionViewController(self, didSelectCircle: selectedCircle)
+            }
             dismiss(animated: true)
         } else {
             createNewCircle()
