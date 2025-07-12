@@ -1700,7 +1700,17 @@ class CirclesHomeViewController: UIViewController {
                 // Apply category filter
                 if let category = self.selectedCategory {
                     let beforeCategoryFilter = filteredPlaces.count
-                    filteredPlaces = filteredPlaces.filter { $0.category == category }
+                    filteredPlaces = filteredPlaces.filter { place in
+                        // For standard categories, check direct match
+                        if place.category == category {
+                            return true
+                        }
+                        // For custom categories, if user selected "Other" category, include all custom categories
+                        if category == .other && place.category == .other {
+                            return true
+                        }
+                        return false
+                    }
                     print("   Category filter '\(category.rawValue)' applied: \(beforeCategoryFilter) → \(filteredPlaces.count) places")
                 }
                 
@@ -1813,7 +1823,11 @@ class CirclesHomeViewController: UIViewController {
     @objc private func createCircleButtonTapped() {
         let createCircleVC = CreateCircleViewController()
         createCircleVC.delegate = self
-        navigationController?.pushViewController(createCircleVC, animated: true)
+        
+        // Present modally wrapped in navigation controller for cancel button
+        let navController = UINavigationController(rootViewController: createCircleVC)
+        navController.modalPresentationStyle = .pageSheet
+        present(navController, animated: true)
     }
     
     @objc private func expandMapButtonTapped() {
@@ -2754,27 +2768,20 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
 }
 
 // MARK: - CreateCircleDelegate
-protocol CreateCircleDelegate: AnyObject {
-    func didCreateCircle(_ circle: Circle)
-}
-
 extension CirclesHomeViewController: CreateCircleDelegate {
     func didCreateCircle(_ circle: Circle) {
+        print("✅ Circle created successfully: \(circle.name)")
+        
+        // Add the new circle to our local array at the beginning
         circles.insert(circle, at: 0)
         updateEmptyState()
         updateMapPlaces()
         
-        // Navigate to AddPlaceViewController with the new circle
-        let addPlaceVC = AddPlaceViewController(circleId: circle.id)
-        
-        // Get current navigation stack
-        if var viewControllers = navigationController?.viewControllers {
-            // Remove CreateCircleViewController from the stack
-            viewControllers = viewControllers.filter { !($0 is CreateCircleViewController) }
-            // Add AddPlaceViewController
-            viewControllers.append(addPlaceVC)
-            // Set the new navigation stack
-            navigationController?.setViewControllers(viewControllers, animated: true)
+        // Dismiss the modal CreateCircleViewController first
+        dismiss(animated: true) { [weak self] in
+            // After dismissal, navigate to AddPlaceViewController with the new circle
+            let addPlaceVC = AddPlaceViewController(circleId: circle.id)
+            self?.navigationController?.pushViewController(addPlaceVC, animated: true)
         }
     }
 }
@@ -3021,3 +3028,4 @@ extension CirclesHomeViewController: UIGestureRecognizerDelegate {
         return true
     }
 }
+
