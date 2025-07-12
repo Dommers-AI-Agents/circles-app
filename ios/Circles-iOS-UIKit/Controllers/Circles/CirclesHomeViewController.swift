@@ -1309,7 +1309,9 @@ class CirclesHomeViewController: UIViewController {
         // Only show loading state on the very first app launch
         isLoadingCircles = true
         
+        print("🔍 DEBUG fetchCircles() called - About to call CircleService.fetchUserCircles")
         CircleService.shared.fetchUserCircles { [weak self] result in
+            print("🔍 DEBUG fetchCircles() completion called")
             DispatchQueue.main.async {
                 self?.isLoadingCircles = false
                 
@@ -1800,7 +1802,17 @@ class CirclesHomeViewController: UIViewController {
     @objc private func addButtonTapped() {
         let createCircleVC = CreateCircleViewController()
         createCircleVC.delegate = self
-        navigationController?.pushViewController(createCircleVC, animated: true)
+        
+        // Present modally wrapped in navigation controller for cancel button
+        let navController = UINavigationController(rootViewController: createCircleVC)
+        navController.modalPresentationStyle = .pageSheet
+        present(navController, animated: true)
+    }
+    
+    @objc private func notificationButtonTapped() {
+        // Navigate to notifications/messages view
+        let conversationsVC = ConversationsListViewController()
+        navigationController?.pushViewController(conversationsVC, animated: true)
     }
     
     @objc private func createCircleButtonTapped() {
@@ -1833,8 +1845,12 @@ class CirclesHomeViewController: UIViewController {
         // Debug: Log current circle state
         print("🔍 DEBUG quickAddPlaceButtonTapped - circles.count: \(circles.count)")
         print("🔍 DEBUG quickAddPlaceButtonTapped - circles.isEmpty: \(circles.isEmpty)")
+        print("🔍 DEBUG quickAddPlaceButtonTapped - isLoadingCircles: \(isLoadingCircles)")
+        print("🔍 DEBUG quickAddPlaceButtonTapped - hasLoadedInitialData: \(CirclesHomeViewController.hasLoadedInitialData)")
         if !circles.isEmpty {
             print("🔍 DEBUG quickAddPlaceButtonTapped - circles: \(circles.map { $0.name })")
+        } else {
+            print("🔍 DEBUG quickAddPlaceButtonTapped - No circles found! This is why picker isn't showing")
         }
         
         // If user has circles, show circle picker. Otherwise, prompt to create a circle
