@@ -332,6 +332,24 @@ class CommentCell: UITableViewCell {
         return button
     }()
     
+    // Like button
+    private let likeButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "heart"), for: .normal)
+        button.tintColor = Constants.Colors.secondaryLabel
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    // Like count label
+    private let likeCountLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 12)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
     weak var delegate: CommentCellDelegate?
     private var comment: PlaceComment?
     
@@ -399,8 +417,11 @@ class CommentCell: UITableViewCell {
         containerView.addSubview(timeLabel)
         containerView.addSubview(commentLabel)
         containerView.addSubview(moreButton)
+        containerView.addSubview(likeButton)
+        containerView.addSubview(likeCountLabel)
         
         moreButton.addTarget(self, action: #selector(moreButtonTapped), for: .touchUpInside)
+        likeButton.addTarget(self, action: #selector(likeButtonTapped), for: .touchUpInside)
         
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
@@ -428,7 +449,16 @@ class CommentCell: UITableViewCell {
             commentLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
             commentLabel.leadingAnchor.constraint(equalTo: avatarImageView.trailingAnchor, constant: 12),
             commentLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
-            commentLabel.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -12)
+            
+            // Like button and count at bottom right
+            likeButton.topAnchor.constraint(equalTo: commentLabel.bottomAnchor, constant: 8),
+            likeButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
+            likeButton.widthAnchor.constraint(equalToConstant: 20),
+            likeButton.heightAnchor.constraint(equalToConstant: 20),
+            likeButton.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -12),
+            
+            likeCountLabel.centerYAnchor.constraint(equalTo: likeButton.centerYAnchor),
+            likeCountLabel.trailingAnchor.constraint(equalTo: likeButton.leadingAnchor, constant: -4)
         ])
     }
     
@@ -455,17 +485,32 @@ class CommentCell: UITableViewCell {
         
         // Show more button if user can delete
         moreButton.isHidden = !canDelete
+        
+        // Configure like button
+        let isLiked = comment.isLikedByCurrentUser
+        likeButton.setImage(UIImage(systemName: isLiked ? "heart.fill" : "heart"), for: .normal)
+        likeButton.tintColor = isLiked ? .systemRed : Constants.Colors.secondaryLabel
+        
+        // Configure like count
+        let likesCount = comment.displayLikesCount
+        likeCountLabel.text = likesCount > 0 ? "\(likesCount)" : ""
     }
     
     @objc private func moreButtonTapped() {
         guard let comment = comment else { return }
         delegate?.commentCell(self, didTapMoreButton: comment)
     }
+    
+    @objc private func likeButtonTapped() {
+        guard let comment = comment else { return }
+        delegate?.commentCell(self, didTapLikeButton: comment)
+    }
 }
 
 // MARK: - CommentCellDelegate
 protocol CommentCellDelegate: AnyObject {
     func commentCell(_ cell: CommentCell, didTapMoreButton comment: PlaceComment)
+    func commentCell(_ cell: CommentCell, didTapLikeButton comment: PlaceComment)
 }
 
 // MARK: - CommentCellDelegate
@@ -490,5 +535,38 @@ extension PlaceCommentsViewController: CommentCellDelegate {
         }
         
         present(actionSheet, animated: true)
+    }
+    
+    func commentCell(_ cell: CommentCell, didTapLikeButton comment: PlaceComment) {
+        // Haptic feedback
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.prepare()
+        generator.impactOccurred()
+        
+        // Call API to toggle like
+        PlaceService.shared.likeComment(placeId: place.id, commentId: comment.id) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let (liked, likesCount)):
+                    // Find the comment in our array and update it
+                    if let index = self?.comments.firstIndex(where: { $0.id == comment.id }) {
+                        // Update the comment in our array (we need to create a new comment with updated values)
+                        // Since PlaceComment is a struct, we can't modify it directly
+                        // So we'll just refresh the table view cell
+                        self?.tableView.reloadRows(at: [IndexPath(row: index, section: 0)], with: .none)
+                    }
+                    
+                case .failure(let error):
+                    print("Failed to like comment: \(error)")
+                    self?.showAlert(title: "Error", message: "Failed to update like. Please try again.")
+                }
+            }
+        }
+    }
+    
+    private func showAlert(title: String, message: String) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
     }
 }

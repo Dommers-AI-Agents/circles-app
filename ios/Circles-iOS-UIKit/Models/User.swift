@@ -35,13 +35,16 @@ struct User: Codable, Identifiable {
     // Pinned places (max 6)
     let pinnedPlaces: [String]?
     
+    // Whether the current user is following this user (for other user profiles)
+    let isFollowing: Bool?
+    
     enum CodingKeys: String, CodingKey {
         case id = "_id"
-        case email, displayName, firstName, lastName, phoneNumber, profilePicture, bio, location, friends, friendRequests, circleOrder, preferences, createdAt, connectionStatus, connectionDirection, connectionId, followers, following, followersCount, followingCount, connectionsCount, pinnedPlaces
+        case email, displayName, firstName, lastName, phoneNumber, profilePicture, bio, location, friends, friendRequests, circleOrder, preferences, createdAt, connectionStatus, connectionDirection, connectionId, followers, following, followersCount, followingCount, connectionsCount, pinnedPlaces, isFollowing
     }
     
     // Convenience initializer for creating User objects directly
-    init(id: String, email: String, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil, connectionDirection: String? = nil, connectionId: String? = nil, followers: [String]? = nil, following: [String]? = nil, followersCount: Int? = nil, followingCount: Int? = nil, connectionsCount: Int? = nil, pinnedPlaces: [String]? = nil) {
+    init(id: String, email: String, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil, connectionDirection: String? = nil, connectionId: String? = nil, followers: [String]? = nil, following: [String]? = nil, followersCount: Int? = nil, followingCount: Int? = nil, connectionsCount: Int? = nil, pinnedPlaces: [String]? = nil, isFollowing: Bool? = nil) {
         self.id = id
         self.email = email
         self.displayName = displayName
@@ -65,6 +68,7 @@ struct User: Codable, Identifiable {
         self.followingCount = followingCount
         self.connectionsCount = connectionsCount
         self.pinnedPlaces = pinnedPlaces
+        self.isFollowing = isFollowing
     }
     
     // Custom decoder for JSON decoding
@@ -126,6 +130,9 @@ struct User: Codable, Identifiable {
         
         // Pinned places
         pinnedPlaces = try container.decodeIfPresent([String].self, forKey: .pinnedPlaces)
+        
+        // Follow status (for other user profiles)
+        isFollowing = try container.decodeIfPresent(Bool.self, forKey: .isFollowing)
         
         // Custom date decoding with multiple format support
         if let dateString = try container.decodeIfPresent(String.self, forKey: .createdAt) {

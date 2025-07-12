@@ -88,7 +88,7 @@ class ChatViewController: UIViewController {
     private var keyboardHeight: CGFloat = 0
     private var messageInputBottomConstraint: NSLayoutConstraint!
     private let cellIdentifier = "MessageCell"
-    private let connectionRequestCellIdentifier = "ConnectionRequestMessageCell"
+    // Removed connectionRequestCellIdentifier - no longer needed
     private var temporaryText: String = "" // Store text to prevent loss
     
     // MARK: - Lifecycle
@@ -158,7 +158,7 @@ class ChatViewController: UIViewController {
         tableView.delegate = self
         tableView.dataSource = self
         tableView.register(MessageCell.self, forCellReuseIdentifier: cellIdentifier)
-        tableView.register(ConnectionRequestMessageCell.self, forCellReuseIdentifier: connectionRequestCellIdentifier)
+        // Removed ConnectionRequestMessageCell registration - no longer needed
         tableView.contentInset = UIEdgeInsets(top: 8, left: 0, bottom: 8, right: 0)
         
         NSLayoutConstraint.activate([
@@ -224,13 +224,16 @@ class ChatViewController: UIViewController {
         messageUpdateTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             if let messages = self.messagingManager.activeMessages[conversationId] {
+                // Filter out connection request messages (handled in My Network tab)
+                let filteredMessages = messages.filter { $0.type != .connectionRequest }
+                
                 // Hide loading on first load
-                if self.messages.isEmpty && !messages.isEmpty {
+                if self.messages.isEmpty && !filteredMessages.isEmpty {
                     self.hideLoading()
                 }
                 
-                if messages.count != self.messages.count {
-                    self.messages = messages
+                if filteredMessages.count != self.messages.count {
+                    self.messages = filteredMessages
                     self.tableView.reloadData()
                     self.scrollToBottom(animated: true)
                 }
@@ -245,12 +248,15 @@ class ChatViewController: UIViewController {
         
         // Refresh messages from MessagingManager
         if let messages = messagingManager.activeMessages[notificationConversationId] {
+            // Filter out connection request messages (handled in My Network tab)
+            let filteredMessages = messages.filter { $0.type != .connectionRequest }
+            
             // Hide loading on first load
-            if self.messages.isEmpty && !messages.isEmpty {
+            if self.messages.isEmpty && !filteredMessages.isEmpty {
                 self.hideLoading()
             }
             
-            self.messages = messages
+            self.messages = filteredMessages
             tableView.reloadData()
             scrollToBottom(animated: true)
         }
@@ -422,18 +428,11 @@ extension ChatViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let message = messages[messages.count - 1 - indexPath.row] // Reverse order due to inverted table
         
-        if message.type == .connectionRequest {
-            let cell = tableView.dequeueReusableCell(withIdentifier: connectionRequestCellIdentifier, for: indexPath) as! ConnectionRequestMessageCell
-            cell.configure(with: message)
-            cell.delegate = self
-            cell.transform = CGAffineTransform(scaleX: 1, y: -1) // Invert cell
-            return cell
-        } else {
-            let cell = tableView.dequeueReusableCell(withIdentifier: cellIdentifier, for: indexPath) as! MessageCell
-            cell.configure(with: message)
-            cell.transform = CGAffineTransform(scaleX: 1, y: -1) // Invert cell
-            return cell
-        }
+        // All connection request messages are now filtered out, so only handle regular messages
+        let cell = tableView.dequeueReusableCell(withIdentifier: cellIdentifier, for: indexPath) as! MessageCell
+        cell.configure(with: message)
+        cell.transform = CGAffineTransform(scaleX: 1, y: -1) // Invert cell
+        return cell
     }
 }
 

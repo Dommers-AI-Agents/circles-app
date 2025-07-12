@@ -12,8 +12,10 @@ const {
   getPlaceComments,
   addPlaceComment,
   deletePlaceComment,
+  likeComment,
   addExistingPlaceToCircle,
-  trackPlaceView
+  trackPlaceView,
+  movePlace
 } = require('../controllers/firebasePlaceController');
 const { protect } = require('../middleware/firebaseAuth');
 
@@ -43,11 +45,17 @@ router.route('/:id/comments')
 router.route('/:placeId/comments/:commentId')
   .delete(deletePlaceComment);
 
+router.route('/:placeId/comments/:commentId/like')
+  .post(likeComment);
+
 router.route('/:id/add-to-circle/:circleId')
   .post(addExistingPlaceToCircle);
 
 router.route('/:id/track-view')
   .post(trackPlaceView);
+
+router.route('/:id/move')
+  .post(movePlace);
 
 router.route('/:id')
   .get(getPlace)

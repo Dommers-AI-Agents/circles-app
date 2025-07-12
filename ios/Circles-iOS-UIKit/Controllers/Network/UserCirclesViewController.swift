@@ -7,6 +7,7 @@ class UserCirclesViewController: UIViewController {
     private let userName: String
     private let connectionId: String?
     private var userCircles: [Circle] = []
+    private var currentUser: User?
     private let refreshControl = UIRefreshControl()
     private var hasRecentActivity = false
     
@@ -114,6 +115,11 @@ class UserCirclesViewController: UIViewController {
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
+        
+        // Add tap gesture for profile image to view full-screen
+        profileImageView.isUserInteractionEnabled = true
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(profileImageTapped))
+        profileImageView.addGestureRecognizer(tapGesture)
     }
     
     private func setupTableView() {
@@ -170,7 +176,19 @@ class UserCirclesViewController: UIViewController {
         loadUserCircles()
     }
     
+    @objc private func profileImageTapped() {
+        // Show full-screen profile image
+        if let user = currentUser, let profileImageURL = user.profilePicture {
+            ImageViewerService.shared.presentImageFromURL(profileImageURL, from: self)
+        } else if let currentImage = profileImageView.image {
+            ImageViewerService.shared.presentImage(currentImage, from: self)
+        }
+    }
+    
     private func updateUI(with user: User) {
+        // Store user for profile image viewing
+        currentUser = user
+        
         // Update circle count
         let count = userCircles.count
         circleCountLabel.text = "\(count) Circle\(count == 1 ? "" : "s") Shared"

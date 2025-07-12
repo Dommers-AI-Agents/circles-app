@@ -1,5 +1,6 @@
 // backend/controllers/firebaseUserController.js
-const { getFirestore } = require('../config/firebase');
+const { getFirestore, admin } = require('../config/firebase');
+const { FieldValue } = require('firebase-admin/firestore');
 const { 
   COLLECTIONS, 
   createFriendRequest,
@@ -75,7 +76,9 @@ exports.getUser = async (req, res, next) => {
       profilePicture: user.profilePicture,
       bio: user.bio,
       location: user.location,
-      createdAt: user.createdAt
+      createdAt: user.createdAt,
+      followersCount: user.followersCount || 0,
+      followingCount: user.followingCount || 0
     };
 
     // Include private data only for own profile
@@ -83,6 +86,18 @@ exports.getUser = async (req, res, next) => {
       profileData.email = user.email;
       profileData.friends = user.friends;
       profileData.friendRequests = user.friendRequests;
+      profileData.followers = user.followers;
+      profileData.following = user.following;
+    } else {
+      // For other users, check if current user is following them
+      const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(req.user.uid).get();
+      if (currentUserDoc.exists) {
+        const currentUserData = currentUserDoc.data();
+        const following = currentUserData.following || [];
+        profileData.isFollowing = following.includes(userId);
+      } else {
+        profileData.isFollowing = false;
+      }
     }
 
     res.status(200).json({
@@ -960,8 +975,16 @@ exports.getUserPublicCircles = async (req, res, next) => {
 // @access  Private
 exports.followUser = async (req, res, next) => {
   try {
-    const targetUserId = req.params.id;
-    const currentUserId = req.user.uid;
+    const targetUserId = normalizeUserId(req.params.id);
+    const currentUserId = normalizeUserId(req.user.uid);
+    
+    console.log('🔵 followUser called:', {
+      targetUserIdOriginal: req.params.id,
+      targetUserIdNormalized: targetUserId,
+      currentUserIdOriginal: req.user.uid,
+      currentUserIdNormalized: currentUserId,
+      timestamp: new Date().toISOString()
+    });
     
     // Can't follow yourself
     if (targetUserId === currentUserId) {
@@ -982,9 +1005,9 @@ exports.followUser = async (req, res, next) => {
       });
     }
     
-    // Get current user
+    // Get current user - fetch fresh to ensure we have latest data
     const currentUserRef = db.collection(COLLECTIONS.USERS).doc(currentUserId);
-    const currentUserDoc = await currentUserRef.get();
+    let currentUserDoc = await currentUserRef.get();
     
     if (!currentUserDoc.exists) {
       return res.status(404).json({
@@ -993,35 +1016,88 @@ exports.followUser = async (req, res, next) => {
       });
     }
     
+    // Double-check by fetching again to ensure we have the absolute latest data
+    // This helps avoid race conditions from rapid follow/unfollow actions
+    await new Promise(resolve => setTimeout(resolve, 100)); // Small delay
+    currentUserDoc = await currentUserRef.get();
+    
     const currentUser = serializeDoc(currentUserDoc);
     const targetUser = serializeDoc(targetUserDoc);
     
+    console.log('🔍 Current user following array BEFORE:', {
+      userId: currentUserId,
+      following: currentUser.following || [],
+      followingCount: currentUser.followingCount || 0,
+      followingLength: (currentUser.following || []).length,
+      targetInArray: currentUser.following?.includes(targetUserId) || false,
+      rawFollowingData: JSON.stringify(currentUser.following || [])
+    });
+    
+    console.log('🔍 Target user followers array BEFORE:', {
+      userId: targetUserId,
+      followers: targetUser.followers || [],
+      followersCount: targetUser.followersCount || 0,
+      followersLength: (targetUser.followers || []).length,
+      currentUserInArray: targetUser.followers?.includes(currentUserId) || false,
+      rawFollowersData: JSON.stringify(targetUser.followers || [])
+    });
+    
     // Check if already following
     if (currentUser.following && currentUser.following.includes(targetUserId)) {
+      console.log('⚠️ User already following target:', {
+        currentUserId,
+        targetUserId,
+        followingArray: currentUser.following
+      });
       return res.status(400).json({
         success: false,
         message: 'You are already following this user'
       });
     }
     
-    // Update current user's following list
-    const currentUserFollowing = currentUser.following || [];
-    currentUserFollowing.push(targetUserId);
+    // Update both users atomically
+    const batch = db.batch();
     
-    await currentUserRef.update({
-      following: currentUserFollowing,
-      followingCount: currentUserFollowing.length,
+    // Update current user's following list atomically
+    batch.update(currentUserRef, {
+      following: FieldValue.arrayUnion(targetUserId),
+      followingCount: FieldValue.increment(1),
       updatedAt: new Date().toISOString()
     });
     
-    // Update target user's followers list
-    const targetUserFollowers = targetUser.followers || [];
-    targetUserFollowers.push(currentUserId);
-    
-    await targetUserRef.update({
-      followers: targetUserFollowers,
-      followersCount: targetUserFollowers.length,
+    // Update target user's followers list atomically
+    batch.update(targetUserRef, {
+      followers: FieldValue.arrayUnion(currentUserId),
+      followersCount: FieldValue.increment(1),
       updatedAt: new Date().toISOString()
+    });
+    
+    await batch.commit();
+    console.log('✅ Follow batch committed successfully');
+    
+    // Get updated counts for SSE events
+    const updatedCurrentUser = await currentUserRef.get();
+    const updatedTargetUser = await targetUserRef.get();
+    const currentUserData = serializeDoc(updatedCurrentUser);
+    const targetUserData = serializeDoc(updatedTargetUser);
+    
+    console.log('📊 After follow - Updated data:', {
+      currentUser: {
+        id: currentUserId,
+        following: currentUserData.following || [],
+        followingCount: currentUserData.followingCount || 0,
+        followingLength: (currentUserData.following || []).length,
+        targetNowInArray: currentUserData.following?.includes(targetUserId) || false,
+        rawFollowingData: JSON.stringify(currentUserData.following || [])
+      },
+      targetUser: {
+        id: targetUserId,
+        followers: targetUserData.followers || [],
+        followersCount: targetUserData.followersCount || 0,
+        followersLength: (targetUserData.followers || []).length,
+        currentUserNowInArray: targetUserData.followers?.includes(currentUserId) || false,
+        rawFollowersData: JSON.stringify(targetUserData.followers || [])
+      }
     });
     
     // Send notification to target user
@@ -1037,15 +1113,15 @@ exports.followUser = async (req, res, next) => {
     
     // Notify current user about their new following
     sseService.notifyUser(currentUserId, 'following_added', {
-      followingCount: currentUserFollowing.length,
-      following: currentUserFollowing,
+      followingCount: currentUserData.followingCount || 0,
+      following: currentUserData.following || [],
       targetUserId: targetUserId
     });
     
     // Notify target user about their new follower
     sseService.notifyUser(targetUserId, 'follower_added', {
-      followersCount: targetUserFollowers.length,
-      followers: targetUserFollowers,
+      followersCount: targetUserData.followersCount || 0,
+      followers: targetUserData.followers || [],
       followerId: currentUserId
     });
     
@@ -1065,8 +1141,16 @@ exports.followUser = async (req, res, next) => {
 // @access  Private
 exports.unfollowUser = async (req, res, next) => {
   try {
-    const targetUserId = req.params.id;
-    const currentUserId = req.user.uid;
+    const targetUserId = normalizeUserId(req.params.id);
+    const currentUserId = normalizeUserId(req.user.uid);
+    
+    console.log('🔴 unfollowUser called:', {
+      targetUserIdOriginal: req.params.id,
+      targetUserIdNormalized: targetUserId,
+      currentUserIdOriginal: req.user.uid,
+      currentUserIdNormalized: currentUserId,
+      timestamp: new Date().toISOString()
+    });
     
     // Can't unfollow yourself
     if (targetUserId === currentUserId) {
@@ -1076,9 +1160,9 @@ exports.unfollowUser = async (req, res, next) => {
       });
     }
     
-    // Get current user
+    // Get current user - fetch fresh to ensure we have latest data
     const currentUserRef = db.collection(COLLECTIONS.USERS).doc(currentUserId);
-    const currentUserDoc = await currentUserRef.get();
+    let currentUserDoc = await currentUserRef.get();
     
     if (!currentUserDoc.exists) {
       return res.status(404).json({
@@ -1086,6 +1170,11 @@ exports.unfollowUser = async (req, res, next) => {
         message: 'Current user not found'
       });
     }
+    
+    // Double-check by fetching again to ensure we have the absolute latest data
+    // This helps avoid race conditions from rapid follow/unfollow actions
+    await new Promise(resolve => setTimeout(resolve, 100)); // Small delay
+    currentUserDoc = await currentUserRef.get();
     
     // Get target user
     const targetUserRef = db.collection(COLLECTIONS.USERS).doc(targetUserId);
@@ -1101,30 +1190,65 @@ exports.unfollowUser = async (req, res, next) => {
     const currentUser = serializeDoc(currentUserDoc);
     const targetUser = serializeDoc(targetUserDoc);
     
+    console.log('🔍 Current user following array before unfollow:', {
+      userId: currentUserId,
+      following: currentUser.following || [],
+      followingCount: currentUser.followingCount || 0,
+      targetInArray: currentUser.following?.includes(targetUserId) || false
+    });
+    
     // Check if following
     if (!currentUser.following || !currentUser.following.includes(targetUserId)) {
+      console.log('⚠️ User not following target:', {
+        currentUserId,
+        targetUserId,
+        followingArray: currentUser.following || []
+      });
       return res.status(400).json({
         success: false,
         message: 'You are not following this user'
       });
     }
     
-    // Update current user's following list
-    const currentUserFollowing = currentUser.following.filter(id => id !== targetUserId);
+    // Update both users atomically
+    const batch = db.batch();
     
-    await currentUserRef.update({
-      following: currentUserFollowing,
-      followingCount: currentUserFollowing.length,
+    // Update current user's following list atomically
+    batch.update(currentUserRef, {
+      following: FieldValue.arrayRemove(targetUserId),
+      followingCount: FieldValue.increment(-1),
       updatedAt: new Date().toISOString()
     });
     
-    // Update target user's followers list
-    const targetUserFollowers = (targetUser.followers || []).filter(id => id !== currentUserId);
-    
-    await targetUserRef.update({
-      followers: targetUserFollowers,
-      followersCount: targetUserFollowers.length,
+    // Update target user's followers list atomically
+    batch.update(targetUserRef, {
+      followers: FieldValue.arrayRemove(currentUserId),
+      followersCount: FieldValue.increment(-1),
       updatedAt: new Date().toISOString()
+    });
+    
+    await batch.commit();
+    console.log('✅ Unfollow batch committed successfully');
+    
+    // Get updated data for SSE events
+    const updatedCurrentUser = await currentUserRef.get();
+    const updatedTargetUser = await targetUserRef.get();
+    const currentUserData = serializeDoc(updatedCurrentUser);
+    const targetUserData = serializeDoc(updatedTargetUser);
+    
+    console.log('📊 After unfollow - Updated data:', {
+      currentUser: {
+        id: currentUserId,
+        following: currentUserData.following || [],
+        followingCount: currentUserData.followingCount || 0,
+        targetStillInArray: currentUserData.following?.includes(targetUserId) || false
+      },
+      targetUser: {
+        id: targetUserId,
+        followers: targetUserData.followers || [],
+        followersCount: targetUserData.followersCount || 0,
+        currentUserStillInArray: targetUserData.followers?.includes(currentUserId) || false
+      }
     });
     
     // Send SSE events to both users
@@ -1132,15 +1256,15 @@ exports.unfollowUser = async (req, res, next) => {
     
     // Notify current user about removing following
     sseService.notifyUser(currentUserId, 'following_removed', {
-      followingCount: currentUserFollowing.length,
-      following: currentUserFollowing,
+      followingCount: currentUserData.followingCount || 0,
+      following: currentUserData.following || [],
       targetUserId: targetUserId
     });
     
     // Notify target user about losing follower
     sseService.notifyUser(targetUserId, 'follower_removed', {
-      followersCount: targetUserFollowers.length,
-      followers: targetUserFollowers,
+      followersCount: targetUserData.followersCount || 0,
+      followers: targetUserData.followers || [],
       followerId: currentUserId
     });
     

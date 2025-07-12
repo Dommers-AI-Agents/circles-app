@@ -1139,13 +1139,8 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
                         )
                         
                         alert.addAction(UIAlertAction(title: "View Place", style: .default) { _ in
-                            // Navigate to the place detail
-                            self?.navigationController?.popViewController(animated: false)
-                            NotificationCenter.default.post(
-                                name: Notification.Name("ShowPlaceDetails"),
-                                object: nil,
-                                userInfo: ["place": duplicate]
-                            )
+                            // Navigate to the circle detail view with the duplicate place
+                            self?.navigateToCircleDetail()
                         })
                         
                         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
@@ -1315,7 +1310,7 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
                             )
                             
                             self?.presentAlert(title: "Success", message: "Place added successfully") { _ in
-                                self?.navigationController?.popViewController(animated: true)
+                                self?.navigateToCircleDetail()
                             }
                         case .failure(let error):
                             print("❌ Failed to create place: \(error)")
@@ -1358,7 +1353,7 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
                             )
                             
                             self?.presentAlert(title: "Success", message: "Place added successfully") { _ in
-                                self?.navigationController?.popViewController(animated: true)
+                                self?.navigateToCircleDetail()
                             }
                         case .failure(let error):
                             print("❌ Failed to create place: \(error)")
@@ -2583,8 +2578,8 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
                             preferredStyle: .alert
                         )
                         successAlert.addAction(UIAlertAction(title: "OK", style: .default) { _ in
-                            // Go back to circle detail
-                            self.navigationController?.popViewController(animated: true)
+                            // Navigate to circle detail
+                            self.navigateToCircleDetail()
                         })
                         self.present(successAlert, animated: true)
                         
@@ -3652,6 +3647,100 @@ extension AddPlaceViewController {
                     if self.searchResults.count > 0 {
                         self.selectSearchResult(self.searchResults[0])
                     }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Public Methods
+    @available(iOS 16.0, *)
+    func configureWithPOI(_ featureAnnotation: MKMapFeatureAnnotation) {
+        // Extract POI information
+        let poiName = featureAnnotation.title ?? "Unknown Place"
+        let coordinate = featureAnnotation.coordinate
+        
+        // Perform a local search to get more details about the POI
+        let searchRequest = MKLocalSearch.Request()
+        searchRequest.naturalLanguageQuery = poiName
+        searchRequest.region = MKCoordinateRegion(
+            center: coordinate,
+            span: MKCoordinateSpan(latitudeDelta: 0.001, longitudeDelta: 0.001)
+        )
+        
+        let search = MKLocalSearch(request: searchRequest)
+        search.start { [weak self] response, error in
+            guard let self = self else { return }
+            
+            if let error = error {
+                print("❌ Error searching for POI: \(error)")
+                return
+            }
+            
+            // Find the closest matching result
+            if let mapItems = response?.mapItems,
+               let closestItem = mapItems.min(by: { item1, item2 in
+                   let dist1 = CLLocation(
+                       latitude: coordinate.latitude,
+                       longitude: coordinate.longitude
+                   ).distance(from: CLLocation(
+                       latitude: item1.placemark.coordinate.latitude,
+                       longitude: item1.placemark.coordinate.longitude
+                   ))
+                   let dist2 = CLLocation(
+                       latitude: coordinate.latitude,
+                       longitude: coordinate.longitude
+                   ).distance(from: CLLocation(
+                       latitude: item2.placemark.coordinate.latitude,
+                       longitude: item2.placemark.coordinate.longitude
+                   ))
+                   return dist1 < dist2
+               }) {
+                DispatchQueue.main.async {
+                    // Fill the form with the map item details
+                    self.fillFormWithMapItem(closestItem)
+                    
+                    // Update the search bar text
+                    self.searchBar.text = closestItem.name ?? poiName
+                    
+                    // Scroll to show the form
+                    self.scrollToFormTop()
+                }
+            }
+        }
+    }
+    
+    // MARK: - Navigation Helpers
+    private func navigateToCircleDetail() {
+        // Fetch the circle data first
+        CircleService.shared.fetchCircleById(id: circleId) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                
+                switch result {
+                case .success(let circle):
+                    // Create CircleDetailViewController
+                    let circleDetailVC = CircleDetailViewController(circle: circle)
+                    
+                    // Get the navigation stack
+                    if let navigationController = self.navigationController {
+                        var viewControllers = navigationController.viewControllers
+                        
+                        // Remove the AddPlaceViewController (current view)
+                        if viewControllers.last is AddPlaceViewController {
+                            viewControllers.removeLast()
+                        }
+                        
+                        // Add CircleDetailViewController
+                        viewControllers.append(circleDetailVC)
+                        
+                        // Set the new navigation stack
+                        navigationController.setViewControllers(viewControllers, animated: true)
+                    }
+                    
+                case .failure(let error):
+                    print("❌ Failed to fetch circle for navigation: \(error)")
+                    // Fallback to just popping the view controller
+                    self.navigationController?.popViewController(animated: true)
                 }
             }
         }

@@ -16,9 +16,11 @@ const db = getFirestore();
 // @access  Private
 exports.getMyCircles = async (req, res, next) => {
   try {
-    console.log('🔍 DEBUG getMyCircles:', {
+    console.log('🔍 DEBUG getMyCircles called for user:', {
       userUid: req.user.uid,
-      userObject: req.user
+      email: req.user.email,
+      displayName: req.user.displayName || 'No display name',
+      originalUid: req.user.originalUid
     });
     
     if (!req.user.uid) {
@@ -36,13 +38,18 @@ exports.getMyCircles = async (req, res, next) => {
 
     const circles = serializeQuerySnapshot(snapshot);
     
-    // Debug: Log the first circle to check placesCount
+    console.log(`🔍 DEBUG - Found ${circles.length} circles for user ${req.user.uid}`);
     if (circles.length > 0) {
+      console.log('🔍 DEBUG - Circle names:', circles.map(c => c.name));
       console.log('🔍 DEBUG - First circle data:', {
         name: circles[0].name,
+        id: circles[0].id,
+        owner: circles[0].owner,
         placesCount: circles[0].placesCount,
         placesArrayLength: circles[0].places?.length
       });
+    } else {
+      console.log('🔍 DEBUG - No circles found, this might be the issue!');
     }
     
     // Get user's circle order preference

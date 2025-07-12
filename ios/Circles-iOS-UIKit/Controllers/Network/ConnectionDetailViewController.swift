@@ -245,6 +245,11 @@ class ConnectionDetailViewController: UIViewController {
         circlesCollectionView.delegate = self
         circlesCollectionView.dataSource = self
         circlesCollectionView.register(CircleCell.self, forCellWithReuseIdentifier: "CircleCell")
+        
+        // Add tap gesture for profile image to view full-screen
+        profileImageView.isUserInteractionEnabled = true
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(profileImageTapped))
+        profileImageView.addGestureRecognizer(tapGesture)
     }
     
     private func configureView() {
@@ -460,6 +465,15 @@ class ConnectionDetailViewController: UIViewController {
                     self?.navigationController?.popViewController(animated: true)
                 }
             }
+        }
+    }
+    
+    @objc private func profileImageTapped() {
+        // Show full-screen profile image
+        if let user = connection?.connectedUser, let profileImageURL = user.profilePicture {
+            ImageViewerService.shared.presentImageFromURL(profileImageURL, from: self)
+        } else if let currentImage = profileImageView.image {
+            ImageViewerService.shared.presentImage(currentImage, from: self)
         }
     }
     

@@ -141,6 +141,11 @@ circles-app/
    - Connection status management
    - Bidirectional connection queries
 
+6. **activityController.js**
+   - Fetch network activities with pagination
+   - Mark activities as read
+   - Create activity records helper function
+
 ### Important Middleware
 
 - **firebaseAuth.js**: Verifies JWT tokens, extracts user info, handles ID normalization
@@ -302,6 +307,27 @@ circles-app/
      suggestionData: { /* place details */ },
      timestamp: Timestamp,
      read: false
+   }
+   ```
+
+6. **activities**
+   ```javascript
+   {
+     _id: "activityId",
+     type: "place_added", // place_added, place_liked, place_commented, circle_created
+     actorId: "userId",
+     targetType: "place", // or "circle"
+     targetId: "placeId",
+     targetName: "Restaurant Name",
+     circleId: "circleId",
+     circleName: "Favorite Restaurants",
+     metadata: {
+       comment: "Great pasta!",
+       placePhoto: "https://...",
+       placeAddress: "123 Main St"
+     },
+     timestamp: Timestamp,
+     viewers: ["userId1", "userId2"] // Users who have seen this
    }
    ```
 
@@ -1086,7 +1112,151 @@ xcodebuild -project Circles-iOS.xcodeproj -scheme Circles-iOS -sdk iphonesimulat
    - Easy integration with Firebase
    - Good cold start performance
 
-### 8. Real-Time SSE Notification System (July 2025)
+### 8. LinkedIn-Style Activity Feed (January 2025)
+**Problem**: Users wanted more activity to view and interact with when loading the app. The home page only showed a map of places without social context.
+
+**Solution**: Implemented a LinkedIn-style activity feed below the map showing network activities like new places added, likes, and comments.
+
+#### Backend Implementation:
+
+1. **Activity Controller** (`/backend/controllers/activityController.js`):
+```javascript
+// Get network activities with pagination
+exports.getNetworkActivities = async (req, res, next) => {
+  // Gets user's connections
+  // Fetches activities from connected users
+  // Enriches with user data
+  // Supports limit/offset pagination
+};
+
+// Helper to create activity records
+exports.createActivity = async (type, actorId, targetType, targetId, targetName, metadata) => {
+  // Creates activity record in 'activities' collection
+  // Stores type, actor, target, metadata, and timestamp
+};
+```
+
+2. **Activity Tracking Integration**:
+```javascript
+// In firebasePlaceController.js - Track when places are added
+await trackPlaceAdded(placeRef.id, circleId, place.name, circle.name, req.user.uid);
+
+// Track likes (not unlikes)
+if (!alreadyLiked) {
+  await createActivity('place_liked', userId, 'place', placeId, place.name, metadata);
+}
+
+// Track comments
+await createActivity('place_commented', userId, 'place', placeId, place.name, {
+  comment: text.trim(),
+  // ... other metadata
+});
+```
+
+3. **SSE Real-Time Updates**:
+```javascript
+// In sseService.js - Listen for new activities
+const activityListener = db.collection('activities')
+  .where('actorId', 'in', userIdsArray)
+  .orderBy('timestamp', 'desc')
+  .limit(5)
+  .onSnapshot((snapshot) => {
+    // Send 'new_activity' event to connected clients
+  });
+```
+
+#### iOS Implementation:
+
+1. **Activity Model** (`/ios/Models/Activity.swift`):
+```swift
+enum ActivityType: String, Codable {
+    case placeAdded = "place_added"
+    case placeLiked = "place_liked"
+    case placeCommented = "place_commented"
+    case circleCreated = "circle_created"
+}
+
+struct Activity: Codable {
+    let id: String
+    let type: ActivityType
+    let actor: User?
+    let targetName: String
+    let metadata: ActivityMetadata?
+    let timestamp: Date
+    // Helper methods for formatting
+}
+```
+
+2. **ActivityFeedCell** (`/ios/Views/ActivityFeedCell.swift`):
+- Custom table view cell displaying:
+  - User avatar
+  - Activity description (e.g., "John added Pizza Place to Favorite Restaurants")
+  - Timestamp with relative time
+  - Optional place image
+  - Comment text for comment activities
+
+3. **CirclesHomeViewController Updates**:
+- Converted to use UIScrollView for scrollable content
+- Fixed search bar at top
+- Map with fixed 300pt height
+- Activity feed section below map
+- Dynamic table height (max 400pt)
+- Pull-to-refresh functionality
+
+4. **ActivityService** (`/ios/Services/ActivityService.swift`):
+```swift
+// Fetch network activities
+func getNetworkActivities(limit: Int, offset: Int, since: Date?, 
+                         completion: @escaping (Result<[Activity], Error>) -> Void)
+
+// Mark activities as read
+func markActivitiesAsRead(activityIds: [String], 
+                         completion: @escaping (Result<Bool, Error>) -> Void)
+```
+
+#### Activity Types and Display:
+- **Place Added**: "added [Place Name] to [Circle Name]" + place image
+- **Place Liked**: "liked [Place Name]" + place image
+- **Place Commented**: "commented on [Place Name]" + comment text + place image
+- **Circle Created**: "created a new circle [Circle Name]"
+
+#### Database Schema:
+
+5. **activities collection**:
+```javascript
+{
+  _id: "activityId",
+  type: "place_added", // place_added, place_liked, place_commented, circle_created
+  actorId: "userId",
+  targetType: "place", // or "circle"
+  targetId: "placeId",
+  targetName: "Restaurant Name",
+  circleId: "circleId",
+  circleName: "Favorite Restaurants",
+  metadata: {
+    comment: "Great pasta!",
+    placePhoto: "https://...",
+    placeAddress: "123 Main St"
+  },
+  timestamp: Timestamp,
+  viewers: ["userId1", "userId2"] // Users who have seen this
+}
+```
+
+#### API Endpoints:
+- `GET /api/network/activities` - Get activities from user's network
+  - Query params: `limit`, `offset`, `since`
+- `PUT /api/network/activities/mark-read` - Mark activities as read
+  - Body: `{ activityIds: ["id1", "id2"] }`
+
+#### Benefits:
+1. **Increased Engagement**: Users see what their network is doing
+2. **Content Discovery**: Find new places through network activity
+3. **Social Validation**: See what places are being liked/commented
+4. **Real-Time Updates**: SSE support for instant activity updates
+5. **Performance**: Pagination prevents loading too much data
+
+### 9. Real-Time SSE Notification System (July 2025)
 **Problem**: Users had to manually refresh or exit/re-enter views to see new connection requests, messages, and other activities. Message polling was inefficient and caused excessive logging.
 
 **Solution**: Implemented Server-Sent Events (SSE) for real-time notifications across the app.

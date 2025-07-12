@@ -221,6 +221,44 @@ class PlaceDetailViewController: UIViewController {
         return label
     }()
     
+    // MARK: - Comments Section UI
+    private let commentsSection: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.secondaryBackground
+        view.layer.cornerRadius = 12
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isHidden = true // Initially hidden until comments are loaded
+        return view
+    }()
+    
+    private let commentsSectionTitle: UILabel = {
+        let label = UILabel()
+        label.text = "Comments"
+        label.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+        label.textColor = Constants.Colors.label
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let viewAllCommentsButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("View all", for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 14)
+        button.setTitleColor(Constants.Colors.primary, for: .normal)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let commentsStackView: UIStackView = {
+        let stackView = UIStackView()
+        stackView.axis = .vertical
+        stackView.spacing = 8
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        return stackView
+    }()
+    
+    private var displayedComments: [PlaceComment] = []
+    
     private let shareButton: UIButton = {
         let button = UIButton(type: .system)
         button.setImage(UIImage(systemName: "square.and.arrow.up"), for: .normal)
@@ -626,11 +664,18 @@ class PlaceDetailViewController: UIViewController {
         actionButtonsContainer.addSubview(commentButton)
         actionButtonsContainer.addSubview(commentCountLabel)
         actionButtonsContainer.addSubview(shareButton)
+        
+        // Add comments section
+        infoContainerView.addSubview(commentsSection)
+        commentsSection.addSubview(commentsSectionTitle)
+        commentsSection.addSubview(viewAllCommentsButton)
+        commentsSection.addSubview(commentsStackView)
         actionButtonsContainer.addSubview(directionsButton)
         
         // Add targets for action buttons
         likeButton.addTarget(self, action: #selector(likeButtonTapped), for: .touchUpInside)
         commentButton.addTarget(self, action: #selector(commentButtonTapped), for: .touchUpInside)
+        viewAllCommentsButton.addTarget(self, action: #selector(commentButtonTapped), for: .touchUpInside)
         shareButton.addTarget(self, action: #selector(shareButtonTapped), for: .touchUpInside)
         directionsButton.addTarget(self, action: #selector(directionsButtonTapped), for: .touchUpInside)
         
@@ -663,9 +708,9 @@ class PlaceDetailViewController: UIViewController {
         
         // Add navigation bar buttons
         let directionButton = UIBarButtonItem(image: UIImage(systemName: "map"), style: .plain, target: self, action: #selector(directionsButtonTapped))
-        let editButton = UIBarButtonItem(barButtonSystemItem: .edit, target: self, action: #selector(editButtonTapped))
+        let moreButton = UIBarButtonItem(image: UIImage(systemName: "ellipsis.circle"), style: .plain, target: self, action: #selector(moreButtonTapped))
         // shareButton already added to navigationItem.rightBarButtonItem above
-        navigationItem.rightBarButtonItems = [editButton, navigationItem.rightBarButtonItem!, directionButton]
+        navigationItem.rightBarButtonItems = [moreButton, navigationItem.rightBarButtonItem!, directionButton]
         
         // Layout constraints
         NSLayoutConstraint.activate([
@@ -887,6 +932,27 @@ class PlaceDetailViewController: UIViewController {
             ])
         }
         
+        // Add comments section constraints
+        NSLayoutConstraint.activate([
+            commentsSection.topAnchor.constraint(equalTo: lastAnchor, constant: Constants.Spacing.large),
+            commentsSection.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
+            commentsSection.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
+            
+            commentsSectionTitle.topAnchor.constraint(equalTo: commentsSection.topAnchor, constant: Constants.Spacing.medium),
+            commentsSectionTitle.leadingAnchor.constraint(equalTo: commentsSection.leadingAnchor, constant: Constants.Spacing.medium),
+            
+            viewAllCommentsButton.centerYAnchor.constraint(equalTo: commentsSectionTitle.centerYAnchor),
+            viewAllCommentsButton.trailingAnchor.constraint(equalTo: commentsSection.trailingAnchor, constant: -Constants.Spacing.medium),
+            
+            commentsStackView.topAnchor.constraint(equalTo: commentsSectionTitle.bottomAnchor, constant: Constants.Spacing.small),
+            commentsStackView.leadingAnchor.constraint(equalTo: commentsSection.leadingAnchor, constant: Constants.Spacing.medium),
+            commentsStackView.trailingAnchor.constraint(equalTo: commentsSection.trailingAnchor, constant: -Constants.Spacing.medium),
+            commentsStackView.bottomAnchor.constraint(equalTo: commentsSection.bottomAnchor, constant: -Constants.Spacing.medium)
+        ])
+        
+        // Update lastAnchor to point to comments section
+        lastAnchor = commentsSection.bottomAnchor
+        
         // Add circle info only if we have a circle or circleId
         if circle != nil || !place.circleId.isEmpty {
             NSLayoutConstraint.activate([
@@ -1086,6 +1152,12 @@ class PlaceDetailViewController: UIViewController {
         
         // Update likes and comments UI
         updateLikeButton()
+        
+        // Update comment count immediately from place data
+        let commentCount = place.commentsCount ?? 0
+        commentCountLabel.text = "\(commentCount)"
+        
+        // Fetch full comments for inline display
         fetchCommentCount()
         
         // Load place photos if available
@@ -1453,11 +1525,45 @@ class PlaceDetailViewController: UIViewController {
         }
     }
     
+    @objc private func moreButtonTapped() {
+        let alertController = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        
+        // Edit action
+        let editAction = UIAlertAction(title: "Edit Place", style: .default) { [weak self] _ in
+            self?.editButtonTapped()
+        }
+        editAction.setValue(UIImage(systemName: "pencil"), forKey: "image")
+        alertController.addAction(editAction)
+        
+        // Move to Different Circle action
+        let moveAction = UIAlertAction(title: "Move to Different Circle", style: .default) { [weak self] _ in
+            self?.moveToCircleButtonTapped()
+        }
+        moveAction.setValue(UIImage(systemName: "arrow.right.circle"), forKey: "image")
+        alertController.addAction(moveAction)
+        
+        // Cancel action
+        alertController.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        
+        // iPad compatibility
+        if let popover = alertController.popoverPresentationController {
+            popover.barButtonItem = navigationItem.rightBarButtonItems?.first
+        }
+        
+        present(alertController, animated: true)
+    }
+    
     @objc private func editButtonTapped() {
         let editPlaceVC = EditPlaceViewController(place: place)
         editPlaceVC.delegate = self
         let navController = UINavigationController(rootViewController: editPlaceVC)
         present(navController, animated: true)
+    }
+    
+    @objc private func moveToCircleButtonTapped() {
+        let circleSelectionVC = CircleSelectionViewController(excludedCircleId: place.circleId)
+        circleSelectionVC.delegate = self
+        present(circleSelectionVC, animated: true)
     }
     
     @objc private func likeButtonTapped() {
@@ -1501,6 +1607,8 @@ class PlaceDetailViewController: UIViewController {
         let commentsVC = PlaceCommentsViewController(place: place)
         commentsVC.onCommentsUpdated = { [weak self] updatedCommentCount in
             self?.updateCommentCount(updatedCommentCount)
+            // Refresh inline comments
+            self?.fetchCommentCount()
         }
         let navController = UINavigationController(rootViewController: commentsVC)
         present(navController, animated: true)
@@ -2280,6 +2388,59 @@ extension PlaceDetailViewController: EditPlaceDelegate {
     }
 }
 
+// MARK: - CircleSelectionDelegate
+extension PlaceDetailViewController: CircleSelectionDelegate {
+    func circleSelectionViewController(_ controller: CircleSelectionViewController, didSelectCircle circle: Circle) {
+        // Show loading indicator
+        let loadingAlert = UIAlertController(title: "Moving Place", message: "Moving \(place.name) to \(circle.name)...", preferredStyle: .alert)
+        present(loadingAlert, animated: true)
+        
+        // Perform the move
+        PlaceService.shared.movePlaceToCircle(placeId: place.id, targetCircleId: circle.id) { [weak self] result in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    switch result {
+                    case .success(let updatedPlace):
+                        // Update the local place object
+                        self.place = updatedPlace
+                        self.circle = circle
+                        
+                        // Update the circle info in the UI
+                        self.circleNameLabel.text = circle.name
+                        
+                        // Show success message
+                        let successAlert = UIAlertController(
+                            title: "Success",
+                            message: "\(self.place.name) has been moved to \(circle.name)",
+                            preferredStyle: .alert
+                        )
+                        successAlert.addAction(UIAlertAction(title: "OK", style: .default) { _ in
+                            // Pop back to the previous view controller since the place has moved
+                            self.navigationController?.popViewController(animated: true)
+                        })
+                        self.present(successAlert, animated: true)
+                        
+                    case .failure(let error):
+                        let errorAlert = UIAlertController(
+                            title: "Error",
+                            message: "Failed to move place: \(error.localizedDescription)",
+                            preferredStyle: .alert
+                        )
+                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                        self.present(errorAlert, animated: true)
+                    }
+                }
+            }
+        }
+    }
+    
+    func circleSelectionViewControllerDidCancel(_ controller: CircleSelectionViewController) {
+        // User cancelled, nothing to do
+    }
+}
+
 // MARK: - UIImagePickerControllerDelegate
 extension PlaceDetailViewController: UIImagePickerControllerDelegate, UINavigationControllerDelegate {
     func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
@@ -2407,15 +2568,206 @@ extension PlaceDetailViewController {
                 switch result {
                 case .success(let comments):
                     self?.updateCommentCount(comments.count)
+                    self?.displayInlineComments(comments)
                 case .failure(let error):
                     Logger.error("Failed to fetch comments: \(error)")
                     self?.commentCountLabel.text = "0"
+                    self?.commentsSection.isHidden = true
                 }
             }
         }
     }
     
+    private func displayInlineComments(_ comments: [PlaceComment]) {
+        // Clear existing comment views
+        commentsStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        displayedComments = comments
+        
+        // Show comments section if there are comments
+        if comments.isEmpty {
+            commentsSection.isHidden = true
+            return
+        }
+        
+        commentsSection.isHidden = false
+        
+        // Show only the first 3 comments
+        let commentsToShow = Array(comments.prefix(3))
+        
+        // Update "View all" button text
+        if comments.count > 3 {
+            viewAllCommentsButton.setTitle("View all \(comments.count)", for: .normal)
+            viewAllCommentsButton.isHidden = false
+        } else {
+            viewAllCommentsButton.isHidden = true
+        }
+        
+        // Create comment views
+        for comment in commentsToShow {
+            let commentView = createInlineCommentView(comment)
+            commentsStackView.addArrangedSubview(commentView)
+        }
+    }
+    
+    private func createInlineCommentView(_ comment: PlaceComment) -> UIView {
+        let containerView = UIView()
+        containerView.backgroundColor = Constants.Colors.background
+        containerView.layer.cornerRadius = 8
+        containerView.translatesAutoresizingMaskIntoConstraints = false
+        
+        // User info stack (avatar + name + time)
+        let userInfoStack = UIStackView()
+        userInfoStack.axis = .horizontal
+        userInfoStack.spacing = 8
+        userInfoStack.alignment = .center
+        userInfoStack.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Avatar
+        let avatarImageView = UIImageView()
+        avatarImageView.contentMode = .scaleAspectFill
+        avatarImageView.clipsToBounds = true
+        avatarImageView.layer.cornerRadius = 16
+        avatarImageView.backgroundColor = Constants.Colors.tertiaryBackground
+        avatarImageView.image = UIImage(systemName: "person.circle.fill")
+        avatarImageView.tintColor = Constants.Colors.secondaryLabel
+        avatarImageView.translatesAutoresizingMaskIntoConstraints = false
+        avatarImageView.widthAnchor.constraint(equalToConstant: 32).isActive = true
+        avatarImageView.heightAnchor.constraint(equalToConstant: 32).isActive = true
+        
+        // Load avatar if available
+        if let urlString = comment.user?.profilePicture, let url = URL(string: urlString) {
+            URLSession.shared.dataTask(with: url) { data, _, _ in
+                if let data = data, let image = UIImage(data: data) {
+                    DispatchQueue.main.async {
+                        avatarImageView.image = image
+                    }
+                }
+            }.resume()
+        }
+        
+        // Name and time stack
+        let nameTimeStack = UIStackView()
+        nameTimeStack.axis = .vertical
+        nameTimeStack.spacing = 2
+        
+        let nameLabel = UILabel()
+        nameLabel.text = comment.user?.displayName ?? "Unknown User"
+        nameLabel.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
+        nameLabel.textColor = Constants.Colors.label
+        
+        let timeLabel = UILabel()
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        timeLabel.text = formatter.localizedString(for: comment.createdAt, relativeTo: Date())
+        timeLabel.font = UIFont.systemFont(ofSize: 12)
+        timeLabel.textColor = Constants.Colors.secondaryLabel
+        
+        nameTimeStack.addArrangedSubview(nameLabel)
+        nameTimeStack.addArrangedSubview(timeLabel)
+        
+        userInfoStack.addArrangedSubview(avatarImageView)
+        userInfoStack.addArrangedSubview(nameTimeStack)
+        
+        // Like button
+        let likeButton = UIButton(type: .system)
+        let isLiked = comment.isLikedByCurrentUser
+        likeButton.setImage(UIImage(systemName: isLiked ? "heart.fill" : "heart"), for: .normal)
+        likeButton.tintColor = isLiked ? .systemRed : Constants.Colors.secondaryLabel
+        likeButton.translatesAutoresizingMaskIntoConstraints = false
+        likeButton.widthAnchor.constraint(equalToConstant: 24).isActive = true
+        likeButton.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        likeButton.tag = displayedComments.firstIndex(where: { $0.id == comment.id }) ?? 0
+        likeButton.addTarget(self, action: #selector(inlineCommentLikeButtonTapped(_:)), for: .touchUpInside)
+        
+        // Like count label
+        let likeCountLabel = UILabel()
+        likeCountLabel.text = comment.displayLikesCount > 0 ? "\(comment.displayLikesCount)" : ""
+        likeCountLabel.font = UIFont.systemFont(ofSize: 12)
+        likeCountLabel.textColor = Constants.Colors.secondaryLabel
+        likeCountLabel.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Comment text
+        let commentLabel = UILabel()
+        commentLabel.text = comment.text
+        commentLabel.font = UIFont.systemFont(ofSize: 14)
+        commentLabel.textColor = Constants.Colors.label
+        commentLabel.numberOfLines = 0
+        commentLabel.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Add subviews
+        containerView.addSubview(userInfoStack)
+        containerView.addSubview(likeButton)
+        containerView.addSubview(likeCountLabel)
+        containerView.addSubview(commentLabel)
+        
+        // Constraints
+        NSLayoutConstraint.activate([
+            userInfoStack.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 12),
+            userInfoStack.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 12),
+            
+            likeButton.centerYAnchor.constraint(equalTo: userInfoStack.centerYAnchor),
+            likeButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
+            
+            likeCountLabel.centerYAnchor.constraint(equalTo: likeButton.centerYAnchor),
+            likeCountLabel.trailingAnchor.constraint(equalTo: likeButton.leadingAnchor, constant: -4),
+            
+            commentLabel.topAnchor.constraint(equalTo: userInfoStack.bottomAnchor, constant: 8),
+            commentLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 12),
+            commentLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
+            commentLabel.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -12)
+        ])
+        
+        return containerView
+    }
+    
     private func updateCommentCount(_ count: Int) {
         commentCountLabel.text = "\(count)"
+    }
+    
+    @objc private func inlineCommentLikeButtonTapped(_ sender: UIButton) {
+        let index = sender.tag
+        guard index < displayedComments.count else { return }
+        
+        let comment = displayedComments[index]
+        
+        // Haptic feedback
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.prepare()
+        generator.impactOccurred()
+        
+        // Disable button during request
+        sender.isEnabled = false
+        
+        PlaceService.shared.likeComment(placeId: place.id, commentId: comment.id) { [weak self] result in
+            DispatchQueue.main.async {
+                sender.isEnabled = true
+                
+                switch result {
+                case .success(let (liked, likesCount)):
+                    // Update button appearance
+                    sender.setImage(UIImage(systemName: liked ? "heart.fill" : "heart"), for: .normal)
+                    sender.tintColor = liked ? .systemRed : Constants.Colors.secondaryLabel
+                    
+                    // Update the like count label (find it as a sibling of the button)
+                    if let containerView = sender.superview,
+                       let likeCountLabel = containerView.subviews.first(where: { $0 is UILabel && $0 != containerView.subviews[2] }) as? UILabel {
+                        likeCountLabel.text = likesCount > 0 ? "\(likesCount)" : ""
+                    }
+                    
+                    // Show animation
+                    UIView.animate(withDuration: 0.1, animations: {
+                        sender.transform = CGAffineTransform(scaleX: 1.3, y: 1.3)
+                    }) { _ in
+                        UIView.animate(withDuration: 0.1) {
+                            sender.transform = .identity
+                        }
+                    }
+                    
+                case .failure(let error):
+                    Logger.error("Failed to like comment: \(error)")
+                    self?.showAlert(title: "Error", message: "Failed to update like. Please try again.")
+                }
+            }
+        }
     }
 }

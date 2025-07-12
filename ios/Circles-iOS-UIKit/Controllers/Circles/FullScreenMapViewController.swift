@@ -30,6 +30,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
     private let locationManager = CLLocationManager()
     private var pendingPOIAnnotation: Any? // MKMapFeatureAnnotation for iOS 16+
     private var pendingPOINotes: String? // Temporary storage for notes when creating new circle
+    private var currentCirclePicker: CirclePickerSliderView? // Reference to current circle picker
     private var isAdjustingRegion = false // Prevent concurrent region adjustments
     private var hasInitiallyZoomed = false // Track if we've done the initial zoom
     
@@ -645,6 +646,9 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
         circlePicker.delegate = self
         circlePicker.configure(with: circles)
         
+        // Store reference to dismiss later
+        currentCirclePicker = circlePicker
+        
         // Show the picker
         if let window = view.window {
             circlePicker.show(in: window)
@@ -1111,12 +1115,27 @@ extension FullScreenMapViewController: UITableViewDelegate {
 // MARK: - CreateCircleDelegate
 extension FullScreenMapViewController: CreateCircleDelegate {
     func didCreateCircle(_ circle: Circle) {
-        // If we have a pending POI annotation, add it to the newly created circle
+        // If we have a pending POI annotation, navigate to AddPlaceViewController
         if #available(iOS 16.0, *) {
             if let pendingPOI = pendingPOIAnnotation as? MKMapFeatureAnnotation {
-                addPOIToCircle(pendingPOI, circle: circle, notes: pendingPOINotes)
-                pendingPOIAnnotation = nil
-                pendingPOINotes = nil
+                // Dismiss the circle picker if it exists
+                currentCirclePicker?.dismiss()
+                currentCirclePicker = nil
+                
+                // Find the parent navigation controller
+                if let navController = self.navigationController ?? self.presentingViewController as? UINavigationController ?? self.parent?.navigationController {
+                    let addPlaceVC = AddPlaceViewController(circleId: circle.id)
+                    navController.pushViewController(addPlaceVC, animated: true)
+                    
+                    // Configure with POI data after a brief delay to ensure view is loaded
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        addPlaceVC.configureWithPOI(pendingPOI)
+                    }
+                    
+                    // Clear the pending POI
+                    pendingPOIAnnotation = nil
+                    pendingPOINotes = nil
+                }
             }
         }
     }
@@ -1125,10 +1144,27 @@ extension FullScreenMapViewController: CreateCircleDelegate {
 // MARK: - CirclePickerSliderViewDelegate
 extension FullScreenMapViewController: CirclePickerSliderViewDelegate {
     func circlePickerDidSelectCircle(_ circle: Circle, notes: String?) {
-        // Add the POI to the selected circle
+        // Navigate to AddPlaceViewController with the selected POI
         if #available(iOS 16.0, *) {
             if let pendingPOI = pendingPOIAnnotation as? MKMapFeatureAnnotation {
-                addPOIToCircle(pendingPOI, circle: circle, notes: notes)
+                // Dismiss the circle picker first
+                currentCirclePicker?.dismiss()
+                currentCirclePicker = nil
+                
+                // Find the parent navigation controller
+                if let navController = self.navigationController ?? self.presentingViewController as? UINavigationController ?? self.parent?.navigationController {
+                    let addPlaceVC = AddPlaceViewController(circleId: circle.id)
+                    navController.pushViewController(addPlaceVC, animated: true)
+                    
+                    // Configure with POI data after a brief delay to ensure view is loaded
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        addPlaceVC.configureWithPOI(pendingPOI)
+                    }
+                    
+                    // Clear the pending POI
+                    pendingPOIAnnotation = nil
+                    pendingPOINotes = nil
+                }
             }
         }
     }
@@ -1145,6 +1181,9 @@ extension FullScreenMapViewController: CirclePickerSliderViewDelegate {
     }
     
     func circlePickerDidCancel() {
+        // Clear the circle picker reference
+        currentCirclePicker = nil
+        
         // Deselect the annotation
         if #available(iOS 16.0, *) {
             if let pendingPOI = pendingPOIAnnotation as? MKMapFeatureAnnotation {

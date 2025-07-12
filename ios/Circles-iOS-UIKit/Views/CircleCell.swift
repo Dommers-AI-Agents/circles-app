@@ -16,6 +16,7 @@ class CircleCell: UICollectionViewCell {
         imageView.clipsToBounds = true
         imageView.backgroundColor = Constants.Colors.tertiaryBackground
         // Circular design to match app theme
+        imageView.layer.masksToBounds = true
         imageView.translatesAutoresizingMaskIntoConstraints = false
         return imageView
     }()
@@ -110,12 +111,25 @@ class CircleCell: UICollectionViewCell {
             activityIndicatorView.widthAnchor.constraint(equalToConstant: 8),
             activityIndicatorView.heightAnchor.constraint(equalToConstant: 8)
         ])
+        
+        // Set initial corner radius based on expected size
+        // This ensures circles appear circular even before layoutSubviews is called
+        DispatchQueue.main.async { [weak self] in
+            self?.updateCornerRadius()
+        }
     }
     
     override func layoutSubviews() {
         super.layoutSubviews()
+        updateCornerRadius()
+    }
+    
+    private func updateCornerRadius() {
         // Make the image circular
-        coverImageView.layer.cornerRadius = coverImageView.bounds.width / 2
+        let radius = coverImageView.bounds.width / 2
+        if radius > 0 {
+            coverImageView.layer.cornerRadius = radius
+        }
     }
     
     // MARK: - Configure
@@ -144,6 +158,7 @@ class CircleCell: UICollectionViewCell {
             ImageService.shared.loadImage(from: coverImageUrl) { [weak self] image in
                 DispatchQueue.main.async {
                     self?.coverImageView.image = image
+                    self?.updateCornerRadius()
                 }
             }
         } else {
@@ -152,6 +167,10 @@ class CircleCell: UICollectionViewCell {
             coverImageView.tintColor = Constants.Colors.primary
             coverImageView.contentMode = .scaleAspectFit
         }
+        
+        // Force layout to ensure circular shape is applied immediately
+        setNeedsLayout()
+        layoutIfNeeded()
     }
     
     private func categoryIcon(for category: CircleCategory) -> String {

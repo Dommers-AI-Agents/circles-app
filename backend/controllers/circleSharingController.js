@@ -732,6 +732,17 @@ const getUserCircles = async (req, res) => {
     
     userData.connectionsCount = connectionIds.size;
 
+    // Check if current user is following target user
+    const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(currentUserId).get();
+    if (currentUserDoc.exists) {
+      const currentUserData = currentUserDoc.data();
+      const following = currentUserData.following || [];
+      userData.isFollowing = following.includes(targetUserId);
+      console.log(`🔍 Follow check - Current user ${currentUserId} following ${targetUserId}: ${userData.isFollowing}`);
+    } else {
+      userData.isFollowing = false;
+    }
+
     // Get circles from the target user with non-private privacy
     const circlesQuery = await db.collection(COLLECTIONS.CIRCLES)
       .where('owner', '==', targetUserId)
@@ -749,7 +760,7 @@ const getUserCircles = async (req, res) => {
     const recentActivity = connectionData.recentActivity || [];
     
     // Get the current user's lastLogin to determine what's "new"
-    const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(currentUserId).get();
+    // (currentUserDoc already fetched above)
     const lastLogin = currentUserDoc.exists ? currentUserDoc.data().lastLogin : null;
     
     let recentActivitySinceLogin = [];

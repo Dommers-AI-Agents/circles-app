@@ -434,6 +434,9 @@ exports.firebaseAuth = async (req, res, next) => {
         _id: responseUserId, // Always normalized ID
         email: user.email || '',
         displayName: user.displayName || name || 'Unknown User',
+        firstName: user.firstName || null,
+        lastName: user.lastName || null,
+        phoneNumber: user.phoneNumber || null,
         profilePicture: user.profilePicture || picture || null,
         bio: user.bio || null,
         location: user.location || null,
@@ -633,6 +636,9 @@ exports.register = async (req, res, next) => {
         _id: normalizedId, // Always normalized ID
         email: user.email,
         displayName: user.displayName,
+        firstName: user.firstName || null,
+        lastName: user.lastName || null,
+        phoneNumber: user.phoneNumber || null,
         profilePicture: user.profilePicture,
         bio: user.bio || null,
         location: user.location || null,
@@ -765,6 +771,9 @@ exports.login = async (req, res, next) => {
         _id: normalizedId, // Always normalized ID
         email: user.email,
         displayName: user.displayName,
+        firstName: user.firstName || null,
+        lastName: user.lastName || null,
+        phoneNumber: user.phoneNumber || null,
         profilePicture: user.profilePicture,
         bio: user.bio || null,
         location: user.location || null,

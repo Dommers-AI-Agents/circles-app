@@ -1033,6 +1033,7 @@ class PlaceService {
     // MARK: - Comments
     
     func getPlaceComments(placeId: String, completion: @escaping (Result<[PlaceComment], Error>) -> Void) {
+        print("🔍 PlaceService: Fetching comments for place: \(placeId)")
         APIService.shared.request(
             endpoint: "places/\(placeId)/comments",
             method: .get,
@@ -1040,8 +1041,10 @@ class PlaceService {
         ) { [weak self] (result: Result<PlaceCommentsResponse, APIError>) in
             switch result {
             case .success(let response):
+                print("✅ PlaceService: Received \(response.comments.count) comments")
                 completion(.success(response.comments))
             case .failure(let error):
+                print("❌ PlaceService: Failed to fetch comments: \(error)")
                 let mappedError = self?.mapAPIErrorToPlaceError(error)
                 completion(.failure(mappedError ?? error))
             }
@@ -1050,6 +1053,7 @@ class PlaceService {
     
     func addPlaceComment(placeId: String, text: String, completion: @escaping (Result<PlaceComment, Error>) -> Void) {
         let body = ["text": text]
+        print("💬 PlaceService: Adding comment to place \(placeId): \(text.prefix(50))...")
         
         APIService.shared.request(
             endpoint: "places/\(placeId)/comments",
@@ -1059,8 +1063,10 @@ class PlaceService {
         ) { [weak self] (result: Result<PlaceCommentResponse, APIError>) in
             switch result {
             case .success(let response):
+                print("✅ PlaceService: Comment added successfully with ID: \(response.comment.id)")
                 completion(.success(response.comment))
             case .failure(let error):
+                print("❌ PlaceService: Failed to add comment: \(error)")
                 let mappedError = self?.mapAPIErrorToPlaceError(error)
                 completion(.failure(mappedError ?? error))
             }
@@ -1076,6 +1082,45 @@ class PlaceService {
             switch result {
             case .success:
                 completion(.success(()))
+            case .failure(let error):
+                let mappedError = self?.mapAPIErrorToPlaceError(error)
+                completion(.failure(mappedError ?? error))
+            }
+        }
+    }
+    
+    func likeComment(placeId: String, commentId: String, completion: @escaping (Result<(liked: Bool, likesCount: Int), Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "places/\(placeId)/comments/\(commentId)/like",
+            method: .post,
+            requiresAuth: true
+        ) { [weak self] (result: Result<LikeCommentResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success((liked: response.liked, likesCount: response.likesCount)))
+            case .failure(let error):
+                let mappedError = self?.mapAPIErrorToPlaceError(error)
+                completion(.failure(mappedError ?? error))
+            }
+        }
+    }
+    
+    // MARK: - Move Place to Different Circle
+    
+    func movePlaceToCircle(placeId: String, targetCircleId: String, completion: @escaping (Result<Place, Error>) -> Void) {
+        let body: [String: Any] = [
+            "targetCircleId": targetCircleId
+        ]
+        
+        APIService.shared.request(
+            endpoint: "places/\(placeId)/move",
+            method: .post,
+            body: body,
+            requiresAuth: true
+        ) { [weak self] (result: Result<PlaceResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.place))
             case .failure(let error):
                 let mappedError = self?.mapAPIErrorToPlaceError(error)
                 completion(.failure(mappedError ?? error))
@@ -1106,6 +1151,12 @@ struct PlaceCommentResponse: Decodable {
     let comment: PlaceComment
 }
 
+struct LikeCommentResponse: Decodable {
+    let success: Bool
+    let liked: Bool
+    let likesCount: Int
+}
+
 // MARK: - PlaceComment Model
 
 struct PlaceComment: Codable, Identifiable {
@@ -1113,11 +1164,24 @@ struct PlaceComment: Codable, Identifiable {
     let placeId: String
     let userId: String
     let text: String
+    let likes: [String]? // Array of user IDs who liked the comment
+    let likesCount: Int? // Count for efficient display
     let createdAt: Date
     let user: User? // Populated when fetching comments
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
-        case placeId, userId, text, createdAt, user
+        case placeId, userId, text, likes, likesCount, createdAt, user
+    }
+    
+    // Helper properties
+    var isLikedByCurrentUser: Bool {
+        guard let currentUserId = AuthService.shared.getUserId(),
+              let likes = likes else { return false }
+        return likes.contains(currentUserId)
+    }
+    
+    var displayLikesCount: Int {
+        return likesCount ?? likes?.count ?? 0
     }
 }

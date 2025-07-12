@@ -2,6 +2,7 @@
 const { getFirestore, getMessaging } = require('../config/firebase');
 const { COLLECTIONS, createNotification, validateNotification } = require('../models/FirestoreModels');
 const emailService = require('./emailService');
+const sseService = require('./sseService');
 
 const db = getFirestore();
 const messaging = getMessaging();
@@ -255,12 +256,44 @@ class NotificationService {
     });
   }
 
-  async notifyConnectionRequest(fromUserId, toUserId) {
+  async notifyConnectionRequest(fromUserId, toUserId, connectionId = null) {
     const fromUserDoc = await db.collection(COLLECTIONS.USERS).doc(fromUserId).get();
     const fromUserName = fromUserDoc.exists ? fromUserDoc.data().displayName : 'Someone';
+    const fromUserPhoto = fromUserDoc.exists ? fromUserDoc.data().profilePicture : null;
     
     const toUserDoc = await db.collection(COLLECTIONS.USERS).doc(toUserId).get();
     const toUserEmail = toUserDoc.exists ? toUserDoc.data().email : null;
+
+    // Save notification to Firestore
+    const notificationData = createNotification({
+      userId: toUserId,
+      type: 'connection_request',
+      title: 'New Connection Request',
+      body: `${fromUserName} wants to connect with you`,
+      data: {
+        fromUserId: fromUserId,
+        fromUserName: fromUserName,
+        fromUserPhoto: fromUserPhoto,
+        connectionId: connectionId
+      }
+    });
+
+    const validationErrors = validateNotification(notificationData);
+    if (validationErrors.length === 0) {
+      const notificationRef = await this.db.collection(COLLECTIONS.NOTIFICATIONS).add(notificationData);
+      console.log(`🔔 Created notification document for connection request from ${fromUserName} to user ${toUserId}`);
+      
+      // Send SSE event for real-time notification count update
+      sseService.notifyUser(toUserId, 'new_notification', {
+        notificationId: notificationRef.id,
+        type: 'connection_request',
+        title: notificationData.title,
+        body: notificationData.body,
+        data: notificationData.data
+      });
+    } else {
+      console.error('❌ Validation errors for connection request notification:', validationErrors);
+    }
 
     // Send push notification
     await this.sendToUser(toUserId, {

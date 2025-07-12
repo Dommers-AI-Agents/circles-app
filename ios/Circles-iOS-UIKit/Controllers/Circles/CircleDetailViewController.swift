@@ -2223,8 +2223,9 @@ class PlaceTableViewCell: UITableViewCell {
         let likeCount = place.likesCount ?? 0
         likeCountLabel.text = likeCount > 0 ? "\(likeCount)" : ""
         
-        // Comment count (will need to fetch separately)
-        commentCountLabel.text = ""
+        // Comment count
+        let commentCount = place.commentsCount ?? 0
+        commentCountLabel.text = commentCount > 0 ? "\(commentCount)" : ""
         
         // Show/hide directions button based on location availability
         directionsButton.isHidden = (place.location == nil)

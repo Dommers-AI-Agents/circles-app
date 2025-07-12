@@ -12,6 +12,7 @@ enum SSEEventType: String {
     case followerRemoved = "follower_removed"
     case followingAdded = "following_added"
     case followingRemoved = "following_removed"
+    case newActivity = "new_activity"
 }
 
 // MARK: - SSE Event

@@ -60,9 +60,11 @@ class AllUsersListViewController: UIViewController {
     private var allUsers: [User] = []
     private var connectedUsers: [User] = []
     private var pendingIncomingUsers: [User] = []
+    private var pendingOutgoingUsers: [User] = []
     private var nonConnectedUsers: [User] = []
     private var filteredConnectedUsers: [User] = []
     private var filteredPendingIncomingUsers: [User] = []
+    private var filteredPendingOutgoingUsers: [User] = []
     private var filteredNonConnectedUsers: [User] = []
     
     private let cellIdentifier = "UserCell"
@@ -270,14 +272,20 @@ class AllUsersListViewController: UIViewController {
             user.connectionStatus == "pending" && user.connectionDirection == "incoming"
         }
         
+        pendingOutgoingUsers = allUsers.filter { user in
+            user.connectionStatus == "pending" && user.connectionDirection == "outgoing"
+        }
+        
         nonConnectedUsers = allUsers.filter { user in
             (user.connectionStatus != "connected" && user.connectionStatus != "accepted") &&
-            !(user.connectionStatus == "pending" && user.connectionDirection == "incoming")
+            !(user.connectionStatus == "pending" && user.connectionDirection == "incoming") &&
+            !(user.connectionStatus == "pending" && user.connectionDirection == "outgoing")
         }
         
         // Sort each group alphabetically
         connectedUsers.sort { ($0.displayName ?? "") < ($1.displayName ?? "") }
         pendingIncomingUsers.sort { ($0.displayName ?? "") < ($1.displayName ?? "") }
+        pendingOutgoingUsers.sort { ($0.displayName ?? "") < ($1.displayName ?? "") }
         nonConnectedUsers.sort { ($0.displayName ?? "") < ($1.displayName ?? "") }
         
         // Apply search filter if needed
@@ -288,6 +296,7 @@ class AllUsersListViewController: UIViewController {
         if searchQuery.isEmpty {
             filteredConnectedUsers = connectedUsers
             filteredPendingIncomingUsers = pendingIncomingUsers
+            filteredPendingOutgoingUsers = pendingOutgoingUsers
             filteredNonConnectedUsers = nonConnectedUsers
         } else {
             let query = searchQuery.lowercased()
@@ -298,6 +307,11 @@ class AllUsersListViewController: UIViewController {
             }
             
             filteredPendingIncomingUsers = pendingIncomingUsers.filter { user in
+                user.displayName.lowercased().contains(query) ||
+                user.email.lowercased().contains(query)
+            }
+            
+            filteredPendingOutgoingUsers = pendingOutgoingUsers.filter { user in
                 user.displayName.lowercased().contains(query) ||
                 user.email.lowercased().contains(query)
             }
@@ -370,6 +384,7 @@ extension AllUsersListViewController: UITableViewDataSource {
         
         var sections = 0
         if !filteredPendingIncomingUsers.isEmpty { sections += 1 }
+        if !filteredPendingOutgoingUsers.isEmpty { sections += 1 }
         if !filteredConnectedUsers.isEmpty { sections += 1 }
         if !filteredNonConnectedUsers.isEmpty { sections += 1 }
         return sections
@@ -382,6 +397,13 @@ extension AllUsersListViewController: UITableViewDataSource {
         if !filteredPendingIncomingUsers.isEmpty {
             if section == currentSection {
                 return filteredPendingIncomingUsers.count
+            }
+            currentSection += 1
+        }
+        
+        if !filteredPendingOutgoingUsers.isEmpty {
+            if section == currentSection {
+                return filteredPendingOutgoingUsers.count
             }
             currentSection += 1
         }
@@ -407,6 +429,13 @@ extension AllUsersListViewController: UITableViewDataSource {
             currentSection += 1
         }
         
+        if !filteredPendingOutgoingUsers.isEmpty {
+            if section == currentSection {
+                return "Sent Requests"
+            }
+            currentSection += 1
+        }
+        
         if !filteredConnectedUsers.isEmpty {
             if section == currentSection {
                 return "Your Connections"
@@ -426,6 +455,16 @@ extension AllUsersListViewController: UITableViewDataSource {
         if !filteredPendingIncomingUsers.isEmpty {
             if indexPath.section == currentSection {
                 user = filteredPendingIncomingUsers[indexPath.row]
+                cell.configure(with: user)
+                cell.delegate = self
+                return cell
+            }
+            currentSection += 1
+        }
+        
+        if !filteredPendingOutgoingUsers.isEmpty {
+            if indexPath.section == currentSection {
+                user = filteredPendingOutgoingUsers[indexPath.row]
                 cell.configure(with: user)
                 cell.delegate = self
                 return cell
@@ -739,6 +778,11 @@ extension AllUsersListViewController: AllUsersCellDelegate {
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         present(alert, animated: true)
     }
+    
+    func allUsersCell(_ cell: AllUsersCell, didTapProfileImage user: User) {
+        // Navigate to user profile
+        viewUserProfile(user)
+    }
 }
 
 // MARK: - AllUsersCell
@@ -746,6 +790,7 @@ protocol AllUsersCellDelegate: AnyObject {
     func allUsersCell(_ cell: AllUsersCell, didTapActionButton user: User)
     func allUsersCell(_ cell: AllUsersCell, didTapRemoveButton user: User)
     func allUsersCell(_ cell: AllUsersCell, didTapDeclineButton user: User)
+    func allUsersCell(_ cell: AllUsersCell, didTapProfileImage user: User)
 }
 
 class AllUsersCell: UITableViewCell {
@@ -839,6 +884,16 @@ class AllUsersCell: UITableViewCell {
         contentView.addSubview(actionButton)
         contentView.addSubview(removeButton)
         contentView.addSubview(declineButton)
+        
+        // Make profile image tappable
+        profileImageView.isUserInteractionEnabled = true
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(profileImageTapped))
+        profileImageView.addGestureRecognizer(tapGesture)
+        
+        // Add long press for full-screen image viewing
+        let longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(profileImageLongPressed))
+        longPressGesture.minimumPressDuration = 0.5
+        profileImageView.addGestureRecognizer(longPressGesture)
         
         NSLayoutConstraint.activate([
             highlightView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
@@ -960,5 +1015,40 @@ class AllUsersCell: UITableViewCell {
     @objc private func declineButtonTapped() {
         guard let user = user else { return }
         delegate?.allUsersCell(self, didTapDeclineButton: user)
+    }
+    
+    @objc private func profileImageTapped() {
+        guard let user = user else { return }
+        
+        // Add subtle tap feedback animation
+        UIView.animate(withDuration: 0.1, animations: {
+            self.profileImageView.transform = CGAffineTransform(scaleX: 0.95, y: 0.95)
+        }) { _ in
+            UIView.animate(withDuration: 0.1) {
+                self.profileImageView.transform = .identity
+            }
+        }
+        
+        delegate?.allUsersCell(self, didTapProfileImage: user)
+    }
+    
+    @objc private func profileImageLongPressed(_ gesture: UILongPressGestureRecognizer) {
+        guard gesture.state == .began,
+              let user = user else { return }
+        
+        // Find the parent view controller to present the image viewer
+        var responder: UIResponder? = self
+        while responder != nil {
+            if let viewController = responder as? UIViewController {
+                // Show full-screen profile image
+                if let profileImageURL = user.profilePicture {
+                    ImageViewerService.shared.presentImageFromURL(profileImageURL, from: viewController)
+                } else if let currentImage = profileImageView.image {
+                    ImageViewerService.shared.presentImage(currentImage, from: viewController)
+                }
+                break
+            }
+            responder = responder?.next
+        }
     }
 }

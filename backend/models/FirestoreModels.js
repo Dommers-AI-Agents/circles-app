@@ -16,7 +16,8 @@ const COLLECTIONS = {
   MESSAGE_READS: 'messageReads',
   SUGGESTIONS: 'suggestions',
   COMMENTS: 'comments',
-  NOTIFICATIONS: 'notifications'
+  NOTIFICATIONS: 'notifications',
+  ACTIVITIES: 'activities'
 };
 
 // User model structure
@@ -276,10 +277,27 @@ const serializeDoc = (doc) => {
   // Remove uid from data to avoid duplication
   const { uid, ...restData } = data;
   
+  // Convert any Firestore timestamps to ISO strings
+  const serializedData = {};
+  for (const [key, value] of Object.entries(restData)) {
+    if (value && value._seconds) {
+      // Firestore timestamp object
+      serializedData[key] = new Date(value._seconds * 1000).toISOString();
+    } else if (value && value.toDate && typeof value.toDate === 'function') {
+      // Firestore Timestamp class
+      serializedData[key] = value.toDate().toISOString();
+    } else if (value instanceof Date) {
+      // JavaScript Date object
+      serializedData[key] = value.toISOString();
+    } else {
+      serializedData[key] = value;
+    }
+  }
+  
   return {
     _id: id, // Use _id for consistency with iOS models
     id: id, // Also include id for backward compatibility
-    ...restData
+    ...serializedData
   };
 };
 

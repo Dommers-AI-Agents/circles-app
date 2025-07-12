@@ -148,9 +148,9 @@ class SSEService {
     const userListener = db.collection(COLLECTIONS.USERS)
       .doc(userId)
       .onSnapshot((snapshot) => {
-        if (snapshot.exists) {
+        if (snapshot && snapshot.exists) {
           const data = snapshot.data();
-          const previousData = snapshot.metadata.hasPendingWrites ? null : snapshot.data();
+          const previousData = (snapshot.metadata && snapshot.metadata.hasPendingWrites) ? null : snapshot.data();
           
           // Check for follower/following changes
           if (previousData) {
@@ -222,6 +222,48 @@ class SSEService {
         });
       });
     unsubscribers.push(suggestionListener);
+
+    // Listen for new activities in user's network
+    // First, get user's connections to know which activities to listen for
+    db.collection(COLLECTIONS.CONNECTIONS)
+      .where('userId', '==', userId)
+      .where('status', '==', 'accepted')
+      .get()
+      .then(connections1 => {
+        db.collection(COLLECTIONS.CONNECTIONS)
+          .where('connectedUserId', '==', userId)
+          .where('status', '==', 'accepted')
+          .get()
+          .then(connections2 => {
+            const connectedUserIds = new Set();
+            connections1.docs.forEach(doc => connectedUserIds.add(doc.data().connectedUserId));
+            connections2.docs.forEach(doc => connectedUserIds.add(doc.data().userId));
+            connectedUserIds.add(userId); // Include self
+            
+            if (connectedUserIds.size > 0) {
+              const userIdsArray = Array.from(connectedUserIds);
+              
+              // Listen for new activities from network
+              const activityListener = db.collection(COLLECTIONS.ACTIVITIES)
+                .where('actorId', 'in', userIdsArray)
+                .orderBy('timestamp', 'desc')
+                .limit(5)
+                .onSnapshot((snapshot) => {
+                  snapshot.docChanges().forEach(change => {
+                    if (change.type === 'added') {
+                      const activity = { id: change.doc.id, ...change.doc.data() };
+                      this.sendEvent(userId, {
+                        type: 'new_activity',
+                        data: activity,
+                        timestamp: new Date().toISOString()
+                      });
+                    }
+                  });
+                });
+              unsubscribers.push(activityListener);
+            }
+          });
+      });
 
     // Store unsubscribe functions
     this.listeners.set(userId, unsubscribers);

@@ -26,6 +26,7 @@ struct Place: Codable, Identifiable {
     let priceLevel: PriceLevel?
     let likes: [String]?
     let likesCount: Int?
+    let commentsCount: Int?
     let circleId: String
     let addedBy: String
     let addedByUser: User? // Populated when fetching places in shared circles
@@ -38,7 +39,7 @@ struct Place: Codable, Identifiable {
         case id = "_id"
         case name, description, address, location, website, phone, googlePlaceId
         case photos, category, customCategory, subcategory, rating, userRatingsTotal, notes, privateNotes, publicNotes, tags, reviews, openingHours
-        case priceLevel, likes, likesCount, circleId, addedBy, addedByUser, privacy, createdAt, updatedAt, isNew
+        case priceLevel, likes, likesCount, commentsCount, circleId, addedBy, addedByUser, privacy, createdAt, updatedAt, isNew
     }
     
     init(from decoder: Decoder) throws {
@@ -76,6 +77,7 @@ struct Place: Codable, Identifiable {
         
         self.likes = try container.decodeIfPresent([String].self, forKey: .likes)
         self.likesCount = try container.decodeIfPresent(Int.self, forKey: .likesCount)
+        self.commentsCount = try container.decodeIfPresent(Int.self, forKey: .commentsCount)
         self.circleId = try container.decode(String.self, forKey: .circleId)
         self.addedBy = try container.decode(String.self, forKey: .addedBy)
         self.addedByUser = try container.decodeIfPresent(User.self, forKey: .addedByUser)
@@ -92,7 +94,7 @@ struct Place: Codable, Identifiable {
          customCategory: String?, subcategory: String?, rating: Double?, userRatingsTotal: Int?, notes: String?,
          privateNotes: String?, publicNotes: String?, tags: [String]?,
          reviews: [PlaceReview]?, openingHours: [OpeningHour]?,
-         priceLevel: PriceLevel?, likes: [String]?, likesCount: Int?, circleId: String, addedBy: String,
+         priceLevel: PriceLevel?, likes: [String]?, likesCount: Int?, commentsCount: Int?, circleId: String, addedBy: String,
          addedByUser: User?, privacy: PlacePrivacy, createdAt: Date, updatedAt: Date, isNew: Bool? = nil) {
         self.id = id
         self.name = name
@@ -117,6 +119,7 @@ struct Place: Codable, Identifiable {
         self.priceLevel = priceLevel
         self.likes = likes
         self.likesCount = likesCount
+        self.commentsCount = commentsCount
         self.circleId = circleId
         self.addedBy = addedBy
         self.addedByUser = addedByUser

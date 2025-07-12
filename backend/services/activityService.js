@@ -5,9 +5,34 @@ const { admin, getFirestore } = require('../config/firebase');
 const { COLLECTIONS, serializeDoc } = require('../models/FirestoreModels');
 const db = getFirestore();
 
+// Import createActivity helper from activity controller
+const { createActivity } = require('../controllers/activityController');
+
 // Track when a user adds a new circle
 const trackCircleCreated = async (circleId, createdByUserId) => {
   try {
+    // Get circle details
+    const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(circleId).get();
+    let circleName = 'Unknown Circle';
+    
+    if (circleDoc.exists) {
+      const circleData = circleDoc.data();
+      circleName = circleData.name || 'Unknown Circle';
+    }
+    
+    // Create activity record in the activities collection
+    await createActivity(
+      'circle_created',
+      createdByUserId,
+      'circle',
+      circleId,
+      circleName,
+      {
+        circleId: circleId,
+        circleName: circleName
+      }
+    );
+
     // Get all connections of the user who created the circle (both directions)
     const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
       db.collection(COLLECTIONS.CONNECTIONS)
@@ -49,6 +74,31 @@ const trackCircleCreated = async (circleId, createdByUserId) => {
 // Track when a user adds a new place
 const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedByUserId) => {
   try {
+    // Create activity record in the activities collection
+    const placeDoc = await db.collection(COLLECTIONS.PLACES).doc(placeId).get();
+    let placePhoto = null;
+    let placeAddress = null;
+    
+    if (placeDoc.exists) {
+      const placeData = placeDoc.data();
+      placePhoto = placeData.photos && placeData.photos.length > 0 ? placeData.photos[0] : null;
+      placeAddress = placeData.address || null;
+    }
+    
+    await createActivity(
+      'place_added',
+      addedByUserId,
+      'place',
+      placeId,
+      placeName || 'Unknown Place',
+      {
+        circleId: circleId,
+        circleName: circleName || 'Unknown Circle',
+        placePhoto: placePhoto,
+        placeAddress: placeAddress
+      }
+    );
+
     // Get all connections of the user who added the place (both directions)
     const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
       db.collection(COLLECTIONS.CONNECTIONS)

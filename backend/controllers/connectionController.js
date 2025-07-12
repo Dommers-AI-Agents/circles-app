@@ -391,7 +391,7 @@ const sendConnectionRequest = async (req, res) => {
     // Send notification to target user if not auto-accepted
     if (!autoAccept) {
       try {
-        await notificationService.notifyConnectionRequest(userId, targetUserDocId);
+        await notificationService.notifyConnectionRequest(userId, targetUserDocId, connection.id);
         
         // Send real-time SSE notification
         sseService.notifyUser(targetUserDocId, 'connection_request', {
@@ -400,63 +400,6 @@ const sendConnectionRequest = async (req, res) => {
           message: message || null
         });
         
-        // Also create a system message in the user's inbox
-        const senderDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
-        const senderName = senderDoc.exists ? senderDoc.data().displayName : 'Someone';
-        
-        // Create or find direct conversation between users
-        let directConversation = null;
-        
-        // Check if a direct conversation already exists
-        const existingConvQuery = await db.collection(COLLECTIONS.CONVERSATIONS)
-          .where('type', '==', 'direct')
-          .where('participants', 'array-contains', userId)
-          .get();
-          
-        const existingConversation = existingConvQuery.docs.find(doc => {
-          const data = doc.data();
-          return data.participants.includes(targetUserDocId) && 
-                 data.participants.length === 2;
-        });
-        
-        if (existingConversation) {
-          directConversation = { id: existingConversation.id, ...existingConversation.data() };
-        } else {
-          // Create direct conversation
-          const { createConversation } = require('../models/FirestoreModels');
-          const convData = createConversation({
-            type: 'direct',
-            participants: [userId, targetUserDocId],
-            name: null,
-            avatar: null
-          }, userId);
-          
-          const convRef = await db.collection(COLLECTIONS.CONVERSATIONS).add(convData);
-          directConversation = { id: convRef.id, ...convData };
-        }
-        
-        // Create connection request message
-        const { createMessage } = require('../models/FirestoreModels');
-        const messageData = createMessage({
-          type: 'connection_request',
-          content: `${senderName} wants to connect with you`,
-          metadata: {
-            connectionId: docRef.id,
-            senderId: userId,
-            senderName: senderName,
-            senderAvatar: senderDoc.exists ? senderDoc.data().profilePicture : null,
-            status: 'pending' // Track if this request has been handled
-          }
-        }, directConversation.id, userId);
-        
-        await db.collection(COLLECTIONS.MESSAGES).add(messageData);
-        
-        // Update conversation's last message time
-        await db.collection(COLLECTIONS.CONVERSATIONS).doc(directConversation.id).update({
-          lastMessageTime: messageData.createdAt,
-          lastMessage: messageData.content,
-          lastMessageType: 'connection_request'
-        });
         
       } catch (notifError) {
         console.error('Error sending connection request notification:', notifError);

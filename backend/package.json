@@ -11,7 +11,8 @@
     "deduplicate-users:execute": "node scripts/deduplicate-users.js --execute",
     "migrate:normalize-ids": "node migrations/001-normalize-user-ids.js --dry-run",
     "migrate:normalize-ids:execute": "node migrations/001-normalize-user-ids.js",
-    "migrate:normalize-ids:rollback": "node migrations/001-normalize-user-ids.js --rollback"
+    "migrate:normalize-ids:rollback": "node migrations/001-normalize-user-ids.js --rollback",
+    "check-activities": "node scripts/check-activities.js"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.16.0",

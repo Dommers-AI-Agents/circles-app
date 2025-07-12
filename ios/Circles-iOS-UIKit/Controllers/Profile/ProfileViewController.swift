@@ -1,4 +1,5 @@
 import UIKit
+import MapKit
 
 // MARK: - Response Types
 struct UserCirclesResponse: Codable {
@@ -73,6 +74,11 @@ class ProfileViewController: UIViewController {
     // MARK: - Properties
     private var user: User?
     private var circles: [Circle] = []
+    private var isShowingMap = false
+    private var allPlaces: [Place] = []
+    private var filteredPlaces: [Place] = []
+    private var selectedCategory: PlaceCategory?
+    private var selectedCity: String?
     
     // MARK: - Public Methods
     func configureWith(user: User) {
@@ -346,6 +352,86 @@ class ProfileViewController: UIViewController {
     }()
     
     private var circlesCollectionHeightConstraint: NSLayoutConstraint?
+    private var logoutButtonTopToCollectionConstraint: NSLayoutConstraint?
+    private var logoutButtonTopToMapConstraint: NSLayoutConstraint?
+    
+    // Map view elements
+    private lazy var mapContainerView: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isHidden = true
+        return view
+    }()
+    
+    private lazy var mapView: MKMapView = {
+        let mapView = MKMapView()
+        mapView.translatesAutoresizingMaskIntoConstraints = false
+        mapView.delegate = self
+        return mapView
+    }()
+    
+    private lazy var filterContainerView: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.background
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.layer.shadowColor = UIColor.black.cgColor
+        view.layer.shadowOffset = CGSize(width: 0, height: 2)
+        view.layer.shadowOpacity = 0.1
+        view.layer.shadowRadius = 4
+        return view
+    }()
+    
+    private lazy var categoryFilterButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("All Categories", for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 14)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Style as dropdown button
+        button.backgroundColor = UIColor.systemBackground
+        button.layer.borderWidth = 1
+        button.layer.borderColor = UIColor.systemGray4.cgColor
+        button.layer.cornerRadius = 8
+        button.contentHorizontalAlignment = .left
+        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 32)
+        
+        // Add chevron down icon
+        let chevronImage = UIImage(systemName: "chevron.down")
+        button.setImage(chevronImage, for: .normal)
+        button.semanticContentAttribute = .forceRightToLeft
+        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: -12)
+        
+        button.showsMenuAsPrimaryAction = true
+        button.changesSelectionAsPrimaryAction = false
+        
+        return button
+    }()
+    
+    private lazy var cityFilterButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("All Cities", for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 14)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Style as dropdown button
+        button.backgroundColor = UIColor.systemBackground
+        button.layer.borderWidth = 1
+        button.layer.borderColor = UIColor.systemGray4.cgColor
+        button.layer.cornerRadius = 8
+        button.contentHorizontalAlignment = .left
+        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 32)
+        
+        // Add chevron down icon
+        let chevronImage = UIImage(systemName: "chevron.down")
+        button.setImage(chevronImage, for: .normal)
+        button.semanticContentAttribute = .forceRightToLeft
+        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: -12)
+        
+        button.showsMenuAsPrimaryAction = true
+        button.changesSelectionAsPrimaryAction = false
+        
+        return button
+    }()
     
     // State tracking for other users
     private var isFollowing: Bool = false
@@ -370,6 +456,17 @@ class ProfileViewController: UIViewController {
         displayAppVersion()
         setupNotificationObservers()
         
+        // Load saved view mode preference
+        if let savedViewMode = UserDefaults.standard.string(forKey: "profileViewMode") {
+            isShowingMap = (savedViewMode == "map")
+            // Update the UI based on saved preference
+            circlesCollectionView.isHidden = isShowingMap
+            mapContainerView.isHidden = !isShowingMap
+            if let toggleButton = navigationItem.rightBarButtonItems?[1] {
+                toggleButton.title = isShowingMap ? "List" : "Map"
+            }
+        }
+        
         // Register for SSE events
         SSEService.shared.addDelegate(self)
     }
@@ -377,9 +474,15 @@ class ProfileViewController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         
-        // Refresh stats when returning to profile page
+        // Refresh user data and stats when returning to profile page
         if let userId = self.user?.id {
-            fetchUserStats(userId: userId)
+            // If viewing current user's profile, fetch fresh data
+            if userId == AuthService.shared.getUserId() {
+                fetchFreshUserData()
+            } else {
+                // For other users, just refresh stats
+                fetchUserStats(userId: userId)
+            }
         }
     }
     
@@ -410,9 +513,10 @@ class ProfileViewController: UIViewController {
         view.backgroundColor = Constants.Colors.background
         title = "Profile"
         
-        // Add right bar button item (settings)
+        // Add right bar button items
         let settingsButton = UIBarButtonItem(image: UIImage(systemName: "gear"), style: .plain, target: self, action: #selector(settingsButtonTapped))
-        navigationItem.rightBarButtonItem = settingsButton
+        let toggleButton = UIBarButtonItem(title: "Map", style: .plain, target: self, action: #selector(toggleViewMode))
+        navigationItem.rightBarButtonItems = [settingsButton, toggleButton]
         
         // Add subviews
         view.addSubview(scrollView)
@@ -441,6 +545,14 @@ class ProfileViewController: UIViewController {
         contentView.addSubview(circlesHeaderView)
         circlesHeaderView.addSubview(circlesHeaderLabel)
         contentView.addSubview(circlesCollectionView)
+        
+        // Add map container (initially hidden)
+        contentView.addSubview(mapContainerView)
+        mapContainerView.addSubview(filterContainerView)
+        filterContainerView.addSubview(categoryFilterButton)
+        filterContainerView.addSubview(cityFilterButton)
+        mapContainerView.addSubview(mapView)
+        
         contentView.addSubview(logoutButton)
         contentView.addSubview(versionLabel)
         
@@ -591,8 +703,37 @@ class ProfileViewController: UIViewController {
             circlesCollectionView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             circlesCollectionView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             
-            // Logout button
-            logoutButton.topAnchor.constraint(equalTo: circlesCollectionView.bottomAnchor, constant: Constants.Spacing.xlarge),
+            // Map container (same position as circles collection)
+            mapContainerView.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor),
+            mapContainerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            mapContainerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            mapContainerView.heightAnchor.constraint(equalToConstant: 400),
+            
+            // Filter container
+            filterContainerView.topAnchor.constraint(equalTo: mapContainerView.topAnchor),
+            filterContainerView.leadingAnchor.constraint(equalTo: mapContainerView.leadingAnchor),
+            filterContainerView.trailingAnchor.constraint(equalTo: mapContainerView.trailingAnchor),
+            filterContainerView.heightAnchor.constraint(equalToConstant: 44),
+            
+            // Category filter button
+            categoryFilterButton.leadingAnchor.constraint(equalTo: filterContainerView.leadingAnchor, constant: Constants.Spacing.medium),
+            categoryFilterButton.centerYAnchor.constraint(equalTo: filterContainerView.centerYAnchor),
+            categoryFilterButton.heightAnchor.constraint(equalToConstant: 36),
+            categoryFilterButton.widthAnchor.constraint(equalToConstant: 140),
+            
+            // City filter button
+            cityFilterButton.leadingAnchor.constraint(equalTo: categoryFilterButton.trailingAnchor, constant: Constants.Spacing.medium),
+            cityFilterButton.centerYAnchor.constraint(equalTo: filterContainerView.centerYAnchor),
+            cityFilterButton.heightAnchor.constraint(equalToConstant: 36),
+            cityFilterButton.widthAnchor.constraint(equalToConstant: 120),
+            
+            // Map view
+            mapView.topAnchor.constraint(equalTo: filterContainerView.bottomAnchor),
+            mapView.leadingAnchor.constraint(equalTo: mapContainerView.leadingAnchor),
+            mapView.trailingAnchor.constraint(equalTo: mapContainerView.trailingAnchor),
+            mapView.bottomAnchor.constraint(equalTo: mapContainerView.bottomAnchor),
+            
+            // Logout button (position constraints)
             logoutButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             logoutButton.widthAnchor.constraint(equalToConstant: 100),
             logoutButton.heightAnchor.constraint(equalToConstant: 40),
@@ -608,6 +749,18 @@ class ProfileViewController: UIViewController {
         // Create height constraint for collection view
         circlesCollectionHeightConstraint = circlesCollectionView.heightAnchor.constraint(equalToConstant: 200)
         circlesCollectionHeightConstraint?.isActive = true
+        
+        // Create switchable constraints for logout button
+        logoutButtonTopToCollectionConstraint = logoutButton.topAnchor.constraint(equalTo: circlesCollectionView.bottomAnchor, constant: Constants.Spacing.xlarge)
+        logoutButtonTopToMapConstraint = logoutButton.topAnchor.constraint(equalTo: mapContainerView.bottomAnchor, constant: Constants.Spacing.xlarge)
+        
+        // Initially show collection view
+        logoutButtonTopToCollectionConstraint?.isActive = true
+        logoutButtonTopToMapConstraint?.isActive = false
+        
+        // Setup filter menus
+        setupCategoryFilterMenu()
+        setupCityFilterMenu()
         
         // Setup collection view
         circlesCollectionView.delegate = self
@@ -640,6 +793,11 @@ class ProfileViewController: UIViewController {
         let followingTapGesture = UITapGestureRecognizer(target: self, action: #selector(followingStatTapped))
         followingStatView.addGestureRecognizer(followingTapGesture)
         followingStatView.isUserInteractionEnabled = true
+        
+        // Add tap gesture for profile image to view full-screen
+        let profileImageTapGesture = UITapGestureRecognizer(target: self, action: #selector(profileImageTapped))
+        profileImageView.addGestureRecognizer(profileImageTapGesture)
+        profileImageView.isUserInteractionEnabled = true
         
         // Apply initial appearance
         updateAppearance()
@@ -696,6 +854,170 @@ class ProfileViewController: UIViewController {
         navigationController?.pushViewController(settingsVC, animated: true)
     }
     
+    @objc private func toggleViewMode() {
+        isShowingMap.toggle()
+        
+        // Update toggle button title
+        if let toggleButton = navigationItem.rightBarButtonItems?[1] {
+            toggleButton.title = isShowingMap ? "List" : "Map"
+        }
+        
+        // Show/hide views
+        circlesCollectionView.isHidden = isShowingMap
+        mapContainerView.isHidden = !isShowingMap
+        
+        // Update constraints
+        if isShowingMap {
+            logoutButtonTopToCollectionConstraint?.isActive = false
+            logoutButtonTopToMapConstraint?.isActive = true
+            
+            // Load places for map if not already loaded
+            if allPlaces.isEmpty {
+                loadAllPlaces()
+            }
+        } else {
+            logoutButtonTopToMapConstraint?.isActive = false
+            logoutButtonTopToCollectionConstraint?.isActive = true
+        }
+        
+        // Update scroll view layout
+        UIView.animate(withDuration: 0.3) {
+            self.view.layoutIfNeeded()
+        }
+        
+        // Save user preference
+        saveViewModePreference()
+    }
+    
+    private func setupCategoryFilterMenu() {
+        let categories: [PlaceCategory?] = [nil] + PlaceCategory.allCases
+        let categoryNames = ["All Categories"] + PlaceCategory.allCases.map { $0.displayName }
+        
+        var menuActions: [UIAction] = []
+        
+        for (index, category) in categories.enumerated() {
+            let action = UIAction(title: categoryNames[index]) { [weak self] _ in
+                self?.selectedCategory = category
+                self?.categoryFilterButton.setTitle(categoryNames[index], for: .normal)
+                self?.filterPlaces()
+                // Refresh the menu to update checkmarks
+                self?.setupCategoryFilterMenu()
+            }
+            
+            // Add checkmark for selected category
+            if category == selectedCategory {
+                action.state = .on
+            }
+            
+            menuActions.append(action)
+        }
+        
+        categoryFilterButton.menu = UIMenu(title: "", children: menuActions)
+    }
+    
+    private func extractCityFromAddress(_ address: String) -> String? {
+        // Split address by comma
+        let components = address.components(separatedBy: ", ").map { $0.trimmingCharacters(in: .whitespaces) }
+        
+        // Common patterns:
+        // "123 Main St, City, State ZIP"
+        // "123 Main St, City, State"
+        // "Place Name, 123 Main St, City, State"
+        // "123 Main St, City"
+        
+        if components.count >= 3 {
+            // Check if last component is ZIP/postal code (contains numbers)
+            let lastComponent = components.last ?? ""
+            let hasZipCode = lastComponent.rangeOfCharacter(from: .decimalDigits) != nil
+            
+            if hasZipCode && components.count >= 3 {
+                // Format: "..., City, State ZIP"
+                // City is 2 positions from the end
+                let potentialCity = components[components.count - 3]
+                // Clean up in case state is attached (e.g., "Phoenix AZ" -> "Phoenix")
+                let cityParts = potentialCity.components(separatedBy: " ")
+                if cityParts.count > 1 && cityParts.last?.count == 2 {
+                    // Remove state abbreviation if attached
+                    return cityParts.dropLast().joined(separator: " ")
+                }
+                return potentialCity
+            } else if components.count >= 2 {
+                // Format: "..., City, State" or "..., City"
+                // City is typically second to last
+                let potentialCity = components[components.count - 2]
+                // Clean up in case state is attached
+                let cityParts = potentialCity.components(separatedBy: " ")
+                if cityParts.count > 1 && cityParts.last?.count == 2 {
+                    // Remove state abbreviation if attached
+                    return cityParts.dropLast().joined(separator: " ")
+                }
+                return potentialCity
+            }
+        } else if components.count == 2 {
+            // Simple format: "Address, City"
+            let potentialCity = components[1]
+            // Clean up in case state is attached
+            let cityParts = potentialCity.components(separatedBy: " ")
+            if cityParts.count > 1 && cityParts.last?.count == 2 {
+                // Remove state abbreviation if attached
+                return cityParts.dropLast().joined(separator: " ")
+            }
+            return potentialCity
+        }
+        
+        return nil
+    }
+    
+    private func setupCityFilterMenu() {
+        // Get unique cities and count places per city
+        var cityPlaceCount: [String: Int] = [:]
+        
+        for place in allPlaces {
+            if let city = extractCityFromAddress(place.address) {
+                cityPlaceCount[city, default: 0] += 1
+            }
+        }
+        
+        // Sort cities alphabetically
+        let sortedCities = cityPlaceCount.keys.sorted()
+        
+        // Create menu options with place counts
+        let cityOptions: [String?] = [nil] + sortedCities
+        var cityNames: [String] = ["All Cities"]
+        
+        for city in sortedCities {
+            let count = cityPlaceCount[city] ?? 0
+            let pluralSuffix = count == 1 ? "place" : "places"
+            cityNames.append("\(city) (\(count) \(pluralSuffix))")
+        }
+        
+        var menuActions: [UIAction] = []
+        
+        for (index, city) in cityOptions.enumerated() {
+            let action = UIAction(title: cityNames[index]) { [weak self] _ in
+                self?.selectedCity = city
+                // Update button title - use shorter version without count for selected item
+                if let city = city {
+                    self?.cityFilterButton.setTitle(city, for: .normal)
+                } else {
+                    self?.cityFilterButton.setTitle("All Cities", for: .normal)
+                }
+                self?.filterPlaces()
+                // Refresh the menu to update checkmarks
+                self?.setupCityFilterMenu()
+            }
+            
+            // Add checkmark for selected city
+            if city == selectedCity {
+                action.state = .on
+            }
+            
+            menuActions.append(action)
+        }
+        
+        cityFilterButton.menu = UIMenu(title: "", children: menuActions)
+    }
+    
     @objc private func addCircleButtonTapped() {
         let createCircleVC = CreateCircleViewController()
         createCircleVC.delegate = self
@@ -732,6 +1054,15 @@ class ProfileViewController: UIViewController {
         navigationController?.pushViewController(followersVC, animated: true)
     }
     
+    @objc private func profileImageTapped() {
+        // Show full-screen profile image
+        if let profileImageURL = user?.profilePicture {
+            ImageViewerService.shared.presentImageFromURL(profileImageURL, from: self)
+        } else if let currentImage = profileImageView.image {
+            ImageViewerService.shared.presentImage(currentImage, from: self)
+        }
+    }
+    
     @objc private func messageButtonTapped() {
         guard let user = user else { return }
         
@@ -755,7 +1086,14 @@ class ProfileViewController: UIViewController {
     @objc private func followButtonTapped() {
         guard let user = user else { return }
         
+        // Disable button to prevent rapid toggles
+        followButton.isEnabled = false
+        followButton.alpha = 0.6
+        
         let endpoint = isFollowing ? "users/\(user.id)/unfollow" : "users/\(user.id)/follow"
+        let action = isFollowing ? "unfollow" : "follow"
+        
+        print("🔵 Follow button tapped - Action: \(action), User: \(user.displayName)")
         
         APIService.shared.request(
             endpoint: endpoint,
@@ -765,12 +1103,62 @@ class ProfileViewController: UIViewController {
             DispatchQueue.main.async {
                 switch result {
                 case .success:
+                    print("✅ Successfully \(action)ed user: \(user.displayName)")
                     self?.isFollowing.toggle()
+                    
+                    // Update the user object's isFollowing flag if it exists
+                    if self?.user?.isFollowing != nil {
+                        // Create a new user with updated isFollowing status
+                        if let currentUser = self?.user {
+                            self?.user = User(
+                                id: currentUser.id,
+                                email: currentUser.email,
+                                displayName: currentUser.displayName,
+                                firstName: currentUser.firstName,
+                                lastName: currentUser.lastName,
+                                phoneNumber: currentUser.phoneNumber,
+                                profilePicture: currentUser.profilePicture,
+                                bio: currentUser.bio,
+                                location: currentUser.location,
+                                friends: currentUser.friends,
+                                friendRequests: currentUser.friendRequests,
+                                circleOrder: currentUser.circleOrder,
+                                preferences: currentUser.preferences,
+                                createdAt: currentUser.createdAt,
+                                connectionStatus: currentUser.connectionStatus,
+                                connectionDirection: currentUser.connectionDirection,
+                                connectionId: currentUser.connectionId,
+                                followers: currentUser.followers,
+                                following: currentUser.following,
+                                followersCount: currentUser.followersCount,
+                                followingCount: currentUser.followingCount,
+                                connectionsCount: currentUser.connectionsCount,
+                                pinnedPlaces: currentUser.pinnedPlaces,
+                                isFollowing: self?.isFollowing
+                            )
+                        }
+                    }
+                    
                     self?.updateButtonVisibility()
-                    // Refresh current user's data to get updated following count
-                    self?.refreshCurrentUserData()
+                    
+                    // Immediately update current user's following count in UI
+                    self?.updateLocalFollowingCount(increment: action == "follow")
+                    
+                    // Re-enable button quickly after successful action
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        self?.followButton.isEnabled = true
+                        self?.followButton.alpha = 1.0
+                    }
+                    
                 case .failure(let error):
+                    print("❌ Failed to \(action) user: \(error)")
+                    // Revert the visual state on error
+                    self?.updateButtonVisibility()
                     self?.showAlert(title: "Error", message: "Failed to \(self?.isFollowing == true ? "unfollow" : "follow") user: \(error.localizedDescription)")
+                    
+                    // Re-enable button immediately on error
+                    self?.followButton.isEnabled = true
+                    self?.followButton.alpha = 1.0
                 }
             }
         }
@@ -803,18 +1191,25 @@ class ProfileViewController: UIViewController {
         // Fetch updated user data for the current user
         guard let currentUserId = AuthService.shared.getUserId() else { return }
         
-        UserService.shared.fetchUserProfile { [weak self] result in
+        // Force fetch fresh data from server to get updated following array
+        AuthService.shared.fetchCurrentUser { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let updatedUser):
-                    // Update the current user's following count
-                    let followingCount = updatedUser.followingCount ?? 0
-                    self?.followingStatView.configure(number: "\(followingCount)", title: "Following")
-                    
-                    // Update cached user data if viewing own profile
+                    // Only update stats if viewing own profile
                     if self?.user?.id == currentUserId {
+                        // Update all stats with fresh data
+                        let followingCount = updatedUser.followingCount ?? 0
+                        let followersCount = updatedUser.followersCount ?? 0
+                        self?.followingStatView.configure(number: "\(followingCount)", title: "Following")
+                        self?.followersStatView.configure(number: "\(followersCount)", title: "Followers")
+                        
+                        // Update cached user data for own profile
                         self?.user = updatedUser
                     }
+                    
+                    // Don't re-check follow status here as it would reset the local state
+                    // The SSE event will handle updating the following array
                 case .failure:
                     // Ignore errors for refresh
                     break
@@ -826,16 +1221,89 @@ class ProfileViewController: UIViewController {
     private func checkConnectionAndFollowStatus() {
         guard let user = user else { return }
         
+        print("🔍 Checking connection and follow status for user: \(user.displayName)")
+        
         // Check if user is in current user's connections
         let connections = NetworkManager.shared.connections
         let connection = connections.first { $0.otherUserId(currentUserId: AuthService.shared.getUserId() ?? "") == user.id }
         
         connectionStatus = connection?.status
         
-        // Check follow status (this would need to be implemented when we add follower checking)
-        isFollowing = false // Default for now
+        // First, check if the user object has isFollowing property (from backend)
+        if let userIsFollowing = user.isFollowing {
+            let wasFollowing = isFollowing
+            isFollowing = userIsFollowing
+            print("📊 Follow status from backend - Was: \(wasFollowing), Now: \(isFollowing)")
+        } else {
+            // Fallback: Check follow status from current user's following list
+            if let currentUser = AuthService.shared.currentUser,
+               let following = currentUser.following {
+                let wasFollowing = isFollowing
+                isFollowing = following.contains(user.id)
+                print("📊 Follow status from local - Was: \(wasFollowing), Now: \(isFollowing), Following array: \(following.count) users")
+            } else {
+                isFollowing = false
+                print("📊 No following data available")
+            }
+            
+            // If we're viewing another user and don't have current user data, fetch it
+            if AuthService.shared.currentUser == nil && user.id != AuthService.shared.getUserId() {
+                AuthService.shared.fetchCurrentUser { [weak self] _ in
+                    DispatchQueue.main.async {
+                        // Re-check follow status after fetching current user
+                        self?.checkConnectionAndFollowStatus()
+                    }
+                }
+            }
+        }
         
         updateButtonVisibility()
+    }
+    
+    private func updateLocalFollowingCount(increment: Bool) {
+        // Only update if we're viewing the current user's profile
+        guard let currentUserId = AuthService.shared.getUserId(),
+              let user = self.user,
+              user.id == currentUserId else {
+            return
+        }
+        
+        // Get current following count and update it
+        let currentCount = user.followingCount ?? 0
+        let newCount = increment ? currentCount + 1 : max(0, currentCount - 1)
+        
+        // Update the UI immediately
+        followingStatView.configure(number: "\(newCount)", title: "Following")
+        
+        // Update the cached user data
+        self.user = User(
+            id: user.id,
+            email: user.email,
+            displayName: user.displayName,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            phoneNumber: user.phoneNumber,
+            profilePicture: user.profilePicture,
+            bio: user.bio,
+            location: user.location,
+            friends: user.friends,
+            friendRequests: user.friendRequests,
+            circleOrder: user.circleOrder,
+            preferences: user.preferences,
+            createdAt: user.createdAt,
+            connectionStatus: user.connectionStatus,
+            connectionDirection: user.connectionDirection,
+            connectionId: user.connectionId,
+            followers: user.followers,
+            following: user.following,
+            followersCount: user.followersCount,
+            followingCount: newCount,
+            connectionsCount: user.connectionsCount,
+            pinnedPlaces: user.pinnedPlaces,
+            isFollowing: user.isFollowing
+        )
+        
+        print("📊 Updated local following count: \(currentCount) → \(newCount)")
     }
     
     private func updateButtonVisibility() {
@@ -875,33 +1343,116 @@ class ProfileViewController: UIViewController {
     }
     
     // MARK: - Data Loading
+    private func loadAllPlaces() {
+        // Load places from all circles
+        allPlaces.removeAll()
+        
+        for circle in circles {
+            PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { [weak self] result in
+                guard let self = self else { return }
+                
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(let places):
+                        self.allPlaces.append(contentsOf: places)
+                        self.filterPlaces()
+                        // Update city filter menu with new places
+                        self.setupCityFilterMenu()
+                    case .failure(let error):
+                        print("Failed to load places for circle \(circle.name): \(error)")
+                    }
+                }
+            }
+        }
+    }
+    
+    private func filterPlaces() {
+        filteredPlaces = allPlaces
+        
+        // Filter by category
+        if let category = selectedCategory {
+            filteredPlaces = filteredPlaces.filter { $0.category == category }
+        }
+        
+        // Filter by city
+        if let city = selectedCity {
+            filteredPlaces = filteredPlaces.filter { place in
+                // Use the same city extraction logic for consistency
+                if let placeCity = extractCityFromAddress(place.address) {
+                    return placeCity == city
+                }
+                return false
+            }
+        }
+        
+        // Update map pins
+        updateMapPins()
+    }
+    
+    private func updateMapPins() {
+        // Remove existing annotations
+        mapView.removeAnnotations(mapView.annotations)
+        
+        // Add filtered places as pins
+        for place in filteredPlaces {
+            if let location = place.location {
+                let annotation = MKPointAnnotation()
+                annotation.coordinate = CLLocationCoordinate2D(
+                    latitude: location.coordinates[1],
+                    longitude: location.coordinates[0]
+                )
+                annotation.title = place.name
+                annotation.subtitle = place.address
+                mapView.addAnnotation(annotation)
+            }
+        }
+        
+        // Zoom to show all pins
+        if !filteredPlaces.isEmpty {
+            mapView.showAnnotations(mapView.annotations, animated: true)
+        }
+    }
+    
+    private func saveViewModePreference() {
+        // Save the user's preference for map/list view locally
+        UserDefaults.standard.set(isShowingMap ? "map" : "list", forKey: "profileViewMode")
+    }
+    
     private func loadUserProfile() {
         if let user = self.user {
             // If user is provided, use it
             displayUser(user)
             fetchUserStats(userId: user.id)
         } else {
-            // Otherwise fetch current user
-            if let currentUser = AuthService.shared.currentUser {
-                // If we already have current user cached, use it
-                self.user = currentUser
-                displayUser(currentUser)
-                fetchUserStats(userId: currentUser.id)
-            } else {
-                // Otherwise load from API
-                AuthService.shared.fetchCurrentUser { [weak self] result in
-                    guard let self = self else { return }
+            // Otherwise fetch current user - always get fresh data
+            fetchFreshUserData()
+        }
+    }
+    
+    private func fetchFreshUserData() {
+        // Always fetch fresh user data from the server
+        UserService.shared.fetchUserProfile { [weak self] result in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let user):
+                    self.user = user
+                    self.displayUser(user)
+                    self.fetchUserStats(userId: user.id)
                     
-                    DispatchQueue.main.async {
-                        switch result {
-                        case .success(let user):
-                            self.user = user
-                            self.displayUser(user)
-                            self.fetchUserStats(userId: user.id)
-                        case .failure:
-                            // Show error or default values
-                            self.displayDefaultProfile()
-                        }
+                    // Update the cached user in AuthService
+                    AuthService.shared.updateCurrentUser(user)
+                    
+                case .failure:
+                    // If we have cached data, use it as fallback
+                    if let cachedUser = AuthService.shared.currentUser {
+                        self.user = cachedUser
+                        self.displayUser(cachedUser)
+                        self.fetchUserStats(userId: cachedUser.id)
+                    } else {
+                        // Show error or default values
+                        self.displayDefaultProfile()
                     }
                 }
             }
@@ -1056,6 +1607,12 @@ class ProfileViewController: UIViewController {
                     self?.followersStatView.configure(number: "\(followersCount)", title: "Followers")
                     self?.followingStatView.configure(number: "\(followingCount)", title: "Following")
                     
+                    // Update user data to get latest info
+                    self?.user = user
+                    
+                    // Re-check connection and follow status with fresh data
+                    self?.checkConnectionAndFollowStatus()
+                    
                     self?.circlesCollectionView.reloadData()
                     self?.updateCollectionViewHeight()
                     
@@ -1177,12 +1734,14 @@ class ProfileViewController: UIViewController {
     private func updateCollectionViewHeight() {
         // Calculate required height based on number of circles (3-column grid)
         let itemsPerRow: CGFloat = 3
-        let spacing: CGFloat = 1
-        let itemWidth = (view.bounds.width - (spacing * 2)) / itemsPerRow
-        let itemHeight = itemWidth // Square cells
+        let interitemSpacing: CGFloat = 12 // Match the actual spacing from flow layout delegate
+        let lineSpacing: CGFloat = 16 // Match the actual line spacing from flow layout delegate
+        let totalHorizontalSpacing = interitemSpacing * (itemsPerRow - 1)
+        let itemWidth = (view.bounds.width - totalHorizontalSpacing) / itemsPerRow
+        let itemHeight = itemWidth + 50 // Square cells + 50 for labels (matching flow layout delegate)
         
         let rows = ceil(CGFloat(circles.count) / itemsPerRow)
-        let totalHeight = (rows * itemHeight) + ((rows - 1) * spacing)
+        let totalHeight = (rows * itemHeight) + ((rows - 1) * lineSpacing)
         
         circlesCollectionHeightConstraint?.constant = max(totalHeight, 100) // Minimum height
         
@@ -1493,8 +2052,47 @@ extension ProfileViewController: SSEServiceDelegate {
                     self?.followersStatView.configure(number: "\(followersCount)", title: "Followers")
                 }
             case .followingAdded, .followingRemoved:
-                if let followingCount = event.data["followingCount"] as? Int {
+                print("🔔 SSE Event: \(event.type) - Data: \(event.data)")
+                let followingCount = event.data["followingCount"] as? Int
+                if let followingCount = followingCount {
                     self?.followingStatView.configure(number: "\(followingCount)", title: "Following")
+                }
+                // Update the cached current user's following array
+                if let following = event.data["following"] as? [String],
+                   var currentUser = AuthService.shared.currentUser {
+                    // Create updated user with new following array
+                    let updatedUser = User(
+                        id: currentUser.id,
+                        email: currentUser.email,
+                        displayName: currentUser.displayName,
+                        firstName: currentUser.firstName,
+                        lastName: currentUser.lastName,
+                        phoneNumber: currentUser.phoneNumber,
+                        profilePicture: currentUser.profilePicture,
+                        bio: currentUser.bio,
+                        location: currentUser.location,
+                        friends: currentUser.friends,
+                        friendRequests: currentUser.friendRequests,
+                        circleOrder: currentUser.circleOrder,
+                        preferences: currentUser.preferences,
+                        createdAt: currentUser.createdAt,
+                        connectionStatus: currentUser.connectionStatus,
+                        connectionDirection: currentUser.connectionDirection,
+                        connectionId: currentUser.connectionId,
+                        followers: currentUser.followers,
+                        following: following,  // Updated following array
+                        followersCount: currentUser.followersCount,
+                        followingCount: followingCount ?? currentUser.followingCount,
+                        connectionsCount: currentUser.connectionsCount,
+                        pinnedPlaces: currentUser.pinnedPlaces
+                    )
+                    AuthService.shared.updateCurrentUser(updatedUser)
+                    
+                    // Only re-check follow status if we're viewing someone else's profile
+                    // (not when we just clicked follow/unfollow)
+                    if self?.user?.id != currentUserId {
+                        self?.checkConnectionAndFollowStatus()
+                    }
                 }
             default:
                 break
@@ -1508,5 +2106,37 @@ extension ProfileViewController: SSEServiceDelegate {
     
     func sseServiceDidDisconnect(_ service: SSEService, error: Error?) {
         // Connection lost
+    }
+}
+
+// MARK: - MKMapViewDelegate
+extension ProfileViewController: MKMapViewDelegate {
+    func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+        let identifier = "PlacePin"
+        var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
+        
+        if annotationView == nil {
+            annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+            annotationView?.canShowCallout = true
+            
+            // Add a detail disclosure button
+            let button = UIButton(type: .detailDisclosure)
+            annotationView?.rightCalloutAccessoryView = button
+        } else {
+            annotationView?.annotation = annotation
+        }
+        
+        return annotationView
+    }
+    
+    func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView, calloutAccessoryControlTapped control: UIControl) {
+        guard let annotation = view.annotation,
+              let place = filteredPlaces.first(where: { $0.name == annotation.title }) else {
+            return
+        }
+        
+        // Navigate to place detail view
+        let placeDetailVC = PlaceDetailViewController(place: place)
+        navigationController?.pushViewController(placeDetailVC, animated: true)
     }
 }

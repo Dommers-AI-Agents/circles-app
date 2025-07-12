@@ -356,6 +356,15 @@ class EditPlaceViewController: UIViewController {
         return button
     }()
     
+    private let moveToCircleButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Move to Different Circle", for: .normal)
+        button.setTitleColor(.systemBlue, for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.large, weight: .semibold)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
     // MARK: - Lifecycle
     
     init(place: Place) {
@@ -423,6 +432,7 @@ class EditPlaceViewController: UIViewController {
         photoScrollView.addSubview(photoStackView)
         photoStackView.addArrangedSubview(addPhotoButton)
         
+        contentView.addSubview(moveToCircleButton)
         contentView.addSubview(deleteButton)
         
         // Layout constraints
@@ -578,8 +588,12 @@ class EditPlaceViewController: UIViewController {
             addPhotoButton.widthAnchor.constraint(equalToConstant: 100),
             addPhotoButton.heightAnchor.constraint(equalToConstant: 100),
             
+            // Move to Circle button
+            moveToCircleButton.topAnchor.constraint(equalTo: photoScrollView.bottomAnchor, constant: Constants.Spacing.xlarge),
+            moveToCircleButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            
             // Delete button
-            deleteButton.topAnchor.constraint(equalTo: photoScrollView.bottomAnchor, constant: Constants.Spacing.xlarge),
+            deleteButton.topAnchor.constraint(equalTo: moveToCircleButton.bottomAnchor, constant: Constants.Spacing.medium),
             deleteButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             deleteButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
         ])
@@ -615,6 +629,7 @@ class EditPlaceViewController: UIViewController {
         // Add button actions
         useCurrentLocationButton.addTarget(self, action: #selector(useCurrentLocationButtonTapped), for: .touchUpInside)
         deleteButton.addTarget(self, action: #selector(deleteButtonTapped), for: .touchUpInside)
+        moveToCircleButton.addTarget(self, action: #selector(moveToCircleButtonTapped), for: .touchUpInside)
         addPhotoButton.addTarget(self, action: #selector(addPhotoButtonTapped), for: .touchUpInside)
         
         // Add category change handler
@@ -866,6 +881,12 @@ class EditPlaceViewController: UIViewController {
         delegate?.didUpdatePlace(updatedPlace)
         dismiss(animated: true)
         */
+    }
+    
+    @objc private func moveToCircleButtonTapped() {
+        let circleSelectionVC = CircleSelectionViewController(excludedCircleId: place.circleId)
+        circleSelectionVC.delegate = self
+        present(circleSelectionVC, animated: true)
     }
     
     @objc private func deleteButtonTapped() {
@@ -1302,5 +1323,57 @@ extension EditPlaceViewController: CLLocationManagerDelegate {
         default:
             break
         }
+    }
+}
+
+// MARK: - CircleSelectionDelegate
+
+extension EditPlaceViewController: CircleSelectionDelegate {
+    func circleSelectionViewController(_ controller: CircleSelectionViewController, didSelectCircle circle: Circle) {
+        // Show loading indicator
+        let loadingAlert = UIAlertController(title: "Moving Place", message: "Moving \(place.name) to \(circle.name)...", preferredStyle: .alert)
+        present(loadingAlert, animated: true)
+        
+        // Perform the move
+        PlaceService.shared.movePlaceToCircle(placeId: place.id, targetCircleId: circle.id) { [weak self] result in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    switch result {
+                    case .success(let updatedPlace):
+                        // Update the local place object
+                        self.place = updatedPlace
+                        
+                        // Notify delegate about the update
+                        self.delegate?.didUpdatePlace(updatedPlace)
+                        
+                        // Show success message
+                        let successAlert = UIAlertController(
+                            title: "Success",
+                            message: "\(self.place.name) has been moved to \(circle.name)",
+                            preferredStyle: .alert
+                        )
+                        successAlert.addAction(UIAlertAction(title: "OK", style: .default) { _ in
+                            self.dismiss(animated: true)
+                        })
+                        self.present(successAlert, animated: true)
+                        
+                    case .failure(let error):
+                        let errorAlert = UIAlertController(
+                            title: "Error",
+                            message: "Failed to move place: \(error.localizedDescription)",
+                            preferredStyle: .alert
+                        )
+                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                        self.present(errorAlert, animated: true)
+                    }
+                }
+            }
+        }
+    }
+    
+    func circleSelectionViewControllerDidCancel(_ controller: CircleSelectionViewController) {
+        // User cancelled, nothing to do
     }
 }

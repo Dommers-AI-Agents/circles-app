@@ -42,6 +42,22 @@ class CirclesHomeViewController: UIViewController {
     }
     
     // MARK: - UI Elements
+    private let scrollView: UIScrollView = {
+        let scrollView = UIScrollView()
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.backgroundColor = Constants.Colors.background
+        scrollView.showsVerticalScrollIndicator = true
+        scrollView.alwaysBounceVertical = true
+        return scrollView
+    }()
+    
+    private let contentView: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.backgroundColor = Constants.Colors.background
+        return view
+    }()
+    
     private let searchBar: UISearchBar = {
         let searchBar = UISearchBar()
         searchBar.placeholder = "Search your places..."
@@ -401,6 +417,86 @@ class CirclesHomeViewController: UIViewController {
     private var isCategoryDropdownOpen = false
     private var availableCategories: [PlaceCategory] = []
     private var categoryDropdownHeightConstraint: NSLayoutConstraint?
+    private var mapHeightConstraint: NSLayoutConstraint?
+    
+    // Activity Feed Properties
+    private var activities: [Activity] = []
+    private var isLoadingActivities = false
+    private var activityTableHeightConstraint: NSLayoutConstraint?
+    
+    // Pagination properties
+    private var currentOffset = 0
+    private var hasMoreActivities = true
+    private var isLoadingMoreActivities = false
+    
+    // Activity Feed UI Elements
+    private let activityFeedSection: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.background
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let activityHeaderLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Recent Activity"
+        label.font = UIFont.systemFont(ofSize: 20, weight: .semibold)
+        label.textColor = Constants.Colors.label
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let activityTableView: UITableView = {
+        let tableView = UITableView()
+        tableView.backgroundColor = Constants.Colors.background
+        tableView.separatorStyle = .none
+        tableView.rowHeight = UITableView.automaticDimension
+        tableView.estimatedRowHeight = 80
+        tableView.isScrollEnabled = true // Enable scrolling for proper display
+        tableView.showsVerticalScrollIndicator = true
+        tableView.translatesAutoresizingMaskIntoConstraints = false
+        return tableView
+    }()
+    
+    private let activityEmptyStateLabel: UILabel = {
+        let label = UILabel()
+        label.text = "No recent activity from your network"
+        label.font = UIFont.systemFont(ofSize: 16)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.isHidden = true
+        return label
+    }()
+    
+    private let activityLoadingIndicator: UIActivityIndicatorView = {
+        let indicator = UIActivityIndicatorView(style: .medium)
+        indicator.color = Constants.Colors.primary
+        indicator.translatesAutoresizingMaskIntoConstraints = false
+        indicator.hidesWhenStopped = true
+        return indicator
+    }()
+    
+    private let loadMoreIndicatorView: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.background
+        view.translatesAutoresizingMaskIntoConstraints = false
+        
+        let indicator = UIActivityIndicatorView(style: .medium)
+        indicator.color = Constants.Colors.primary
+        indicator.translatesAutoresizingMaskIntoConstraints = false
+        indicator.startAnimating()
+        
+        view.addSubview(indicator)
+        NSLayoutConstraint.activate([
+            indicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            indicator.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            view.heightAnchor.constraint(equalToConstant: 60)
+        ])
+        
+        return view
+    }()
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
@@ -586,27 +682,41 @@ class CirclesHomeViewController: UIViewController {
         // Setup quick access buttons
         setupQuickAccessButtons()
         
+        // Add scroll view
+        view.addSubview(scrollView)
+        scrollView.addSubview(contentView)
+        
+        // Add search bar to main view (not scrolling)
         view.addSubview(searchBar)
-        view.addSubview(quickAccessContainer)
+        view.addSubview(quickAddPlaceButton)
+        
+        // Add content to scroll view
+        contentView.addSubview(quickAccessContainer)
         quickAccessContainer.addSubview(homeCard)
         quickAccessContainer.addSubview(workCard)
         homeCard.addSubview(homeButton)
         homeCard.addSubview(homeNavigateButton)
         workCard.addSubview(workButton)
         workCard.addSubview(workNavigateButton)
-        view.addSubview(quickAddPlaceButton)
-        view.addSubview(userListView)
-        view.addSubview(filterContainer)
-        view.addSubview(mapContainerView)
-        view.addSubview(mapLoadingView)
+        contentView.addSubview(userListView)
+        contentView.addSubview(filterContainer)
+        filterContainer.addSubview(filterStackView)
+        contentView.addSubview(mapContainerView)
+        contentView.addSubview(mapLoadingView)
         mapLoadingView.addSubview(mapLoadingIndicator)
         mapLoadingView.addSubview(mapLoadingLabel)
-        view.addSubview(mapExpandButton)
-        view.addSubview(filterStackView)
-        view.addSubview(locationStatusLabel)
+        contentView.addSubview(mapExpandButton)
+        contentView.addSubview(locationStatusLabel)
         filterStackView.addArrangedSubview(categoryFilterButton)
         filterStackView.addArrangedSubview(connectionFilterButton)
-        view.addSubview(emptyStateView)
+        contentView.addSubview(emptyStateView)
+        
+        // Add activity feed section
+        contentView.addSubview(activityFeedSection)
+        activityFeedSection.addSubview(activityHeaderLabel)
+        activityFeedSection.addSubview(activityTableView)
+        activityFeedSection.addSubview(activityEmptyStateLabel)
+        activityFeedSection.addSubview(activityLoadingIndicator)
         
         // Add loading container
         view.addSubview(loadingContainerView)
@@ -623,8 +733,8 @@ class CirclesHomeViewController: UIViewController {
         // Add search results table view
         view.addSubview(searchResultsTableView)
         
-        // Bring filter stack to front to ensure visibility
-        view.bringSubviewToFront(filterStackView)
+        // Bring elements to proper z-order
+        contentView.bringSubviewToFront(mapExpandButton)
         
         // Ensure loading view is on top
         view.bringSubviewToFront(loadingContainerView)
@@ -636,16 +746,29 @@ class CirclesHomeViewController: UIViewController {
         view.addGestureRecognizer(tapGesture)
         
         NSLayoutConstraint.activate([
-            // Search bar
+            // Search bar (fixed at top)
             searchBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             searchBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Constants.Spacing.medium),
             searchBar.trailingAnchor.constraint(equalTo: quickAddPlaceButton.leadingAnchor, constant: -Constants.Spacing.small),
             searchBar.heightAnchor.constraint(equalToConstant: 44),
             
-            // Quick access container
-            quickAccessContainer.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: Constants.Spacing.small),
-            quickAccessContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            quickAccessContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            // Scroll view
+            scrollView.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            
+            // Content view
+            contentView.topAnchor.constraint(equalTo: scrollView.topAnchor),
+            contentView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
+            contentView.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
+            contentView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
+            contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
+            
+            // Quick access container (now in content view)
+            quickAccessContainer.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Constants.Spacing.small),
+            quickAccessContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            quickAccessContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             quickAccessContainer.heightAnchor.constraint(equalToConstant: 50),
             
             // Quick Add Place button
@@ -692,14 +815,14 @@ class CirclesHomeViewController: UIViewController {
             
             // User list view
             userListView.topAnchor.constraint(equalTo: quickAccessContainer.bottomAnchor, constant: Constants.Spacing.small),
-            userListView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Constants.Spacing.medium),
-            userListView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.medium),
+            userListView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
+            userListView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
             userListView.heightAnchor.constraint(equalToConstant: 124),
             
             // Filter container
             filterContainer.topAnchor.constraint(equalTo: userListView.bottomAnchor, constant: Constants.Spacing.xsmall),
-            filterContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            filterContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            filterContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            filterContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             filterContainer.heightAnchor.constraint(equalToConstant: 60),
             
             // Filter stack - center in filter container
@@ -707,17 +830,16 @@ class CirclesHomeViewController: UIViewController {
             filterStackView.centerXAnchor.constraint(equalTo: filterContainer.centerXAnchor),
             filterStackView.heightAnchor.constraint(equalToConstant: 36),
             
-            // Map container - connect to filter container bottom
+            // Map container - fixed height in scroll view
             mapContainerView.topAnchor.constraint(equalTo: filterContainer.bottomAnchor),
-            mapContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            mapContainerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            mapContainerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            mapContainerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            mapContainerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             
             // Map loading view - same position as map container
-            mapLoadingView.topAnchor.constraint(equalTo: filterContainer.bottomAnchor),
-            mapLoadingView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            mapLoadingView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            mapLoadingView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            mapLoadingView.topAnchor.constraint(equalTo: mapContainerView.topAnchor),
+            mapLoadingView.leadingAnchor.constraint(equalTo: mapContainerView.leadingAnchor),
+            mapLoadingView.trailingAnchor.constraint(equalTo: mapContainerView.trailingAnchor),
+            mapLoadingView.bottomAnchor.constraint(equalTo: mapContainerView.bottomAnchor),
             
             // Map loading indicator
             mapLoadingIndicator.centerXAnchor.constraint(equalTo: mapLoadingView.centerXAnchor),
@@ -734,9 +856,9 @@ class CirclesHomeViewController: UIViewController {
             mapExpandButton.widthAnchor.constraint(equalToConstant: 36),
             mapExpandButton.heightAnchor.constraint(equalToConstant: 36),
             
-            emptyStateView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            emptyStateView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            emptyStateView.widthAnchor.constraint(equalTo: view.widthAnchor, multiplier: 0.8),
+            emptyStateView.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            emptyStateView.centerYAnchor.constraint(equalTo: mapContainerView.centerYAnchor),
+            emptyStateView.widthAnchor.constraint(equalTo: contentView.widthAnchor, multiplier: 0.8),
             
             emptyStateImageView.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
             emptyStateImageView.topAnchor.constraint(equalTo: emptyStateView.topAnchor),
@@ -801,10 +923,44 @@ class CirclesHomeViewController: UIViewController {
             // Location status label
             locationStatusLabel.topAnchor.constraint(equalTo: mapContainerView.topAnchor, constant: 16),
             locationStatusLabel.trailingAnchor.constraint(equalTo: mapContainerView.trailingAnchor, constant: -16),
-            locationStatusLabel.heightAnchor.constraint(equalToConstant: 28)
+            locationStatusLabel.heightAnchor.constraint(equalToConstant: 28),
+            
+            // Activity feed section
+            activityFeedSection.topAnchor.constraint(equalTo: mapContainerView.bottomAnchor, constant: Constants.Spacing.large),
+            activityFeedSection.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            activityFeedSection.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            activityFeedSection.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large),
+            
+            // Activity header
+            activityHeaderLabel.topAnchor.constraint(equalTo: activityFeedSection.topAnchor, constant: Constants.Spacing.medium),
+            activityHeaderLabel.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor, constant: Constants.Spacing.medium),
+            activityHeaderLabel.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor, constant: -Constants.Spacing.medium),
+            
+            // Activity table view
+            activityTableView.topAnchor.constraint(equalTo: activityHeaderLabel.bottomAnchor, constant: Constants.Spacing.medium),
+            activityTableView.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor),
+            activityTableView.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor),
+            activityTableView.bottomAnchor.constraint(equalTo: activityFeedSection.bottomAnchor),
+            
+            // Activity empty state
+            activityEmptyStateLabel.centerXAnchor.constraint(equalTo: activityFeedSection.centerXAnchor),
+            activityEmptyStateLabel.centerYAnchor.constraint(equalTo: activityTableView.centerYAnchor),
+            activityEmptyStateLabel.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor, constant: Constants.Spacing.large),
+            activityEmptyStateLabel.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor, constant: -Constants.Spacing.large),
+            
+            // Activity loading indicator
+            activityLoadingIndicator.centerXAnchor.constraint(equalTo: activityFeedSection.centerXAnchor),
+            activityLoadingIndicator.centerYAnchor.constraint(equalTo: activityTableView.centerYAnchor)
         ])
         
-        // Create height constraints for dropdowns
+        // Create height constraints
+        mapHeightConstraint = mapContainerView.heightAnchor.constraint(equalToConstant: 300)
+        mapHeightConstraint?.isActive = true
+        
+        // Set a reasonable height for the activity table to allow scrolling
+        activityTableHeightConstraint = activityTableView.heightAnchor.constraint(equalToConstant: 600)
+        activityTableHeightConstraint?.isActive = true
+        
         categoryDropdownHeightConstraint = categoryDropdownView.heightAnchor.constraint(equalToConstant: 0)
         categoryDropdownHeightConstraint?.isActive = true
         
@@ -834,6 +990,7 @@ class CirclesHomeViewController: UIViewController {
         connectionFilterButton.addTarget(self, action: #selector(connectionFilterButtonTapped), for: .touchUpInside)
         
         setupMapView()
+        setupActivityFeed()
     }
     
     private func setupMapView() {
@@ -874,6 +1031,21 @@ class CirclesHomeViewController: UIViewController {
         searchResultsTableView.dataSource = self
         searchResultsTableView.delaysContentTouches = false
         searchResultsTableView.canCancelContentTouches = true
+    }
+    
+    private func setupActivityFeed() {
+        // Setup activity table view
+        activityTableView.delegate = self
+        activityTableView.dataSource = self
+        activityTableView.register(ActivityFeedCell.self, forCellReuseIdentifier: ActivityFeedCell.identifier)
+        
+        // Set scroll view delegate for pagination
+        scrollView.delegate = self
+        
+        // Add refresh control to scroll view
+        let refreshControl = UIRefreshControl()
+        refreshControl.addTarget(self, action: #selector(refreshActivityFeed), for: .valueChanged)
+        scrollView.refreshControl = refreshControl
     }
     
     private func setupSearchBar() {
@@ -986,6 +1158,104 @@ class CirclesHomeViewController: UIViewController {
         }
     }
     
+    // MARK: - Activity Feed Methods
+    @objc private func refreshActivityFeed() {
+        fetchActivities()
+    }
+    
+    private func fetchActivities(loadMore: Bool = false) {
+        guard !isLoadingActivities && !isLoadingMoreActivities else { 
+            print("🔄 Already loading activities, skipping...")
+            return 
+        }
+        
+        // Don't load more if we've reached the end
+        if loadMore && !hasMoreActivities {
+            print("📊 No more activities to load")
+            return
+        }
+        
+        print("📊 Starting to fetch activities... (loadMore: \(loadMore))")
+        
+        if loadMore {
+            isLoadingMoreActivities = true
+            // Show loading footer
+            activityTableView.tableFooterView = loadMoreIndicatorView
+        } else {
+            isLoadingActivities = true
+            activityLoadingIndicator.startAnimating()
+            activityEmptyStateLabel.isHidden = true
+            currentOffset = 0 // Reset offset for fresh load
+            hasMoreActivities = true
+        }
+        
+        let offset = loadMore ? currentOffset : 0
+        
+        ActivityService.shared.getNetworkActivities(limit: 20, offset: offset) { [weak self] result in
+            DispatchQueue.main.async {
+                if loadMore {
+                    self?.isLoadingMoreActivities = false
+                } else {
+                    self?.isLoadingActivities = false
+                    self?.activityLoadingIndicator.stopAnimating()
+                }
+                
+                switch result {
+                case .success(let response):
+                    print("✅ Successfully fetched \(response.activities.count) activities")
+                    
+                    if loadMore {
+                        // Append to existing activities
+                        self?.activities.append(contentsOf: response.activities)
+                    } else {
+                        // Replace activities
+                        self?.activities = response.activities
+                    }
+                    
+                    // Update pagination state
+                    self?.currentOffset = self?.activities.count ?? 0
+                    self?.hasMoreActivities = response.hasMore
+                    
+                    print("📊 Total activities: \(self?.activities.count ?? 0), hasMore: \(response.hasMore)")
+                    
+                    self?.updateActivityFeed()
+                    
+                case .failure(let error):
+                    print("❌ Error fetching activities: \(error)")
+                    print("🔍 Error details: \(error.localizedDescription)")
+                    
+                    if !loadMore {
+                        self?.activities = []
+                        self?.updateActivityFeed()
+                    }
+                }
+                
+                self?.scrollView.refreshControl?.endRefreshing()
+            }
+        }
+    }
+    
+    private func updateActivityFeed() {
+        isLoadingActivities = false
+        activityLoadingIndicator.stopAnimating()
+        
+        // Update empty state
+        activityEmptyStateLabel.isHidden = !activities.isEmpty
+        
+        // Update table footer for loading more
+        if isLoadingMoreActivities && hasMoreActivities {
+            activityTableView.tableFooterView = loadMoreIndicatorView
+        } else {
+            activityTableView.tableFooterView = nil
+        }
+        
+        // Reload table
+        activityTableView.reloadData()
+        
+        // Table view now handles its own scrolling with fixed height
+        view.layoutIfNeeded()
+    }
+    
     // MARK: - Data Fetching
     private func performInitialDataLoad() {
         // Set the global loading flag
@@ -1030,6 +1300,9 @@ class CirclesHomeViewController: UIViewController {
         filterStackView.isHidden = false
         filterContainer.isHidden = false
         mapExpandButton.isHidden = false
+        
+        // Fetch activities when map data is loaded
+        fetchActivities()
     }
     
     private func fetchCircles() {
@@ -1043,7 +1316,12 @@ class CirclesHomeViewController: UIViewController {
                 switch result {
                 case .success(let circles):
                     print("✅ Successfully fetched \(circles.count) circles")
+                    if !circles.isEmpty {
+                        print("🔍 DEBUG - Circle names: \(circles.map { $0.name })")
+                        print("🔍 DEBUG - Circle IDs: \(circles.map { $0.id })")
+                    }
                     self?.circles = circles
+                    print("🔍 DEBUG - After assignment, self.circles.count: \(self?.circles.count ?? -1)")
                     self?.fetchAllPlacesFromCircles()
                     // Don't mark as loaded here - wait until places are fetched
                 case .failure(let error):
@@ -1552,6 +1830,13 @@ class CirclesHomeViewController: UIViewController {
     }
     
     @objc private func quickAddPlaceButtonTapped() {
+        // Debug: Log current circle state
+        print("🔍 DEBUG quickAddPlaceButtonTapped - circles.count: \(circles.count)")
+        print("🔍 DEBUG quickAddPlaceButtonTapped - circles.isEmpty: \(circles.isEmpty)")
+        if !circles.isEmpty {
+            print("🔍 DEBUG quickAddPlaceButtonTapped - circles: \(circles.map { $0.name })")
+        }
+        
         // If user has circles, show circle picker. Otherwise, prompt to create a circle
         if circles.isEmpty {
             let alert = UIAlertController(
@@ -2220,6 +2505,8 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             return NetworkManager.shared.connections.count + 2 // +2 for "All Connections" and "My Places Only"
         } else if tableView == searchResultsTableView {
             return filteredPlaces.count
+        } else if tableView == activityTableView {
+            return activities.count
         }
         return 0
     }
@@ -2359,6 +2646,11 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             cell.accessoryType = .disclosureIndicator
             
             return cell
+        } else if tableView == activityTableView {
+            let cell = tableView.dequeueReusableCell(withIdentifier: ActivityFeedCell.identifier, for: indexPath) as! ActivityFeedCell
+            let activity = activities[indexPath.row]
+            cell.configure(with: activity)
+            return cell
         }
         
         return UITableViewCell()
@@ -2434,6 +2726,18 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 filteredPlaces = []
                 hideSearchResults()
             }
+        } else if tableView == activityTableView {
+            let activity = activities[indexPath.row]
+            
+            // Navigate based on activity type
+            switch activity.type {
+            case .placeAdded, .placeLiked, .placeCommented:
+                // Navigate to the place
+                navigateToPlace(withId: activity.targetId)
+            case .circleCreated:
+                // Navigate to the circle
+                navigateToCircle(withId: activity.targetId)
+            }
         }
     }
 }
@@ -2448,6 +2752,19 @@ extension CirclesHomeViewController: CreateCircleDelegate {
         circles.insert(circle, at: 0)
         updateEmptyState()
         updateMapPlaces()
+        
+        // Navigate to AddPlaceViewController with the new circle
+        let addPlaceVC = AddPlaceViewController(circleId: circle.id)
+        
+        // Get current navigation stack
+        if var viewControllers = navigationController?.viewControllers {
+            // Remove CreateCircleViewController from the stack
+            viewControllers = viewControllers.filter { !($0 is CreateCircleViewController) }
+            // Add AddPlaceViewController
+            viewControllers.append(addPlaceVC)
+            // Set the new navigation stack
+            navigationController?.setViewControllers(viewControllers, animated: true)
+        }
     }
 }
 
@@ -2580,6 +2897,86 @@ extension CirclesHomeViewController {
                         alert.addAction(UIAlertAction(title: "OK", style: .default))
                         self?.present(alert, animated: true)
                     }
+                }
+            }
+        }
+    }
+    
+    func navigateToPlace(withId placeId: String) {
+        // Try to find the place in our loaded data first
+        if let place = allPlaces.first(where: { $0.id == placeId }) {
+            // Find the circle for this place
+            if let circle = circles.first(where: { $0.places?.contains(placeId) == true }) {
+                let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
+                navigationController?.pushViewController(placeDetailVC, animated: true)
+            } else if let networkCircle = networkCircles.first(where: { $0.places?.contains(placeId) == true }) {
+                let placeDetailVC = PlaceDetailViewController(place: place, circle: networkCircle)
+                navigationController?.pushViewController(placeDetailVC, animated: true)
+            }
+        } else {
+            // If not found, load the place
+            loadPlaceAndNavigate(placeId: placeId)
+        }
+    }
+    
+    private func loadPlaceAndNavigate(placeId: String) {
+        // Show loading
+        let loadingAlert = UIAlertController(title: "Loading", message: "Loading place...", preferredStyle: .alert)
+        present(loadingAlert, animated: true)
+        
+        PlaceService.shared.fetchPlaceById(id: placeId) { [weak self] result in
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    switch result {
+                    case .success(let place):
+                        // We need to find the circle
+                        CircleService.shared.fetchCircleById(id: place.circleId) { circleResult in
+                            DispatchQueue.main.async {
+                                switch circleResult {
+                                case .success(let circle):
+                                    let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
+                                    self?.navigationController?.pushViewController(placeDetailVC, animated: true)
+                                case .failure:
+                                    // Show error
+                                    let alert = UIAlertController(
+                                        title: "Error",
+                                        message: "Failed to load place details",
+                                        preferredStyle: .alert
+                                    )
+                                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                                    self?.present(alert, animated: true)
+                                }
+                            }
+                        }
+                    case .failure(let error):
+                        let alert = UIAlertController(
+                            title: "Error",
+                            message: "Failed to load place: \(error.localizedDescription)",
+                            preferredStyle: .alert
+                        )
+                        alert.addAction(UIAlertAction(title: "OK", style: .default))
+                        self?.present(alert, animated: true)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - UIScrollViewDelegate
+extension CirclesHomeViewController: UIScrollViewDelegate {
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        // Handle activity table view scrolling for pagination
+        if scrollView == activityTableView {
+            let offsetY = scrollView.contentOffset.y
+            let contentHeight = scrollView.contentSize.height
+            let scrollViewHeight = scrollView.frame.height
+            
+            // Check if we're near the bottom (within 100 points)
+            if offsetY > contentHeight - scrollViewHeight - 100 {
+                if !activities.isEmpty && hasMoreActivities && !isLoadingMoreActivities {
+                    print("📊 Reached bottom of activity table, loading more...")
+                    fetchActivities(loadMore: true)
                 }
             }
         }

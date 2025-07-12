@@ -142,10 +142,21 @@ exports.getPlacesByCircleId = async (req, res, next) => {
       }
     });
     
-    // Add user information to each place
-    const placesWithUsers = places.map(place => ({
+    // Fetch comment counts for all places
+    const commentCountPromises = places.map(place => 
+      db.collection('placeComments')
+        .where('placeId', '==', place.id)
+        .count()
+        .get()
+    );
+    
+    const commentCounts = await Promise.all(commentCountPromises);
+    
+    // Add user information and comment count to each place
+    const placesWithUsers = places.map((place, index) => ({
       ...place,
-      addedByUser: userMap.get(place.addedBy) || null
+      addedByUser: userMap.get(place.addedBy) || null,
+      commentsCount: commentCounts[index].data().count || 0
     }));
     
     // Create a map for quick lookup
@@ -224,9 +235,20 @@ exports.getPlace = async (req, res, next) => {
       });
     }
 
+    // Get comment count for this place
+    const commentCountSnapshot = await db.collection('placeComments')
+      .where('placeId', '==', req.params.id)
+      .count()
+      .get();
+    
+    const commentsCount = commentCountSnapshot.data().count || 0;
+    
     res.status(200).json({
       success: true,
-      place: place
+      place: {
+        ...place,
+        commentsCount
+      }
     });
   } catch (error) {
     console.error('Error fetching place:', error);
@@ -332,9 +354,13 @@ exports.createPlace = async (req, res, next) => {
       });
     }
 
+    // Add commentsCount to the response (new places have 0 comments)
     res.status(201).json({
       success: true,
-      place: place
+      place: {
+        ...place,
+        commentsCount: 0
+      }
     });
 
     // Track activity for network connections
@@ -985,6 +1011,24 @@ exports.likePlace = async (req, res, next) => {
       place: updatedPlace
     });
     
+    // Track activity for likes (not unlikes)
+    if (!alreadyLiked) {
+      const { createActivity } = require('./activityController');
+      await createActivity(
+        'place_liked',
+        userId,
+        'place',
+        placeId,
+        place.name || 'Unknown Place',
+        {
+          circleId: place.circleId,
+          circleName: circle.name || 'Unknown Circle',
+          placePhoto: place.photos && place.photos.length > 0 ? place.photos[0] : null,
+          placeAddress: place.address || null
+        }
+      );
+    }
+    
   } catch (error) {
     console.error('Error liking place:', error);
     next(error);
@@ -998,6 +1042,12 @@ exports.getPlaceComments = async (req, res, next) => {
   try {
     const placeId = req.params.id;
     const userId = req.user.uid;
+    
+    console.log('🔍 getPlaceComments called:', {
+      placeId,
+      userId,
+      timestamp: new Date().toISOString()
+    });
     
     // Get the place to check permissions
     const placeRef = db.collection(COLLECTIONS.PLACES).doc(placeId);
@@ -1046,10 +1096,13 @@ exports.getPlaceComments = async (req, res, next) => {
     }
     
     // Get comments
+    console.log('📋 Fetching comments from placeComments collection for place:', placeId);
     const commentsSnapshot = await db.collection('placeComments')
       .where('placeId', '==', placeId)
       .orderBy('createdAt', 'desc')
       .get();
+    
+    console.log(`✅ Found ${commentsSnapshot.size} comments for place ${placeId}`);
     
     const comments = [];
     for (const doc of commentsSnapshot.docs) {
@@ -1064,6 +1117,7 @@ exports.getPlaceComments = async (req, res, next) => {
       comments.push(comment);
     }
     
+    console.log(`📤 Returning ${comments.length} comments with user details`);
     res.status(200).json({
       success: true,
       comments: comments
@@ -1083,6 +1137,13 @@ exports.addPlaceComment = async (req, res, next) => {
     const placeId = req.params.id;
     const userId = req.user.uid;
     const { text } = req.body;
+    
+    console.log('💬 addPlaceComment called:', {
+      placeId,
+      userId,
+      text: text?.substring(0, 50) + (text?.length > 50 ? '...' : ''),
+      timestamp: new Date().toISOString()
+    });
     
     if (!text || text.trim() === '') {
       return res.status(400).json({
@@ -1142,12 +1203,16 @@ exports.addPlaceComment = async (req, res, next) => {
       placeId: placeId,
       userId: userId,
       text: text.trim(),
+      likes: [], // Array of user IDs who liked the comment
+      likesCount: 0, // Count for efficient display
       createdAt: new Date().toISOString()
     };
     
+    console.log('💾 Saving comment to placeComments collection');
     const commentRef = await db.collection('placeComments').add(commentData);
     const commentDoc = await commentRef.get();
     const comment = serializeDoc(commentDoc);
+    console.log('✅ Comment saved successfully with ID:', comment.id);
     
     // Get user details
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
@@ -1170,6 +1235,23 @@ exports.addPlaceComment = async (req, res, next) => {
       success: true,
       comment: comment
     });
+    
+    // Track comment activity
+    const { createActivity } = require('./activityController');
+    await createActivity(
+      'place_commented',
+      userId,
+      'place',
+      placeId,
+      place.name || 'Unknown Place',
+      {
+        circleId: place.circleId,
+        circleName: circle.name || 'Unknown Circle',
+        comment: text.trim(),
+        placePhoto: place.photos && place.photos.length > 0 ? place.photos[0] : null,
+        placeAddress: place.address || null
+      }
+    );
     
   } catch (error) {
     console.error('Error adding place comment:', error);
@@ -1472,6 +1554,137 @@ exports.deletePlaceComment = async (req, res, next) => {
   }
 };
 
+// @desc    Like or unlike a comment
+// @route   POST /api/places/:placeId/comments/:commentId/like
+// @access  Private
+exports.likeComment = async (req, res, next) => {
+  try {
+    const { placeId, commentId } = req.params;
+    const userId = req.user.uid;
+    
+    // Get the comment
+    const commentRef = db.collection('placeComments').doc(commentId);
+    const commentDoc = await commentRef.get();
+    
+    if (!commentDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Comment not found'
+      });
+    }
+    
+    const comment = serializeDoc(commentDoc);
+    
+    // Check if comment belongs to this place
+    if (comment.placeId !== placeId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Comment does not belong to this place'
+      });
+    }
+    
+    // Get the place to check permissions
+    const placeRef = db.collection(COLLECTIONS.PLACES).doc(placeId);
+    const placeDoc = await placeRef.get();
+    
+    if (!placeDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Place not found'
+      });
+    }
+    
+    const place = serializeDoc(placeDoc);
+    
+    // Check permissions (same as viewing place)
+    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(place.circleId);
+    const circleDoc = await circleRef.get();
+    const circle = serializeDoc(circleDoc);
+    
+    const isOwner = circle.owner === userId;
+    const isSharedWith = circle.sharedWith && circle.sharedWith.includes(userId);
+    const isPublic = circle.privacy === 'public';
+    
+    let isConnected = false;
+    if (circle.privacy === 'myNetwork' && !isOwner) {
+      const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', userId)
+        .where('connectedUserId', '==', circle.owner)
+        .where('status', '==', 'accepted')
+        .get();
+        
+      const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', circle.owner)
+        .where('connectedUserId', '==', userId)
+        .where('status', '==', 'accepted')
+        .get();
+        
+      isConnected = !connection1.empty || !connection2.empty;
+    }
+    
+    if (!isOwner && !isSharedWith && !isPublic && !isConnected) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to like comments on this place'
+      });
+    }
+    
+    // Toggle like
+    const currentLikes = comment.likes || [];
+    const alreadyLiked = currentLikes.includes(userId);
+    
+    let updatedLikes;
+    let updatedLikesCount;
+    
+    if (alreadyLiked) {
+      // Unlike - remove user from likes array
+      updatedLikes = currentLikes.filter(id => id !== userId);
+      updatedLikesCount = Math.max(0, (comment.likesCount || 0) - 1);
+    } else {
+      // Like - add user to likes array
+      updatedLikes = [...currentLikes, userId];
+      updatedLikesCount = (comment.likesCount || 0) + 1;
+    }
+    
+    // Update comment
+    await commentRef.update({
+      likes: updatedLikes,
+      likesCount: updatedLikesCount,
+      updatedAt: new Date().toISOString()
+    });
+    
+    // Track activity if liking (not unliking)
+    if (!alreadyLiked) {
+      const { createActivity } = require('./activityController');
+      await createActivity(
+        'comment_liked',
+        userId,
+        'comment',
+        commentId,
+        `Comment on ${place.name}`,
+        {
+          placeId: placeId,
+          placeName: place.name,
+          circleId: place.circleId,
+          circleName: circle.name || 'Unknown Circle',
+          commentText: comment.text,
+          commentAuthorId: comment.userId
+        }
+      );
+    }
+    
+    res.status(200).json({
+      success: true,
+      liked: !alreadyLiked,
+      likesCount: updatedLikesCount
+    });
+    
+  } catch (error) {
+    console.error('Error liking/unliking comment:', error);
+    next(error);
+  }
+};
+
 // @desc    Track when a user views a place
 // @route   POST /api/places/:id/track-view
 // @access  Private
@@ -1497,6 +1710,151 @@ exports.trackPlaceView = async (req, res, next) => {
     });
   } catch (error) {
     console.error('Error tracking place view:', error);
+    next(error);
+  }
+};
+
+// @desc    Move a place to a different circle
+// @route   POST /api/places/:id/move
+// @access  Private
+exports.movePlace = async (req, res, next) => {
+  try {
+    const placeId = req.params.id;
+    const userId = req.user.uid;
+    const { targetCircleId } = req.body;
+    
+    if (!targetCircleId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Target circle ID is required'
+      });
+    }
+    
+    // Get the place
+    const placeRef = db.collection(COLLECTIONS.PLACES).doc(placeId);
+    const placeDoc = await placeRef.get();
+    
+    if (!placeDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Place not found'
+      });
+    }
+    
+    const place = serializeDoc(placeDoc);
+    
+    // Get source circle
+    const sourceCircleRef = db.collection(COLLECTIONS.CIRCLES).doc(place.circleId);
+    const sourceCircleDoc = await sourceCircleRef.get();
+    
+    if (!sourceCircleDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Source circle not found'
+      });
+    }
+    
+    const sourceCircle = serializeDoc(sourceCircleDoc);
+    
+    // Get target circle
+    const targetCircleRef = db.collection(COLLECTIONS.CIRCLES).doc(targetCircleId);
+    const targetCircleDoc = await targetCircleRef.get();
+    
+    if (!targetCircleDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Target circle not found'
+      });
+    }
+    
+    const targetCircle = serializeDoc(targetCircleDoc);
+    
+    // Check permissions: user must own both circles or be the place creator
+    const ownsSourceCircle = sourceCircle.owner === userId;
+    const ownsTargetCircle = targetCircle.owner === userId;
+    const isPlaceCreator = place.addedBy === userId;
+    
+    if (!ownsSourceCircle || !ownsTargetCircle) {
+      if (!isPlaceCreator || !ownsTargetCircle) {
+        return res.status(403).json({
+          success: false,
+          message: 'You must own both circles or be the place creator and own the target circle to move a place'
+        });
+      }
+    }
+    
+    // Check if target circle already has this place (by googlePlaceId or name+address)
+    if (place.googlePlaceId) {
+      const existingPlace = await db.collection(COLLECTIONS.PLACES)
+        .where('circleId', '==', targetCircleId)
+        .where('googlePlaceId', '==', place.googlePlaceId)
+        .get();
+        
+      if (!existingPlace.empty) {
+        return res.status(400).json({
+          success: false,
+          message: 'This place already exists in the target circle'
+        });
+      }
+    } else {
+      const existingPlace = await db.collection(COLLECTIONS.PLACES)
+        .where('circleId', '==', targetCircleId)
+        .where('name', '==', place.name)
+        .where('address', '==', place.address)
+        .get();
+        
+      if (!existingPlace.empty) {
+        return res.status(400).json({
+          success: false,
+          message: 'This place already exists in the target circle'
+        });
+      }
+    }
+    
+    // Use a transaction for atomic updates
+    await db.runTransaction(async (transaction) => {
+      // Remove place ID from source circle
+      const sourcePlaces = sourceCircle.places || [];
+      const updatedSourcePlaces = sourcePlaces.filter(id => id !== placeId);
+      
+      transaction.update(sourceCircleRef, {
+        places: updatedSourcePlaces,
+        placesCount: Math.max(0, (sourceCircle.placesCount || 0) - 1),
+        updatedAt: new Date().toISOString()
+      });
+      
+      // Add place ID to target circle
+      const targetPlaces = targetCircle.places || [];
+      transaction.update(targetCircleRef, {
+        places: [placeId, ...targetPlaces], // Add at beginning
+        placesCount: (targetCircle.placesCount || 0) + 1,
+        updatedAt: new Date().toISOString()
+      });
+      
+      // Update place's circleId
+      transaction.update(placeRef, {
+        circleId: targetCircleId,
+        updatedAt: new Date().toISOString()
+      });
+    });
+    
+    // Get updated place
+    const updatedPlaceDoc = await placeRef.get();
+    const updatedPlace = serializeDoc(updatedPlaceDoc);
+    
+    // Track activity
+    if (trackPlaceAdded) {
+      await trackPlaceAdded(placeId, targetCircleId, updatedPlace.name, targetCircle.name, userId);
+    }
+    
+    res.status(200).json({
+      success: true,
+      message: 'Place moved successfully',
+      place: updatedPlace
+    });
+    
+  } catch (error) {
+    console.error('Error moving place:', error);
     next(error);
   }
 };

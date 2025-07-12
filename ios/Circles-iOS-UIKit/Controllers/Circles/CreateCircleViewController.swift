@@ -489,14 +489,6 @@ class CreateCircleViewController: UIViewController {
                         self?.shareCircleWithConnections(circle, connections: selectedConnections, email: emailText)
                         
                         self?.delegate?.didCreateCircle(circle)
-                        
-                        if let navController = self?.navigationController {
-                            print("📍 Popping view controller...")
-                            navController.popViewController(animated: true)
-                        } else {
-                            print("❌ No navigation controller found!")
-                            self?.dismiss(animated: true, completion: nil)
-                        }
                     case .failure(let error):
                         self?.presentAlert(
                             title: "Error",
@@ -530,14 +522,6 @@ class CreateCircleViewController: UIViewController {
                         self?.shareCircleWithConnections(circle, connections: selectedConnections, email: emailText)
                         
                         self?.delegate?.didCreateCircle(circle)
-                        
-                        if let navController = self?.navigationController {
-                            print("📍 Popping view controller...")
-                            navController.popViewController(animated: true)
-                        } else {
-                            print("❌ No navigation controller found!")
-                            self?.dismiss(animated: true, completion: nil)
-                        }
                         
                     case .failure(let error):
                         self?.presentAlert(
