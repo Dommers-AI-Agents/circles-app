@@ -1,6 +1,6 @@
 import UIKit
 
-class MyNetworkViewController: UIViewController {
+class MyNetworkViewController: BaseViewController {
     
     // MARK: - SSE Integration
     private var sseConnected = false
@@ -72,57 +72,31 @@ class MyNetworkViewController: UIViewController {
     
     // MARK: - Setup
     private func setupView() {
-        view.backgroundColor = .systemBackground
+        setupNavigationBar(title: "My Network", largeTitleMode: .never)
+        addNavigationBarButton(image: "person.badge.plus", position: .right, action: #selector(showConnectionMenu))
         
-        // Removed redundant title - tab bar already shows "My Network"
-        
-        // Set large title display mode to never to save space
-        navigationController?.navigationBar.prefersLargeTitles = false
-        navigationItem.largeTitleDisplayMode = .never
-        
-        // Add views
         view.addSubview(searchBar)
         view.addSubview(segmentedControl)
         view.addSubview(containerView)
-        // Don't add searchResultsTableView anymore - we'll use AllUsersListViewController
         
-        // Setup constraints
         NSLayoutConstraint.activate([
-            // Search bar
             searchBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             searchBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             searchBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             searchBar.heightAnchor.constraint(equalToConstant: 44),
             
-            // Segmented control
             segmentedControl.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 16),
             segmentedControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             segmentedControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             
-            // Container view
             containerView.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 16),
             containerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             containerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             containerView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
         
-        // Setup search bar
         searchBar.delegate = self
-        
-        // Add action for segmented control
         segmentedControl.addTarget(self, action: #selector(segmentChanged), for: .valueChanged)
-    }
-    
-    private func setupNavigationBar() {
-        // Add the connection button
-        let addConnectionButton = UIBarButtonItem(
-            image: UIImage(systemName: "person.badge.plus"),
-            style: .plain,
-            target: self,
-            action: #selector(showConnectionMenu)
-        )
-        
-        navigationItem.rightBarButtonItem = addConnectionButton
     }
     
     private func setupChildViewControllers() {

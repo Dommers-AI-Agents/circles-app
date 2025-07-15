@@ -13,7 +13,7 @@ struct Place: Codable, Identifiable {
     let googlePlaceId: String?
     let photos: [String]?
     let category: PlaceCategory
-    let customCategory: String?
+    let customCategoryId: String? // Reference to user's custom category
     let subcategory: String?
     let rating: Double?
     let userRatingsTotal: Int?
@@ -38,7 +38,7 @@ struct Place: Codable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id = "_id"
         case name, description, address, location, website, phone, googlePlaceId
-        case photos, category, customCategory, subcategory, rating, userRatingsTotal, notes, privateNotes, publicNotes, tags, reviews, openingHours
+        case photos, category, customCategoryId, subcategory, rating, userRatingsTotal, notes, privateNotes, publicNotes, tags, reviews, openingHours
         case priceLevel, likes, likesCount, commentsCount, circleId, addedBy, addedByUser, privacy, createdAt, updatedAt, isNew
     }
     
@@ -56,7 +56,7 @@ struct Place: Codable, Identifiable {
         self.googlePlaceId = try container.decodeIfPresent(String.self, forKey: .googlePlaceId)
         self.photos = try container.decodeIfPresent([String].self, forKey: .photos)
         self.category = try container.decode(PlaceCategory.self, forKey: .category)
-        self.customCategory = try container.decodeIfPresent(String.self, forKey: .customCategory)
+        self.customCategoryId = try container.decodeIfPresent(String.self, forKey: .customCategoryId)
         self.subcategory = try container.decodeIfPresent(String.self, forKey: .subcategory)
         self.rating = try container.decodeIfPresent(Double.self, forKey: .rating)
         self.userRatingsTotal = try container.decodeIfPresent(Int.self, forKey: .userRatingsTotal)
@@ -91,7 +91,7 @@ struct Place: Codable, Identifiable {
     init(id: String, name: String, description: String?, address: String,
          location: GeoLocation?, website: String?, phone: String?,
          googlePlaceId: String?, photos: [String]?, category: PlaceCategory,
-         customCategory: String?, subcategory: String?, rating: Double?, userRatingsTotal: Int?, notes: String?,
+         customCategoryId: String?, subcategory: String?, rating: Double?, userRatingsTotal: Int?, notes: String?,
          privateNotes: String?, publicNotes: String?, tags: [String]?,
          reviews: [PlaceReview]?, openingHours: [OpeningHour]?,
          priceLevel: PriceLevel?, likes: [String]?, likesCount: Int?, commentsCount: Int?, circleId: String, addedBy: String,
@@ -106,7 +106,7 @@ struct Place: Codable, Identifiable {
         self.googlePlaceId = googlePlaceId
         self.photos = photos
         self.category = category
-        self.customCategory = customCategory
+        self.customCategoryId = customCategoryId
         self.subcategory = subcategory
         self.rating = rating
         self.userRatingsTotal = userRatingsTotal
@@ -144,8 +144,8 @@ struct Place: Codable, Identifiable {
     }
     
     var displayCategory: String {
-        if category == .other, let customCategory = customCategory, !customCategory.isEmpty {
-            return customCategory
+        if category == .other, let customCategoryId = customCategoryId, !customCategoryId.isEmpty {
+            return customCategoryId
         }
         
         if let subcategory = subcategory, !subcategory.isEmpty {
@@ -171,8 +171,25 @@ struct GeoLocation: Codable {
     
     var clLocation: CLLocation? {
         guard coordinates.count == 2 else { return nil }
+        
         // MongoDB stores as [longitude, latitude]
-        return CLLocation(latitude: coordinates[1], longitude: coordinates[0])
+        let longitude = coordinates[0]
+        let latitude = coordinates[1]
+        
+        // Validate coordinates are within valid ranges
+        guard longitude >= -180 && longitude <= 180 &&
+              latitude >= -90 && latitude <= 90 else {
+            print("❌ Invalid coordinates in GeoLocation: lon=\(longitude), lat=\(latitude)")
+            return nil
+        }
+        
+        // Reject coordinates at exactly -180, -180 (invalid/default values)
+        if longitude == -180 && latitude == -180 {
+            print("❌ Rejecting default invalid coordinates: -180, -180")
+            return nil
+        }
+        
+        return CLLocation(latitude: latitude, longitude: longitude)
     }
 }
 
@@ -300,6 +317,58 @@ enum PlaceCategory: String, Codable, CaseIterable {
         case .home: return "house.fill"
         case .work: return "building.2.fill"
         case .other: return "mappin.circle.fill"
+        }
+    }
+}
+
+// MARK: - Unified Category System
+enum UnifiedCategory: Hashable, Equatable {
+    case standard(PlaceCategory)
+    case custom(String) // Custom category name
+    
+    var displayName: String {
+        switch self {
+        case .standard(let category):
+            return category.displayName
+        case .custom(let name):
+            return name
+        }
+    }
+    
+    var isCustom: Bool {
+        switch self {
+        case .standard:
+            return false
+        case .custom:
+            return true
+        }
+    }
+    
+    var systemIconName: String {
+        switch self {
+        case .standard(let category):
+            return category.systemIconName
+        case .custom:
+            return "tag.fill" // Default icon for custom categories
+        }
+    }
+    
+    // Helper to match against a Place
+    func matches(place: Place) -> Bool {
+        switch self {
+        case .standard(let category):
+            return place.category == category
+        case .custom(let name):
+            return place.category == .other && place.customCategoryId == name
+        }
+    }
+    
+    // Helper to create from a Place
+    static func from(place: Place) -> UnifiedCategory {
+        if place.category == .other, let customName = place.customCategoryId, !customName.isEmpty {
+            return .custom(customName)
+        } else {
+            return .standard(place.category)
         }
     }
 }

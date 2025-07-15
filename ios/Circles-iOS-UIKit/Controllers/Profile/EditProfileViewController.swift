@@ -1,7 +1,7 @@
 import UIKit
 import Photos
 
-class EditProfileViewController: UIViewController {
+class EditProfileViewController: BaseViewController {
     
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
@@ -158,16 +158,7 @@ class EditProfileViewController: UIViewController {
         return textView
     }()
     
-    private let saveButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Save Changes", for: .normal)
-        button.setTitleColor(Constants.Colors.white, for: .normal)
-        button.backgroundColor = Constants.Colors.primary
-        button.layer.cornerRadius = 8
-        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private lazy var saveButton = UIButton.primaryButton(title: "Save Changes")
     
     // MARK: - Properties
     private var selectedImage: UIImage?
@@ -175,6 +166,11 @@ class EditProfileViewController: UIViewController {
     private var isLoading = false
     
     // MARK: - Lifecycle
+    // MARK: - BaseViewController Configuration
+    override var showsLoadingIndicator: Bool { false }
+    override var enablesPullToRefresh: Bool { false }
+    override var loadsDataOnViewDidLoad: Bool { false }
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
@@ -190,8 +186,7 @@ class EditProfileViewController: UIViewController {
     
     // MARK: - UI Setup
     private func setupUI() {
-        view.backgroundColor = Constants.Colors.background
-        title = "Edit Profile"
+        setupNavigationBar(title: "Edit Profile")
         
         // Add subviews
         view.addSubview(scrollView)
@@ -380,15 +375,14 @@ class EditProfileViewController: UIViewController {
     @objc private func saveButtonTapped() {
         // Validate required fields
         guard let displayName = displayNameTextField.text, !displayName.isEmpty else {
-            presentAlert(title: "Error", message: "Please enter a display name")
+            showError("Please enter a display name")
             return
         }
         
         guard !isLoading else { return }
         
         isLoading = true
-        saveButton.isEnabled = false
-        saveButton.setTitle("Saving...", for: .normal)
+        saveButton.setLoading(true)
         
         // Prepare update data
         var updates: [String: Any] = [
@@ -447,7 +441,7 @@ class EditProfileViewController: UIViewController {
         ) { [weak self] result in
             DispatchQueue.main.async {
                 self?.isLoading = false
-                self?.saveButton.isEnabled = true
+                self?.saveButton.setLoading(false)
                 self?.saveButton.setTitle("Save Changes", for: .normal)
                 
                 switch result {
@@ -455,11 +449,11 @@ class EditProfileViewController: UIViewController {
                     // Update the cached user
                     AuthService.shared.updateCurrentUser(updatedUser)
                     
-                    self?.presentAlert(title: "Success", message: "Profile updated successfully") { _ in
+                    self?.presentAlert(title: "Success", message: "Profile updated successfully") {
                         self?.navigationController?.popViewController(animated: true)
                     }
                 case .failure(let error):
-                    self?.presentAlert(title: "Error", message: "Failed to update profile: \(error.localizedDescription)")
+                    self?.showError("Failed to update profile: \(error.localizedDescription)")
                 }
             }
         }
@@ -500,26 +494,26 @@ class EditProfileViewController: UIViewController {
     }
     
     private func presentPhotoLibraryPermissionAlert() {
-        let alert = UIAlertController(
+        AlertPresenter.showActionSheet(
             title: "Photo Library Access",
             message: "Please allow access to your photo library in Settings to change your profile photo.",
-            preferredStyle: .alert
+            actions: [
+                (title: "Settings", style: .default, handler: {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                })
+            ],
+            from: self
         )
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Settings", style: .default) { _ in
-            if let url = URL(string: UIApplication.openSettingsURLString) {
-                UIApplication.shared.open(url)
-            }
-        })
-        
-        present(alert, animated: true)
     }
     
-    private func presentAlert(title: String, message: String, completion: ((UIAlertAction) -> Void)? = nil) {
-        let alertController = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        alertController.addAction(UIAlertAction(title: "OK", style: .default, handler: completion))
-        present(alertController, animated: true)
+    private func presentAlert(title: String, message: String, completion: (() -> Void)? = nil) {
+        if title == "Success" {
+            AlertPresenter.showSuccess(title: title, message: message, from: self, completion: completion)
+        } else {
+            AlertPresenter.showError(title: title, message: message, from: self, completion: completion)
+        }
     }
 }
 

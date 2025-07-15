@@ -41,6 +41,50 @@ const isSameUser = (userId1, userId2) => {
   return normalized1 === normalized2;
 };
 
+// @desc    Get specific connection by ID
+// @route   GET /api/connections/:connectionId
+// @access  Private
+const getConnectionById = async (req, res) => {
+  try {
+    const userId = req.user.firebaseDocId || req.user.uid;
+    const { connectionId } = req.params;
+    
+    console.log(`🔍 getConnectionById - userId: ${userId}, connectionId: ${connectionId}`);
+
+    // Get the connection document
+    const connectionDoc = await db.collection(COLLECTIONS.CONNECTIONS).doc(connectionId).get();
+    
+    if (!connectionDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Connection not found'
+      });
+    }
+
+    const connection = serializeDoc(connectionDoc);
+    
+    // Verify user is part of this connection
+    if (!isSameUser(connection.userId, userId) && !isSameUser(connection.connectedUserId, userId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to view this connection'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      connection: connection
+    });
+  } catch (error) {
+    console.error('❌ Error fetching connection:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
 // @desc    Get user connections
 // @route   GET /api/connections
 // @access  Private
@@ -885,6 +929,7 @@ const trackConnectionView = async (req, res) => {
 
 module.exports = {
   getConnections,
+  getConnectionById,
   sendConnectionRequest,
   acceptConnection,
   declineConnection,

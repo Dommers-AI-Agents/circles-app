@@ -1,19 +1,12 @@
 import UIKit
 import AuthenticationServices
 
-extension NSLayoutConstraint {
-    func withPriority(_ priority: UILayoutPriority) -> NSLayoutConstraint {
-        self.priority = priority
-        return self
-    }
-}
-
-class LoginViewController: UIViewController {
+class LoginViewController: BaseViewController {
     
     // MARK: - UI Elements
     private let backgroundView: UIView = {
         let view = UIView()
-        view.backgroundColor = Constants.Colors.primary // Blue background
+        view.backgroundColor = Constants.Colors.primary
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -67,7 +60,6 @@ class LoginViewController: UIViewController {
         return stackView
     }()
     
-    // Using a container view for Apple Sign In button to handle tap events properly
     private let appleSignInContainer: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -78,42 +70,13 @@ class LoginViewController: UIViewController {
         let button = ASAuthorizationAppleIDButton(authorizationButtonType: .signIn, authorizationButtonStyle: .black)
         button.cornerRadius = 25
         button.translatesAutoresizingMaskIntoConstraints = false
-        button.isUserInteractionEnabled = false // Let container handle taps
+        button.isUserInteractionEnabled = false
         return button
     }()
     
-    private let facebookSignInButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Sign in with Facebook", for: .normal)
-        button.setTitleColor(.white, for: .normal)
-        button.backgroundColor = UIColor(red: 59/255, green: 89/255, blue: 152/255, alpha: 1.0)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 19, weight: .semibold)
-        button.layer.cornerRadius = 25
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-    
-    private let googleSignInButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Sign in with Google", for: .normal)
-        button.setTitleColor(Constants.Colors.label, for: .normal)
-        button.backgroundColor = Constants.Colors.background
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 19, weight: .semibold)
-        button.layer.cornerRadius = 25
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-    
-    private let emailSignUpButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Create Account", for: .normal)
-        button.setTitleColor(Constants.Colors.primary, for: .normal)
-        button.backgroundColor = Constants.Colors.background
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 19, weight: .semibold)
-        button.layer.cornerRadius = 25
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private lazy var facebookSignInButton = UIButton.facebookSignInButton()
+    private lazy var googleSignInButton = UIButton.googleSignInButton()
+    private lazy var emailSignUpButton = UIButton.primaryButton(title: "Create Account")
     
     private let loginLinkButton: UIButton = {
         let button = UIButton(type: .system)
@@ -139,30 +102,16 @@ class LoginViewController: UIViewController {
         return label
     }()
     
-    private let activityIndicator: UIActivityIndicatorView = {
-        let indicator = UIActivityIndicatorView(style: .medium)
-        indicator.hidesWhenStopped = true
-        indicator.translatesAutoresizingMaskIntoConstraints = false
-        return indicator
-    }()
-    
     // MARK: - Properties
     private var isLoggingIn = false {
         didSet {
-            appleSignInButton.isEnabled = !isLoggingIn
-            googleSignInButton.isEnabled = !isLoggingIn
-            facebookSignInButton.isEnabled = !isLoggingIn
-            emailSignUpButton.isEnabled = !isLoggingIn
-            loginLinkButton.isEnabled = !isLoggingIn
-            
-            if isLoggingIn {
-                activityIndicator.startAnimating()
-                activityIndicator.color = .white
-            } else {
-                activityIndicator.stopAnimating()
-            }
+            updateButtonStates()
         }
     }
+    
+    // MARK: - BaseViewController Configuration
+    override var showsLoadingIndicator: Bool { false } // Custom loading state
+    override var loadsDataOnViewDidLoad: Bool { false }
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
@@ -185,16 +134,20 @@ class LoginViewController: UIViewController {
     private func setupUI() {
         view.backgroundColor = Constants.Colors.background
         
+        // Configure custom button styles
+        emailSignUpButton.backgroundColor = Constants.Colors.background
+        emailSignUpButton.setTitleColor(Constants.Colors.primary, for: .normal)
+        
         // Add background
         view.addSubview(backgroundView)
         
-        // Add logo and text
+        // Add content
         backgroundView.addSubview(logoImageView)
         backgroundView.addSubview(titleLabel)
         backgroundView.addSubview(taglineLabel)
         backgroundView.addSubview(subtitleLabel)
         
-        // Configure Apple Sign In button in container
+        // Configure Apple Sign In button
         appleSignInContainer.addSubview(appleSignInButton)
         
         // Configure buttons stack
@@ -206,9 +159,11 @@ class LoginViewController: UIViewController {
         backgroundView.addSubview(buttonsStackView)
         backgroundView.addSubview(loginLinkButton)
         backgroundView.addSubview(privacyLabel)
-        backgroundView.addSubview(activityIndicator)
         
-        // Layout constraints
+        setupConstraints()
+    }
+    
+    private func setupConstraints() {
         NSLayoutConstraint.activate([
             // Background view
             backgroundView.topAnchor.constraint(equalTo: view.topAnchor),
@@ -242,9 +197,9 @@ class LoginViewController: UIViewController {
             buttonsStackView.leadingAnchor.constraint(equalTo: backgroundView.leadingAnchor, constant: 40),
             buttonsStackView.trailingAnchor.constraint(equalTo: backgroundView.trailingAnchor, constant: -40),
             buttonsStackView.bottomAnchor.constraint(equalTo: loginLinkButton.topAnchor, constant: -40),
-            buttonsStackView.heightAnchor.constraint(equalToConstant: 248), // 4 buttons * 50 height + 3 * 16 spacing
+            buttonsStackView.heightAnchor.constraint(equalToConstant: 248),
             
-            // Apple Sign In button in container
+            // Apple Sign In button
             appleSignInButton.topAnchor.constraint(equalTo: appleSignInContainer.topAnchor),
             appleSignInButton.leadingAnchor.constraint(greaterThanOrEqualTo: appleSignInContainer.leadingAnchor),
             appleSignInButton.trailingAnchor.constraint(lessThanOrEqualTo: appleSignInContainer.trailingAnchor),
@@ -255,9 +210,6 @@ class LoginViewController: UIViewController {
             
             // Button heights
             appleSignInContainer.heightAnchor.constraint(equalToConstant: 50),
-            facebookSignInButton.heightAnchor.constraint(equalToConstant: 50),
-            googleSignInButton.heightAnchor.constraint(equalToConstant: 50),
-            emailSignUpButton.heightAnchor.constraint(equalToConstant: 50),
             
             // Login link
             loginLinkButton.centerXAnchor.constraint(equalTo: backgroundView.centerXAnchor),
@@ -266,21 +218,16 @@ class LoginViewController: UIViewController {
             // Privacy label
             privacyLabel.leadingAnchor.constraint(equalTo: backgroundView.leadingAnchor, constant: 40),
             privacyLabel.trailingAnchor.constraint(equalTo: backgroundView.trailingAnchor, constant: -40),
-            privacyLabel.bottomAnchor.constraint(equalTo: backgroundView.safeAreaLayoutGuide.bottomAnchor, constant: -20),
-            
-            // Activity indicator
-            activityIndicator.centerXAnchor.constraint(equalTo: backgroundView.centerXAnchor),
-            activityIndicator.centerYAnchor.constraint(equalTo: backgroundView.centerYAnchor)
+            privacyLabel.bottomAnchor.constraint(equalTo: backgroundView.safeAreaLayoutGuide.bottomAnchor, constant: -20)
         ])
-        
     }
     
     private func setupActions() {
-        // Apple Sign In needs a tap gesture on container
+        // Apple Sign In
         let appleTapGesture = UITapGestureRecognizer(target: self, action: #selector(appleSignInButtonTapped))
         appleSignInContainer.addGestureRecognizer(appleTapGesture)
         
-        // Other social login buttons
+        // Social login buttons
         googleSignInButton.addTarget(self, action: #selector(googleSignInButtonTapped), for: .touchUpInside)
         facebookSignInButton.addTarget(self, action: #selector(facebookSignInButtonTapped), for: .touchUpInside)
         
@@ -288,14 +235,25 @@ class LoginViewController: UIViewController {
         emailSignUpButton.addTarget(self, action: #selector(registerButtonTapped), for: .touchUpInside)
         loginLinkButton.addTarget(self, action: #selector(loginLinkTapped), for: .touchUpInside)
         
-        // Add tap gesture recognizer to dismiss keyboard when tapping on the view
+        // Dismiss keyboard
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
         view.addGestureRecognizer(tapGesture)
     }
     
+    private func updateButtonStates() {
+        let buttons = [appleSignInButton, googleSignInButton, facebookSignInButton, emailSignUpButton, loginLinkButton]
+        buttons.forEach { $0.isEnabled = !isLoggingIn }
+        
+        // Show/hide loading state
+        if isLoggingIn {
+            showLoadingState()
+        } else {
+            hideLoadingState()
+        }
+    }
+    
     // MARK: - Actions
     @objc private func loginLinkTapped() {
-        // Navigate to a separate login screen with email/password fields
         let loginVC = EmailLoginViewController()
         navigationController?.pushViewController(loginVC, animated: true)
     }
@@ -304,7 +262,6 @@ class LoginViewController: UIViewController {
         let registerVC = RegisterViewController()
         navigationController?.pushViewController(registerVC, animated: true)
     }
-    
     
     @objc private func appleSignInButtonTapped() {
         print("🍎 Apple Sign-In button tapped in LoginViewController")
@@ -317,10 +274,9 @@ class LoginViewController: UIViewController {
                 switch result {
                 case .success(let user):
                     print("🍎 Successfully logged in with Apple: \(user.displayName)")
-                    // Authentication state listener in SceneDelegate will handle UI update
                 case .failure(let error):
                     print("🍎 Apple Sign-In Failed with error: \(error.localizedDescription)")
-                    self?.presentAlert(title: "Apple Sign-In Failed", message: error.localizedDescription)
+                    self?.showError("Apple Sign-In Failed: \(error.localizedDescription)")
                 }
             }
         }
@@ -329,7 +285,6 @@ class LoginViewController: UIViewController {
     @objc private func googleSignInButtonTapped() {
         isLoggingIn = true
         
-        // Add detailed logging
         print("🔍 Google Sign-In button tapped in LoginViewController")
         
         SocialAuthService.shared.signInWithGoogle(from: self) { [weak self] result in
@@ -339,11 +294,9 @@ class LoginViewController: UIViewController {
                 switch result {
                 case .success(let user):
                     print("🔍 Successfully logged in with Google: \(user.displayName)")
-                    // Authentication state listener in SceneDelegate will handle UI update
                 case .failure(let error):
                     print("🔍 Google Sign-In failed with error: \(error.localizedDescription)")
-                    print("🔍 Error details: \(error)")
-                    self?.presentAlert(title: "Google Sign-In Failed", message: error.localizedDescription)
+                    self?.showError("Google Sign-In Failed: \(error.localizedDescription)")
                 }
             }
         }
@@ -361,10 +314,9 @@ class LoginViewController: UIViewController {
                 switch result {
                 case .success(let user):
                     print("📘 Successfully logged in with Facebook: \(user.displayName)")
-                    // Authentication state listener in SceneDelegate will handle UI update
                 case .failure(let error):
                     print("📘 Facebook Sign-In failed with error: \(error.localizedDescription)")
-                    self?.presentAlert(title: "Facebook Sign-In Failed", message: error.localizedDescription)
+                    self?.showError("Facebook Sign-In Failed: \(error.localizedDescription)")
                 }
             }
         }
@@ -372,12 +324,5 @@ class LoginViewController: UIViewController {
     
     @objc private func dismissKeyboard() {
         view.endEditing(true)
-    }
-    
-    // MARK: - Helper Methods
-    private func presentAlert(title: String, message: String) {
-        let alertController = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        alertController.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alertController, animated: true)
     }
 }

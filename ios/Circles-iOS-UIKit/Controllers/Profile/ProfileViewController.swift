@@ -69,7 +69,7 @@ class StatView: UIView {
     }
 }
 
-class ProfileViewController: UIViewController, PlaceSearchable {
+class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapViewControllerDelegate {
     
     // MARK: - Properties
     private var user: User?
@@ -82,11 +82,39 @@ class ProfileViewController: UIViewController, PlaceSearchable {
     var isSearching = false
     var searchResultsHeightConstraint: NSLayoutConstraint?
     
+    // MARK: - BaseViewController Configuration
+    override var showsLoadingIndicator: Bool { true }
+    override var enablesPullToRefresh: Bool { true }
+    override var emptyStateMessage: String? { "No circles found" }
+    override var loadsDataOnViewDidLoad: Bool { true }
+    override var reloadsDataOnAppear: Bool { true }
+    
+    // MARK: - Helper Methods
+    /// Helper function to create a type-safe completion handler for API requests
+    private func createAPICompletion<T>(_ completion: @escaping (Result<T, Error>) -> Void) -> (Result<T, APIError>) -> Void {
+        return { [weak self] result in
+            guard let self = self else { return }
+            
+            switch result {
+            case .success(let response):
+                completion(.success(response))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
     // MARK: - Public Methods
     func configureWith(user: User) {
         self.user = user
         if isViewLoaded {
             loadUserProfile()
+        }
+    }
+    
+    func resetToListViewIfNeeded() {
+        if isShowingMap {
+            toggleViewMode()
         }
     }
     
@@ -203,92 +231,41 @@ class ProfileViewController: UIViewController, PlaceSearchable {
         return view
     }()
     
-    private let editProfileButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Edit profile", for: .normal)
-        button.setTitleColor(Constants.Colors.label, for: .normal)
-        button.backgroundColor = .clear
-        button.layer.cornerRadius = 6
-        button.layer.borderWidth = 1
-        button.layer.borderColor = UIColor.separator.cgColor
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private lazy var editProfileButton = UIButton.smallActionButton(title: "Edit profile", style: .secondary)
     
-    private let shareProfileButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Share profile", for: .normal)
-        button.setTitleColor(Constants.Colors.label, for: .normal)
-        button.backgroundColor = .clear
-        button.layer.cornerRadius = 6
-        button.layer.borderWidth = 1
-        button.layer.borderColor = UIColor.separator.cgColor
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private lazy var shareProfileButton = UIButton.smallActionButton(title: "Share profile", style: .secondary)
     
-    private let suggestedButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "person.badge.plus"), for: .normal)
-        button.tintColor = Constants.Colors.label
+    private lazy var suggestedButton: UIButton = {
+        let button = UIButton.iconButton(systemName: "person.badge.plus")
         button.backgroundColor = .clear
         button.layer.cornerRadius = 6
         button.layer.borderWidth = 1
         button.layer.borderColor = UIColor.separator.cgColor
-        button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
     
     // Buttons for viewing other users (connections)
-    private let messageButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Message", for: .normal)
-        button.setTitleColor(.white, for: .normal)
-        button.backgroundColor = Constants.Colors.primary
-        button.layer.cornerRadius = 6
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
-        button.translatesAutoresizingMaskIntoConstraints = false
+    private lazy var messageButton: UIButton = {
+        let button = UIButton.smallActionButton(title: "Message", style: .primary)
         button.isHidden = true
         return button
     }()
     
-    private let followButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Follow", for: .normal)
-        button.setTitleColor(Constants.Colors.primary, for: .normal)
-        button.backgroundColor = .clear
-        button.layer.cornerRadius = 6
-        button.layer.borderWidth = 1
-        button.layer.borderColor = Constants.Colors.primary.cgColor
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
-        button.translatesAutoresizingMaskIntoConstraints = false
+    private lazy var followButton: UIButton = {
+        let button = UIButton.smallActionButton(title: "Follow", style: .secondary)
         button.isHidden = true
         return button
     }()
     
-    private let connectButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Connect", for: .normal)
-        button.setTitleColor(.white, for: .normal)
+    private lazy var connectButton: UIButton = {
+        let button = UIButton.smallActionButton(title: "Connect", style: .primary)
         button.backgroundColor = Constants.Colors.secondary
-        button.layer.cornerRadius = 6
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
-        button.translatesAutoresizingMaskIntoConstraints = false
         button.isHidden = true
         return button
     }()
     
     
-    private let logoutButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Log Out", for: .normal)
-        button.setTitleColor(Constants.Colors.danger, for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private lazy var logoutButton = UIButton.smallActionButton(title: "Log Out", style: .danger)
     
     private let versionLabel: UILabel = {
         let label = UILabel()
@@ -352,9 +329,8 @@ class ProfileViewController: UIViewController, PlaceSearchable {
         return label
     }()
     
-    private let addCircleButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "plus"), for: .normal)
+    private lazy var addCircleButton: UIButton = {
+        let button = UIButton.iconButton(systemName: "plus")
         button.tintColor = .white
         button.backgroundColor = Constants.Colors.primary
         button.layer.cornerRadius = 25
@@ -362,7 +338,6 @@ class ProfileViewController: UIViewController, PlaceSearchable {
         button.layer.shadowOffset = CGSize(width: 0, height: 2)
         button.layer.shadowRadius = 4
         button.layer.shadowOpacity = 0.3
-        button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
     
@@ -398,6 +373,14 @@ class ProfileViewController: UIViewController, PlaceSearchable {
         mapView.translatesAutoresizingMaskIntoConstraints = false
         mapView.delegate = self
         return mapView
+    }()
+    
+    private lazy var mapExpandButton: UIButton = {
+        let button = UIButton.iconButton(systemName: "arrow.up.left.and.arrow.down.right")
+        button.tintColor = .white
+        button.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+        button.layer.cornerRadius = 18
+        return button
     }()
     
     private lazy var filterContainerView: UIView = {
@@ -467,6 +450,11 @@ class ProfileViewController: UIViewController, PlaceSearchable {
     private var isFollowing: Bool = false
     private var connectionStatus: ConnectionStatus?
     
+    // Constraint references for dynamic button positioning
+    private var followButtonLeadingToMessageConstraint: NSLayoutConstraint?
+    private var followButtonLeadingToConnectConstraint: NSLayoutConstraint?
+    private var connectButtonLeadingConstraint: NSLayoutConstraint?
+    
     // MARK: - Lifecycle
     
     init(user: User? = nil) {
@@ -482,20 +470,19 @@ class ProfileViewController: UIViewController, PlaceSearchable {
         super.viewDidLoad()
         setupUI()
         setupActions()
-        loadUserProfile()
         displayAppVersion()
         setupNotificationObservers()
         
-        // Load saved view mode preference
-        if let savedViewMode = UserDefaults.standard.string(forKey: "profileViewMode") {
-            isShowingMap = (savedViewMode == "map")
-            // Update the UI based on saved preference
-            circlesCollectionView.isHidden = isShowingMap
-            mapContainerView.isHidden = !isShowingMap
-            if let toggleButton = navigationItem.rightBarButtonItems?[1] {
-                toggleButton.title = isShowingMap ? "List" : "Map"
-            }
+        // Always start in list view
+        isShowingMap = false
+        circlesCollectionView.isHidden = false
+        mapContainerView.isHidden = true
+        if let toggleButton = navigationItem.rightBarButtonItems?[1] {
+            toggleButton.title = "Map"
         }
+        
+        // Clear any old saved view mode preference
+        UserDefaults.standard.removeObject(forKey: "profileViewMode")
         
         // Register for SSE events
         SSEService.shared.addDelegate(self)
@@ -504,14 +491,26 @@ class ProfileViewController: UIViewController, PlaceSearchable {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         
-        // Refresh user data and stats when returning to profile page
-        if let userId = self.user?.id {
-            // If viewing current user's profile, fetch fresh data
-            if userId == AuthService.shared.getUserId() {
-                fetchFreshUserData()
-            } else {
-                // For other users, just refresh stats
-                fetchUserStats(userId: userId)
+        // Always reset to list view when navigating to Profile tab
+        if isShowingMap {
+            isShowingMap = false
+            
+            // Update toggle button title
+            if let toggleButton = navigationItem.rightBarButtonItems?[1] {
+                toggleButton.title = "Map"
+            }
+            
+            // Show/hide views
+            circlesCollectionView.isHidden = false
+            mapContainerView.isHidden = true
+            
+            // Update constraints
+            logoutButtonTopToCollectionConstraint?.isActive = true
+            logoutButtonTopToMapConstraint?.isActive = false
+            
+            // Update scroll view layout
+            UIView.animate(withDuration: 0.3) {
+                self.view.layoutIfNeeded()
             }
         }
     }
@@ -538,10 +537,31 @@ class ProfileViewController: UIViewController, PlaceSearchable {
         suggestedButton.layer.borderColor = UIColor.separator.cgColor
     }
     
+    // MARK: - BaseViewController Data Loading
+    override func loadData(completion: (() -> Void)? = nil) {
+        loadUserProfile()
+        
+        // Refresh user data and stats when returning to profile page
+        if let userId = self.user?.id {
+            // If viewing current user's profile, fetch fresh data
+            if userId == AuthService.shared.getUserId() {
+                fetchFreshUserData()
+            } else {
+                // For other users, just refresh stats
+                fetchUserStats(userId: userId)
+            }
+        }
+        
+        completion?()
+    }
+    
+    override func setupRefreshControl() {
+        scrollView.refreshControl = refreshControl
+    }
+    
     // MARK: - UI Setup
     private func setupUI() {
-        view.backgroundColor = Constants.Colors.background
-        title = "Profile"
+        setupNavigationBar(title: "Profile")
         
         // Add right bar button items
         let settingsButton = UIBarButtonItem(image: UIImage(systemName: "gear"), style: .plain, target: self, action: #selector(settingsButtonTapped))
@@ -583,6 +603,7 @@ class ProfileViewController: UIViewController, PlaceSearchable {
         filterContainerView.addSubview(categoryFilterButton)
         filterContainerView.addSubview(cityFilterButton)
         mapContainerView.addSubview(mapView)
+        mapContainerView.addSubview(mapExpandButton)
         
         contentView.addSubview(logoutButton)
         contentView.addSubview(versionLabel)
@@ -699,14 +720,13 @@ class ProfileViewController: UIViewController, PlaceSearchable {
             messageButton.bottomAnchor.constraint(equalTo: buttonsContainer.bottomAnchor),
             messageButton.widthAnchor.constraint(equalTo: buttonsContainer.widthAnchor, multiplier: 0.48),
             
-            // Follow button (for other users)
-            followButton.leadingAnchor.constraint(equalTo: messageButton.trailingAnchor, constant: 6),
+            // Follow button (for other users) - fixed constraints
             followButton.topAnchor.constraint(equalTo: buttonsContainer.topAnchor),
             followButton.bottomAnchor.constraint(equalTo: buttonsContainer.bottomAnchor),
             followButton.widthAnchor.constraint(equalTo: buttonsContainer.widthAnchor, multiplier: 0.48),
             
-            // Connect button (for other users) - alternative to follow button
-            connectButton.leadingAnchor.constraint(equalTo: messageButton.trailingAnchor, constant: 6),
+            // Connect button (for other users) - fixed constraints
+            connectButton.leadingAnchor.constraint(equalTo: buttonsContainer.leadingAnchor),
             connectButton.topAnchor.constraint(equalTo: buttonsContainer.topAnchor),
             connectButton.bottomAnchor.constraint(equalTo: buttonsContainer.bottomAnchor),
             connectButton.widthAnchor.constraint(equalTo: buttonsContainer.widthAnchor, multiplier: 0.48),
@@ -773,6 +793,12 @@ class ProfileViewController: UIViewController, PlaceSearchable {
             mapView.trailingAnchor.constraint(equalTo: mapContainerView.trailingAnchor),
             mapView.bottomAnchor.constraint(equalTo: mapContainerView.bottomAnchor),
             
+            // Map expand button
+            mapExpandButton.topAnchor.constraint(equalTo: mapView.topAnchor, constant: 8),
+            mapExpandButton.trailingAnchor.constraint(equalTo: mapView.trailingAnchor, constant: -8),
+            mapExpandButton.widthAnchor.constraint(equalToConstant: 36),
+            mapExpandButton.heightAnchor.constraint(equalToConstant: 36),
+            
             // Logout button (position constraints)
             logoutButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             logoutButton.widthAnchor.constraint(equalToConstant: 100),
@@ -830,6 +856,18 @@ class ProfileViewController: UIViewController, PlaceSearchable {
         
         searchResultsHeightConstraint = searchResultsTableView.heightAnchor.constraint(equalToConstant: 0)
         searchResultsHeightConstraint?.isActive = true
+        
+        // Setup dynamic button constraints
+        setupDynamicButtonConstraints()
+    }
+    
+    private func setupDynamicButtonConstraints() {
+        // Create the alternative leading constraints for follow button
+        followButtonLeadingToMessageConstraint = followButton.leadingAnchor.constraint(equalTo: messageButton.trailingAnchor, constant: 6)
+        followButtonLeadingToConnectConstraint = followButton.leadingAnchor.constraint(equalTo: connectButton.trailingAnchor, constant: 6)
+        
+        // Initially activate the constraint to message button
+        followButtonLeadingToMessageConstraint?.isActive = true
     }
     
     private func setupActions() {
@@ -838,6 +876,7 @@ class ProfileViewController: UIViewController, PlaceSearchable {
         suggestedButton.addTarget(self, action: #selector(suggestedButtonTapped), for: .touchUpInside)
         logoutButton.addTarget(self, action: #selector(logoutButtonTapped), for: .touchUpInside)
         addCircleButton.addTarget(self, action: #selector(addCircleButtonTapped), for: .touchUpInside)
+        mapExpandButton.addTarget(self, action: #selector(expandMapButtonTapped), for: .touchUpInside)
         
         // Connection-related buttons for viewing other users
         messageButton.addTarget(self, action: #selector(messageButtonTapped), for: .touchUpInside)
@@ -857,6 +896,11 @@ class ProfileViewController: UIViewController, PlaceSearchable {
         let profileImageTapGesture = UITapGestureRecognizer(target: self, action: #selector(profileImageTapped))
         profileImageView.addGestureRecognizer(profileImageTapGesture)
         profileImageView.isUserInteractionEnabled = true
+        
+        // Add tap gesture to dismiss keyboard when tapping outside search bar
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
+        tapGesture.cancelsTouchesInView = false
+        view.addGestureRecognizer(tapGesture)
         
         // Apply initial appearance
         updateAppearance()
@@ -902,7 +946,8 @@ class ProfileViewController: UIViewController, PlaceSearchable {
         
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         alert.addAction(UIAlertAction(title: "Logout", style: .destructive) { [weak self] _ in
-            self?.logout()
+            guard let self = self else { return }
+            self.logout()
         })
         
         present(alert, animated: true)
@@ -933,6 +978,9 @@ class ProfileViewController: UIViewController, PlaceSearchable {
             // Load places for map if not already loaded
             if allPlaces.isEmpty {
                 loadAllPlaces()
+            } else {
+                // Places already loaded, just filter and update map
+                filterPlaces()
             }
         } else {
             logoutButtonTopToMapConstraint?.isActive = false
@@ -944,8 +992,7 @@ class ProfileViewController: UIViewController, PlaceSearchable {
             self.view.layoutIfNeeded()
         }
         
-        // Save user preference
-        saveViewModePreference()
+        // Note: We don't save view mode preference - always default to list view
     }
     
     private func setupCategoryFilterMenu() {
@@ -956,11 +1003,12 @@ class ProfileViewController: UIViewController, PlaceSearchable {
         
         for (index, category) in categories.enumerated() {
             let action = UIAction(title: categoryNames[index]) { [weak self] _ in
-                self?.selectedCategory = category
-                self?.categoryFilterButton.setTitle(categoryNames[index], for: .normal)
-                self?.filterPlaces()
+                guard let self = self else { return }
+                self.selectedCategory = category
+                self.categoryFilterButton.setTitle(categoryNames[index], for: .normal)
+                self.filterPlaces()
                 // Refresh the menu to update checkmarks
-                self?.setupCategoryFilterMenu()
+                self.setupCategoryFilterMenu()
             }
             
             // Add checkmark for selected category
@@ -1054,16 +1102,17 @@ class ProfileViewController: UIViewController, PlaceSearchable {
         
         for (index, city) in cityOptions.enumerated() {
             let action = UIAction(title: cityNames[index]) { [weak self] _ in
-                self?.selectedCity = city
+                guard let self = self else { return }
+                self.selectedCity = city
                 // Update button title - use shorter version without count for selected item
                 if let city = city {
-                    self?.cityFilterButton.setTitle(city, for: .normal)
+                    self.cityFilterButton.setTitle(city, for: .normal)
                 } else {
-                    self?.cityFilterButton.setTitle("All Cities", for: .normal)
+                    self.cityFilterButton.setTitle("All Cities", for: .normal)
                 }
-                self?.filterPlaces()
+                self.filterPlaces()
                 // Refresh the menu to update checkmarks
-                self?.setupCityFilterMenu()
+                self.setupCityFilterMenu()
             }
             
             // Add checkmark for selected city
@@ -1106,6 +1155,10 @@ class ProfileViewController: UIViewController, PlaceSearchable {
         showFollowersList(userId: user.id, listType: .following)
     }
     
+    @objc private func dismissKeyboard() {
+        view.endEditing(true)
+    }
+    
     private func showFollowersList(userId: String, listType: FollowListType) {
         let followersVC = FollowersListViewController()
         followersVC.userId = userId
@@ -1123,20 +1176,36 @@ class ProfileViewController: UIViewController, PlaceSearchable {
     }
     
     @objc private func messageButtonTapped() {
-        guard let user = user else { return }
+        print("🔍 ProfileViewController: messageButtonTapped called")
+        guard let user = user else {
+            print("❌ ProfileViewController: messageButtonTapped - user is nil")
+            return
+        }
+        
+        print("🔍 ProfileViewController: Creating/getting conversation with user: \(user.displayName) (ID: \(user.id))")
         
         // Create or get conversation with this user
         MessagingManager.shared.createOrGetDirectConversation(with: user.id) { [weak self] result in
+            guard let self = self else { return }
+            
             switch result {
             case .success(let conversation):
+                print("✅ ProfileViewController: Successfully got conversation:")
+                print("   - ID: \(conversation.id)")
+                print("   - Type: \(conversation.type)")
+                print("   - Participants: \(conversation.participants)")
+                print("   - Display Name: \(conversation.displayName ?? "nil")")
+                
                 DispatchQueue.main.async {
+                    print("🔍 ProfileViewController: Creating ChatViewController and navigating")
                     let chatVC = ChatViewController()
                     chatVC.conversation = conversation
-                    self?.navigationController?.pushViewController(chatVC, animated: true)
+                    self.navigationController?.pushViewController(chatVC, animated: true)
                 }
             case .failure(let error):
+                print("❌ ProfileViewController: Failed to create/get conversation: \(error.localizedDescription)")
                 DispatchQueue.main.async {
-                    self?.showAlert(title: "Error", message: "Failed to start conversation: \(error.localizedDescription)")
+                    self.showAlert(title: "Error", message: "Failed to start conversation: \(error.localizedDescription)")
                 }
             }
         }
@@ -1199,32 +1268,34 @@ class ProfileViewController: UIViewController, PlaceSearchable {
             endpoint: endpoint,
             method: .post,
             requiresAuth: true
-        ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
+        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
             DispatchQueue.main.async {
+                guard let self = self else { return }
+                
                 switch result {
                 case .success:
                     print("✅ Successfully \(action)ed user: \(user.displayName)")
                     
                     // Re-enable button after successful action
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        self?.followButton.isEnabled = true
-                        self?.followButton.alpha = 1.0
+                        self.followButton.isEnabled = true
+                        self.followButton.alpha = 1.0
                     }
                     
                 case .failure(let error):
                     print("❌ Failed to \(action) user: \(error)")
                     
                     // Rollback optimistic updates on failure
-                    self?.isFollowing = originalIsFollowing
-                    self?.user = originalUser
-                    self?.updateButtonVisibility()
-                    self?.updateLocalFollowingCount(increment: action == "unfollow") // Reverse the action
+                    self.isFollowing = originalIsFollowing
+                    self.user = originalUser
+                    self.updateButtonVisibility()
+                    self.updateLocalFollowingCount(increment: action == "unfollow") // Reverse the action
                     
-                    self?.showAlert(title: "Error", message: "Failed to \(action) user: \(error.localizedDescription)")
+                    self.showAlert(title: "Error", message: "Failed to \(action) user: \(error.localizedDescription)")
                     
                     // Re-enable button immediately on error
-                    self?.followButton.isEnabled = true
-                    self?.followButton.alpha = 1.0
+                    self.followButton.isEnabled = true
+                    self.followButton.alpha = 1.0
                 }
             }
         }
@@ -1233,18 +1304,100 @@ class ProfileViewController: UIViewController, PlaceSearchable {
     @objc private func connectButtonTapped() {
         guard let user = user else { return }
         
-        // Send connection request
-        NetworkManager.shared.sendConnectionRequest(to: user.id) { [weak self] result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success:
-                    self?.showAlert(title: "Success", message: "Connection request sent!")
-                    self?.updateButtonVisibility()
-                case .failure(let error):
-                    self?.showAlert(title: "Error", message: "Failed to send connection request: \(error.localizedDescription)")
+        // Check if this is an incoming request to accept
+        if connectionStatus == .pending && user.connectionDirection == "incoming" {
+            // Find the connection to accept
+            let connections = NetworkManager.shared.connections
+            guard let connection = connections.first(where: { 
+                $0.otherUserId(currentUserId: AuthService.shared.getUserId() ?? "") == user.id 
+            }) else {
+                showAlert(title: "Error", message: "Connection request not found")
+                return
+            }
+            
+            // Accept the incoming request
+            NetworkManager.shared.acceptConnection(connection.id) { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    
+                    switch result {
+                    case .success:
+                        // Update connection status
+                        self.connectionStatus = .accepted
+                        self.updateButtonVisibility()
+                        self.showAlert(title: "Success", message: "Connection request accepted!")
+                        
+                        // Refresh connections
+                        NetworkManager.shared.loadConnections()
+                    case .failure(let error):
+                        self.showAlert(title: "Error", message: "Failed to accept connection request: \(error.localizedDescription)")
+                    }
+                }
+            }
+        } else {
+            // Send new connection request
+            NetworkManager.shared.sendConnectionRequest(to: user.id) { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    
+                    switch result {
+                    case .success:
+                        // Update connection status locally
+                        self.connectionStatus = .pending
+                        // Create new user instance with updated connection direction
+                        if let currentUser = self.user {
+                            self.user = User(
+                                id: currentUser.id,
+                                email: currentUser.email,
+                                displayName: currentUser.displayName,
+                                firstName: currentUser.firstName,
+                                lastName: currentUser.lastName,
+                                phoneNumber: currentUser.phoneNumber,
+                                profilePicture: currentUser.profilePicture,
+                                bio: currentUser.bio,
+                                location: currentUser.location,
+                                friends: currentUser.friends,
+                                friendRequests: currentUser.friendRequests,
+                                circleOrder: currentUser.circleOrder,
+                                preferences: currentUser.preferences,
+                                createdAt: currentUser.createdAt,
+                                connectionStatus: "pending",
+                                connectionDirection: "outgoing",
+                                connectionId: currentUser.connectionId,
+                                followers: currentUser.followers,
+                                following: currentUser.following,
+                                followersCount: currentUser.followersCount,
+                                followingCount: currentUser.followingCount,
+                                connectionsCount: currentUser.connectionsCount,
+                                pinnedPlaces: currentUser.pinnedPlaces,
+                                isFollowing: currentUser.isFollowing
+                            )
+                        }
+                        self.updateButtonVisibility()
+                        self.showAlert(title: "Success", message: "Connection request sent!")
+                        
+                        // Refresh connections to get updated list
+                        NetworkManager.shared.loadConnections()
+                    case .failure(let error):
+                        self.showAlert(title: "Error", message: "Failed to send connection request: \(error.localizedDescription)")
+                    }
                 }
             }
         }
+    }
+    
+    @objc private func expandMapButtonTapped() {
+        let fullScreenMapVC = FullScreenMapViewController(
+            places: filteredPlaces,
+            initialRegion: mapView.region
+        )
+        fullScreenMapVC.delegate = self
+        fullScreenMapVC.viewMode = .allPlaces
+        fullScreenMapVC.isPresentedModally = true
+        
+        let navigationController = UINavigationController(rootViewController: fullScreenMapVC)
+        navigationController.modalPresentationStyle = .fullScreen
+        present(navigationController, animated: true)
     }
     
     private func showAlert(title: String, message: String) {
@@ -1260,18 +1413,20 @@ class ProfileViewController: UIViewController, PlaceSearchable {
         // Force fetch fresh data from server to get updated following array
         AuthService.shared.fetchCurrentUser { [weak self] result in
             DispatchQueue.main.async {
+                guard let self = self else { return }
+                
                 switch result {
                 case .success(let updatedUser):
                     // Only update stats if viewing own profile
-                    if self?.user?.id == currentUserId {
+                    if self.user?.id == currentUserId {
                         // Update all stats with fresh data
                         let followingCount = updatedUser.followingCount ?? 0
                         let followersCount = updatedUser.followersCount ?? 0
-                        self?.followingStatView.configure(number: "\(followingCount)", title: "Following")
-                        self?.followersStatView.configure(number: "\(followersCount)", title: "Followers")
+                        self.followingStatView.configure(number: "\(followingCount)", title: "Following")
+                        self.followersStatView.configure(number: "\(followersCount)", title: "Followers")
                         
                         // Update cached user data for own profile
-                        self?.user = updatedUser
+                        self.user = updatedUser
                     }
                     
                     // Don't re-check follow status here as it would reset the local state
@@ -1291,9 +1446,46 @@ class ProfileViewController: UIViewController, PlaceSearchable {
         
         // Check if user is in current user's connections
         let connections = NetworkManager.shared.connections
-        let connection = connections.first { $0.otherUserId(currentUserId: AuthService.shared.getUserId() ?? "") == user.id }
+        let currentUserId = AuthService.shared.getUserId() ?? ""
+        let connection = connections.first { $0.otherUserId(currentUserId: currentUserId) == user.id }
         
         connectionStatus = connection?.status
+        
+        // Set connection direction based on who initiated the request
+        if let connection = connection, connection.status == .pending {
+            // If the current user initiated the request, it's outgoing
+            let direction = connection.userId == currentUserId ? "outgoing" : "incoming"
+            
+            // Create new user instance with updated connection direction
+            if let currentUser = self.user {
+                self.user = User(
+                    id: currentUser.id,
+                    email: currentUser.email,
+                    displayName: currentUser.displayName,
+                    firstName: currentUser.firstName,
+                    lastName: currentUser.lastName,
+                    phoneNumber: currentUser.phoneNumber,
+                    profilePicture: currentUser.profilePicture,
+                    bio: currentUser.bio,
+                    location: currentUser.location,
+                    friends: currentUser.friends,
+                    friendRequests: currentUser.friendRequests,
+                    circleOrder: currentUser.circleOrder,
+                    preferences: currentUser.preferences,
+                    createdAt: currentUser.createdAt,
+                    connectionStatus: currentUser.connectionStatus,
+                    connectionDirection: direction,
+                    connectionId: currentUser.connectionId,
+                    followers: currentUser.followers,
+                    following: currentUser.following,
+                    followersCount: currentUser.followersCount,
+                    followingCount: currentUser.followingCount,
+                    connectionsCount: currentUser.connectionsCount,
+                    pinnedPlaces: currentUser.pinnedPlaces,
+                    isFollowing: currentUser.isFollowing
+                )
+            }
+        }
         
         // First, check if the user object has isFollowing property (from backend)
         if let userIsFollowing = user.isFollowing {
@@ -1316,8 +1508,9 @@ class ProfileViewController: UIViewController, PlaceSearchable {
             if AuthService.shared.currentUser == nil && user.id != AuthService.shared.getUserId() {
                 AuthService.shared.fetchCurrentUser { [weak self] _ in
                     DispatchQueue.main.async {
+                        guard let self = self else { return }
                         // Re-check follow status after fetching current user
-                        self?.checkConnectionAndFollowStatus()
+                        self.checkConnectionAndFollowStatus()
                     }
                 }
             }
@@ -1342,32 +1535,7 @@ class ProfileViewController: UIViewController, PlaceSearchable {
         followingStatView.configure(number: "\(newCount)", title: "Following")
         
         // Update the cached user data
-        self.user = User(
-            id: user.id,
-            email: user.email,
-            displayName: user.displayName,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            phoneNumber: user.phoneNumber,
-            profilePicture: user.profilePicture,
-            bio: user.bio,
-            location: user.location,
-            friends: user.friends,
-            friendRequests: user.friendRequests,
-            circleOrder: user.circleOrder,
-            preferences: user.preferences,
-            createdAt: user.createdAt,
-            connectionStatus: user.connectionStatus,
-            connectionDirection: user.connectionDirection,
-            connectionId: user.connectionId,
-            followers: user.followers,
-            following: user.following,
-            followersCount: user.followersCount,
-            followingCount: newCount,
-            connectionsCount: user.connectionsCount,
-            pinnedPlaces: user.pinnedPlaces,
-            isFollowing: user.isFollowing
-        )
+        self.user = user.copy(followingCount: newCount)
         
         print("📊 Updated local following count: \(currentCount) → \(newCount)")
     }
@@ -1384,17 +1552,70 @@ class ProfileViewController: UIViewController, PlaceSearchable {
             return
         }
         
-        // Show message and follow buttons for connected users
+        // Determine connection status
         let isConnected = connectionStatus == .accepted
-        messageButton.isHidden = !isConnected
+        let isPending = connectionStatus == .pending
         
-        // Show connect button for non-connected users
-        connectButton.isHidden = isConnected
+        // Update button visibility and constraints based on connection status
+        if isPending {
+            // Pending connections: Show connect button with appropriate state
+            messageButton.isHidden = true
+            connectButton.isHidden = false
+            followButton.isHidden = false
+            
+            // Update button based on connection direction
+            if let direction = user.connectionDirection {
+                if direction == "outgoing" {
+                    // Sent request - show "Pending" disabled
+                    connectButton.setTitle("Pending", for: .normal)
+                    connectButton.backgroundColor = .systemGray5
+                    connectButton.setTitleColor(.label, for: .normal)
+                    connectButton.isEnabled = false
+                } else if direction == "incoming" {
+                    // Received request - show "Accept" enabled
+                    connectButton.setTitle("Accept", for: .normal)
+                    connectButton.backgroundColor = .systemGreen
+                    connectButton.setTitleColor(.white, for: .normal)
+                    connectButton.isEnabled = true
+                }
+            } else {
+                // Default pending state if direction unknown
+                connectButton.setTitle("Pending", for: .normal)
+                connectButton.backgroundColor = .systemGray5
+                connectButton.setTitleColor(.label, for: .normal)
+                connectButton.isEnabled = false
+            }
+            
+            // Activate follow button constraint to connect button
+            followButtonLeadingToMessageConstraint?.isActive = false
+            followButtonLeadingToConnectConstraint?.isActive = true
+        } else if isConnected {
+            // Connected users: Show message and follow buttons
+            messageButton.isHidden = false
+            connectButton.isHidden = true
+            followButton.isHidden = false
+            
+            // Activate follow button constraint to message button
+            followButtonLeadingToConnectConstraint?.isActive = false
+            followButtonLeadingToMessageConstraint?.isActive = true
+        } else {
+            // Non-connected users: Show connect and follow buttons
+            messageButton.isHidden = true
+            connectButton.isHidden = false
+            followButton.isHidden = false
+            
+            // Reset connect button to default state
+            connectButton.setTitle("Connect", for: .normal)
+            connectButton.backgroundColor = Constants.Colors.secondary
+            connectButton.setTitleColor(.white, for: .normal)
+            connectButton.isEnabled = true
+            
+            // Activate follow button constraint to connect button
+            followButtonLeadingToMessageConstraint?.isActive = false
+            followButtonLeadingToConnectConstraint?.isActive = true
+        }
         
-        // Always show follow button (can follow anyone)
-        followButton.isHidden = false
-        
-        // Update follow button text based on follow status
+        // Update follow button appearance based on follow status
         followButton.setTitle(isFollowing ? "Following" : "Follow", for: .normal)
         if isFollowing {
             followButton.backgroundColor = Constants.Colors.primary
@@ -1479,10 +1700,6 @@ class ProfileViewController: UIViewController, PlaceSearchable {
         }
     }
     
-    private func saveViewModePreference() {
-        // Save the user's preference for map/list view locally
-        UserDefaults.standard.set(isShowingMap ? "map" : "list", forKey: "profileViewMode")
-    }
     
     private func loadUserProfile() {
         if let user = self.user {
@@ -1531,9 +1748,10 @@ class ProfileViewController: UIViewController, PlaceSearchable {
             // In a real app, load image from URL
             ImageService.shared.loadImage(from: profileImageUrl) { [weak self] image in
                 DispatchQueue.main.async {
-                    self?.profileImageView.image = image ?? UIImage(systemName: "person.circle.fill")
+                    guard let self = self else { return }
+                    self.profileImageView.image = image ?? UIImage(systemName: "person.circle.fill")
                     if image == nil {
-                        self?.profileImageView.tintColor = Constants.Colors.primary
+                        self.profileImageView.tintColor = Constants.Colors.primary
                     }
                 }
             }
@@ -1571,14 +1789,14 @@ class ProfileViewController: UIViewController, PlaceSearchable {
         shareProfileButton.isHidden = !isCurrentUser
         suggestedButton.isHidden = !isCurrentUser
         
-        // Show connection buttons for other users
-        messageButton.isHidden = isCurrentUser
-        followButton.isHidden = isCurrentUser
-        connectButton.isHidden = isCurrentUser
-        
         // For other users, check connection status and follow status
         if !isCurrentUser {
             checkConnectionAndFollowStatus()
+        } else {
+            // Hide connection buttons for current user
+            messageButton.isHidden = true
+            followButton.isHidden = true
+            connectButton.isHidden = true
         }
     }
     
@@ -1588,9 +1806,11 @@ class ProfileViewController: UIViewController, PlaceSearchable {
             // Fetch circles
             CircleService.shared.fetchUserCircles { [weak self] result in
                 DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    
                     switch result {
                     case .success(let circles):
-                        self?.circles = circles
+                        self.circles = circles
                         print("🔍 ProfileViewController - Fetched \(circles.count) circles")
                         
                         // Calculate total places from the same fetch
@@ -1602,21 +1822,24 @@ class ProfileViewController: UIViewController, PlaceSearchable {
                         }
                         
                         // Update both stats
-                        self?.circlesStatView.configure(number: "\(circles.count)", title: "Circles")
-                        self?.placesStatView.configure(number: "\(totalPlaces)", title: "Places")
+                        self.circlesStatView.configure(number: "\(circles.count)", title: "Circles")
+                        self.placesStatView.configure(number: "\(totalPlaces)", title: "Places")
                         print("   Total places calculated: \(totalPlaces)")
                         
-                        self?.circlesCollectionView.reloadData()
-                        self?.updateCollectionViewHeight()
+                        self.circlesCollectionView.reloadData()
+                        self.updateCollectionViewHeight()
                         
                         // Load all places for search functionality
-                        self?.loadAllPlacesFromCircles(circles)
-                    case .failure:
-                        self?.circles = []
-                        self?.circlesStatView.configure(number: "0", title: "Circles")
-                        self?.placesStatView.configure(number: "0", title: "Places")
-                        self?.circlesCollectionView.reloadData()
-                        self?.updateCollectionViewHeight()
+                        self.loadAllPlacesFromCircles(circles)
+                    case .failure(let error):
+                        self.circles = []
+                        self.circlesStatView.configure(number: "0", title: "Circles")
+                        self.placesStatView.configure(number: "0", title: "Places")
+                        self.circlesCollectionView.reloadData()
+                        self.updateCollectionViewHeight()
+                        self.showErrorWithRetry(error) {
+                            self.loadUserProfile()
+                        }
                     }
                 }
             }
@@ -1645,65 +1868,69 @@ class ProfileViewController: UIViewController, PlaceSearchable {
     
     private func fetchOtherUserCircles(userId: String) {
         // Fetch circles from network endpoint for other users
-        APIService.shared.request(
-            endpoint: "network/user-circles/\(userId)",
-            method: .get,
-            requiresAuth: true,
-            completion: { [weak self] (result: Result<UserCirclesResponse, APIError>) in
-                DispatchQueue.main.async {
-                    switch result {
-                    case .success(let response):
-                        self?.circles = response.data.circles
-                        
-                        // Calculate total places
-                        var totalPlaces = 0
-                        for circle in response.data.circles {
-                            let placeCount = circle.placesCount ?? circle.places?.count ?? 0
-                            totalPlaces += placeCount
-                        }
-                        
-                        // Update stats
-                        self?.circlesStatView.configure(number: "\(response.data.circles.count)", title: "Circles")
-                        self?.placesStatView.configure(number: "\(totalPlaces)", title: "Places")
+        let endpoint = "network/user-circles/\(userId)"
+        let completion = createAPICompletion { (result: Result<UserCirclesResponse, Error>) in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let response):
+                    self.circles = response.data.circles
                     
+                    // Calculate total places
+                    var totalPlaces = 0
+                    for circle in response.data.circles {
+                        let placeCount = circle.placesCount ?? circle.places?.count ?? 0
+                        totalPlaces += placeCount
+                    }
+                    
+                    // Update stats
+                    self.circlesStatView.configure(number: "\(response.data.circles.count)", title: "Circles")
+                    self.placesStatView.configure(number: "\(totalPlaces)", title: "Places")
+                
                     // Use user data for followers/following/connections
                     let user = response.data.user
                     let connectionsCount = user.connectionsCount ?? 0
                     let followersCount = user.followersCount ?? 0
                     let followingCount = user.followingCount ?? 0
                     
-                    self?.connectionsStatView.configure(number: "\(connectionsCount)", title: "Connections")
-                    self?.followersStatView.configure(number: "\(followersCount)", title: "Followers")
-                    self?.followingStatView.configure(number: "\(followingCount)", title: "Following")
+                    self.connectionsStatView.configure(number: "\(connectionsCount)", title: "Connections")
+                    self.followersStatView.configure(number: "\(followersCount)", title: "Followers")
+                    self.followingStatView.configure(number: "\(followingCount)", title: "Following")
                     
                     // Update user data to get latest info
-                    self?.user = user
+                    self.user = user
                     
                     // Re-check connection and follow status with fresh data
-                    self?.checkConnectionAndFollowStatus()
+                    self.checkConnectionAndFollowStatus()
                     
-                    self?.circlesCollectionView.reloadData()
-                    self?.updateCollectionViewHeight()
+                    self.circlesCollectionView.reloadData()
+                    self.updateCollectionViewHeight()
                     
                     // Load all places for search functionality
-                    self?.loadAllPlacesFromCircles(response.data.circles)
+                    self.loadAllPlacesFromCircles(response.data.circles)
                     
                 case .failure(let error):
                     print("Failed to load other user circles: \(error)")
                     
                     // Show default stats on error
-                    self?.circlesStatView.configure(number: "0", title: "Circles")
-                    self?.placesStatView.configure(number: "0", title: "Places")
-                    self?.connectionsStatView.configure(number: "0", title: "Connections")
-                    self?.followersStatView.configure(number: "0", title: "Followers")
-                    self?.followingStatView.configure(number: "0", title: "Following")
+                    self.circlesStatView.configure(number: "0", title: "Circles")
+                    self.placesStatView.configure(number: "0", title: "Places")
+                    self.connectionsStatView.configure(number: "0", title: "Connections")
+                    self.followersStatView.configure(number: "0", title: "Followers")
+                    self.followingStatView.configure(number: "0", title: "Following")
                     
-                    self?.circles = []
-                    self?.circlesCollectionView.reloadData()
-                    self?.updateCollectionViewHeight()
+                    self.circles = []
+                    self.circlesCollectionView.reloadData()
+                    self.updateCollectionViewHeight()
                 }
             }
-        })
+        }
+        
+        APIService.shared.request(
+            endpoint: endpoint,
+            method: .get,
+            requiresAuth: true,
+            completion: completion
+        )
     }
     
     private func displayDefaultProfile() {
@@ -1753,20 +1980,36 @@ class ProfileViewController: UIViewController, PlaceSearchable {
             name: .connectionsLoaded,
             object: nil
         )
+        
+        // Listen for keyboard notifications
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(keyboardWillShow(_:)),
+            name: UIResponder.keyboardWillShowNotification,
+            object: nil
+        )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(keyboardWillHide(_:)),
+            name: UIResponder.keyboardWillHideNotification,
+            object: nil
+        )
     }
     
     @objc private func handleCircleDeleted(_ notification: Notification) {
         guard let circleId = notification.userInfo?["circleId"] as? String else { return }
         
         DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
             // Remove the circle from our local array
-            if let index = self?.circles.firstIndex(where: { $0.id == circleId }) {
-                self?.circles.remove(at: index)
-                self?.circlesCollectionView.reloadData()
-                self?.updateCollectionViewHeight()
+            if let index = self.circles.firstIndex(where: { $0.id == circleId }) {
+                self.circles.remove(at: index)
+                self.circlesCollectionView.reloadData()
+                self.updateCollectionViewHeight()
                 
                 // Update stats
-                self?.circlesStatView.configure(number: "\(self?.circles.count ?? 0)", title: "Circles")
+                self.circlesStatView.configure(number: "\(self.circles.count)", title: "Circles")
             }
         }
     }
@@ -1784,6 +2027,43 @@ class ProfileViewController: UIViewController, PlaceSearchable {
             let connectionsCount = NetworkManager.shared.connections.count
             print("🔍 ProfileViewController - Updated connections count after load: \(connectionsCount)")
             connectionsStatView.configure(number: "\(connectionsCount)", title: "Connections")
+        }
+    }
+    
+    @objc private func keyboardWillShow(_ notification: Notification) {
+        guard let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
+              let animationDuration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double else {
+            return
+        }
+        
+        let keyboardHeight = keyboardFrame.height
+        let contentInsets = UIEdgeInsets(top: 0, left: 0, bottom: keyboardHeight, right: 0)
+        
+        UIView.animate(withDuration: animationDuration) {
+            self.scrollView.contentInset = contentInsets
+            self.scrollView.scrollIndicatorInsets = contentInsets
+            
+            // If search results are showing, scroll to make them visible
+            if !self.searchResultsTableView.isHidden && self.isSearching {
+                let searchBarFrame = self.searchBar.convert(self.searchBar.bounds, to: self.view)
+                let visibleHeight = self.view.frame.height - keyboardHeight
+                
+                if searchBarFrame.maxY > visibleHeight {
+                    let scrollOffset = searchBarFrame.maxY - visibleHeight + 20
+                    self.scrollView.contentOffset.y += scrollOffset
+                }
+            }
+        }
+    }
+    
+    @objc private func keyboardWillHide(_ notification: Notification) {
+        guard let animationDuration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double else {
+            return
+        }
+        
+        UIView.animate(withDuration: animationDuration) {
+            self.scrollView.contentInset = .zero
+            self.scrollView.scrollIndicatorInsets = .zero
         }
     }
     
@@ -1853,18 +2133,20 @@ extension ProfileViewController: UICollectionViewDelegate {
         let circle = circles[indexPath.item]
         
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
+            guard let self = self else { return UIMenu(title: "", children: []) }
+            
             let editAction = UIAction(
                 title: "Edit Circle",
                 image: UIImage(systemName: "pencil")
             ) { _ in
-                self?.editCircle(circle)
+                self.editCircle(circle)
             }
             
             let shareAction = UIAction(
                 title: "Share Circle",
                 image: UIImage(systemName: "square.and.arrow.up")
             ) { _ in
-                self?.shareCircle(circle, from: indexPath)
+                self.shareCircle(circle, from: indexPath)
             }
             
             let deleteAction = UIAction(
@@ -1872,7 +2154,7 @@ extension ProfileViewController: UICollectionViewDelegate {
                 image: UIImage(systemName: "trash"),
                 attributes: .destructive
             ) { _ in
-                self?.deleteCircle(circle, at: indexPath)
+                self.deleteCircle(circle, at: indexPath)
             }
             
             return UIMenu(title: circle.name, children: [editAction, shareAction, deleteAction])
@@ -1929,33 +2211,27 @@ extension ProfileViewController: UICollectionViewDelegate {
     }
     
     private func deleteCircle(_ circle: Circle, at indexPath: IndexPath) {
-        let alert = UIAlertController(
+        AlertPresenter.showConfirmation(
             title: "Delete Circle",
             message: "Are you sure you want to delete '\(circle.name)'? This action cannot be undone.",
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
-            CircleService.shared.deleteCircle(id: circle.id) { result in
-                DispatchQueue.main.async {
-                    switch result {
-                    case .success:
-                        self?.didDeleteCircle(circle.id)
-                    case .failure(let error):
-                        let errorAlert = UIAlertController(
-                            title: "Error",
-                            message: "Failed to delete circle: \(error.localizedDescription)",
-                            preferredStyle: .alert
-                        )
-                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self?.present(errorAlert, animated: true)
+            confirmTitle: "Delete",
+            isDestructive: true,
+            from: self,
+            onConfirm: { [weak self] in
+                guard let self = self else { return }
+                
+                CircleService.shared.deleteCircle(id: circle.id) { result in
+                    DispatchQueue.main.async {
+                        switch result {
+                        case .success:
+                            self.didDeleteCircle(circle.id)
+                        case .failure(let error):
+                            self.showError("Failed to delete circle: \(error.localizedDescription)")
+                        }
                     }
                 }
             }
-        })
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        present(alert, animated: true)
+        )
     }
 }
 
@@ -2060,10 +2336,10 @@ extension ProfileViewController: UICollectionViewDropDelegate {
                 // Update the collection view
                 collectionView.deleteItems(at: [sourceIndexPath])
                 collectionView.insertItems(at: [destinationIndexPath])
-            }, completion: { [weak self] _ in
+            }) { [weak self] _ in
                 // Save the new order to the backend
                 self?.saveCircleOrder()
-            })
+            }
             
             coordinator.drop(item.dragItem, toItemAt: destinationIndexPath)
         }
@@ -2075,10 +2351,12 @@ extension ProfileViewController: UICollectionViewDropDelegate {
         
         // Call the API to save the new order
         UserService.shared.reorderCircles(circleIds: circleIds) { [weak self] error in
+            guard let self = self else { return }
+            
             if let error = error {
                 print("Failed to save circle order: \(error)")
                 // Optionally reload circles to restore original order
-                self?.loadUserCircles()
+                self.loadUserCircles()
             } else {
                 print("Circle order saved successfully")
             }
@@ -2091,24 +2369,48 @@ extension ProfileViewController: UICollectionViewDropDelegate {
         // Fetch circles (same logic as in fetchUserStats)
         CircleService.shared.fetchUserCircles { [weak self] result in
             DispatchQueue.main.async {
+                guard let self = self else { return }
+                
                 switch result {
                 case .success(let circles):
-                    self?.circles = circles
-                    self?.circlesStatView.configure(number: "\(circles.count)", title: "Circles")
-                    self?.circlesCollectionView.reloadData()
-                    self?.updateCollectionViewHeight()
+                    self.circles = circles
+                    self.circlesStatView.configure(number: "\(circles.count)", title: "Circles")
+                    self.circlesCollectionView.reloadData()
+                    self.updateCollectionViewHeight()
                     
                     // Load all places for search functionality
-                    self?.loadAllPlacesFromCircles(circles)
+                    self.loadAllPlacesFromCircles(circles)
                 case .failure:
-                    self?.circles = []
-                    self?.allPlaces = []
-                    self?.circlesStatView.configure(number: "0", title: "Circles")
-                    self?.circlesCollectionView.reloadData()
-                    self?.updateCollectionViewHeight()
+                    self.circles = []
+                    self.allPlaces = []
+                    self.circlesStatView.configure(number: "0", title: "Circles")
+                    self.circlesCollectionView.reloadData()
+                    self.updateCollectionViewHeight()
                 }
             }
         }
+    }
+    
+    private func removeDuplicatePlaces(_ places: [Place]) -> [Place] {
+        var seenPlaceIds = Set<String>()
+        var deduplicatedPlaces: [Place] = []
+        var duplicatesFound = 0
+        
+        for place in places {
+            if !seenPlaceIds.contains(place.id) {
+                seenPlaceIds.insert(place.id)
+                deduplicatedPlaces.append(place)
+            } else {
+                duplicatesFound += 1
+                print("🔍 ProfileViewController - Skipping duplicate place: '\(place.name)' (ID: \(place.id))")
+            }
+        }
+        
+        if duplicatesFound > 0 {
+            print("⚠️ ProfileViewController - Found and removed \(duplicatesFound) duplicate places")
+        }
+        
+        return deduplicatedPlaces
     }
     
     private func loadAllPlacesFromCircles(_ circles: [Circle]) {
@@ -2118,10 +2420,15 @@ extension ProfileViewController: UICollectionViewDropDelegate {
         for circle in circles {
             dispatchGroup.enter()
             PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { [weak self] result in
+                guard let self = self else { 
+                    dispatchGroup.leave()
+                    return 
+                }
+                
                 switch result {
                 case .success(let places):
                     DispatchQueue.main.async {
-                        self?.allPlaces.append(contentsOf: places)
+                        self.allPlaces.append(contentsOf: places)
                     }
                 case .failure:
                     // Continue loading other circles
@@ -2132,7 +2439,15 @@ extension ProfileViewController: UICollectionViewDropDelegate {
         }
         
         dispatchGroup.notify(queue: .main) { [weak self] in
-            print("🔍 ProfileViewController - Loaded \(self?.allPlaces.count ?? 0) total places for search")
+            guard let self = self else { return }
+            
+            // Deduplicate places that might exist in multiple circles
+            let deduplicatedPlaces = self.removeDuplicatePlaces(self.allPlaces)
+            self.allPlaces = deduplicatedPlaces
+            
+            print("🔍 ProfileViewController - Loaded \(self.allPlaces.count) total unique places for search (after deduplication)")
+            // Update map with all places by default
+            self.filterPlaces()
         }
     }
 }
@@ -2148,52 +2463,32 @@ extension ProfileViewController: SSEServiceDelegate {
         }
         
         DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
             switch event.type {
             case .followerAdded, .followerRemoved:
                 if let followersCount = event.data["followersCount"] as? Int {
-                    self?.followersStatView.configure(number: "\(followersCount)", title: "Followers")
+                    self.followersStatView.configure(number: "\(followersCount)", title: "Followers")
                 }
             case .followingAdded, .followingRemoved:
                 print("🔔 SSE Event: \(event.type) - Data: \(event.data)")
                 let followingCount = event.data["followingCount"] as? Int
                 if let followingCount = followingCount {
-                    self?.followingStatView.configure(number: "\(followingCount)", title: "Following")
+                    self.followingStatView.configure(number: "\(followingCount)", title: "Following")
                 }
                 // Update the cached current user's following array
                 if let following = event.data["following"] as? [String],
                    var currentUser = AuthService.shared.currentUser {
                     // Create updated user with new following array
-                    let updatedUser = User(
-                        id: currentUser.id,
-                        email: currentUser.email,
-                        displayName: currentUser.displayName,
-                        firstName: currentUser.firstName,
-                        lastName: currentUser.lastName,
-                        phoneNumber: currentUser.phoneNumber,
-                        profilePicture: currentUser.profilePicture,
-                        bio: currentUser.bio,
-                        location: currentUser.location,
-                        friends: currentUser.friends,
-                        friendRequests: currentUser.friendRequests,
-                        circleOrder: currentUser.circleOrder,
-                        preferences: currentUser.preferences,
-                        createdAt: currentUser.createdAt,
-                        connectionStatus: currentUser.connectionStatus,
-                        connectionDirection: currentUser.connectionDirection,
-                        connectionId: currentUser.connectionId,
-                        followers: currentUser.followers,
-                        following: following,  // Updated following array
-                        followersCount: currentUser.followersCount,
-                        followingCount: followingCount ?? currentUser.followingCount,
-                        connectionsCount: currentUser.connectionsCount,
-                        pinnedPlaces: currentUser.pinnedPlaces
+                    let updatedUser = currentUser.copy(
+                        following: following,
+                        followingCount: followingCount ?? currentUser.followingCount
                     )
                     AuthService.shared.updateCurrentUser(updatedUser)
                     
                     // Only re-check follow status if we're viewing someone else's profile
                     // (not when we just clicked follow/unfollow)
-                    if self?.user?.id != currentUserId {
-                        self?.checkConnectionAndFollowStatus()
+                    if self.user?.id != currentUserId {
+                        self.checkConnectionAndFollowStatus()
                     }
                 }
             default:
@@ -2257,6 +2552,23 @@ extension ProfileViewController: UISearchBarDelegate {
         (self as PlaceSearchable).searchBarCancelButtonClicked(searchBar)
         // Update collection view after clearing search
         circlesCollectionView.reloadData()
+        // Ensure keyboard is dismissed
+        view.endEditing(true)
+    }
+    
+    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+        // Call the protocol's default implementation
+        (self as PlaceSearchable).searchBarSearchButtonClicked(searchBar)
+    }
+    
+    func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
+        // Call the protocol's default implementation
+        (self as PlaceSearchable).searchBarTextDidBeginEditing(searchBar)
+    }
+    
+    func searchBarTextDidEndEditing(_ searchBar: UISearchBar) {
+        // Call the protocol's default implementation
+        (self as PlaceSearchable).searchBarTextDidEndEditing(searchBar)
     }
 }
 
@@ -2295,6 +2607,16 @@ extension ProfileViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         if tableView == searchResultsTableView {
             handleSearchResultSelection(at: indexPath)
+        }
+    }
+}
+
+// MARK: - FullScreenMapViewControllerDelegate
+extension ProfileViewController {
+    func mapViewController(_ controller: FullScreenMapViewController, didSelectPlace place: Place) {
+        controller.dismiss(animated: true) {
+            let placeDetailVC = PlaceDetailViewController(place: place)
+            self.navigationController?.pushViewController(placeDetailVC, animated: true)
         }
     }
 }

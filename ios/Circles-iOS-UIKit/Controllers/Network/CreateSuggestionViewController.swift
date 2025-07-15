@@ -4,7 +4,7 @@ protocol CreateSuggestionViewControllerDelegate: AnyObject {
     func didCreateSuggestion(_ suggestion: Suggestion)
 }
 
-class CreateSuggestionViewController: UIViewController {
+class CreateSuggestionViewController: BaseViewController {
     
     weak var delegate: CreateSuggestionViewControllerDelegate?
     private var selectedPlace: Place?
@@ -264,11 +264,6 @@ class CreateSuggestionViewController: UIViewController {
         characterCountLabel.textColor = count > 500 ? .systemRed : .secondaryLabel
     }
     
-    private func showError(_ message: String) {
-        let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
 }
 
 // MARK: - UITextViewDelegate

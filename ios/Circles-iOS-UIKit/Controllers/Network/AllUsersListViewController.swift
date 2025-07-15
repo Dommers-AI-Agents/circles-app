@@ -74,6 +74,21 @@ class AllUsersListViewController: UIViewController {
     private static var hasEverLoadedConnections = false
     private var minimumLoadingTimer: Timer?
     
+    // MARK: - Helper Methods
+    /// Helper function to create a type-safe completion handler for API requests
+    private func createAPICompletion<T>(_ completion: @escaping (Result<T, Error>) -> Void) -> (Result<T, APIError>) -> Void {
+        return { [weak self] result in
+            guard let self = self else { return }
+            
+            switch result {
+            case .success(let response):
+                completion(.success(response))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
     // MARK: - Lifecycle
     override func loadView() {
         super.loadView()
@@ -197,33 +212,34 @@ class AllUsersListViewController: UIViewController {
         
         // Load all users (empty query returns all)
         UserService.shared.searchUsers(query: "") { [weak self] result in
+            guard let self = self else { return }
             DispatchQueue.main.async {
-                self?.tableView.refreshControl?.endRefreshing()
+                self.tableView.refreshControl?.endRefreshing()
                 
                 // Wait for minimum loading time if this is initial load
                 let completion = {
-                    self?.isLoadingData = false
-                    self?.hasLoadedInitialData = true
-                    self?.hideLoadingState()
+                    self.isLoadingData = false
+                    self.hasLoadedInitialData = true
+                    self.hideLoadingState()
                     
                     switch result {
                     case .success(let users):
                         print("🔍 AllUsersListVC: Received \(users.count) users from server")
-                        self?.allUsers = users
-                        self?.sortAndFilterUsers()
-                        print("🔍 AllUsersListVC: After filtering - Connected: \(self?.connectedUsers.count ?? 0), Pending: \(self?.pendingIncomingUsers.count ?? 0), Others: \(self?.nonConnectedUsers.count ?? 0)")
-                        self?.tableView.reloadData()
+                        self.allUsers = users
+                        self.sortAndFilterUsers()
+                        print("🔍 AllUsersListVC: After filtering - Connected: \(self.connectedUsers.count ?? 0), Pending: \(self.pendingIncomingUsers.count ?? 0), Others: \(self.nonConnectedUsers.count ?? 0)")
+                        self.tableView.reloadData()
                         
                         // Track if we've ever had connections
-                        if let hasConnections = self?.connectedUsers.isEmpty, !hasConnections {
+                        if !self.connectedUsers.isEmpty {
                             AllUsersListViewController.hasEverLoadedConnections = true
                         }
                         
                         // Only show empty state if we have no users at all
-                        if self?.allUsers.isEmpty == true {
-                            self?.showEmptyState()
+                        if self.allUsers.isEmpty == true {
+                            self.showEmptyState()
                         } else {
-                            self?.hideEmptyState()
+                            self.hideEmptyState()
                         }
                         
                     case .failure(let error):
@@ -238,21 +254,21 @@ class AllUsersListViewController: UIViewController {
                             return
                         }
                         
-                        self?.allUsers = []
-                        self?.sortAndFilterUsers()
-                        self?.tableView.reloadData()
+                        self.allUsers = []
+                        self.sortAndFilterUsers()
+                        self.tableView.reloadData()
                         
                         // Show error state only if we have no users at all
-                        if self?.allUsers.isEmpty == true {
-                            self?.showEmptyState()
+                        if self.allUsers.isEmpty == true {
+                            self.showEmptyState()
                         }
                     }
                 }
                 
                 // If minimum loading timer is still active, wait for it
-                if let timer = self?.minimumLoadingTimer, timer.isValid {
+                if let timer = self.minimumLoadingTimer, timer.isValid {
                     timer.invalidate()
-                    self?.minimumLoadingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: false) { _ in
+                    self.minimumLoadingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: false) { _ in
                         completion()
                     }
                 } else {
@@ -431,7 +447,7 @@ extension AllUsersListViewController: UITableViewDataSource {
         
         if !filteredPendingOutgoingUsers.isEmpty {
             if section == currentSection {
-                return "Sent Requests"
+                return "Connection Requests Pending"
             }
             currentSection += 1
         }
@@ -531,12 +547,44 @@ extension AllUsersListViewController: AllUsersCellDelegate {
         navigationController?.pushViewController(profileVC, animated: true)
     }
     
+    private func updateUserFollowStatus(userId: String, isFollowing: Bool) {
+        // Update in all user arrays
+        if let index = allUsers.firstIndex(where: { $0.id == userId }) {
+            allUsers[index] = createUpdatedUser(from: allUsers[index], isFollowing: isFollowing)
+        }
+        
+        if let index = pendingIncomingUsers.firstIndex(where: { $0.id == userId }) {
+            pendingIncomingUsers[index] = createUpdatedUser(from: pendingIncomingUsers[index], isFollowing: isFollowing)
+        }
+        
+        if let index = pendingOutgoingUsers.firstIndex(where: { $0.id == userId }) {
+            pendingOutgoingUsers[index] = createUpdatedUser(from: pendingOutgoingUsers[index], isFollowing: isFollowing)
+        }
+        
+        if let index = connectedUsers.firstIndex(where: { $0.id == userId }) {
+            connectedUsers[index] = createUpdatedUser(from: connectedUsers[index], isFollowing: isFollowing)
+        }
+        
+        if let index = nonConnectedUsers.firstIndex(where: { $0.id == userId }) {
+            nonConnectedUsers[index] = createUpdatedUser(from: nonConnectedUsers[index], isFollowing: isFollowing)
+        }
+        
+        // Refresh the table view to update the UI
+        filterUsers()
+        tableView.reloadData()
+    }
+    
+    private func createUpdatedUser(from user: User, isFollowing: Bool) -> User {
+        return user.copy(isFollowing: isFollowing)
+    }
+    
     private func sendConnectionRequest(to user: User) {
         // Show loading indicator
         let loadingAlert = UIAlertController(title: "Sending Request", message: "Please wait...", preferredStyle: .alert)
         present(loadingAlert, animated: true)
         
         NetworkManager.shared.sendConnectionRequest(to: user.id) { [weak self] result in
+            guard let self = self else { return }
             DispatchQueue.main.async {
                 loadingAlert.dismiss(animated: true) {
                     switch result {
@@ -547,10 +595,10 @@ extension AllUsersListViewController: AllUsersCellDelegate {
                             preferredStyle: .alert
                         )
                         successAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self?.present(successAlert, animated: true)
+                        self.present(successAlert, animated: true)
                         
                         // Reload users to update status
-                        self?.loadAllUsers()
+                        self.loadAllUsers()
                         
                     case .failure(let error):
                         let errorAlert = UIAlertController(
@@ -559,7 +607,7 @@ extension AllUsersListViewController: AllUsersCellDelegate {
                             preferredStyle: .alert
                         )
                         errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self?.present(errorAlert, animated: true)
+                        self.present(errorAlert, animated: true)
                     }
                 }
             }
@@ -574,9 +622,10 @@ extension AllUsersListViewController: AllUsersCellDelegate {
         )
         
         alert.addAction(UIAlertAction(title: "Cancel Request", style: .destructive) { [weak self] _ in
+            guard let self = self else { return }
             // Show loading
             let loadingAlert = UIAlertController(title: "Canceling...", message: nil, preferredStyle: .alert)
-            self?.present(loadingAlert, animated: true)
+            self.present(loadingAlert, animated: true)
             
             // Find the pending connection and cancel it
             NetworkManager.shared.loadConnections()
@@ -597,10 +646,10 @@ extension AllUsersListViewController: AllUsersCellDelegate {
                                         preferredStyle: .alert
                                     )
                                     successAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                                    self?.present(successAlert, animated: true)
+                                    self.present(successAlert, animated: true)
                                     
                                     // Reload users to update status
-                                    self?.loadAllUsers()
+                                    self.loadAllUsers()
                                     
                                 case .failure(let error):
                                     let errorAlert = UIAlertController(
@@ -609,7 +658,7 @@ extension AllUsersListViewController: AllUsersCellDelegate {
                                         preferredStyle: .alert
                                     )
                                     errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                                    self?.present(errorAlert, animated: true)
+                                    self.present(errorAlert, animated: true)
                                 }
                             }
                         }
@@ -622,7 +671,7 @@ extension AllUsersListViewController: AllUsersCellDelegate {
                             preferredStyle: .alert
                         )
                         errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self?.present(errorAlert, animated: true)
+                        self.present(errorAlert, animated: true)
                     }
                 }
             }
@@ -640,9 +689,10 @@ extension AllUsersListViewController: AllUsersCellDelegate {
         )
         
         alert.addAction(UIAlertAction(title: "Remove", style: .destructive) { [weak self] _ in
+            guard let self = self else { return }
             // Show loading
             let loadingAlert = UIAlertController(title: "Removing...", message: nil, preferredStyle: .alert)
-            self?.present(loadingAlert, animated: true)
+            self.present(loadingAlert, animated: true)
             
             // Find the connection to remove
             NetworkManager.shared.loadConnections()
@@ -662,7 +712,7 @@ extension AllUsersListViewController: AllUsersCellDelegate {
                                         preferredStyle: .alert
                                     )
                                     errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                                    self?.present(errorAlert, animated: true)
+                                    self.present(errorAlert, animated: true)
                                 } else {
                                     let successAlert = UIAlertController(
                                         title: "Connection Removed",
@@ -670,10 +720,10 @@ extension AllUsersListViewController: AllUsersCellDelegate {
                                         preferredStyle: .alert
                                     )
                                     successAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                                    self?.present(successAlert, animated: true)
+                                    self.present(successAlert, animated: true)
                                     
                                     // Reload users to update status
-                                    self?.loadAllUsers()
+                                    self.loadAllUsers()
                                 }
                             }
                         }
@@ -686,7 +736,7 @@ extension AllUsersListViewController: AllUsersCellDelegate {
                             preferredStyle: .alert
                         )
                         errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self?.present(errorAlert, animated: true)
+                        self.present(errorAlert, animated: true)
                     }
                 }
             }
@@ -706,7 +756,8 @@ extension AllUsersListViewController: AllUsersCellDelegate {
         let loadingAlert = UIAlertController(title: "Accepting...", message: nil, preferredStyle: .alert)
         present(loadingAlert, animated: true)
         
-        NetworkManager.shared.acceptConnection(connectionId) { [weak self] (result: Result<Connection, Error>) in
+        NetworkManager.shared.acceptConnection(connectionId) { [weak self] result in
+            guard let self = self else { return }
             DispatchQueue.main.async {
                 loadingAlert.dismiss(animated: true) {
                     switch result {
@@ -717,10 +768,10 @@ extension AllUsersListViewController: AllUsersCellDelegate {
                             preferredStyle: .alert
                         )
                         successAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self?.present(successAlert, animated: true)
+                        self.present(successAlert, animated: true)
                         
                         // Reload users to update status
-                        self?.loadAllUsers()
+                        self.loadAllUsers()
                         
                     case .failure(let error):
                         let errorAlert = UIAlertController(
@@ -729,7 +780,7 @@ extension AllUsersListViewController: AllUsersCellDelegate {
                             preferredStyle: .alert
                         )
                         errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self?.present(errorAlert, animated: true)
+                        self.present(errorAlert, animated: true)
                     }
                 }
             }
@@ -749,9 +800,10 @@ extension AllUsersListViewController: AllUsersCellDelegate {
         )
         
         alert.addAction(UIAlertAction(title: "Decline", style: .destructive) { [weak self] _ in
+            guard let self = self else { return }
             // Show loading
             let loadingAlert = UIAlertController(title: "Declining...", message: nil, preferredStyle: .alert)
-            self?.present(loadingAlert, animated: true)
+            self.present(loadingAlert, animated: true)
             
             NetworkManager.shared.declineConnection(connectionId) { (result: Result<Void, Error>) in
                 DispatchQueue.main.async {
@@ -759,7 +811,7 @@ extension AllUsersListViewController: AllUsersCellDelegate {
                         switch result {
                         case .success:
                             // Reload users to update status
-                            self?.loadAllUsers()
+                            self.loadAllUsers()
                             
                         case .failure(let error):
                             let errorAlert = UIAlertController(
@@ -768,7 +820,7 @@ extension AllUsersListViewController: AllUsersCellDelegate {
                                 preferredStyle: .alert
                             )
                             errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                            self?.present(errorAlert, animated: true)
+                            self.present(errorAlert, animated: true)
                         }
                     }
                 }
@@ -779,276 +831,48 @@ extension AllUsersListViewController: AllUsersCellDelegate {
         present(alert, animated: true)
     }
     
+    func allUsersCell(_ cell: AllUsersCell, didTapFollowButton user: User) {
+        let isCurrentlyFollowing = user.isFollowing ?? false
+        let action = isCurrentlyFollowing ? "unfollow" : "follow"
+        let endpoint = "users/\(user.id)/\(action)"
+        
+        print("🔵 Follow button tapped - Action: \(action), User: \(user.displayName)")
+        
+        // Optimistically update the UI
+        updateUserFollowStatus(userId: user.id, isFollowing: !isCurrentlyFollowing)
+        
+        APIService.shared.request(
+            endpoint: endpoint,
+            method: .post,
+            requiresAuth: true
+        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                
+                switch result {
+                case .success:
+                    print("✅ Successfully \(action)ed user: \(user.displayName)")
+                    // UI is already updated optimistically
+                    
+                case .failure(let error):
+                    print("❌ Failed to \(action) user: \(error)")
+                    // Revert the optimistic update
+                    self.updateUserFollowStatus(userId: user.id, isFollowing: isCurrentlyFollowing)
+                    
+                    let alert = UIAlertController(
+                        title: "Error",
+                        message: "Failed to \(action) user: \(error.localizedDescription)",
+                        preferredStyle: .alert
+                    )
+                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    self.present(alert, animated: true)
+                }
+            }
+        }
+    }
+    
     func allUsersCell(_ cell: AllUsersCell, didTapProfileImage user: User) {
         // Navigate to user profile
         viewUserProfile(user)
-    }
-}
-
-// MARK: - AllUsersCell
-protocol AllUsersCellDelegate: AnyObject {
-    func allUsersCell(_ cell: AllUsersCell, didTapActionButton user: User)
-    func allUsersCell(_ cell: AllUsersCell, didTapRemoveButton user: User)
-    func allUsersCell(_ cell: AllUsersCell, didTapDeclineButton user: User)
-    func allUsersCell(_ cell: AllUsersCell, didTapProfileImage user: User)
-}
-
-class AllUsersCell: UITableViewCell {
-    weak var delegate: AllUsersCellDelegate?
-    private var user: User?
-    
-    private let profileImageView: UIImageView = {
-        let imageView = UIImageView()
-        imageView.contentMode = .scaleAspectFill
-        imageView.clipsToBounds = true
-        imageView.layer.cornerRadius = 25
-        imageView.backgroundColor = .systemGray5
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        return imageView
-    }()
-    
-    private let highlightView: UIView = {
-        let view = UIView()
-        view.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.1)
-        view.layer.cornerRadius = 8
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.isHidden = true
-        return view
-    }()
-    
-    private let nameLabel: UILabel = {
-        let label = UILabel()
-        label.font = .systemFont(ofSize: 16, weight: .medium)
-        label.textColor = .label
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let emailLabel: UILabel = {
-        let label = UILabel()
-        label.font = .systemFont(ofSize: 14)
-        label.textColor = .secondaryLabel
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let actionButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
-        button.layer.cornerRadius = 6
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-    
-    private let removeButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Remove", for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
-        button.layer.cornerRadius = 6
-        button.backgroundColor = .systemRed.withAlphaComponent(0.1)
-        button.setTitleColor(.systemRed, for: .normal)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.isHidden = true
-        return button
-    }()
-    
-    private let declineButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Decline", for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
-        button.layer.cornerRadius = 6
-        button.backgroundColor = .systemRed.withAlphaComponent(0.1)
-        button.setTitleColor(.systemRed, for: .normal)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.isHidden = true
-        return button
-    }()
-    
-    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
-        super.init(style: style, reuseIdentifier: reuseIdentifier)
-        setupCell()
-    }
-    
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-    
-    private func setupCell() {
-        backgroundColor = .systemBackground
-        selectionStyle = .none
-        
-        contentView.addSubview(highlightView)
-        contentView.addSubview(profileImageView)
-        contentView.addSubview(nameLabel)
-        contentView.addSubview(emailLabel)
-        contentView.addSubview(actionButton)
-        contentView.addSubview(removeButton)
-        contentView.addSubview(declineButton)
-        
-        // Make profile image tappable
-        profileImageView.isUserInteractionEnabled = true
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(profileImageTapped))
-        profileImageView.addGestureRecognizer(tapGesture)
-        
-        // Add long press for full-screen image viewing
-        let longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(profileImageLongPressed))
-        longPressGesture.minimumPressDuration = 0.5
-        profileImageView.addGestureRecognizer(longPressGesture)
-        
-        NSLayoutConstraint.activate([
-            highlightView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
-            highlightView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 8),
-            highlightView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8),
-            highlightView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
-            
-            profileImageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            profileImageView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            profileImageView.widthAnchor.constraint(equalToConstant: 50),
-            profileImageView.heightAnchor.constraint(equalToConstant: 50),
-            
-            nameLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 14),
-            nameLabel.leadingAnchor.constraint(equalTo: profileImageView.trailingAnchor, constant: 12),
-            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: removeButton.leadingAnchor, constant: -8),
-            
-            emailLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
-            emailLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
-            emailLabel.trailingAnchor.constraint(lessThanOrEqualTo: removeButton.leadingAnchor, constant: -8),
-            
-            removeButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            removeButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            removeButton.widthAnchor.constraint(equalToConstant: 70),
-            removeButton.heightAnchor.constraint(equalToConstant: 32),
-            
-            declineButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            declineButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            declineButton.widthAnchor.constraint(equalToConstant: 70),
-            declineButton.heightAnchor.constraint(equalToConstant: 32),
-            
-            actionButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            actionButton.trailingAnchor.constraint(equalTo: removeButton.leadingAnchor, constant: -8),
-            actionButton.widthAnchor.constraint(equalToConstant: 60),
-            actionButton.heightAnchor.constraint(equalToConstant: 32)
-        ])
-        
-        actionButton.addTarget(self, action: #selector(actionButtonTapped), for: .touchUpInside)
-        removeButton.addTarget(self, action: #selector(removeButtonTapped), for: .touchUpInside)
-        declineButton.addTarget(self, action: #selector(declineButtonTapped), for: .touchUpInside)
-    }
-    
-    func configure(with user: User) {
-        self.user = user
-        nameLabel.text = user.displayName
-        emailLabel.text = user.email
-        
-        // Check if this is a newly accepted connection
-        let newlyAcceptedId = UserDefaults.standard.string(forKey: "newlyAcceptedConnectionId")
-        let isNewlyAccepted = newlyAcceptedId == user.id
-        highlightView.isHidden = !isNewlyAccepted
-        
-        // Set profile image
-        if let profilePicture = user.profilePicture {
-            ImageService.shared.loadImage(from: profilePicture) { [weak self] image in
-                DispatchQueue.main.async {
-                    self?.profileImageView.image = image
-                }
-            }
-        } else {
-            profileImageView.image = UIImage(systemName: "person.circle.fill")
-            profileImageView.tintColor = .systemGray3
-        }
-        
-        // Configure action button based on connection status
-        switch user.connectionStatus {
-        case "connected", "accepted":
-            actionButton.setTitle("View", for: .normal)
-            actionButton.backgroundColor = Constants.Colors.primary
-            actionButton.setTitleColor(.white, for: .normal)
-            actionButton.isEnabled = true
-            removeButton.isHidden = false
-            declineButton.isHidden = true
-            // Normal background for connected users
-            contentView.backgroundColor = .systemBackground
-        case "pending":
-            if user.connectionDirection == "incoming" {
-                // Show Accept and Decline buttons for incoming requests
-                actionButton.setTitle("Accept", for: .normal)
-                actionButton.backgroundColor = .systemGreen
-                actionButton.setTitleColor(.white, for: .normal)
-                actionButton.isEnabled = true
-                removeButton.isHidden = true
-                declineButton.isHidden = false
-                // Highlight pending incoming requests
-                contentView.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.05)
-            } else {
-                // Show Cancel for outgoing requests
-                actionButton.setTitle("Cancel", for: .normal)
-                actionButton.backgroundColor = .systemRed.withAlphaComponent(0.1)
-                actionButton.setTitleColor(.systemRed, for: .normal)
-                actionButton.isEnabled = true
-                removeButton.isHidden = true
-                declineButton.isHidden = true
-                // Normal background for outgoing requests
-                contentView.backgroundColor = .systemBackground
-            }
-        default:
-            actionButton.setTitle("Connect", for: .normal)
-            actionButton.backgroundColor = Constants.Colors.primary
-            actionButton.setTitleColor(.white, for: .normal)
-            actionButton.isEnabled = true
-            removeButton.isHidden = true
-            declineButton.isHidden = true
-            // Normal background for non-connected users
-            contentView.backgroundColor = .systemBackground
-        }
-    }
-    
-    @objc private func actionButtonTapped() {
-        guard let user = user else { return }
-        delegate?.allUsersCell(self, didTapActionButton: user)
-    }
-    
-    @objc private func removeButtonTapped() {
-        guard let user = user else { return }
-        delegate?.allUsersCell(self, didTapRemoveButton: user)
-    }
-    
-    @objc private func declineButtonTapped() {
-        guard let user = user else { return }
-        delegate?.allUsersCell(self, didTapDeclineButton: user)
-    }
-    
-    @objc private func profileImageTapped() {
-        guard let user = user else { return }
-        
-        // Add subtle tap feedback animation
-        UIView.animate(withDuration: 0.1, animations: {
-            self.profileImageView.transform = CGAffineTransform(scaleX: 0.95, y: 0.95)
-        }) { _ in
-            UIView.animate(withDuration: 0.1) {
-                self.profileImageView.transform = .identity
-            }
-        }
-        
-        delegate?.allUsersCell(self, didTapProfileImage: user)
-    }
-    
-    @objc private func profileImageLongPressed(_ gesture: UILongPressGestureRecognizer) {
-        guard gesture.state == .began,
-              let user = user else { return }
-        
-        // Find the parent view controller to present the image viewer
-        var responder: UIResponder? = self
-        while responder != nil {
-            if let viewController = responder as? UIViewController {
-                // Show full-screen profile image
-                if let profileImageURL = user.profilePicture {
-                    ImageViewerService.shared.presentImageFromURL(profileImageURL, from: viewController)
-                } else if let currentImage = profileImageView.image {
-                    ImageViewerService.shared.presentImage(currentImage, from: viewController)
-                }
-                break
-            }
-            responder = responder?.next
-        }
     }
 }

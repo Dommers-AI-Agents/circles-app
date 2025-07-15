@@ -178,6 +178,19 @@ class APIService {
         keychainService.clearAllTokens()
     }
     
+    func clearPendingRequests() {
+        // Clear all pending GET request tracking
+        pendingGETRequests.removeAll()
+        
+        // Invalidate and clear all pending timers
+        for timer in pendingRequestTimers.values {
+            timer.invalidate()
+        }
+        pendingRequestTimers.removeAll()
+        
+        Logger.debug("APIService: Cleared all pending requests and timers")
+    }
+    
     // MARK: - Request Deduplication
     
     private func createRequestKey(endpoint: String, method: RequestMethod, body: [String: Any]?) -> String {

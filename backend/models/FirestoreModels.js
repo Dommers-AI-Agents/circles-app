@@ -17,7 +17,8 @@ const COLLECTIONS = {
   SUGGESTIONS: 'suggestions',
   COMMENTS: 'comments',
   NOTIFICATIONS: 'notifications',
-  ACTIVITIES: 'activities'
+  ACTIVITIES: 'activities',
+  USER_CATEGORIES: 'userCategories'
 };
 
 // User model structure
@@ -59,6 +60,8 @@ const createUser = (userData) => {
     preferences: userData.preferences || {
       defaultHomeView: 'map' // 'list' or 'map'
     },
+    // Onboarding status
+    onboardingCompleted: userData.onboardingCompleted || false,
     createdAt: now,
     updatedAt: now,
     // Firebase UID from authentication
@@ -80,6 +83,7 @@ const createCircle = (circleData, ownerId) => {
     privacy: circleData.privacy || 'myNetwork', // public, myNetwork, private
     allowNetworkEdit: circleData.allowNetworkEdit || false,
     category: circleData.category || 'other', // travel, food, services, shopping, healthcare, entertainment, other
+    customCategoryId: circleData.customCategoryId || null, // Reference to user's custom category
     location: circleData.location || null,
     tags: circleData.tags || [],
     sharedWith: circleData.sharedWith || [],
@@ -100,24 +104,44 @@ const createCircle = (circleData, ownerId) => {
 // Place model structure
 const createPlace = (placeData, circleId, addedBy) => {
   const now = new Date().toISOString();
+  
+  // Validate and sanitize location coordinates
+  let location = null;
+  if (placeData.location && placeData.location.coordinates) {
+    const [longitude, latitude] = placeData.location.coordinates;
+    
+    // Validate coordinates are within valid ranges
+    if (typeof longitude === 'number' && typeof latitude === 'number' &&
+        longitude >= -180 && longitude <= 180 &&
+        latitude >= -90 && latitude <= 90 &&
+        // Reject coordinates at exactly -180, -180 (invalid/default values)
+        !(longitude === -180 && latitude === -180)) {
+      location = {
+        type: 'Point',
+        coordinates: [longitude, latitude]
+      };
+    } else {
+      console.warn('⚠️ Invalid coordinates rejected:', { longitude, latitude, placeName: placeData.name });
+    }
+  }
+  
   return {
     name: placeData.name,
     description: placeData.description || null,
     address: placeData.address,
-    location: {
-      type: 'Point',
-      coordinates: placeData.location.coordinates // [longitude, latitude]
-    },
+    location: location,
     website: placeData.website || null,
     phone: placeData.phone || null,
     googlePlaceId: placeData.googlePlaceId || null,
     photos: placeData.photos || [],
     category: placeData.category, // restaurant, cafe, bar, hotel, retail, service, attraction, entertainment, healthcare, fitness, education, outdoor, transport, finance, other
-    customCategory: placeData.customCategory || null,
+    customCategoryId: placeData.customCategoryId || null, // Reference to user's custom category
     subcategory: placeData.subcategory || null,
     rating: placeData.rating || null,
     userRatingsTotal: placeData.userRatingsTotal || null,
-    notes: placeData.notes || null,
+    notes: placeData.notes || null, // Legacy field - kept for backward compatibility
+    publicNotes: placeData.publicNotes || null, // Notes visible to all users who can see the place
+    privateNotes: placeData.privateNotes || null, // Notes only visible to the user who added them
     tags: placeData.tags || [],
     reviews: placeData.reviews || [],
     openingHours: placeData.openingHours || null,
@@ -127,6 +151,7 @@ const createPlace = (placeData, circleId, addedBy) => {
     circleId: circleId,
     addedBy: addedBy,
     privacy: placeData.privacy || 'followCircle', // followCircle, public, myNetwork, private
+    deletedAt: null, // Soft delete timestamp
     createdAt: now,
     updatedAt: now
   };

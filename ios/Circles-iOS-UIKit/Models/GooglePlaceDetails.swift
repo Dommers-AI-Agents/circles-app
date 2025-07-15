@@ -30,7 +30,7 @@ struct GooglePlaceDetails {
         self.userRatingsTotal = Int(gmsPlace.userRatingsTotal)
         // priceLevel is GMSPlacesPriceLevel enum
         if gmsPlace.priceLevel != .unknown {
-            self.priceLevel = GooglePlacesService.shared.mapPriceLevel(gmsPlace.priceLevel)
+            self.priceLevel = Self.mapPriceLevel(gmsPlace.priceLevel)
         } else {
             self.priceLevel = nil
         }
@@ -73,7 +73,7 @@ struct GooglePlaceDetails {
     
     // Convert to our Place model format
     func toPlaceData(circleId: String, notes: String? = nil, customCategory: PlaceCategory? = nil) -> [String: Any] {
-        let category = customCategory ?? GooglePlacesService.shared.mapGooglePlaceTypeToCategory(types)
+        let category = customCategory ?? Self.mapGooglePlaceTypeToCategory(types)
         
         var data: [String: Any] = [
             "name": name,
@@ -148,6 +148,40 @@ struct GooglePlaceDetails {
     
     private func formatTime(_ time: GMSTime) -> String {
         return String(format: "%02d:%02d", time.hour, time.minute)
+    }
+    
+    // MARK: - Helper Methods (moved from GooglePlacesService)
+    
+    static func mapPriceLevel(_ priceLevel: GMSPlacesPriceLevel) -> PriceLevel {
+        switch priceLevel {
+        case .free: return .free
+        case .cheap: return .inexpensive
+        case .medium: return .moderate
+        case .high: return .expensive
+        case .expensive: return .veryExpensive
+        @unknown default: return .moderate
+        }
+    }
+    
+    static func mapGooglePlaceTypeToCategory(_ types: [String]?) -> PlaceCategory {
+        guard let types = types else { return .other }
+        
+        // Map Google place types to our categories
+        if types.contains("restaurant") { return .restaurant }
+        if types.contains("cafe") { return .cafe }
+        if types.contains("bar") || types.contains("night_club") { return .bar }
+        if types.contains("lodging") || types.contains("hotel") { return .hotel }
+        if types.contains("store") || types.contains("shopping_mall") { return .retail }
+        if types.contains("health") || types.contains("hospital") || types.contains("doctor") { return .healthcare }
+        if types.contains("gym") || types.contains("spa") { return .fitness }
+        if types.contains("school") || types.contains("university") { return .education }
+        if types.contains("park") || types.contains("campground") { return .outdoor }
+        if types.contains("transit_station") || types.contains("gas_station") { return .transport }
+        if types.contains("bank") || types.contains("atm") { return .finance }
+        if types.contains("movie_theater") || types.contains("museum") || types.contains("stadium") { return .entertainment }
+        if types.contains("tourist_attraction") || types.contains("point_of_interest") { return .attraction }
+        
+        return .other
     }
 }
 

@@ -1,7 +1,7 @@
 import UIKit
 import CoreImage
 
-class ShareProfileViewController: UIViewController {
+class ShareProfileViewController: BaseViewController {
     
     // MARK: - Properties
     private let user: User
@@ -16,11 +16,9 @@ class ShareProfileViewController: UIViewController {
         return view
     }()
     
-    private let closeButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "xmark"), for: .normal)
+    private lazy var closeButton: UIButton = {
+        let button = UIButton.iconButton(systemName: "xmark")
         button.tintColor = .black
-        button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
     
@@ -63,12 +61,9 @@ class ShareProfileViewController: UIViewController {
         return stackView
     }()
     
-    private let shareButton: UIButton = {
-        let button = UIButton(type: .system)
-        let config = UIImage.SymbolConfiguration(pointSize: 24)
-        button.setImage(UIImage(systemName: "arrow.up", withConfiguration: config), for: .normal)
+    private lazy var shareButton: UIButton = {
+        let button = UIButton.iconButton(systemName: "arrow.up", pointSize: 24)
         button.tintColor = .black
-        button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
     
@@ -82,12 +77,9 @@ class ShareProfileViewController: UIViewController {
         return label
     }()
     
-    private let copyButton: UIButton = {
-        let button = UIButton(type: .system)
-        let config = UIImage.SymbolConfiguration(pointSize: 24)
-        button.setImage(UIImage(systemName: "link", withConfiguration: config), for: .normal)
+    private lazy var copyButton: UIButton = {
+        let button = UIButton.iconButton(systemName: "link", pointSize: 24)
         button.tintColor = .black
-        button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
     
@@ -101,12 +93,9 @@ class ShareProfileViewController: UIViewController {
         return label
     }()
     
-    private let downloadButton: UIButton = {
-        let button = UIButton(type: .system)
-        let config = UIImage.SymbolConfiguration(pointSize: 24)
-        button.setImage(UIImage(systemName: "arrow.down", withConfiguration: config), for: .normal)
+    private lazy var downloadButton: UIButton = {
+        let button = UIButton.iconButton(systemName: "arrow.down", pointSize: 24)
         button.tintColor = .black
-        button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
     
@@ -145,6 +134,11 @@ class ShareProfileViewController: UIViewController {
     }
     
     // MARK: - Lifecycle
+    // MARK: - BaseViewController Configuration
+    override var showsLoadingIndicator: Bool { false }
+    override var enablesPullToRefresh: Bool { false }
+    override var loadsDataOnViewDidLoad: Bool { false }
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()

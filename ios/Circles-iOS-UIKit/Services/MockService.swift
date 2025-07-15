@@ -489,47 +489,17 @@ class MockService {
             if let index = self.users.firstIndex(where: { $0.id == self.currentUserId }) {
                 var updatedUser = self.users[index]
                 
-                // Update user fields
+                // Update user fields using copy method
                 if let displayName = displayName {
-                    updatedUser = User(
-                        id: updatedUser.id,
-                        email: updatedUser.email,
-                        displayName: displayName,
-                        profilePicture: updatedUser.profilePicture,
-                        bio: updatedUser.bio,
-                        location: updatedUser.location,
-                        friends: updatedUser.friends,
-                        friendRequests: updatedUser.friendRequests,
-                        createdAt: updatedUser.createdAt
-                    )
+                    updatedUser = updatedUser.copy(displayName: displayName)
                 }
                 
                 if let bio = bio {
-                    updatedUser = User(
-                        id: updatedUser.id,
-                        email: updatedUser.email,
-                        displayName: updatedUser.displayName,
-                        profilePicture: updatedUser.profilePicture,
-                        bio: bio,
-                        location: updatedUser.location,
-                        friends: updatedUser.friends,
-                        friendRequests: updatedUser.friendRequests,
-                        createdAt: updatedUser.createdAt
-                    )
+                    updatedUser = updatedUser.copy(bio: bio)
                 }
                 
                 if let location = location {
-                    updatedUser = User(
-                        id: updatedUser.id,
-                        email: updatedUser.email,
-                        displayName: updatedUser.displayName,
-                        profilePicture: updatedUser.profilePicture,
-                        bio: updatedUser.bio,
-                        location: location,
-                        friends: updatedUser.friends,
-                        friendRequests: updatedUser.friendRequests,
-                        createdAt: updatedUser.createdAt
-                    )
+                    updatedUser = updatedUser.copy(location: location)
                 }
                 
                 // Update in array

@@ -1,6 +1,6 @@
 import UIKit
 
-class FullScreenImageViewController: UIViewController {
+class FullScreenImageViewController: BaseViewController {
     
     // MARK: - Properties
     private var imageURL: String?
@@ -25,14 +25,12 @@ class FullScreenImageViewController: UIViewController {
         return imageView
     }()
     
-    private let closeButton: UIButton = {
-        let button = UIButton(type: .system)
-        let config = UIImage.SymbolConfiguration(pointSize: 24, weight: .medium)
-        button.setImage(UIImage(systemName: "xmark.circle.fill", withConfiguration: config), for: .normal)
+    private lazy var closeButton: UIButton = {
+        let button = UIButton.iconButton(systemName: "xmark.circle.fill", pointSize: 24)
         button.tintColor = .white
         button.backgroundColor = UIColor.black.withAlphaComponent(0.6)
         button.layer.cornerRadius = 20
-        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(closeButtonTapped), for: .touchUpInside)
         return button
     }()
     
@@ -59,7 +57,10 @@ class FullScreenImageViewController: UIViewController {
         fatalError("init(coder:) has not been implemented")
     }
     
-    // MARK: - Lifecycle
+    // MARK: - BaseViewController Overrides
+    override var showsLoadingIndicator: Bool { false }
+    override var loadsDataOnViewDidLoad: Bool { false }
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
@@ -122,8 +123,6 @@ class FullScreenImageViewController: UIViewController {
             loadingIndicator.centerYAnchor.constraint(equalTo: view.centerYAnchor)
         ])
         
-        // Button actions
-        closeButton.addTarget(self, action: #selector(closeButtonTapped), for: .touchUpInside)
     }
     
     private func setupGestures() {

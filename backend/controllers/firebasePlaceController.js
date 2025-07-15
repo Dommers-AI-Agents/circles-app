@@ -20,6 +20,14 @@ const googleMapsClient = new Client({});
 // @access  Private
 exports.getPlacesByCircleId = async (req, res, next) => {
   try {
+    console.log('🔍 getPlacesByCircleId - START - Request details:', {
+      circleId: req.params.circleId,
+      userUid: req.user?.uid,
+      userEmail: req.user?.email,
+      method: req.method,
+      url: req.url
+    });
+
     const { circleId } = req.params;
 
     // First verify user has access to this circle
@@ -41,7 +49,8 @@ exports.getPlacesByCircleId = async (req, res, next) => {
       circleOwner: circle.owner,
       circlePrivacy: circle.privacy,
       requestingUser: req.user.uid,
-      sharedWith: circle.sharedWith || []
+      sharedWith: circle.sharedWith || [],
+      placesArray: circle.places || []
     });
     
     // Check permissions
@@ -91,12 +100,86 @@ exports.getPlacesByCircleId = async (req, res, next) => {
     }
 
     // Get places for this circle, ordered by creation date (newest first)
+    // Filter out soft-deleted places - need to handle both null and undefined values
+    console.log('🔍 About to query places with:', {
+      collection: COLLECTIONS.PLACES,
+      circleId: circleId,
+      note: 'Getting all places, will filter deletedAt != null in code since Firestore treats null and undefined differently'
+    });
+    
+    // First get all places for this circle, then filter in code since Firestore 
+    // treats null and undefined differently and we need to exclude only non-null values
     const placesSnapshot = await db.collection(COLLECTIONS.PLACES)
       .where('circleId', '==', circleId)
       .orderBy('createdAt', 'desc')
       .get();
+      
+    console.log('🔍 Places query results:', {
+      isEmpty: placesSnapshot.empty,
+      size: placesSnapshot.size,
+      docs: placesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        data: doc.data()
+      }))
+    });
+    
+    // DEBUG: Let's check what the deletedAt field actually contains for these places
+    if (circle.places && circle.places.length > 0) {
+      console.log('🔍 DEBUG: Checking first 3 places in circle for deletedAt values...');
+      for (let i = 0; i < Math.min(3, circle.places.length); i++) {
+        const placeId = circle.places[i];
+        try {
+          const debugPlaceDoc = await db.collection(COLLECTIONS.PLACES).doc(placeId).get();
+          if (debugPlaceDoc.exists) {
+            const placeData = debugPlaceDoc.data();
+            console.log(`🔍 Place ${placeId}:`, {
+              id: placeId,
+              deletedAt: placeData.deletedAt,
+              deletedAtType: typeof placeData.deletedAt,
+              circleId: placeData.circleId,
+              hasDeletedAtField: placeData.hasOwnProperty('deletedAt')
+            });
+          } else {
+            console.log(`🔍 Place ${placeId}: Document does not exist`);
+          }
+        } catch (error) {
+          console.log(`🔍 Place ${placeId}: Error fetching:`, error.message);
+        }
+      }
+    }
 
-    const places = serializeQuerySnapshot(placesSnapshot);
+    // Filter out soft-deleted places (where deletedAt is not null/undefined)
+    const allPlaces = serializeQuerySnapshot(placesSnapshot);
+    const places = allPlaces.filter(place => {
+      const isDeleted = place.deletedAt !== null && place.deletedAt !== undefined;
+      console.log(`🔍 Place ${place.id} (${place.name}): deletedAt=${place.deletedAt}, isDeleted=${isDeleted}`);
+      return !isDeleted;
+    });
+    
+    console.log('🔍 Filtering results:', {
+      totalPlacesFromQuery: allPlaces.length,
+      nonDeletedPlaces: places.length,
+      filteredOutCount: allPlaces.length - places.length
+    });
+    
+    // Debug location data for the first few places
+    console.log('🗺️ Location data debug:');
+    places.slice(0, 3).forEach((place, index) => {
+      console.log(`🗺️ Place ${index + 1}: ${place.name}`);
+      console.log(`  📍 Location field:`, place.location);
+      if (place.location) {
+        console.log(`  📍 Location type: ${typeof place.location}`);
+        console.log(`  📍 Coordinates:`, place.location.coordinates);
+        console.log(`  📍 Coordinates type: ${typeof place.location.coordinates}`);
+        console.log(`  📍 Coordinates length: ${place.location.coordinates ? place.location.coordinates.length : 'N/A'}`);
+        if (place.location.coordinates && place.location.coordinates.length === 2) {
+          console.log(`  📍 Lng: ${place.location.coordinates[0]} (${typeof place.location.coordinates[0]})`);
+          console.log(`  📍 Lat: ${place.location.coordinates[1]} (${typeof place.location.coordinates[1]})`);
+        }
+      } else {
+        console.log(`  ❌ No location field`);
+      }
+    });
     
     // Get unique user IDs who added places
     const userIds = [...new Set(places.map(place => place.addedBy))];
@@ -176,13 +259,23 @@ exports.getPlacesByCircleId = async (req, res, next) => {
       orderedPlaces = placesWithUsers.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     }
     
-    console.log('Circle places order:', circle.places || []);
-    console.log('Returning places in order:', orderedPlaces.map(p => ({ 
+    console.log('🔍 Circle places order:', circle.places || []);
+    console.log('🔍 Total places found from query:', places.length);
+    console.log('🔍 Returning places in order:', orderedPlaces.map(p => ({ 
       id: p.id, 
       name: p.name,
       addedBy: p.addedBy,
-      addedByUser: p.addedByUser ? p.addedByUser.displayName : 'No user info'
+      addedByUser: p.addedByUser ? p.addedByUser.displayName : 'No user info',
+      hasNotes: p.notes ? 'yes' : 'no',
+      hasPublicNotes: p.publicNotes ? 'yes' : 'no',
+      hasPrivateNotes: p.privateNotes ? 'yes' : 'no'
     })));
+
+    console.log('🔍 getPlacesByCircleId - FINAL RESPONSE:', {
+      success: true,
+      count: orderedPlaces.length,
+      placesReturnedToClient: orderedPlaces.length
+    });
 
     res.status(200).json({
       success: true,
@@ -210,6 +303,14 @@ exports.getPlace = async (req, res, next) => {
     }
 
     const place = serializeDoc(placeDoc);
+    
+    // Check if place is soft-deleted
+    if (place.deletedAt) {
+      return res.status(404).json({
+        success: false,
+        message: 'Place not found'
+      });
+    }
 
     // Check if user has access to the circle this place belongs to
     const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(place.circleId).get();
@@ -303,13 +404,14 @@ exports.createPlace = async (req, res, next) => {
       });
     }
 
-    // Check for duplicates before creating
+    // Check for duplicates before creating (excluding soft-deleted places)
     const { googlePlaceId, name, address } = req.body;
     
     if (googlePlaceId) {
       const existingPlace = await db.collection(COLLECTIONS.PLACES)
         .where('circleId', '==', circleId)
         .where('googlePlaceId', '==', googlePlaceId)
+        .where('deletedAt', '==', null)
         .get();
         
       if (!existingPlace.empty) {
@@ -324,6 +426,7 @@ exports.createPlace = async (req, res, next) => {
         .where('circleId', '==', circleId)
         .where('name', '==', name)
         .where('address', '==', address)
+        .where('deletedAt', '==', null)
         .get();
         
       if (!existingPlace.empty) {
@@ -336,6 +439,58 @@ exports.createPlace = async (req, res, next) => {
 
     // Create place data
     const placeData = createPlace(req.body, circleId, req.user.uid);
+    
+    // If location is missing but address is provided, try to geocode it
+    if (!placeData.location && placeData.address && googleMapsApiKey) {
+      console.log('🗺️ Place missing location, attempting to geocode address:', placeData.address);
+      try {
+        const geocodeResponse = await googleMapsClient.geocode({
+          params: {
+            address: placeData.address,
+            key: googleMapsApiKey
+          }
+        });
+        
+        if (geocodeResponse.data.results && geocodeResponse.data.results.length > 0) {
+          const result = geocodeResponse.data.results[0];
+          const { lat, lng } = result.geometry.location;
+          
+          // Validate coordinates
+          if (typeof lng === 'number' && typeof lat === 'number' &&
+              lng >= -180 && lng <= 180 &&
+              lat >= -90 && lat <= 90 &&
+              !(lng === -180 && lat === -180)) {
+            placeData.location = {
+              type: 'Point',
+              coordinates: [lng, lat]
+            };
+            console.log('✅ Successfully geocoded address to:', { lat, lng });
+          } else {
+            console.warn('⚠️ Invalid coordinates from geocoding:', { lat, lng });
+          }
+        } else {
+          console.warn('⚠️ No geocoding results for address:', placeData.address);
+        }
+      } catch (error) {
+        console.warn('⚠️ Geocoding failed:', error.message);
+        // Continue without location - not a fatal error
+      }
+    }
+    
+    // Log place creation for debugging
+    console.log('🆕 Creating new place:', {
+      name: placeData.name,
+      circleId: circleId,
+      addedBy: req.user.uid,
+      hasLocation: !!placeData.location,
+      notes: {
+        notes: placeData.notes ? `${placeData.notes.substring(0, 50)}...` : 'empty',
+        publicNotes: placeData.publicNotes ? `${placeData.publicNotes.substring(0, 50)}...` : 'empty',
+        privateNotes: placeData.privateNotes ? `${placeData.privateNotes.substring(0, 50)}...` : 'empty'
+      },
+      category: placeData.category,
+      googlePlaceId: placeData.googlePlaceId || 'none'
+    });
     
     // Add to Firestore
     const placeRef = await db.collection(COLLECTIONS.PLACES).add(placeData);
@@ -457,6 +612,42 @@ exports.updatePlace = async (req, res, next) => {
     // Don't allow changing circleId or addedBy
     const { circleId, addedBy, ...updateData } = req.body;
     updateData.updatedAt = new Date().toISOString();
+    
+    // Validate location coordinates if provided
+    if (updateData.location && updateData.location.coordinates) {
+      const [longitude, latitude] = updateData.location.coordinates;
+      
+      // Validate coordinates are within valid ranges
+      if (typeof longitude !== 'number' || typeof latitude !== 'number' ||
+          longitude < -180 || longitude > 180 ||
+          latitude < -90 || latitude > 90 ||
+          // Reject coordinates at exactly -180, -180 (invalid/default values)
+          (longitude === -180 && latitude === -180)) {
+        console.warn('⚠️ Invalid coordinates rejected in update:', { longitude, latitude, placeId: req.params.id });
+        delete updateData.location; // Remove invalid location from update
+      }
+    }
+    
+    // Log notes updates for debugging
+    if (updateData.privateNotes !== undefined || updateData.publicNotes !== undefined || updateData.notes !== undefined) {
+      console.log('📝 Updating place notes:', {
+        placeId: req.params.id,
+        userId: req.user.uid,
+        placeAddedBy: place.addedBy,
+        isPlaceAdder: isPlaceAdder,
+        isCircleOwner: isCircleOwner,
+        updates: {
+          privateNotes: updateData.privateNotes !== undefined ? `${updateData.privateNotes?.substring(0, 50)}...` : 'not changed',
+          publicNotes: updateData.publicNotes !== undefined ? `${updateData.publicNotes?.substring(0, 50)}...` : 'not changed',
+          notes: updateData.notes !== undefined ? `${updateData.notes?.substring(0, 50)}...` : 'not changed'
+        },
+        existingNotes: {
+          privateNotes: place.privateNotes ? `${place.privateNotes.substring(0, 50)}...` : 'empty',
+          publicNotes: place.publicNotes ? `${place.publicNotes.substring(0, 50)}...` : 'empty',
+          notes: place.notes ? `${place.notes.substring(0, 50)}...` : 'empty'
+        }
+      });
+    }
 
     await placeRef.update(updateData);
     
@@ -527,17 +718,16 @@ exports.deletePlace = async (req, res, next) => {
         updatedAt: new Date().toISOString()
       });
       
-      // Delete the place in the batch
-      batch.delete(placeRef);
+      // Soft delete the place by setting deletedAt timestamp
+      batch.update(placeRef, {
+        deletedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
       
       // Commit the batch
       await batch.commit();
       
-      console.log('✅ Place deleted successfully:', req.params.id);
-      
-      // Add a small delay to allow Firestore to propagate the deletion
-      // This helps prevent "place already exists" errors when immediately re-adding
-      await new Promise(resolve => setTimeout(resolve, 500));
+      console.log('✅ Place soft deleted successfully:', req.params.id);
 
       res.status(200).json({
         success: true,
@@ -832,6 +1022,116 @@ exports.refreshPlaceFromGoogle = async (req, res, next) => {
   }
 };
 
+// @desc    Update place address and optionally coordinates
+// @route   PUT /api/places/:id/update-address
+// @access  Private (owner or circle member)
+exports.updatePlaceAddress = async (req, res, next) => {
+  try {
+    const { address, location } = req.body;
+    
+    if (!address || typeof address !== 'string' || address.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid address'
+      });
+    }
+    
+    // Validate location if provided
+    if (location) {
+      if (!location.type || location.type !== 'Point' || 
+          !location.coordinates || !Array.isArray(location.coordinates) ||
+          location.coordinates.length !== 2) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid location format. Expected GeoJSON Point.'
+        });
+      }
+      
+      const [longitude, latitude] = location.coordinates;
+      
+      // Validate coordinates
+      if (typeof longitude !== 'number' || typeof latitude !== 'number' ||
+          longitude < -180 || longitude > 180 ||
+          latitude < -90 || latitude > 90 ||
+          (longitude === -180 && latitude === -180)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid coordinates provided'
+        });
+      }
+    }
+    
+    const placeRef = db.collection(COLLECTIONS.PLACES).doc(req.params.id);
+    const placeDoc = await placeRef.get();
+    
+    if (!placeDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Place not found'
+      });
+    }
+    
+    const place = serializeDoc(placeDoc);
+    
+    // Check permissions
+    const isOwner = place.addedBy === req.user.uid;
+    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(place.circleId);
+    const circleDoc = await circleRef.get();
+    
+    if (!circleDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Associated circle not found'
+      });
+    }
+    
+    const circle = serializeDoc(circleDoc);
+    const isCircleOwner = circle.owner === req.user.uid;
+    const isCircleMember = circle.sharedWith && circle.sharedWith.includes(req.user.uid);
+    
+    if (!isOwner && !isCircleOwner && !isCircleMember) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to update this place'
+      });
+    }
+    
+    // Prepare update data
+    const updateData = {
+      address: address.trim(),
+      updatedAt: new Date().toISOString()
+    };
+    
+    // Add location if provided
+    if (location) {
+      updateData.location = location;
+      console.log(`📍 Updating location for place ${req.params.id} to:`, location.coordinates);
+    }
+    
+    // Update the place
+    await placeRef.update(updateData);
+    
+    // Get the updated place
+    const updatedDoc = await placeRef.get();
+    const updatedPlace = serializeDoc(updatedDoc);
+    
+    console.log('✅ Place address updated successfully:', {
+      placeId: req.params.id,
+      oldAddress: place.address,
+      newAddress: address.trim()
+    });
+    
+    res.status(200).json({
+      success: true,
+      place: updatedPlace
+    });
+    
+  } catch (error) {
+    console.error('Error updating place address:', error);
+    next(error);
+  }
+};
+
 // @desc    Reorder places within a circle
 // @route   PUT /api/circles/:id/places/reorder
 // @access  Private
@@ -1031,6 +1331,111 @@ exports.likePlace = async (req, res, next) => {
     
   } catch (error) {
     console.error('Error liking place:', error);
+    next(error);
+  }
+};
+
+// @desc    Get likes for a place
+// @route   GET /api/places/:id/likes
+// @access  Private
+exports.getPlaceLikes = async (req, res, next) => {
+  try {
+    const placeId = req.params.id;
+    const userId = req.user.uid;
+    
+    // Get the place
+    const placeRef = db.collection(COLLECTIONS.PLACES).doc(placeId);
+    const placeDoc = await placeRef.get();
+    
+    if (!placeDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Place not found'
+      });
+    }
+    
+    const place = serializeDoc(placeDoc);
+    
+    // Check if user has permission to view this place (same logic as likePlace)
+    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(place.circleId);
+    const circleDoc = await circleRef.get();
+    const circle = serializeDoc(circleDoc);
+    
+    const isOwner = circle.owner === userId;
+    const isSharedWith = circle.sharedWith && circle.sharedWith.includes(userId);
+    const isPublic = circle.privacy === 'public';
+    
+    // Check if users are connected for myNetwork privacy
+    let isConnected = false;
+    if (circle.privacy === 'myNetwork' && !isOwner) {
+      const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', userId)
+        .where('connectedUserId', '==', circle.owner)
+        .where('status', '==', 'accepted')
+        .get();
+        
+      const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', circle.owner)
+        .where('connectedUserId', '==', userId)
+        .where('status', '==', 'accepted')
+        .get();
+        
+      isConnected = !connection1.empty || !connection2.empty;
+    }
+    
+    if (!isOwner && !isSharedWith && !isPublic && !(circle.privacy === 'myNetwork' && isConnected)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to view likes for this place'
+      });
+    }
+    
+    // Get user IDs who liked this place
+    const likes = place.likes || [];
+    
+    if (likes.length === 0) {
+      return res.status(200).json({
+        success: true,
+        likes: [],
+        count: 0
+      });
+    }
+    
+    // Fetch user details for each user who liked the place
+    const userPromises = likes.map(async (likeUserId) => {
+      // Handle complex ID format if needed
+      let actualUserId = likeUserId;
+      if (likeUserId && likeUserId.includes('.')) {
+        const parts = likeUserId.split('.');
+        if (parts.length >= 2) {
+          actualUserId = parts[1]; // Use the middle part as Firebase UID
+        }
+      }
+      
+      const userDoc = await db.collection(COLLECTIONS.USERS).doc(actualUserId).get();
+      if (userDoc.exists) {
+        const userData = serializeDoc(userDoc);
+        return {
+          _id: userData.id,
+          displayName: userData.displayName,
+          profilePicture: userData.profilePicture,
+          bio: userData.bio
+        };
+      }
+      return null;
+    });
+    
+    const users = await Promise.all(userPromises);
+    const validUsers = users.filter(user => user !== null);
+    
+    res.status(200).json({
+      success: true,
+      likes: validUsers,
+      count: validUsers.length
+    });
+    
+  } catch (error) {
+    console.error('Error fetching place likes:', error);
     next(error);
   }
 };
@@ -1351,6 +1756,7 @@ exports.addExistingPlaceToCircle = async (req, res, next) => {
       const existingPlace = await db.collection(COLLECTIONS.PLACES)
         .where('circleId', '==', circleId)
         .where('googlePlaceId', '==', originalPlace.googlePlaceId)
+        .where('deletedAt', '==', null)
         .get();
         
       console.log('🔍 Google Place ID duplicate check:', {
@@ -1384,6 +1790,7 @@ exports.addExistingPlaceToCircle = async (req, res, next) => {
         .where('circleId', '==', circleId)
         .where('name', '==', originalPlace.name)
         .where('address', '==', originalPlace.address)
+        .where('deletedAt', '==', null)
         .get();
         
       console.log('🔍 Name/Address duplicate check:', {
@@ -1788,6 +2195,7 @@ exports.movePlace = async (req, res, next) => {
       const existingPlace = await db.collection(COLLECTIONS.PLACES)
         .where('circleId', '==', targetCircleId)
         .where('googlePlaceId', '==', place.googlePlaceId)
+        .where('deletedAt', '==', null)
         .get();
         
       if (!existingPlace.empty) {
@@ -1801,6 +2209,7 @@ exports.movePlace = async (req, res, next) => {
         .where('circleId', '==', targetCircleId)
         .where('name', '==', place.name)
         .where('address', '==', place.address)
+        .where('deletedAt', '==', null)
         .get();
         
       if (!existingPlace.empty) {

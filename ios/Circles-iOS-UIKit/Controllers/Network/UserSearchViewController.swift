@@ -4,7 +4,7 @@ protocol UserSearchViewControllerDelegate: AnyObject {
     func userSearchViewController(_ controller: UserSearchViewController, didSelectUser user: User)
 }
 
-class UserSearchViewController: UIViewController {
+class UserSearchViewController: BaseViewController {
     
     // MARK: - Properties
     weak var delegate: UserSearchViewControllerDelegate?
@@ -14,6 +14,21 @@ class UserSearchViewController: UIViewController {
     private var isSearching = false
     private var searchTimer: Timer?
     private var isLoadingConnections = false
+    
+    // MARK: - Helper Methods
+    /// Helper function to create a type-safe completion handler for API requests
+    private func createAPICompletion<T>(_ completion: @escaping (Result<T, Error>) -> Void) -> (Result<T, APIError>) -> Void {
+        return { [weak self] result in
+            guard let self = self else { return }
+            
+            switch result {
+            case .success(let response):
+                completion(.success(response))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
     
     // MARK: - UI Elements
     private let searchController: UISearchController = {
@@ -173,28 +188,29 @@ class UserSearchViewController: UIViewController {
             method: .get,
             queryParams: ["query": query],
             requiresAuth: true
-        ) { [weak self] (result: Result<UserSearchResponse, APIError>) in
+        ) { [weak self] (result: Result<UsersSearchResponse, APIError>) in
+            guard let self = self else { return }
             DispatchQueue.main.async {
-                self?.isSearching = false
-                self?.activityIndicator.stopAnimating()
+                self.isSearching = false
+                self.activityIndicator.stopAnimating()
                 
                 switch result {
                 case .success(let response):
                     // Filter out excluded users
-                    self?.searchResults = response.users.filter { user in
-                        !(self?.excludedUserIds.contains(user.id) ?? false)
+                    self.searchResults = response.users.filter { user in
+                        !(self.excludedUserIds.contains(user.id) ?? false)
                     }
-                    self?.tableView.reloadData()
+                    self.tableView.reloadData()
                     
-                    if self?.searchResults.isEmpty ?? true {
-                        self?.showNoResultsState(for: query)
+                    if self.searchResults.isEmpty ?? true {
+                        self.showNoResultsState(for: query)
                     }
                     
                 case .failure(let error):
                     print("Search error: \(error)")
-                    self?.searchResults = []
-                    self?.tableView.reloadData()
-                    self?.showErrorState()
+                    self.searchResults = []
+                    self.tableView.reloadData()
+                    self.showErrorState()
                 }
             }
         }
@@ -206,39 +222,40 @@ class UserSearchViewController: UIViewController {
         activityIndicator.startAnimating()
         
         NetworkManager.shared.getConnections { [weak self] result in
+            guard let self = self else { return }
             DispatchQueue.main.async {
-                self?.isLoadingConnections = false
-                self?.activityIndicator.stopAnimating()
+                self.isLoadingConnections = false
+                self.activityIndicator.stopAnimating()
                 
                 switch result {
                 case .success(let connections):
                     // Filter out excluded users and sort alphabetically
-                    self?.networkConnections = connections
+                    self.networkConnections = connections
                         .filter { connection in
-                            !(self?.excludedUserIds.contains(connection.id) ?? false)
+                            !(self.excludedUserIds.contains(connection.id) ?? false)
                         }
                         .sorted { (user1, user2) in
-                            let name1 = self?.getDisplayName(for: user1) ?? ""
-                            let name2 = self?.getDisplayName(for: user2) ?? ""
+                            let name1 = self.getDisplayName(for: user1) ?? ""
+                            let name2 = self.getDisplayName(for: user2) ?? ""
                             return name1.localizedCaseInsensitiveCompare(name2) == .orderedAscending
                         }
                     
                     // Show connections if no search is active
-                    if self?.searchController.searchBar.text?.isEmpty ?? true {
-                        self?.searchResults = self?.networkConnections ?? []
-                        self?.tableView.reloadData()
+                    if self.searchController.searchBar.text?.isEmpty ?? true {
+                        self.searchResults = self.networkConnections ?? []
+                        self.tableView.reloadData()
                         
-                        if self?.searchResults.isEmpty ?? true {
-                            self?.showEmptyConnectionsState()
+                        if self.searchResults.isEmpty ?? true {
+                            self.showEmptyConnectionsState()
                         } else {
-                            self?.hideEmptyState()
+                            self.hideEmptyState()
                         }
                     }
                     
                 case .failure(let error):
                     print("Failed to load connections: \\(error)")
-                    if self?.searchController.searchBar.text?.isEmpty ?? true {
-                        self?.showEmptyState()
+                    if self.searchController.searchBar.text?.isEmpty ?? true {
+                        self.showEmptyState()
                     }
                 }
             }
@@ -272,7 +289,7 @@ class UserSearchViewController: UIViewController {
         tableView.isHidden = true
     }
     
-    private func hideEmptyState() {
+    override func hideEmptyState() {
         emptyStateView.isHidden = true
         tableView.isHidden = false
     }
@@ -312,7 +329,8 @@ extension UserSearchViewController: UISearchResultsUpdating {
         
         // Debounce search to avoid too many API calls
         searchTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
-            self?.performSearch(query: query)
+            guard let self = self else { return }
+            self.performSearch(query: query)
         }
     }
 }
@@ -442,8 +460,9 @@ class UserSearchCell: UITableViewCell {
         // Set profile image
         if let profilePicture = user.profilePicture {
             ImageService.shared.loadImage(from: profilePicture) { [weak self] image in
+                guard let self = self else { return }
                 DispatchQueue.main.async {
-                    self?.profileImageView.image = image
+                    self.profileImageView.image = image
                 }
             }
         } else {

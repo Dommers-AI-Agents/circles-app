@@ -1,6 +1,6 @@
 import UIKit
 
-class UserCirclesViewController: UIViewController {
+class UserCirclesViewController: BaseViewController {
     
     // MARK: - Properties
     private let userId: String
@@ -8,7 +8,6 @@ class UserCirclesViewController: UIViewController {
     private let connectionId: String?
     private var userCircles: [Circle] = []
     private var currentUser: User?
-    private let refreshControl = UIRefreshControl()
     private var hasRecentActivity = false
     
     // MARK: - UI Elements
@@ -144,35 +143,38 @@ class UserCirclesViewController: UIViewController {
             let hasRecentActivity: Bool?
         }
         
+        let endpoint = "network/user-circles/\(userId)"
+        
         APIService.shared.request(
-            endpoint: "network/user-circles/\(userId)",
+            endpoint: endpoint,
             method: .get,
-            requiresAuth: true
-        ) { [weak self] (result: Result<UserCirclesResponse, APIError>) in
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<UserCirclesResponse, APIError>) in
+            guard let self = self else { return }
             DispatchQueue.main.async {
-                self?.refreshControl.endRefreshing()
+                self.refreshControl.endRefreshing()
                 
                 switch result {
                 case .success(let response):
-                    self?.userCircles = response.data.circles
-                    self?.hasRecentActivity = response.data.hasRecentActivity ?? false
-                    self?.updateUI(with: response.data.user)
-                    self?.tableView.reloadData()
+                    self.userCircles = response.data.circles
+                    self.hasRecentActivity = response.data.hasRecentActivity ?? false
+                    self.updateUI(with: response.data.user)
+                    self.tableView.reloadData()
                     
                     // Show activity banner if there's recent activity
                     // Temporarily disabled - showing incorrectly for all connections
-                    // if self?.hasRecentActivity == true {
-                    //     self?.showActivityBanner()
+                    // if self.hasRecentActivity == true {
+                    //     self.showActivityBanner()
                     // }
                 case .failure(let error):
                     print("Error loading user circles: \(error)")
-                    self?.showError("Failed to load circles")
+                    self.showError("Failed to load circles")
                 }
             }
-        }
+        })
     }
     
-    @objc private func refreshData() {
+    @objc override func refreshData() {
         loadUserCircles()
     }
     
@@ -203,11 +205,6 @@ class UserCirclesViewController: UIViewController {
         }
     }
     
-    private func showError(_ message: String) {
-        let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
     
     private func trackCircleView(circleId: String) {
         struct TrackingResponse: Codable {

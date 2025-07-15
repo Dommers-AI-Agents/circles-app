@@ -10,7 +10,6 @@ import AuthenticationServices
 import GoogleSignIn
 import FBSDKCoreKit
 import GooglePlaces
-import GoogleMaps
 import Firebase
 import UserNotifications
 
@@ -39,6 +38,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         
         // Configure NetworkManager after Firebase is initialized
         NetworkManager.shared.configure()
+        
+        // Clear any pending API requests from previous session
+        APIService.shared.clearPendingRequests()
         
         // Start SSE service for real-time updates
         SSEService.shared.connect()
@@ -121,11 +123,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             }
             
             GMSPlacesClient.provideAPIKey(gmsApiKey)
-            print("📍 Google Places SDK initialized with key")
-            
-            // Also initialize Google Maps SDK with the same API key
-            GMSServices.provideAPIKey(gmsApiKey)
-            print("🗺️ Google Maps SDK initialized with key")
+            print("📍 Google Places SDK initialized with key (photos only)")
             
             // Add a test to verify the Places client is properly configured
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {

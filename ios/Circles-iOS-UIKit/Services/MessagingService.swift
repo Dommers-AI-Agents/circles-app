@@ -6,6 +6,22 @@ class MessagingService {
     
     private init() {}
     
+    // MARK: - Helper Methods
+    
+    /// Helper function to create a type-safe completion handler for API requests
+    private func createAPICompletion<T>(_ completion: @escaping (Result<T, Error>) -> Void) -> (Result<T, APIError>) -> Void {
+        return { [weak self] result in
+            guard let self = self else { return }
+            
+            switch result {
+            case .success(let response):
+                completion(.success(response))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
     // MARK: - Conversations
     
     func fetchConversations(completion: @escaping (Result<[Conversation], Error>) -> Void) {
@@ -88,10 +104,17 @@ class MessagingService {
         before: String? = nil,
         completion: @escaping (Result<[Message], Error>) -> Void
     ) {
+        print("🔍 MessagingService: fetchMessages called")
+        print("🔍 MessagingService: conversationId: \(conversationId)")
+        print("🔍 MessagingService: limit: \(limit), before: \(before ?? "nil")")
+        
         var endpoint = "messages/conversations/\(conversationId)/messages?limit=\(limit)"
         if let before = before {
             endpoint += "&before=\(before)"
         }
+        
+        print("🔍 MessagingService: Making API request to endpoint: \(endpoint)")
+        print("🔐 MessagingService: Auth token available: \(AuthService.shared.getToken() != nil)")
         
         apiService.request(
             endpoint: endpoint,
@@ -100,8 +123,19 @@ class MessagingService {
         ) { (result: Result<MessagesResponse, APIError>) in
             switch result {
             case .success(let response):
+                print("✅ MessagingService: Successfully fetched \(response.messages.count) messages")
+                for (index, message) in response.messages.prefix(3).enumerated() {
+                    print("   Message \(index): \(message.type.rawValue) - \(message.displayContent)")
+                }
                 completion(.success(response.messages))
             case .failure(let error):
+                print("❌ MessagingService: Failed to fetch messages: \(error.localizedDescription)")
+                if case let APIError.httpError(statusCode, data) = error {
+                    print("❌ MessagingService: HTTP error - Status: \(statusCode)")
+                    if let data = data, let message = String(data: data, encoding: .utf8) {
+                        print("❌ MessagingService: Error response: \(message)")
+                    }
+                }
                 completion(.failure(error))
             }
         }
@@ -174,7 +208,7 @@ class MessagingService {
             endpoint: "messages/\(messageId)",
             method: .delete,
             requiresAuth: true
-        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
+        ) { (result: Result<EmptyResponse, APIError>) in
             switch result {
             case .success:
                 completion(.success(()))
@@ -196,7 +230,7 @@ class MessagingService {
             method: .post,
             body: body,
             requiresAuth: true
-        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
+        ) { (result: Result<EmptyResponse, APIError>) in
             switch result {
             case .success:
                 completion(.success(()))
@@ -245,15 +279,36 @@ class MessagingService {
         with userId: String,
         completion: @escaping (Result<Conversation, Error>) -> Void
     ) {
+        // Normalize the user ID before sending to backend
+        let normalizedUserId = IDNormalizer.normalize(userId) ?? userId
+        
+        print("🔍 MessagingService: getOrCreateDirectConversation called")
+        print("🔍 MessagingService: Original userId: \(userId)")
+        print("🔍 MessagingService: Normalized userId: \(normalizedUserId)")
+        print("🔍 MessagingService: Making POST request to: messages/conversations/direct/\(normalizedUserId)")
+        
         apiService.request(
-            endpoint: "messages/conversations/direct/\(userId)",
+            endpoint: "messages/conversations/direct/\(normalizedUserId)",
             method: .post,
             requiresAuth: true
         ) { (result: Result<ConversationResponse, APIError>) in
+            print("🔍 MessagingService: Received response from API")
+            
             switch result {
             case .success(let response):
+                print("✅ MessagingService: Successfully got/created conversation with ID: \(response.conversation.id)")
                 completion(.success(response.conversation))
             case .failure(let error):
+                print("❌ MessagingService: Failed to get/create conversation: \(error)")
+                
+                // Log more details about the error
+                if case APIError.httpError(let statusCode, let data) = error {
+                    print("❌ MessagingService: HTTP Error - Status Code: \(statusCode)")
+                    if let data = data, let errorString = String(data: data, encoding: .utf8) {
+                        print("❌ MessagingService: Error Details: \(errorString)")
+                    }
+                }
+                
                 completion(.failure(error))
             }
         }

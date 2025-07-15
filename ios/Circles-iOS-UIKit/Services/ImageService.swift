@@ -71,9 +71,8 @@ class ImageService {
                 }
             }
             
-            guard let self = self,
-                  let data = data,
-                  let image = UIImage(data: data) else {
+            guard let self = self else { return }
+            guard let data = data, let image = UIImage(data: data) else {
                 Logger.error("ImageService: Failed to create image from data")
                 DispatchQueue.main.async {
                     completion(nil)

@@ -1,12 +1,14 @@
 import UIKit
 
-class PlaceCommentsViewController: UIViewController {
+class PlaceCommentsViewController: BaseViewController {
     
     // MARK: - Properties
     private let place: Place
     private var comments: [PlaceComment] = []
-    private let refreshControl = UIRefreshControl()
     var onCommentsUpdated: ((Int) -> Void)?
+    
+    // MARK: - Configuration
+    override var enablesPullToRefresh: Bool { true }
     
     // MARK: - UI Elements
     private let tableView: UITableView = {
@@ -62,7 +64,6 @@ class PlaceCommentsViewController: UIViewController {
         setupUI()
         setupConstraints()
         setupKeyboardObservers()
-        fetchComments()
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -80,11 +81,7 @@ class PlaceCommentsViewController: UIViewController {
         title = "Comments"
         
         // Navigation items
-        navigationItem.leftBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .close,
-            target: self,
-            action: #selector(closeTapped)
-        )
+        addNavigationBarButton(image: "xmark", position: .left, action: #selector(closeTapped))
         
         // Add subviews
         view.addSubview(tableView)
@@ -96,8 +93,6 @@ class PlaceCommentsViewController: UIViewController {
         tableView.delegate = self
         tableView.dataSource = self
         tableView.register(CommentCell.self, forCellReuseIdentifier: "CommentCell")
-        tableView.refreshControl = refreshControl
-        refreshControl.addTarget(self, action: #selector(refreshComments), for: .valueChanged)
         
         // Configure text field
         commentTextField.delegate = self
@@ -159,8 +154,8 @@ class PlaceCommentsViewController: UIViewController {
         dismiss(animated: true)
     }
     
-    @objc private func refreshComments() {
-        fetchComments()
+    override func setupRefreshControl() {
+        tableView.refreshControl = refreshControl
     }
     
     @objc private func textFieldDidChange() {
@@ -187,13 +182,7 @@ class PlaceCommentsViewController: UIViewController {
                     self?.onCommentsUpdated?(self?.comments.count ?? 0)
                 case .failure(let error):
                     print("Failed to add comment: \(error)")
-                    let alert = UIAlertController(
-                        title: "Error",
-                        message: "Failed to add comment. Please try again.",
-                        preferredStyle: .alert
-                    )
-                    alert.addAction(UIAlertAction(title: "OK", style: .default))
-                    self?.present(alert, animated: true)
+                    self?.showError("Failed to add comment. Please try again.")
                 }
             }
         }
@@ -221,11 +210,9 @@ class PlaceCommentsViewController: UIViewController {
     }
     
     // MARK: - Data
-    private func fetchComments() {
+    override func loadData(completion: (() -> Void)?) {
         PlaceService.shared.getPlaceComments(placeId: place.id) { [weak self] result in
             DispatchQueue.main.async {
-                self?.refreshControl.endRefreshing()
-                
                 switch result {
                 case .success(let comments):
                     self?.comments = comments
@@ -234,6 +221,7 @@ class PlaceCommentsViewController: UIViewController {
                 case .failure(let error):
                     print("Failed to fetch comments: \(error)")
                 }
+                completion?()
             }
         }
     }
@@ -295,13 +283,7 @@ extension PlaceCommentsViewController: UITableViewDelegate, UITableViewDataSourc
                     completionHandler(true)
                 case .failure(let error):
                     print("Failed to delete comment: \(error)")
-                    let alert = UIAlertController(
-                        title: "Error",
-                        message: "Failed to delete comment. Please try again.",
-                        preferredStyle: .alert
-                    )
-                    alert.addAction(UIAlertAction(title: "OK", style: .default))
-                    self?.present(alert, animated: true)
+                    self?.showError("Failed to delete comment. Please try again.")
                     completionHandler(false)
                 }
             }
@@ -516,25 +498,21 @@ protocol CommentCellDelegate: AnyObject {
 // MARK: - CommentCellDelegate
 extension PlaceCommentsViewController: CommentCellDelegate {
     func commentCell(_ cell: CommentCell, didTapMoreButton comment: PlaceComment) {
-        let actionSheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        let deleteAction: (title: String, style: UIAlertAction.Style, handler: () -> Void) = (
+            title: "Delete Comment",
+            style: .destructive,
+            handler: { [weak self] in
+                guard let indexPath = self?.tableView.indexPath(for: cell) else { return }
+                self?.deleteComment(at: indexPath) { _ in }
+            }
+        )
         
-        let deleteAction = UIAlertAction(title: "Delete Comment", style: .destructive) { [weak self] _ in
-            guard let indexPath = self?.tableView.indexPath(for: cell) else { return }
-            self?.deleteComment(at: indexPath) { _ in }
-        }
-        
-        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel)
-        
-        actionSheet.addAction(deleteAction)
-        actionSheet.addAction(cancelAction)
-        
-        // For iPad
-        if let popover = actionSheet.popoverPresentationController {
-            popover.sourceView = cell
-            popover.sourceRect = cell.bounds
-        }
-        
-        present(actionSheet, animated: true)
+        AlertPresenter.showActionSheet(
+            actions: [deleteAction],
+            from: self,
+            sourceView: cell,
+            sourceRect: cell.bounds
+        )
     }
     
     func commentCell(_ cell: CommentCell, didTapLikeButton comment: PlaceComment) {
@@ -558,15 +536,11 @@ extension PlaceCommentsViewController: CommentCellDelegate {
                     
                 case .failure(let error):
                     print("Failed to like comment: \(error)")
-                    self?.showAlert(title: "Error", message: "Failed to update like. Please try again.")
+                    self?.showError("Failed to update like. Please try again.")
                 }
             }
         }
     }
     
-    private func showAlert(title: String, message: String) {
-        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
+    // Removed showAlert - using inherited showError from BaseViewController
 }

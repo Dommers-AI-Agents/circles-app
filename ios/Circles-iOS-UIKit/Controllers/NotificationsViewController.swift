@@ -1,11 +1,9 @@
 import UIKit
 
-class NotificationsViewController: UIViewController {
+class NotificationsViewController: BaseViewController {
     
     // MARK: - Properties
     private var notifications: [AppNotification] = []
-    private let refreshControl = UIRefreshControl()
-    private var isLoading = false
     private var hasMore = true
     private var currentOffset = 0
     private let pageSize = 50
@@ -19,30 +17,15 @@ class NotificationsViewController: UIViewController {
         return tableView
     }()
     
-    private let emptyStateLabel: UILabel = {
-        let label = UILabel()
-        label.text = "No notifications yet"
-        label.textAlignment = .center
-        label.font = .systemFont(ofSize: 16)
-        label.textColor = .secondaryLabel
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.isHidden = true
-        return label
-    }()
     
-    private let loadingIndicator: UIActivityIndicatorView = {
-        let indicator = UIActivityIndicatorView(style: .medium)
-        indicator.translatesAutoresizingMaskIntoConstraints = false
-        indicator.hidesWhenStopped = true
-        return indicator
-    }()
+    // MARK: - BaseViewController Overrides
+    override var emptyStateMessage: String? { "No notifications yet" }
+    override var enablesPullToRefresh: Bool { true }
     
-    // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
         setupTableView()
-        loadNotifications()
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -54,27 +37,19 @@ class NotificationsViewController: UIViewController {
     // MARK: - Setup
     private func setupUI() {
         view.backgroundColor = .systemGroupedBackground
-        title = "Notifications"
+        setupNavigationBar(title: "Notifications")
         
         view.addSubview(tableView)
-        view.addSubview(emptyStateLabel)
-        view.addSubview(loadingIndicator)
         
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            
-            emptyStateLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            emptyStateLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            
-            loadingIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            loadingIndicator.centerYAnchor.constraint(equalTo: view.centerYAnchor)
+            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
-        
-        // Setup refresh control
-        refreshControl.addTarget(self, action: #selector(refreshNotifications), for: .valueChanged)
+    }
+    
+    override func setupRefreshControl() {
         tableView.refreshControl = refreshControl
     }
     
@@ -87,26 +62,20 @@ class NotificationsViewController: UIViewController {
     }
     
     // MARK: - Data Loading
-    private func loadNotifications(refresh: Bool = false) {
-        guard !isLoading else { return }
+    override func loadData(completion: (() -> Void)? = nil) {
+        loadNotifications(refresh: false, completion: completion)
+    }
+    
+    private func loadNotifications(refresh: Bool = false, completion: (() -> Void)? = nil) {
+        guard !isLoadingData else { return }
         
         if refresh {
             currentOffset = 0
             hasMore = true
         }
         
-        isLoading = true
-        
-        if notifications.isEmpty && !refresh {
-            loadingIndicator.startAnimating()
-        }
-        
         NotificationService.shared.getNotifications(limit: pageSize, offset: currentOffset) { [weak self] result in
             DispatchQueue.main.async {
-                self?.isLoading = false
-                self?.loadingIndicator.stopAnimating()
-                self?.refreshControl.endRefreshing()
-                
                 switch result {
                 case .success(let response):
                     if refresh {
@@ -124,17 +93,17 @@ class NotificationsViewController: UIViewController {
                 case .failure(let error):
                     self?.showError("Failed to load notifications: \(error.localizedDescription)")
                 }
+                completion?()
             }
         }
     }
     
-    @objc private func refreshNotifications() {
-        loadNotifications(refresh: true)
-    }
-    
     private func updateUI() {
-        emptyStateLabel.isHidden = !notifications.isEmpty
-        tableView.isHidden = notifications.isEmpty
+        if notifications.isEmpty {
+            showEmptyState()
+        } else {
+            hideEmptyState()
+        }
     }
     
     private func markAllNotificationsAsRead() {
@@ -143,11 +112,6 @@ class NotificationsViewController: UIViewController {
         }
     }
     
-    private func showError(_ message: String) {
-        let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
     
     // MARK: - Navigation
     private func navigateToPlace(notification: AppNotification) {
@@ -155,11 +119,10 @@ class NotificationsViewController: UIViewController {
               let circleId = notification.data?.circleId else { return }
         
         // Show loading indicator
-        let loadingAlert = UIAlertController(title: "Loading", message: "Opening place...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
+        let loadingAlert = AlertPresenter.showLoading(message: "Opening place...", from: self)
         
         // First, fetch the circle
-        CircleService.shared.fetchCircleById(id: circleId) { [weak self] (result: Result<Circle, Error>) in
+        CircleService.shared.fetchCircleById(id: circleId) { [weak self] result in
             switch result {
             case .success(let circle):
                 // Then fetch the place
@@ -173,7 +136,7 @@ class NotificationsViewController: UIViewController {
                                 self?.navigationController?.pushViewController(placeDetailVC, animated: true)
                                 
                             case .failure(let error):
-                                self?.showError("Failed to load place: \(error.localizedDescription)")
+                                self?.showError(error)
                             }
                         }
                     }
@@ -182,7 +145,7 @@ class NotificationsViewController: UIViewController {
             case .failure(let error):
                 DispatchQueue.main.async {
                     loadingAlert.dismiss(animated: true) {
-                        self?.showError("Failed to load circle: \(error.localizedDescription)")
+                        self?.showError(error)
                     }
                 }
             }
@@ -214,7 +177,7 @@ extension NotificationsViewController: UITableViewDelegate {
     
     func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
         // Load more when reaching the end
-        if indexPath.row == notifications.count - 5 && hasMore && !isLoading {
+        if indexPath.row == notifications.count - 5 && hasMore && !isLoadingData {
             loadNotifications()
         }
     }

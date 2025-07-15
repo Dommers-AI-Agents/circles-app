@@ -1,6 +1,6 @@
 import UIKit
 
-class ChangePasswordViewController: UIViewController {
+class ChangePasswordViewController: BaseViewController {
     
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
@@ -90,45 +90,23 @@ class ChangePasswordViewController: UIViewController {
         return label
     }()
     
-    private let changePasswordButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Change Password", for: .normal)
-        button.setTitleColor(Constants.Colors.white, for: .normal)
-        button.backgroundColor = Constants.Colors.primary
-        button.layer.cornerRadius = 8
-        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private lazy var changePasswordButton = UIButton.primaryButton(title: "Change Password")
     
-    private let toggleCurrentPasswordButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "eye.slash.fill"), for: .normal)
-        button.tintColor = Constants.Colors.gray
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private lazy var toggleCurrentPasswordButton = UIButton.iconButton(systemName: "eye.slash.fill")
     
-    private let toggleNewPasswordButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "eye.slash.fill"), for: .normal)
-        button.tintColor = Constants.Colors.gray
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private lazy var toggleNewPasswordButton = UIButton.iconButton(systemName: "eye.slash.fill")
     
-    private let toggleConfirmPasswordButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "eye.slash.fill"), for: .normal)
-        button.tintColor = Constants.Colors.gray
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private lazy var toggleConfirmPasswordButton = UIButton.iconButton(systemName: "eye.slash.fill")
     
     // MARK: - Properties
     private var isLoading = false
     
     // MARK: - Lifecycle
+    // MARK: - BaseViewController Configuration
+    override var showsLoadingIndicator: Bool { false }
+    override var enablesPullToRefresh: Bool { false }
+    override var loadsDataOnViewDidLoad: Bool { false }
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
@@ -137,9 +115,7 @@ class ChangePasswordViewController: UIViewController {
     
     // MARK: - UI Setup
     private func setupUI() {
-        view.backgroundColor = Constants.Colors.background
-        title = "Change Password"
-        navigationItem.largeTitleDisplayMode = .never
+        setupNavigationBar(title: "Change Password", largeTitleMode: .never)
         
         // Add subviews
         view.addSubview(scrollView)
@@ -250,32 +226,32 @@ class ChangePasswordViewController: UIViewController {
     @objc private func changePasswordButtonTapped() {
         // Validate inputs
         guard let currentPassword = currentPasswordTextField.text, !currentPassword.isEmpty else {
-            presentAlert(title: "Error", message: "Please enter your current password")
+            showError("Please enter your current password")
             return
         }
         
         guard let newPassword = newPasswordTextField.text, !newPassword.isEmpty else {
-            presentAlert(title: "Error", message: "Please enter a new password")
+            showError("Please enter a new password")
             return
         }
         
         guard newPassword.count >= 8 else {
-            presentAlert(title: "Error", message: "Password must be at least 8 characters long")
+            showError("Password must be at least 8 characters long")
             return
         }
         
         guard let confirmPassword = confirmPasswordTextField.text, !confirmPassword.isEmpty else {
-            presentAlert(title: "Error", message: "Please confirm your new password")
+            showError("Please confirm your new password")
             return
         }
         
         guard newPassword == confirmPassword else {
-            presentAlert(title: "Error", message: "New passwords do not match")
+            showError("New passwords do not match")
             return
         }
         
         guard currentPassword != newPassword else {
-            presentAlert(title: "Error", message: "New password must be different from current password")
+            showError("New password must be different from current password")
             return
         }
         
@@ -310,31 +286,32 @@ class ChangePasswordViewController: UIViewController {
         guard !isLoading else { return }
         
         isLoading = true
-        changePasswordButton.isEnabled = false
-        changePasswordButton.setTitle("Changing...", for: .normal)
+        changePasswordButton.setLoading(true)
         
         UserService.shared.changePassword(currentPassword: currentPassword, newPassword: newPassword) { [weak self] result in
             DispatchQueue.main.async {
                 self?.isLoading = false
-                self?.changePasswordButton.isEnabled = true
+                self?.changePasswordButton.setLoading(false)
                 self?.changePasswordButton.setTitle("Change Password", for: .normal)
                 
                 switch result {
                 case .success:
-                    self?.presentAlert(title: "Success", message: "Your password has been changed successfully") { _ in
+                    self?.presentAlert(title: "Success", message: "Your password has been changed successfully") {
                         self?.navigationController?.popViewController(animated: true)
                     }
                 case .failure(let error):
-                    self?.presentAlert(title: "Error", message: error.localizedDescription)
+                    self?.showError(error.localizedDescription)
                 }
             }
         }
     }
     
     // MARK: - Helper Methods
-    private func presentAlert(title: String, message: String, completion: ((UIAlertAction) -> Void)? = nil) {
-        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default, handler: completion))
-        present(alert, animated: true)
+    private func presentAlert(title: String, message: String, completion: (() -> Void)? = nil) {
+        if title == "Success" {
+            AlertPresenter.showSuccess(title: title, message: message, from: self, completion: completion)
+        } else {
+            AlertPresenter.showError(title: title, message: message, from: self, completion: completion)
+        }
     }
 }

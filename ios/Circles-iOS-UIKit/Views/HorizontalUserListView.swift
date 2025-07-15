@@ -102,9 +102,15 @@ class HorizontalUserListView: UIView {
             self?.loadingIndicator.stopAnimating()
             self?.hasLoadedConnections = true
             
+            print("🔍 HorizontalUserListView: Received \(connections?.count ?? 0) connections from NetworkManager")
+            if let error = error {
+                print("❌ HorizontalUserListView: Error loading connections: \(error)")
+            }
+            
             if let connections = connections, !connections.isEmpty {
                 // Filter for accepted connections only
                 let acceptedConnections = connections.filter { $0.status == .accepted }
+                print("🔍 HorizontalUserListView: Filtered to \(acceptedConnections.count) accepted connections")
                 
                 
                 // Sort connections by activity (places, view count, recent activity)
@@ -143,6 +149,10 @@ class HorizontalUserListView: UIView {
                 
                 // Take top 10 for horizontal display
                 self?.connections = Array(sortedConnections.prefix(10))
+                print("🔍 HorizontalUserListView: Final connections to display: \(self?.connections.count ?? 0)")
+                for connection in self?.connections ?? [] {
+                    print("   - \(connection.connectedUser?.displayName ?? "Unknown") (status: \(connection.status.rawValue))")
+                }
                 self?.collectionView.reloadData()
                 self?.collectionView.isHidden = false
                 self?.emptyStateLabel.isHidden = true

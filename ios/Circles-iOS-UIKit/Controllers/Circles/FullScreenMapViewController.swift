@@ -18,8 +18,9 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
     private var places: [Place]
     private var initialRegion: MKCoordinateRegion
     private var annotationPlaceMap: [ObjectIdentifier: Place] = [:]
-    private var selectedCategory: PlaceCategory?
+    private var selectedCategory: UnifiedCategory?
     private var filteredPlaces: [Place] = []
+    private var availableCategories: [UnifiedCategory] = []
     private var isDropdownOpen = false
     private var dropdownHeightConstraint: NSLayoutConstraint?
     private var connectionDropdownHeightConstraint: NSLayoutConstraint?
@@ -168,7 +169,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
     }()
     
     // MARK: - Init
-    init(places: [Place] = [], initialRegion: MKCoordinateRegion? = nil, selectedCategory: PlaceCategory? = nil) {
+    init(places: [Place] = [], initialRegion: MKCoordinateRegion? = nil, selectedCategory: UnifiedCategory? = nil) {
         self.places = places
         self.selectedCategory = selectedCategory
         self.filteredPlaces = places
@@ -199,9 +200,9 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
     // MARK: - Public Methods
     func updatePlaces(_ newPlaces: [Place]) {
         self.places = newPlaces
-        self.filteredPlaces = newPlaces
-        updatePlacesCount()
-        addAnnotationsToMap()
+        updateAvailableCategories()
+        // Apply existing filters to the new places
+        applyFilter()
         // adjustMapRegion is already called in addAnnotationsToMap, no need to call it again
     }
     
@@ -235,6 +236,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
         setupUI()
         setupMap()
         setupTableView()
+        updateAvailableCategories()
         updateFilterButtonTitle()
         applyFilter()
     }
@@ -587,18 +589,32 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
         let poiSubtitle = featureAnnotation.subtitle ?? ""
         let coordinate = featureAnnotation.coordinate
         
+        // Check if this place already exists in the current places
+        let isAlreadySaved = checkIfPOIAlreadyExists(name: poiName, coordinate: coordinate)
+        
         // Show custom action sheet with options
         let alertController = UIAlertController(
             title: poiName,
-            message: poiSubtitle,
+            message: isAlreadySaved ? "\(poiSubtitle)\n\n✓ Already saved" : poiSubtitle,
             preferredStyle: .actionSheet
         )
         
-        // Add to Circle action
-        let addToCircleAction = UIAlertAction(title: "Add to Circle", style: .default) { [weak self] _ in
-            self?.showCirclePickerForPOI(featureAnnotation)
+        if !isAlreadySaved {
+            // Add to Circle action only if not already saved
+            let addToCircleAction = UIAlertAction(title: "Add to Circle", style: .default) { [weak self] _ in
+                self?.showCirclePickerForPOI(featureAnnotation)
+            }
+            alertController.addAction(addToCircleAction)
+        } else {
+            // Show which circles contain this place
+            let viewDetailsAction = UIAlertAction(title: "View Details", style: .default) { [weak self] _ in
+                if let existingPlace = self?.findExistingPlace(name: poiName, coordinate: coordinate) {
+                    self?.delegate?.mapViewController(self!, didSelectPlace: existingPlace)
+                    self?.dismiss(animated: true)
+                }
+            }
+            alertController.addAction(viewDetailsAction)
         }
-        alertController.addAction(addToCircleAction)
         
         // Cancel action
         let cancelAction = UIAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in
@@ -622,7 +638,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
         let loadingAlert = UIAlertController(title: "Loading", message: "Fetching your circles...", preferredStyle: .alert)
         present(loadingAlert, animated: true)
         
-        CircleService.shared.fetchUserCircles { [weak self] (result: Result<[Circle], Error>) in
+        CircleService.shared.fetchUserCircles { [weak self] result in
             DispatchQueue.main.async {
                 loadingAlert.dismiss(animated: true) {
                     switch result {
@@ -725,10 +741,54 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
         present(alert, animated: true)
     }
     
-    private func showError(_ message: String) {
-        let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
+    
+    // MARK: - Helper Methods for POI Duplicate Detection
+    
+    private func checkIfPOIAlreadyExists(name: String, coordinate: CLLocationCoordinate2D) -> Bool {
+        // Check all places (including filtered and unfiltered)
+        let allPlacesToCheck = viewMode == .allPlaces ? places : filteredPlaces
+        
+        // Check by name and proximity (within ~100 meters)
+        for place in allPlacesToCheck {
+            guard let placeLocation = place.location?.clLocation else { continue }
+            
+            // Check name similarity (case insensitive)
+            let nameMatch = place.name.lowercased() == name.lowercased() ||
+                           place.name.lowercased().contains(name.lowercased()) ||
+                           name.lowercased().contains(place.name.lowercased())
+            
+            // Check location proximity (100 meters)
+            let distance = placeLocation.distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
+            let locationMatch = distance < 100 // 100 meters
+            
+            if nameMatch && locationMatch {
+                return true
+            }
+        }
+        
+        return false
+    }
+    
+    private func findExistingPlace(name: String, coordinate: CLLocationCoordinate2D) -> Place? {
+        // Find the exact place that matches
+        let allPlacesToCheck = viewMode == .allPlaces ? places : filteredPlaces
+        
+        for place in allPlacesToCheck {
+            guard let placeLocation = place.location?.clLocation else { continue }
+            
+            let nameMatch = place.name.lowercased() == name.lowercased() ||
+                           place.name.lowercased().contains(name.lowercased()) ||
+                           name.lowercased().contains(place.name.lowercased())
+            
+            let distance = placeLocation.distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
+            let locationMatch = distance < 100 // 100 meters
+            
+            if nameMatch && locationMatch {
+                return place
+            }
+        }
+        
+        return nil
     }
     
     private func loadPlacesForCurrentView() {
@@ -931,7 +991,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
         }
     }
     
-    private func selectCategory(_ category: PlaceCategory?) {
+    private func selectCategory(_ category: UnifiedCategory?) {
         selectedCategory = category
         updateFilterButtonTitle()
         applyFilter()
@@ -983,12 +1043,21 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
         
         // Then apply category filter
         if let category = selectedCategory {
-            filtered = filtered.filter { $0.category == category }
+            filtered = filtered.filter { category.matches(place: $0) }
         }
         
         filteredPlaces = filtered
         updatePlacesCount()
         addAnnotationsToMap()
+    }
+    
+    private func updateAvailableCategories() {
+        // Get unique categories from all places, including custom categories
+        var categoriesSet = Set<UnifiedCategory>()
+        for place in places {
+            categoriesSet.insert(UnifiedCategory.from(place: place))
+        }
+        availableCategories = Array(categoriesSet).sorted { $0.displayName < $1.displayName }
     }
     
     private func updatePlacesCount() {
@@ -1038,7 +1107,7 @@ extension FullScreenMapViewController: CLLocationManagerDelegate {
 extension FullScreenMapViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         if tableView == categoryTableView {
-            return PlaceCategory.allCases.count + 1 // +1 for "All Categories"
+            return availableCategories.count + 1 // +1 for "All Categories"
         } else if tableView == connectionTableView {
             return connections.count + 2 // +2 for "All Connections" and "My Places Only"
         }
@@ -1053,8 +1122,7 @@ extension FullScreenMapViewController: UITableViewDataSource {
                 cell.textLabel?.text = "All Categories"
                 cell.textLabel?.textColor = selectedCategory == nil ? .systemBlue : .white
             } else {
-                let categories = PlaceCategory.allCases
-                let category = categories[indexPath.row - 1]
+                let category = availableCategories[indexPath.row - 1]
                 cell.textLabel?.text = category.displayName
                 cell.textLabel?.textColor = selectedCategory == category ? .systemBlue : .white
             }
@@ -1096,8 +1164,7 @@ extension FullScreenMapViewController: UITableViewDelegate {
             if indexPath.row == 0 {
                 selectCategory(nil)
             } else {
-                let categories = PlaceCategory.allCases
-                selectCategory(categories[indexPath.row - 1])
+                selectCategory(availableCategories[indexPath.row - 1])
             }
         } else if tableView == connectionTableView {
             if indexPath.row == 0 {

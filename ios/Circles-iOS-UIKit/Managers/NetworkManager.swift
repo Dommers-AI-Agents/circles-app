@@ -13,6 +13,22 @@ class NetworkManager {
     private let apiService = APIService.shared
     private var authObserverId = "NetworkManager"
     
+    // MARK: - Helper Methods
+    
+    /// Helper function to create a type-safe completion handler for API requests
+    private func createAPICompletion<T>(_ completion: @escaping (Result<T, Error>) -> Void) -> (Result<T, APIError>) -> Void {
+        return { [weak self] result in
+            guard let self = self else { return }
+            
+            switch result {
+            case .success(let response):
+                completion(.success(response))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
     private init() {
         // Defer setup until Firebase is configured
     }
@@ -56,18 +72,19 @@ class NetworkManager {
         apiService.request(
             endpoint: "connections",
             method: .get,
-            requiresAuth: true
-        ) { [weak self] (result: Result<ConnectionsResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                let acceptedConnections = response.connections.filter { $0.status == .accepted }
-                let users = acceptedConnections.compactMap { $0.connectedUser }
-                self?.connections = acceptedConnections
-                completion(.success(users))
-            case .failure(let error):
-                completion(.failure(error))
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<ConnectionsResponse, Error>) in
+                switch result {
+                case .success(let response):
+                    let acceptedConnections = response.connections.filter { $0.status == .accepted }
+                    let users = acceptedConnections.compactMap { $0.connectedUser }
+                    self.connections = acceptedConnections
+                    completion(.success(users))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     func loadConnections() {
@@ -76,79 +93,90 @@ class NetworkManager {
         apiService.request(
             endpoint: "connections",
             method: .get,
-            requiresAuth: true
-        ) { [weak self] (result: Result<ConnectionsResponse, APIError>) in
-            DispatchQueue.main.async {
-                self?.isLoading = false
-                
-                switch result {
-                case .success(let response):
-                    let connections = response.connections
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<ConnectionsResponse, Error>) in
+                DispatchQueue.main.async(flags: .barrier) {
+                    self.isLoading = false
                     
-                    // Filter out invalid self-connections
-                    let validConnections = connections.filter { connection in
-                        // Check if userId and connectedUserId are different
-                        let isSelfConnection = connection.userId == connection.connectedUserId
-                        if isSelfConnection {
-                            print("⚠️ NetworkManager: Filtering out invalid self-connection: \(connection.id)")
-                            print("   userId: \(connection.userId)")
-                            print("   connectedUserId: \(connection.connectedUserId)")
-                            print("   connectedUser: \(connection.connectedUser?.displayName ?? "nil") (\(connection.connectedUser?.email ?? "nil"))")
+                    switch result {
+                    case .success(let response):
+                        let connections = response.connections
+                        
+                        // Filter out invalid self-connections (where current user is connected to themselves)
+                        let currentUserId = AuthService.shared.getUserId() ?? ""
+                        let validConnections = connections.filter { connection in
+                            // A self-connection is when both userId and connectedUserId are the current user
+                            let isSelfConnection = (connection.userId == currentUserId && connection.connectedUserId == currentUserId)
+                            
+                            if isSelfConnection {
+                                print("⚠️ NetworkManager.loadConnections: Filtering out invalid self-connection: \(connection.id)")
+                                print("   userId: \(connection.userId)")
+                                print("   connectedUserId: \(connection.connectedUserId)")
+                                print("   currentUserId: \(currentUserId)")
+                                print("   connectedUser: \(connection.connectedUser?.displayName ?? "nil") (\(connection.connectedUser?.email ?? "nil"))")
+                            } else {
+                                // Log valid connections for debugging
+                                let otherUserId = connection.otherUserId(currentUserId: currentUserId)
+                                print("✅ NetworkManager.loadConnections: Valid connection \(connection.id) to user \(otherUserId)")
+                                print("   connectedUser: \(connection.connectedUser?.displayName ?? "nil") (\(connection.connectedUser?.email ?? "nil"))")
+                                print("   status: \(connection.status.rawValue)")
+                            }
+                            return !isSelfConnection
                         }
-                        return !isSelfConnection
+                        
+                        self.connections = validConnections.filter { $0.status == .accepted }
+                        self.pendingConnections = validConnections.filter { $0.status == .pending }
+                        
+                        print("🔍 NetworkManager: Loaded connections - accepted: \(self.connections.count), pending: \(self.pendingConnections.count)")
+                        
+                        // Post notification after data is loaded
+                        NotificationCenter.default.post(
+                            name: .pendingConnectionsCountChanged,
+                            object: nil
+                        )
+                        
+                        // Post notification for all connections loaded
+                        NotificationCenter.default.post(
+                            name: .connectionsLoaded,
+                            object: nil
+                        )
+                    case .failure(let error):
+                        print("❌ NetworkManager: Failed to load connections: \(error)")
+                        self.error = error.localizedDescription
+                        // Clear pending connections on error to reset badge
+                        self.pendingConnections = []
+                        NotificationCenter.default.post(
+                            name: .pendingConnectionsCountChanged,
+                            object: nil
+                        )
                     }
-                    
-                    self?.connections = validConnections.filter { $0.status == .accepted }
-                    self?.pendingConnections = validConnections.filter { $0.status == .pending }
-                    
-                    print("🔍 NetworkManager: Loaded connections - accepted: \(self?.connections.count ?? 0), pending: \(self?.pendingConnections.count ?? 0)")
-                    
-                    // Post notification after data is loaded
-                    NotificationCenter.default.post(
-                        name: .pendingConnectionsCountChanged,
-                        object: nil
-                    )
-                    
-                    // Post notification for all connections loaded
-                    NotificationCenter.default.post(
-                        name: .connectionsLoaded,
-                        object: nil
-                    )
-                case .failure(let error):
-                    print("❌ NetworkManager: Failed to load connections: \(error)")
-                    self?.error = error.localizedDescription
-                    // Clear pending connections on error to reset badge
-                    self?.pendingConnections = []
-                    NotificationCenter.default.post(
-                        name: .pendingConnectionsCountChanged,
-                        object: nil
-                    )
                 }
             }
-        }
+        )
     }
     
     func loadSharedCircles() {
         apiService.request(
             endpoint: "network/shared-circles",
             method: .get,
-            requiresAuth: true
-        ) { [weak self] (result: Result<CircleSharesResponse, APIError>) in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let response):
-                    // Handle both old format (shares) and new format (data)
-                    if !response.shares.isEmpty {
-                        self?.sharedCircles = response.shares
-                    } else if let circlesData = response.data {
-                        // Convert circles to shares if needed
-                        print("✅ Loaded \(circlesData.count) shared circles")
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<CircleSharesResponse, Error>) in
+                DispatchQueue.main.async(flags: .barrier) {
+                    switch result {
+                    case .success(let response):
+                        // Handle both old format (shares) and new format (data)
+                        if !response.shares.isEmpty {
+                            self.sharedCircles = response.shares
+                        } else if let circlesData = response.data {
+                            // Convert circles to shares if needed
+                            print("✅ Loaded \(circlesData.count) shared circles")
+                        }
+                    case .failure(let error):
+                        self.error = error.localizedDescription
                     }
-                case .failure(let error):
-                    self?.error = error.localizedDescription
                 }
             }
-        }
+        )
         
         // Also load editable circles from others
         loadEditableCirclesFromOthers()
@@ -163,19 +191,20 @@ class NetworkManager {
         apiService.request(
             endpoint: "network/circles-shared-with-me",
             method: .get,
-            requiresAuth: true
-        ) { [weak self] (result: Result<EditableCirclesResponse, APIError>) in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let response):
-                    self?.editableCirclesFromOthers = response.data
-                    print("✅ Loaded \(response.data.count) editable circles from others")
-                case .failure(let error):
-                    self?.error = error.localizedDescription
-                    print("❌ Failed to load editable circles from others: \(error)")
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<EditableCirclesResponse, Error>) in
+                DispatchQueue.main.async(flags: .barrier) {
+                    switch result {
+                    case .success(let response):
+                        self.editableCirclesFromOthers = response.data
+                        print("✅ Loaded \(response.data.count) editable circles from others")
+                    case .failure(let error):
+                        self.error = error.localizedDescription
+                        print("❌ Failed to load editable circles from others: \(error)")
+                    }
                 }
             }
-        }
+        )
     }
     
     // MARK: - Connection Management
@@ -255,27 +284,28 @@ class NetworkManager {
             endpoint: "connections/invite",
             method: .post,
             body: body,
-            requiresAuth: true
-        ) { [weak self] (result: Result<ConnectionResponse, APIError>) in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let response):
-                    if let connection = response.data {
-                        // Add to appropriate list based on status
-                        if connection.status == .accepted {
-                            self?.connections.append(connection)
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<ConnectionResponse, Error>) in
+                DispatchQueue.main.async(flags: .barrier) {
+                    switch result {
+                    case .success(let response):
+                        if let connection = response.data {
+                            // Add to appropriate list based on status
+                            if connection.status == .accepted {
+                                self.connections.append(connection)
+                            } else {
+                                self.pendingConnections.append(connection)
+                            }
+                            completion(.success(connection))
                         } else {
-                            self?.pendingConnections.append(connection)
+                            completion(.failure(APIError.invalidResponse))
                         }
-                        completion(.success(connection))
-                    } else {
-                        completion(.failure(APIError.invalidResponse))
+                    case .failure(let error):
+                        completion(.failure(error))
                     }
-                case .failure(let error):
-                    completion(.failure(error))
                 }
             }
-        }
+        )
     }
     
     func handleConnectionInvite(from inviteUserId: String, completion: @escaping (Result<Connection, Error>) -> Void) {
@@ -339,68 +369,95 @@ class NetworkManager {
         apiService.request(
             endpoint: "connections/\(connectionId)/accept",
             method: .post,
-            requiresAuth: true
-        ) { [weak self] (result: Result<ConnectionResponse, APIError>) in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let response):
-                    if let connection = response.data {
-                        // Move from pending to accepted
-                        self?.pendingConnections.removeAll { $0.id == connectionId }
-                        self?.connections.append(connection)
-                        
-                        // Post notification to update badge count
-                        NotificationCenter.default.post(name: .pendingConnectionsCountChanged, object: nil)
-                        
-                        completion(.success(connection))
-                    } else {
-                        completion(.failure(APIError.invalidResponse))
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<ConnectionResponse, Error>) in
+                DispatchQueue.main.async(flags: .barrier) {
+                    switch result {
+                    case .success(let response):
+                        if let connection = response.data {
+                            // Move from pending to accepted
+                            self.pendingConnections.removeAll { $0.id == connectionId }
+                            self.connections.append(connection)
+                            
+                            // Post notification to update badge count
+                            NotificationCenter.default.post(name: .pendingConnectionsCountChanged, object: nil)
+                            
+                            completion(.success(connection))
+                        } else {
+                            completion(.failure(APIError.invalidResponse))
+                        }
+                    case .failure(let error):
+                        completion(.failure(error))
                     }
-                case .failure(let error):
-                    completion(.failure(error))
                 }
             }
-        }
+        )
     }
     
     func declineConnection(_ connectionId: String, completion: @escaping (Result<Void, Error>) -> Void) {
         apiService.request(
             endpoint: "connections/\(connectionId)/decline",
             method: .delete,
-            requiresAuth: true
-        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
-            DispatchQueue.main.async {
-                switch result {
-                case .success:
-                    self?.pendingConnections.removeAll { $0.id == connectionId }
-                    
-                    // Post notification to update badge count
-                    NotificationCenter.default.post(name: .pendingConnectionsCountChanged, object: nil)
-                    
-                    completion(.success(()))
-                case .failure(let error):
-                    completion(.failure(error))
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<EmptyResponse, Error>) in
+                DispatchQueue.main.async(flags: .barrier) {
+                    switch result {
+                    case .success:
+                        self.pendingConnections.removeAll { $0.id == connectionId }
+                        
+                        // Post notification to update badge count
+                        NotificationCenter.default.post(name: .pendingConnectionsCountChanged, object: nil)
+                        
+                        completion(.success(()))
+                    case .failure(let error):
+                        completion(.failure(error))
+                    }
                 }
             }
+        )
+    }
+    
+    func getConnectionStatus(connectionId: String, completion: @escaping (String) -> Void) {
+        // First check local connections
+        if let connection = getConnectionById(connectionId) {
+            completion(connection.status.rawValue)
+            return
         }
+        
+        // If not found locally, make API call
+        apiService.request(
+            endpoint: "connections/\(connectionId)",
+            method: .get,
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<ConnectionResponse, Error>) in
+                switch result {
+                case .success(let response):
+                    completion(response.data?.status.rawValue ?? "unknown")
+                case .failure:
+                    // If API call fails, assume connection doesn't exist or is expired
+                    completion("unknown")
+                }
+            }
+        )
     }
     
     func blockConnection(_ connectionId: String, completion: @escaping (Result<Void, Error>) -> Void) {
         apiService.request(
             endpoint: "connections/\(connectionId)/block",
             method: .post,
-            requiresAuth: true
-        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
-            DispatchQueue.main.async {
-                switch result {
-                case .success:
-                    self?.connections.removeAll { $0.id == connectionId }
-                    completion(.success(()))
-                case .failure(let error):
-                    completion(.failure(error))
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<EmptyResponse, Error>) in
+                DispatchQueue.main.async(flags: .barrier) {
+                    switch result {
+                    case .success:
+                        self.connections.removeAll { $0.id == connectionId }
+                        completion(.success(()))
+                    case .failure(let error):
+                        completion(.failure(error))
+                    }
                 }
             }
-        }
+        )
     }
     
     // MARK: - Circle Sharing
@@ -435,74 +492,75 @@ class NetworkManager {
             endpoint: "circles/\(circleId)/share",
             method: .post,
             body: body,
-            requiresAuth: true
-        ) { [weak self] (result: Result<CircleSharesResponse, APIError>) in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let response):
-                    if let share = response.shares.first {
-                        self?.sharedCircles.append(share)
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<ShareResponse, Error>) in
+                DispatchQueue.main.async(flags: .barrier) {
+                    switch result {
+                    case .success(let response):
+                        let share = response.data
+                        self.sharedCircles.append(share)
                         completion(.success(share))
-                    } else {
-                        completion(.failure(APIError.invalidResponse))
+                    case .failure(let error):
+                        completion(.failure(error))
                     }
-                case .failure(let error):
-                    completion(.failure(error))
                 }
             }
-        }
+        )
     }
     
     func revokeShare(_ shareId: String, circleId: String, completion: @escaping (Result<Void, Error>) -> Void) {
         apiService.request(
             endpoint: "circles/\(circleId)/share/\(shareId)",
             method: .delete,
-            requiresAuth: true
-        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
-            DispatchQueue.main.async {
-                switch result {
-                case .success:
-                    self?.sharedCircles.removeAll { $0.id == shareId }
-                    completion(.success(()))
-                case .failure(let error):
-                    completion(.failure(error))
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<EmptyResponse, Error>) in
+                DispatchQueue.main.async(flags: .barrier) {
+                    switch result {
+                    case .success:
+                        self.sharedCircles.removeAll { $0.id == shareId }
+                        completion(.success(()))
+                    case .failure(let error):
+                        completion(.failure(error))
+                    }
                 }
             }
-        }
+        )
     }
     
     func getCircleShares(for circleId: String, completion: @escaping (Result<[CircleShare], Error>) -> Void) {
         apiService.request(
             endpoint: "circles/\(circleId)/shares",
             method: .get,
-            requiresAuth: true
-        ) { (result: Result<CircleSharesResponse, APIError>) in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let response):
-                    completion(.success(response.shares))
-                case .failure(let error):
-                    completion(.failure(error))
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<CircleSharesResponse, Error>) in
+                DispatchQueue.main.async(flags: .barrier) {
+                    switch result {
+                    case .success(let response):
+                        completion(.success(response.shares))
+                    case .failure(let error):
+                        completion(.failure(error))
+                    }
                 }
             }
-        }
+        )
     }
     
     func getSharedCirclesWithConnection(_ connectionId: String, completion: @escaping (Result<[Circle], Error>) -> Void) {
         apiService.request(
             endpoint: "connections/\(connectionId)/shared-circles",
             method: .get,
-            requiresAuth: true
-        ) { (result: Result<NetworkCirclesResponse, APIError>) in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let response):
-                    completion(.success(response.circles))
-                case .failure(let error):
-                    completion(.failure(error))
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<CirclesResponse, Error>) in
+                DispatchQueue.main.async(flags: .barrier) {
+                    switch result {
+                    case .success(let response):
+                        completion(.success(response.circles))
+                    case .failure(let error):
+                        completion(.failure(error))
+                    }
                 }
             }
-        }
+        )
     }
     
     // MARK: - Helper Methods
@@ -528,22 +586,20 @@ class NetworkManager {
         apiService.request(
             endpoint: "circles/share/\(shareId)/accept",
             method: .post,
-            requiresAuth: true
-        ) { (result: Result<CircleSharesResponse, APIError>) in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let response):
-                    if let share = response.shares.first {
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<ShareResponse, Error>) in
+                DispatchQueue.main.async(flags: .barrier) {
+                    switch result {
+                    case .success(let response):
+                        let share = response.data
                         completion(.success(share))
                         // Note: Circle refresh removed - UI should handle updates
-                    } else {
-                        completion(.failure(APIError.invalidResponse))
+                    case .failure(let error):
+                        completion(.failure(error))
                     }
-                case .failure(let error):
-                    completion(.failure(error))
                 }
             }
-        }
+        )
     }
     
     // MARK: - Connection Fetching (for UIKit compatibility)
@@ -553,35 +609,45 @@ class NetworkManager {
         apiService.request(
             endpoint: "connections",
             method: .get,
-            requiresAuth: true
-        ) { [weak self] (result: Result<ConnectionsResponse, APIError>) in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let response):
-                    let connections = response.connections
-                    
-                    // Filter out invalid self-connections
-                    let validConnections = connections.filter { connection in
-                        // Check if userId and connectedUserId are different
-                        let isSelfConnection = connection.userId == connection.connectedUserId
-                        if isSelfConnection {
-                            print("⚠️ NetworkManager: Filtering out invalid self-connection: \(connection.id)")
-                            print("   userId: \(connection.userId)")
-                            print("   connectedUserId: \(connection.connectedUserId)")
-                            print("   connectedUser: \(connection.connectedUser?.displayName ?? "nil") (\(connection.connectedUser?.email ?? "nil"))")
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<ConnectionsResponse, Error>) in
+                DispatchQueue.main.async(flags: .barrier) {
+                    switch result {
+                    case .success(let response):
+                        let connections = response.connections
+                        
+                        // Filter out invalid self-connections (where current user is connected to themselves)
+                        let currentUserId = AuthService.shared.getUserId() ?? ""
+                        let validConnections = connections.filter { connection in
+                            // A self-connection is when both userId and connectedUserId are the current user
+                            let isSelfConnection = (connection.userId == currentUserId && connection.connectedUserId == currentUserId)
+                            
+                            if isSelfConnection {
+                                print("⚠️ NetworkManager.fetchConnections: Filtering out invalid self-connection: \(connection.id)")
+                                print("   userId: \(connection.userId)")
+                                print("   connectedUserId: \(connection.connectedUserId)")
+                                print("   currentUserId: \(currentUserId)")
+                                print("   connectedUser: \(connection.connectedUser?.displayName ?? "nil") (\(connection.connectedUser?.email ?? "nil"))")
+                            } else {
+                                // Log valid connections for debugging
+                                let otherUserId = connection.otherUserId(currentUserId: currentUserId)
+                                print("✅ NetworkManager.fetchConnections: Valid connection \(connection.id) to user \(otherUserId)")
+                                print("   connectedUser: \(connection.connectedUser?.displayName ?? "nil") (\(connection.connectedUser?.email ?? "nil"))")
+                                print("   status: \(connection.status.rawValue)")
+                            }
+                            return !isSelfConnection
                         }
-                        return !isSelfConnection
+                        
+                        self.connections = validConnections.filter { $0.status == .accepted }
+                        self.pendingConnections = validConnections.filter { $0.status == .pending }
+                        // Return only accepted connections
+                        completion(self.connections, nil)
+                    case .failure(let error):
+                        completion(nil, error)
                     }
-                    
-                    self?.connections = validConnections.filter { $0.status == .accepted }
-                    self?.pendingConnections = validConnections.filter { $0.status == .pending }
-                    // Return only accepted connections
-                    completion(self?.connections, nil)
-                case .failure(let error):
-                    completion(nil, error)
                 }
             }
-        }
+        )
     }
     
     func fetchActiveConnections(limit: Int = 10, completion: @escaping ([Connection]?, Error?) -> Void) {
@@ -589,71 +655,75 @@ class NetworkManager {
         apiService.request(
             endpoint: "connections/active?limit=\(limit)",
             method: .get,
-            requiresAuth: true
-        ) { (result: Result<ConnectionsResponse, APIError>) in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let response):
-                    completion(response.connections, nil)
-                case .failure(let error):
-                    completion(nil, error)
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<ConnectionsResponse, Error>) in
+                DispatchQueue.main.async(flags: .barrier) {
+                    switch result {
+                    case .success(let response):
+                        completion(response.connections, nil)
+                    case .failure(let error):
+                        completion(nil, error)
+                    }
                 }
             }
-        }
+        )
     }
     
     func clearConnectionActivity(connectionId: String, completion: @escaping (Error?) -> Void) {
         apiService.request(
             endpoint: "connections/\(connectionId)/clear-activity",
             method: .post,
-            requiresAuth: true
-        ) { (result: Result<EmptyResponse, APIError>) in
-            DispatchQueue.main.async {
-                switch result {
-                case .success:
-                    completion(nil)
-                case .failure(let error):
-                    completion(error)
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<EmptyResponse, Error>) in
+                DispatchQueue.main.async(flags: .barrier) {
+                    switch result {
+                    case .success:
+                        completion(nil)
+                    case .failure(let error):
+                        completion(error)
+                    }
                 }
             }
-        }
+        )
     }
     
     func trackConnectionView(connectionId: String, completion: @escaping (Error?) -> Void) {
         apiService.request(
             endpoint: "connections/\(connectionId)/track-view",
             method: .post,
-            requiresAuth: true
-        ) { (result: Result<EmptyResponse, APIError>) in
-            DispatchQueue.main.async {
-                switch result {
-                case .success:
-                    completion(nil)
-                case .failure(let error):
-                    completion(error)
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<EmptyResponse, Error>) in
+                DispatchQueue.main.async(flags: .barrier) {
+                    switch result {
+                    case .success:
+                        completion(nil)
+                    case .failure(let error):
+                        completion(error)
+                    }
                 }
             }
-        }
+        )
     }
     
     func removeConnection(connectionId: String, completion: @escaping (Error?) -> Void) {
         apiService.request(
             endpoint: "connections/\(connectionId)",
             method: .delete,
-            requiresAuth: true
-        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
-            DispatchQueue.main.async {
-                switch result {
-                case .success:
-                    // Remove from local list
-                    self?.connections.removeAll { $0.id == connectionId }
-                    self?.pendingConnections.removeAll { $0.id == connectionId }
-                    completion(nil)
-                case .failure(let error):
-                    completion(error)
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<EmptyResponse, Error>) in
+                DispatchQueue.main.async(flags: .barrier) {
+                    switch result {
+                    case .success:
+                        // Remove from local list
+                        self.connections.removeAll { $0.id == connectionId }
+                        self.pendingConnections.removeAll { $0.id == connectionId }
+                        completion(nil)
+                    case .failure(let error):
+                        completion(error)
+                    }
                 }
             }
-        }
+        )
     }
     
     private func clearData() {

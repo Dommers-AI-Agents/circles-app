@@ -1,6 +1,6 @@
 import UIKit
 
-class ChatViewController: UIViewController {
+class ChatViewController: BaseViewController {
     
     // MARK: - UI Elements
     private let tableView: UITableView = {
@@ -50,19 +50,15 @@ class ChatViewController: UIViewController {
     }()
     
     private let sendButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "arrow.up.circle.fill"), for: .normal)
+        let button = UIButton.iconButton(systemName: "arrow.up.circle.fill")
         button.tintColor = Constants.Colors.primary
-        button.translatesAutoresizingMaskIntoConstraints = false
         button.isEnabled = false
         return button
     }()
     
     private let attachButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "plus.circle"), for: .normal)
+        let button = UIButton.iconButton(systemName: "plus.circle")
         button.tintColor = .systemGray
-        button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
     
@@ -88,18 +84,32 @@ class ChatViewController: UIViewController {
     private var keyboardHeight: CGFloat = 0
     private var messageInputBottomConstraint: NSLayoutConstraint!
     private let cellIdentifier = "MessageCell"
-    // Removed connectionRequestCellIdentifier - no longer needed
-    private var temporaryText: String = "" // Store text to prevent loss
+    private var temporaryText: String = ""
+    private var hasCompletedInitialLoad = false
+    
+    // MARK: - BaseViewController Configuration
+    override var showsLoadingIndicator: Bool { true }
+    override var loadsDataOnViewDidLoad: Bool { true }
+    override var reloadsDataOnAppear: Bool { false }
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
+        
+        print("🔍 ChatViewController: viewDidLoad called")
+        if let conv = conversation {
+            print("🔍 ChatViewController: Conversation loaded - ID: \(conv.id)")
+            print("🔍 ChatViewController: Conversation type: \(conv.type)")
+            print("🔍 ChatViewController: Conversation participants: \(conv.participants)")
+        } else {
+            print("❌ ChatViewController: No conversation set!")
+        }
+        
         setupView()
         setupTableView()
         setupMessageInput()
         setupKeyboardHandling(bottomConstraint: messageInputBottomConstraint, dismissOnTap: false)
         setupSubscribers()
-        loadMessages()
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -122,16 +132,8 @@ class ChatViewController: UIViewController {
     
     // MARK: - Setup
     private func setupView() {
-        view.backgroundColor = .systemBackground
-        title = conversation?.displayName ?? "Chat"
-        
-        // Add right bar button for conversation info
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
-            image: UIImage(systemName: "info.circle"),
-            style: .plain,
-            target: self,
-            action: #selector(showConversationInfo)
-        )
+        setupNavigationBar(title: conversation?.displayName ?? "Chat")
+        addNavigationBarButton(image: "info.circle", position: .right, action: #selector(showConversationInfo))
         
         view.addSubview(tableView)
         view.addSubview(messageInputContainer)
@@ -210,7 +212,16 @@ class ChatViewController: UIViewController {
     
     
     private func setupSubscribers() {
-        guard let conversationId = conversation?.id else { return }
+        print("🔍 ChatViewController: setupSubscribers() called")
+        
+        guard let conversation = conversation else {
+            print("❌ ChatViewController: setupSubscribers() - conversation is nil!")
+            return
+        }
+        
+        let conversationId = conversation.id
+        
+        print("✅ ChatViewController: setupSubscribers() - conversationId: \(conversationId)")
         
         // Listen for new messages notification
         NotificationCenter.default.addObserver(
@@ -219,59 +230,129 @@ class ChatViewController: UIViewController {
             name: Notification.Name("NewMessagesReceived"),
             object: nil
         )
+        print("🔍 ChatViewController: Added observer for NewMessagesReceived")
         
         // Poll for message updates (as backup)
         messageUpdateTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
+            
+            print("🔍 ChatViewController: Timer fired - checking for messages in conversationId: \(conversationId)")
+            
             if let messages = self.messagingManager.activeMessages[conversationId] {
+                print("🔍 ChatViewController: Found \(messages.count) messages in activeMessages")
+                
                 // Filter out connection request messages (handled in My Network tab)
                 let filteredMessages = messages.filter { $0.type != .connectionRequest }
+                print("🔍 ChatViewController: After filtering, have \(filteredMessages.count) messages")
                 
-                // Hide loading on first load
-                if self.messages.isEmpty && !filteredMessages.isEmpty {
+                // Hide loading on initial load only (not for subsequent timer refreshes)
+                if self.messages.isEmpty && !self.hasCompletedInitialLoad {
+                    print("🔍 ChatViewController: Initial load complete, hiding loading (filtered messages: \(filteredMessages.count))")
+                    self.hasCompletedInitialLoad = true
                     self.hideLoading()
                 }
                 
                 if filteredMessages.count != self.messages.count {
+                    print("🔍 ChatViewController: Message count changed from \(self.messages.count) to \(filteredMessages.count)")
                     self.messages = filteredMessages
                     self.tableView.reloadData()
                     self.scrollToBottom(animated: true)
                 }
+            } else {
+                print("⚠️ ChatViewController: No messages found in activeMessages for conversationId: \(conversationId)")
+                
+                // Hide loading if this is the initial load and no messages are found
+                if self.messages.isEmpty && !self.hasCompletedInitialLoad {
+                    print("🔍 ChatViewController: Initial load complete with no messages, hiding loading")
+                    self.hasCompletedInitialLoad = true
+                    self.hideLoading()
+                }
             }
         }
+        
+        print("🔍 ChatViewController: Message update timer scheduled")
     }
     
     @objc private func handleNewMessages(_ notification: Notification) {
-        guard let userInfo = notification.userInfo,
-              let notificationConversationId = userInfo["conversationId"] as? String,
-              notificationConversationId == conversation?.id else { return }
+        print("🔍 ChatViewController: handleNewMessages notification received")
+        
+        guard let userInfo = notification.userInfo else {
+            print("⚠️ ChatViewController: handleNewMessages - no userInfo in notification")
+            return
+        }
+        
+        guard let notificationConversationId = userInfo["conversationId"] as? String else {
+            print("⚠️ ChatViewController: handleNewMessages - no conversationId in userInfo")
+            return
+        }
+        
+        print("🔍 ChatViewController: handleNewMessages - notificationConversationId: \(notificationConversationId)")
+        print("🔍 ChatViewController: handleNewMessages - current conversation.id: \(conversation?.id ?? "nil")")
+        
+        guard notificationConversationId == conversation?.id else {
+            print("⚠️ ChatViewController: handleNewMessages - conversationId mismatch, ignoring notification")
+            return
+        }
+        
+        print("✅ ChatViewController: handleNewMessages - conversationId matches, refreshing messages")
         
         // Refresh messages from MessagingManager
         if let messages = messagingManager.activeMessages[notificationConversationId] {
+            print("🔍 ChatViewController: handleNewMessages - found \(messages.count) messages in activeMessages")
+            
             // Filter out connection request messages (handled in My Network tab)
             let filteredMessages = messages.filter { $0.type != .connectionRequest }
+            print("🔍 ChatViewController: handleNewMessages - after filtering: \(filteredMessages.count) messages")
             
-            // Hide loading on first load
-            if self.messages.isEmpty && !filteredMessages.isEmpty {
+            // Hide loading on initial load only (not for subsequent notifications)
+            if self.messages.isEmpty && !self.hasCompletedInitialLoad {
+                print("🔍 ChatViewController: handleNewMessages - initial load complete, hiding loading (filtered messages: \(filteredMessages.count))")
+                self.hasCompletedInitialLoad = true
                 self.hideLoading()
             }
             
             self.messages = filteredMessages
             tableView.reloadData()
             scrollToBottom(animated: true)
+        } else {
+            print("⚠️ ChatViewController: handleNewMessages - no messages found in activeMessages for conversationId: \(notificationConversationId)")
+            
+            // Hide loading if this is the initial load and no messages are found
+            if self.messages.isEmpty && !self.hasCompletedInitialLoad {
+                print("🔍 ChatViewController: handleNewMessages - initial load complete with no messages, hiding loading")
+                self.hasCompletedInitialLoad = true
+                self.hideLoading()
+            }
         }
     }
     
-    // MARK: - Data Loading
-    private func loadMessages() {
-        guard let conversationId = conversation?.id else { return }
+    // MARK: - BaseViewController Implementation
+    override func loadData(completion: (() -> Void)?) {
+        print("🔍 ChatViewController: loadData() called")
         
-        // Show loading on initial load
-        if messages.isEmpty {
-            showLoading()
+        guard let conversation = conversation else {
+            print("❌ ChatViewController: loadData() - conversation is nil!")
+            completion?()
+            return
         }
         
+        let conversationId = conversation.id
+        
+        print("✅ ChatViewController: loadData() - conversationId: \(conversationId)")
+        print("🔍 ChatViewController: Conversation details:")
+        print("   - ID: \(conversationId)")
+        print("   - Type: \(conversation.type)")
+        print("   - Participants: \(conversation.participants)")
+        print("   - Display Name: \(conversation.displayName ?? "nil")")
+        print("   - Current messages count: \(messages.count)")
+        
+        print("🔍 ChatViewController: Calling messagingManager.loadMessages(for: \(conversationId))")
         messagingManager.loadMessages(for: conversationId)
+        
+        // Complete after a short delay to allow messages to load
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            completion?()
+        }
     }
     
     private func showLoading() {
@@ -331,7 +412,7 @@ class ChatViewController: UIViewController {
             content: messageToSend
         ) { [weak self] result in
             if case .failure(let error) = result {
-                self?.showError(error.localizedDescription)
+                self?.showError(error)
                 // Restore text on failure
                 DispatchQueue.main.async {
                     self?.messageTextView.text = messageToSend
@@ -342,28 +423,24 @@ class ChatViewController: UIViewController {
     }
     
     @objc private func showAttachmentOptions() {
-        let actionSheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        let actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = [
+            (title: "Share Circle", style: .default, handler: { [weak self] in 
+                _ = self?.shareCircle()
+            }),
+            (title: "Share Place", style: .default, handler: { [weak self] in 
+                _ = self?.sharePlace()
+            }),
+            (title: "Share Location", style: .default, handler: { [weak self] in 
+                _ = self?.shareLocation()
+            })
+        ]
         
-        actionSheet.addAction(UIAlertAction(title: "Share Circle", style: .default) { [weak self] _ in
-            self?.shareCircle()
-        })
-        
-        actionSheet.addAction(UIAlertAction(title: "Share Place", style: .default) { [weak self] _ in
-            self?.sharePlace()
-        })
-        
-        actionSheet.addAction(UIAlertAction(title: "Share Location", style: .default) { [weak self] _ in
-            self?.shareLocation()
-        })
-        
-        actionSheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        
-        if let popover = actionSheet.popoverPresentationController {
-            popover.sourceView = attachButton
-            popover.sourceRect = attachButton.bounds
-        }
-        
-        present(actionSheet, animated: true)
+        AlertPresenter.showActionSheet(
+            actions: actions,
+            from: self,
+            sourceView: attachButton,
+            sourceRect: attachButton.bounds
+        )
     }
     
     @objc private func showConversationInfo() {
@@ -390,11 +467,6 @@ class ChatViewController: UIViewController {
         // TODO: Implement location sharing
     }
     
-    private func showError(_ message: String) {
-        let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
     
     private func deleteMessage(at indexPath: IndexPath) {
         let messageIndex = messages.count - 1 - indexPath.row
@@ -535,14 +607,12 @@ extension ChatViewController: ConnectionRequestMessageCellDelegate {
                 
                 // Show success message
                 DispatchQueue.main.async {
-                    let alert = UIAlertController(title: "Success", message: "Connection request accepted", preferredStyle: .alert)
-                    alert.addAction(UIAlertAction(title: "OK", style: .default))
-                    self?.present(alert, animated: true)
+                    self?.showSuccess("Connection request accepted")
                 }
                 
             case .failure(let error):
                 DispatchQueue.main.async {
-                    self?.showError("Failed to accept connection: \(error.localizedDescription)")
+                    self?.showError(error)
                 }
             }
         }
@@ -564,14 +634,12 @@ extension ChatViewController: ConnectionRequestMessageCellDelegate {
                 
                 // Show success message
                 DispatchQueue.main.async {
-                    let alert = UIAlertController(title: "Success", message: "Connection request declined", preferredStyle: .alert)
-                    alert.addAction(UIAlertAction(title: "OK", style: .default))
-                    self?.present(alert, animated: true)
+                    self?.showSuccess("Connection request declined")
                 }
                 
             case .failure(let error):
                 DispatchQueue.main.async {
-                    self?.showError("Failed to decline connection: \(error.localizedDescription)")
+                    self?.showError(error)
                 }
             }
         }

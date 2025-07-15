@@ -24,9 +24,10 @@
 1. Deploy backend to Google Cloud Run:
    ```bash
    cd backend
-   gcloud builds submit --tag gcr.io/circles-backend/circles-api
+   gcloud config set project circles-app-83b67
+   gcloud builds submit --tag gcr.io/circles-app-83b67/circles-api
    gcloud run deploy circles-backend \
-     --image gcr.io/circles-backend/circles-api \
+     --image gcr.io/circles-app-83b67/circles-api \
      --platform managed \
      --region us-central1 \
      --allow-unauthenticated

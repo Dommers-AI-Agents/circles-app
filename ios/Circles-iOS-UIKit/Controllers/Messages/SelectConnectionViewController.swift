@@ -4,7 +4,7 @@ protocol SelectConnectionViewControllerDelegate: AnyObject {
     func didSelectConnection(_ connection: Connection)
 }
 
-class SelectConnectionViewController: UIViewController {
+class SelectConnectionViewController: BaseViewController {
     
     // MARK: - UI Elements
     private let tableView: UITableView = {
@@ -27,19 +27,22 @@ class SelectConnectionViewController: UIViewController {
         return searchController.isActive && !(searchController.searchBar.text?.isEmpty ?? true)
     }
     
+    // MARK: - BaseViewController Configuration
+    override var showsLoadingIndicator: Bool { false }
+    override var loadsDataOnViewDidLoad: Bool { true }
+    override var emptyStateMessage: String? { "No connections available" }
+    
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
         setupView()
         setupSearchController()
         setupTableView()
-        loadConnections()
     }
     
     // MARK: - Setup
     private func setupView() {
-        view.backgroundColor = .systemBackground
-        title = "New Message"
+        setupNavigationBar(title: "New Message")
         
         navigationItem.leftBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .cancel,
@@ -71,12 +74,21 @@ class SelectConnectionViewController: UIViewController {
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: cellIdentifier)
     }
     
-    // MARK: - Data Loading
-    private func loadConnections() {
+    // MARK: - BaseViewController Implementation
+    override func loadData(completion: (() -> Void)?) {
         // Get connections from NetworkManager
         connections = NetworkManager.shared.connections
         filteredConnections = connections
+        
+        // Update empty state
+        if connections.isEmpty {
+            showEmptyState()
+        } else {
+            hideEmptyState()
+        }
+        
         tableView.reloadData()
+        completion?()
     }
     
     // MARK: - Actions

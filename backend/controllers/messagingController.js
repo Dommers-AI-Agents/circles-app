@@ -78,35 +78,50 @@ const getConversations = async (req, res) => {
           conversation.participantDetails = [];
         }
 
-        // If the last message is a connection request sent by the current user,
-        // we need to fetch the previous message to show in the conversation list
-        if (conversation.lastMessageType === 'connection_request') {
+        // Check if we need to find a better "last message" to display
+        // This handles cases where:
+        // 1. The last message is a connection request sent by current user (shouldn't show)
+        // 2. The last message is a connection request for a connection that's already accepted
+        if (conversation.lastMessageType === 'connection_request' || 
+            (conversation.lastMessage && conversation.lastMessage.includes('wants to connect'))) {
+          
           // Get the last few messages to find one that should be shown
           const messagesSnapshot = await db.collection(COLLECTIONS.MESSAGES)
             .where('conversationId', '==', conversation.id)
             .orderBy('createdAt', 'desc')
-            .limit(5)
+            .limit(10)
             .get();
           
           const messages = serializeQuerySnapshot(messagesSnapshot);
           
-          // Find the first message that isn't a connection request sent by current user
+          // Find the first message that should be visible in conversation list
           const visibleMessage = messages.find(msg => {
+            // Skip connection requests sent by current user
             if (msg.type === 'connection_request' && msg.senderId === userId) {
               return false;
             }
+            
+            // For connection request messages, check if connection is still pending
+            if (msg.type === 'connection_request') {
+              // TODO: Could add connection status check here for better filtering
+              // For now, show connection requests from others
+              return msg.senderId !== userId;
+            }
+            
             return true;
           });
           
           if (visibleMessage) {
-            conversation.lastMessage = visibleMessage.content;
+            conversation.lastMessage = visibleMessage.content || visibleMessage.displayContent;
             conversation.lastMessageTime = visibleMessage.createdAt;
             conversation.lastMessageType = visibleMessage.type;
+            conversation.lastMessageSenderId = visibleMessage.senderId;
           } else {
             // No visible messages, clear the last message info
             conversation.lastMessage = null;
             conversation.lastMessageTime = conversation.createdAt;
             conversation.lastMessageType = null;
+            conversation.lastMessageSenderId = null;
           }
         }
 
@@ -145,6 +160,9 @@ const getOrCreateDirectConversation = async (req, res) => {
     const currentUserId = req.user.uid;
     let targetUserId = req.params.userId;
     
+    console.log(`🔍 getOrCreateDirectConversation - Raw params: ${req.params.userId}`);
+    console.log(`🔍 getOrCreateDirectConversation - Current user ID: ${currentUserId}`);
+    
     // Normalize the target user ID to handle both simple and complex formats
     targetUserId = normalizeUserId(targetUserId);
     
@@ -152,6 +170,7 @@ const getOrCreateDirectConversation = async (req, res) => {
 
     // Check for self-conversation using normalized IDs
     if (isSameUser(currentUserId, targetUserId)) {
+      console.log(`❌ getOrCreateDirectConversation - Attempted to create conversation with self`);
       return res.status(400).json({
         success: false,
         message: 'Cannot create conversation with yourself'
@@ -169,20 +188,31 @@ const getOrCreateDirectConversation = async (req, res) => {
     }
 
     // Check if a direct conversation already exists between these users
+    console.log(`🔍 getOrCreateDirectConversation - Checking for existing conversation`);
     const existingQuery1 = await db.collection(COLLECTIONS.CONVERSATIONS)
       .where('type', '==', 'direct')
       .where('participants', 'array-contains', currentUserId)
       .get();
 
+    console.log(`🔍 getOrCreateDirectConversation - Found ${existingQuery1.size} conversations with current user`);
+
     let existingConversation = null;
     for (const doc of existingQuery1.docs) {
       const conv = doc.data();
+      console.log(`🔍 Checking conversation ${doc.id} with participants: ${JSON.stringify(conv.participants)}`);
+      
       // Check if any participant matches the target user (using normalized comparison)
-      const hasTargetUser = conv.participants.some(participantId => 
-        isSameUser(participantId, targetUserId)
-      );
+      const hasTargetUser = conv.participants.some(participantId => {
+        const matches = isSameUser(participantId, targetUserId);
+        if (matches) {
+          console.log(`✅ Found matching participant: ${participantId} matches ${targetUserId}`);
+        }
+        return matches;
+      });
+      
       if (hasTargetUser && conv.participants.length === 2) {
         existingConversation = { id: doc.id, ...conv };
+        console.log(`✅ Found existing conversation: ${doc.id}`);
         break;
       }
     }

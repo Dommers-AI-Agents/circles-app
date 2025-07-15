@@ -1,6 +1,6 @@
 import UIKit
 
-class SharedCircleDetailViewController: UIViewController {
+class SharedCircleDetailViewController: BaseViewController {
     
     // MARK: - Properties
     var circleShare: CircleShare?

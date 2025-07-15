@@ -195,13 +195,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                         } else {
                             // For other errors, show an alert first
                             DispatchQueue.main.async { [weak self] in
+                                guard let self = self else { return }
                                 let alert = UIAlertController(
                                     title: "Loading Error",
                                     message: "Unable to load your data. Please try again.",
                                     preferredStyle: .alert
                                 )
-                                alert.addAction(UIAlertAction(title: "Retry", style: .default) { [weak self] _ in
-                                    self?.updateRootViewController(isLoggedIn: true)
+                                alert.addAction(UIAlertAction(title: "Retry", style: .default) { _ in
+                                    self.updateRootViewController(isLoggedIn: true)
                                 })
                                 alert.addAction(UIAlertAction(title: "Logout", style: .destructive) { _ in
                                     AuthService.shared.logout()

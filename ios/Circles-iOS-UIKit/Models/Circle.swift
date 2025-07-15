@@ -15,12 +15,15 @@ struct Circle: Codable, Identifiable {
     let privacy: PrivacyLevel
     let allowNetworkEdit: Bool? // Allow network connections to edit this circle
     let category: CircleCategory
+    let customCategoryId: String? // Reference to user's custom category
     let location: String?
     let tags: [String]?
     let sharedWith: [String]?
     let followers: [String]?
-    let activeShareIds: [String]? // Changed to handle string array from API
     let activeShares: [CircleShare]? // Full share objects when populated
+    var activeShareIds: [String]? { // Computed property derived from activeShares
+        return activeShares?.map { $0.id }
+    }
     let shareSettings: ShareSettings?
     let isSharedWithMe: Bool? // True if this circle is shared with the current user
     let sharedBy: User? // Who shared this circle with me
@@ -35,7 +38,7 @@ struct Circle: Codable, Identifiable {
         case id = "_id"
         case name, description, coverImage, owner, ownerDetails
         case editors, editorsDetails
-        case places, placesCount, placesWithDetails, privacy, allowNetworkEdit, category
+        case places, placesCount, placesWithDetails, privacy, allowNetworkEdit, category, customCategoryId
         case location, tags, sharedWith, followers, activeShares, shareSettings
         case isSharedWithMe, sharedBy, myAccessLevel
         case createdAt, updatedAt, isNew, hasNewPlaces, newPlacesCount
@@ -58,6 +61,7 @@ struct Circle: Codable, Identifiable {
         privacy = try container.decode(PrivacyLevel.self, forKey: .privacy)
         allowNetworkEdit = try container.decodeIfPresent(Bool.self, forKey: .allowNetworkEdit)
         category = try container.decode(CircleCategory.self, forKey: .category)
+        customCategoryId = try container.decodeIfPresent(String.self, forKey: .customCategoryId)
         location = try container.decodeIfPresent(String.self, forKey: .location)
         tags = try container.decodeIfPresent([String].self, forKey: .tags)
         sharedWith = try container.decodeIfPresent([String].self, forKey: .sharedWith)
@@ -66,12 +70,9 @@ struct Circle: Codable, Identifiable {
         // Handle activeShares - can be either array of strings or array of CircleShare objects
         if let shareObjects = try? container.decodeIfPresent([CircleShare].self, forKey: .activeShares) {
             activeShares = shareObjects
-            activeShareIds = shareObjects.map { $0.id }
-        } else if let shareIds = try? container.decodeIfPresent([String].self, forKey: .activeShares) {
-            activeShareIds = shareIds
-            activeShares = nil
         } else {
-            activeShareIds = nil
+            // If we can't decode as CircleShare objects, just set to nil
+            // The activeShareIds computed property will also be nil in this case
             activeShares = nil
         }
         
@@ -90,7 +91,7 @@ struct Circle: Codable, Identifiable {
     init(id: String, name: String, description: String?, coverImage: String?, owner: String,
          ownerDetails: User?, editors: [String]?, editorsDetails: [User]?,
          places: [String]?, placesCount: Int?, placesWithDetails: [Place]?,
-         privacy: PrivacyLevel, allowNetworkEdit: Bool?, category: CircleCategory, location: String?,
+         privacy: PrivacyLevel, allowNetworkEdit: Bool?, category: CircleCategory, customCategoryId: String? = nil, location: String?,
          tags: [String]?, sharedWith: [String]?, followers: [String]?,
          activeShares: [CircleShare]?, shareSettings: ShareSettings?,
          isSharedWithMe: Bool?, sharedBy: User?, myAccessLevel: AccessLevel?,
@@ -110,12 +111,12 @@ struct Circle: Codable, Identifiable {
         self.privacy = privacy
         self.allowNetworkEdit = allowNetworkEdit
         self.category = category
+        self.customCategoryId = customCategoryId
         self.location = location
         self.tags = tags
         self.sharedWith = sharedWith
         self.followers = followers
         self.activeShares = activeShares
-        self.activeShareIds = activeShares?.map { $0.id }
         self.shareSettings = shareSettings
         self.isSharedWithMe = isSharedWithMe
         self.sharedBy = sharedBy

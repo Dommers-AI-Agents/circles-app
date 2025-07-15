@@ -1,11 +1,10 @@
 import UIKit
 
-class SuggestionDetailViewController: UIViewController {
+class SuggestionDetailViewController: BaseViewController {
     
     // MARK: - Properties
     private let suggestion: Suggestion
     private var comments: [Comment] = []
-    private let refreshControl = UIRefreshControl()
     
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
@@ -240,8 +239,9 @@ class SuggestionDetailViewController: UIViewController {
         // Profile image
         if let profileUrl = suggestion.userDetails?.profilePicture {
             ImageService.shared.loadImage(from: profileUrl) { [weak self] image in
+                guard let self = self else { return }
                 DispatchQueue.main.async {
-                    self?.profileImageView.image = image ?? UIImage(systemName: "person.circle.fill")
+                    self.profileImageView.image = image ?? UIImage(systemName: "person.circle.fill")
                 }
             }
         }
@@ -249,14 +249,16 @@ class SuggestionDetailViewController: UIViewController {
     
     // MARK: - Data Loading
     private func loadComments() {
-        SuggestionService.shared.fetchComments(for: suggestion.id) { [weak self] result in
+        let suggestionId = suggestion.id
+        SuggestionService.shared.fetchComments(for: suggestionId) { [weak self] result in
+            guard let self = self else { return }
             DispatchQueue.main.async {
-                self?.refreshControl.endRefreshing()
+                self.refreshControl.endRefreshing()
                 
                 switch result {
                 case .success(let comments):
-                    self?.comments = comments
-                    self?.updateTableViewHeight()
+                    self.comments = comments
+                    self.updateTableViewHeight()
                 case .failure(let error):
                     print("Error loading comments: \(error)")
                 }
@@ -264,7 +266,7 @@ class SuggestionDetailViewController: UIViewController {
         }
     }
     
-    @objc private func refreshData() {
+    @objc override func refreshData() {
         loadComments()
     }
     
@@ -289,28 +291,27 @@ class SuggestionDetailViewController: UIViewController {
         sendButton.isEnabled = false
         
         SuggestionService.shared.addComment(to: suggestion.id, message: text) { [weak self] result in
+            guard let self = self else { return }
             DispatchQueue.main.async {
                 switch result {
                 case .success:
                     // Clear text field
-                    self?.commentTextField.text = ""
-                    self?.textFieldDidChange()
+                    self.commentTextField.text = ""
+                    self.textFieldDidChange()
                     
                     // Dismiss keyboard
-                    self?.commentTextField.resignFirstResponder()
+                    self.commentTextField.resignFirstResponder()
                     
                     // Reload comments
-                    self?.loadComments()
+                    self.loadComments()
                     
                 case .failure(let error):
                     print("Error posting comment: \(error)")
                     // Re-enable send button on error
-                    self?.sendButton.isEnabled = true
+                    self.sendButton.isEnabled = true
                     
                     // Show error alert
-                    let alert = UIAlertController(title: "Error", message: "Failed to post comment", preferredStyle: .alert)
-                    alert.addAction(UIAlertAction(title: "OK", style: .default))
-                    self?.present(alert, animated: true)
+                    self.showError("Failed to post comment")
                 }
             }
         }
@@ -472,8 +473,9 @@ class CommentTableViewCell: UITableViewCell {
         // Profile image
         if let profileUrl = comment.userDetails?.profilePicture {
             ImageService.shared.loadImage(from: profileUrl) { [weak self] image in
+                guard let self = self else { return }
                 DispatchQueue.main.async {
-                    self?.profileImageView.image = image ?? UIImage(systemName: "person.circle.fill")
+                    self.profileImageView.image = image ?? UIImage(systemName: "person.circle.fill")
                 }
             }
         }

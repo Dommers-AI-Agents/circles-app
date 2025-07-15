@@ -1,6 +1,6 @@
 import UIKit
 
-class SplashScreenViewController: UIViewController {
+class SplashScreenViewController: BaseViewController {
     
     // MARK: - Properties
     private var progressHandler: ((Double, String) -> Void)?
@@ -91,7 +91,10 @@ class SplashScreenViewController: UIViewController {
         return layer
     }()
     
-    // MARK: - Lifecycle
+    // MARK: - BaseViewController Overrides
+    override var showsLoadingIndicator: Bool { false }
+    override var loadsDataOnViewDidLoad: Bool { false }
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()

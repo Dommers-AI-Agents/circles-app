@@ -19,6 +19,7 @@ class CircleSelectionViewController: UIViewController {
     private var circles: [Circle] = []
     private var excludedCircleId: String?
     private var isCreatingNewCircle = false
+    private var customTitle: String?
     
     // MARK: - UI Components
     
@@ -26,7 +27,7 @@ class CircleSelectionViewController: UIViewController {
         let navBar = UINavigationBar()
         navBar.translatesAutoresizingMaskIntoConstraints = false
         
-        let navItem = UINavigationItem(title: "Select Circle")
+        let navItem = UINavigationItem(title: customTitle ?? "Select Circle")
         
         let cancelButton = UIBarButtonItem(barButtonSystemItem: .cancel, target: self, action: #selector(cancelTapped))
         navItem.leftBarButtonItem = cancelButton
@@ -64,8 +65,9 @@ class CircleSelectionViewController: UIViewController {
     
     // MARK: - Initialization
     
-    init(excludedCircleId: String? = nil) {
+    init(excludedCircleId: String? = nil, customTitle: String? = nil) {
         self.excludedCircleId = excludedCircleId
+        self.customTitle = customTitle
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .formSheet
     }
@@ -118,7 +120,7 @@ class CircleSelectionViewController: UIViewController {
         tableView.isHidden = true
         emptyStateLabel.isHidden = true
         
-        CircleService.shared.fetchUserCircles { [weak self] (result: Result<[Circle], Error>) in
+        CircleService.shared.fetchUserCircles { [weak self] result in
             guard let self = self else { return }
             
             DispatchQueue.main.async {
@@ -160,15 +162,6 @@ class CircleSelectionViewController: UIViewController {
         dismiss(animated: true)
     }
     
-    private func showError(_ error: Error) {
-        let alert = UIAlertController(
-            title: "Error",
-            message: error.localizedDescription,
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
     
     private func createNewCircle() {
         let alert = UIAlertController(title: "New Circle", message: "Enter a name for the new circle", preferredStyle: .alert)

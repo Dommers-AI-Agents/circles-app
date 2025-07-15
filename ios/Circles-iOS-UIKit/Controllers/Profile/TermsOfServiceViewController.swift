@@ -1,6 +1,6 @@
 import UIKit
 
-class TermsOfServiceViewController: UIViewController {
+class TermsOfServiceViewController: BaseViewController {
     
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
@@ -27,6 +27,11 @@ class TermsOfServiceViewController: UIViewController {
     }()
     
     // MARK: - Lifecycle
+    // MARK: - BaseViewController Configuration
+    override var showsLoadingIndicator: Bool { false }
+    override var enablesPullToRefresh: Bool { false }
+    override var loadsDataOnViewDidLoad: Bool { false }
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
@@ -35,9 +40,7 @@ class TermsOfServiceViewController: UIViewController {
     
     // MARK: - UI Setup
     private func setupUI() {
-        view.backgroundColor = Constants.Colors.background
-        title = "Terms of Service"
-        navigationItem.largeTitleDisplayMode = .never
+        setupNavigationBar(title: "Terms of Service", largeTitleMode: .never)
         
         // Add subviews
         view.addSubview(scrollView)

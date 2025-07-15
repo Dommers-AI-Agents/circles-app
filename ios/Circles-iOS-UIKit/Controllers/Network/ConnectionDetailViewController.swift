@@ -1,9 +1,24 @@
 import UIKit
 
-class ConnectionDetailViewController: UIViewController {
+class ConnectionDetailViewController: BaseViewController {
     
     // MARK: - Properties
     var connection: Connection?
+    
+    // MARK: - Helper Methods
+    /// Helper function to create a type-safe completion handler for API requests
+    private func createAPICompletion<T>(_ completion: @escaping (Result<T, Error>) -> Void) -> (Result<T, APIError>) -> Void {
+        return { [weak self] result in
+            guard let self = self else { return }
+            
+            switch result {
+            case .success(let response):
+                completion(.success(response))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
     
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
@@ -55,53 +70,27 @@ class ConnectionDetailViewController: UIViewController {
         return label
     }()
     
-    private let messageButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Message", for: .normal)
-        button.setImage(UIImage(systemName: "message.fill"), for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
-        button.tintColor = .white
-        button.backgroundColor = Constants.Colors.primary
-        button.layer.cornerRadius = 8
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 0)
+    private lazy var messageButton: UIButton = {
+        let button = UIButton.primaryButton(title: "Message")
+        button.addTarget(self, action: #selector(messageButtonTapped), for: .touchUpInside)
         return button
     }()
     
-    private let followButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Follow", for: .normal)
-        button.setImage(UIImage(systemName: "plus"), for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
-        button.tintColor = Constants.Colors.primary
-        button.backgroundColor = .clear
-        button.layer.borderWidth = 1
-        button.layer.borderColor = Constants.Colors.primary.cgColor
-        button.layer.cornerRadius = 8
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 0)
+    private lazy var followButton: UIButton = {
+        let button = UIButton.secondaryButton(title: "Follow")
+        button.addTarget(self, action: #selector(followButtonTapped), for: .touchUpInside)
         return button
     }()
     
-    private let connectButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Connect", for: .normal)
-        button.setImage(UIImage(systemName: "person.badge.plus"), for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
-        button.tintColor = .white
-        button.backgroundColor = Constants.Colors.secondary
-        button.layer.cornerRadius = 8
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 0)
+    private lazy var connectButton: UIButton = {
+        let button = UIButton.secondaryButton(title: "Connect")
+        button.addTarget(self, action: #selector(connectButtonTapped), for: .touchUpInside)
         return button
     }()
-
-    private let removeButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Remove Connection", for: .normal)
-        button.setTitleColor(.systemRed, for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
-        button.translatesAutoresizingMaskIntoConstraints = false
+    
+    private lazy var removeButton: UIButton = {
+        let button = UIButton.dangerButton(title: "Remove Connection")
+        button.addTarget(self, action: #selector(removeButtonTapped), for: .touchUpInside)
         return button
     }()
     
@@ -239,7 +228,7 @@ class ConnectionDetailViewController: UIViewController {
         messageButton.addTarget(self, action: #selector(messageButtonTapped), for: .touchUpInside)
         followButton.addTarget(self, action: #selector(followButtonTapped), for: .touchUpInside)
         connectButton.addTarget(self, action: #selector(connectButtonTapped), for: .touchUpInside)
-        removeButton.addTarget(self, action: #selector(removeConnectionTapped), for: .touchUpInside)
+        removeButton.addTarget(self, action: #selector(removeButtonTapped), for: .touchUpInside)
         
         // Setup collection view
         circlesCollectionView.delegate = self
@@ -306,19 +295,20 @@ class ConnectionDetailViewController: UIViewController {
             method: .get,
             requiresAuth: true
         ) { [weak self] (result: Result<UserCirclesResponse, APIError>) in
+            guard let self = self else { return }
             DispatchQueue.main.async {
                 switch result {
                 case .success(let response):
-                    self?.connectionCircles = response.data.circles
-                    self?.circlesCollectionView.reloadData()
-                    self?.noCirclesLabel.isHidden = !response.data.circles.isEmpty
-                    self?.circlesCollectionView.isHidden = response.data.circles.isEmpty
+                    self.connectionCircles = response.data.circles
+                    self.circlesCollectionView.reloadData()
+                    self.noCirclesLabel.isHidden = !response.data.circles.isEmpty
+                    self.circlesCollectionView.isHidden = response.data.circles.isEmpty
                 case .failure(let error):
                     print("Failed to load connection circles: \(error)")
-                    self?.connectionCircles = []
-                    self?.circlesCollectionView.reloadData()
-                    self?.noCirclesLabel.isHidden = false
-                    self?.circlesCollectionView.isHidden = true
+                    self.connectionCircles = []
+                    self.circlesCollectionView.reloadData()
+                    self.noCirclesLabel.isHidden = false
+                    self.circlesCollectionView.isHidden = true
                     
                     // Show specific error message
                     let errorMessage: String
@@ -335,7 +325,7 @@ class ConnectionDetailViewController: UIViewController {
                         errorMessage = "Failed to load circles: \(error.localizedDescription)"
                     }
                     
-                    self?.showAlert(title: "Error", message: errorMessage)
+                    self.showError(errorMessage)
                 }
             }
         }
@@ -386,14 +376,17 @@ class ConnectionDetailViewController: UIViewController {
             endpoint: endpoint,
             method: .post,
             requiresAuth: true
-        ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
+        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
+            guard let self = self else { return }
             DispatchQueue.main.async {
                 switch result {
                 case .success:
-                    self?.isFollowing.toggle()
-                    self?.updateButtonVisibility()
+                    self.isFollowing.toggle()
+                    self.updateButtonVisibility()
                 case .failure(let error):
-                    self?.showAlert(title: "Error", message: "Failed to \(self?.isFollowing == true ? "unfollow" : "follow") user: \(error.localizedDescription)")
+                    self.showErrorWithRetry(error) {
+                        self.followButtonTapped()
+                    }
                 }
             }
         }
@@ -406,14 +399,17 @@ class ConnectionDetailViewController: UIViewController {
         
         // Send connection request
         NetworkManager.shared.sendConnectionRequest(to: userId) { [weak self] result in
+            guard let self = self else { return }
             DispatchQueue.main.async {
                 switch result {
                 case .success:
-                    self?.showAlert(title: "Success", message: "Connection request sent!")
-                    // Update button visibility
-                    self?.updateButtonVisibility()
+                    AlertPresenter.showSuccess(message: "Connection request sent!", from: self) {
+                        self.updateButtonVisibility()
+                    }
                 case .failure(let error):
-                    self?.showAlert(title: "Error", message: "Failed to send connection request: \(error.localizedDescription)")
+                    self.showErrorWithRetry(error) {
+                        self.connectButtonTapped()
+                    }
                 }
             }
         }
@@ -426,43 +422,52 @@ class ConnectionDetailViewController: UIViewController {
         
         // Create or get conversation
         MessagingManager.shared.createOrGetDirectConversation(with: userId) { [weak self] result in
+            guard let self = self else { return }
             switch result {
             case .success(let conversation):
                 DispatchQueue.main.async {
                     let chatVC = ChatViewController()
                     chatVC.conversation = conversation
-                    self?.navigationController?.pushViewController(chatVC, animated: true)
+                    self.navigationController?.pushViewController(chatVC, animated: true)
                 }
             case .failure(let error):
-                self?.showAlert(title: "Error", message: "Failed to start conversation: \(error.localizedDescription)")
+                self.showErrorWithRetry(error) {
+                    self.messageButtonTapped()
+                }
             }
         }
     }
     
-    @objc private func removeConnectionTapped() {
-        let alert = UIAlertController(
+    @objc private func removeButtonTapped() {
+        AlertPresenter.showConfirmation(
             title: "Remove Connection",
             message: "Are you sure you want to remove this connection?",
-            preferredStyle: .alert
+            confirmTitle: "Remove",
+            isDestructive: true,
+            from: self,
+            onConfirm: { [weak self] in
+                guard let self = self else { return }
+                self.removeConnection()
+            }
         )
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Remove", style: .destructive) { [weak self] _ in
-            self?.removeConnection()
-        })
-        
-        present(alert, animated: true)
     }
     
     private func removeConnection() {
         guard let connectionId = connection?.id else { return }
         
+        let loadingAlert = AlertPresenter.showLoading(message: "Removing connection...", from: self)
+        
         NetworkManager.shared.removeConnection(connectionId: connectionId) { [weak self] error in
+            guard let self = self else { return }
             DispatchQueue.main.async {
-                if let error = error {
-                    self?.showAlert(title: "Error", message: "Failed to remove connection: \\(error.localizedDescription)")
-                } else {
-                    self?.navigationController?.popViewController(animated: true)
+                loadingAlert.dismiss(animated: true) {
+                    if let error = error {
+                        self.showErrorWithRetry(error) {
+                            self.removeConnection()
+                        }
+                    } else {
+                        self.navigationController?.popViewController(animated: true)
+                    }
                 }
             }
         }
@@ -477,11 +482,6 @@ class ConnectionDetailViewController: UIViewController {
         }
     }
     
-    private func showAlert(title: String, message: String) {
-        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
 }
 
 // MARK: - UICollectionViewDataSource

@@ -8,7 +8,9 @@ const {
   deletePlace,
   searchPlaces,
   refreshPlaceFromGoogle,
+  updatePlaceAddress,
   likePlace,
+  getPlaceLikes,
   getPlaceComments,
   addPlaceComment,
   deletePlaceComment,
@@ -35,8 +37,14 @@ router.route('/search')
 router.route('/:id/refresh-google')
   .post(refreshPlaceFromGoogle);
 
+router.route('/:id/update-address')
+  .put(updatePlaceAddress);
+
 router.route('/:id/like')
   .post(likePlace);
+
+router.route('/:id/likes')
+  .get(getPlaceLikes);
 
 router.route('/:id/comments')
   .get(getPlaceComments)

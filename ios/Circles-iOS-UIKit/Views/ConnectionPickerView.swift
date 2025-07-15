@@ -408,7 +408,7 @@ private class ConnectionChipView: UIView {
     var onRemove: (() -> Void)?
     
     private let label = UILabel()
-    private let removeButton = UIButton(type: .custom)
+    private let removeButton = UIButton.iconButton(systemName: "xmark.circle.fill", pointSize: 16)
     
     init(user: User) {
         self.user = user
@@ -429,10 +429,8 @@ private class ConnectionChipView: UIView {
         label.textColor = Constants.Colors.primary
         label.translatesAutoresizingMaskIntoConstraints = false
         
-        removeButton.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
         removeButton.tintColor = Constants.Colors.primary
         removeButton.addTarget(self, action: #selector(removeTapped), for: .touchUpInside)
-        removeButton.translatesAutoresizingMaskIntoConstraints = false
         
         addSubview(label)
         addSubview(removeButton)

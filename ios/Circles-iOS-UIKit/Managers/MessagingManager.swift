@@ -222,30 +222,18 @@ class MessagingManager {
         }
     }
     
-    func createOrGetDirectConversation(with userId: String, completion: @escaping (Result<Conversation, Error>) -> Void) {
-        messagingService.getOrCreateDirectConversation(with: userId) { [weak self] result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let conversation):
-                    // Add to conversations if not already present
-                    if !(self?.conversations.contains(where: { $0.id == conversation.id }) ?? false) {
-                        self?.conversations.insert(conversation, at: 0)
-                    }
-                    completion(.success(conversation))
-                case .failure(let error):
-                    completion(.failure(error))
-                }
-            }
-        }
-    }
     
     // MARK: - Messages
     
     func loadMessages(for conversationId: String, limit: Int = 50, before: String? = nil, showLoading: Bool = true) {
+        print("🔍 MessagingManager: loadMessages called for conversationId: \(conversationId)")
+        print("🔍 MessagingManager: limit: \(limit), before: \(before ?? "nil"), showLoading: \(showLoading)")
+        
         if showLoading {
             isLoadingMessages = true
         }
         
+        print("🔍 MessagingManager: Calling messagingService.fetchMessages...")
         messagingService.fetchMessages(conversationId: conversationId, limit: limit, before: before) { [weak self] result in
             DispatchQueue.main.async {
                 if showLoading {
@@ -254,16 +242,30 @@ class MessagingManager {
                 
                 switch result {
                 case .success(let messages):
+                    print("✅ MessagingManager: Successfully fetched \(messages.count) messages for conversationId: \(conversationId)")
+                    
                     if before == nil {
                         // Initial load or refresh
+                        print("🔍 MessagingManager: Initial load - storing \(messages.count) messages")
                         self?.activeMessages[conversationId] = messages
                     } else {
                         // Pagination - append older messages
                         var existingMessages = self?.activeMessages[conversationId] ?? []
+                        print("🔍 MessagingManager: Pagination - appending \(messages.count) messages to existing \(existingMessages.count)")
                         existingMessages.append(contentsOf: messages)
                         self?.activeMessages[conversationId] = existingMessages
                     }
+                    
+                    // Post notification that new messages were received
+                    print("🔍 MessagingManager: Posting NewMessagesReceived notification")
+                    NotificationCenter.default.post(
+                        name: Notification.Name("NewMessagesReceived"),
+                        object: nil,
+                        userInfo: ["conversationId": conversationId]
+                    )
+                    
                 case .failure(let error):
+                    print("❌ MessagingManager: Failed to fetch messages: \(error.localizedDescription)")
                     self?.error = error.localizedDescription
                 }
             }
@@ -489,6 +491,41 @@ class MessagingManager {
                     
                 case .failure(let error):
                     self?.error = error.localizedDescription
+                    completion(.failure(error))
+                }
+            }
+        }
+    }
+    
+    // MARK: - Create or Get Direct Conversation
+    
+    func createOrGetDirectConversation(with userId: String, completion: @escaping (Result<Conversation, Error>) -> Void) {
+        print("🔍 MessagingManager: createOrGetDirectConversation called with userId: \(userId)")
+        
+        messagingService.getOrCreateDirectConversation(with: userId) { [weak self] result in
+            DispatchQueue.main.async {
+                print("🔍 MessagingManager: Received response from getOrCreateDirectConversation")
+                
+                switch result {
+                case .success(let conversation):
+                    print("✅ MessagingManager: Successfully got/created conversation: \(conversation.id)")
+                    
+                    // Add to conversations if not already present
+                    if let existingIndex = self?.conversations.firstIndex(where: { $0.id == conversation.id }) {
+                        print("🔍 MessagingManager: Updating existing conversation in list")
+                        self?.conversations[existingIndex] = conversation
+                    } else {
+                        print("🔍 MessagingManager: Adding new conversation to list")
+                        self?.conversations.insert(conversation, at: 0)
+                    }
+                    
+                    // Update cache to include the new/updated conversation
+                    self?.conversationsCache = self?.conversations
+                    self?.conversationsCacheTime = Date()
+                    
+                    completion(.success(conversation))
+                case .failure(let error):
+                    print("❌ MessagingManager: Failed to create/get conversation: \(error)")
                     completion(.failure(error))
                 }
             }

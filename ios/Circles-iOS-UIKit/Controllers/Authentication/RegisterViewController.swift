@@ -1,7 +1,7 @@
 import UIKit
 import AuthenticationServices
 
-class RegisterViewController: UIViewController {
+class RegisterViewController: BaseViewController {
     
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
@@ -79,16 +79,7 @@ class RegisterViewController: UIViewController {
         return label
     }()
     
-    private let registerButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Create Account", for: .normal)
-        button.setTitleColor(.white, for: .normal)
-        button.backgroundColor = Constants.Colors.primary
-        button.layer.cornerRadius = 8
-        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.large, weight: .semibold)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private lazy var registerButton = UIButton.primaryButton(title: "Create Account")
     
     private let orLabel: UILabel = {
         let label = UILabel()
@@ -101,24 +92,6 @@ class RegisterViewController: UIViewController {
     }()
     
     private let socialStackView: UIStackView = {
-        let stackView = UIStackView()
-        stackView.axis = .vertical
-        stackView.distribution = .fillEqually
-        stackView.spacing = Constants.Spacing.medium
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        return stackView
-    }()
-    
-    private let topSocialStackView: UIStackView = {
-        let stackView = UIStackView()
-        stackView.axis = .horizontal
-        stackView.distribution = .fillEqually
-        stackView.spacing = Constants.Spacing.medium
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        return stackView
-    }()
-    
-    private let bottomSocialStackView: UIStackView = {
         let stackView = UIStackView()
         stackView.axis = .horizontal
         stackView.distribution = .fillEqually
@@ -134,65 +107,30 @@ class RegisterViewController: UIViewController {
         return button
     }()
     
-    private let googleSignInButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Sign up with Google", for: .normal)
-        button.setTitleColor(.white, for: .normal)
-        button.backgroundColor = UIColor(red: 66/255, green: 133/255, blue: 244/255, alpha: 1.0)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .medium)
-        button.layer.cornerRadius = 8
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-    
-    private let facebookSignInButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Sign up with Facebook", for: .normal)
-        button.setTitleColor(.white, for: .normal)
-        button.backgroundColor = UIColor(red: 24/255, green: 119/255, blue: 242/255, alpha: 1.0) // Facebook Blue
-        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .medium)
-        button.layer.cornerRadius = 8
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-    
-    private let linkedInSignInButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Sign up with LinkedIn", for: .normal)
-        button.setTitleColor(.white, for: .normal)
-        button.backgroundColor = UIColor(red: 0/255, green: 119/255, blue: 181/255, alpha: 1.0) // LinkedIn Blue
-        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .medium)
-        button.layer.cornerRadius = 8
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-    
-    private let activityIndicator: UIActivityIndicatorView = {
-        let indicator = UIActivityIndicatorView(style: .medium)
-        indicator.hidesWhenStopped = true
-        indicator.translatesAutoresizingMaskIntoConstraints = false
-        return indicator
-    }()
+    private lazy var googleSignInButton = UIButton.googleSignInButton()
+    private lazy var facebookSignInButton = UIButton.facebookSignInButton()
     
     // MARK: - Properties
     private var isRegistering = false {
         didSet {
-            registerButton.isEnabled = !isRegistering
-            appleSignInButton.isEnabled = !isRegistering
-            googleSignInButton.isEnabled = !isRegistering
-            facebookSignInButton.isEnabled = !isRegistering
-            linkedInSignInButton.isEnabled = !isRegistering
-            emailTextField.isEnabled = !isRegistering
-            passwordTextField.isEnabled = !isRegistering
-            confirmPasswordTextField.isEnabled = !isRegistering
+            let buttons = [registerButton, appleSignInButton, googleSignInButton, facebookSignInButton]
+            buttons.forEach { $0.isEnabled = !isRegistering }
+            
+            let textFields = [emailTextField, passwordTextField, confirmPasswordTextField]
+            textFields.forEach { $0.isEnabled = !isRegistering }
             
             if isRegistering {
-                activityIndicator.startAnimating()
+                registerButton.setLoading(true)
             } else {
-                activityIndicator.stopAnimating()
+                registerButton.setLoading(false)
+                registerButton.setTitle("Create Account", for: .normal)
             }
         }
     }
+    
+    // MARK: - BaseViewController Configuration
+    override var showsLoadingIndicator: Bool { false }
+    override var loadsDataOnViewDidLoad: Bool { false }
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
@@ -203,40 +141,30 @@ class RegisterViewController: UIViewController {
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        navigationController?.navigationBar.prefersLargeTitles = true
-        title = "Register"
+        setupNavigationBar(title: "Register", largeTitleMode: .automatic)
     }
     
     // MARK: - UI Setup
     private func setupUI() {
-        view.backgroundColor = Constants.Colors.background
-        
-        // Configure social stack views
-        topSocialStackView.addArrangedSubview(appleSignInButton)
-        topSocialStackView.addArrangedSubview(googleSignInButton)
-        
-        bottomSocialStackView.addArrangedSubview(facebookSignInButton)
-        bottomSocialStackView.addArrangedSubview(linkedInSignInButton)
-        
-        socialStackView.addArrangedSubview(topSocialStackView)
-        socialStackView.addArrangedSubview(bottomSocialStackView)
+        // Configure social stack view
+        socialStackView.addArrangedSubview(appleSignInButton)
+        socialStackView.addArrangedSubview(googleSignInButton)
+        socialStackView.addArrangedSubview(facebookSignInButton)
         
         // Add subviews
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
         
-        contentView.addSubview(titleLabel)
-        contentView.addSubview(subtitleLabel)
-        contentView.addSubview(emailTextField)
-        contentView.addSubview(passwordTextField)
-        contentView.addSubview(confirmPasswordTextField)
-        contentView.addSubview(passwordRequirementLabel)
-        contentView.addSubview(registerButton)
-        contentView.addSubview(orLabel)
-        contentView.addSubview(socialStackView)
-        contentView.addSubview(activityIndicator)
+        let subviews = [titleLabel, subtitleLabel, emailTextField, passwordTextField, 
+                       confirmPasswordTextField, passwordRequirementLabel, registerButton, 
+                       orLabel, socialStackView]
+        subviews.forEach { contentView.addSubview($0) }
         
-        // Layout constraints
+        setupConstraints()
+        setupTextFieldDelegates()
+    }
+    
+    private func setupConstraints() {
         NSLayoutConstraint.activate([
             // Scroll view
             scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
@@ -251,35 +179,35 @@ class RegisterViewController: UIViewController {
             contentView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
             contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
             
-            // Title label
+            // Title
             titleLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Constants.Spacing.large),
             titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             
-            // Subtitle label
+            // Subtitle
             subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: Constants.Spacing.small),
             subtitleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             subtitleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             
-            // Email text field
+            // Email field
             emailTextField.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: Constants.Spacing.xlarge),
             emailTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             emailTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             emailTextField.heightAnchor.constraint(equalToConstant: 50),
             
-            // Password text field
+            // Password field
             passwordTextField.topAnchor.constraint(equalTo: emailTextField.bottomAnchor, constant: Constants.Spacing.medium),
             passwordTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             passwordTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             passwordTextField.heightAnchor.constraint(equalToConstant: 50),
             
-            // Confirm password text field
+            // Confirm password field
             confirmPasswordTextField.topAnchor.constraint(equalTo: passwordTextField.bottomAnchor, constant: Constants.Spacing.medium),
             confirmPasswordTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             confirmPasswordTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             confirmPasswordTextField.heightAnchor.constraint(equalToConstant: 50),
             
-            // Password requirement label
+            // Password requirement
             passwordRequirementLabel.topAnchor.constraint(equalTo: confirmPasswordTextField.bottomAnchor, constant: Constants.Spacing.small),
             passwordRequirementLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             passwordRequirementLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
@@ -288,63 +216,54 @@ class RegisterViewController: UIViewController {
             registerButton.topAnchor.constraint(equalTo: passwordRequirementLabel.bottomAnchor, constant: Constants.Spacing.large),
             registerButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             registerButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            registerButton.heightAnchor.constraint(equalToConstant: 50),
             
             // Or label
             orLabel.topAnchor.constraint(equalTo: registerButton.bottomAnchor, constant: Constants.Spacing.medium),
             orLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             
-            // Social sign-in stack view
+            // Social stack view
             socialStackView.topAnchor.constraint(equalTo: orLabel.bottomAnchor, constant: Constants.Spacing.medium),
             socialStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             socialStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            socialStackView.heightAnchor.constraint(equalToConstant: 110), // Height for 2 rows of buttons
-            
-            // Activity indicator
-            activityIndicator.topAnchor.constraint(equalTo: socialStackView.bottomAnchor, constant: Constants.Spacing.medium),
-            activityIndicator.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            activityIndicator.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
+            socialStackView.heightAnchor.constraint(equalToConstant: 50),
+            socialStackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
         ])
-        
-        // Setup text field delegates
-        emailTextField.delegate = self
-        passwordTextField.delegate = self
-        confirmPasswordTextField.delegate = self
+    }
+    
+    private func setupTextFieldDelegates() {
+        [emailTextField, passwordTextField, confirmPasswordTextField].forEach {
+            $0.delegate = self
+        }
     }
     
     private func setupActions() {
         registerButton.addTarget(self, action: #selector(registerButtonTapped), for: .touchUpInside)
-        
-        // Social login buttons
         appleSignInButton.addTarget(self, action: #selector(appleSignInButtonTapped), for: .touchUpInside)
         googleSignInButton.addTarget(self, action: #selector(googleSignInButtonTapped), for: .touchUpInside)
         facebookSignInButton.addTarget(self, action: #selector(facebookSignInButtonTapped), for: .touchUpInside)
-        linkedInSignInButton.addTarget(self, action: #selector(linkedInSignInButtonTapped), for: .touchUpInside)
         
-        // Add gesture recognizer to dismiss keyboard when tapping on the view
+        // Keyboard handling
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
         view.addGestureRecognizer(tapGesture)
         
-        // Setup keyboard notifications
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillShow), name: UIResponder.keyboardWillShowNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillHide), name: UIResponder.keyboardWillHideNotification, object: nil)
     }
     
     // MARK: - Actions
     @objc private func registerButtonTapped() {
-        // Validate inputs
         guard let email = emailTextField.text, !email.isEmpty, isValidEmail(email) else {
-            presentAlert(title: "Error", message: "Please enter a valid email address")
+            showError("Please enter a valid email address")
             return
         }
         
         guard let password = passwordTextField.text, !password.isEmpty, password.count >= 6 else {
-            presentAlert(title: "Error", message: "Password must be at least 6 characters")
+            showError("Password must be at least 6 characters")
             return
         }
         
         guard let confirmPassword = confirmPasswordTextField.text, confirmPassword == password else {
-            presentAlert(title: "Error", message: "Passwords do not match")
+            showError("Passwords do not match")
             return
         }
         
@@ -362,115 +281,30 @@ class RegisterViewController: UIViewController {
                 switch result {
                 case .success(let user):
                     print("Successfully registered user: \(user.displayName)")
-                    // Show email verification message
                     self?.showEmailVerificationMessage(email: email)
                     
                 case .failure(let error):
-                    self?.presentAlert(title: "Registration Failed", message: error.localizedDescription)
+                    self?.showError(error.localizedDescription)
                 }
             }
         }
     }
     
-    private func showEmailVerificationMessage(email: String) {
-        let alert = UIAlertController(
-            title: "Verify Your Email",
-            message: "A verification email has been sent to \(email). Please check your inbox and follow the link to verify your account before logging in.",
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
-            // Navigate back to login screen
-            self?.navigationController?.popViewController(animated: true)
-        })
-        present(alert, animated: true)
-    }
-    
-    private func showSuccessMessage() {
-        let alert = UIAlertController(
-            title: "Registration Successful",
-            message: "Welcome to Circles! You can now log in with your account.",
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "Continue", style: .default) { [weak self] _ in
-            // Navigate back to login screen
-            self?.navigationController?.popViewController(animated: true)
-        })
-        present(alert, animated: true)
-    }
-    
     @objc private func appleSignInButtonTapped() {
-        isRegistering = true
-        
-        SocialAuthService.shared.signInWithApple(from: self) { [weak self] result in
-            DispatchQueue.main.async {
-                self?.isRegistering = false
-                
-                switch result {
-                case .success(let user):
-                    print("Successfully registered with Apple: \(user.displayName)")
-                    // Show success message and return to login
-                    self?.showSuccessMessage()
-                case .failure(let error):
-                    self?.presentAlert(title: "Apple Sign-In Failed", message: error.localizedDescription)
-                }
-            }
+        handleSocialAuth {
+            SocialAuthService.shared.signInWithApple(from: self, completion: $0)
         }
     }
     
     @objc private func googleSignInButtonTapped() {
-        isRegistering = true
-        
-        SocialAuthService.shared.signInWithGoogle(from: self) { [weak self] result in
-            DispatchQueue.main.async {
-                self?.isRegistering = false
-                
-                switch result {
-                case .success(let user):
-                    print("Successfully registered with Google: \(user.displayName)")
-                    // Show success message and return to login
-                    self?.showSuccessMessage()
-                case .failure(let error):
-                    self?.presentAlert(title: "Google Sign-In Failed", message: error.localizedDescription)
-                }
-            }
+        handleSocialAuth {
+            SocialAuthService.shared.signInWithGoogle(from: self, completion: $0)
         }
     }
     
     @objc private func facebookSignInButtonTapped() {
-        isRegistering = true
-        
-        SocialAuthService.shared.signInWithFacebook(from: self) { [weak self] result in
-            DispatchQueue.main.async {
-                self?.isRegistering = false
-                
-                switch result {
-                case .success(let user):
-                    print("Successfully registered with Facebook: \(user.displayName)")
-                    // Show success message and return to login
-                    self?.showSuccessMessage()
-                case .failure(let error):
-                    self?.presentAlert(title: "Facebook Sign-In Failed", message: error.localizedDescription)
-                }
-            }
-        }
-    }
-    
-    @objc private func linkedInSignInButtonTapped() {
-        isRegistering = true
-        
-        SocialAuthService.shared.signInWithLinkedIn(from: self) { [weak self] result in
-            DispatchQueue.main.async {
-                self?.isRegistering = false
-                
-                switch result {
-                case .success(let user):
-                    print("Successfully registered with LinkedIn: \(user.displayName)")
-                    // Show success message and return to login
-                    self?.showSuccessMessage()
-                case .failure(let error):
-                    self?.presentAlert(title: "LinkedIn Sign-In Failed", message: error.localizedDescription)
-                }
-            }
+        handleSocialAuth {
+            SocialAuthService.shared.signInWithFacebook(from: self, completion: $0)
         }
     }
     
@@ -478,39 +312,46 @@ class RegisterViewController: UIViewController {
         view.endEditing(true)
     }
     
-    @objc private func keyboardWillShow(notification: NSNotification) {
-        guard let keyboardSize = (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue else { return }
-        let contentInsets = UIEdgeInsets(top: 0, left: 0, bottom: keyboardSize.height, right: 0)
-        scrollView.contentInset = contentInsets
-        scrollView.scrollIndicatorInsets = contentInsets
+    // MARK: - Helper Methods
+    private func handleSocialAuth(_ authMethod: @escaping (@escaping (Result<User, Error>) -> Void) -> Void) {
+        isRegistering = true
         
-        // If active text field is hidden by keyboard, scroll to make it visible
-        var aRect = view.frame
-        aRect.size.height -= keyboardSize.height
-        
-        if let activeField = findFirstResponder() {
-            if let activeFieldFrame = activeField.superview?.convert(activeField.frame, to: scrollView) {
-                if !aRect.contains(activeFieldFrame.origin) {
-                    scrollView.scrollRectToVisible(activeFieldFrame, animated: true)
+        authMethod { [weak self] result in
+            DispatchQueue.main.async {
+                self?.isRegistering = false
+                
+                switch result {
+                case .success(let user):
+                    print("Successfully registered with social auth: \(user.displayName)")
+                    self?.showSuccessMessage()
+                case .failure(let error):
+                    self?.showError(error)
                 }
             }
         }
     }
     
-    @objc private func keyboardWillHide(notification: NSNotification) {
-        scrollView.contentInset = .zero
-        scrollView.scrollIndicatorInsets = .zero
+    private func showEmailVerificationMessage(email: String) {
+        AlertPresenter.showSuccess(
+            title: "Verify Your Email",
+            message: "A verification email has been sent to \(email). Please check your inbox and follow the link to verify your account before logging in.",
+            from: self
+        ) { [weak self] in
+            self?.navigationController?.popViewController(animated: true)
+        }
     }
     
-    // MARK: - Helper Methods
-    private func presentAlert(title: String, message: String) {
-        let alertController = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        alertController.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alertController, animated: true)
+    private func showSuccessMessage() {
+        AlertPresenter.showSuccess(
+            title: "Registration Successful",
+            message: "Welcome to Circles! You can now log in with your account.",
+            from: self
+        ) { [weak self] in
+            self?.navigationController?.popViewController(animated: true)
+        }
     }
     
     private func isValidEmail(_ email: String) -> Bool {
-        // Basic email validation
         let emailRegex = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
         let emailPredicate = NSPredicate(format: "SELF MATCHES %@", emailRegex)
         return emailPredicate.evaluate(with: email)
@@ -519,6 +360,29 @@ class RegisterViewController: UIViewController {
     private func findFirstResponder() -> UIView? {
         let responders: [UIView] = [emailTextField, passwordTextField, confirmPasswordTextField]
         return responders.first { $0.isFirstResponder }
+    }
+    
+    // MARK: - Keyboard Handling
+    @objc private func keyboardWillShow(notification: NSNotification) {
+        guard let keyboardSize = (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue else { return }
+        let contentInsets = UIEdgeInsets(top: 0, left: 0, bottom: keyboardSize.height, right: 0)
+        scrollView.contentInset = contentInsets
+        scrollView.scrollIndicatorInsets = contentInsets
+        
+        // Scroll to active field if hidden
+        if let activeField = findFirstResponder(),
+           let activeFieldFrame = activeField.superview?.convert(activeField.frame, to: scrollView) {
+            var aRect = view.frame
+            aRect.size.height -= keyboardSize.height
+            if !aRect.contains(activeFieldFrame.origin) {
+                scrollView.scrollRectToVisible(activeFieldFrame, animated: true)
+            }
+        }
+    }
+    
+    @objc private func keyboardWillHide(notification: NSNotification) {
+        scrollView.contentInset = .zero
+        scrollView.scrollIndicatorInsets = .zero
     }
     
     deinit {

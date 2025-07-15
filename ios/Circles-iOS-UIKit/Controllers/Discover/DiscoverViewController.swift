@@ -1,12 +1,11 @@
 import UIKit
 
-class DiscoverViewController: UIViewController {
+class DiscoverViewController: BaseViewController {
     
     // MARK: - Properties
     private var featuredCircles: [Circle] = []
     private var popularUsers: [User] = []
     private var trendingCategories: [CircleCategory] = []
-    private var isLoading = false
     
     // MARK: - UI Components
     private let scrollView: UIScrollView = {
@@ -105,19 +104,14 @@ class DiscoverViewController: UIViewController {
         return collectionView
     }()
     
-    private let activityIndicator: UIActivityIndicatorView = {
-        let indicator = UIActivityIndicatorView(style: .medium)
-        indicator.hidesWhenStopped = true
-        indicator.translatesAutoresizingMaskIntoConstraints = false
-        return indicator
-    }()
     
-    // MARK: - Lifecycle
+    // MARK: - BaseViewController Overrides
+    override var loadsDataOnViewDidLoad: Bool { true }
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
         setupCollectionViews()
-        fetchDiscoverData()
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -127,8 +121,7 @@ class DiscoverViewController: UIViewController {
     
     // MARK: - UI Setup
     private func setupUI() {
-        view.backgroundColor = Constants.Colors.background
-        title = "Discover"
+        setupNavigationBar(title: "Discover")
         
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
@@ -140,7 +133,6 @@ class DiscoverViewController: UIViewController {
         contentView.addSubview(usersCollectionView)
         contentView.addSubview(categoriesLabel)
         contentView.addSubview(categoriesCollectionView)
-        contentView.addSubview(activityIndicator)
         
         NSLayoutConstraint.activate([
             scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
@@ -184,10 +176,7 @@ class DiscoverViewController: UIViewController {
             categoriesCollectionView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             categoriesCollectionView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             categoriesCollectionView.heightAnchor.constraint(equalToConstant: 120),
-            categoriesCollectionView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large),
-            
-            activityIndicator.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            activityIndicator.centerYAnchor.constraint(equalTo: contentView.centerYAnchor)
+            categoriesCollectionView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
         ])
         
         // Set up search bar delegate
@@ -206,22 +195,17 @@ class DiscoverViewController: UIViewController {
     }
     
     // MARK: - Data Loading
-    private func fetchDiscoverData() {
-        isLoading = true
-        activityIndicator.startAnimating()
-        
+    override func loadData(completion: (() -> Void)? = nil) {
         // In a real app, these would be API calls
         // For demo purposes, we'll create sample data
         loadSampleData()
         
         // Simulate network delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            self.isLoading = false
-            self.activityIndicator.stopAnimating()
-            
             self.featuredCollectionView.reloadData()
             self.usersCollectionView.reloadData()
             self.categoriesCollectionView.reloadData()
+            completion?()
         }
     }
     

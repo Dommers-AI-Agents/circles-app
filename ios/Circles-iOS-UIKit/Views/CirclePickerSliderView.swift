@@ -73,22 +73,17 @@ class CirclePickerSliderView: UIView {
     }()
     
     private let addButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Add to Circle", for: .normal)
+        let button = UIButton.primaryButton(title: "Add to Circle")
         button.titleLabel?.font = .systemFont(ofSize: 18, weight: .semibold)
-        button.backgroundColor = Constants.Colors.primary
-        button.setTitleColor(.white, for: .normal)
         button.layer.cornerRadius = 12
-        button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
     
     private let cancelButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Cancel", for: .normal)
+        let button = UIButton.smallActionButton(title: "Cancel", style: .secondary)
         button.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
         button.setTitleColor(.systemGray, for: .normal)
-        button.translatesAutoresizingMaskIntoConstraints = false
+        button.backgroundColor = .clear
         return button
     }()
     

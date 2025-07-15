@@ -18,7 +18,7 @@ class PlaceSearchAnnotation: NSObject, MKAnnotation {
     var isTemporary: Bool = false
 }
 
-class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
+class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     
     // MARK: - Properties
     private let circleId: String
@@ -889,7 +889,8 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
         let geocoder = CLGeocoder()
         
         geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
-            guard let self = self, let placemark = placemarks?.first else { return }
+            guard let self = self else { return }
+            guard let placemark = placemarks?.first else { return }
             
             DispatchQueue.main.async {
                 // Enable manual entry
@@ -1198,19 +1199,104 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
                                     let placeAddressLower = place.address.lowercased()
                                     let newAddressLower = address.lowercased()
                                     
-                                    // Simple similarity check - if addresses share significant components
-                                    let placeComponents = placeAddressLower.components(separatedBy: CharacterSet(charactersIn: ", "))
-                                    let newComponents = newAddressLower.components(separatedBy: CharacterSet(charactersIn: ", "))
+                                    // Parse address components more intelligently
+                                    let placeComponents = placeAddressLower.components(separatedBy: ", ").map { $0.trimmingCharacters(in: .whitespaces) }
+                                    let newComponents = newAddressLower.components(separatedBy: ", ").map { $0.trimmingCharacters(in: .whitespaces) }
                                     
-                                    let commonComponents = placeComponents.filter { component in
-                                        newComponents.contains { $0.contains(component) || component.contains($0) }
+                                    // Extract key location identifiers (city, state, zip)
+                                    // For US addresses, typically: "123 Main St, City, State Zip, Country"
+                                    // We want to focus on city and state for differentiation
+                                    
+                                    // Try to find state abbreviations (2 letters) or zip codes (5 digits)
+                                    let statePattern = #"^[a-z]{2}$"#
+                                    let zipPattern = #"^\d{5}(-\d{4})?$"#
+                                    
+                                    var placeState: String? = nil
+                                    var placeCity: String? = nil
+                                    var placeZip: String? = nil
+                                    
+                                    var newState: String? = nil
+                                    var newCity: String? = nil
+                                    var newZip: String? = nil
+                                    
+                                    // Parse existing place address
+                                    for (index, component) in placeComponents.enumerated() {
+                                        // Check if it's a state abbreviation
+                                        if component.range(of: statePattern, options: .regularExpression) != nil {
+                                            placeState = component
+                                            // City is usually before state
+                                            if index > 0 {
+                                                placeCity = placeComponents[index - 1]
+                                            }
+                                        }
+                                        // Check if it's a zip code
+                                        if component.range(of: zipPattern, options: .regularExpression) != nil {
+                                            placeZip = component
+                                        }
                                     }
                                     
-                                    // If at least 2 address components match, consider it a duplicate
-                                    if commonComponents.count >= 2 {
+                                    // Parse new address
+                                    for (index, component) in newComponents.enumerated() {
+                                        // Check if it's a state abbreviation
+                                        if component.range(of: statePattern, options: .regularExpression) != nil {
+                                            newState = component
+                                            // City is usually before state
+                                            if index > 0 {
+                                                newCity = newComponents[index - 1]
+                                            }
+                                        }
+                                        // Check if it's a zip code
+                                        if component.range(of: zipPattern, options: .regularExpression) != nil {
+                                            newZip = component
+                                        }
+                                    }
+                                    
+                                    // If we found states and they're different, it's not a duplicate
+                                    if let pState = placeState, let nState = newState, pState != nState {
+                                        continue // Not a duplicate, different states
+                                    }
+                                    
+                                    // If we found cities and they're different, it's not a duplicate
+                                    if let pCity = placeCity, let nCity = newCity {
+                                        // Remove common words like "township", "city", etc. for comparison
+                                        let pCityClean = pCity.replacingOccurrences(of: "township", with: "", options: .caseInsensitive)
+                                            .replacingOccurrences(of: "city", with: "", options: .caseInsensitive)
+                                            .trimmingCharacters(in: .whitespaces)
+                                        let nCityClean = nCity.replacingOccurrences(of: "township", with: "", options: .caseInsensitive)
+                                            .replacingOccurrences(of: "city", with: "", options: .caseInsensitive)
+                                            .trimmingCharacters(in: .whitespaces)
+                                        
+                                        if pCityClean != nCityClean {
+                                            continue // Not a duplicate, different cities
+                                        }
+                                    }
+                                    
+                                    // If we found zip codes and they're different, it's not a duplicate
+                                    if let pZip = placeZip, let nZip = newZip, pZip != nZip {
+                                        continue // Not a duplicate, different zip codes
+                                    }
+                                    
+                                    // If we couldn't determine city/state/zip differences, do a more strict check
+                                    // Consider it a duplicate only if addresses are very similar (not just having common words)
+                                    if placeAddressLower == newAddressLower {
+                                        // Exact address match - definitely a duplicate
                                         duplicatePlace = place
                                         duplicateCircle = circle
                                         return
+                                    }
+                                    
+                                    // Check if street addresses are the same (first component is usually street)
+                                    if placeComponents.count > 0 && newComponents.count > 0 {
+                                        let placeStreet = placeComponents[0]
+                                        let newStreet = newComponents[0]
+                                        
+                                        // If street addresses are the same AND we couldn't differentiate by city/state/zip
+                                        // then it might be a duplicate
+                                        if placeStreet == newStreet && placeState == newState && placeCity == newCity {
+                                            duplicatePlace = place
+                                            duplicateCircle = circle
+                                            return
+                                        }
                                     }
                                 }
                             }
@@ -1319,33 +1405,40 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
                     }
                 }
             }
-        } else {
-            // No Google details, create place normally
-            print("📸 Creating non-Google place with pre-uploaded photos: \(self.uploadedPhotoUrls)")
+        } else if let poiData = currentPOIData {
+            // We have POI data but no Google details - use the POI location
+            print("🚀 Creating place from POI data without Google details")
+            print("  Name: \(name)")
+            print("  POI Location: \(poiData.coordinate)")
             
-            PlaceService.shared.createPlace(
+            let location = GeoLocation(
+                type: "Point",
+                coordinates: [poiData.coordinate.longitude, poiData.coordinate.latitude]
+            )
+            
+            PlaceService.shared.addPlaceFromPOI(
                 name: name,
-                description: description.isEmpty ? nil : description,
                 address: address,
+                location: location,
                 category: category,
-                customCategory: customCategory,
-                subcategory: subcategory,
+                website: poiData.website,
+                phone: poiData.phoneNumber,
+                description: description.isEmpty ? nil : description,
                 circleId: circleId,
-                privacy: privacy,
-                website: nil,
-                phone: nil,
-                tags: nil,
-                photos: photoData,
-                photoUrls: self.uploadedPhotoUrls.isEmpty ? nil : self.uploadedPhotoUrls,
-                location: self.selectedLocation,
-                googlePlaceId: self.selectedGooglePlaceDetails?.placeID
+                notes: privateNotes,
+                googlePlaceId: nil,
+                preUploadedPhotoUrls: self.uploadedPhotoUrls.isEmpty ? nil : self.uploadedPhotoUrls
             ) { [weak self] result in
                 DispatchQueue.main.async {
                     loadingAlert.dismiss(animated: true) {
                         switch result {
                         case .success(let place):
-                            print("✅ Place created successfully with photos: \(place.photos ?? [])")
-                            // Post notification that a place was added
+                            print("✅ Place created successfully from POI")
+                            
+                            if let publicNotes = publicNotes, !publicNotes.isEmpty {
+                                print("⚠️ Public notes were provided but not saved: \(publicNotes)")
+                            }
+                            
                             NotificationCenter.default.post(
                                 name: Notification.Name("PlaceAddedToCircle"),
                                 object: nil,
@@ -1356,9 +1449,124 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
                                 self?.navigateToCircleDetail()
                             }
                         case .failure(let error):
-                            print("❌ Failed to create place: \(error)")
+                            print("❌ Failed to create place from POI: \(error)")
                             self?.presentAlert(title: "Error", message: error.localizedDescription)
                         }
+                    }
+                }
+            }
+        } else {
+            // No Google details or POI data, create place normally
+            print("📸 Creating non-Google place with pre-uploaded photos: \(self.uploadedPhotoUrls)")
+            
+            // Determine location to use - prioritize selectedLocation, then try geocoding
+            var locationToUse = self.selectedLocation
+            
+            if locationToUse == nil {
+                print("🗺️ No location selected, attempting to geocode address: \(address)")
+                
+                PlaceService.shared.geocodeAddress(address) { [weak self] geocodeResult in
+                    DispatchQueue.main.async {
+                        switch geocodeResult {
+                        case .success(let coordinate):
+                            print("✅ Successfully geocoded address to: \(coordinate)")
+                            locationToUse = coordinate
+                        case .failure(let error):
+                            print("⚠️ Geocoding failed: \(error.localizedDescription)")
+                            // For place creation, location should be mandatory
+                            loadingAlert.dismiss(animated: true) {
+                                self?.presentAlert(title: "Location Required", 
+                                                 message: "Could not determine location for this address. Please select a location on the map or try a different address.")
+                            }
+                            return
+                        }
+                        
+                        // Now create the place with the geocoded location
+                        self?.createPlaceWithLocation(
+                            name: name,
+                            description: description,
+                            address: address,
+                            category: category,
+                            customCategory: customCategory,
+                            subcategory: subcategory,
+                            privacy: privacy,
+                            photoData: photoData,
+                            location: locationToUse!,
+                            loadingAlert: loadingAlert
+                        )
+                    }
+                }
+            } else {
+                // Location already selected, create place directly
+                self.createPlaceWithLocation(
+                    name: name,
+                    description: description,
+                    address: address,
+                    category: category,
+                    customCategory: customCategory,
+                    subcategory: subcategory,
+                    privacy: privacy,
+                    photoData: photoData,
+                    location: locationToUse!,
+                    loadingAlert: loadingAlert
+                )
+            }
+        }
+    }
+    
+    private func createPlaceWithLocation(name: String, description: String, address: String, 
+                                       category: PlaceCategory, customCategory: String?, 
+                                       subcategory: String?, privacy: PlacePrivacy,
+                                       photoData: [Data]?, location: CLLocationCoordinate2D,
+                                       loadingAlert: UIAlertController) {
+        // Location is now mandatory - ensure it's valid
+        guard location.latitude >= -90 && location.latitude <= 90 &&
+              location.longitude >= -180 && location.longitude <= 180 &&
+              !(location.longitude == -180 && location.latitude == -180) else {
+            loadingAlert.dismiss(animated: true) {
+                self.presentAlert(title: "Invalid Location", 
+                                message: "The location coordinates are invalid. Please select a valid location on the map.")
+            }
+            return
+        }
+        
+        print("📍 Creating place with location: \(location.latitude), \(location.longitude)")
+        
+        PlaceService.shared.createPlace(
+            name: name,
+            description: description.isEmpty ? nil : description,
+            address: address,
+            category: category,
+            customCategory: customCategory,
+            subcategory: subcategory,
+            circleId: circleId,
+            privacy: privacy,
+            website: nil,
+            phone: nil,
+            tags: nil,
+            photos: photoData,
+            photoUrls: self.uploadedPhotoUrls.isEmpty ? nil : self.uploadedPhotoUrls,
+            location: location,
+            googlePlaceId: nil
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    switch result {
+                    case .success(let place):
+                        print("✅ Place created successfully with photos: \(place.photos ?? [])")
+                        // Post notification that a place was added
+                        NotificationCenter.default.post(
+                            name: Notification.Name("PlaceAddedToCircle"),
+                            object: nil,
+                            userInfo: ["circleId": self?.circleId ?? "", "place": place]
+                        )
+                        
+                        self?.presentAlert(title: "Success", message: "Place added successfully") { _ in
+                            self?.navigateToCircleDetail()
+                        }
+                    case .failure(let error):
+                        print("❌ Failed to create place: \(error)")
+                        self?.presentAlert(title: "Error", message: error.localizedDescription)
                     }
                 }
             }
@@ -1810,10 +2018,8 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
                 self.categoryButton.setTitle(self.selectedCategory.displayName, for: .normal)
             }
             
-            // Update selected location
-            if let location = placemark.location {
-                self.selectedLocation = location.coordinate
-            }
+            // Update selected location - use coordinate directly as it's always available
+            self.selectedLocation = mapItem.placemark.coordinate
             
             // Force UI refresh
             self.view.setNeedsLayout()
@@ -1830,9 +2036,11 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
             // Search for Google Place to get photos (only for businesses, not residential)
             if !isResidentialAddress, let placeName = mapItem.name, !placeName.isEmpty {
                 print("🔍 Searching Google Places for: \(placeName)")
+                print("📍 With address: \(address)")
                 GooglePlacesService.shared.searchPlaceByNameAndLocation(
                     name: placeName,
-                    coordinate: mapItem.placemark.coordinate
+                    coordinate: mapItem.placemark.coordinate,
+                    address: address
                 ) { [weak self] result in
                     switch result {
                     case .success(let prediction):
@@ -1953,7 +2161,8 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
         let geocoder = CLGeocoder()
         
         geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
-            guard let self = self, let placemark = placemarks?.first else { return }
+            guard let self = self else { return }
+            guard let placemark = placemarks?.first else { return }
             
             DispatchQueue.main.async {
                 // Fill in address
@@ -2369,9 +2578,10 @@ class AddPlaceViewController: UIViewController, CategoryPickerDelegate {
             placeFields: [.name, .formattedAddress, .coordinate, .types, .phoneNumber, .website, .rating, .userRatingsTotal, .priceLevel, .photos, .openingHours, .businessStatus],
             sessionToken: nil
         ) { [weak self] (place, error) in
-            guard let self = self, let place = place else {
+            guard let self = self else { return }
+            guard let place = place else {
                 loadingAlert.dismiss(animated: true) {
-                    self?.presentAlert(title: "Error", message: "Failed to get place details")
+                    self.showError("Failed to get place details")
                 }
                 return
             }
@@ -2878,9 +3088,11 @@ extension AddPlaceViewController: MKMapViewDelegate {
                     let placeName = poiData.name
                     if !placeName.isEmpty {
                         print("🔍 Searching Google Places for POI: \(placeName)")
+                        print("📍 With address: \(poiData.address)")
                         GooglePlacesService.shared.searchPlaceByNameAndLocation(
                             name: placeName,
-                            coordinate: coordinate
+                            coordinate: coordinate,
+                            address: poiData.address
                         ) { [weak self] result in
                             switch result {
                             case .success(let prediction):
@@ -2943,9 +3155,11 @@ extension AddPlaceViewController: MKMapViewDelegate {
                     // Search for Google Place to get photos even in fallback case
                     if !poiName.isEmpty {
                         print("🔍 Searching Google Places for POI (fallback): \(poiName)")
+                        print("📍 With address (fallback): \(poiSubtitle)")
                         GooglePlacesService.shared.searchPlaceByNameAndLocation(
                             name: poiName,
-                            coordinate: coordinate
+                            coordinate: coordinate,
+                            address: poiSubtitle
                         ) { [weak self] result in
                             switch result {
                             case .success(let prediction):
@@ -3329,11 +3543,8 @@ extension AddPlaceViewController: UITableViewDataSource, UITableViewDelegate {
                 categoryButtonTapped()
                 
                 // Present the category picker
-                let categoryPicker = CategoryPickerViewController(
-                    selectedCategory: selectedCategory,
-                    selectedSubcategory: selectedSubcategory
-                )
-                categoryPicker.delegate = self
+                let categoryPicker = CategoryPickerViewController(forPlaceCategory: true)
+                categoryPicker.legacyDelegate = self
                 let navController = UINavigationController(rootViewController: categoryPicker)
                 present(navController, animated: true)
             } else {
@@ -3342,11 +3553,8 @@ extension AddPlaceViewController: UITableViewDataSource, UITableViewDelegate {
                     // User selected "Other" from dropdown - show category picker for custom input
                     categoryButtonTapped() // Hide dropdown first
                     
-                    let categoryPicker = CategoryPickerViewController(
-                        selectedCategory: .other,
-                        selectedSubcategory: nil
-                    )
-                    categoryPicker.delegate = self
+                    let categoryPicker = CategoryPickerViewController(forPlaceCategory: true)
+                    categoryPicker.legacyDelegate = self
                     let navController = UINavigationController(rootViewController: categoryPicker)
                     present(navController, animated: true)
                 } else {
@@ -3381,7 +3589,7 @@ extension AddPlaceViewController: UITableViewDataSource, UITableViewDelegate {
     }
 }
 
-// MARK: - CategoryPickerDelegate
+// MARK: - LegacyCategoryPickerDelegate
 
 extension AddPlaceViewController {
     func categoryPicker(_ picker: CategoryPickerViewController, didSelectCategory category: PlaceCategory, subcategory: String?, customCategory: String?) {

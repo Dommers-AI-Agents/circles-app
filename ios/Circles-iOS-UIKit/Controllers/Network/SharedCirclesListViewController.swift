@@ -1,6 +1,6 @@
 import UIKit
 
-class SharedCirclesListViewController: UIViewController {
+class SharedCirclesListViewController: BaseViewController {
     
     // MARK: - UI Elements
     private let tableView: UITableView = {
@@ -12,42 +12,9 @@ class SharedCirclesListViewController: UIViewController {
         return table
     }()
     
-    private let emptyStateView: UIView = {
-        let view = UIView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.isHidden = true
-        return view
-    }()
-    
-    private let emptyImageView: UIImageView = {
-        let imageView = UIImageView()
-        imageView.image = UIImage(systemName: "circle.hexagongrid.circle")
-        imageView.tintColor = .systemGray3
-        imageView.contentMode = .scaleAspectFit
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        return imageView
-    }()
-    
-    private let emptyTitleLabel: UILabel = {
-        let label = UILabel()
-        label.text = "No Editable Circles Yet"
-        label.font = .systemFont(ofSize: 20, weight: .semibold)
-        label.textColor = .label
-        label.textAlignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let emptyDescriptionLabel: UILabel = {
-        let label = UILabel()
-        label.text = "When your connections share circles with you and allow you to edit them, they'll appear here."
-        label.font = .systemFont(ofSize: 16)
-        label.textColor = .secondaryLabel
-        label.textAlignment = .center
-        label.numberOfLines = 0
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
+    // MARK: - BaseViewController Configuration
+    override var enablesPullToRefresh: Bool { true }
+    override var emptyStateMessage: String? { "No Editable Circles Yet\n\nWhen your connections share circles with you and allow you to edit them, they'll appear here." }
     
     // MARK: - Properties
     private var editableCircles: [Circle] = []
@@ -58,7 +25,6 @@ class SharedCirclesListViewController: UIViewController {
         super.viewDidLoad()
         setupView()
         setupTableView()
-        setupEmptyState()
         loadSharedCircles()
     }
     
@@ -72,18 +38,12 @@ class SharedCirclesListViewController: UIViewController {
         view.backgroundColor = .systemGroupedBackground
         
         view.addSubview(tableView)
-        view.addSubview(emptyStateView)
         
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: view.topAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            
-            emptyStateView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            emptyStateView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            emptyStateView.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 40),
-            emptyStateView.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -40)
+            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
     }
     
@@ -98,58 +58,26 @@ class SharedCirclesListViewController: UIViewController {
         tableView.refreshControl = refreshControl
     }
     
-    private func setupEmptyState() {
-        emptyStateView.addSubview(emptyImageView)
-        emptyStateView.addSubview(emptyTitleLabel)
-        emptyStateView.addSubview(emptyDescriptionLabel)
-        
-        NSLayoutConstraint.activate([
-            emptyImageView.topAnchor.constraint(equalTo: emptyStateView.topAnchor),
-            emptyImageView.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
-            emptyImageView.widthAnchor.constraint(equalToConstant: 80),
-            emptyImageView.heightAnchor.constraint(equalToConstant: 80),
-            
-            emptyTitleLabel.topAnchor.constraint(equalTo: emptyImageView.bottomAnchor, constant: 24),
-            emptyTitleLabel.leadingAnchor.constraint(equalTo: emptyStateView.leadingAnchor),
-            emptyTitleLabel.trailingAnchor.constraint(equalTo: emptyStateView.trailingAnchor),
-            
-            emptyDescriptionLabel.topAnchor.constraint(equalTo: emptyTitleLabel.bottomAnchor, constant: 8),
-            emptyDescriptionLabel.leadingAnchor.constraint(equalTo: emptyStateView.leadingAnchor),
-            emptyDescriptionLabel.trailingAnchor.constraint(equalTo: emptyStateView.trailingAnchor),
-            emptyDescriptionLabel.bottomAnchor.constraint(equalTo: emptyStateView.bottomAnchor)
-        ])
-    }
     
     // MARK: - Data Loading
-    private func loadSharedCircles() {
+    override func loadData(completion: (() -> Void)? = nil) {
         NetworkManager.shared.loadEditableCirclesFromOthers()
         
         // Use the published editableCirclesFromOthers from NetworkManager
         self.editableCircles = NetworkManager.shared.editableCirclesFromOthers
         self.tableView.reloadData()
-        self.tableView.refreshControl?.endRefreshing()
         
-        if self.editableCircles.isEmpty {
-            self.showEmptyState()
-        } else {
-            self.hideEmptyState()
-        }
+        completion?()
+    }
+    
+    private func loadSharedCircles() {
+        loadData()
     }
     
     @objc private func refreshSharedCircles() {
         loadSharedCircles()
     }
     
-    // MARK: - Empty State
-    private func showEmptyState() {
-        emptyStateView.isHidden = false
-        tableView.isHidden = true
-    }
-    
-    private func hideEmptyState() {
-        emptyStateView.isHidden = true
-        tableView.isHidden = false
-    }
     
     // MARK: - Navigation
     private func showCircleDetail(_ circle: Circle) {

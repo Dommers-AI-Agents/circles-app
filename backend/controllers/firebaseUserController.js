@@ -188,6 +188,8 @@ exports.updateUser = async (req, res, next) => {
         profilePicture: user.profilePicture,
         bio: user.bio,
         location: user.location,
+        followersCount: user.followersCount || 0,
+        followingCount: user.followingCount || 0,
         createdAt: user.createdAt
       }
     });
@@ -612,6 +614,9 @@ exports.searchUsers = async (req, res, next) => {
     
     // Search users by email, name, or phone
     const usersSnapshot = await db.collection(COLLECTIONS.USERS).get();
+    
+    // Normalize the current user ID for consistent comparisons
+    const simpleUserId = normalizeUserId(currentUserId);
     
     const matchingUsers = [];
     for (const doc of usersSnapshot.docs) {
@@ -1055,7 +1060,22 @@ exports.followUser = async (req, res, next) => {
       });
     }
     
-    // Update both users atomically
+    // Initialize counts if they don't exist
+    if (typeof currentUser.followingCount !== 'number') {
+      console.log('⚠️ Initializing missing followingCount for user:', currentUserId);
+      await currentUserRef.update({
+        followingCount: (currentUser.following || []).length
+      });
+    }
+    
+    if (typeof targetUser.followersCount !== 'number') {
+      console.log('⚠️ Initializing missing followersCount for user:', targetUserId);
+      await targetUserRef.update({
+        followersCount: (targetUser.followers || []).length
+      });
+    }
+    
+    // Update both users atomically with rollback capability
     const batch = db.batch();
     
     // Update current user's following list atomically
@@ -1072,14 +1092,122 @@ exports.followUser = async (req, res, next) => {
       updatedAt: new Date().toISOString()
     });
     
-    await batch.commit();
-    console.log('✅ Follow batch committed successfully');
+    try {
+      await batch.commit();
+      console.log('✅ Follow batch committed successfully');
+    } catch (batchError) {
+      console.error('❌ Follow batch failed, attempting rollback:', batchError);
+      
+      // Attempt rollback by reversing the operations
+      try {
+        const rollbackBatch = db.batch();
+        
+        // Remove the user from following if they were added
+        rollbackBatch.update(currentUserRef, {
+          following: FieldValue.arrayRemove(targetUserId),
+          followingCount: FieldValue.increment(-1),
+          updatedAt: new Date().toISOString()
+        });
+        
+        // Remove the follower if they were added
+        rollbackBatch.update(targetUserRef, {
+          followers: FieldValue.arrayRemove(currentUserId),
+          followersCount: FieldValue.increment(-1),
+          updatedAt: new Date().toISOString()
+        });
+        
+        await rollbackBatch.commit();
+        console.log('✅ Follow rollback completed successfully');
+      } catch (rollbackError) {
+        console.error('❌ Follow rollback failed:', rollbackError);
+        // Even rollback failed, log for manual intervention
+        console.error('🚨 CRITICAL: Follow operation and rollback both failed for users:', {
+          currentUserId,
+          targetUserId,
+          originalError: batchError.message,
+          rollbackError: rollbackError.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      // Return error to client
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to follow user. Please try again.'
+      });
+    }
     
     // Get updated counts for SSE events
     const updatedCurrentUser = await currentUserRef.get();
     const updatedTargetUser = await targetUserRef.get();
     const currentUserData = serializeDoc(updatedCurrentUser);
     const targetUserData = serializeDoc(updatedTargetUser);
+    
+    // Validate array/count consistency after follow operation
+    const followingArrayLength = (currentUserData.following || []).length;
+    const followingCount = currentUserData.followingCount || 0;
+    const followersArrayLength = (targetUserData.followers || []).length;
+    const followersCount = targetUserData.followersCount || 0;
+    
+    console.log('🔍 Post-follow validation:', {
+      currentUser: {
+        id: currentUserId,
+        followingArrayLength,
+        followingCount,
+        consistent: followingArrayLength === followingCount
+      },
+      targetUser: {
+        id: targetUserId,
+        followersArrayLength,
+        followersCount,
+        consistent: followersArrayLength === followersCount
+      }
+    });
+    
+    // Check for inconsistencies and repair if needed
+    const followingInconsistent = followingArrayLength !== followingCount;
+    const followersInconsistent = followersArrayLength !== followersCount;
+    
+    if (followingInconsistent || followersInconsistent) {
+      console.error('❌ Follow operation resulted in inconsistent data:', {
+        followingInconsistent,
+        followersInconsistent,
+        currentUserId,
+        targetUserId
+      });
+      
+      // Attempt to repair the inconsistency
+      const repairBatch = db.batch();
+      
+      if (followingInconsistent) {
+        console.log('🔧 Repairing following count for user:', currentUserId);
+        repairBatch.update(currentUserRef, {
+          followingCount: followingArrayLength,
+          updatedAt: new Date().toISOString()
+        });
+      }
+      
+      if (followersInconsistent) {
+        console.log('🔧 Repairing followers count for user:', targetUserId);
+        repairBatch.update(targetUserRef, {
+          followersCount: followersArrayLength,
+          updatedAt: new Date().toISOString()
+        });
+      }
+      
+      await repairBatch.commit();
+      console.log('✅ Inconsistency repair completed');
+      
+      // Re-fetch the corrected data
+      const correctedCurrentUser = await currentUserRef.get();
+      const correctedTargetUser = await targetUserRef.get();
+      const correctedCurrentUserData = serializeDoc(correctedCurrentUser);
+      const correctedTargetUserData = serializeDoc(correctedTargetUser);
+      
+      // Use corrected data for SSE events
+      currentUserData.followingCount = correctedCurrentUserData.followingCount;
+      targetUserData.followersCount = correctedTargetUserData.followersCount;
+    }
     
     console.log('📊 After follow - Updated data:', {
       currentUser: {
@@ -1210,7 +1338,7 @@ exports.unfollowUser = async (req, res, next) => {
       });
     }
     
-    // Update both users atomically
+    // Update both users atomically with rollback capability
     const batch = db.batch();
     
     // Update current user's following list atomically
@@ -1227,14 +1355,122 @@ exports.unfollowUser = async (req, res, next) => {
       updatedAt: new Date().toISOString()
     });
     
-    await batch.commit();
-    console.log('✅ Unfollow batch committed successfully');
+    try {
+      await batch.commit();
+      console.log('✅ Unfollow batch committed successfully');
+    } catch (batchError) {
+      console.error('❌ Unfollow batch failed, attempting rollback:', batchError);
+      
+      // Attempt rollback by reversing the operations
+      try {
+        const rollbackBatch = db.batch();
+        
+        // Re-add the user to following if they were removed
+        rollbackBatch.update(currentUserRef, {
+          following: FieldValue.arrayUnion(targetUserId),
+          followingCount: FieldValue.increment(1),
+          updatedAt: new Date().toISOString()
+        });
+        
+        // Re-add the follower if they were removed
+        rollbackBatch.update(targetUserRef, {
+          followers: FieldValue.arrayUnion(currentUserId),
+          followersCount: FieldValue.increment(1),
+          updatedAt: new Date().toISOString()
+        });
+        
+        await rollbackBatch.commit();
+        console.log('✅ Unfollow rollback completed successfully');
+      } catch (rollbackError) {
+        console.error('❌ Unfollow rollback failed:', rollbackError);
+        // Even rollback failed, log for manual intervention
+        console.error('🚨 CRITICAL: Unfollow operation and rollback both failed for users:', {
+          currentUserId,
+          targetUserId,
+          originalError: batchError.message,
+          rollbackError: rollbackError.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      // Return error to client
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to unfollow user. Please try again.'
+      });
+    }
     
     // Get updated data for SSE events
     const updatedCurrentUser = await currentUserRef.get();
     const updatedTargetUser = await targetUserRef.get();
     const currentUserData = serializeDoc(updatedCurrentUser);
     const targetUserData = serializeDoc(updatedTargetUser);
+    
+    // Validate array/count consistency after unfollow operation
+    const followingArrayLength = (currentUserData.following || []).length;
+    const followingCount = currentUserData.followingCount || 0;
+    const followersArrayLength = (targetUserData.followers || []).length;
+    const followersCount = targetUserData.followersCount || 0;
+    
+    console.log('🔍 Post-unfollow validation:', {
+      currentUser: {
+        id: currentUserId,
+        followingArrayLength,
+        followingCount,
+        consistent: followingArrayLength === followingCount
+      },
+      targetUser: {
+        id: targetUserId,
+        followersArrayLength,
+        followersCount,
+        consistent: followersArrayLength === followersCount
+      }
+    });
+    
+    // Check for inconsistencies and repair if needed
+    const followingInconsistent = followingArrayLength !== followingCount;
+    const followersInconsistent = followersArrayLength !== followersCount;
+    
+    if (followingInconsistent || followersInconsistent) {
+      console.error('❌ Unfollow operation resulted in inconsistent data:', {
+        followingInconsistent,
+        followersInconsistent,
+        currentUserId,
+        targetUserId
+      });
+      
+      // Attempt to repair the inconsistency
+      const repairBatch = db.batch();
+      
+      if (followingInconsistent) {
+        console.log('🔧 Repairing following count for user:', currentUserId);
+        repairBatch.update(currentUserRef, {
+          followingCount: followingArrayLength,
+          updatedAt: new Date().toISOString()
+        });
+      }
+      
+      if (followersInconsistent) {
+        console.log('🔧 Repairing followers count for user:', targetUserId);
+        repairBatch.update(targetUserRef, {
+          followersCount: followersArrayLength,
+          updatedAt: new Date().toISOString()
+        });
+      }
+      
+      await repairBatch.commit();
+      console.log('✅ Inconsistency repair completed');
+      
+      // Re-fetch the corrected data
+      const correctedCurrentUser = await currentUserRef.get();
+      const correctedTargetUser = await targetUserRef.get();
+      const correctedCurrentUserData = serializeDoc(correctedCurrentUser);
+      const correctedTargetUserData = serializeDoc(correctedTargetUser);
+      
+      // Use corrected data for SSE events
+      currentUserData.followingCount = correctedCurrentUserData.followingCount;
+      targetUserData.followersCount = correctedTargetUserData.followersCount;
+    }
     
     console.log('📊 After unfollow - Updated data:', {
       currentUser: {
@@ -1284,11 +1520,18 @@ exports.unfollowUser = async (req, res, next) => {
 // @access  Private
 exports.getUserFollowers = async (req, res, next) => {
   try {
-    const userId = req.params.id;
-    const currentUserId = req.user.uid;
+    const userId = normalizeUserId(req.params.id);
+    const currentUserId = normalizeUserId(req.user.uid);
     
-    // Only the user can see their own followers list
-    if (userId !== currentUserId) {
+    console.log('👥 getUserFollowers called:', {
+      userIdOriginal: req.params.id,
+      userIdNormalized: userId,
+      currentUserIdOriginal: req.user.uid,
+      currentUserIdNormalized: currentUserId
+    });
+    
+    // Only the user can see their own followers list - check normalized IDs
+    if (!isSameUser(userId, currentUserId)) {
       return res.status(403).json({
         success: false,
         message: 'You can only view your own followers'
@@ -1309,18 +1552,21 @@ exports.getUserFollowers = async (req, res, next) => {
     const user = serializeDoc(userDoc);
     const followerIds = user.followers || [];
     
-    // Get follower details
+    // Get follower details with ID normalization
     const followers = [];
     for (const followerId of followerIds) {
-      const followerDoc = await db.collection(COLLECTIONS.USERS).doc(followerId).get();
+      const normalizedFollowerId = normalizeUserId(followerId);
+      const followerDoc = await db.collection(COLLECTIONS.USERS).doc(normalizedFollowerId).get();
       if (followerDoc.exists) {
         const follower = serializeDoc(followerDoc);
         followers.push({
-          id: follower.id,
+          id: normalizeUserId(follower.id), // Always return normalized ID
           displayName: follower.displayName,
           profilePicture: follower.profilePicture,
           bio: follower.bio
         });
+      } else {
+        console.warn('⚠️ Follower not found:', { followerId, normalizedFollowerId });
       }
     }
     
@@ -1341,11 +1587,18 @@ exports.getUserFollowers = async (req, res, next) => {
 // @access  Private
 exports.getUserFollowing = async (req, res, next) => {
   try {
-    const userId = req.params.id;
-    const currentUserId = req.user.uid;
+    const userId = normalizeUserId(req.params.id);
+    const currentUserId = normalizeUserId(req.user.uid);
     
-    // Only the user can see their own following list
-    if (userId !== currentUserId) {
+    console.log('👥 getUserFollowing called:', {
+      userIdOriginal: req.params.id,
+      userIdNormalized: userId,
+      currentUserIdOriginal: req.user.uid,
+      currentUserIdNormalized: currentUserId
+    });
+    
+    // Only the user can see their own following list - check normalized IDs
+    if (!isSameUser(userId, currentUserId)) {
       return res.status(403).json({
         success: false,
         message: 'You can only view your own following list'
@@ -1366,18 +1619,21 @@ exports.getUserFollowing = async (req, res, next) => {
     const user = serializeDoc(userDoc);
     const followingIds = user.following || [];
     
-    // Get following details
+    // Get following details with ID normalization
     const following = [];
     for (const followingId of followingIds) {
-      const followingDoc = await db.collection(COLLECTIONS.USERS).doc(followingId).get();
+      const normalizedFollowingId = normalizeUserId(followingId);
+      const followingDoc = await db.collection(COLLECTIONS.USERS).doc(normalizedFollowingId).get();
       if (followingDoc.exists) {
         const followingUser = serializeDoc(followingDoc);
         following.push({
-          id: followingUser.id,
+          id: normalizeUserId(followingUser.id), // Always return normalized ID
           displayName: followingUser.displayName,
           profilePicture: followingUser.profilePicture,
           bio: followingUser.bio
         });
+      } else {
+        console.warn('⚠️ Following user not found:', { followingId, normalizedFollowingId });
       }
     }
     
@@ -1778,6 +2034,95 @@ exports.reorderPinnedPlaces = async (req, res, next) => {
     
   } catch (error) {
     console.error('Error reordering pinned places:', error);
+    next(error);
+  }
+};
+
+// @desc    Recalculate follower/following counts for a user
+// @route   POST /api/users/:id/recalculate-counts
+// @access  Private (Admin or owner only)
+exports.recalculateFollowerCounts = async (req, res, next) => {
+  try {
+    const targetUserId = normalizeUserId(req.params.id);
+    const currentUserId = normalizeUserId(req.user.uid);
+    
+    console.log('🔄 recalculateFollowerCounts called:', {
+      targetUserId,
+      currentUserId,
+      isOwner: isSameUser(targetUserId, currentUserId)
+    });
+    
+    // Only allow user to recalculate their own counts
+    // TODO: Add admin check for admin users
+    if (!isSameUser(targetUserId, currentUserId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only recalculate your own follower counts'
+      });
+    }
+    
+    // Get the user document
+    const userRef = db.collection(COLLECTIONS.USERS).doc(targetUserId);
+    const userDoc = await userRef.get();
+    
+    if (!userDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    const userData = userDoc.data();
+    
+    // Calculate actual counts from arrays
+    const actualFollowersCount = (userData.followers || []).length;
+    const actualFollowingCount = (userData.following || []).length;
+    
+    // Get current counts
+    const currentFollowersCount = userData.followersCount || 0;
+    const currentFollowingCount = userData.followingCount || 0;
+    
+    console.log('📊 Count comparison:', {
+      currentFollowersCount,
+      actualFollowersCount,
+      currentFollowingCount,
+      actualFollowingCount,
+      needsUpdate: currentFollowersCount !== actualFollowersCount || currentFollowingCount !== actualFollowingCount
+    });
+    
+    // Update the counts
+    await userRef.update({
+      followersCount: actualFollowersCount,
+      followingCount: actualFollowingCount,
+      updatedAt: new Date().toISOString()
+    });
+    
+    // Return the updated user data
+    const updatedUserDoc = await userRef.get();
+    const updatedUser = serializeDoc(updatedUserDoc);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Follower counts recalculated successfully',
+      previousCounts: {
+        followers: currentFollowersCount,
+        following: currentFollowingCount
+      },
+      updatedCounts: {
+        followers: actualFollowersCount,
+        following: actualFollowingCount
+      },
+      user: {
+        id: updatedUser.id,
+        displayName: updatedUser.displayName,
+        email: updatedUser.email,
+        followersCount: updatedUser.followersCount,
+        followingCount: updatedUser.followingCount
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error recalculating follower counts:', error);
     next(error);
   }
 };

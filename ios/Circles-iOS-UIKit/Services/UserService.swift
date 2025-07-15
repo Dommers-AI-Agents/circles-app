@@ -40,6 +40,23 @@ class UserService {
     
     private init() {}
     
+    // MARK: - Helper Methods
+    
+    /// Helper function to create a type-safe completion handler for API requests
+    private func createAPICompletion<T>(_ completion: @escaping (Result<T, Error>) -> Void) -> (Result<T, APIError>) -> Void {
+        return { [weak self] result in
+            guard let self = self else { return }
+            
+            switch result {
+            case .success(let response):
+                completion(.success(response))
+            case .failure(let error):
+                let mappedError = self.mapAPIErrorToUserError(error)
+                completion(.failure(mappedError))
+            }
+        }
+    }
+    
     // MARK: - User Profile
     
     func fetchUserProfile(userId: String? = nil, completion: @escaping (Result<User, Error>) -> Void) {
@@ -50,12 +67,14 @@ class UserService {
             method: .get,
             requiresAuth: true
         ) { [weak self] (result: Result<UserResponse, APIError>) in
+            guard let self = self else { return }
+            
             switch result {
             case .success(let response):
                 completion(.success(response.user))
             case .failure(let error):
-                let userError = self?.mapAPIErrorToUserError(error)
-                completion(.failure(userError ?? error))
+                let mappedError = self.mapAPIErrorToUserError(error)
+                completion(.failure(mappedError))
             }
         }
     }
@@ -123,12 +142,14 @@ class UserService {
             body: body,
             requiresAuth: true
         ) { [weak self] (result: Result<UserResponse, APIError>) in
+            guard let self = self else { return }
+            
             switch result {
             case .success(let response):
                 completion(.success(response.user))
             case .failure(let error):
-                let userError = self?.mapAPIErrorToUserError(error)
-                completion(.failure(userError ?? UserError.updateFailed))
+                let mappedError = self.mapAPIErrorToUserError(error)
+                completion(.failure(mappedError))
             }
         }
     }
@@ -146,12 +167,14 @@ class UserService {
             body: body,
             requiresAuth: true
         ) { [weak self] (result: Result<UserResponse, APIError>) in
+            guard let self = self else { return }
+            
             switch result {
             case .success(let response):
                 completion(.success(response.user))
             case .failure(let error):
-                let userError = self?.mapAPIErrorToUserError(error)
-                completion(.failure(userError ?? UserError.updateFailed))
+                let mappedError = self.mapAPIErrorToUserError(error)
+                completion(.failure(mappedError))
             }
         }
     }
@@ -167,12 +190,14 @@ class UserService {
             queryParams: queryParams,
             requiresAuth: true
         ) { [weak self] (result: Result<UsersResponse, APIError>) in
+            guard let self = self else { return }
+            
             switch result {
             case .success(let response):
                 completion(.success(response.users))
             case .failure(let error):
-                let userError = self?.mapAPIErrorToUserError(error)
-                completion(.failure(userError ?? error))
+                let mappedError = self.mapAPIErrorToUserError(error)
+                completion(.failure(mappedError))
             }
         }
     }
@@ -185,12 +210,14 @@ class UserService {
             method: .get,
             requiresAuth: true
         ) { [weak self] (result: Result<UsersResponse, APIError>) in
+            guard let self = self else { return }
+            
             switch result {
             case .success(let response):
                 completion(.success(response.users))
             case .failure(let error):
-                let userError = self?.mapAPIErrorToUserError(error)
-                completion(.failure(userError ?? error))
+                let mappedError = self.mapAPIErrorToUserError(error)
+                completion(.failure(mappedError))
             }
         }
     }
@@ -201,12 +228,14 @@ class UserService {
             method: .get,
             requiresAuth: true
         ) { [weak self] (result: Result<FriendRequestsResponse, APIError>) in
+            guard let self = self else { return }
+            
             switch result {
             case .success(let response):
                 completion(.success(response.friendRequests))
             case .failure(let error):
-                let userError = self?.mapAPIErrorToUserError(error)
-                completion(.failure(userError ?? error))
+                let mappedError = self.mapAPIErrorToUserError(error)
+                completion(.failure(mappedError))
             }
         }
     }
@@ -220,12 +249,14 @@ class UserService {
             body: body,
             requiresAuth: true
         ) { [weak self] (result: Result<EmptyResponse, APIError>) in
+            guard let self = self else { return }
+            
             switch result {
             case .success(_):
                 completion(.success(true))
             case .failure(let error):
-                let userError = self?.mapAPIErrorToUserError(error)
-                completion(.failure(userError ?? error))
+                let mappedError = self.mapAPIErrorToUserError(error)
+                completion(.failure(mappedError))
             }
         }
     }
@@ -236,12 +267,14 @@ class UserService {
             method: .post,
             requiresAuth: true
         ) { [weak self] (result: Result<EmptyResponse, APIError>) in
+            guard let self = self else { return }
+            
             switch result {
             case .success(_):
                 completion(.success(true))
             case .failure(let error):
-                let userError = self?.mapAPIErrorToUserError(error)
-                completion(.failure(userError ?? error))
+                let mappedError = self.mapAPIErrorToUserError(error)
+                completion(.failure(mappedError))
             }
         }
     }
@@ -252,12 +285,14 @@ class UserService {
             method: .post,
             requiresAuth: true
         ) { [weak self] (result: Result<EmptyResponse, APIError>) in
+            guard let self = self else { return }
+            
             switch result {
             case .success(_):
                 completion(.success(true))
             case .failure(let error):
-                let userError = self?.mapAPIErrorToUserError(error)
-                completion(.failure(userError ?? error))
+                let mappedError = self.mapAPIErrorToUserError(error)
+                completion(.failure(mappedError))
             }
         }
     }
@@ -268,12 +303,14 @@ class UserService {
             method: .delete,
             requiresAuth: true
         ) { [weak self] (result: Result<EmptyResponse, APIError>) in
+            guard let self = self else { return }
+            
             switch result {
             case .success(_):
                 completion(.success(true))
             case .failure(let error):
-                let userError = self?.mapAPIErrorToUserError(error)
-                completion(.failure(userError ?? error))
+                let mappedError = self.mapAPIErrorToUserError(error)
+                completion(.failure(mappedError))
             }
         }
     }
@@ -293,13 +330,16 @@ class UserService {
                 "filename": "profile_\(UUID().uuidString).jpg"
             ],
             requiresAuth: true
-        ) { (result: Result<ImageUploadResponse, APIError>) in
+        ) { [weak self] (result: Result<UploadResponse, APIError>) in
+            guard let self = self else { return }
+            
             switch result {
             case .success(let response):
                 completion(.success(response.url))
             case .failure(let error):
                 print("Profile image upload failed: \(error)")
-                completion(.failure(self.mapAPIErrorToUserError(error)))
+                let mappedError = self.mapAPIErrorToUserError(error)
+                completion(.failure(mappedError))
             }
         }
     }
@@ -350,12 +390,14 @@ class UserService {
             method: .delete,
             requiresAuth: true
         ) { [weak self] (result: Result<EmptyResponse, APIError>) in
+            guard let self = self else { return }
+            
             switch result {
             case .success:
                 completion(.success(()))
             case .failure(let error):
-                let userError = self?.mapAPIErrorToUserError(error)
-                completion(.failure(userError ?? error))
+                let mappedError = self.mapAPIErrorToUserError(error)
+                completion(.failure(mappedError))
             }
         }
     }
@@ -372,12 +414,14 @@ class UserService {
             body: body,
             requiresAuth: true
         ) { [weak self] (result: Result<EmptyResponse, APIError>) in
+            guard let self = self else { return }
+            
             switch result {
             case .success:
                 completion(.success(()))
             case .failure(let error):
-                let userError = self?.mapAPIErrorToUserError(error)
-                completion(.failure(userError ?? error))
+                let mappedError = self.mapAPIErrorToUserError(error)
+                completion(.failure(mappedError))
             }
         }
     }
@@ -391,12 +435,14 @@ class UserService {
             body: body,
             requiresAuth: true
         ) { [weak self] (result: Result<EmptyResponse, APIError>) in
+            guard let self = self else { return }
+            
             switch result {
             case .success:
                 completion(nil)
             case .failure(let error):
-                let userError = self?.mapAPIErrorToUserError(error)
-                completion(userError ?? error)
+                let mappedError = self.mapAPIErrorToUserError(error)
+                completion(mappedError)
             }
         }
     }
@@ -404,7 +450,7 @@ class UserService {
 
 // MARK: - Response Types
 
-// Using the same UserResponse as AuthService
+// UserResponse is defined in AuthService.swift
 
 struct UsersResponse: Decodable {
     let success: Bool
@@ -433,4 +479,15 @@ enum FriendRequestStatus: String, Codable {
 struct FriendRequestsResponse: Decodable {
     let success: Bool
     let friendRequests: [FriendRequest]
+}
+
+struct UploadResponse: Decodable {
+    let success: Bool
+    let url: String
+}
+
+
+struct UsersSearchResponse: Decodable {
+    let success: Bool
+    let users: [User]
 }

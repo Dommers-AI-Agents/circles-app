@@ -1,10 +1,9 @@
 import UIKit
 
-class SuggestionsViewController: UIViewController {
+class SuggestionsViewController: BaseViewController {
     
     // MARK: - Properties
     private var suggestions: [Suggestion] = []
-    private let refreshControl = UIRefreshControl()
     
     // MARK: - UI Elements
     private let tableView: UITableView = {
@@ -17,61 +16,22 @@ class SuggestionsViewController: UIViewController {
         return table
     }()
     
-    private let emptyStateView: UIView = {
-        let view = UIView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.isHidden = true
-        return view
-    }()
-    
-    private let emptyImageView: UIImageView = {
-        let imageView = UIImageView()
-        imageView.image = UIImage(systemName: "bubble.left.and.bubble.right")
-        imageView.tintColor = .systemGray3
-        imageView.contentMode = .scaleAspectFit
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        return imageView
-    }()
-    
-    private let emptyTitleLabel: UILabel = {
-        let label = UILabel()
-        label.text = "No Suggestions Yet"
-        label.font = .systemFont(ofSize: 20, weight: .semibold)
-        label.textColor = .label
-        label.textAlignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let emptyDescriptionLabel: UILabel = {
-        let label = UILabel()
-        label.text = "Share your experiences with your network!"
-        label.font = .systemFont(ofSize: 16)
-        label.textColor = .secondaryLabel
-        label.textAlignment = .center
-        label.numberOfLines = 0
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let createButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Share a Suggestion", for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
-        button.backgroundColor = Constants.Colors.primary
-        button.tintColor = .white
-        button.layer.cornerRadius = 22
-        button.translatesAutoresizingMaskIntoConstraints = false
+    private lazy var createButton: UIButton = {
+        let button = UIButton.primaryButton(title: "Share a Suggestion")
+        button.addTarget(self, action: #selector(createSuggestionTapped), for: .touchUpInside)
         return button
     }()
+    
+    // MARK: - BaseViewController Configuration
+    override var enablesPullToRefresh: Bool { true }
+    override var emptyStateMessage: String? { "No Suggestions Yet\n\nShare your experiences with your network!" }
+    override var reloadsDataOnAppear: Bool { true }
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
         setupView()
         setupTableView()
-        setupEmptyState()
-        // Removed loadSuggestions() to prevent duplicate request - it's called in viewWillAppear
         
         // Mark suggestions as viewed
         SuggestionService.shared.markSuggestionsAsViewed()
@@ -80,25 +40,13 @@ class SuggestionsViewController: UIViewController {
         NotificationCenter.default.post(name: .clearSuggestionsBadge, object: nil)
     }
     
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        loadSuggestions()
-    }
-    
     // MARK: - Setup
     private func setupView() {
-        view.backgroundColor = .systemGroupedBackground
-        title = "Suggestions"
-        
-        // Add right bar button for creating suggestion
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .compose,
-            target: self,
-            action: #selector(createSuggestionTapped)
-        )
+        setupNavigationBar(title: "Suggestions")
+        addNavigationBarButton(image: "plus", position: .right, action: #selector(createSuggestionTapped))
         
         view.addSubview(tableView)
-        view.addSubview(emptyStateView)
+        view.addSubview(createButton)
         
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
@@ -106,49 +54,20 @@ class SuggestionsViewController: UIViewController {
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             
-            emptyStateView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            emptyStateView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            emptyStateView.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 40),
-            emptyStateView.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -40)
+            createButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            createButton.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: 100),
+            createButton.widthAnchor.constraint(equalToConstant: 180),
+            createButton.heightAnchor.constraint(equalToConstant: 44)
         ])
     }
     
     private func setupTableView() {
         tableView.delegate = self
         tableView.dataSource = self
-        
-        refreshControl.addTarget(self, action: #selector(refreshSuggestions), for: .valueChanged)
-        tableView.refreshControl = refreshControl
     }
     
-    private func setupEmptyState() {
-        emptyStateView.addSubview(emptyImageView)
-        emptyStateView.addSubview(emptyTitleLabel)
-        emptyStateView.addSubview(emptyDescriptionLabel)
-        emptyStateView.addSubview(createButton)
-        
-        createButton.addTarget(self, action: #selector(createSuggestionTapped), for: .touchUpInside)
-        
-        NSLayoutConstraint.activate([
-            emptyImageView.topAnchor.constraint(equalTo: emptyStateView.topAnchor),
-            emptyImageView.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
-            emptyImageView.widthAnchor.constraint(equalToConstant: 80),
-            emptyImageView.heightAnchor.constraint(equalToConstant: 80),
-            
-            emptyTitleLabel.topAnchor.constraint(equalTo: emptyImageView.bottomAnchor, constant: 24),
-            emptyTitleLabel.leadingAnchor.constraint(equalTo: emptyStateView.leadingAnchor),
-            emptyTitleLabel.trailingAnchor.constraint(equalTo: emptyStateView.trailingAnchor),
-            
-            emptyDescriptionLabel.topAnchor.constraint(equalTo: emptyTitleLabel.bottomAnchor, constant: 8),
-            emptyDescriptionLabel.leadingAnchor.constraint(equalTo: emptyStateView.leadingAnchor),
-            emptyDescriptionLabel.trailingAnchor.constraint(equalTo: emptyStateView.trailingAnchor),
-            
-            createButton.topAnchor.constraint(equalTo: emptyDescriptionLabel.bottomAnchor, constant: 24),
-            createButton.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
-            createButton.widthAnchor.constraint(equalToConstant: 180),
-            createButton.heightAnchor.constraint(equalToConstant: 44),
-            createButton.bottomAnchor.constraint(equalTo: emptyStateView.bottomAnchor)
-        ])
+    override func setupRefreshControl() {
+        tableView.refreshControl = refreshControl
     }
     
     // MARK: - Like Management
@@ -215,12 +134,10 @@ class SuggestionsViewController: UIViewController {
         }
     }
     
-    // MARK: - Data Loading
-    private func loadSuggestions() {
+    // MARK: - Data Loading (BaseViewController override)
+    override func loadData(completion: (() -> Void)? = nil) {
         SuggestionService.shared.fetchNetworkSuggestions { [weak self] result in
             DispatchQueue.main.async {
-                self?.refreshControl.endRefreshing()
-                
                 switch result {
                 case .success(let suggestions):
                     self?.suggestions = suggestions.filter { !$0.isExpired }
@@ -228,20 +145,23 @@ class SuggestionsViewController: UIViewController {
                     self?.updateEmptyState()
                 case .failure(let error):
                     print("Error loading suggestions: \(error)")
-                    self?.showError("Failed to load suggestions")
+                    self?.showErrorWithRetry(error) {
+                        self?.loadData(completion: completion)
+                    }
                 }
+                completion?()
             }
         }
     }
     
-    @objc private func refreshSuggestions() {
-        loadSuggestions()
-    }
-    
     private func updateEmptyState() {
-        let isEmpty = suggestions.isEmpty
-        emptyStateView.isHidden = !isEmpty
-        tableView.isHidden = isEmpty
+        if suggestions.isEmpty {
+            showEmptyState()
+            createButton.isHidden = false
+        } else {
+            hideEmptyState()
+            createButton.isHidden = true
+        }
     }
     
     // MARK: - Actions
@@ -255,37 +175,36 @@ class SuggestionsViewController: UIViewController {
     private func deleteSuggestion(at indexPath: IndexPath) {
         let suggestion = suggestions[indexPath.row]
         
-        let alert = UIAlertController(
+        AlertPresenter.showConfirmation(
             title: "Delete Suggestion",
             message: "Are you sure you want to delete this suggestion?",
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
-            SuggestionService.shared.deleteSuggestion(suggestion.id) { result in
-                DispatchQueue.main.async {
-                    switch result {
-                    case .success:
-                        self?.suggestions.remove(at: indexPath.row)
-                        self?.tableView.deleteRows(at: [indexPath], with: .automatic)
-                        self?.updateEmptyState()
-                    case .failure(let error):
-                        print("Error deleting suggestion: \(error)")
-                        self?.showError("Failed to delete suggestion")
+            confirmTitle: "Delete",
+            isDestructive: true,
+            from: self,
+            onConfirm: { [weak self] in
+                let loadingAlert = AlertPresenter.showLoading(message: "Deleting...", from: self!)
+                
+                SuggestionService.shared.deleteSuggestion(suggestion.id) { result in
+                    DispatchQueue.main.async {
+                        loadingAlert.dismiss(animated: true) {
+                            switch result {
+                            case .success:
+                                self?.suggestions.remove(at: indexPath.row)
+                                self?.tableView.deleteRows(at: [indexPath], with: .automatic)
+                                self?.updateEmptyState()
+                            case .failure(let error):
+                                print("Error deleting suggestion: \(error)")
+                                self?.showErrorWithRetry(error) {
+                                    self?.deleteSuggestion(at: indexPath)
+                                }
+                            }
+                        }
                     }
                 }
             }
-        })
-        
-        present(alert, animated: true)
+        )
     }
     
-    private func showError(_ message: String) {
-        let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
 }
 
 // MARK: - UITableViewDataSource
@@ -388,23 +307,22 @@ extension SuggestionsViewController: SuggestionTableViewCellDelegate {
     }
     
     private func fetchPlaceAndNavigate(placeId: String) {
-        // Show loading
-        let loadingAlert = UIAlertController(title: "Loading", message: "Fetching place details...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
+        let loadingAlert = AlertPresenter.showLoading(message: "Fetching place details...", from: self)
         
-        // Fetch place details
         PlaceService.shared.fetchPlaceById(id: placeId) { [weak self] result in
             DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true, completion: {
+                loadingAlert.dismiss(animated: true) {
                     switch result {
                     case .success(let place):
                         let placeDetailVC = PlaceDetailViewController(place: place)
                         self?.navigationController?.pushViewController(placeDetailVC, animated: true)
                     case .failure(let error):
                         print("Error fetching place: \(error)")
-                        self?.showError("Could not load place details")
+                        self?.showErrorWithRetry(error) {
+                            self?.fetchPlaceAndNavigate(placeId: placeId)
+                        }
                     }
-                })
+                }
             }
         }
     }

@@ -2,16 +2,46 @@ import UIKit
 import CoreLocation
 import UniformTypeIdentifiers
 
-class CirclesHomeViewController: UIViewController {
+// MARK: - Response Types
+struct CirclesDataResponse: Codable {
+    let success: Bool
+    let data: [Circle]
+}
+
+// MARK: - Search Scope
+enum SearchScope: CaseIterable {
+    case myPlaces
+    case networkPlaces
+    
+    var title: String {
+        switch self {
+        case .myPlaces:
+            return "Search your places"
+        case .networkPlaces:
+            return "Search all places in your network"
+        }
+    }
+    
+    var placeholder: String {
+        switch self {
+        case .myPlaces:
+            return "Search your places..."
+        case .networkPlaces:
+            return "Search network places..."
+        }
+    }
+}
+
+class CirclesHomeViewController: BaseViewController, PlaceSearchable {
     
     // MARK: - Properties
-    private var circles: [Circle] = []
+    var circles: [Circle] = []
     private var networkCircles: [Circle] = []
     private var isShowingNetworkCircles = false
-    private var allPlaces: [Place] = []
-    private var filteredPlaces: [Place] = []
-    private var isSearching = false
-    private var selectedCategory: PlaceCategory?
+    var allPlaces: [Place] = []
+    var filteredPlaces: [Place] = []
+    var isSearching = false
+    private var selectedCategory: UnifiedCategory?
     private var mapUpdateTimer: Timer? // Debounce timer for map updates
     private var isReturningFromFullScreenMap = false // Prevent map updates when returning from full screen
     private var isLoadingCircles = false // Track when circles are being loaded
@@ -19,13 +49,36 @@ class CirclesHomeViewController: UIViewController {
     private var isPerformingInitialLoad = false // Track if we're in the middle of initial loading
     private var isShowingLoadingUI = false // Track if loading UI is currently shown
     private static var hasLoadedInitialData = false // Track if we've loaded data at least once this session
-    private static var cachedPlaces: [Place] = [] // Cache places to show immediately on subsequent views
-    private static var isCurrentlyLoading = false // Global flag to prevent concurrent loads
     private var hasStartedLoading = false // Instance flag to prevent multiple loads in the same instance
+    
+    // Instance-based cache with expiry
+    private var placesCacheExpiry: Date?
+    private var cachedPlaces: [Place] = []
+    
+    // MARK: - Helper Methods
+    /// Helper function to create a type-safe completion handler for API requests
+    private func createAPICompletion<T>(_ completion: @escaping (Result<T, Error>) -> Void) -> (Result<T, APIError>) -> Void {
+        return { [weak self] result in
+            guard let self = self else { return }
+            
+            switch result {
+            case .success(let response):
+                completion(.success(response))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    private let cacheExpiryMinutes: TimeInterval = 5 // 5 minutes cache expiry
     private var loadDebounceTimer: Timer? // Debounce timer to prevent rapid successive loads
     private var preloadedData: PreloadedData? // Store preloaded data from splash screen
     private var notificationBadgeLabel: UILabel? // Badge label for notification count
     private var notificationBarButton: UIBarButtonItem? // Store reference to notification button
+    
+    // Search scope properties
+    private var currentSearchScope: SearchScope = .myPlaces
+    private var networkPlaces: [Place] = [] // Cache for network places
+    private var isLoadingNetworkPlaces = false
     
     override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
         super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
@@ -58,13 +111,48 @@ class CirclesHomeViewController: UIViewController {
         return view
     }()
     
-    private let searchBar: UISearchBar = {
+    let searchBar: UISearchBar = {
         let searchBar = UISearchBar()
         searchBar.placeholder = "Search your places..."
         searchBar.searchBarStyle = .minimal
         searchBar.backgroundColor = Constants.Colors.background
         searchBar.translatesAutoresizingMaskIntoConstraints = false
         return searchBar
+    }()
+    
+    private let searchScopeButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "chevron.down"), for: .normal)
+        button.tintColor = .systemBlue
+        button.backgroundColor = .systemBackground
+        button.layer.cornerRadius = 8
+        button.layer.borderWidth = 1
+        button.layer.borderColor = UIColor.systemGray4.cgColor
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let searchScopeDropdownView: UIView = {
+        let view = UIView()
+        view.backgroundColor = .systemBackground
+        view.layer.cornerRadius = 8
+        view.layer.shadowColor = UIColor.black.cgColor
+        view.layer.shadowOpacity = 0.1
+        view.layer.shadowOffset = CGSize(width: 0, height: 2)
+        view.layer.shadowRadius = 4
+        view.isHidden = true
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let searchScopeTableView: UITableView = {
+        let tableView = UITableView()
+        tableView.backgroundColor = .clear
+        tableView.separatorStyle = .none
+        tableView.layer.cornerRadius = 8
+        tableView.isScrollEnabled = false
+        tableView.translatesAutoresizingMaskIntoConstraints = false
+        return tableView
     }()
     
     private let quickAccessContainer: UIView = {
@@ -302,7 +390,7 @@ class CirclesHomeViewController: UIViewController {
     private var selectedConnectionId: String? = "my_places_only" // Default to My Places Only
     
     // Search results table view
-    private let searchResultsTableView: UITableView = {
+    let searchResultsTableView: UITableView = {
         let tableView = UITableView()
         tableView.translatesAutoresizingMaskIntoConstraints = false
         tableView.backgroundColor = Constants.Colors.background
@@ -317,7 +405,7 @@ class CirclesHomeViewController: UIViewController {
         return tableView
     }()
     
-    private var searchResultsHeightConstraint: NSLayoutConstraint?
+    var searchResultsHeightConstraint: NSLayoutConstraint?
     
     private let categoryFilterButton: UIButton = {
         let button = UIButton(type: .system)
@@ -415,9 +503,13 @@ class CirclesHomeViewController: UIViewController {
     }()
     
     private var isCategoryDropdownOpen = false
-    private var availableCategories: [PlaceCategory] = []
+    private var availableCategories: [UnifiedCategory] = []
     private var categoryDropdownHeightConstraint: NSLayoutConstraint?
     private var mapHeightConstraint: NSLayoutConstraint?
+    
+    // Search scope dropdown properties
+    private var isSearchScopeDropdownOpen = false
+    private var searchScopeDropdownHeightConstraint: NSLayoutConstraint?
     
     // Activity Feed Properties
     private var activities: [Activity] = []
@@ -534,13 +626,13 @@ class CirclesHomeViewController: UIViewController {
         
         // If we have cached places, show them immediately without filtering
         // The proper filter will be applied when circles are loaded
-        if !CirclesHomeViewController.cachedPlaces.isEmpty {
-            print("🟡 Found cached places: \(CirclesHomeViewController.cachedPlaces.count)")
-            self.allPlaces = CirclesHomeViewController.cachedPlaces
+        if !cachedPlaces.isEmpty {
+            print("🟡 Found cached places: \(cachedPlaces.count)")
+            self.allPlaces = cachedPlaces
             
             // Show all cached places initially - proper filter will be applied when circles load
             print("🟡 Showing all cached places initially (filter will be applied after circles load)")
-            self.mapViewController?.updatePlaces(CirclesHomeViewController.cachedPlaces)
+            self.mapViewController?.updatePlaces(cachedPlaces)
             
             // Show map immediately since we have cached data
             mapContainerView.isHidden = false
@@ -626,10 +718,11 @@ class CirclesHomeViewController: UIViewController {
         
         // NOW create the debounce timer (only if we didn't have preloaded data)
         loadDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
+            guard let self = self else { return }
             print("🟢 Starting initial data load (after debounce)")
             // Use unified loading method
-            self?.performInitialDataLoad()
-            self?.userListView.refresh() // Refresh connections list
+            self.performInitialDataLoad()
+            self.userListView.refresh() // Refresh connections list
         }
         
         // Don't show filter stack here - let hideMapLoadingState handle it
@@ -662,7 +755,7 @@ class CirclesHomeViewController: UIViewController {
         // Removed redundant title - tab bar already shows "My Circles"
         
         // Setup navigation bar
-        let addButton = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(addButtonTapped))
+        let addButton = UIBarButtonItem(image: UIImage(systemName: "plus.circle"), style: .plain, target: self, action: #selector(addButtonTapped))
         
         // Create notification button with bell icon
         let notificationButton = UIBarButtonItem(image: UIImage(systemName: "bell"), style: .plain, target: self, action: #selector(notificationButtonTapped))
@@ -672,7 +765,7 @@ class CirclesHomeViewController: UIViewController {
         setupNotificationBadge()
         
         // Set both buttons as right bar button items
-        navigationItem.rightBarButtonItems = [notificationButton, addButton]
+        navigationItem.rightBarButtonItems = [addButton, notificationButton]
         
         // Setup empty state view
         emptyStateView.addSubview(emptyStateImageView)
@@ -688,7 +781,12 @@ class CirclesHomeViewController: UIViewController {
         
         // Add search bar to main view (not scrolling)
         view.addSubview(searchBar)
+        view.addSubview(searchScopeButton)
         view.addSubview(quickAddPlaceButton)
+        
+        // Add search scope dropdown
+        view.addSubview(searchScopeDropdownView)
+        searchScopeDropdownView.addSubview(searchScopeTableView)
         
         // Add content to scroll view
         contentView.addSubview(quickAccessContainer)
@@ -749,8 +847,14 @@ class CirclesHomeViewController: UIViewController {
             // Search bar (fixed at top)
             searchBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             searchBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Constants.Spacing.medium),
-            searchBar.trailingAnchor.constraint(equalTo: quickAddPlaceButton.leadingAnchor, constant: -Constants.Spacing.small),
+            searchBar.trailingAnchor.constraint(equalTo: searchScopeButton.leadingAnchor, constant: -8),
             searchBar.heightAnchor.constraint(equalToConstant: 44),
+            
+            // Search scope button
+            searchScopeButton.centerYAnchor.constraint(equalTo: searchBar.centerYAnchor),
+            searchScopeButton.trailingAnchor.constraint(equalTo: quickAddPlaceButton.leadingAnchor, constant: -Constants.Spacing.small),
+            searchScopeButton.widthAnchor.constraint(equalToConstant: 32),
+            searchScopeButton.heightAnchor.constraint(equalToConstant: 32),
             
             // Scroll view
             scrollView.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
@@ -977,6 +1081,21 @@ class CirclesHomeViewController: UIViewController {
         searchResultsHeightConstraint = searchResultsTableView.heightAnchor.constraint(equalToConstant: 0)
         searchResultsHeightConstraint?.isActive = true
         
+        // Search scope dropdown constraints
+        NSLayoutConstraint.activate([
+            searchScopeDropdownView.topAnchor.constraint(equalTo: searchScopeButton.bottomAnchor, constant: 4),
+            searchScopeDropdownView.trailingAnchor.constraint(equalTo: searchScopeButton.trailingAnchor),
+            searchScopeDropdownView.widthAnchor.constraint(equalToConstant: 250),
+            
+            searchScopeTableView.topAnchor.constraint(equalTo: searchScopeDropdownView.topAnchor),
+            searchScopeTableView.leadingAnchor.constraint(equalTo: searchScopeDropdownView.leadingAnchor),
+            searchScopeTableView.trailingAnchor.constraint(equalTo: searchScopeDropdownView.trailingAnchor),
+            searchScopeTableView.bottomAnchor.constraint(equalTo: searchScopeDropdownView.bottomAnchor)
+        ])
+        
+        searchScopeDropdownHeightConstraint = searchScopeDropdownView.heightAnchor.constraint(equalToConstant: 0)
+        searchScopeDropdownHeightConstraint?.isActive = true
+        
         // Setup search results table view
         searchResultsTableView.delegate = self
         searchResultsTableView.dataSource = self
@@ -988,6 +1107,7 @@ class CirclesHomeViewController: UIViewController {
         mapExpandButton.addTarget(self, action: #selector(expandMapButtonTapped), for: .touchUpInside)
         categoryFilterButton.addTarget(self, action: #selector(categoryFilterButtonTapped), for: .touchUpInside)
         connectionFilterButton.addTarget(self, action: #selector(connectionFilterButtonTapped), for: .touchUpInside)
+        searchScopeButton.addTarget(self, action: #selector(searchScopeButtonTapped), for: .touchUpInside)
         
         setupMapView()
         setupActivityFeed()
@@ -1031,6 +1151,13 @@ class CirclesHomeViewController: UIViewController {
         searchResultsTableView.dataSource = self
         searchResultsTableView.delaysContentTouches = false
         searchResultsTableView.canCancelContentTouches = true
+        
+        // Configure search scope table view
+        searchScopeTableView.delegate = self
+        searchScopeTableView.dataSource = self
+        searchScopeTableView.register(UITableViewCell.self, forCellReuseIdentifier: "SearchScopeCell")
+        searchScopeTableView.delaysContentTouches = false
+        searchScopeTableView.canCancelContentTouches = true
     }
     
     private func setupActivityFeed() {
@@ -1100,6 +1227,23 @@ class CirclesHomeViewController: UIViewController {
     
     // Navigation title tap removed since we no longer show the title
     
+    // MARK: - Cache Management
+    
+    private func isCacheValid() -> Bool {
+        guard let expiry = placesCacheExpiry else { return false }
+        return Date() < expiry && !cachedPlaces.isEmpty
+    }
+    
+    private func invalidateCache() {
+        cachedPlaces.removeAll()
+        placesCacheExpiry = nil
+        print("🗑️ Places cache invalidated")
+    }
+    
+    private func shouldUseCachedData() -> Bool {
+        return isCacheValid() && !isPerformingInitialLoad
+    }
+    
     private func addGradientToCard(_ card: UIView, colors: [UIColor]) {
         // Remove any existing gradient layers
         card.layer.sublayers?.removeAll(where: { $0 is CAGradientLayer })
@@ -1124,8 +1268,9 @@ class CirclesHomeViewController: UIViewController {
         self.circles = data.circles
         self.allPlaces = data.allPlaces
         
-        // Update cached places
-        CirclesHomeViewController.cachedPlaces = data.allPlaces
+        // Update cached places with expiry
+        self.cachedPlaces = data.allPlaces
+        self.placesCacheExpiry = Date().addingTimeInterval(cacheExpiryMinutes * 60)
         CirclesHomeViewController.hasLoadedInitialData = true
         
         // Mark that we've loaded
@@ -1192,12 +1337,13 @@ class CirclesHomeViewController: UIViewController {
         let offset = loadMore ? currentOffset : 0
         
         ActivityService.shared.getNetworkActivities(limit: 20, offset: offset) { [weak self] result in
+            guard let self = self else { return }
             DispatchQueue.main.async {
                 if loadMore {
-                    self?.isLoadingMoreActivities = false
+                    self.isLoadingMoreActivities = false
                 } else {
-                    self?.isLoadingActivities = false
-                    self?.activityLoadingIndicator.stopAnimating()
+                    self.isLoadingActivities = false
+                    self.activityLoadingIndicator.stopAnimating()
                 }
                 
                 switch result {
@@ -1206,31 +1352,31 @@ class CirclesHomeViewController: UIViewController {
                     
                     if loadMore {
                         // Append to existing activities
-                        self?.activities.append(contentsOf: response.activities)
+                        self.activities.append(contentsOf: response.activities)
                     } else {
                         // Replace activities
-                        self?.activities = response.activities
+                        self.activities = response.activities
                     }
                     
                     // Update pagination state
-                    self?.currentOffset = self?.activities.count ?? 0
-                    self?.hasMoreActivities = response.hasMore
+                    self.currentOffset = self.activities.count ?? 0
+                    self.hasMoreActivities = response.hasMore
                     
-                    print("📊 Total activities: \(self?.activities.count ?? 0), hasMore: \(response.hasMore)")
+                    print("📊 Total activities: \(self.activities.count ?? 0), hasMore: \(response.hasMore)")
                     
-                    self?.updateActivityFeed()
+                    self.updateActivityFeed()
                     
                 case .failure(let error):
                     print("❌ Error fetching activities: \(error)")
                     print("🔍 Error details: \(error.localizedDescription)")
                     
                     if !loadMore {
-                        self?.activities = []
-                        self?.updateActivityFeed()
+                        self.activities = []
+                        self.updateActivityFeed()
                     }
                 }
                 
-                self?.scrollView.refreshControl?.endRefreshing()
+                self.scrollView.refreshControl?.endRefreshing()
             }
         }
     }
@@ -1258,14 +1404,12 @@ class CirclesHomeViewController: UIViewController {
     
     // MARK: - Data Fetching
     private func performInitialDataLoad() {
-        // Set the global loading flag
-        CirclesHomeViewController.isCurrentlyLoading = true
         
         // Unified method to load both circles and places
         print("🔄 Starting initial data load")
         
         // Show loading state once if not already showing and no cached data
-        if CirclesHomeViewController.cachedPlaces.isEmpty {
+        if !isCacheValid() {
             // Only show loading states if we don't have cached data
             showLoadingState()
             showMapLoadingState()
@@ -1311,9 +1455,10 @@ class CirclesHomeViewController: UIViewController {
         
         print("🔍 DEBUG fetchCircles() called - About to call CircleService.fetchUserCircles")
         CircleService.shared.fetchUserCircles { [weak self] result in
+            guard let self = self else { return }
             print("🔍 DEBUG fetchCircles() completion called")
             DispatchQueue.main.async {
-                self?.isLoadingCircles = false
+                self.isLoadingCircles = false
                 
                 switch result {
                 case .success(let circles):
@@ -1322,9 +1467,9 @@ class CirclesHomeViewController: UIViewController {
                         print("🔍 DEBUG - Circle names: \(circles.map { $0.name })")
                         print("🔍 DEBUG - Circle IDs: \(circles.map { $0.id })")
                     }
-                    self?.circles = circles
-                    print("🔍 DEBUG - After assignment, self.circles.count: \(self?.circles.count ?? -1)")
-                    self?.fetchAllPlacesFromCircles()
+                    self.circles = circles
+                    print("🔍 DEBUG - After assignment, self.circles.count: \(self.circles.count ?? -1)")
+                    self.fetchAllPlacesFromCircles()
                     // Don't mark as loaded here - wait until places are fetched
                 case .failure(let error):
                     print("❌ Error fetching circles: \(error.localizedDescription)")
@@ -1333,25 +1478,23 @@ class CirclesHomeViewController: UIViewController {
                     // If it's a duplicate request error, still need to clean up state
                     if case .duplicateRequest = error as? APIError {
                         print("❌ Duplicate request detected - cleaning up state")
-                        self?.isLoadingCircles = false
-                        self?.isPerformingInitialLoad = false
-                        CirclesHomeViewController.isCurrentlyLoading = false
-                        self?.hideLoadingState()
-                        self?.hideMapLoadingState()
+                        self.isLoadingCircles = false
+                        self.isPerformingInitialLoad = false
+                        self.hideLoadingState()
+                        self.hideMapLoadingState()
                         return
                     }
                     
                     // Don't use sample circles - show empty state instead
-                    self?.circles = []
-                    self?.allPlaces = []
-                    self?.isLoadingCircles = false
-                    self?.isPerformingInitialLoad = false
-                    CirclesHomeViewController.isCurrentlyLoading = false
-                    self?.hideLoadingState()
-                    self?.hideMapLoadingState()
+                    self.circles = []
+                    self.allPlaces = []
+                    self.isLoadingCircles = false
+                    self.isPerformingInitialLoad = false
+                    self.hideLoadingState()
+                    self.hideMapLoadingState()
                 }
                 
-                self?.updateEmptyState()
+                self.updateEmptyState()
             }
         }
     }
@@ -1362,8 +1505,9 @@ class CirclesHomeViewController: UIViewController {
             endpoint: "network/my-network-circles",
             method: .get,
             requiresAuth: true
-        ) { [weak self] (result: Result<NetworkCirclesResponse, APIError>) in
-            DispatchQueue.main.async {
+        ) { [weak self] (result: Result<CirclesDataResponse, APIError>) in
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
                 switch result {
                 case .success(let response):
                     print("✅ Successfully fetched \(response.data.count) network circles")
@@ -1373,8 +1517,8 @@ class CirclesHomeViewController: UIViewController {
                             print("🏝️ Found Hawaii circle! Privacy: \(circle.privacy.rawValue), Owner: \(circle.owner)")
                         }
                     }
-                    self?.networkCircles = response.data
-                    self?.updateEmptyState()
+                    self.networkCircles = response.data
+                    self.updateEmptyState()
                     // Don't call updateMapPlaces here - fetchAllPlacesFromCircles handles everything
                 case .failure(let error):
                     print("❌ Error fetching network circles: \(error.localizedDescription)")
@@ -1384,8 +1528,8 @@ class CirclesHomeViewController: UIViewController {
                         return
                     }
                     
-                    self?.networkCircles = []
-                    self?.updateEmptyState()
+                    self.networkCircles = []
+                    self.updateEmptyState()
                 }
             }
         }
@@ -1507,7 +1651,7 @@ class CirclesHomeViewController: UIViewController {
         }
     }
     
-    private func showLoadingState() {
+    override func showLoadingState() {
         loadingContainerView.alpha = 0
         loadingContainerView.isHidden = false
         loadingIndicator.startAnimating()
@@ -1530,7 +1674,7 @@ class CirclesHomeViewController: UIViewController {
         }
     }
     
-    private func hideLoadingState() {
+    override func hideLoadingState() {
         UIView.animate(withDuration: 0.3, animations: {
             self.loadingContainerView.alpha = 0
         }) { _ in
@@ -1541,6 +1685,38 @@ class CirclesHomeViewController: UIViewController {
     }
     
     private func fetchAllPlacesFromCircles() {
+        // Check if we should use cached data for user places, but still need to fetch network circles
+        if shouldUseCachedData() {
+            print("📍 Using cached places data (\(cachedPlaces.count) places)")
+            self.allPlaces = cachedPlaces
+            
+            // Fetch network circles even when using cached user places
+            print("📍 Fetching network circles to complement cached user places")
+            APIService.shared.request(
+                endpoint: "network/my-network-circles",
+                method: .get,
+                requiresAuth: true
+            ) { [weak self] (result: Result<CirclesDataResponse, APIError>) in
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    switch result {
+                    case .success(let response):
+                        print("✅ Successfully fetched \(response.data.count) network circles (with cached user places)")
+                        self.networkCircles = response.data
+                        
+                        // Fetch places from network circles
+                        self.fetchNetworkPlacesAndCombineWithCached()
+                        
+                    case .failure(let error):
+                        print("❌ Error fetching network circles (with cached): \(error.localizedDescription)")
+                        // Use cached data only
+                        self.applyFiltersAndUpdateMap()
+                    }
+                }
+            }
+            return
+        }
+        
         var allFetchedPlaces: [Place] = []
         let group = DispatchGroup()
         
@@ -1549,7 +1725,7 @@ class CirclesHomeViewController: UIViewController {
         
         // Loading state is already shown by performInitialDataLoad, don't show again
         
-        print("📍 fetchAllPlacesFromCircles called")
+        print("📍 fetchAllPlacesFromCircles called (cache invalid or expired)")
         print("📍 User circles count: \(circles.count)")
         print("📍 Network circles count: \(networkCircles.count)")
         
@@ -1560,7 +1736,6 @@ class CirclesHomeViewController: UIViewController {
             self.mapViewController?.updatePlaces([])
             self.isLoadingPlaces = false
             self.isPerformingInitialLoad = false
-            CirclesHomeViewController.isCurrentlyLoading = false
             self.hideLoadingState()
             self.hideMapLoadingState() // Show empty map
             self.updateEmptyState()
@@ -1601,7 +1776,7 @@ class CirclesHomeViewController: UIViewController {
                 endpoint: "network/my-network-circles",
                 method: .get,
                 requiresAuth: true
-            ) { [weak self] (result: Result<NetworkCirclesResponse, APIError>) in
+            ) { [weak self] (result: Result<CirclesDataResponse, APIError>) in
                 switch result {
                 case .success(let response):
                     self?.networkCircles = response.data
@@ -1653,98 +1828,61 @@ class CirclesHomeViewController: UIViewController {
         group.notify(queue: .main, execute: { [weak self] in
             guard let self = self else { return }
             
-            self.allPlaces = allFetchedPlaces
+            // Deduplicate places that might exist in multiple circles
+            let deduplicatedPlaces = self.removeDuplicatePlaces(allFetchedPlaces)
+            self.allPlaces = deduplicatedPlaces
             
-            // Cache the places for instant display on subsequent views
-            CirclesHomeViewController.cachedPlaces = allFetchedPlaces
+            // Cache the deduplicated places with expiry time
+            self.cachedPlaces = deduplicatedPlaces
+            self.placesCacheExpiry = Date().addingTimeInterval(self.cacheExpiryMinutes * 60)
             
             print("🔍 Fetched Places Summary:")
             print("   Total places fetched: \(allFetchedPlaces.count)")
+            print("   Unique places after deduplication: \(deduplicatedPlaces.count)")
+            print("   User circles: \(self.circles.count)")
+            print("   Network circles: \(self.networkCircles.count)")
             
-            // Apply connection filter if selected
-            var filteredPlaces = allFetchedPlaces
-                
-                print("📍 Connection filter - selectedConnectionId: \(self.selectedConnectionId ?? "nil")")
-                
-                if let connectionId = self.selectedConnectionId {
-                    if connectionId == "my_places_only" {
-                        // Show all places from user's own circles
-                        let userCircleIds = self.circles.map { $0.id }
-                        if userCircleIds.isEmpty {
-                            print("⚠️ Warning: User circles not loaded yet, showing all places")
-                            filteredPlaces = allFetchedPlaces
-                        } else {
-                            filteredPlaces = allFetchedPlaces.filter { place in
-                                userCircleIds.contains(place.circleId)
-                            }
-                            print("   Filtered to user's circles (\(userCircleIds.count) circles): \(filteredPlaces.count) places")
-                        }
-                    } else {
-                        // Show only places from the selected connection
-                        // Get all places from circles owned by this connection
-                        filteredPlaces = allFetchedPlaces.filter { place in
-                            // Find the circle this place belongs to
-                            if let circle = self.networkCircles.first(where: { $0.id == place.circleId }) {
-                                return circle.owner == connectionId
-                            }
-                            return false
-                        }
-                        print("   Filtered to connection '\(connectionId)': \(filteredPlaces.count) places")
-                    }
-                } else {
-                    // "All Connections" selected - show all places (user's + connections')
-                    filteredPlaces = allFetchedPlaces
-                    print("   Showing all connections' places: \(filteredPlaces.count) places")
+            // Debug: show which circles each place belongs to
+            for place in allFetchedPlaces {
+                let isFromUserCircle = self.circles.contains(where: { $0.id == place.circleId })
+                let circleType = isFromUserCircle ? "USER" : "NETWORK"
+                print("📍 Place '\(place.name)' belongs to \(circleType) circle \(place.circleId)")
+            }
+            
+            // Apply filtering to fetched places
+            let mapFilteredPlaces = self.applyFiltersToPlaces(allFetchedPlaces)
+            
+            // Update location status label
+            var placesWithLocation = 0
+            for place in mapFilteredPlaces {
+                if place.location?.clLocation != nil {
+                    placesWithLocation += 1
                 }
-                
-                // Apply category filter
-                if let category = self.selectedCategory {
-                    let beforeCategoryFilter = filteredPlaces.count
-                    filteredPlaces = filteredPlaces.filter { place in
-                        // For standard categories, check direct match
-                        if place.category == category {
-                            return true
-                        }
-                        // For custom categories, if user selected "Other" category, include all custom categories
-                        if category == .other && place.category == .other {
-                            return true
-                        }
-                        return false
-                    }
-                    print("   Category filter '\(category.rawValue)' applied: \(beforeCategoryFilter) → \(filteredPlaces.count) places")
-                }
-                
-                
-                print("   Final places sent to map: \(filteredPlaces.count)")
-                
-                // Update location status label
-                let placesWithLocation = filteredPlaces.filter { $0.location?.clLocation != nil }.count
-                let placesWithoutLocation = filteredPlaces.count - placesWithLocation
-                
-                if placesWithoutLocation > 0 {
-                    self.locationStatusLabel.text = "⚠️ \(placesWithoutLocation) places missing location"
-                    self.locationStatusLabel.backgroundColor = UIColor.systemOrange.withAlphaComponent(0.9)
-                    self.locationStatusLabel.textColor = .white
-                    self.locationStatusLabel.layer.cornerRadius = 14
-                    self.locationStatusLabel.layer.masksToBounds = true
-                    self.locationStatusLabel.isHidden = false
-                    
-                    // Add padding to the label
-                    if self.locationStatusLabel.constraints.first(where: { $0.firstAttribute == .width }) == nil {
-                        self.locationStatusLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 180).isActive = true
-                    }
-                } else {
-                    self.locationStatusLabel.isHidden = true
-                }
-                
-                // Pass filtered places to map
-                print("🗺️ Updating map with \(filteredPlaces.count) places")
-                self.mapViewController?.updatePlaces(filteredPlaces)
+            }
+            let placesWithoutLocation = mapFilteredPlaces.count - placesWithLocation
+            
+            if placesWithoutLocation > 0 {
+                self.locationStatusLabel.text = "\(placesWithoutLocation) place\(placesWithoutLocation == 1 ? "" : "s") couldn't be located on the map"
+                self.locationStatusLabel.isHidden = false
+            } else {
+                self.locationStatusLabel.isHidden = true
+            }
+            
+            print("📍 Map Update Summary:")
+            print("   Total filtered places: \(mapFilteredPlaces.count)")
+            print("   Places with location: \(placesWithLocation)")
+            print("   Places without location: \(placesWithoutLocation)")
+            
+            // Pass filtered places to map
+            print("🗺️ Updating map with \(mapFilteredPlaces.count) places")
+            self.mapViewController?.updatePlaces(mapFilteredPlaces)
+            
+            // Update filteredPlaces for UI consistency (search, empty states, etc.)
+            self.filteredPlaces = mapFilteredPlaces
                 
                 // Hide loading state
                 self.isLoadingPlaces = false
                 self.isPerformingInitialLoad = false // Reset initial load flag
-                CirclesHomeViewController.isCurrentlyLoading = false // Reset global loading flag
                 self.hideLoadingState()
                 
                 // Hide map loading state and show the map now that data is ready
@@ -1775,37 +1913,57 @@ class CirclesHomeViewController: UIViewController {
             name: NSNotification.Name("RefreshCircles"),
             object: nil
         )
+        
+        // Invalidate cache when app comes to foreground
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAppWillEnterForeground),
+            name: UIApplication.willEnterForegroundNotification,
+            object: nil
+        )
     }
     
     @objc private func handleCircleDeleted(_ notification: Notification) {
         guard let circleId = notification.userInfo?["circleId"] as? String else { return }
         
         DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
             // Remove the circle from our local array
-            if let index = self?.circles.firstIndex(where: { $0.id == circleId }) {
-                self?.circles.remove(at: index)
+            if let index = self.circles.firstIndex(where: { $0.id == circleId }) {
+                self.circles.remove(at: index)
                 
                 // Reload UI
-                if self?.isShowingNetworkCircles == false {
-                    self?.fetchAllPlacesFromCircles()
+                if self.isShowingNetworkCircles == false {
+                    self.fetchAllPlacesFromCircles()
                 }
             }
             
             // Also remove from network circles if present
-            if let index = self?.networkCircles.firstIndex(where: { $0.id == circleId }) {
-                self?.networkCircles.remove(at: index)
+            if let index = self.networkCircles.firstIndex(where: { $0.id == circleId }) {
+                self.networkCircles.remove(at: index)
             }
             
             // Note: CircleManager caching removed - using local arrays only
             
             // Update empty state
-            self?.updateEmptyState()
+            self.updateEmptyState()
         }
     }
     
     @objc private func handleRefreshCircles() {
+        // Invalidate cache when circles/places are modified
+        invalidateCache()
         // Refresh circles to get updated place counts
         refreshData()
+    }
+    
+    @objc private func handleAppWillEnterForeground() {
+        // Check if cache is expired when app comes to foreground
+        if !isCacheValid() {
+            print("📱 App entering foreground - cache expired, will refresh on next load")
+            // Don't refresh automatically, just invalidate cache
+            // Data will be refreshed when view appears
+        }
     }
     
     // MARK: - Actions
@@ -1838,11 +1996,15 @@ class CirclesHomeViewController: UIViewController {
         let fullScreenMap = FullScreenMapViewController(places: allPlaces)
         fullScreenMap.viewMode = .allPlaces
         fullScreenMap.isPresentedModally = true
+        var userPlaces: [Place] = []
+        let currentUserId = AuthService.shared.getUserId()
+        for place in allPlaces {
+            if place.addedBy == currentUserId {
+                userPlaces.append(place)
+            }
+        }
         fullScreenMap.updatePlacesWithConnections(
-            allPlaces.filter { place in
-                // Filter user's own places
-                place.addedBy == AuthService.shared.getUserId()
-            },
+            userPlaces,
             connections: [],
             connectionPlaces: [:]
         )
@@ -1923,6 +2085,174 @@ class CirclesHomeViewController: UIViewController {
         updateMapPlaces()
     }
     
+    private func deduplicatePlaces(userPlaces: [Place], networkPlaces: [Place]) -> [Place] {
+        var seenPlaceIds = Set<String>()
+        var deduplicatedPlaces: [Place] = []
+        
+        // First, add all user places (these take priority)
+        for place in userPlaces {
+            if !seenPlaceIds.contains(place.id) {
+                seenPlaceIds.insert(place.id)
+                deduplicatedPlaces.append(place)
+            } else {
+                print("🔍 Skipping duplicate user place: '\(place.name)' (ID: \(place.id))")
+            }
+        }
+        
+        // Then, add network places only if we haven't seen their ID
+        var duplicatesFound = 0
+        for place in networkPlaces {
+            if !seenPlaceIds.contains(place.id) {
+                seenPlaceIds.insert(place.id)
+                deduplicatedPlaces.append(place)
+            } else {
+                duplicatesFound += 1
+                print("🔍 Skipping duplicate network place: '\(place.name)' (ID: \(place.id)) - already exists in user places")
+            }
+        }
+        
+        if duplicatesFound > 0 {
+            print("⚠️ Found and removed \(duplicatesFound) duplicate places from network data")
+        }
+        
+        print("📍 Deduplication summary: \(userPlaces.count) user + \(networkPlaces.count) network = \(deduplicatedPlaces.count) unique places")
+        return deduplicatedPlaces
+    }
+    
+    private func removeDuplicatePlaces(_ places: [Place]) -> [Place] {
+        var seenPlaceIds = Set<String>()
+        var deduplicatedPlaces: [Place] = []
+        var duplicatesFound = 0
+        
+        for place in places {
+            if !seenPlaceIds.contains(place.id) {
+                seenPlaceIds.insert(place.id)
+                deduplicatedPlaces.append(place)
+            } else {
+                duplicatesFound += 1
+                print("🔍 Skipping duplicate place: '\(place.name)' (ID: \(place.id)) - already exists")
+            }
+        }
+        
+        if duplicatesFound > 0 {
+            print("⚠️ Found and removed \(duplicatesFound) duplicate places from fetched data")
+        }
+        
+        print("📍 Deduplication summary: \(places.count) fetched places = \(deduplicatedPlaces.count) unique places")
+        return deduplicatedPlaces
+    }
+    
+    private func fetchNetworkPlacesAndCombineWithCached() {
+        var networkPlaces: [Place] = []
+        let group = DispatchGroup()
+        
+        // Fetch places from network circles
+        for circle in networkCircles {
+            group.enter()
+            PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
+                switch result {
+                case .success(let places):
+                    print("✅ Fetched \(places.count) network places from circle '\(circle.name)'")
+                    networkPlaces.append(contentsOf: places)
+                case .failure(let error):
+                    print("❌ Error fetching network places from circle '\(circle.name)': \(error.localizedDescription)")
+                }
+                group.leave()
+            }
+        }
+        
+        group.notify(queue: .main) { [weak self] in
+            guard let self = self else { return }
+            
+            // Deduplicate places before combining
+            let allPlaces = self.deduplicatePlaces(userPlaces: self.cachedPlaces, networkPlaces: networkPlaces)
+            print("📍 Combined places: \(self.cachedPlaces.count) cached user + \(networkPlaces.count) network = \(allPlaces.count) total (after deduplication)")
+            
+            self.allPlaces = allPlaces
+            self.applyFiltersAndUpdateMap()
+        }
+    }
+    
+    private func applyFiltersAndUpdateMap() {
+        // Apply filtering to all places
+        let filteredPlaces = applyFiltersToPlaces(allPlaces)
+        
+        mapViewController?.updatePlaces(filteredPlaces)
+        self.filteredPlaces = filteredPlaces
+        isLoadingPlaces = false
+        hideLoadingState()
+        hideMapLoadingState()
+        updateEmptyState()
+    }
+    
+    private func applyFiltersToPlaces(_ places: [Place]) -> [Place] {
+        print("📍 Connection filter - selectedConnectionId: \(self.selectedConnectionId ?? "nil")")
+        
+        // Apply connection filter if selected
+        var mapFilteredPlaces = places
+        
+        if let connectionId = self.selectedConnectionId {
+            if connectionId == "my_places_only" {
+                // Show only places from user's own circles
+                let userCircleIds = self.circles.map { $0.id }
+                print("📍 User circle IDs: \(userCircleIds)")
+                
+                if userCircleIds.isEmpty {
+                    print("⚠️ Warning: User has no circles, showing empty results")
+                    mapFilteredPlaces = []
+                } else {
+                    // Filter to only include places from user's circles
+                    var filteredPlaces: [Place] = []
+                    for place in places {
+                        let isFromUserCircle = userCircleIds.contains(place.circleId)
+                        if !isFromUserCircle {
+                            print("📍 Excluding place '\(place.name)' from circle \(place.circleId) (not user's circle)")
+                        } else {
+                            filteredPlaces.append(place)
+                        }
+                    }
+                    mapFilteredPlaces = filteredPlaces
+                    print("📍 Filtered to user's circles (\(userCircleIds.count) circles): \(mapFilteredPlaces.count) places")
+                    
+                    // Debug: Show which places we're keeping
+                    for place in mapFilteredPlaces {
+                        print("📍 Keeping place: '\(place.name)' from circle \(place.circleId)")
+                    }
+                }
+            } else {
+                // Show only places from the selected connection
+                // Get all places from circles owned by this connection
+                var connectionFilteredPlaces: [Place] = []
+                for place in places {
+                    // Find the circle this place belongs to
+                    if let circle = self.networkCircles.first(where: { $0.id == place.circleId }) {
+                        if circle.owner == connectionId {
+                            connectionFilteredPlaces.append(place)
+                        }
+                    }
+                }
+                mapFilteredPlaces = connectionFilteredPlaces
+                print("   Filtered to connection '\(connectionId)': \(mapFilteredPlaces.count) places")
+            }
+        } else {
+            // "All Connections" selected - show all places (user's + connections')
+            mapFilteredPlaces = places
+            print("   Showing all connections' places: \(mapFilteredPlaces.count) places")
+        }
+        
+        // Apply category filter
+        if let category = self.selectedCategory {
+            let beforeCategoryFilter = mapFilteredPlaces.count
+            mapFilteredPlaces = mapFilteredPlaces.filter { place in
+                category.matches(place: place)
+            }
+            print("   Category filter '\(category.displayName)' applied: \(beforeCategoryFilter) → \(mapFilteredPlaces.count) places")
+        }
+        
+        print("   Final places after filtering: \(mapFilteredPlaces.count)")
+        return mapFilteredPlaces
+    }
+    
     
     private func updateMapPlaces() {
         // Skip update if returning from full screen map
@@ -1940,9 +2270,10 @@ class CirclesHomeViewController: UIViewController {
         
         // Create a new timer with a 0.3 second delay to debounce rapid updates
         mapUpdateTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
+            guard let self = self else { return }
             // Only fetch if not already loading
-            if !(self?.isLoadingPlaces ?? false) && !(self?.isPerformingInitialLoad ?? false) {
-                self?.fetchAllPlacesFromCircles()
+            if !(self.isLoadingPlaces ?? false) && !(self.isPerformingInitialLoad ?? false) {
+                self.fetchAllPlacesFromCircles()
             }
         }
     }
@@ -2009,10 +2340,10 @@ class CirclesHomeViewController: UIViewController {
     }
     
     private func updateAvailableCategories() {
-        // Get unique categories from all places
-        var categoriesSet = Set<PlaceCategory>()
+        // Get unique categories from all places, including custom categories
+        var categoriesSet = Set<UnifiedCategory>()
         for place in allPlaces {
-            categoriesSet.insert(place.category)
+            categoriesSet.insert(UnifiedCategory.from(place: place))
         }
         availableCategories = Array(categoriesSet).sorted { $0.displayName < $1.displayName }
     }
@@ -2077,6 +2408,42 @@ class CirclesHomeViewController: UIViewController {
         }
     }
     
+    private func showSearchScopeDropdown() {
+        // Calculate dropdown height for 2 options
+        let numberOfRows = SearchScope.allCases.count
+        let dropdownHeight = CGFloat(numberOfRows) * 44
+        
+        searchScopeDropdownView.isHidden = false
+        searchScopeDropdownHeightConstraint?.constant = dropdownHeight
+        
+        UIView.animate(withDuration: 0.2, animations: {
+            self.searchScopeDropdownView.alpha = 1
+            self.view.layoutIfNeeded()
+            
+            // Rotate arrow
+            self.searchScopeButton.imageView?.transform = CGAffineTransform(rotationAngle: .pi)
+        })
+        
+        // Bring dropdown to front
+        view.bringSubviewToFront(searchScopeDropdownView)
+        
+        // Reload table view
+        searchScopeTableView.reloadData()
+    }
+    
+    private func hideSearchScopeDropdown() {
+        UIView.animate(withDuration: 0.2, animations: {
+            self.searchScopeDropdownView.alpha = 0
+            self.searchScopeDropdownHeightConstraint?.constant = 0
+            self.view.layoutIfNeeded()
+            
+            // Rotate arrow back
+            self.searchScopeButton.imageView?.transform = .identity
+        }) { _ in
+            self.searchScopeDropdownView.isHidden = true
+        }
+    }
+    
     @objc private func dismissDropdowns() {
         // Check if tapped outside of dropdowns
         if isCategoryDropdownOpen {
@@ -2087,9 +2454,35 @@ class CirclesHomeViewController: UIViewController {
             isConnectionDropdownOpen = false
             hideConnectionDropdown()
         }
+        if isSearchScopeDropdownOpen {
+            isSearchScopeDropdownOpen = false
+            hideSearchScopeDropdown()
+        }
     }
     
-    @objc private func refreshData() {
+    @objc private func searchScopeButtonTapped() {
+        isSearchScopeDropdownOpen.toggle()
+        
+        if isSearchScopeDropdownOpen {
+            // Close other dropdowns if open
+            if isCategoryDropdownOpen {
+                isCategoryDropdownOpen = false
+                hideCategoryDropdown()
+            }
+            if isConnectionDropdownOpen {
+                isConnectionDropdownOpen = false
+                hideConnectionDropdown()
+            }
+            showSearchScopeDropdown()
+        } else {
+            hideSearchScopeDropdown()
+        }
+    }
+    
+    @objc override func refreshData() {
+        // Invalidate cache when user manually refreshes
+        invalidateCache()
+        
         if isShowingNetworkCircles {
             fetchNetworkCircles()
         } else {
@@ -2155,26 +2548,27 @@ class CirclesHomeViewController: UIViewController {
     
     private func updateNotificationBadge() {
         NotificationService.shared.getUnreadNotificationCount { [weak self] result in
+            guard let self = self else { return }
             DispatchQueue.main.async {
                 switch result {
                 case .success(let count):
                     if count > 0 {
-                        self?.notificationBadgeLabel?.text = count > 99 ? "99+" : "\(count)"
-                        self?.notificationBadgeLabel?.isHidden = false
+                        self.notificationBadgeLabel?.text = count > 99 ? "99+" : "\(count)"
+                        self.notificationBadgeLabel?.isHidden = false
                         
                         // Adjust width constraint if needed
                         if count > 9 {
-                            self?.notificationBadgeLabel?.constraints.forEach { constraint in
+                            self.notificationBadgeLabel?.constraints.forEach { constraint in
                                 if constraint.firstAttribute == .width {
                                     constraint.constant = 20
                                 }
                             }
                         }
                     } else {
-                        self?.notificationBadgeLabel?.isHidden = true
+                        self.notificationBadgeLabel?.isHidden = true
                     }
                 case .failure:
-                    self?.notificationBadgeLabel?.isHidden = true
+                    self.notificationBadgeLabel?.isHidden = true
                 }
             }
         }
@@ -2252,7 +2646,8 @@ class CirclesHomeViewController: UIViewController {
         // Geocode the address to get coordinates
         let geocoder = CLGeocoder()
         geocoder.geocodeAddressString(address) { [weak self] placemarks, error in
-            loadingAlert.dismiss(animated: true) {
+            guard let self = self else { return }
+            loadingAlert.dismiss(animated: true) { [weak self] in
                 guard let self = self else { return }
                 
                 var location: GeoLocation? = nil
@@ -2426,7 +2821,7 @@ class CirclesHomeViewController: UIViewController {
                     UserDefaults.standard.set(locationData, forKey: locationKey)
                     
                     // Update UI
-                    DispatchQueue.main.async {
+                    DispatchQueue.main.async { [weak self] in
                         self?.setupQuickAccessButtons()
                     }
                 }
@@ -2441,34 +2836,6 @@ class CirclesHomeViewController: UIViewController {
         present(alert, animated: true)
     }
     
-    // MARK: - Search Results
-    private func showSearchResults() {
-        // Calculate height based on number of results (max 5 visible)
-        let maxVisibleResults = 5
-        let cellHeight: CGFloat = 60
-        let numberOfResults = min(filteredPlaces.count, maxVisibleResults)
-        let height = CGFloat(numberOfResults) * cellHeight
-        
-        searchResultsTableView.isHidden = false
-        searchResultsHeightConstraint?.constant = height
-        
-        UIView.animate(withDuration: 0.3) {
-            self.searchResultsTableView.alpha = 1
-            self.view.layoutIfNeeded()
-        }
-        
-        searchResultsTableView.reloadData()
-    }
-    
-    private func hideSearchResults() {
-        UIView.animate(withDuration: 0.3) {
-            self.searchResultsTableView.alpha = 0
-            self.searchResultsHeightConstraint?.constant = 0
-            self.view.layoutIfNeeded()
-        } completion: { _ in
-            self.searchResultsTableView.isHidden = true
-        }
-    }
     
     // MARK: - Circle Management
     private func editCircle(at indexPath: IndexPath) {
@@ -2498,14 +2865,15 @@ class CirclesHomeViewController: UIViewController {
     
     private func performDelete(circle: Circle, at indexPath: IndexPath) {
         CircleService.shared.deleteCircle(id: circle.id) { [weak self] result in
+            guard let self = self else { return }
             DispatchQueue.main.async {
                 switch result {
                 case .success(_):
-                    self?.circles.remove(at: indexPath.row)
-                    self?.updateEmptyState()
+                    self.circles.remove(at: indexPath.row)
+                    self.updateEmptyState()
                     
                 case .failure(let error):
-                    self?.presentAlert(
+                    self.presentAlert(
                         title: "Error",
                         message: "Failed to delete circle: \(error.localizedDescription)"
                     )
@@ -2528,8 +2896,10 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             return availableCategories.count + 1 // +1 for "All Categories"
         } else if tableView == connectionDropdownTableView {
             return NetworkManager.shared.connections.count + 2 // +2 for "All Connections" and "My Places Only"
+        } else if tableView == searchScopeTableView {
+            return SearchScope.allCases.count
         } else if tableView == searchResultsTableView {
-            return filteredPlaces.count
+            return numberOfRowsInSearchResults()
         } else if tableView == activityTableView {
             return activities.count
         }
@@ -2591,6 +2961,24 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 cell.textLabel?.textColor = selectedConnectionId == otherUserId ? Constants.Colors.primary : Constants.Colors.label
                 cell.accessoryType = selectedConnectionId == otherUserId ? .checkmark : .none
             }
+            
+            return cell
+        } else if tableView == searchScopeTableView {
+            let cell = tableView.dequeueReusableCell(withIdentifier: "SearchScopeCell") ?? UITableViewCell(style: .default, reuseIdentifier: "SearchScopeCell")
+            
+            cell.backgroundColor = .clear
+            cell.textLabel?.font = UIFont.systemFont(ofSize: 15, weight: .medium)
+            cell.selectionStyle = .default
+            
+            // Set selection background color
+            let selectedView = UIView()
+            selectedView.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.1)
+            cell.selectedBackgroundView = selectedView
+            
+            let scope = SearchScope.allCases[indexPath.row]
+            cell.textLabel?.text = scope.title
+            cell.textLabel?.textColor = currentSearchScope == scope ? Constants.Colors.primary : Constants.Colors.label
+            cell.accessoryType = currentSearchScope == scope ? .checkmark : .none
             
             return cell
         } else if tableView == searchResultsTableView {
@@ -2701,6 +3089,7 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             }
             
             // Update UI and hide dropdown
+            print("📍 Category filter changed to: \(selectedCategory?.displayName ?? "All Categories")")
             updateMapPlaces()
             hideCategoryDropdown()
             isCategoryDropdownOpen = false
@@ -2725,32 +3114,32 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             }
             
             // Update UI and hide dropdown
+            print("📍 Connection filter changed to: \(selectedConnectionId ?? "All Connections")")
             updateMapPlaces()
             hideConnectionDropdown()
             isConnectionDropdownOpen = false
+        } else if tableView == searchScopeTableView {
+            let selectedScope = SearchScope.allCases[indexPath.row]
+            currentSearchScope = selectedScope
+            
+            // Update search bar placeholder
+            searchBar.placeholder = selectedScope.placeholder
+            
+            // If currently searching, refresh the search results with new scope
+            if isSearching {
+                filterPlaces(searchText: searchBar.text ?? "")
+            }
+            
+            // Load network places if switching to network search and not already loaded
+            if selectedScope == .networkPlaces && networkPlaces.isEmpty && !isLoadingNetworkPlaces {
+                loadNetworkPlaces()
+            }
+            
+            // Update UI and hide dropdown
+            hideSearchScopeDropdown()
+            isSearchScopeDropdownOpen = false
         } else if tableView == searchResultsTableView {
-            let place = filteredPlaces[indexPath.row]
-            
-            // Find the circle this place belongs to
-            var circle: Circle?
-            if let userCircle = circles.first(where: { $0.id == place.circleId }) {
-                circle = userCircle
-            } else if let networkCircle = networkCircles.first(where: { $0.id == place.circleId }) {
-                circle = networkCircle
-            }
-            
-            if let circle = circle {
-                // Navigate to place detail
-                let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
-                navigationController?.pushViewController(placeDetailVC, animated: true)
-                
-                // Clear search
-                searchBar.text = ""
-                searchBar.resignFirstResponder()
-                isSearching = false
-                filteredPlaces = []
-                hideSearchResults()
-            }
+            handleSearchResultSelection(at: indexPath)
         } else if tableView == activityTableView {
             let activity = activities[indexPath.row]
             
@@ -2779,9 +3168,10 @@ extension CirclesHomeViewController: CreateCircleDelegate {
         
         // Dismiss the modal CreateCircleViewController first
         dismiss(animated: true) { [weak self] in
+            guard let self = self else { return }
             // After dismissal, navigate to AddPlaceViewController with the new circle
             let addPlaceVC = AddPlaceViewController(circleId: circle.id)
-            self?.navigationController?.pushViewController(addPlaceVC, animated: true)
+            self.navigationController?.pushViewController(addPlaceVC, animated: true)
         }
     }
 }
@@ -2825,47 +3215,147 @@ extension CirclesHomeViewController: FullScreenMapViewControllerDelegate {
 
 // MARK: - UISearchBarDelegate
 extension CirclesHomeViewController: UISearchBarDelegate {
+    // Override to add updateEmptyState call
     func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
-        if searchText.isEmpty {
-            isSearching = false
-            filteredPlaces = []
-            hideSearchResults()
-        } else {
-            isSearching = true
-            filteredPlaces = allPlaces.filter { place in
-                place.name.localizedCaseInsensitiveContains(searchText) ||
-                (place.address).localizedCaseInsensitiveContains(searchText) ||
-                (place.description ?? "").localizedCaseInsensitiveContains(searchText)
-            }
-            
-            if !filteredPlaces.isEmpty {
-                showSearchResults()
-            } else {
-                hideSearchResults()
-            }
-        }
+        // Call the protocol's default implementation
+        (self as PlaceSearchable).searchBar(searchBar, textDidChange: searchText)
+        // Update empty state after search
         updateEmptyState()
-    }
-    
-    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
-        searchBar.resignFirstResponder()
     }
     
     func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
-        searchBar.text = ""
-        searchBar.resignFirstResponder()
-        isSearching = false
-        filteredPlaces = []
-        hideSearchResults()
+        // Call the protocol's default implementation
+        (self as PlaceSearchable).searchBarCancelButtonClicked(searchBar)
+        // Update empty state after clearing search
         updateEmptyState()
     }
-    
-    func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
-        searchBar.setShowsCancelButton(true, animated: true)
+}
+
+// MARK: - Custom Search Implementation
+extension CirclesHomeViewController {
+    // Override the default filterPlaces to support search scope
+    func filterPlaces(searchText: String) {
+        let searchSource: [Place]
+        
+        switch currentSearchScope {
+        case .myPlaces:
+            searchSource = allPlaces // User's own places
+        case .networkPlaces:
+            // Combine user's places with network places, removing duplicates
+            searchSource = deduplicatePlaces(userPlaces: allPlaces, networkPlaces: networkPlaces)
+        }
+        
+        filteredPlaces = searchSource.filter { place in
+            place.name.localizedCaseInsensitiveContains(searchText) ||
+            place.address.localizedCaseInsensitiveContains(searchText) ||
+            (place.description ?? "").localizedCaseInsensitiveContains(searchText) ||
+            (place.notes ?? "").localizedCaseInsensitiveContains(searchText) ||
+            (place.publicNotes ?? "").localizedCaseInsensitiveContains(searchText) ||
+            (place.privateNotes ?? "").localizedCaseInsensitiveContains(searchText)
+        }
     }
     
-    func searchBarTextDidEndEditing(_ searchBar: UISearchBar) {
-        searchBar.setShowsCancelButton(false, animated: true)
+    // Load network places for search
+    func loadNetworkPlaces() {
+        guard !isLoadingNetworkPlaces else { return }
+        
+        isLoadingNetworkPlaces = true
+        print("🔍 Loading network places for search...")
+        
+        let group = DispatchGroup()
+        var allNetworkPlaces: [Place] = []
+        
+        // If we don't have network circles, fetch them first
+        if networkCircles.isEmpty {
+            group.enter()
+            APIService.shared.request(
+                endpoint: "network/my-network-circles",
+                method: .get,
+                requiresAuth: true
+            ) { [weak self] (result: Result<CirclesDataResponse, APIError>) in
+                switch result {
+                case .success(let response):
+                    self?.networkCircles = response.data
+                    // Now fetch places from network circles
+                    for circle in response.data {
+                        group.enter()
+                        PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
+                            switch result {
+                            case .success(let places):
+                                allNetworkPlaces.append(contentsOf: places)
+                            case .failure(let error):
+                                print("Failed to fetch places for network circle \(circle.id): \(error)")
+                            }
+                            group.leave()
+                        }
+                    }
+                case .failure(let error):
+                    print("Failed to fetch network circles: \(error)")
+                }
+                group.leave()
+            }
+        } else {
+            // Use existing network circles
+            for circle in networkCircles {
+                group.enter()
+                PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
+                    switch result {
+                    case .success(let places):
+                        allNetworkPlaces.append(contentsOf: places)
+                    case .failure(let error):
+                        print("Failed to fetch places for network circle \(circle.id): \(error)")
+                    }
+                    group.leave()
+                }
+            }
+        }
+        
+        group.notify(queue: .main) { [weak self] in
+            guard let self = self else { return }
+            self.isLoadingNetworkPlaces = false
+            
+            // Deduplicate network places before storing
+            let deduplicatedNetworkPlaces = self.removeDuplicatePlaces(allNetworkPlaces)
+            self.networkPlaces = deduplicatedNetworkPlaces
+            print("🔍 Loaded \(allNetworkPlaces.count) raw network places, deduplicated to \(deduplicatedNetworkPlaces.count) unique places for search")
+            
+            // If currently searching in network scope, refresh results
+            if self.currentSearchScope == .networkPlaces && self.isSearching == true {
+                self.filterPlaces(searchText: self.searchBar.text ?? "")
+                if !self.filteredPlaces.isEmpty {
+                    self.showSearchResults()
+                } else {
+                    self.hideSearchResults()
+                }
+                self.updateEmptyState()
+            }
+        }
+    }
+}
+
+// MARK: - PlaceSearchable Navigation
+extension CirclesHomeViewController {
+    func navigateToPlace(_ place: Place) {
+        // Find the circle this place belongs to
+        var targetCircle: Circle?
+        
+        // Check user's circles first
+        if let circle = circles.first(where: { $0.id == place.circleId }) {
+            targetCircle = circle
+        }
+        
+        // Check network circles if not found
+        if targetCircle == nil {
+            targetCircle = networkCircles.first(where: { $0.id == place.circleId })
+        }
+        
+        guard let circle = targetCircle else {
+            print("⚠️ Could not find circle for place: \(place.name)")
+            return
+        }
+        
+        let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
+        navigationController?.pushViewController(placeDetailVC, animated: true)
     }
 }
 
@@ -2881,6 +3371,12 @@ extension CirclesHomeViewController: HorizontalUserListViewDelegate {
 
 // MARK: - Navigation from Notifications
 extension CirclesHomeViewController {
+    func scrollToTop() {
+        DispatchQueue.main.async {
+            self.scrollView.setContentOffset(.zero, animated: true)
+        }
+    }
+    
     func navigateToCircle(withId circleId: String) {
         // Find the circle in our data
         guard let circle = circles.first(where: { $0.id == circleId }) else {
@@ -2900,12 +3396,13 @@ extension CirclesHomeViewController {
         present(loadingAlert, animated: true)
         
         CircleService.shared.fetchCircleById(id: circleId) { [weak self] result in
+            guard let self = self else { return }
             DispatchQueue.main.async {
                 loadingAlert.dismiss(animated: true) {
                     switch result {
                     case .success(let circle):
                         let detailVC = CircleDetailViewController(circle: circle)
-                        self?.navigationController?.pushViewController(detailVC, animated: true)
+                        self.navigationController?.pushViewController(detailVC, animated: true)
                     case .failure(let error):
                         let alert = UIAlertController(
                             title: "Error",
@@ -2913,7 +3410,7 @@ extension CirclesHomeViewController {
                             preferredStyle: .alert
                         )
                         alert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self?.present(alert, animated: true)
+                        self.present(alert, animated: true)
                     }
                 }
             }
@@ -2943,6 +3440,7 @@ extension CirclesHomeViewController {
         present(loadingAlert, animated: true)
         
         PlaceService.shared.fetchPlaceById(id: placeId) { [weak self] result in
+            guard let self = self else { return }
             DispatchQueue.main.async {
                 loadingAlert.dismiss(animated: true) {
                     switch result {
@@ -2953,7 +3451,7 @@ extension CirclesHomeViewController {
                                 switch circleResult {
                                 case .success(let circle):
                                     let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
-                                    self?.navigationController?.pushViewController(placeDetailVC, animated: true)
+                                    self.navigationController?.pushViewController(placeDetailVC, animated: true)
                                 case .failure:
                                     // Show error
                                     let alert = UIAlertController(
@@ -2962,7 +3460,7 @@ extension CirclesHomeViewController {
                                         preferredStyle: .alert
                                     )
                                     alert.addAction(UIAlertAction(title: "OK", style: .default))
-                                    self?.present(alert, animated: true)
+                                    self.present(alert, animated: true)
                                 }
                             }
                         }
@@ -2973,7 +3471,7 @@ extension CirclesHomeViewController {
                             preferredStyle: .alert
                         )
                         alert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self?.present(alert, animated: true)
+                        self.present(alert, animated: true)
                     }
                 }
             }
@@ -3008,6 +3506,7 @@ extension CirclesHomeViewController: UIGestureRecognizerDelegate {
         if let touchView = touch.view {
             if touchView.isDescendant(of: categoryDropdownTableView) ||
                touchView.isDescendant(of: connectionDropdownTableView) ||
+               touchView.isDescendant(of: searchScopeTableView) ||
                touchView.isDescendant(of: searchResultsTableView) {
                 return false
             }
@@ -3019,6 +3518,9 @@ extension CirclesHomeViewController: UIGestureRecognizerDelegate {
             return false
         }
         if !connectionDropdownView.isHidden && connectionDropdownView.frame.contains(location) {
+            return false
+        }
+        if !searchScopeDropdownView.isHidden && searchScopeDropdownView.frame.contains(location) {
             return false
         }
         if !searchResultsTableView.isHidden && searchResultsTableView.frame.contains(location) {

@@ -17,33 +17,26 @@ enum AuthError: Error, LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .invalidCredentials:
-            return "Incorrect email or password. Please check your credentials and try again."
+            return "Invalid email or password"
         case .accountExists:
-            return "An account with this email already exists. Try logging in instead, or use a different email."
+            return "An account with this email already exists"
         case .accountNotFound:
-            return "No account found with this email. Please check your email address or create a new account."
+            return "Account not found"
         case .tokenExpired:
-            return "Your session has expired. Please log in again."
+            return "Your session has expired. Please log in again"
         case .networkError(let error):
-            if error.localizedDescription.lowercased().contains("internet") || error.localizedDescription.lowercased().contains("network") {
-                return "No internet connection. Please check your network and try again."
-            }
             return "Network error: \(error.localizedDescription)"
         case .emailNotVerified:
-            return "Please verify your email before logging in. Check your inbox for the verification link, or request a new one."
+            return "Please verify your email before logging in. Check your inbox for the verification link."
         case .invalidEmail:
-            return "Please enter a valid email address (e.g., name@example.com)."
+            return "Please enter a valid email address"
         case .emailAlreadyInUse:
-            return "This email is already registered. Try logging in instead, or use a different email."
+            return "An account with this email already exists"
         case .weakPassword:
-            return "Password must be at least 6 characters long. Please choose a stronger password."
+            return "Password must be at least 6 characters"
         case .userNotFound:
-            return "No account found with this email. Please check your email address or create a new account."
+            return "No account found with this email"
         case .unknown(let message):
-            // If it's a generic message, provide guidance
-            if message.lowercased().contains("error") || message.lowercased().contains("failed") {
-                return "\(message) Please try again or contact support if the problem persists."
-            }
             return message
         }
     }
@@ -157,8 +150,6 @@ class AuthService {
     }
     
     func login(email: String, password: String, completion: @escaping (Result<User, Error>) -> Void) {
-        print("🔐 AuthService.login() called with email: \(email)")
-        
         let body: [String: Any] = [
             "email": email,
             "password": password
@@ -170,32 +161,13 @@ class AuthService {
             body: body,
             requiresAuth: false
         ) { [weak self] (result: Result<AuthResponse, APIError>) in
-            print("🔐 AuthService.login() API response received")
-            
             switch result {
             case .success(let response):
-                print("🔐 Login successful for email: \(email)")
                 // Save auth provider as "email" for email/password login
                 self?.saveAuthProvider("email")
                 self?.handleAuthResponse(response, completion: completion)
-                
             case .failure(let error):
-                print("🔐 Login failed for email: \(email)")
-                print("🔐 API Error: \(error)")
-                print("🔐 API Error type: \(type(of: error))")
-                
-                // Log additional details for debugging
-                if case .httpError(let statusCode, let data) = error {
-                    print("🔐 HTTP Status Code: \(statusCode)")
-                    if let data = data, let errorString = String(data: data, encoding: .utf8) {
-                        print("🔐 Backend Response: \(errorString)")
-                    }
-                }
-                
                 let authError = self?.mapAPIErrorToAuthError(error, context: .login)
-                print("🔐 Mapped to AuthError: \(String(describing: authError))")
-                print("🔐 Final error message: \(authError?.localizedDescription ?? "Unknown")")
-                
                 completion(.failure(authError ?? error))
             }
         }
@@ -576,82 +548,35 @@ class AuthService {
         case .httpError(let statusCode, let data):
             // Parse error message from response data if available
             if let data = data, let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
-                let message = errorResponse.message.lowercased()
-                
-                // Check for specific backend error messages
-                if message.contains("invalid credentials") || message.contains("invalid email or password") {
-                    return .invalidCredentials
-                }
-                
-                if message.contains("user not found") || message.contains("account not found") || message.contains("no account found") {
-                    return .accountNotFound
-                }
-                
-                if message.contains("email") && (message.contains("verif") || message.contains("not verified")) {
+                // Check for email verification error
+                if errorResponse.message.lowercased().contains("email") && errorResponse.message.lowercased().contains("verif") {
                     return .emailNotVerified
                 }
                 
-                if message.contains("account") && (message.contains("exists") || message.contains("already")) {
-                    return .accountExists
-                }
-                
-                if message.contains("password") && (message.contains("weak") || message.contains("too short") || message.contains("at least")) {
-                    return .weakPassword
-                }
-                
-                if message.contains("invalid email") || message.contains("email format") {
-                    return .invalidEmail
-                }
-                
-                // Status-code-based fallbacks if message doesn't match patterns
                 switch statusCode {
                 case 400:
-                    // Check if it's a validation error for specific fields
-                    if message.contains("email") {
-                        return .invalidEmail
-                    } else if message.contains("password") {
-                        return .weakPassword
-                    }
-                    return .unknown(errorResponse.message)
-                    
+                    // General validation error
+                    return .unknown("Invalid request")
                 case 401:
-                    // For 401, prefer credential-based errors for login context
-                    if context == .login {
-                        return .invalidCredentials
-                    }
-                    return .tokenExpired
-                    
+                    return .invalidCredentials
                 case 403:
                     // Could be email not verified
                     if context == .login {
                         return .emailNotVerified
                     }
-                    return .unknown(errorResponse.message)
-                    
-                case 404:
-                    return .accountNotFound
-                    
+                    return .unknown("Forbidden")
                 case 409:
                     if context == .register {
                         return .accountExists
                     }
-                    return .unknown(errorResponse.message)
-                    
+                    return .unknown("Conflict")
+                case 404:
+                    return .accountNotFound
                 default:
-                    // Use the actual backend message for other status codes
-                    return .unknown(errorResponse.message)
+                    return .unknown("HTTP error: \(statusCode)")
                 }
             }
-            
-            // Fallback when no data available
-            switch statusCode {
-            case 401:
-                return context == .login ? .invalidCredentials : .tokenExpired
-            case 404:
-                return .accountNotFound
-            default:
-                return .unknown("HTTP error: \(statusCode)")
-            }
+            return .unknown(error.localizedDescription)
             
         case .unauthorized:
             return .tokenExpired

@@ -1,6 +1,6 @@
 import UIKit
 
-class EmailLoginViewController: UIViewController {
+class EmailLoginViewController: BaseViewController {
     
     // MARK: - UI Elements
     private let titleLabel: UILabel = {
@@ -35,16 +35,7 @@ class EmailLoginViewController: UIViewController {
         return textField
     }()
     
-    private let loginButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Log in", for: .normal)
-        button.setTitleColor(.white, for: .normal)
-        button.backgroundColor = Constants.Colors.primary // Blue
-        button.layer.cornerRadius = 25
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private lazy var loginButton = UIButton.primaryButton(title: "Log in")
     
     private let rememberMeContainer: UIView = {
         let view = UIView()
@@ -70,21 +61,7 @@ class EmailLoginViewController: UIViewController {
         return label
     }()
     
-    private let forgotPasswordButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Forgot password?", for: .normal)
-        button.setTitleColor(Constants.Colors.primary, for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 16)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-    
-    private let activityIndicator: UIActivityIndicatorView = {
-        let indicator = UIActivityIndicatorView(style: .medium)
-        indicator.hidesWhenStopped = true
-        indicator.translatesAutoresizingMaskIntoConstraints = false
-        return indicator
-    }()
+    private lazy var forgotPasswordButton = UIButton.secondaryButton(title: "Forgot password?")
     
     // MARK: - Properties
     private let savedEmailKey = "savedUserEmail"
@@ -96,12 +73,17 @@ class EmailLoginViewController: UIViewController {
             passwordTextField.isEnabled = !isLoggingIn
             
             if isLoggingIn {
-                activityIndicator.startAnimating()
+                loginButton.setLoading(true)
             } else {
-                activityIndicator.stopAnimating()
+                loginButton.setLoading(false)
+                loginButton.setTitle("Log in", for: .normal)
             }
         }
     }
+    
+    // MARK: - BaseViewController Configuration
+    override var showsLoadingIndicator: Bool { false }
+    override var loadsDataOnViewDidLoad: Bool { false }
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
@@ -118,8 +100,6 @@ class EmailLoginViewController: UIViewController {
     
     // MARK: - UI Setup
     private func setupUI() {
-        view.backgroundColor = .systemBackground
-        
         // Setup remember me container
         rememberMeContainer.addSubview(rememberMeCheckbox)
         rememberMeContainer.addSubview(rememberMeLabel)
@@ -131,7 +111,6 @@ class EmailLoginViewController: UIViewController {
         view.addSubview(rememberMeContainer)
         view.addSubview(loginButton)
         view.addSubview(forgotPasswordButton)
-        view.addSubview(activityIndicator)
         
         // Layout constraints
         NSLayoutConstraint.activate([
@@ -166,13 +145,10 @@ class EmailLoginViewController: UIViewController {
             loginButton.topAnchor.constraint(equalTo: rememberMeContainer.bottomAnchor, constant: 24),
             loginButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
             loginButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
-            loginButton.heightAnchor.constraint(equalToConstant: 50),
             
             forgotPasswordButton.topAnchor.constraint(equalTo: loginButton.bottomAnchor, constant: 16),
-            forgotPasswordButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            
-            activityIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            activityIndicator.topAnchor.constraint(equalTo: forgotPasswordButton.bottomAnchor, constant: 32)
+            forgotPasswordButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
+            forgotPasswordButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40)
         ])
         
         // Setup text field delegates
@@ -199,7 +175,7 @@ class EmailLoginViewController: UIViewController {
     @objc private func loginButtonTapped() {
         guard let email = emailTextField.text, !email.isEmpty,
               let password = passwordTextField.text, !password.isEmpty else {
-            presentAlert(title: "Error", message: "Please enter both email and password")
+            showError("Please enter both email and password")
             return
         }
         
@@ -218,7 +194,6 @@ class EmailLoginViewController: UIViewController {
                     if self?.rememberMeCheckbox.isSelected == true {
                         KeychainManager.shared.saveCredentials(email: email, password: password)
                     } else {
-                        // Clear any saved credentials if remember me is unchecked
                         KeychainManager.shared.deleteCredentials()
                     }
                     
@@ -228,7 +203,7 @@ class EmailLoginViewController: UIViewController {
                     if let authError = error as? AuthError, authError == .emailNotVerified {
                         self?.showEmailVerificationAlert(email: email)
                     } else {
-                        self?.presentAlert(title: "Login Failed", message: error.localizedDescription)
+                        self?.showError(error)
                     }
                 }
             }
@@ -236,8 +211,7 @@ class EmailLoginViewController: UIViewController {
     }
     
     @objc private func forgotPasswordTapped() {
-        // TODO: Implement forgot password flow
-        presentAlert(title: "Coming Soon", message: "Password reset functionality will be available soon.")
+        AlertPresenter.showError(title: "Coming Soon", message: "Password reset functionality will be available soon.", from: self)
     }
     
     @objc private func dismissKeyboard() {
@@ -249,12 +223,6 @@ class EmailLoginViewController: UIViewController {
     }
     
     // MARK: - Helper Methods
-    private func presentAlert(title: String, message: String) {
-        let alertController = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        alertController.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alertController, animated: true)
-    }
-    
     private func saveEmail(_ email: String) {
         UserDefaults.standard.set(email, forKey: savedEmailKey)
     }
@@ -274,31 +242,23 @@ class EmailLoginViewController: UIViewController {
     }
     
     private func showEmailVerificationAlert(email: String) {
-        let alert = UIAlertController(
+        AlertPresenter.showConfirmation(
             title: "Email Not Verified",
             message: "Please verify your email address before logging in. Check your inbox for the verification link sent to \(email).",
-            preferredStyle: .alert
+            confirmTitle: "Resend Email",
+            from: self,
+            onConfirm: { [weak self] in
+                self?.resendVerificationEmail(email: email)
+            }
         )
-        
-        alert.addAction(UIAlertAction(title: "Resend Email", style: .default) { [weak self] _ in
-            self?.resendVerificationEmail(email: email)
-        })
-        
-        alert.addAction(UIAlertAction(title: "OK", style: .cancel))
-        
-        present(alert, animated: true)
     }
     
     private func resendVerificationEmail(email: String) {
-        // Since we need to be authenticated to resend, we'll need to handle this differently
-        // For now, show a message that they should check their email
-        let alert = UIAlertController(
+        AlertPresenter.showError(
             title: "Check Your Email",
             message: "A verification email was sent when you registered. Please check your inbox and spam folder for the verification link.",
-            preferredStyle: .alert
+            from: self
         )
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
     }
 }
 

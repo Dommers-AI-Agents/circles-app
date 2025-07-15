@@ -8,7 +8,7 @@ protocol EditPlaceDelegate: AnyObject {
     func didDeletePlace(_ placeId: String)
 }
 
-class EditPlaceViewController: UIViewController {
+class EditPlaceViewController: BaseViewController {
     
     // MARK: - Constants
     private enum Constants {
@@ -42,6 +42,9 @@ class EditPlaceViewController: UIViewController {
     private let locationManager = CLLocationManager()
     private var selectedLocation: CLLocationCoordinate2D?
     weak var delegate: EditPlaceDelegate?
+    
+    // MARK: - Configuration
+    override var loadsDataOnViewDidLoad: Bool { false }
     
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
@@ -92,7 +95,7 @@ class EditPlaceViewController: UIViewController {
     
     private let customCategoryLabel: UILabel = {
         let label = UILabel()
-        label.text = "Custom Category Name"
+        label.text = "Custom Category Name (subcategory of Other)"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .bold)
         label.textColor = Constants.Colors.darkGray
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -102,7 +105,7 @@ class EditPlaceViewController: UIViewController {
     
     private let customCategoryTextField: UITextField = {
         let textField = UITextField()
-        textField.placeholder = "Enter custom category name"
+        textField.placeholder = "e.g., Coffee work, Study spot, etc."
         textField.borderStyle = .roundedRect
         textField.translatesAutoresizingMaskIntoConstraints = false
         textField.isHidden = true
@@ -135,6 +138,17 @@ class EditPlaceViewController: UIViewController {
         label.textColor = Constants.Colors.darkGray
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
+    }()
+    
+    private let refreshAddressButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Refresh from Apple Maps", for: .normal)
+        button.setImage(UIImage(systemName: "arrow.clockwise"), for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
+        button.tintColor = Constants.Colors.primary
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isHidden = false
+        return button
     }()
     
     private let streetTextField: UITextField = {
@@ -407,6 +421,7 @@ class EditPlaceViewController: UIViewController {
         contentView.addSubview(descriptionLabel)
         contentView.addSubview(descriptionTextView)
         contentView.addSubview(addressLabel)
+        contentView.addSubview(refreshAddressButton)
         contentView.addSubview(streetTextField)
         contentView.addSubview(cityTextField)
         contentView.addSubview(stateTextField)
@@ -488,6 +503,10 @@ class EditPlaceViewController: UIViewController {
             // Address label and text fields
             addressLabel.topAnchor.constraint(equalTo: descriptionTextView.bottomAnchor, constant: Constants.Spacing.medium),
             addressLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            
+            // Refresh address button
+            refreshAddressButton.centerYAnchor.constraint(equalTo: addressLabel.centerYAnchor),
+            refreshAddressButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             
             streetTextField.topAnchor.constraint(equalTo: addressLabel.bottomAnchor, constant: Constants.Spacing.small),
             streetTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
@@ -631,6 +650,7 @@ class EditPlaceViewController: UIViewController {
         deleteButton.addTarget(self, action: #selector(deleteButtonTapped), for: .touchUpInside)
         moveToCircleButton.addTarget(self, action: #selector(moveToCircleButtonTapped), for: .touchUpInside)
         addPhotoButton.addTarget(self, action: #selector(addPhotoButtonTapped), for: .touchUpInside)
+        refreshAddressButton.addTarget(self, action: #selector(refreshAddressButtonTapped), for: .touchUpInside)
         
         // Add category change handler
         categorySegmentedControl.addTarget(self, action: #selector(categoryChanged), for: .valueChanged)
@@ -653,10 +673,13 @@ class EditPlaceViewController: UIViewController {
         
         // Set custom category if it's "Other"
         if place.category == .other {
-            customCategoryTextField.text = place.customCategory
+            customCategoryTextField.text = place.customCategoryId
             customCategoryLabel.isHidden = false
             customCategoryTextField.isHidden = false
         }
+        
+        // Show/hide refresh address button based on whether place has location
+        refreshAddressButton.isHidden = place.location?.clLocation == nil
         
         // Parse address
         let addressComponents = place.address.components(separatedBy: ", ")
@@ -742,6 +765,13 @@ class EditPlaceViewController: UIViewController {
         // Get custom category if "Other" is selected
         let customCategory: String? = category == .other ? customCategoryTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines) : nil
         
+        // Log category changes for debugging
+        if let customCategory = customCategory, !customCategory.isEmpty {
+            print("💾 Saving place with custom category: '\(customCategory)' (parent: \(category.rawValue))")
+        } else {
+            print("💾 Saving place with standard category: \(category.rawValue)")
+        }
+        
         // Format the address string
         let formattedAddress = [streetTextField.text, cityTextField.text, stateTextField.text, zipCodeTextField.text, countryTextField.text]
             .compactMap { $0 }
@@ -800,6 +830,50 @@ class EditPlaceViewController: UIViewController {
         }
     }
     
+    @objc private func refreshAddressButtonTapped() {
+        // Check if place has location coordinates
+        guard let location = place.location?.clLocation else {
+            presentAlert(title: "No Location Available", message: "This place doesn't have location coordinates to refresh the address from.")
+            return
+        }
+        
+        // Show loading indicator
+        let loadingAlert = UIAlertController(title: "Refreshing Address", message: "Fetching address from Apple Maps...", preferredStyle: .alert)
+        present(loadingAlert, animated: true)
+        
+        // Use CLGeocoder to reverse geocode the location
+        let geocoder = CLGeocoder()
+        geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    if let error = error {
+                        self.presentAlert(title: "Error", message: "Failed to fetch address: \(error.localizedDescription)")
+                        return
+                    }
+                    
+                    guard let placemark = placemarks?.first else {
+                        self.presentAlert(title: "Error", message: "Could not find an address for this location.")
+                        return
+                    }
+                    
+                    // Update the address fields with the fetched data
+                    self.updateAddressFields(with: placemark)
+                    
+                    // Show success message
+                    let successAlert = UIAlertController(
+                        title: "Address Refreshed",
+                        message: "Address fields have been updated with data from Apple Maps. Please review and save your changes.",
+                        preferredStyle: .alert
+                    )
+                    successAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                    self.present(successAlert, animated: true)
+                }
+            }
+        }
+    }
+    
     @objc private func handleMapTap(_ gestureRecognizer: UITapGestureRecognizer) {
         let touchPoint = gestureRecognizer.location(in: mapView)
         let coordinate = mapView.convert(touchPoint, toCoordinateFrom: mapView)
@@ -818,7 +892,8 @@ class EditPlaceViewController: UIViewController {
         
         // Get address from coordinates
         lookUpCurrentLocation(coordinate) { [weak self] placemark in
-            guard let self = self, let placemark = placemark else { return }
+            guard let self = self else { return }
+            guard let placemark = placemark else { return }
             
             DispatchQueue.main.async {
                 self.updateAddressFields(with: placemark)
@@ -1112,7 +1187,7 @@ class EditPlaceViewController: UIViewController {
         // Check custom category if "Other" is selected
         if place.category == .other {
             let currentCustomCategory = customCategoryTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let originalCustomCategory = place.customCategory ?? ""
+            let originalCustomCategory = place.customCategoryId ?? ""
             if currentCustomCategory != originalCustomCategory { return true }
         }
         
@@ -1302,7 +1377,8 @@ extension EditPlaceViewController: CLLocationManagerDelegate {
         
         // Get address from coordinates
         lookUpCurrentLocation(location.coordinate) { [weak self] placemark in
-            guard let self = self, let placemark = placemark else { return }
+            guard let self = self else { return }
+            guard let placemark = placemark else { return }
             
             DispatchQueue.main.async {
                 self.updateAddressFields(with: placemark)

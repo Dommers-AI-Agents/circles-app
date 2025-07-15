@@ -115,22 +115,18 @@ class SuggestionTableViewCell: UITableViewCell {
     }()
     
     private let likeButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "hand.thumbsup"), for: .normal)
+        let button = UIButton.iconButton(systemName: "hand.thumbsup", pointSize: 16)
         button.tintColor = .secondaryLabel
         button.titleLabel?.font = .systemFont(ofSize: 14)
         button.setTitleColor(.secondaryLabel, for: .normal)
-        button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
     
     private let commentsButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "bubble.left"), for: .normal)
+        let button = UIButton.iconButton(systemName: "bubble.left", pointSize: 16)
         button.tintColor = .secondaryLabel
         button.titleLabel?.font = .systemFont(ofSize: 14)
         button.setTitleColor(.secondaryLabel, for: .normal)
-        button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
     

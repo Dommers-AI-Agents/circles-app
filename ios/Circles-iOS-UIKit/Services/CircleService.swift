@@ -45,54 +45,77 @@ class CircleService {
     
     private init() {}
     
+    // MARK: - Helper Methods
+    
+    /// Helper function to create a type-safe completion handler for API requests
+    private func createAPICompletion<T>(_ completion: @escaping (Result<T, Error>) -> Void) -> (Result<T, APIError>) -> Void {
+        return { [weak self] result in
+            guard let self = self else { return }
+            
+            switch result {
+            case .success(let response):
+                completion(.success(response))
+            case .failure(let error):
+                let mappedError = self.mapAPIErrorToCircleError(error)
+                completion(.failure(mappedError))
+            }
+        }
+    }
+    
     // MARK: - Fetch Circles
     
     func fetchUserCircles(completion: @escaping (Result<[Circle], Error>) -> Void) {
         APIService.shared.request(
             endpoint: "circles/me",
             method: .get,
-            requiresAuth: true
-        ) { [weak self] (result: Result<CirclesResponse, APIError>) in
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<CirclesResponse, APIError>) in
+            guard let self = self else { return }
+            
             switch result {
             case .success(let response):
                 completion(.success(response.circles))
             case .failure(let error):
-                let mappedError = self?.mapAPIErrorToCircleError(error)
-                completion(.failure(mappedError ?? error))
+                let mappedError = self.mapAPIErrorToCircleError(error)
+                completion(.failure(mappedError))
             }
-        }
+        })
     }
     
     func fetchUserCircles(userId: String, completion: @escaping (Result<[Circle], Error>) -> Void) {
         APIService.shared.request(
             endpoint: "users/\(userId)/circles",
             method: .get,
-            requiresAuth: true
-        ) { [weak self] (result: Result<CirclesResponse, APIError>) in
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<CirclesResponse, APIError>) in
+            guard let self = self else { return }
+            
             switch result {
             case .success(let response):
                 completion(.success(response.circles))
             case .failure(let error):
-                let mappedError = self?.mapAPIErrorToCircleError(error)
-                completion(.failure(mappedError ?? error))
+                let mappedError = self.mapAPIErrorToCircleError(error)
+                completion(.failure(mappedError))
             }
-        }
+        })
     }
     
     func fetchCircleById(id: String, completion: @escaping (Result<Circle, Error>) -> Void) {
         APIService.shared.request(
             endpoint: "circles/\(id)",
             method: .get,
-            requiresAuth: true
-        ) { [weak self] (result: Result<CircleResponse, APIError>) in
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<CircleResponse, APIError>) in
+            guard let self = self else { return }
+            
             switch result {
             case .success(let response):
                 completion(.success(response.circle))
             case .failure(let error):
-                let mappedError = self?.mapAPIErrorToCircleError(error)
-                completion(.failure(mappedError ?? error))
+                let mappedError = self.mapAPIErrorToCircleError(error)
+                completion(.failure(mappedError))
             }
-        }
+        })
     }
     
     func fetchPublicCircles(page: Int = 1, limit: Int = 20, category: CircleCategory? = nil, completion: @escaping (Result<[Circle], Error>) -> Void) {
@@ -109,16 +132,18 @@ class CircleService {
             endpoint: "circles/public",
             method: .get,
             queryParams: queryParams,
-            requiresAuth: true
-        ) { [weak self] (result: Result<CirclesResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                completion(.success(response.circles))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToCircleError(error)
-                completion(.failure(mappedError ?? error))
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<CirclesResponse, APIError>) in
+                guard let self = self else { return }
+                
+                switch result {
+                case .success(let response):
+                    completion(.success(response.circles))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     func searchCircles(query: String, category: CircleCategory? = nil, completion: @escaping (Result<[Circle], Error>) -> Void) {
@@ -134,21 +159,23 @@ class CircleService {
             endpoint: "circles/search",
             method: .get,
             queryParams: queryParams,
-            requiresAuth: true
-        ) { [weak self] (result: Result<CirclesResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                completion(.success(response.circles))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToCircleError(error)
-                completion(.failure(mappedError ?? error))
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<CirclesResponse, APIError>) in
+                guard let self = self else { return }
+                
+                switch result {
+                case .success(let response):
+                    completion(.success(response.circles))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     // MARK: - Create, Update, Delete
     
-    func createCircle(name: String, description: String?, privacy: PrivacyLevel, category: CircleCategory, location: String? = nil, tags: [String]? = nil, coverImage: Data? = nil, completion: @escaping (Result<Circle, Error>) -> Void) {
+    func createCircle(name: String, description: String?, privacy: PrivacyLevel, category: CircleCategory, customCategoryId: String? = nil, location: String? = nil, tags: [String]? = nil, coverImage: Data? = nil, completion: @escaping (Result<Circle, Error>) -> Void) {
         
         // First check if we need to upload an image
         if let imageData = coverImage {
@@ -156,18 +183,18 @@ class CircleService {
                 switch result {
                 case .success(let imageUrl):
                     // Now create the circle with the image URL
-                    self?.performCreateCircle(name: name, description: description, privacy: privacy, category: category, location: location, tags: tags, coverImageUrl: imageUrl, completion: completion)
+                    self?.performCreateCircle(name: name, description: description, privacy: privacy, category: category, customCategoryId: customCategoryId, location: location, tags: tags, coverImageUrl: imageUrl, completion: completion)
                 case .failure(let error):
                     completion(.failure(error))
                 }
             }
         } else {
             // Create circle without image
-            performCreateCircle(name: name, description: description, privacy: privacy, category: category, location: location, tags: tags, coverImageUrl: nil, completion: completion)
+            performCreateCircle(name: name, description: description, privacy: privacy, category: category, customCategoryId: customCategoryId, location: location, tags: tags, coverImageUrl: nil, completion: completion)
         }
     }
     
-    private func performCreateCircle(name: String, description: String?, privacy: PrivacyLevel, category: CircleCategory, location: String?, tags: [String]?, coverImageUrl: String?, completion: @escaping (Result<Circle, Error>) -> Void) {
+    private func performCreateCircle(name: String, description: String?, privacy: PrivacyLevel, category: CircleCategory, customCategoryId: String?, location: String?, tags: [String]?, coverImageUrl: String?, completion: @escaping (Result<Circle, Error>) -> Void) {
         
         var body: [String: Any] = [
             "name": name,
@@ -191,20 +218,26 @@ class CircleService {
             body["coverImage"] = coverImageUrl
         }
         
+        if let customCategoryId = customCategoryId {
+            body["customCategoryId"] = customCategoryId
+        }
+        
         APIService.shared.request(
             endpoint: "circles",
             method: .post,
             body: body,
-            requiresAuth: true
-        ) { [weak self] (result: Result<CircleResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                completion(.success(response.circle))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToCircleError(error)
-                completion(.failure(mappedError ?? CircleError.creationFailed))
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<CircleResponse, APIError>) in
+                guard let self = self else { return }
+                
+                switch result {
+                case .success(let response):
+                    completion(.success(response.circle))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     func updateCircle(id: String, name: String? = nil, description: String? = nil, privacy: PrivacyLevel? = nil, category: CircleCategory? = nil, location: String? = nil, tags: [String]? = nil, coverImage: Data? = nil, completion: @escaping (Result<Circle, Error>) -> Void) {
@@ -271,40 +304,42 @@ class CircleService {
             endpoint: "circles/\(id)",
             method: .put,
             body: body,
-            requiresAuth: true
-        ) { [weak self] (result: Result<CircleResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                print("Circle updated successfully with coverImage: \(response.circle.coverImage ?? "nil")")
-                completion(.success(response.circle))
-            case .failure(let error):
-                print("Circle update failed: \(error)")
-                let mappedError = self?.mapAPIErrorToCircleError(error)
-                completion(.failure(mappedError ?? CircleError.updateFailed))
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<CircleResponse, APIError>) in
+                guard let self = self else { return }
+                
+                switch result {
+                case .success(let response):
+                    print("Circle updated successfully with coverImage: \(response.circle.coverImage ?? "nil")")
+                    completion(.success(response.circle))
+                case .failure(let error):
+                    print("Circle update failed: \(error)")
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     func deleteCircle(id: String, completion: @escaping (Result<Bool, Error>) -> Void) {
         APIService.shared.request(
             endpoint: "circles/\(id)",
             method: .delete,
-            requiresAuth: true
-        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
-            switch result {
-            case .success(_):
-                // Post notification for circle deletion
-                NotificationCenter.default.post(
-                    name: .circleDeleted,
-                    object: nil,
-                    userInfo: ["circleId": id]
-                )
-                completion(.success(true))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToCircleError(error)
-                completion(.failure(mappedError ?? CircleError.deleteFailed))
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<EmptyResponse, APIError>) in
+                switch result {
+                case .success(_):
+                    // Post notification for circle deletion
+                    NotificationCenter.default.post(
+                        name: .circleDeleted,
+                        object: nil,
+                        userInfo: ["circleId": id]
+                    )
+                    completion(.success(true))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     // MARK: - User Circles
@@ -313,16 +348,18 @@ class CircleService {
         APIService.shared.request(
             endpoint: "users/\(userId)/circles",
             method: .get,
-            requiresAuth: true
-        ) { [weak self] (result: Result<CirclesResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                completion(.success(response.circles))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToCircleError(error)
-                completion(.failure(mappedError ?? CircleError.fetchFailed))
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<CirclesResponse, APIError>) in
+                guard let self = self else { return }
+                
+                switch result {
+                case .success(let response):
+                    completion(.success(response.circles))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     // MARK: - Social Functions
@@ -334,48 +371,54 @@ class CircleService {
             endpoint: "circles/\(id)/share",
             method: .post,
             body: body,
-            requiresAuth: true
-        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
-            switch result {
-            case .success(_):
-                completion(.success(true))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToCircleError(error)
-                completion(.failure(mappedError ?? error))
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<EmptyResponse, APIError>) in
+                guard let self = self else { return }
+                
+                switch result {
+                case .success(_):
+                    completion(.success(true))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     func followCircle(id: String, completion: @escaping (Result<Bool, Error>) -> Void) {
         APIService.shared.request(
             endpoint: "circles/\(id)/follow",
             method: .post,
-            requiresAuth: true
-        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
-            switch result {
-            case .success(_):
-                completion(.success(true))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToCircleError(error)
-                completion(.failure(mappedError ?? error))
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<EmptyResponse, APIError>) in
+                guard let self = self else { return }
+                
+                switch result {
+                case .success(_):
+                    completion(.success(true))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     func unfollowCircle(id: String, completion: @escaping (Result<Bool, Error>) -> Void) {
         APIService.shared.request(
             endpoint: "circles/\(id)/unfollow",
             method: .post,
-            requiresAuth: true
-        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
-            switch result {
-            case .success(_):
-                completion(.success(true))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToCircleError(error)
-                completion(.failure(mappedError ?? error))
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<EmptyResponse, APIError>) in
+                guard let self = self else { return }
+                
+                switch result {
+                case .success(_):
+                    completion(.success(true))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     // MARK: - Helper Methods
@@ -395,75 +438,77 @@ class CircleService {
             endpoint: "upload/image",
             method: .post,
             body: body,
-            requiresAuth: true
-        ) { (result: Result<ImageUploadResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                print("Image uploaded successfully: \(response.url)")
-                completion(.success(response.url))
-            case .failure(let error):
-                print("Image upload failed: \(error)")
-                completion(.failure(error))
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<ImageUploadResponse, APIError>) in
+                guard let self = self else { return }
+                
+                switch result {
+                case .success(let response):
+                    print("Image uploaded successfully: \(response.url)")
+                    completion(.success(response.url))
+                case .failure(let error):
+                    print("Image upload failed: \(error)")
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     // MARK: - Editor Management
     
-    func addEditor(circleId: String, userId: String, completion: @escaping (Result<Circle, Error>) -> Void) {
+    func addEditor(circleId: String, userId: String, completion: @escaping (Result<CircleShare, Error>) -> Void) {
         let body: [String: Any] = ["userId": userId]
         
         APIService.shared.request(
             endpoint: "circles/\(circleId)/editors",
             method: .post,
             body: body,
-            requiresAuth: true
-        ) { [weak self] (result: Result<CircleDataResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                completion(.success(response.data))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToCircleError(error)
-                completion(.failure(mappedError ?? error))
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<ShareResponse, APIError>) in
+                guard let self = self else { return }
+                
+                switch result {
+                case .success(let response):
+                    completion(.success(response.data))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
-    func removeEditor(circleId: String, userId: String, completion: @escaping (Result<Circle, Error>) -> Void) {
+    func removeEditor(circleId: String, userId: String, completion: @escaping (Result<CircleShare, Error>) -> Void) {
         APIService.shared.request(
             endpoint: "circles/\(circleId)/editors/\(userId)",
             method: .delete,
-            requiresAuth: true
-        ) { [weak self] (result: Result<CircleDataResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                completion(.success(response.data))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToCircleError(error)
-                completion(.failure(mappedError ?? error))
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<ShareResponse, APIError>) in
+                guard let self = self else { return }
+                
+                switch result {
+                case .success(let response):
+                    completion(.success(response.data))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     func getEditors(circleId: String, completion: @escaping (Result<[User], Error>) -> Void) {
-        struct EditorsResponse: Codable {
-            let success: Bool
-            let data: [User]
-        }
-        
         APIService.shared.request(
             endpoint: "circles/\(circleId)/editors",
             method: .get,
-            requiresAuth: true
-        ) { [weak self] (result: Result<EditorsResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                completion(.success(response.data))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToCircleError(error)
-                completion(.failure(mappedError ?? error))
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<EditorsResponse, APIError>) in
+                switch result {
+                case .success(let response):
+                    completion(.success(response.data))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     // MARK: - Update Circle Order
@@ -478,16 +523,16 @@ class CircleService {
                 endpoint: "users/me/circles/reorder",
                 method: .put,
                 body: body,
-                requiresAuth: true
-            ) { [weak self] (result: Result<EmptyResponse, APIError>) in
-                switch result {
-                case .success(_):
-                    continuation.resume()
-                case .failure(let error):
-                    let mappedError = self?.mapAPIErrorToCircleError(error) ?? CircleError.unknown
-                    continuation.resume(throwing: mappedError)
+                requiresAuth: true,
+                completion: { [weak self] (result: Result<EmptyResponse, APIError>) in
+                    switch result {
+                    case .success(_):
+                        continuation.resume()
+                    case .failure(let error):
+                        continuation.resume(throwing: error)
+                    }
                 }
-            }
+            )
         }
     }
     
@@ -548,48 +593,50 @@ class CircleService {
             endpoint: "circles/\(circleId)/share",
             method: .post,
             body: body,
-            requiresAuth: true
-        ) { [weak self] (result: Result<ShareResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                completion(.success(response.data))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToCircleError(error)
-                completion(.failure(mappedError ?? error))
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<ShareResponse, APIError>) in
+                switch result {
+                case .success(let response):
+                    completion(.success(response.data))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     func getCircleShares(circleId: String, completion: @escaping (Result<[CircleShare], Error>) -> Void) {
         APIService.shared.request(
             endpoint: "circles/\(circleId)/shares",
             method: .get,
-            requiresAuth: true
-        ) { [weak self] (result: Result<SharesResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                completion(.success(response.data))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToCircleError(error)
-                completion(.failure(mappedError ?? error))
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<SharesResponse, APIError>) in
+                switch result {
+                case .success(let response):
+                    completion(.success(response.data))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     func revokeShare(circleId: String, shareId: String, completion: @escaping (Result<Bool, Error>) -> Void) {
         APIService.shared.request(
             endpoint: "circles/\(circleId)/share/\(shareId)",
             method: .delete,
-            requiresAuth: true
-        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
-            switch result {
-            case .success(_):
-                completion(.success(true))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToCircleError(error)
-                completion(.failure(mappedError ?? error))
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<EmptyResponse, APIError>) in
+                guard let self = self else { return }
+                
+                switch result {
+                case .success(_):
+                    completion(.success(true))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
 }
 
@@ -623,4 +670,9 @@ struct ShareResponse: Decodable {
 struct SharesResponse: Decodable {
     let success: Bool
     let data: [CircleShare]
+}
+
+struct EditorsResponse: Decodable {
+    let success: Bool
+    let data: [User]
 }

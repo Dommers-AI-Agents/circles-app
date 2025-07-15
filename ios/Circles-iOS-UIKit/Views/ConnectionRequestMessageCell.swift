@@ -31,32 +31,22 @@ class ConnectionRequestMessageCell: UITableViewCell {
     }()
     
     private let acceptButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Accept", for: .normal)
-        button.backgroundColor = Constants.Colors.primary
-        button.setTitleColor(.white, for: .normal)
+        let button = UIButton.smallActionButton(title: "Accept", style: .primary)
         button.layer.cornerRadius = 8
-        button.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
-        button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
     
     private let declineButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Decline", for: .normal)
+        let button = UIButton.smallActionButton(title: "Decline", style: .secondary)
         button.backgroundColor = .systemGray5
         button.setTitleColor(.label, for: .normal)
         button.layer.cornerRadius = 8
-        button.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
-        button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
     
     private let deleteButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "trash"), for: .normal)
+        let button = UIButton.iconButton(systemName: "trash", pointSize: 16)
         button.tintColor = .systemRed
-        button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
     
@@ -195,12 +185,54 @@ class ConnectionRequestMessageCell: UITableViewCell {
     }
     
     private func checkConnectionStatus() {
-        // For now, enable buttons by default
-        // In a real implementation, you would check the actual connection status
+        guard let connectionId = connectionId else {
+            // No connection ID, disable buttons
+            disableButtons(showMessage: "Connection request invalid")
+            return
+        }
+        
+        // Check the current connection status
+        NetworkManager.shared.getConnectionStatus(connectionId: connectionId) { [weak self] status in
+            DispatchQueue.main.async {
+                switch status {
+                case "accepted", "connected":
+                    // Connection already accepted, disable buttons and show message
+                    self?.disableButtons(showMessage: "Connection accepted")
+                case "declined":
+                    // Connection declined, disable buttons and show message
+                    self?.disableButtons(showMessage: "Connection declined")
+                case "pending":
+                    // Still pending, keep buttons enabled
+                    self?.enableButtons()
+                default:
+                    // Unknown status, disable buttons
+                    self?.disableButtons(showMessage: "Connection request expired")
+                }
+            }
+        }
+    }
+    
+    private func enableButtons() {
         acceptButton.isEnabled = true
         declineButton.isEnabled = true
         acceptButton.alpha = 1.0
         declineButton.alpha = 1.0
+        buttonStackView.isHidden = false
+    }
+    
+    private func disableButtons(showMessage: String) {
+        acceptButton.isEnabled = false
+        declineButton.isEnabled = false
+        acceptButton.alpha = 0.5
+        declineButton.alpha = 0.5
+        
+        // Update the message to show status
+        messageLabel.text = showMessage
+        messageLabel.font = .systemFont(ofSize: 16, weight: .medium)
+        messageLabel.textColor = .secondaryLabel
+        
+        // Hide the button stack
+        buttonStackView.isHidden = true
     }
 }
 

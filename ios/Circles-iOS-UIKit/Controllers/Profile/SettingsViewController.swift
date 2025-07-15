@@ -1,13 +1,6 @@
 import UIKit
 
-class SettingsViewController: UIViewController {
-    
-    // MARK: - UI Elements
-    private let tableView: UITableView = {
-        let tableView = UITableView(frame: .zero, style: .grouped)
-        tableView.translatesAutoresizingMaskIntoConstraints = false
-        return tableView
-    }()
+class SettingsViewController: BaseTableViewController {
     
     // MARK: - Properties
     private enum Section: Int, CaseIterable {
@@ -87,6 +80,9 @@ class SettingsViewController: UIViewController {
     }
     
     // MARK: - Lifecycle
+    // MARK: - BaseViewController Configuration
+    override var loadsDataOnViewDidLoad: Bool { false }
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
@@ -94,23 +90,13 @@ class SettingsViewController: UIViewController {
     
     // MARK: - UI Setup
     private func setupUI() {
-        view.backgroundColor = Constants.Colors.background
         title = "Settings"
-        
         navigationItem.largeTitleDisplayMode = .never
         
-        // Add table view
-        view.addSubview(tableView)
+        // Configure table view
         tableView.delegate = self
         tableView.dataSource = self
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "Cell")
-        
-        NSLayoutConstraint.activate([
-            tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-        ])
     }
     
     // MARK: - Actions
@@ -120,32 +106,30 @@ class SettingsViewController: UIViewController {
     }
     
     private func showProfileVisibility() {
-        let alert = UIAlertController(title: "Profile Visibility", message: "Choose who can see your profile", preferredStyle: .actionSheet)
-        alert.addAction(UIAlertAction(title: "Everyone", style: .default))
-        alert.addAction(UIAlertAction(title: "Connections Only", style: .default))
-        alert.addAction(UIAlertAction(title: "No One", style: .default))
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        
-        if let popover = alert.popoverPresentationController {
-            popover.sourceView = view
-            popover.sourceRect = view.bounds
-        }
-        
-        present(alert, animated: true)
+        AlertPresenter.showActionSheet(
+            title: "Profile Visibility",
+            message: "Choose who can see your profile",
+            actions: [
+                (title: "Everyone", style: .default, handler: { /* Handle selection */ }),
+                (title: "Connections Only", style: .default, handler: { /* Handle selection */ }),
+                (title: "No One", style: .default, handler: { /* Handle selection */ })
+            ],
+            from: self,
+            sourceView: view
+        )
     }
     
     private func showCircleSharing() {
-        let alert = UIAlertController(title: "Circle Sharing", message: "Default sharing settings for new circles", preferredStyle: .actionSheet)
-        alert.addAction(UIAlertAction(title: "Public", style: .default))
-        alert.addAction(UIAlertAction(title: "Private", style: .default))
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        
-        if let popover = alert.popoverPresentationController {
-            popover.sourceView = view
-            popover.sourceRect = view.bounds
-        }
-        
-        present(alert, animated: true)
+        AlertPresenter.showActionSheet(
+            title: "Circle Sharing",
+            message: "Default sharing settings for new circles",
+            actions: [
+                (title: "Public", style: .default, handler: { /* Handle selection */ }),
+                (title: "Private", style: .default, handler: { /* Handle selection */ })
+            ],
+            from: self,
+            sourceView: view
+        )
     }
     
     private func openNotificationSettings() {
@@ -166,23 +150,20 @@ class SettingsViewController: UIViewController {
     }
     
     private func showDeleteAccountConfirmation() {
-        let alert = UIAlertController(
+        AlertPresenter.showConfirmation(
             title: "Delete Account",
             message: "Are you sure you want to delete your account? This action cannot be undone.",
-            preferredStyle: .alert
+            confirmTitle: "Delete",
+            isDestructive: true,
+            from: self,
+            onConfirm: { [weak self] in
+                self?.deleteAccount()
+            }
         )
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
-            self?.deleteAccount()
-        })
-        
-        present(alert, animated: true)
     }
     
     private func deleteAccount() {
-        let loadingAlert = UIAlertController(title: "Deleting Account", message: "Please wait...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
+        let loadingAlert = AlertPresenter.showLoading(message: "Deleting Account...", from: self)
         
         UserService.shared.deleteAccount { [weak self] result in
             DispatchQueue.main.async {
@@ -191,27 +172,23 @@ class SettingsViewController: UIViewController {
                     case .success:
                         AuthService.shared.logout()
                     case .failure(let error):
-                        self?.presentAlert(title: "Error", message: "Failed to delete account: \(error.localizedDescription)")
+                        self?.showError("Failed to delete account: \(error.localizedDescription)")
                     }
                 }
             }
         }
     }
     
-    private func presentAlert(title: String, message: String) {
-        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
+    // Removed - using AlertPresenter.showError instead
 }
 
 // MARK: - UITableViewDataSource
-extension SettingsViewController: UITableViewDataSource {
-    func numberOfSections(in tableView: UITableView) -> Int {
+extension SettingsViewController {
+    override func numberOfSections(in tableView: UITableView) -> Int {
         return Section.allCases.count
     }
     
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         guard let sectionType = Section(rawValue: section) else { return 0 }
         
         switch sectionType {
@@ -223,11 +200,11 @@ extension SettingsViewController: UITableViewDataSource {
         }
     }
     
-    func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
+    override func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         return Section(rawValue: section)?.title
     }
     
-    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "Cell", for: indexPath)
         
         guard let section = Section(rawValue: indexPath.section) else { return cell }
@@ -284,8 +261,8 @@ extension SettingsViewController: UITableViewDataSource {
 }
 
 // MARK: - UITableViewDelegate
-extension SettingsViewController: UITableViewDelegate {
-    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+extension SettingsViewController {
+    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         
         guard let section = Section(rawValue: indexPath.section) else { return }

@@ -229,6 +229,15 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         super.viewDidLoad()
         setupUI()
         configureUI()
+        
+        // Set a safe initial map region to prevent crashes during layout
+        let safeInitialRegion = MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060), // NYC
+            latitudinalMeters: 10000,
+            longitudinalMeters: 10000
+        )
+        mapView.setRegion(safeInitialRegion, animated: false)
+        
         setupLocationManager()
         fetchPlaces()
         setupNotificationObservers()
@@ -613,6 +622,8 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     }
     
     private func fetchPlaces() {
+        print("🔍 CircleDetailViewController: About to fetch places for circle: \(circle.name) (ID: \(circle.id))")
+        
         PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
@@ -980,28 +991,83 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         annotationPlaceMap.removeAll()
         
         var coordinates: [CLLocationCoordinate2D] = []
+        var placesWithValidLocation = 0
+        var placesWithNoLocation = 0
+        var placesWithInvalidLocation = 0
+        
+        print("🗺️ Adding annotations to map for circle: \(circle.name)")
+        print("🗺️ Total filtered places to process: \(filteredPlaces.count)")
         
         // Add place annotations
-        for place in filteredPlaces {
-            if let location = place.location?.clLocation {
-                let annotation = PlaceAnnotation(place: place)
-                mapView.addAnnotation(annotation)
+        for (index, place) in filteredPlaces.enumerated() {
+            print("🗺️ Place \(index + 1): \(place.name)")
+            
+            // Check if location exists
+            if let location = place.location {
+                print("  📍 Has location object with coordinates: \(location.coordinates)")
+                print("  📍 Coordinates count: \(location.coordinates.count)")
                 
-                // Store the place reference
-                annotationPlaceMap[ObjectIdentifier(annotation)] = place
-                
-                // Add coordinate to array
-                coordinates.append(location.coordinate)
+                if location.coordinates.count == 2 {
+                    print("  📍 Longitude: \(location.coordinates[0]), Latitude: \(location.coordinates[1])")
+                    
+                    if let clLocation = location.clLocation {
+                        let coord = clLocation.coordinate
+                        print("  ✅ Valid CLLocation created: \(coord.latitude), \(coord.longitude)")
+                        
+                        // Validate coordinates are within valid ranges
+                        if coord.latitude >= -90 && coord.latitude <= 90 && 
+                           coord.longitude >= -180 && coord.longitude <= 180 {
+                            let annotation = PlaceAnnotation(place: place)
+                            mapView.addAnnotation(annotation)
+                            
+                            // Store the place reference
+                            annotationPlaceMap[ObjectIdentifier(annotation)] = place
+                            
+                            // Add coordinate to array
+                            coordinates.append(coord)
+                            placesWithValidLocation += 1
+                        } else {
+                            print("  ❌ Invalid coordinates: lat=\(coord.latitude), lon=\(coord.longitude)")
+                            placesWithInvalidLocation += 1
+                        }
+                    } else {
+                        print("  ❌ CLLocation creation failed despite having 2 coordinates")
+                        placesWithInvalidLocation += 1
+                    }
+                } else {
+                    print("  ❌ Invalid coordinates array count: \(location.coordinates.count)")
+                    placesWithInvalidLocation += 1
+                }
+            } else {
+                print("  ❌ No location object")
+                placesWithNoLocation += 1
             }
         }
         
+        print("🗺️ Location Summary:")
+        print("  ✅ Places with valid location: \(placesWithValidLocation)")
+        print("  ❌ Places with no location: \(placesWithNoLocation)")
+        print("  ❌ Places with invalid location: \(placesWithInvalidLocation)")
+        
         // Include user location if available
         if let userLocation = locationManager.location {
-            coordinates.append(userLocation.coordinate)
-            print("📍 User location added to map: \(userLocation.coordinate.latitude), \(userLocation.coordinate.longitude)")
+            let coord = userLocation.coordinate
+            if coord.latitude >= -90 && coord.latitude <= 90 && 
+               coord.longitude >= -180 && coord.longitude <= 180 {
+                coordinates.append(coord)
+                print("📍 User location added to map: \(coord.latitude), \(coord.longitude)")
+            } else {
+                print("❌ Invalid user location: lat=\(coord.latitude), lon=\(coord.longitude)")
+            }
         } else if let userLocation = self.userLocation {
-            coordinates.append(userLocation.coordinate)
-            print("📍 Cached user location added to map: \(userLocation.coordinate.latitude), \(userLocation.coordinate.longitude)")
+            let coord = userLocation.coordinate
+            if coord.latitude >= -90 && coord.latitude <= 90 && 
+               coord.longitude >= -180 && coord.longitude <= 180 {
+                coordinates.append(coord)
+                print("📍 Cached user location added to map: \(coord.latitude), \(coord.longitude)")
+            } else {
+                print("❌ Invalid cached user location: lat=\(coord.latitude), lon=\(coord.longitude)")
+            }
         } else {
             print("⚠️ No user location available")
         }
@@ -1025,29 +1091,67 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                 var minLon = coordinates[0].longitude
                 var maxLon = coordinates[0].longitude
                 
-                for coordinate in coordinates {
+                print("🗺️ Calculating bounds for \(coordinates.count) coordinates")
+                for (index, coordinate) in coordinates.enumerated() {
+                    print("  📍 Coordinate \(index): lat=\(coordinate.latitude), lon=\(coordinate.longitude)")
                     minLat = min(minLat, coordinate.latitude)
                     maxLat = max(maxLat, coordinate.latitude)
                     minLon = min(minLon, coordinate.longitude)
                     maxLon = max(maxLon, coordinate.longitude)
                 }
                 
+                print("🗺️ Bounds: minLat=\(minLat), maxLat=\(maxLat), minLon=\(minLon), maxLon=\(maxLon)")
+                
                 let centerLat = (minLat + maxLat) / 2
                 let centerLon = (minLon + maxLon) / 2
+                
+                // Validate center coordinates
+                guard centerLat >= -90 && centerLat <= 90 && centerLon >= -180 && centerLon <= 180 else {
+                    print("❌ Invalid center coordinates: lat=\(centerLat), lon=\(centerLon)")
+                    // Fall back to default location
+                    let defaultCenter = CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060)
+                    let region = MKCoordinateRegion(
+                        center: defaultCenter,
+                        latitudinalMeters: 5000,
+                        longitudinalMeters: 5000
+                    )
+                    mapView.setRegion(region, animated: true)
+                    return
+                }
+                
                 let center = CLLocationCoordinate2D(latitude: centerLat, longitude: centerLon)
                 
-                let latDelta = (maxLat - minLat) * 1.4 // Add 40% padding
-                let lonDelta = (maxLon - minLon) * 1.4
+                // Calculate spans with absolute values to ensure positive
+                var latDelta = abs(maxLat - minLat) * 1.4 // Add 40% padding
+                var lonDelta = abs(maxLon - minLon) * 1.4
                 
-                // Ensure minimum visible area
+                // Handle International Date Line crossing
+                if minLon > maxLon {
+                    // Coordinates cross the date line
+                    lonDelta = ((180 - minLon) + (maxLon + 180)) * 1.4
+                }
+                
+                // Ensure minimum visible area and maximum span
                 let minDelta = 0.01
+                let maxDelta = 180.0 // Maximum allowed span
                 let span = MKCoordinateSpan(
-                    latitudeDelta: max(latDelta, minDelta),
-                    longitudeDelta: max(lonDelta, minDelta)
+                    latitudeDelta: min(max(latDelta, minDelta), maxDelta),
+                    longitudeDelta: min(max(lonDelta, minDelta), maxDelta)
                 )
                 
-                let region = MKCoordinateRegion(center: center, span: span)
-                mapView.setRegion(region, animated: true)
+                // Create and validate the region
+                if let region = createSafeRegion(center: center, span: span) {
+                    mapView.setRegion(region, animated: true)
+                } else {
+                    print("❌ Failed to create valid region, using meters-based region")
+                    // Fall back to a reasonable zoom level
+                    let region = MKCoordinateRegion(
+                        center: center,
+                        latitudinalMeters: 5000,
+                        longitudinalMeters: 5000
+                    )
+                    mapView.setRegion(region, animated: true)
+                }
             }
         } else {
             // No places or user location, show default region
@@ -1361,7 +1465,8 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     }
     
     private func presentFullScreenMap() {
-        let fullScreenMapVC = FullScreenMapViewController(places: filteredPlaces, initialRegion: mapView.region, selectedCategory: selectedCategory)
+        let unifiedCategory = selectedCategory.map { UnifiedCategory.standard($0) }
+        let fullScreenMapVC = FullScreenMapViewController(places: filteredPlaces, initialRegion: mapView.region, selectedCategory: unifiedCategory)
         fullScreenMapVC.delegate = self
         fullScreenMapVC.isPresentedModally = true
         present(fullScreenMapVC, animated: true)
@@ -2536,7 +2641,7 @@ extension CircleDetailViewController: PlaceSearchDelegate {
                 phone: phone,
                 tags: nil,
                 photos: nil
-            ) { [weak self] (result: Result<Place, Error>) in
+            ) { [weak self] result in
                 loadingAlert.dismiss(animated: true) {
                     guard let self = self else { return }
                     
@@ -2843,6 +2948,30 @@ extension CircleDetailViewController {
                 }
             }
         }
+    }
+    
+    // MARK: - Helper Methods
+    private func createSafeRegion(center: CLLocationCoordinate2D, span: MKCoordinateSpan) -> MKCoordinateRegion? {
+        // Validate center coordinates
+        guard center.latitude >= -90 && center.latitude <= 90 &&
+              center.longitude >= -180 && center.longitude <= 180 else {
+            print("❌ Invalid center for safe region: lat=\(center.latitude), lon=\(center.longitude)")
+            return nil
+        }
+        
+        // Validate span values are positive
+        guard span.latitudeDelta > 0 && span.longitudeDelta > 0 else {
+            print("❌ Invalid span for safe region: latDelta=\(span.latitudeDelta), lonDelta=\(span.longitudeDelta)")
+            return nil
+        }
+        
+        // Additional validation for reasonable span values
+        guard span.latitudeDelta <= 180 && span.longitudeDelta <= 360 else {
+            print("❌ Span too large: latDelta=\(span.latitudeDelta), lonDelta=\(span.longitudeDelta)")
+            return nil
+        }
+        
+        return MKCoordinateRegion(center: center, span: span)
     }
 }
 

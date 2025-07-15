@@ -1,10 +1,9 @@
 import UIKit
 
-class NetworkUsersViewController: UIViewController {
+class NetworkUsersViewController: BaseViewController {
     
     // MARK: - Properties
     private var usersWithCircles: [UserWithCircles] = []
-    private let refreshControl = UIRefreshControl()
     
     // MARK: - UI Elements
     private let tableView: UITableView = {
@@ -17,50 +16,30 @@ class NetworkUsersViewController: UIViewController {
         return table
     }()
     
-    private let emptyStateView: UIView = {
-        let view = UIView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.isHidden = true
-        return view
-    }()
+    // MARK: - BaseViewController Configuration
+    override var enablesPullToRefresh: Bool { true }
+    override var emptyStateMessage: String? { "No Circles from Network\n\nYour connections haven't shared any circles yet." }
     
-    private let emptyImageView: UIImageView = {
-        let imageView = UIImageView()
-        imageView.image = UIImage(systemName: "person.2.slash")
-        imageView.tintColor = .systemGray3
-        imageView.contentMode = .scaleAspectFit
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        return imageView
-    }()
-    
-    private let emptyTitleLabel: UILabel = {
-        let label = UILabel()
-        label.text = "No Circles from Network"
-        label.font = .systemFont(ofSize: 20, weight: .semibold)
-        label.textColor = .label
-        label.textAlignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let emptyDescriptionLabel: UILabel = {
-        let label = UILabel()
-        label.text = "Your connections haven't shared any circles yet."
-        label.font = .systemFont(ofSize: 16)
-        label.textColor = .secondaryLabel
-        label.textAlignment = .center
-        label.numberOfLines = 0
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
+    // MARK: - Helper Methods
+    /// Helper function to create a type-safe completion handler for API requests
+    private func createAPICompletion<T>(_ completion: @escaping (Result<T, Error>) -> Void) -> (Result<T, APIError>) -> Void {
+        return { [weak self] result in
+            guard let self = self else { return }
+            
+            switch result {
+            case .success(let response):
+                completion(.success(response))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
         setupView()
         setupTableView()
-        setupEmptyState()
-        loadUsersWithCircles()
     }
     
     // MARK: - Setup
@@ -69,18 +48,12 @@ class NetworkUsersViewController: UIViewController {
         title = "My Network's Circles"
         
         view.addSubview(tableView)
-        view.addSubview(emptyStateView)
         
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            
-            emptyStateView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            emptyStateView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            emptyStateView.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 40),
-            emptyStateView.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -40)
+            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
     }
     
@@ -92,29 +65,13 @@ class NetworkUsersViewController: UIViewController {
         tableView.refreshControl = refreshControl
     }
     
-    private func setupEmptyState() {
-        emptyStateView.addSubview(emptyImageView)
-        emptyStateView.addSubview(emptyTitleLabel)
-        emptyStateView.addSubview(emptyDescriptionLabel)
-        
-        NSLayoutConstraint.activate([
-            emptyImageView.topAnchor.constraint(equalTo: emptyStateView.topAnchor),
-            emptyImageView.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
-            emptyImageView.widthAnchor.constraint(equalToConstant: 80),
-            emptyImageView.heightAnchor.constraint(equalToConstant: 80),
-            
-            emptyTitleLabel.topAnchor.constraint(equalTo: emptyImageView.bottomAnchor, constant: 24),
-            emptyTitleLabel.leadingAnchor.constraint(equalTo: emptyStateView.leadingAnchor),
-            emptyTitleLabel.trailingAnchor.constraint(equalTo: emptyStateView.trailingAnchor),
-            
-            emptyDescriptionLabel.topAnchor.constraint(equalTo: emptyTitleLabel.bottomAnchor, constant: 8),
-            emptyDescriptionLabel.leadingAnchor.constraint(equalTo: emptyStateView.leadingAnchor),
-            emptyDescriptionLabel.trailingAnchor.constraint(equalTo: emptyStateView.trailingAnchor),
-            emptyDescriptionLabel.bottomAnchor.constraint(equalTo: emptyStateView.bottomAnchor)
-        ])
-    }
     
     // MARK: - Data Loading
+    override func loadData(completion: (() -> Void)? = nil) {
+        loadUsersWithCircles()
+        completion?()
+    }
+    
     private func loadUsersWithCircles() {
         struct UsersWithCirclesResponse: Codable {
             let success: Bool
@@ -126,37 +83,35 @@ class NetworkUsersViewController: UIViewController {
             method: .get,
             requiresAuth: true
         ) { [weak self] (result: Result<UsersWithCirclesResponse, APIError>) in
+            guard let self = self else { return }
             DispatchQueue.main.async {
-                self?.refreshControl.endRefreshing()
+                self.refreshControl.endRefreshing()
                 
                 switch result {
                 case .success(let response):
-                    self?.usersWithCircles = response.data.filter { $0.circleCount > 0 }
-                    self?.tableView.reloadData()
-                    self?.updateEmptyState()
+                    self.usersWithCircles = response.data.filter { $0.circleCount > 0 }
+                    self.tableView.reloadData()
+                    self.updateUI()
                 case .failure(let error):
                     print("Error loading users with circles: \(error)")
-                    self?.showError("Failed to load network circles")
+                    self.showError("Failed to load network circles")
                 }
             }
         }
     }
     
-    @objc private func refreshData() {
+    @objc override func refreshData() {
         loadUsersWithCircles()
     }
     
-    private func updateEmptyState() {
-        let isEmpty = usersWithCircles.isEmpty
-        emptyStateView.isHidden = !isEmpty
-        tableView.isHidden = isEmpty
+    private func updateUI() {
+        if usersWithCircles.isEmpty {
+            showEmptyState()
+        } else {
+            hideEmptyState()
+        }
     }
     
-    private func showError(_ message: String) {
-        let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
 }
 
 // MARK: - UITableViewDataSource
@@ -195,6 +150,11 @@ struct UserWithCircles: Codable {
     let profilePicture: String?
     let email: String
     let circleCount: Int
+}
+
+struct UsersWithCirclesResponse: Codable {
+    let success: Bool
+    let data: [UserWithCircles]
 }
 
 // MARK: - NetworkUserTableViewCell
@@ -315,8 +275,9 @@ class NetworkUserTableViewCell: UITableViewCell {
         // Load profile image
         if let urlString = user.profilePicture {
             ImageService.shared.loadImage(from: urlString) { [weak self] image in
+                guard let self = self else { return }
                 DispatchQueue.main.async {
-                    self?.profileImageView.image = image ?? UIImage(systemName: "person.circle.fill")
+                    self.profileImageView.image = image ?? UIImage(systemName: "person.circle.fill")
                 }
             }
         }

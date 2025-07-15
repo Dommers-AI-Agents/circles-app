@@ -1,6 +1,6 @@
 import UIKit
 
-class NotesEditorViewController: UIViewController {
+class NotesEditorViewController: BaseViewController {
     
     // MARK: - Properties
     private var publicNotesText: String
@@ -73,6 +73,9 @@ class NotesEditorViewController: UIViewController {
         fatalError("init(coder:) has not been implemented")
     }
     
+    // MARK: - Configuration
+    override var loadsDataOnViewDidLoad: Bool { false }
+    
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -87,25 +90,28 @@ class NotesEditorViewController: UIViewController {
     
     // MARK: - UI Setup
     private func setupUI() {
-        view.backgroundColor = .systemBackground
         title = "Edit Notes"
-        
-        // Navigation bar buttons
-        navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .cancel, target: self, action: #selector(cancelTapped))
-        navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .save, target: self, action: #selector(saveTapped))
-        
-        // Add subviews
-        view.addSubview(publicLabel)
-        view.addSubview(publicTextView)
-        view.addSubview(privateLabel)
+        setupNavigationBar()
+        setupTextViews()
+        setupConstraints()
+    }
+    
+    private func setupNavigationBar() {
+        addNavigationBarButton(title: "Cancel", position: .left, action: #selector(cancelTapped))
+        addNavigationBarButton(title: "Save", position: .right, action: #selector(saveTapped))
+    }
+    
+    private func setupTextViews() {
+        [publicLabel, publicTextView, privateLabel].forEach { view.addSubview($0) }
         
         if isPrivateNotesEnabled {
             view.addSubview(privateTextView)
         } else {
             view.addSubview(privateNotesDisabledLabel)
         }
-        
-        // Layout constraints
+    }
+    
+    private func setupConstraints() {
         NSLayoutConstraint.activate([
             publicLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
             publicLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
@@ -121,21 +127,13 @@ class NotesEditorViewController: UIViewController {
             privateLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20)
         ])
         
-        if isPrivateNotesEnabled {
-            NSLayoutConstraint.activate([
-                privateTextView.topAnchor.constraint(equalTo: privateLabel.bottomAnchor, constant: 8),
-                privateTextView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-                privateTextView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-                privateTextView.heightAnchor.constraint(equalToConstant: 120)
-            ])
-        } else {
-            NSLayoutConstraint.activate([
-                privateNotesDisabledLabel.topAnchor.constraint(equalTo: privateLabel.bottomAnchor, constant: 8),
-                privateNotesDisabledLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-                privateNotesDisabledLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-                privateNotesDisabledLabel.heightAnchor.constraint(equalToConstant: 60)
-            ])
-        }
+        let bottomView = isPrivateNotesEnabled ? privateTextView : privateNotesDisabledLabel
+        NSLayoutConstraint.activate([
+            bottomView.topAnchor.constraint(equalTo: privateLabel.bottomAnchor, constant: 8),
+            bottomView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            bottomView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            bottomView.heightAnchor.constraint(equalToConstant: isPrivateNotesEnabled ? 120 : 60)
+        ])
     }
     
     private func configureTextViews() {

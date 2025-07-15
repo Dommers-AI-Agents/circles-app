@@ -54,19 +54,17 @@ class ImageCropperViewController: UIViewController {
     }()
     
     private let cancelButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Cancel", for: .normal)
+        let button = UIButton.smallActionButton(title: "Cancel", style: .secondary)
         button.setTitleColor(.white, for: .normal)
-        button.translatesAutoresizingMaskIntoConstraints = false
+        button.backgroundColor = .clear
         return button
     }()
     
     private let doneButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Choose", for: .normal)
+        let button = UIButton.smallActionButton(title: "Choose", style: .primary)
         button.setTitleColor(.white, for: .normal)
         button.titleLabel?.font = .systemFont(ofSize: 17, weight: .medium)
-        button.translatesAutoresizingMaskIntoConstraints = false
+        button.backgroundColor = .clear
         return button
     }()
     

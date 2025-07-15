@@ -2,11 +2,14 @@ import UIKit
 import MapKit
 import PhotosUI
 
-class PlaceDetailViewController: UIViewController {
+class PlaceDetailViewController: BaseViewController {
     
     // MARK: - Properties
     private var place: Place
     private var circle: Circle?
+    
+    // MARK: - Configuration
+    override var loadsDataOnViewDidLoad: Bool { false }
     
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
@@ -102,6 +105,21 @@ class PlaceDetailViewController: UIViewController {
         return button
     }()
     
+    private let updateAddressButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Update Address", for: .normal)
+        button.setImage(UIImage(systemName: "location.circle.fill"), for: .normal)
+        button.backgroundColor = UIColor.systemBlue
+        button.setTitleColor(.white, for: .normal)
+        button.tintColor = .white
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
+        button.layer.cornerRadius = 6
+        button.contentEdgeInsets = UIEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isHidden = true  // Hidden by default
+        return button
+    }()
+    
     private let infoContainerView: UIView = {
         let view = UIView()
         view.backgroundColor = Constants.Colors.background
@@ -132,11 +150,21 @@ class PlaceDetailViewController: UIViewController {
         return label
     }()
     
+    private let categoryEditButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "pencil"), for: .normal)
+        button.tintColor = Constants.Colors.primary
+        button.backgroundColor = .clear
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
     private let ratingView: UIView = {
         let view = UIView()
         view.backgroundColor = Constants.Colors.lightGray.withAlphaComponent(0.3)
         view.layer.cornerRadius = 8
         view.translatesAutoresizingMaskIntoConstraints = false
+        view.isUserInteractionEnabled = true
         return view
     }()
     
@@ -201,6 +229,7 @@ class PlaceDetailViewController: UIViewController {
         label.textColor = Constants.Colors.gray
         label.text = "0"
         label.translatesAutoresizingMaskIntoConstraints = false
+        label.isUserInteractionEnabled = true
         return label
     }()
     
@@ -623,6 +652,7 @@ class PlaceDetailViewController: UIViewController {
         
         infoContainerView.addSubview(nameLabel)
         infoContainerView.addSubview(categoryLabel)
+        infoContainerView.addSubview(categoryEditButton)
         infoContainerView.addSubview(creatorInfoView)
         creatorInfoView.addSubview(creatorLabel)
         infoContainerView.addSubview(ratingView)
@@ -630,6 +660,7 @@ class PlaceDetailViewController: UIViewController {
         infoContainerView.addSubview(addToCircleButton)
         infoContainerView.addSubview(addressTitleLabel)
         infoContainerView.addSubview(addressLabel)
+        infoContainerView.addSubview(updateAddressButton)
         infoContainerView.addSubview(hoursLabel)
         infoContainerView.addSubview(mapView)
         infoContainerView.addSubview(navigateButton)
@@ -679,6 +710,10 @@ class PlaceDetailViewController: UIViewController {
         shareButton.addTarget(self, action: #selector(shareButtonTapped), for: .touchUpInside)
         directionsButton.addTarget(self, action: #selector(directionsButtonTapped), for: .touchUpInside)
         
+        // Add tap gesture to like count label to show likes list
+        let likeCountTapGesture = UITapGestureRecognizer(target: self, action: #selector(showLikesList))
+        likeCountLabel.addGestureRecognizer(likeCountTapGesture)
+        
         // Add circle info
         infoContainerView.addSubview(circleInfoView)
         circleInfoView.addSubview(circleNameLabel)
@@ -690,6 +725,9 @@ class PlaceDetailViewController: UIViewController {
         
         // Add target for update info button
         updateInfoButton.addTarget(self, action: #selector(updateInfoButtonTapped), for: .touchUpInside)
+        
+        // Add target for update address button
+        updateAddressButton.addTarget(self, action: #selector(updateAddressButtonTapped), for: .touchUpInside)
         
         // Add target for edit image button
         editImageButton.addTarget(self, action: #selector(editImageButtonTapped), for: .touchUpInside)
@@ -706,11 +744,16 @@ class PlaceDetailViewController: UIViewController {
         ratingView.addSubview(ratingImageView)
         ratingView.addSubview(ratingLabel)
         
+        // Add tap gesture to rating view for Google reviews
+        let ratingTapGesture = UITapGestureRecognizer(target: self, action: #selector(ratingViewTapped))
+        ratingView.addGestureRecognizer(ratingTapGesture)
+        
         // Add navigation bar buttons
         let directionButton = UIBarButtonItem(image: UIImage(systemName: "map"), style: .plain, target: self, action: #selector(directionsButtonTapped))
+        let moveButton = UIBarButtonItem(image: UIImage(systemName: "arrow.right.circle"), style: .plain, target: self, action: #selector(moveToCircleButtonTapped))
         let moreButton = UIBarButtonItem(image: UIImage(systemName: "ellipsis.circle"), style: .plain, target: self, action: #selector(moreButtonTapped))
         // shareButton already added to navigationItem.rightBarButtonItem above
-        navigationItem.rightBarButtonItems = [moreButton, navigationItem.rightBarButtonItem!, directionButton]
+        navigationItem.rightBarButtonItems = [moreButton, moveButton, navigationItem.rightBarButtonItem!, directionButton]
         
         // Layout constraints
         NSLayoutConstraint.activate([
@@ -751,6 +794,7 @@ class PlaceDetailViewController: UIViewController {
             updateInfoButton.heightAnchor.constraint(equalToConstant: 32),
             updateInfoButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 100),
             
+            
             // Info container view - positioned below the image with padding
             infoContainerView.topAnchor.constraint(equalTo: imageView.bottomAnchor, constant: Constants.Spacing.medium),
             infoContainerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
@@ -764,8 +808,14 @@ class PlaceDetailViewController: UIViewController {
             
             // Category label
             categoryLabel.topAnchor.constraint(equalTo: nameLabel.topAnchor),
-            categoryLabel.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
+            categoryLabel.trailingAnchor.constraint(equalTo: categoryEditButton.leadingAnchor, constant: -Constants.Spacing.small),
             categoryLabel.heightAnchor.constraint(equalToConstant: 24),
+            
+            // Category edit button
+            categoryEditButton.topAnchor.constraint(equalTo: nameLabel.topAnchor),
+            categoryEditButton.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
+            categoryEditButton.widthAnchor.constraint(equalToConstant: 24),
+            categoryEditButton.heightAnchor.constraint(equalToConstant: 24),
             
             // Creator info view
             creatorInfoView.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: Constants.Spacing.small),
@@ -851,7 +901,14 @@ class PlaceDetailViewController: UIViewController {
             // Address label
             addressLabel.topAnchor.constraint(equalTo: addressTitleLabel.bottomAnchor, constant: Constants.Spacing.tiny),
             addressLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
-            addressLabel.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
+            addressLabel.trailingAnchor.constraint(lessThanOrEqualTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
+            
+            // Update Address button - positioned to the right of address label
+            updateAddressButton.centerYAnchor.constraint(equalTo: addressLabel.centerYAnchor),
+            updateAddressButton.leadingAnchor.constraint(greaterThanOrEqualTo: addressLabel.trailingAnchor, constant: Constants.Spacing.small),
+            updateAddressButton.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
+            updateAddressButton.heightAnchor.constraint(equalToConstant: 28),
+            updateAddressButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 110),
             
             // Hours label - will be hidden if no hours available
             hoursLabel.topAnchor.constraint(equalTo: addressLabel.bottomAnchor, constant: Constants.Spacing.small),
@@ -984,6 +1041,9 @@ class PlaceDetailViewController: UIViewController {
         imageView.bringSubviewToFront(streetViewToggleButton)
         imageView.bringSubviewToFront(editImageButton)
         imageView.bringSubviewToFront(updateInfoButton)
+        
+        // Set up button actions
+        categoryEditButton.addTarget(self, action: #selector(editButtonTapped), for: .touchUpInside)
     }
     
     private func configureUI() {
@@ -1043,6 +1103,8 @@ class PlaceDetailViewController: UIViewController {
         // Update edit button visibility based on whether user can edit this place
         let canEdit = place.isAddedByCurrentUser || isHomeOrWorkPlace
         editImageButton.isHidden = !canEdit
+        categoryEditButton.isHidden = !canEdit
+        
         
         // Show update info button for places showing default category image that can be enriched with Google data
         // (no custom image, no API photos, and no street view)
@@ -1053,6 +1115,10 @@ class PlaceDetailViewController: UIViewController {
         // Show button if showing default icon AND either has googlePlaceId OR has location coordinates
         let canSearchGooglePlaces = place.googlePlaceId != nil || place.location != nil
         updateInfoButton.isHidden = !isShowingDefaultIcon || !canSearchGooglePlaces
+        
+        // Show Update Address button if place has location coordinates
+        let hasLocation = place.location?.clLocation != nil
+        updateAddressButton.isHidden = !hasLocation
         
         // Description - only show if available
         if let description = place.description, !description.isEmpty {
@@ -1068,8 +1134,17 @@ class PlaceDetailViewController: UIViewController {
             if let userRatingsTotal = place.userRatingsTotal, userRatingsTotal > 0 {
                 ratingText += " (\(userRatingsTotal) review\(userRatingsTotal == 1 ? "" : "s"))"
             }
+            
+            // Add external link indicator if Google Place ID exists
+            if place.googlePlaceId != nil {
+                ratingText += " ↗"
+            }
+            
             ratingLabel.text = ratingText
             ratingView.isHidden = false
+            
+            // Add subtle highlight on tap capability
+            ratingView.backgroundColor = Constants.Colors.lightGray.withAlphaComponent(0.3)
         } else {
             // Hide rating view when no rating is available
             ratingView.isHidden = true
@@ -1392,13 +1467,7 @@ class PlaceDetailViewController: UIViewController {
                 case .success(let circles):
                     if circles.isEmpty {
                         // No circles available
-                        let alert = UIAlertController(
-                            title: "No Circles",
-                            message: "You need to create a circle first before adding places to it.",
-                            preferredStyle: .alert
-                        )
-                        alert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self.present(alert, animated: true)
+                        AlertPresenter.showError(title: "No Circles", message: "You need to create a circle first before adding places to it.", from: self)
                     } else {
                         // Show circle picker
                         let pickerVC = CirclePickerViewController(circles: circles)
@@ -1410,13 +1479,7 @@ class PlaceDetailViewController: UIViewController {
                     }
                     
                 case .failure(let error):
-                    let alert = UIAlertController(
-                        title: "Error",
-                        message: "Failed to load circles: \(error.localizedDescription)",
-                        preferredStyle: .alert
-                    )
-                    alert.addAction(UIAlertAction(title: "OK", style: .default))
-                    self.present(alert, animated: true)
+                    self.showError("Failed to load circles: \(error.localizedDescription)")
                 }
             }
         }
@@ -1493,9 +1556,34 @@ class PlaceDetailViewController: UIViewController {
                 }
             }
         } else {
-            let alert = UIAlertController(title: "No Location", message: "Location information is not available for this place.", preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "OK", style: .default))
-            present(alert, animated: true)
+            showError("Location information is not available for this place.")
+        }
+    }
+    
+    @objc private func ratingViewTapped() {
+        // Open Google Maps/Google search to show reviews
+        guard let googlePlaceId = place.googlePlaceId, !googlePlaceId.isEmpty else {
+            // If no Google Place ID, try searching by name and address
+            let searchQuery = "\(place.name) \(place.address)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            let googleSearchURL = URL(string: "https://www.google.com/search?q=\(searchQuery)+reviews")
+            
+            if let url = googleSearchURL {
+                UIApplication.shared.open(url)
+            }
+            return
+        }
+        
+        // Try to open in Google Maps app first
+        let googleMapsURL = URL(string: "comgooglemaps://?q=place_id:\(googlePlaceId)")
+        
+        if let url = googleMapsURL, UIApplication.shared.canOpenURL(url) {
+            UIApplication.shared.open(url)
+        } else {
+            // Fallback to Google Maps website
+            let googleMapsWebURL = URL(string: "https://www.google.com/maps/place/?q=place_id:\(googlePlaceId)")
+            if let url = googleMapsWebURL {
+                UIApplication.shared.open(url)
+            }
         }
     }
     
@@ -1519,38 +1607,24 @@ class PlaceDetailViewController: UIViewController {
             let circleDetailVC = CircleDetailViewController(circle: circle)
             navigationController?.pushViewController(circleDetailVC, animated: true)
         } else {
-            let alert = UIAlertController(title: "Loading", message: "Circle information is still loading. Please try again in a moment.", preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "OK", style: .default))
-            present(alert, animated: true)
+            showError("Circle information is still loading. Please try again in a moment.")
         }
     }
     
     @objc private func moreButtonTapped() {
-        let alertController = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
-        
-        // Edit action
-        let editAction = UIAlertAction(title: "Edit Place", style: .default) { [weak self] _ in
+        let editAction = (title: "Edit Place", style: UIAlertAction.Style.default, handler: { [weak self] () -> Void in
             self?.editButtonTapped()
-        }
-        editAction.setValue(UIImage(systemName: "pencil"), forKey: "image")
-        alertController.addAction(editAction)
+        })
         
-        // Move to Different Circle action
-        let moveAction = UIAlertAction(title: "Move to Different Circle", style: .default) { [weak self] _ in
+        let moveAction = (title: "Move to Different Circle", style: UIAlertAction.Style.default, handler: { [weak self] () -> Void in
             self?.moveToCircleButtonTapped()
-        }
-        moveAction.setValue(UIImage(systemName: "arrow.right.circle"), forKey: "image")
-        alertController.addAction(moveAction)
+        })
         
-        // Cancel action
-        alertController.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        
-        // iPad compatibility
-        if let popover = alertController.popoverPresentationController {
-            popover.barButtonItem = navigationItem.rightBarButtonItems?.first
-        }
-        
-        present(alertController, animated: true)
+        AlertPresenter.showActionSheet(
+            actions: [editAction, moveAction],
+            from: self,
+            sourceView: navigationItem.rightBarButtonItems?.first?.value(forKey: "view") as? UIView
+        )
     }
     
     @objc private func editButtonTapped() {
@@ -1561,12 +1635,23 @@ class PlaceDetailViewController: UIViewController {
     }
     
     @objc private func moveToCircleButtonTapped() {
-        let circleSelectionVC = CircleSelectionViewController(excludedCircleId: place.circleId)
+        let circleSelectionVC = CircleSelectionViewController(
+            excludedCircleId: place.circleId,
+            customTitle: "Select Circle to Move Place To"
+        )
         circleSelectionVC.delegate = self
         present(circleSelectionVC, animated: true)
     }
     
     @objc private func likeButtonTapped() {
+        // Check if place has likes - if so, show likes list instead of toggling
+        let likeCount = place.likesCount ?? place.likes?.count ?? 0
+        if likeCount > 0 {
+            showLikesList()
+            return
+        }
+        
+        // If no likes, toggle like as usual
         // Haptic feedback
         let generator = UIImpactFeedbackGenerator(style: .light)
         generator.prepare()
@@ -1599,6 +1684,16 @@ class PlaceDetailViewController: UIViewController {
                     self.showAlert(title: "Error", message: "Failed to update like. Please try again.")
                 }
             }
+        }
+    }
+    
+    @objc private func showLikesList() {
+        let likeCount = place.likesCount ?? place.likes?.count ?? 0
+        if likeCount > 0 {
+            let likesVC = PlaceLikesViewController()
+            likesVC.placeId = place.id
+            likesVC.placeName = place.name
+            navigationController?.pushViewController(likesVC, animated: true)
         }
     }
     
@@ -1904,8 +1999,7 @@ class PlaceDetailViewController: UIViewController {
     
     private func updatePlaceNotes(publicNotes: String, privateNotes: String) {
         // Show loading indicator
-        let loadingAlert = UIAlertController(title: "Saving Notes", message: "Please wait...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
+        let loadingAlert = AlertPresenter.showLoading(message: "Saving Notes...", from: self)
         
         // Call PlaceService to update notes on Firebase
         PlaceService.shared.updatePlace(
@@ -1947,13 +2041,7 @@ class PlaceDetailViewController: UIViewController {
                     
                 case .failure(let error):
                     // Show error alert
-                    let errorAlert = UIAlertController(
-                        title: "Error",
-                        message: "Failed to save notes: \(error.localizedDescription)",
-                        preferredStyle: .alert
-                    )
-                    errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                    self.present(errorAlert, animated: true)
+                    self.showError("Failed to save notes: \(error.localizedDescription)")
                 }
             }
         }
@@ -2098,7 +2186,7 @@ class PlaceDetailViewController: UIViewController {
         updateImageView()
         
         // Show success message
-        showAlert(title: "Success", message: "Street view image set as the place photo.")
+        showSuccess("Street view image set as the place photo.")
     }
     
     private func loadSavedImage() {
@@ -2299,13 +2387,7 @@ class PlaceDetailViewController: UIViewController {
                         self?.updateUIWithRefreshedPlace(updatedPlace)
                         
                         // Show success message
-                        let successAlert = UIAlertController(
-                            title: "Success",
-                            message: "Place information has been updated",
-                            preferredStyle: .alert
-                        )
-                        successAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self?.present(successAlert, animated: true)
+                        self?.showSuccess("Place information has been updated")
                         
                     case .failure(let error):
                         // Show error message
@@ -2317,13 +2399,7 @@ class PlaceDetailViewController: UIViewController {
                             errorMessage = "Failed to update place information: \(error.localizedDescription)"
                         }
                         
-                        let errorAlert = UIAlertController(
-                            title: "Unable to Update",
-                            message: errorMessage,
-                            preferredStyle: .alert
-                        )
-                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self?.present(errorAlert, animated: true)
+                        AlertPresenter.showError(title: "Unable to Update", message: errorMessage, from: self!)
                     }
                 }
             }
@@ -2363,8 +2439,17 @@ class PlaceDetailViewController: UIViewController {
             if let userRatingsTotal = updatedPlace.userRatingsTotal, userRatingsTotal > 0 {
                 ratingText += " (\(userRatingsTotal) review\(userRatingsTotal == 1 ? "" : "s"))"
             }
+            
+            // Add external link indicator if Google Place ID exists
+            if updatedPlace.googlePlaceId != nil {
+                ratingText += " ↗"
+            }
+            
             ratingLabel.text = ratingText
             ratingView.isHidden = false
+            
+            // Add subtle highlight on tap capability
+            ratingView.backgroundColor = Constants.Colors.lightGray.withAlphaComponent(0.3)
         } else {
             ratingView.isHidden = true
         }
@@ -2372,14 +2457,111 @@ class PlaceDetailViewController: UIViewController {
         // Post notification to refresh any lists
         NotificationCenter.default.post(name: NSNotification.Name("PlaceUpdated"), object: nil, userInfo: ["place": updatedPlace])
     }
+    
+    @objc private func updateAddressButtonTapped() {
+        // Create and present the address search view controller
+        let searchVC = PlaceAddressSearchViewController(
+            placeName: place.name,
+            currentLocation: place.location?.clLocation
+        )
+        searchVC.delegate = self
+        
+        let navController = UINavigationController(rootViewController: searchVC)
+        present(navController, animated: true)
+    }
+    
+    private func performAddressUpdate(_ newAddress: String, coordinate: CLLocationCoordinate2D? = nil) {
+        // Show loading
+        let loadingAlert = AlertPresenter.showLoading(message: "Saving new address and location...", from: self)
+        present(loadingAlert, animated: true)
+        
+        // Call the API to update the address and coordinates
+        PlaceService.shared.updatePlaceAddress(id: place.id, address: newAddress, coordinate: coordinate) { [weak self] result in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    switch result {
+                    case .success(let updatedPlace):
+                        // Update the UI with new place data
+                        self.place = updatedPlace
+                        self.addressLabel.text = updatedPlace.address
+                        
+                        // Update map if location changed
+                        if let location = updatedPlace.location?.clLocation {
+                            self.mapView.removeAnnotations(self.mapView.annotations)
+                            
+                            let annotation = MKPointAnnotation()
+                            annotation.coordinate = location.coordinate
+                            annotation.title = updatedPlace.name
+                            self.mapView.addAnnotation(annotation)
+                            
+                            let region = MKCoordinateRegion(
+                                center: location.coordinate,
+                                latitudinalMeters: 1000,
+                                longitudinalMeters: 1000
+                            )
+                            self.mapView.setRegion(region, animated: true)
+                        }
+                        
+                        // Show success message
+                        self.showSuccess("Location and address have been updated successfully")
+                        
+                        // Post notification to refresh any lists
+                        NotificationCenter.default.post(name: NSNotification.Name("PlaceUpdated"), object: nil, userInfo: ["place": updatedPlace])
+                        
+                    case .failure(let error):
+                        // Show error message
+                        let errorMessage = "Failed to update address: \(error.localizedDescription)"
+                        AlertPresenter.showError(title: "Unable to Update", message: errorMessage, from: self)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - PlaceAddressSearchViewControllerDelegate
+extension PlaceDetailViewController: PlaceAddressSearchViewControllerDelegate {
+    func placeAddressSearchViewController(_ controller: PlaceAddressSearchViewController, didSelectMapItem mapItem: MKMapItem) {
+        // Extract address and coordinates from the map item
+        let placemark = mapItem.placemark
+        
+        // Format address
+        let address = [
+            placemark.subThoroughfare,
+            placemark.thoroughfare,
+            placemark.locality,
+            placemark.administrativeArea,
+            placemark.postalCode
+        ].compactMap { $0 }.joined(separator: ", ")
+        
+        // Get coordinates
+        let coordinate = placemark.coordinate
+        
+        // Update the place with new address and coordinates
+        performAddressUpdate(address, coordinate: coordinate)
+    }
+    
+    func placeAddressSearchViewControllerDidCancel(_ controller: PlaceAddressSearchViewController) {
+        // Just dismiss, nothing else needed
+    }
 }
 
 // MARK: - EditPlaceDelegate
 extension PlaceDetailViewController: EditPlaceDelegate {
     func didUpdatePlace(_ updatedPlace: Place) {
         // Update the current place with the updated one
-        // Since place is a let constant, we need to navigate back and refresh
-        navigationController?.popViewController(animated: true)
+        self.place = updatedPlace
+        
+        // Refresh the UI with the updated place data
+        configureUI()
+        
+        // Update the title in case place name changed
+        title = place.name
+        
+        // Stay on the current screen to show the updated changes
+        print("🔄 Place updated: \(updatedPlace.name) with category: \(updatedPlace.displayCategory)")
     }
     
     func didDeletePlace(_ placeId: String) {
@@ -2392,8 +2574,7 @@ extension PlaceDetailViewController: EditPlaceDelegate {
 extension PlaceDetailViewController: CircleSelectionDelegate {
     func circleSelectionViewController(_ controller: CircleSelectionViewController, didSelectCircle circle: Circle) {
         // Show loading indicator
-        let loadingAlert = UIAlertController(title: "Moving Place", message: "Moving \(place.name) to \(circle.name)...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
+        let loadingAlert = AlertPresenter.showLoading(message: "Moving \(place.name) to \(circle.name)...", from: self)
         
         // Perform the move
         PlaceService.shared.movePlaceToCircle(placeId: place.id, targetCircleId: circle.id) { [weak self] result in
@@ -2411,25 +2592,13 @@ extension PlaceDetailViewController: CircleSelectionDelegate {
                         self.circleNameLabel.text = circle.name
                         
                         // Show success message
-                        let successAlert = UIAlertController(
-                            title: "Success",
-                            message: "\(self.place.name) has been moved to \(circle.name)",
-                            preferredStyle: .alert
-                        )
-                        successAlert.addAction(UIAlertAction(title: "OK", style: .default) { _ in
+                        self.showSuccess("\(self.place.name) has been moved to \(circle.name)") {
                             // Pop back to the previous view controller since the place has moved
                             self.navigationController?.popViewController(animated: true)
-                        })
-                        self.present(successAlert, animated: true)
+                        }
                         
                     case .failure(let error):
-                        let errorAlert = UIAlertController(
-                            title: "Error",
-                            message: "Failed to move place: \(error.localizedDescription)",
-                            preferredStyle: .alert
-                        )
-                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self.present(errorAlert, animated: true)
+                        self.showError("Failed to move place: \(error.localizedDescription)")
                     }
                 }
             }
@@ -2491,8 +2660,7 @@ extension PlaceDetailViewController: PHPickerViewControllerDelegate {
 extension PlaceDetailViewController {
     private func addPlaceToCircle(_ circle: Circle) {
         // Show loading indicator
-        let loadingAlert = UIAlertController(title: "Adding Place", message: "Please wait...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
+        let loadingAlert = AlertPresenter.showLoading(message: "Adding Place...", from: self)
         
         // Add the place to the selected circle
         PlaceService.shared.addExistingPlaceToCircle(placeId: place.id, circleId: circle.id) { [weak self] result in
@@ -2532,13 +2700,7 @@ extension PlaceDetailViewController {
                             errorMessage = "Failed to add place: \(error.localizedDescription)"
                         }
                         
-                        let alert = UIAlertController(
-                            title: "Error",
-                            message: errorMessage,
-                            preferredStyle: .alert
-                        )
-                        alert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self?.present(alert, animated: true)
+                        AlertPresenter.showError(message: errorMessage, from: self!)
                     }
                 }
             }
@@ -2765,7 +2927,7 @@ extension PlaceDetailViewController {
                     
                 case .failure(let error):
                     Logger.error("Failed to like comment: \(error)")
-                    self?.showAlert(title: "Error", message: "Failed to update like. Please try again.")
+                    self?.showError("Failed to update like. Please try again.")
                 }
             }
         }

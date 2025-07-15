@@ -24,13 +24,16 @@ class PlaceSearchCell: UITableViewCell {
     }
 }
 
-class PlaceSearchViewController: UIViewController {
+class PlaceSearchViewController: BaseViewController {
     
     // MARK: - Properties
     weak var delegate: PlaceSearchDelegate?
     private var searchCompleter = MKLocalSearchCompleter()
     private var searchResults: [MKLocalSearchCompletion] = []
     private var currentLocation: CLLocation?
+    
+    // MARK: - Configuration
+    override var loadsDataOnViewDidLoad: Bool { false }
     
     // MARK: - UI Elements
     private let searchBar: UISearchBar = {
@@ -79,15 +82,10 @@ class PlaceSearchViewController: UIViewController {
     // MARK: - UI Setup
     
     private func setupUI() {
-        view.backgroundColor = Constants.Colors.background
         title = "Search Place"
         
         // Navigation items
-        navigationItem.leftBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .cancel,
-            target: self,
-            action: #selector(cancelButtonTapped)
-        )
+        addNavigationBarButton(image: "xmark", position: .left, action: #selector(cancelButtonTapped))
         
         // Add subviews
         view.addSubview(searchBar)
@@ -147,7 +145,8 @@ class PlaceSearchViewController: UIViewController {
     
     private func getCurrentLocation() {
         LocationService.shared.getCurrentLocation { [weak self] location in
-            guard let self = self, let location = location else { return }
+            guard let self = self else { return }
+            guard let location = location else { return }
             self.currentLocation = location
             self.updateSearchCompleterRegion()
         }
@@ -196,8 +195,8 @@ class PlaceSearchViewController: UIViewController {
             let search = MKLocalSearch(request: searchRequest)
             
             search.start { [weak self] response, error in
-                guard let self = self,
-                      let response = response,
+                guard let self = self else { return }
+                guard let response = response,
                       let mapItem = response.mapItems.first else { return }
                 
                 let annotation = MKPointAnnotation()
@@ -213,8 +212,7 @@ class PlaceSearchViewController: UIViewController {
         let selectedResult = searchResults[indexPath.row]
         
         // Show loading indicator
-        let loadingAlert = UIAlertController(title: "Loading", message: "Getting place details...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
+        let loadingAlert = AlertPresenter.showLoading(message: "Getting place details...", from: self)
         
         // Perform detailed search
         let searchRequest = MKLocalSearch.Request(completion: selectedResult)
@@ -225,13 +223,13 @@ class PlaceSearchViewController: UIViewController {
                 guard let self = self else { return }
                 
                 if let error = error {
-                    self.showAlert(title: "Error", message: error.localizedDescription)
+                    self.showError(error)
                     return
                 }
                 
                 guard let response = response,
                       let mapItem = response.mapItems.first else {
-                    self.showAlert(title: "Error", message: "Could not get place details")
+                    self.showError("Could not get place details")
                     return
                 }
                 
@@ -391,11 +389,7 @@ class PlaceSearchViewController: UIViewController {
         dismiss(animated: true)
     }
     
-    private func showAlert(title: String, message: String) {
-        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
+    // Removed showAlert - using inherited showError from BaseViewController
 }
 
 // MARK: - UITableViewDataSource

@@ -1,6 +1,6 @@
 import UIKit
 
-class FollowersListViewController: UIViewController {
+class FollowersListViewController: BaseViewController {
     
     // MARK: - Properties
     var userId: String?
@@ -25,31 +25,51 @@ class FollowersListViewController: UIViewController {
         return searchController
     }()
     
-    private let loadingIndicator: UIActivityIndicatorView = {
-        let indicator = UIActivityIndicatorView(style: .medium)
-        indicator.hidesWhenStopped = true
-        indicator.translatesAutoresizingMaskIntoConstraints = false
-        return indicator
-    }()
+    // Loading indicator removed - using BaseViewController's built-in indicator
     
-    private let emptyStateLabel: UILabel = {
-        let label = UILabel()
-        label.textAlignment = .center
-        label.textColor = Constants.Colors.secondaryLabel
-        label.font = UIFont.systemFont(ofSize: 16)
-        label.numberOfLines = 0
-        label.isHidden = true
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
+    // Empty state label removed - using BaseViewController's built-in empty state
+    
+    // MARK: - Helper Methods
+    /// Helper function to create a type-safe completion handler for API requests
+    private func createAPICompletion<T>(_ completion: @escaping (Result<T, Error>) -> Void) -> (Result<T, APIError>) -> Void {
+        return { [weak self] result in
+            guard let self = self else { return }
+            
+            switch result {
+            case .success(let response):
+                completion(.success(response))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
     
     // MARK: - Lifecycle
+    // MARK: - BaseViewController Configuration
+    override var showsLoadingIndicator: Bool { true }
+    override var enablesPullToRefresh: Bool { true }
+    override var emptyStateMessage: String? { 
+        if listType == .followers {
+            return "No followers yet\n\nWhen people follow you, they'll appear here."
+        } else {
+            return "Not following anyone\n\nFind people to follow and they'll appear here."
+        }
+    }
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
         setupSearchController()
         setupSSEListener()
+    }
+    
+    override func loadData(completion: (() -> Void)?) {
         loadUsers()
+        completion?()
+    }
+    
+    override func setupRefreshControl() {
+        tableView.refreshControl = refreshControl
     }
     
     deinit {
@@ -58,26 +78,15 @@ class FollowersListViewController: UIViewController {
     
     // MARK: - Setup
     private func setupUI() {
-        view.backgroundColor = Constants.Colors.background
-        title = listType == .followers ? "Followers" : "Following"
+        setupNavigationBar(title: listType == .followers ? "Followers" : "Following")
         
         view.addSubview(tableView)
-        view.addSubview(loadingIndicator)
-        view.addSubview(emptyStateLabel)
         
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            
-            loadingIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            loadingIndicator.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            
-            emptyStateLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            emptyStateLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            emptyStateLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
-            emptyStateLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40)
+            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
         
         tableView.delegate = self
@@ -100,30 +109,54 @@ class FollowersListViewController: UIViewController {
     private func loadUsers() {
         guard let userId = userId else { return }
         
-        loadingIndicator.startAnimating()
-        tableView.isHidden = true
-        emptyStateLabel.isHidden = true
-        
-        let endpoint = listType == .followers ? "users/\(userId)/followers" : "users/\(userId)/following"
-        
+        if listType == .followers {
+            loadFollowers(userId: userId)
+        } else {
+            loadFollowing(userId: userId)
+        }
+    }
+    
+    private func loadFollowers(userId: String) {
         APIService.shared.request(
-            endpoint: endpoint,
+            endpoint: "users/\(userId)/followers",
             method: .get,
             requiresAuth: true
-        ) { [weak self] (result: Result<UsersListResponse, APIError>) in
+        ) { [weak self] (result: Result<FollowersResponse, APIError>) in
             DispatchQueue.main.async {
-                self?.loadingIndicator.stopAnimating()
-                self?.tableView.isHidden = false
+                guard let self = self else { return }
                 
                 switch result {
                 case .success(let response):
-                    self?.users = response.users
-                    self?.filteredUsers = response.users
-                    self?.tableView.reloadData()
-                    self?.updateEmptyState()
+                    self.users = response.followers
+                    self.filteredUsers = response.followers
+                    self.tableView.reloadData()
+                    self.updateEmptyState()
                 case .failure(let error):
-                    self?.showAlert(title: "Error", message: "Failed to load users: \(error.localizedDescription)")
-                    self?.updateEmptyState()
+                    self.showError("Failed to load followers: \(error.localizedDescription)")
+                    self.updateEmptyState()
+                }
+            }
+        }
+    }
+    
+    private func loadFollowing(userId: String) {
+        APIService.shared.request(
+            endpoint: "users/\(userId)/following",
+            method: .get,
+            requiresAuth: true
+        ) { [weak self] (result: Result<FollowingResponse, APIError>) in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                
+                switch result {
+                case .success(let response):
+                    self.users = response.following
+                    self.filteredUsers = response.following
+                    self.tableView.reloadData()
+                    self.updateEmptyState()
+                case .failure(let error):
+                    self.showError("Failed to load following: \(error.localizedDescription)")
+                    self.updateEmptyState()
                 }
             }
         }
@@ -131,25 +164,19 @@ class FollowersListViewController: UIViewController {
     
     private func updateEmptyState() {
         let isEmpty = isSearching ? filteredUsers.isEmpty : users.isEmpty
-        emptyStateLabel.isHidden = !isEmpty
-        tableView.isHidden = isEmpty
         
         if isEmpty {
             if isSearching {
-                emptyStateLabel.text = "No users found"
-            } else if listType == .followers {
-                emptyStateLabel.text = "No followers yet\n\nWhen people follow you, they'll appear here."
+                showEmptyState(message: "No users found")
             } else {
-                emptyStateLabel.text = "Not following anyone\n\nFind people to follow and they'll appear here."
+                showEmptyState()
             }
+        } else {
+            hideEmptyState()
         }
     }
     
-    private func showAlert(title: String, message: String) {
-        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
+    // Removed - using BaseViewController's showError method
 }
 
 // MARK: - UITableViewDataSource
@@ -251,14 +278,16 @@ extension FollowersListViewController: FollowerUserCellDelegate {
             endpoint: endpoint,
             method: .post,
             requiresAuth: true
-        ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
+        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
             DispatchQueue.main.async {
+                guard let self = self else { return }
+                
                 switch result {
                 case .success:
                     // Update will happen via SSE
                     break
                 case .failure(let error):
-                    self?.showAlert(title: "Error", message: "Failed to \(isFollowing ? "unfollow" : "follow") user: \(error.localizedDescription)")
+                    self.showError("Failed to \(isFollowing ? "unfollow" : "follow") user: \(error.localizedDescription)")
                 }
             }
         }
@@ -269,6 +298,18 @@ extension FollowersListViewController: FollowerUserCellDelegate {
 struct UsersListResponse: Codable {
     let success: Bool
     let users: [User]
+}
+
+struct FollowersResponse: Codable {
+    let success: Bool
+    let count: Int
+    let followers: [User]
+}
+
+struct FollowingResponse: Codable {
+    let success: Bool
+    let count: Int
+    let following: [User]
 }
 
 // MARK: - Follower User Cell
@@ -316,13 +357,7 @@ class FollowerUserCell: UITableViewCell {
         return label
     }()
     
-    private let followButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
-        button.layer.cornerRadius = 6
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private lazy var followButton = UIButton.smallActionButton(title: "Follow", style: .secondary)
     
     // MARK: - Init
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
@@ -389,7 +424,8 @@ class FollowerUserCell: UITableViewCell {
         if let profilePicture = user.profilePicture {
             ImageService.shared.loadImage(from: profilePicture) { [weak self] image in
                 DispatchQueue.main.async {
-                    self?.profileImageView.image = image ?? UIImage(systemName: "person.circle.fill")
+                    guard let self = self else { return }
+                    self.profileImageView.image = image ?? UIImage(systemName: "person.circle.fill")
                 }
             }
         } else {
@@ -418,15 +454,10 @@ class FollowerUserCell: UITableViewCell {
     private func updateFollowButton() {
         if isFollowing {
             followButton.setTitle("Following", for: .normal)
-            followButton.backgroundColor = Constants.Colors.primary
-            followButton.setTitleColor(.white, for: .normal)
-            followButton.layer.borderWidth = 0
+            followButton.setStyle(.primary)
         } else {
             followButton.setTitle("Follow", for: .normal)
-            followButton.backgroundColor = .clear
-            followButton.setTitleColor(Constants.Colors.primary, for: .normal)
-            followButton.layer.borderWidth = 1
-            followButton.layer.borderColor = Constants.Colors.primary.cgColor
+            followButton.setStyle(.secondary)
         }
     }
     

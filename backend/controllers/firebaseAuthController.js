@@ -4,6 +4,7 @@ const { COLLECTIONS, createUser, serializeDoc } = require('../models/FirestoreMo
 const jwt = require('jsonwebtoken');
 const jwksClient = require('jwks-rsa');
 const { normalizeUserId, logNormalization } = require('../services/idService');
+const OnboardingService = require('../services/onboardingService');
 
 const db = getFirestore();
 const auth = getAuth();
@@ -395,6 +396,11 @@ exports.firebaseAuth = async (req, res, next) => {
       
       if (result.isNew) {
         console.log(`✅ New user created successfully with ID: ${simpleUid} (original: ${uid})`);
+        
+        // Trigger onboarding for new user (async, don't wait)
+        OnboardingService.completeUserOnboarding(simpleUid).catch(error => {
+          console.error(`❌ Onboarding failed for user ${simpleUid}:`, error);
+        });
       } else {
         console.log(`✅ Existing user updated successfully`);
       }
@@ -442,6 +448,8 @@ exports.firebaseAuth = async (req, res, next) => {
         location: user.location || null,
         friends: user.friends || [],
         friendRequests: user.friendRequests || [],
+        followersCount: user.followersCount || 0,
+        followingCount: user.followingCount || 0,
         createdAt: user.createdAt || new Date().toISOString()
       }
     };
@@ -610,6 +618,12 @@ exports.register = async (req, res, next) => {
     let user;
     if (result.isNew) {
       user = result.userData;
+      
+      // Trigger onboarding for new user (async, don't wait)
+      const userId = normalizeUserId(user.id || user.uid);
+      OnboardingService.completeUserOnboarding(userId).catch(error => {
+        console.error(`❌ Onboarding failed for user ${userId}:`, error);
+      });
     } else {
       const userDoc = await result.userRef.get();
       user = serializeDoc(userDoc);
@@ -644,6 +658,8 @@ exports.register = async (req, res, next) => {
         location: user.location || null,
         friends: user.friends || [],
         friendRequests: user.friendRequests || [],
+        followersCount: user.followersCount || 0,
+        followingCount: user.followingCount || 0,
         createdAt: user.createdAt
       }
     });
@@ -779,6 +795,8 @@ exports.login = async (req, res, next) => {
         location: user.location || null,
         friends: user.friends || [],
         friendRequests: user.friendRequests || [],
+        followersCount: user.followersCount || 0,
+        followingCount: user.followingCount || 0,
         createdAt: user.createdAt
       }
     });
@@ -817,6 +835,8 @@ exports.getMe = async (req, res, next) => {
         bio: user.bio,
         location: user.location,
         friends: user.friends,
+        followersCount: user.followersCount || 0,
+        followingCount: user.followingCount || 0,
         createdAt: user.createdAt
       }
     });
@@ -860,6 +880,8 @@ exports.updateProfile = async (req, res, next) => {
         profilePicture: user.profilePicture,
         bio: user.bio,
         location: user.location,
+        followersCount: user.followersCount || 0,
+        followingCount: user.followingCount || 0,
         createdAt: user.createdAt
       }
     });

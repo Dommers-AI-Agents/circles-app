@@ -44,7 +44,7 @@ struct User: Codable, Identifiable {
     }
     
     // Convenience initializer for creating User objects directly
-    init(id: String, email: String, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil, connectionDirection: String? = nil, connectionId: String? = nil, followers: [String]? = nil, following: [String]? = nil, followersCount: Int? = nil, followingCount: Int? = nil, connectionsCount: Int? = nil, pinnedPlaces: [String]? = nil, isFollowing: Bool? = nil) {
+    public init(id: String, email: String, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil, connectionDirection: String? = nil, connectionId: String? = nil, followers: [String]? = nil, following: [String]? = nil, followersCount: Int? = nil, followingCount: Int? = nil, connectionsCount: Int? = nil, pinnedPlaces: [String]? = nil, isFollowing: Bool? = nil) {
         self.id = id
         self.email = email
         self.displayName = displayName
@@ -154,4 +154,5 @@ struct User: Codable, Identifiable {
             createdAt = nil
         }
     }
+    
 }

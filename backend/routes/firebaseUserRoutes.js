@@ -23,7 +23,8 @@ const {
   addPinnedPlace,
   removePinnedPlace,
   getPinnedPlaces,
-  reorderPinnedPlaces
+  reorderPinnedPlaces,
+  recalculateFollowerCounts
 } = require('../controllers/firebaseUserController');
 const { protect } = require('../middleware/firebaseAuth');
 
@@ -104,6 +105,10 @@ router.route('/me/pinned-places/reorder')
 
 router.route('/me/pinned-places/:placeId')
   .delete(removePinnedPlace);
+
+// Recalculate follower counts
+router.route('/:id/recalculate-counts')
+  .post(recalculateFollowerCounts);
 
 // Import getUserCircles from circleSharingController
 const { getUserCircles } = require('../controllers/circleSharingController');

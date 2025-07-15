@@ -1,11 +1,32 @@
 import UIKit
 import Photos
 
+protocol CreateCircleDelegate: AnyObject {
+    func didCreateCircle(_ circle: Circle)
+}
+
 class CreateCircleViewController: UIViewController {
     
     // MARK: - Properties
     weak var delegate: CreateCircleDelegate?
     private var keyboardHeight: CGFloat = 0
+    private var selectedCategory: CategoryItem?
+    private var selectedCategoryType: CircleCategory = .other
+    
+    // MARK: - Helper Methods
+    /// Helper function to create a type-safe completion handler for API requests
+    private func createAPICompletion<T>(_ completion: @escaping (Result<T, Error>) -> Void) -> (Result<T, APIError>) -> Void {
+        return { [weak self] result in
+            guard let self = self else { return }
+            
+            switch result {
+            case .success(let response):
+                completion(.success(response))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
     
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
@@ -85,12 +106,17 @@ class CreateCircleViewController: UIViewController {
         return label
     }()
     
-    private let categorySegmentedControl: UISegmentedControl = {
-        let categories = ["Travel", "Food", "Shopping", "Services", "Healthcare", "Entertainment", "Other"]
-        let segmentedControl = UISegmentedControl(items: categories)
-        segmentedControl.selectedSegmentIndex = 0
-        segmentedControl.translatesAutoresizingMaskIntoConstraints = false
-        return segmentedControl
+    private let categoryButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Select Category", for: .normal)
+        button.contentHorizontalAlignment = .left
+        button.titleEdgeInsets = UIEdgeInsets(top: 0, left: 10, bottom: 0, right: 10)
+        button.layer.borderWidth = 0.5
+        button.layer.borderColor = UIColor.lightGray.cgColor
+        button.layer.cornerRadius = 5
+        button.backgroundColor = .systemBackground
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
     }()
     
     private let privacyLabel: UILabel = {
@@ -192,6 +218,7 @@ class CreateCircleViewController: UIViewController {
         setupUI()
         setupActions()
         setupKeyboardObservers()
+        setupNavigation()
     }
     
     override func viewWillDisappear(_ animated: Bool) {
@@ -220,7 +247,7 @@ class CreateCircleViewController: UIViewController {
         contentView.addSubview(descriptionLabel)
         contentView.addSubview(descriptionTextView)
         contentView.addSubview(categoryLabel)
-        contentView.addSubview(categorySegmentedControl)
+        contentView.addSubview(categoryButton)
         contentView.addSubview(privacyLabel)
         contentView.addSubview(privacySegmentedControl)
         contentView.addSubview(locationLabel)
@@ -288,13 +315,14 @@ class CreateCircleViewController: UIViewController {
             categoryLabel.topAnchor.constraint(equalTo: descriptionTextView.bottomAnchor, constant: Constants.Spacing.medium),
             categoryLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             
-            // Category segmented control
-            categorySegmentedControl.topAnchor.constraint(equalTo: categoryLabel.bottomAnchor, constant: Constants.Spacing.small),
-            categorySegmentedControl.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            categorySegmentedControl.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            // Category button
+            categoryButton.topAnchor.constraint(equalTo: categoryLabel.bottomAnchor, constant: Constants.Spacing.small),
+            categoryButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            categoryButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            categoryButton.heightAnchor.constraint(equalToConstant: 40),
             
             // Privacy label
-            privacyLabel.topAnchor.constraint(equalTo: categorySegmentedControl.bottomAnchor, constant: Constants.Spacing.medium),
+            privacyLabel.topAnchor.constraint(equalTo: categoryButton.bottomAnchor, constant: Constants.Spacing.medium),
             privacyLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             
             // Privacy segmented control
@@ -338,6 +366,7 @@ class CreateCircleViewController: UIViewController {
     private func setupActions() {
         addCoverPhotoButton.addTarget(self, action: #selector(addCoverPhotoButtonTapped), for: .touchUpInside)
         createButton.addTarget(self, action: #selector(createButtonTapped), for: .touchUpInside)
+        categoryButton.addTarget(self, action: #selector(categoryButtonTapped), for: .touchUpInside)
         
         // Add gesture recognizer to dismiss keyboard when tapping on the view
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
@@ -352,6 +381,30 @@ class CreateCircleViewController: UIViewController {
         
         // Set connection picker delegate
         connectionPickerView.delegate = self
+    }
+    
+    private func setupNavigation() {
+        // Add cancel button when presented modally
+        if presentingViewController != nil {
+            navigationItem.leftBarButtonItem = UIBarButtonItem(
+                barButtonSystemItem: .cancel,
+                target: self,
+                action: #selector(cancelButtonTapped)
+            )
+        }
+        
+        // Optionally add a done/save button on the right
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            title: "Create",
+            style: .done,
+            target: self,
+            action: #selector(createButtonTapped)
+        )
+    }
+    
+    @objc private func cancelButtonTapped() {
+        // Dismiss the modal
+        dismiss(animated: true)
     }
     
     private func setupKeyboardObservers() {
@@ -391,9 +444,7 @@ class CreateCircleViewController: UIViewController {
         // Note: Duplicate name check removed - backend will validate
         
         // Get selected category
-        let categoryIndex = categorySegmentedControl.selectedSegmentIndex
-        let categories = [CircleCategory.travel, .food, .shopping, .services, .healthcare, .entertainment, .other]
-        let category = categories[categoryIndex]
+        let category = selectedCategoryType
         
         // Get selected privacy level
         let privacyIndex = privacySegmentedControl.selectedSegmentIndex
@@ -454,6 +505,11 @@ class CreateCircleViewController: UIViewController {
                 "category": category.rawValue
             ]
             
+            // Add custom category ID if selected
+            if let customCategoryId = selectedCategory?.customCategoryId {
+                body["customCategoryId"] = customCategoryId
+            }
+            
             if let description = description {
                 body["description"] = description
             }
@@ -473,24 +529,25 @@ class CreateCircleViewController: UIViewController {
                 body: body,
                 requiresAuth: true
             ) { [weak self] (result: Result<CircleResponse, APIError>) in
+                guard let self = self else { return }
                 DispatchQueue.main.async {
-                    self?.createButton.isEnabled = true
-                    self?.createButton.setTitle("Create Circle", for: .normal)
+                    self.createButton.isEnabled = true
+                    self.createButton.setTitle("Create Circle", for: .normal)
                     
                     switch result {
                     case .success(let response):
                         print("✅ Circle created successfully with default image: \(response.circle.name)")
-                        print("📍 Navigation controller exists: \(self?.navigationController != nil)")
-                        print("📍 Navigation stack count: \(self?.navigationController?.viewControllers.count ?? 0)")
+                        print("📍 Navigation controller exists: \(self.navigationController != nil)")
+                        print("📍 Navigation stack count: \(self.navigationController?.viewControllers.count ?? 0)")
                         
                         let circle = response.circle
                         
                         // Share circle with selected connections
-                        self?.shareCircleWithConnections(circle, connections: selectedConnections, email: emailText)
+                        self.shareCircleWithConnections(circle, connections: selectedConnections, email: emailText)
                         
-                        self?.delegate?.didCreateCircle(circle)
+                        self.delegate?.didCreateCircle(circle)
                     case .failure(let error):
-                        self?.presentAlert(
+                        self.presentAlert(
                             title: "Error",
                             message: "Failed to create circle: \(error.localizedDescription)"
                         )
@@ -504,27 +561,29 @@ class CreateCircleViewController: UIViewController {
                 description: description,
                 privacy: privacy,
                 category: category,
+                customCategoryId: selectedCategory?.customCategoryId,
                 location: location,
                 tags: tags,
                 coverImage: coverImageData
             ) { [weak self] result in
+                guard let self = self else { return }
                 DispatchQueue.main.async {
-                    self?.createButton.isEnabled = true
-                    self?.createButton.setTitle("Create Circle", for: .normal)
+                    self.createButton.isEnabled = true
+                    self.createButton.setTitle("Create Circle", for: .normal)
                     
                     switch result {
                     case .success(let circle):
                         print("✅ Circle created successfully: \(circle.name)")
-                        print("📍 Navigation controller exists: \(self?.navigationController != nil)")
-                        print("📍 Navigation stack count: \(self?.navigationController?.viewControllers.count ?? 0)")
+                        print("📍 Navigation controller exists: \(self.navigationController != nil)")
+                        print("📍 Navigation stack count: \(self.navigationController?.viewControllers.count ?? 0)")
                         
                         // Share circle with selected connections
-                        self?.shareCircleWithConnections(circle, connections: selectedConnections, email: emailText)
+                        self.shareCircleWithConnections(circle, connections: selectedConnections, email: emailText)
                         
-                        self?.delegate?.didCreateCircle(circle)
+                        self.delegate?.didCreateCircle(circle)
                         
                     case .failure(let error):
-                        self?.presentAlert(
+                        self.presentAlert(
                             title: "Error",
                             message: "Failed to create circle: \(error.localizedDescription)"
                         )
@@ -593,9 +652,10 @@ class CreateCircleViewController: UIViewController {
             presentImagePicker()
         case .notDetermined:
             PHPhotoLibrary.requestAuthorization { [weak self] status in
+                guard let self = self else { return }
                 DispatchQueue.main.async {
                     if status == .authorized || status == .limited {
-                        self?.presentImagePicker()
+                        self.presentImagePicker()
                     }
                 }
             }
@@ -744,6 +804,14 @@ class CreateCircleViewController: UIViewController {
         let emailPred = NSPredicate(format:"SELF MATCHES %@", emailRegEx)
         return emailPred.evaluate(with: email)
     }
+    
+    // MARK: - Category Selection
+    @objc private func categoryButtonTapped() {
+        let categoryPicker = CategoryPickerViewController(categoryType: .circle)
+        categoryPicker.delegate = self
+        let navController = UINavigationController(rootViewController: categoryPicker)
+        present(navController, animated: true)
+    }
 }
 
 // MARK: - UIImagePickerControllerDelegate
@@ -767,7 +835,8 @@ extension CreateCircleViewController: UIImagePickerControllerDelegate, UINavigat
 extension CreateCircleViewController: UITextFieldDelegate {
     func textFieldDidBeginEditing(_ textField: UITextField) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            self?.scrollToField(textField)
+            guard let self = self else { return }
+            self.scrollToField(textField)
         }
     }
 }
@@ -776,7 +845,8 @@ extension CreateCircleViewController: UITextFieldDelegate {
 extension CreateCircleViewController: UITextViewDelegate {
     func textViewDidBeginEditing(_ textView: UITextView) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            self?.scrollToField(textView)
+            guard let self = self else { return }
+            self.scrollToField(textView)
         }
     }
 }
@@ -791,5 +861,36 @@ extension CreateCircleViewController: ConnectionPickerDelegate {
     func connectionPicker(_ picker: ConnectionPickerView, didDeselectConnection connection: User) {
         // Connection deselected - no additional action needed as the picker handles UI updates
         print("Deselected connection: \(connection.displayName)")
+    }
+}
+
+// MARK: - CategoryPickerDelegate
+extension CreateCircleViewController: CategoryPickerDelegate {
+    func categoryPicker(_ picker: CategoryPickerViewController, didSelectCategory category: CategoryItem) {
+        selectedCategory = category
+        categoryButton.setTitle(category.name, for: .normal)
+        
+        // Map the selected category to CircleCategory enum
+        switch category.name.lowercased() {
+        case "travel":
+            selectedCategoryType = .travel
+        case "food", "food & dining":
+            selectedCategoryType = .food
+        case "services":
+            selectedCategoryType = .services
+        case "shopping":
+            selectedCategoryType = .shopping
+        case "healthcare":
+            selectedCategoryType = .healthcare
+        case "entertainment":
+            selectedCategoryType = .entertainment
+        default:
+            selectedCategoryType = .other
+        }
+        
+        // If it's a custom category, we'll use .other with the customCategoryId
+        if category.isCustom {
+            selectedCategoryType = .other
+        }
     }
 }

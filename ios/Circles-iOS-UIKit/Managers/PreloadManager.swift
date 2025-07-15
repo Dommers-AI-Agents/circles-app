@@ -43,7 +43,8 @@ class PreloadManager {
         
         // Add timeout protection - 10 seconds
         DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
-            guard let self = self, self.isPreloading else { return }
+            guard let self = self else { return }
+            guard self.isPreloading else { return }
             print("⏰ PreloadManager: Timeout reached, forcing completion")
             self.isPreloading = false
             let error = NSError(domain: "PreloadManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Loading timeout"])
@@ -67,6 +68,7 @@ class PreloadManager {
         // 1. Load User Profile
         loadGroup.enter()
         AuthService.shared.fetchCurrentUser { [weak self] result in
+            defer { loadGroup.leave() }
             switch result {
             case .success(let user):
                 loadedUser = user
@@ -76,12 +78,12 @@ class PreloadManager {
                 loadError = error
                 print("❌ PreloadManager: Failed to load user profile: \(error)")
             }
-            loadGroup.leave()
         }
         
         // 2. Load Circles
         loadGroup.enter()
         CircleService.shared.fetchUserCircles { [weak self] result in
+            defer { loadGroup.leave() }
             switch result {
             case .success(let circles):
                 loadedCircles = circles
@@ -91,7 +93,6 @@ class PreloadManager {
                 loadError = error
                 print("❌ PreloadManager: Failed to load circles: \(error)")
             }
-            loadGroup.leave()
         }
         
         // 3. Load All Places (will be loaded after circles complete)
@@ -100,6 +101,7 @@ class PreloadManager {
         // 4. Load Connections
         loadGroup.enter()
         NetworkManager.shared.fetchConnections { [weak self] connections, error in
+            defer { loadGroup.leave() }
             if let connections = connections {
                 loadedConnections = connections.filter { $0.status == .accepted }
                 self?.incrementProgress(status: "Checking messages...")
@@ -108,7 +110,6 @@ class PreloadManager {
                 loadError = error
                 print("❌ PreloadManager: Failed to load connections: \(error)")
             }
-            loadGroup.leave()
         }
         
         // 5. Load Unread Message Count
@@ -116,19 +117,19 @@ class PreloadManager {
         MessagingManager.shared.updateUnreadCount()
         // Give it a moment to update, then read the value
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            defer { loadGroup.leave() }
             unreadCount = MessagingManager.shared.unreadCount
             self?.incrementProgress(status: "Checking connection requests...")
             print("✅ PreloadManager: Unread message count: \(unreadCount)")
-            loadGroup.leave()
         }
         
         // 6. Load Pending Connection Count
         loadGroup.enter()
         NetworkManager.shared.getPendingConnectionsCount { [weak self] count in
+            defer { loadGroup.leave() }
             pendingCount = count
             self?.incrementProgress(status: "Almost ready...")
             print("✅ PreloadManager: Pending connection count: \(count)")
-            loadGroup.leave()
         }
         
         // Wait for initial tasks to complete
@@ -146,8 +147,7 @@ class PreloadManager {
             // Now load places based on the circles we got
             if !loadedCircles.isEmpty {
                 self.progressHandler?(0.9, "Loading your places...")
-                self.fetchAllPlacesFromCircles(circles: loadedCircles) { [weak self] places in
-                    guard let self = self else { return }
+                self.fetchAllPlacesFromCircles(circles: loadedCircles) { places in
                     loadedPlaces = places
                     print("✅ PreloadManager: Loaded \(places.count) places")
                     

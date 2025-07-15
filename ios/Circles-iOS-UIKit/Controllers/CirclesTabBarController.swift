@@ -276,6 +276,29 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
     
     // MARK: - UITabBarControllerDelegate
     
+    func tabBarController(_ tabBarController: UITabBarController, shouldSelect viewController: UIViewController) -> Bool {
+        // Check if user tapped the same tab they're already on
+        if let currentIndex = viewControllers?.firstIndex(of: selectedViewController ?? UIViewController()),
+           let tappedIndex = viewControllers?.firstIndex(of: viewController),
+           currentIndex == tappedIndex {
+            
+            // User tapped the same tab - handle scroll to top for My Circles tab
+            if currentIndex == 0, // My Circles tab
+               let navController = viewController as? UINavigationController,
+               let circlesVC = navController.topViewController as? CirclesHomeViewController {
+                circlesVC.scrollToTop()
+            }
+            // Handle Profile tab re-tap to reset to list view
+            else if currentIndex == 4, // Profile tab
+                    let navController = viewController as? UINavigationController,
+                    let profileVC = navController.topViewController as? ProfileViewController {
+                profileVC.resetToListViewIfNeeded()
+            }
+        }
+        
+        return true // Allow the selection to proceed
+    }
+    
     func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
         // Update MessagingManager based on selected tab
         let isMessagesTab = tabBarController.selectedIndex == 2

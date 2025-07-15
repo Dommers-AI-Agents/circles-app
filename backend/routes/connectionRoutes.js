@@ -2,6 +2,7 @@
 const express = require('express');
 const {
   getConnections,
+  getConnectionById,
   sendConnectionRequest,
   acceptConnection,
   declineConnection,
@@ -48,6 +49,7 @@ router.route('/:id/track-view')
   .post(trackConnectionView);
 
 router.route('/:id')
+  .get(getConnectionById)
   .delete(removeConnection);
 
 module.exports = router;

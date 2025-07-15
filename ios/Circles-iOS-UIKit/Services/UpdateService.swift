@@ -213,21 +213,35 @@ class UpdateService {
         \(releaseNotes ?? "This update includes bug fixes and performance improvements.")
         """
         
-        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        
-        alert.addAction(UIAlertAction(title: "Update Now", style: .default) { [weak self] _ in
-            self?.openAppStore()
-        })
-        
-        if !isRequired {
-            alert.addAction(UIAlertAction(title: "Skip This Version", style: .default) { [weak self] _ in
-                self?.skipCurrentVersion()
-            })
-            
-            alert.addAction(UIAlertAction(title: "Later", style: .cancel))
+        if isRequired {
+            // For required updates, show confirmation with only Update option
+            AlertPresenter.showConfirmation(
+                title: title,
+                message: message,
+                confirmTitle: "Update Now",
+                cancelTitle: "Later",
+                isDestructive: false,
+                from: viewController,
+                onConfirm: { [weak self] in
+                    self?.openAppStore()
+                }
+            )
+        } else {
+            // For optional updates, show action sheet with multiple options
+            AlertPresenter.showActionSheet(
+                title: title,
+                message: message,
+                actions: [
+                    (title: "Update Now", style: .default, handler: { [weak self] in
+                        self?.openAppStore()
+                    }),
+                    (title: "Skip This Version", style: .default, handler: { [weak self] in
+                        self?.skipCurrentVersion()
+                    })
+                ],
+                from: viewController
+            )
         }
-        
-        viewController.present(alert, animated: true)
     }
     
     func showUpdateBanner(in viewController: UIViewController, isRequired: Bool) {
@@ -300,21 +314,16 @@ class UpdateBannerView: UIView {
     }()
     
     private let updateButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Update", for: .normal)
+        let button = UIButton.smallActionButton(title: "Update", style: .secondary)
         button.setTitleColor(.white, for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
         button.backgroundColor = UIColor.white.withAlphaComponent(0.2)
         button.layer.cornerRadius = 14
-        button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
     
     private let closeButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "xmark"), for: .normal)
+        let button = UIButton.iconButton(systemName: "xmark", pointSize: 16)
         button.tintColor = .white
-        button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
     

@@ -161,3 +161,6 @@ class SuggestionService {
             })
     }
 }
+
+// MARK: - Response Types
+// These types are already defined in the respective model files (Suggestion.swift, Comment.swift)

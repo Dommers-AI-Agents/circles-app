@@ -4,11 +4,15 @@ protocol PlacePickerViewControllerDelegate: AnyObject {
     func placePickerViewController(_ controller: PlacePickerViewController, didSelectPlace place: Place)
 }
 
-class PlacePickerViewController: UIViewController {
+class PlacePickerViewController: BaseViewController {
     
     weak var delegate: PlacePickerViewControllerDelegate?
     private var places: [Place] = []
     private var isLoading = false
+    
+    // MARK: - Configuration
+    override var loadsDataOnViewDidLoad: Bool { false }
+    override var emptyStateMessage: String? { "No places found.\nAdd places to your circles first." }
     
     // MARK: - UI Elements
     private let tableView: UITableView = {

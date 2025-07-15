@@ -53,38 +53,60 @@ class PlaceService {
     
     private init() {}
     
-    // MARK: - Fetch Places
+    // MARK: - Helper Methods
     
-    func fetchPlacesByCircleId(circleId: String, completion: @escaping (Result<[Place], Error>) -> Void) {
-        APIService.shared.request(
-            endpoint: "circles/\(circleId)/places",
-            method: .get,
-            requiresAuth: true
-        ) { [weak self] (result: Result<PlacesResponse, APIError>) in
+    /// Helper function to create a type-safe completion handler for API requests
+    private func createAPICompletion<T>(_ completion: @escaping (Result<T, Error>) -> Void) -> (Result<T, APIError>) -> Void {
+        return { [weak self] result in
+            guard let self = self else { return }
+            
             switch result {
             case .success(let response):
-                completion(.success(response.places))
+                completion(.success(response))
             case .failure(let error):
-                let mappedError = self?.mapAPIErrorToPlaceError(error)
+                let mappedError = self.mapAPIErrorToPlaceError(error)
                 completion(.failure(mappedError ?? error))
             }
         }
+    }
+    
+    // MARK: - Fetch Places
+    
+    func fetchPlacesByCircleId(circleId: String, completion: @escaping (Result<[Place], Error>) -> Void) {
+        print("🔍 PlaceService: About to fetch places for circleId: \(circleId)")
+        
+        let apiCompletion = createAPICompletion { (result: Result<PlacesResponse, Error>) in
+            switch result {
+            case .success(let response):
+                print("🔍 PlaceService: Successfully fetched \(response.places.count) places for circleId: \(circleId)")
+                completion(.success(response.places))
+            case .failure(let error):
+                print("🔍 PlaceService: Failed to fetch places for circleId: \(circleId), error: \(error)")
+                completion(.failure(error))
+            }
+        }
+        
+        APIService.shared.request(
+            endpoint: "circles/\(circleId)/places",
+            method: .get,
+            requiresAuth: true,
+            completion: apiCompletion
+        )
     }
     
     func fetchPlaceById(id: String, completion: @escaping (Result<Place, Error>) -> Void) {
         APIService.shared.request(
             endpoint: "places/\(id)",
             method: .get,
-            requiresAuth: true
-        ) { [weak self] (result: Result<PlaceResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                completion(.success(response.place))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToPlaceError(error)
-                completion(.failure(mappedError ?? error))
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<PlaceResponse, Error>) in
+                if case .success(let response) = result {
+                    completion(.success(response.place))
+                } else if case .failure(let error) = result {
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     func searchPlaces(query: String, category: PlaceCategory? = nil, completion: @escaping (Result<[Place], Error>) -> Void) {
@@ -100,16 +122,15 @@ class PlaceService {
             endpoint: "places/search",
             method: .get,
             queryParams: queryParams,
-            requiresAuth: true
-        ) { [weak self] (result: Result<PlacesResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                completion(.success(response.places))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToPlaceError(error)
-                completion(.failure(mappedError ?? error))
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<PlacesResponse, Error>) in
+                if case .success(let response) = result {
+                    completion(.success(response.places))
+                } else if case .failure(let error) = result {
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     // MARK: - Create, Update, Delete
@@ -119,16 +140,15 @@ class PlaceService {
             endpoint: "places",
             method: .post,
             body: googleData,
-            requiresAuth: true
-        ) { [weak self] (result: Result<PlaceResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                completion(.success(response.place))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToPlaceError(error)
-                completion(.failure(mappedError ?? PlaceError.creationFailed))
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<PlaceResponse, Error>) in
+                if case .success(let response) = result {
+                    completion(.success(response.place))
+                } else if case .failure(let error) = result {
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     func createPlace(name: String, description: String?, address: String, category: PlaceCategory, customCategory: String? = nil, subcategory: String? = nil, circleId: String, privacy: PlacePrivacy = .followCirclePrivacy, website: String? = nil, phone: String? = nil, tags: [String]? = nil, photos: [Data]? = nil, photoUrls: [String]? = nil, location: CLLocationCoordinate2D? = nil, googlePlaceId: String? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
@@ -310,7 +330,7 @@ class PlaceService {
         }
         
         if let customCategory = customCategory {
-            body["customCategory"] = customCategory
+            body["customCategoryId"] = customCategory
         }
         
         if let subcategory = subcategory {
@@ -337,16 +357,15 @@ class PlaceService {
             endpoint: "places",
             method: .post,
             body: body,
-            requiresAuth: true
-        ) { [weak self] (result: Result<PlaceResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                completion(.success(response.place))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToPlaceError(error)
-                completion(.failure(mappedError ?? PlaceError.creationFailed))
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<PlaceResponse, Error>) in
+                if case .success(let response) = result {
+                    completion(.success(response.place))
+                } else if case .failure(let error) = result {
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     func updatePlace(id: String, privateNotes: String? = nil, publicNotes: String? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
@@ -358,16 +377,15 @@ class PlaceService {
             endpoint: "places/\(id)",
             method: .put,
             body: body,
-            requiresAuth: true
-        ) { [weak self] (result: Result<PlaceResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                completion(.success(response.place))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToPlaceError(error)
-                completion(.failure(mappedError ?? PlaceError.updateFailed))
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<PlaceResponse, Error>) in
+                if case .success(let response) = result {
+                    completion(.success(response.place))
+                } else if case .failure(let error) = result {
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     // MARK: - Add Place from POI
@@ -577,26 +595,26 @@ class PlaceService {
             endpoint: "places",
             method: .post,
             body: body,
-            requiresAuth: true
-        ) { [weak self] (result: Result<PlaceResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                print("✅ PlaceService: Place created successfully")
-                if let photos = response.place.photos {
-                    print("  Photos in response: \(photos.count)")
-                    for (index, photo) in photos.enumerated() {
-                        print("  Photo \(index + 1): \(photo)")
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<PlaceResponse, Error>) in
+                switch result {
+                case .success(let response):
+                    print("✅ PlaceService: Place created successfully")
+                    if let photos = response.place.photos {
+                        print("  Photos in response: \(photos.count)")
+                        for (index, photo) in photos.enumerated() {
+                            print("  Photo \(index + 1): \(photo)")
+                        }
+                    } else {
+                        print("  ⚠️ No photos in response")
                     }
-                } else {
-                    print("  ⚠️ No photos in response")
+                    completion(.success(response.place))
+                case .failure(let error):
+                    print("❌ PlaceService: Failed to create place: \(error)")
+                    completion(.failure(error))
                 }
-                completion(.success(response.place))
-            case .failure(let error):
-                print("❌ PlaceService: Failed to create place: \(error)")
-                let mappedError = self?.mapAPIErrorToPlaceError(error)
-                completion(.failure(mappedError ?? PlaceError.creationFailed))
             }
-        }
+        )
     }
     
     func updatePlace(id: String, name: String? = nil, description: String? = nil, address: String? = nil, category: PlaceCategory? = nil, customCategory: String? = nil, privacy: PlacePrivacy? = nil, website: String? = nil, phone: String? = nil, tags: [String]? = nil, addPhotos: [Data]? = nil, removePhotoUrls: [String]? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
@@ -677,7 +695,7 @@ class PlaceService {
             }
             
             if let customCategory = customCategory {
-                body["customCategory"] = customCategory
+                body["customCategoryId"] = customCategory
             }
             
             if let privacy = privacy {
@@ -716,16 +734,15 @@ class PlaceService {
                 endpoint: "places/\(id)",
                 method: .put,
                 body: body,
-                requiresAuth: true
-            ) { [weak self] (result: Result<PlaceResponse, APIError>) in
-                switch result {
-                case .success(let response):
-                    completion(.success(response.place))
-                case .failure(let error):
-                    let mappedError = self?.mapAPIErrorToPlaceError(error)
-                    completion(.failure(mappedError ?? PlaceError.updateFailed))
+                requiresAuth: true,
+                completion: self.createAPICompletion { (result: Result<PlaceResponse, Error>) in
+                    if case .success(let response) = result {
+                        completion(.success(response.place))
+                    } else if case .failure(let error) = result {
+                        completion(.failure(error))
+                    }
                 }
-            }
+            )
         }
     }
     
@@ -733,56 +750,94 @@ class PlaceService {
         APIService.shared.request(
             endpoint: "places/\(id)",
             method: .delete,
-            requiresAuth: true
-        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
-            switch result {
-            case .success(_):
-                // Post notification to refresh circles data
-                NotificationCenter.default.post(
-                    name: Notification.Name("PlaceDeleted"),
-                    object: nil,
-                    userInfo: ["placeId": id]
-                )
-                completion(.success(true))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToPlaceError(error)
-                completion(.failure(mappedError ?? PlaceError.deleteFailed))
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<EmptyResponse, Error>) in
+                if case .success(_) = result {
+                    // Post notification to refresh circles data
+                    NotificationCenter.default.post(
+                        name: Notification.Name("PlaceDeleted"),
+                        object: nil,
+                        userInfo: ["placeId": id]
+                    )
+                    completion(.success(true))
+                } else if case .failure(let error) = result {
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     func refreshPlaceFromGoogle(id: String, completion: @escaping (Result<Place, Error>) -> Void) {
         APIService.shared.request(
             endpoint: "places/\(id)/refresh-google",
             method: .post,
-            requiresAuth: true
-        ) { [weak self] (result: Result<PlaceResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                completion(.success(response.place))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToPlaceError(error)
-                completion(.failure(mappedError ?? PlaceError.updateFailed))
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<PlaceResponse, Error>) in
+                if case .success(let response) = result {
+                    completion(.success(response.place))
+                } else if case .failure(let error) = result {
+                    completion(.failure(error))
+                }
             }
+        )
+    }
+    
+    func updatePlaceAddress(id: String, address: String, coordinate: CLLocationCoordinate2D? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
+        var body: [String: Any] = ["address": address]
+        
+        // Add location if coordinates provided
+        if let coordinate = coordinate {
+            body["location"] = [
+                "type": "Point",
+                "coordinates": [coordinate.longitude, coordinate.latitude]
+            ]
         }
+        
+        APIService.shared.request(
+            endpoint: "places/\(id)/update-address",
+            method: .put,
+            body: body,
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<PlaceResponse, Error>) in
+                if case .success(let response) = result {
+                    completion(.success(response.place))
+                } else if case .failure(let error) = result {
+                    completion(.failure(error))
+                }
+            }
+        )
     }
     
     // MARK: - Helper Methods
     
-    private func geocodeAddress(_ address: String, completion: @escaping (Result<CLLocationCoordinate2D, Error>) -> Void) {
+    func geocodeAddress(_ address: String, completion: @escaping (Result<CLLocationCoordinate2D, Error>) -> Void) {
         geocoder.geocodeAddressString(address) { placemarks, error in
             if let error = error {
+                Logger.debug("Geocoding failed for address '\(address)': \(error.localizedDescription)")
                 completion(.failure(PlaceError.networkError(error)))
                 return
             }
             
             guard let placemark = placemarks?.first,
-                  let location = placemark.location?.coordinate else {
+                  let location = placemark.location else {
+                Logger.debug("No location found for address: \(address)")
                 completion(.failure(PlaceError.locationNotFound))
                 return
             }
             
-            completion(.success(location))
+            let coordinate = location.coordinate
+            
+            // Validate coordinates are within valid ranges
+            guard coordinate.latitude >= -90 && coordinate.latitude <= 90 &&
+                  coordinate.longitude >= -180 && coordinate.longitude <= 180 &&
+                  !(coordinate.longitude == -180 && coordinate.latitude == -180) else {
+                Logger.debug("Invalid coordinates from geocoding: \(coordinate)")
+                completion(.failure(PlaceError.invalidLocation))
+                return
+            }
+            
+            Logger.debug("Successfully geocoded '\(address)' to \(coordinate)")
+            completion(.success(coordinate))
         }
     }
     
@@ -942,16 +997,15 @@ class PlaceService {
                 endpoint: "circles/\(circleId)/places/reorder",
                 method: .put,
                 body: body,
-                requiresAuth: true
-            ) { [weak self] (result: Result<EmptyResponse, APIError>) in
-                switch result {
-                case .success(_):
-                    continuation.resume()
-                case .failure(let error):
-                    let mappedError = self?.mapAPIErrorToPlaceError(error) ?? PlaceError.unknown
-                    continuation.resume(throwing: mappedError)
+                requiresAuth: true,
+                completion: createAPICompletion { (result: Result<EmptyResponse, Error>) in
+                    if case .success(_) = result {
+                        continuation.resume()
+                    } else if case .failure(let error) = result {
+                        continuation.resume(throwing: error)
+                    }
                 }
-            }
+            )
         }
     }
     
@@ -988,16 +1042,30 @@ class PlaceService {
         APIService.shared.request(
             endpoint: "places/\(id)/like",
             method: .post,
-            requiresAuth: true
-        ) { [weak self] (result: Result<PlaceResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                completion(.success(response.place))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToPlaceError(error)
-                completion(.failure(mappedError ?? error))
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<PlaceResponse, Error>) in
+                if case .success(let response) = result {
+                    completion(.success(response.place))
+                } else if case .failure(let error) = result {
+                    completion(.failure(error))
+                }
             }
-        }
+        )
+    }
+    
+    func fetchPlaceLikes(id: String, completion: @escaping (Result<PlaceLikesResponse, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "places/\(id)/likes",
+            method: .get,
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<PlaceLikesResponse, Error>) in
+                if case .success(let response) = result {
+                    completion(.success(response))
+                } else if case .failure(let error) = result {
+                    completion(.failure(error))
+                }
+            }
+        )
     }
     
     // MARK: - Add Existing Place to Circle
@@ -1017,38 +1085,38 @@ class PlaceService {
             endpoint: endpoint,
             method: .post,
             body: body.isEmpty ? nil : body,
-            requiresAuth: true
-        ) { [weak self] (result: Result<PlaceResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                // Return the actual place from the response
-                completion(.success(response.place))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToPlaceError(error)
-                completion(.failure(mappedError ?? error))
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<PlaceResponse, Error>) in
+                if case .success(let response) = result {
+                    // Return the actual place from the response
+                    completion(.success(response.place))
+                } else if case .failure(let error) = result {
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     // MARK: - Comments
     
     func getPlaceComments(placeId: String, completion: @escaping (Result<[PlaceComment], Error>) -> Void) {
         print("🔍 PlaceService: Fetching comments for place: \(placeId)")
+        
         APIService.shared.request(
             endpoint: "places/\(placeId)/comments",
             method: .get,
-            requiresAuth: true
-        ) { [weak self] (result: Result<PlaceCommentsResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                print("✅ PlaceService: Received \(response.comments.count) comments")
-                completion(.success(response.comments))
-            case .failure(let error):
-                print("❌ PlaceService: Failed to fetch comments: \(error)")
-                let mappedError = self?.mapAPIErrorToPlaceError(error)
-                completion(.failure(mappedError ?? error))
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<PlaceCommentsResponse, Error>) in
+                switch result {
+                case .success(let response):
+                    print("✅ PlaceService: Received \(response.comments.count) comments")
+                    completion(.success(response.comments))
+                case .failure(let error):
+                    print("❌ PlaceService: Failed to fetch comments: \(error)")
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     func addPlaceComment(placeId: String, text: String, completion: @escaping (Result<PlaceComment, Error>) -> Void) {
@@ -1059,50 +1127,50 @@ class PlaceService {
             endpoint: "places/\(placeId)/comments",
             method: .post,
             body: body,
-            requiresAuth: true
-        ) { [weak self] (result: Result<PlaceCommentResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                print("✅ PlaceService: Comment added successfully with ID: \(response.comment.id)")
-                completion(.success(response.comment))
-            case .failure(let error):
-                print("❌ PlaceService: Failed to add comment: \(error)")
-                let mappedError = self?.mapAPIErrorToPlaceError(error)
-                completion(.failure(mappedError ?? error))
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<PlaceCommentResponse, Error>) in
+                switch result {
+                case .success(let response):
+                    print("✅ PlaceService: Comment added successfully with ID: \(response.comment.id)")
+                    completion(.success(response.comment))
+                case .failure(let error):
+                    print("❌ PlaceService: Failed to add comment: \(error)")
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     func deletePlaceComment(placeId: String, commentId: String, completion: @escaping (Result<Void, Error>) -> Void) {
         APIService.shared.request(
             endpoint: "places/\(placeId)/comments/\(commentId)",
             method: .delete,
-            requiresAuth: true
-        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
-            switch result {
-            case .success:
-                completion(.success(()))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToPlaceError(error)
-                completion(.failure(mappedError ?? error))
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<EmptyResponse, Error>) in
+                switch result {
+                case .success:
+                    completion(.success(()))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     func likeComment(placeId: String, commentId: String, completion: @escaping (Result<(liked: Bool, likesCount: Int), Error>) -> Void) {
         APIService.shared.request(
             endpoint: "places/\(placeId)/comments/\(commentId)/like",
             method: .post,
-            requiresAuth: true
-        ) { [weak self] (result: Result<LikeCommentResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                completion(.success((liked: response.liked, likesCount: response.likesCount)))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToPlaceError(error)
-                completion(.failure(mappedError ?? error))
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<LikeCommentResponse, Error>) in
+                switch result {
+                case .success(let response):
+                    completion(.success((liked: response.liked, likesCount: response.likesCount)))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
     
     // MARK: - Move Place to Different Circle
@@ -1116,16 +1184,16 @@ class PlaceService {
             endpoint: "places/\(placeId)/move",
             method: .post,
             body: body,
-            requiresAuth: true
-        ) { [weak self] (result: Result<PlaceResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                completion(.success(response.place))
-            case .failure(let error):
-                let mappedError = self?.mapAPIErrorToPlaceError(error)
-                completion(.failure(mappedError ?? error))
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<PlaceResponse, Error>) in
+                switch result {
+                case .success(let response):
+                    completion(.success(response.place))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
             }
-        }
+        )
     }
 }
 
@@ -1155,6 +1223,12 @@ struct LikeCommentResponse: Decodable {
     let success: Bool
     let liked: Bool
     let likesCount: Int
+}
+
+struct PlaceLikesResponse: Decodable {
+    let success: Bool
+    let likes: [User]
+    let count: Int
 }
 
 // MARK: - PlaceComment Model
