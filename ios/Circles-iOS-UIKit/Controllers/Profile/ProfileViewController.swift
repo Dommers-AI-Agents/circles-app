@@ -539,19 +539,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     // MARK: - BaseViewController Data Loading
     override func loadData(completion: (() -> Void)? = nil) {
+        // Just call loadUserProfile which handles all cases properly
         loadUserProfile()
-        
-        // Refresh user data and stats when returning to profile page
-        if let userId = self.user?.id {
-            // If viewing current user's profile, fetch fresh data
-            if userId == AuthService.shared.getUserId() {
-                fetchFreshUserData()
-            } else {
-                // For other users, just refresh stats
-                fetchUserStats(userId: userId)
-            }
-        }
-        
         completion?()
     }
     
