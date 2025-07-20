@@ -22,6 +22,21 @@ struct GooglePlaceDetails {
         self.name = gmsPlace.name ?? "Unknown Place"
         self.address = gmsPlace.formattedAddress
         self.coordinate = gmsPlace.coordinate
+        
+        // Log if Google returns invalid coordinates
+        if gmsPlace.coordinate.latitude == -180 && gmsPlace.coordinate.longitude == -180 {
+            print("⚠️ GooglePlaceDetails: Google returned invalid coordinates (-180, -180) for place: \(self.name), ID: \(self.placeID)")
+            print("  Address: \(self.address ?? "no address")")
+        } else if gmsPlace.coordinate.latitude == 0 && gmsPlace.coordinate.longitude == 0 {
+            print("⚠️ GooglePlaceDetails: Google returned default coordinates (0, 0) for place: \(self.name), ID: \(self.placeID)")
+            print("  Address: \(self.address ?? "no address")")
+        } else if gmsPlace.coordinate.latitude < -90 || gmsPlace.coordinate.latitude > 90 ||
+                  gmsPlace.coordinate.longitude < -180 || gmsPlace.coordinate.longitude > 180 {
+            print("⚠️ GooglePlaceDetails: Google returned out-of-range coordinates for place: \(self.name), ID: \(self.placeID)")
+            print("  Coordinates: lat=\(gmsPlace.coordinate.latitude), lng=\(gmsPlace.coordinate.longitude)")
+            print("  Address: \(self.address ?? "no address")")
+        }
+        
         self.phoneNumber = gmsPlace.phoneNumber
         self.website = gmsPlace.website
         // rating is Float, not optional

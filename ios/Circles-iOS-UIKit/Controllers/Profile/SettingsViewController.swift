@@ -1,13 +1,17 @@
 import UIKit
+import UserNotifications
 
 class SettingsViewController: BaseTableViewController {
     
     // MARK: - Properties
+    private var notificationPermissionStatus: String = "Checking..."
+    
     private enum Section: Int, CaseIterable {
         case account
         case privacy
         case notifications
         case about
+        case tutorial
         case danger
         
         var title: String {
@@ -16,6 +20,7 @@ class SettingsViewController: BaseTableViewController {
             case .privacy: return "Privacy"
             case .notifications: return "Notifications"
             case .about: return "About"
+            case .tutorial: return "Tutorial"
             case .danger: return "Danger Zone"
             }
         }
@@ -69,6 +74,16 @@ class SettingsViewController: BaseTableViewController {
         }
     }
     
+    private enum TutorialRow: Int, CaseIterable {
+        case resetTutorial
+        
+        var title: String {
+            switch self {
+            case .resetTutorial: return "Reset Tutorial"
+            }
+        }
+    }
+    
     private enum DangerRow: Int, CaseIterable {
         case deleteAccount
         
@@ -86,6 +101,13 @@ class SettingsViewController: BaseTableViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
+        checkNotificationPermissions()
+    }
+    
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        // Re-check permissions when returning from settings
+        checkNotificationPermissions()
     }
     
     // MARK: - UI Setup
@@ -97,6 +119,32 @@ class SettingsViewController: BaseTableViewController {
         tableView.delegate = self
         tableView.dataSource = self
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "Cell")
+    }
+    
+    private func checkNotificationPermissions() {
+        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
+            DispatchQueue.main.async {
+                switch settings.authorizationStatus {
+                case .authorized:
+                    self?.notificationPermissionStatus = "Enabled"
+                case .denied:
+                    self?.notificationPermissionStatus = "Disabled"
+                case .notDetermined:
+                    self?.notificationPermissionStatus = "Not Set"
+                case .provisional:
+                    self?.notificationPermissionStatus = "Provisional"
+                case .ephemeral:
+                    self?.notificationPermissionStatus = "Ephemeral"
+                @unknown default:
+                    self?.notificationPermissionStatus = "Unknown"
+                }
+                
+                // Reload notification section
+                if let notificationSection = Section.allCases.firstIndex(of: .notifications) {
+                    self?.tableView.reloadSections(IndexSet(integer: notificationSection), with: .none)
+                }
+            }
+        }
     }
     
     // MARK: - Actions
@@ -133,9 +181,66 @@ class SettingsViewController: BaseTableViewController {
     }
     
     private func openNotificationSettings() {
-        if let url = URL(string: UIApplication.openSettingsURLString) {
-            UIApplication.shared.open(url)
+        // Check current permission status
+        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
+            DispatchQueue.main.async {
+                switch settings.authorizationStatus {
+                case .notDetermined:
+                    // Never asked - show our custom prompt
+                    self?.showNotificationEnablePrompt()
+                case .denied:
+                    // Previously denied - guide to settings
+                    self?.showNotificationDeniedAlert()
+                case .authorized, .provisional, .ephemeral:
+                    // Already enabled - go to settings
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                @unknown default:
+                    // Unknown state - try settings
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                }
+            }
         }
+    }
+    
+    private func showNotificationEnablePrompt() {
+        AlertPresenter.showConfirmation(
+            title: "Enable Notifications?",
+            message: "Stay updated when you receive messages, connection requests, or when interesting places are added to your network.",
+            confirmTitle: "Enable",
+            cancelTitle: "Not Now",
+            from: self,
+            onConfirm: { [weak self] in
+                NotificationService.shared.requestNotificationPermissions { granted in
+                    DispatchQueue.main.async {
+                        if granted {
+                            self?.showSuccess("Notifications enabled! You'll stay connected with your network.")
+                        } else {
+                            self?.showError("Notifications were not enabled. You can enable them later in Settings.")
+                        }
+                        self?.checkNotificationPermissions()
+                    }
+                }
+            }
+        )
+    }
+    
+    private func showNotificationDeniedAlert() {
+        AlertPresenter.showConfirmation(
+            title: "Notifications Disabled",
+            message: "To enable notifications, you'll need to go to your device's Settings app and turn on notifications for Circles.",
+            confirmTitle: "Open Settings",
+            cancelTitle: "Cancel",
+            from: self,
+            onConfirm: {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+        )
     }
     
     private func showTermsOfService() {
@@ -147,6 +252,20 @@ class SettingsViewController: BaseTableViewController {
         if let url = URL(string: "https://favcircles.com/privacy.html") {
             UIApplication.shared.open(url)
         }
+    }
+    
+    private func showResetTutorialConfirmation() {
+        AlertPresenter.showConfirmation(
+            title: "Reset Tutorial",
+            message: "Do you want to reset the onboarding tutorial? The tutorial will show again when you navigate through the app.",
+            confirmTitle: "Reset",
+            isDestructive: false,
+            from: self,
+            onConfirm: { [weak self] in
+                OnboardingManager.shared.resetTutorial()
+                self?.showSuccess("Tutorial has been reset. You'll see helpful tips as you navigate the app.")
+            }
+        )
     }
     
     private func showDeleteAccountConfirmation() {
@@ -196,6 +315,7 @@ extension SettingsViewController {
         case .privacy: return PrivacyRow.allCases.count
         case .notifications: return NotificationRow.allCases.count
         case .about: return AboutRow.allCases.count
+        case .tutorial: return TutorialRow.allCases.count
         case .danger: return DangerRow.allCases.count
         }
     }
@@ -231,8 +351,27 @@ extension SettingsViewController {
             
         case .notifications:
             if let row = NotificationRow(rawValue: indexPath.row) {
-                cell.textLabel?.text = row.title
-                cell.accessoryType = .disclosureIndicator
+                switch row {
+                case .pushNotifications:
+                    var config = cell.defaultContentConfiguration()
+                    config.text = row.title
+                    config.secondaryText = notificationPermissionStatus
+                    
+                    // Color code the status
+                    switch notificationPermissionStatus {
+                    case "Enabled":
+                        config.secondaryTextProperties.color = .systemGreen
+                    case "Disabled":
+                        config.secondaryTextProperties.color = .systemRed
+                    case "Not Set":
+                        config.secondaryTextProperties.color = .systemOrange
+                    default:
+                        config.secondaryTextProperties.color = .secondaryLabel
+                    }
+                    
+                    cell.contentConfiguration = config
+                    cell.accessoryType = .disclosureIndicator
+                }
             }
             
         case .about:
@@ -246,6 +385,13 @@ extension SettingsViewController {
                     cell.textLabel?.text = row.title
                     cell.accessoryType = .disclosureIndicator
                 }
+            }
+            
+        case .tutorial:
+            if let row = TutorialRow(rawValue: indexPath.row) {
+                cell.textLabel?.text = row.title
+                cell.textLabel?.textColor = Constants.Colors.primary
+                cell.accessoryType = .disclosureIndicator
             }
             
         case .danger:
@@ -305,6 +451,14 @@ extension SettingsViewController {
                     showTermsOfService()
                 case .privacyPolicy:
                     showPrivacyPolicy()
+                }
+            }
+            
+        case .tutorial:
+            if let row = TutorialRow(rawValue: indexPath.row) {
+                switch row {
+                case .resetTutorial:
+                    showResetTutorialConfirmation()
                 }
             }
             

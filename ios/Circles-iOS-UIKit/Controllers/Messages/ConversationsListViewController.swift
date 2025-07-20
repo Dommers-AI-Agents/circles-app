@@ -118,6 +118,9 @@ class ConversationsListViewController: UIViewController {
         
         // Don't load conversations here - let viewWillAppear handle it
         // This prevents duplicate loading when the tab is first opened
+        
+        // Check if user needs notification prompt for messages
+        NotificationPromptManager.shared.checkAndPromptIfNeeded(in: self, context: .messages)
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -355,7 +358,7 @@ class ConversationsListViewController: UIViewController {
         messagingManager.loadConversations()
     }
     
-    @objc private func refreshConversations() {
+    @objc func refreshConversations() {
         print("🔍 ConversationsListViewController: Pull to refresh triggered")
         messagingManager.loadConversations(forceRefresh: true)
     }

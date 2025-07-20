@@ -441,6 +441,23 @@ class NetworkManager {
         )
     }
     
+    func acceptConnectionRequest(requestId: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        // RequestId is the same as connectionId for pending connections
+        acceptConnection(requestId) { result in
+            switch result {
+            case .success:
+                completion(.success(()))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    func declineConnectionRequest(requestId: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        // RequestId is the same as connectionId for pending connections
+        declineConnection(requestId, completion: completion)
+    }
+    
     func blockConnection(_ connectionId: String, completion: @escaping (Result<Void, Error>) -> Void) {
         apiService.request(
             endpoint: "connections/\(connectionId)/block",
@@ -730,6 +747,11 @@ class NetworkManager {
         connections = []
         pendingConnections = []
         sharedCircles = []
+    }
+    
+    // Public method to clear cache on logout
+    func clearCache() {
+        clearData()
     }
     
     // Public method to force refresh badge

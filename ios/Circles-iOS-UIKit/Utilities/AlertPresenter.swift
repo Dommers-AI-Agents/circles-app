@@ -41,6 +41,15 @@ class AlertPresenter {
         viewController.present(alert, animated: true)
     }
     
+    /// Shows a success alert with just a message (no title)
+    static func showSuccess(
+        _ message: String,
+        from viewController: UIViewController,
+        completion: (() -> Void)? = nil
+    ) {
+        showSuccess(title: "Success", message: message, from: viewController, completion: completion)
+    }
+    
     // MARK: - Confirmation Alerts
     
     /// Shows a confirmation alert with Yes/No or custom buttons
@@ -154,6 +163,23 @@ class AlertPresenter {
         
         viewController.present(alert, animated: true)
         return alert
+    }
+    
+    // MARK: - Brief Messages
+    
+    /// Shows a brief message alert that auto-dismisses after a short delay
+    static func showBriefMessage(
+        _ message: String,
+        from viewController: UIViewController,
+        duration: TimeInterval = 1.5
+    ) {
+        let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+        viewController.present(alert, animated: true)
+        
+        // Auto-dismiss after duration
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
+            alert.dismiss(animated: true)
+        }
     }
 }
 

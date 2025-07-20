@@ -8,6 +8,13 @@ extension UIViewController {
     
     /// Shows an error alert with a localized error message
     func showError(_ error: Error) {
+        // Filter out duplicate request errors - these are intentional and don't need user notification
+        let errorMessage = error.localizedDescription
+        if errorMessage == "Duplicate request prevented" || 
+           errorMessage == "Network error: Duplicate request prevented" ||
+           errorMessage.contains("Duplicate request prevented") {
+            return
+        }
         AlertPresenter.showError(error, from: self)
     }
     

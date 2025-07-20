@@ -41,6 +41,16 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         
         // Set initial messages tab state (default is Circles tab which is index 0)
         MessagingManager.shared.setMessagesTabActive(selectedIndex == 2)
+        
+        // Configure API logging level
+        #if DEBUG
+        // For debug builds, you can set verbose logging if needed
+        // APIService.shared.setLogLevel(APIService.APILogLevel.verbose)
+        APIService.shared.setLogLevel(APIService.APILogLevel.errors) // Only errors by default
+        #else
+        // For release builds, only log errors
+        APIService.shared.setLogLevel(APIService.APILogLevel.errors)
+        #endif
     }
     
     deinit {
@@ -74,7 +84,7 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
     private func setupTabs() {
         // Create view controllers for each tab
         let circlesVC = UINavigationController(rootViewController: CirclesHomeViewController())
-        circlesVC.tabBarItem = UITabBarItem(title: "My Circles", image: UIImage(systemName: "circle.grid.2x2"), tag: 0)
+        circlesVC.tabBarItem = UITabBarItem(title: "Home", image: UIImage(systemName: "circle.grid.2x2"), tag: 0)
         
         let networkVC = UINavigationController(rootViewController: MyNetworkViewController())
         networkVC.tabBarItem = UITabBarItem(title: "My Network", image: UIImage(systemName: "person.2"), tag: 1)
@@ -82,14 +92,15 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         let messagesVC = UINavigationController(rootViewController: ConversationsListViewController())
         messagesVC.tabBarItem = UITabBarItem(title: "Messages", image: UIImage(systemName: "message"), tag: 2)
         
-        let discoverVC = UINavigationController(rootViewController: DiscoverViewController())
-        discoverVC.tabBarItem = UITabBarItem(title: "Discover", image: UIImage(systemName: "magnifyingglass"), tag: 3)
+        // Discover tab commented out for now
+        // let discoverVC = UINavigationController(rootViewController: DiscoverViewController())
+        // discoverVC.tabBarItem = UITabBarItem(title: "Discover", image: UIImage(systemName: "magnifyingglass"), tag: 3)
         
         let profileVC = UINavigationController(rootViewController: ProfileViewController())
-        profileVC.tabBarItem = UITabBarItem(title: "Profile", image: UIImage(systemName: "person"), tag: 4)
+        profileVC.tabBarItem = UITabBarItem(title: "Me", image: UIImage(systemName: "person"), tag: 3)
         
-        // Set view controllers to tab bar in the new order
-        self.viewControllers = [circlesVC, networkVC, messagesVC, discoverVC, profileVC]
+        // Set view controllers to tab bar in the new order (without Discover)
+        self.viewControllers = [circlesVC, networkVC, messagesVC, profileVC]
     }
     
     private func setupTabsForMac() {
@@ -106,16 +117,17 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         let messagesImage = UIImage(systemName: "message.fill") ?? UIImage(systemName: "message")!
         messagesVC.tabBarItem = UITabBarItem(title: nil, image: messagesImage, tag: 2)
         
-        let discoverVC = UINavigationController(rootViewController: DiscoverViewController())
-        let discoverImage = UIImage(systemName: "magnifyingglass.circle.fill") ?? UIImage(systemName: "magnifyingglass")!
-        discoverVC.tabBarItem = UITabBarItem(title: nil, image: discoverImage, tag: 3)
+        // Discover tab commented out for now
+        // let discoverVC = UINavigationController(rootViewController: DiscoverViewController())
+        // let discoverImage = UIImage(systemName: "magnifyingglass.circle.fill") ?? UIImage(systemName: "magnifyingglass")!
+        // discoverVC.tabBarItem = UITabBarItem(title: nil, image: discoverImage, tag: 3)
         
         let profileVC = UINavigationController(rootViewController: ProfileViewController())
         let profileImage = UIImage(systemName: "person.circle.fill") ?? UIImage(systemName: "person")!
-        profileVC.tabBarItem = UITabBarItem(title: nil, image: profileImage, tag: 4)
+        profileVC.tabBarItem = UITabBarItem(title: nil, image: profileImage, tag: 3)
         
-        // Set view controllers
-        self.viewControllers = [circlesVC, networkVC, messagesVC, discoverVC, profileVC]
+        // Set view controllers (without Discover)
+        self.viewControllers = [circlesVC, networkVC, messagesVC, profileVC]
         
         // Configure icon sizes for Mac
         if #available(iOS 13.0, *) {
@@ -282,17 +294,30 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
            let tappedIndex = viewControllers?.firstIndex(of: viewController),
            currentIndex == tappedIndex {
             
-            // User tapped the same tab - handle scroll to top for My Circles tab
-            if currentIndex == 0, // My Circles tab
-               let navController = viewController as? UINavigationController,
-               let circlesVC = navController.topViewController as? CirclesHomeViewController {
-                circlesVC.scrollToTop()
-            }
-            // Handle Profile tab re-tap to reset to list view
-            else if currentIndex == 4, // Profile tab
-                    let navController = viewController as? UINavigationController,
-                    let profileVC = navController.topViewController as? ProfileViewController {
-                profileVC.resetToListViewIfNeeded()
+            // User tapped the same tab - trigger refresh for that tab
+            if let navController = viewController as? UINavigationController {
+                switch currentIndex {
+                case 0: // Home tab
+                    if let circlesVC = navController.topViewController as? CirclesHomeViewController {
+                        circlesVC.scrollToTop()
+                        circlesVC.refreshData()
+                    }
+                case 1: // My Network tab
+                    if let networkVC = navController.topViewController as? MyNetworkViewController {
+                        networkVC.loadData()
+                    }
+                case 2: // Messages tab
+                    if let messagesVC = navController.topViewController as? ConversationsListViewController {
+                        messagesVC.refreshConversations()
+                    }
+                case 3: // Profile tab
+                    if let profileVC = navController.topViewController as? ProfileViewController {
+                        profileVC.resetToListViewIfNeeded()
+                        profileVC.loadData()
+                    }
+                default:
+                    break
+                }
             }
         }
         
@@ -303,6 +328,11 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         // Update MessagingManager based on selected tab
         let isMessagesTab = tabBarController.selectedIndex == 2
         MessagingManager.shared.setMessagesTabActive(isMessagesTab)
+        
+        // Clear pending requests when switching to Profile tab
+        if tabBarController.selectedIndex == 3 { // Profile tab (was 4, now 3 without Discover)
+            APIService.shared.clearPendingRequests()
+        }
     }
     
     // MARK: - Keyboard Shortcuts for Mac
@@ -311,11 +341,11 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         #if targetEnvironment(macCatalyst)
         // Add keyboard shortcuts for tab navigation
         macKeyCommands = [
-            UIKeyCommand(title: "My Circles", action: #selector(selectTab1), input: "1", modifierFlags: .command),
+            UIKeyCommand(title: "Home", action: #selector(selectTab1), input: "1", modifierFlags: .command),
             UIKeyCommand(title: "My Network", action: #selector(selectTab2), input: "2", modifierFlags: .command),
             UIKeyCommand(title: "Messages", action: #selector(selectTab3), input: "3", modifierFlags: .command),
-            UIKeyCommand(title: "Discover", action: #selector(selectTab4), input: "4", modifierFlags: .command),
-            UIKeyCommand(title: "Profile", action: #selector(selectTab5), input: "5", modifierFlags: .command)
+            // UIKeyCommand(title: "Discover", action: #selector(selectTab4), input: "4", modifierFlags: .command),
+            UIKeyCommand(title: "Me", action: #selector(selectTab4), input: "4", modifierFlags: .command)
         ]
         #endif
     }
@@ -337,10 +367,11 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
     }
     
     @objc private func selectTab4() {
-        selectedIndex = 3
+        selectedIndex = 3 // Profile tab (Me)
     }
     
-    @objc private func selectTab5() {
-        selectedIndex = 4
-    }
+    // Commented out - Discover tab no longer in use
+    // @objc private func selectTab5() {
+    //     selectedIndex = 4
+    // }
 }

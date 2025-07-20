@@ -626,7 +626,7 @@ class FeaturedCircleCell: UICollectionViewCell {
         }
         
         // Category label
-        categoryLabel.text = circle.category.rawValue.capitalized
+        categoryLabel.text = circle.displayCategory
         
         // Category color
         switch circle.category {

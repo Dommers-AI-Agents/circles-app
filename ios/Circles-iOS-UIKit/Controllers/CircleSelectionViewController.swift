@@ -17,9 +17,11 @@ class CircleSelectionViewController: UIViewController {
     var placeToMove: Place?
     
     private var circles: [Circle] = []
+    private var filteredCircles: [Circle] = []
     private var excludedCircleId: String?
     private var isCreatingNewCircle = false
     private var customTitle: String?
+    private var isSearchActive = false
     
     // MARK: - UI Components
     
@@ -36,12 +38,22 @@ class CircleSelectionViewController: UIViewController {
         return navBar
     }()
     
+    private lazy var searchController: UISearchController = {
+        let searchController = UISearchController(searchResultsController: nil)
+        searchController.searchResultsUpdater = self
+        searchController.obscuresBackgroundDuringPresentation = false
+        searchController.searchBar.placeholder = "Search circles..."
+        searchController.searchBar.delegate = self
+        return searchController
+    }()
+    
     private lazy var tableView: UITableView = {
-        let table = UITableView()
+        let table = UITableView(frame: .zero, style: .insetGrouped)
         table.translatesAutoresizingMaskIntoConstraints = false
         table.delegate = self
         table.dataSource = self
         table.register(UITableViewCell.self, forCellReuseIdentifier: "CircleCell")
+        table.backgroundColor = .systemGroupedBackground
         return table
     }()
     
@@ -93,6 +105,12 @@ class CircleSelectionViewController: UIViewController {
         view.addSubview(loadingIndicator)
         view.addSubview(emptyStateLabel)
         
+        // Setup search controller
+        if let navItem = navigationBar.items?.first {
+            navItem.searchController = searchController
+            navItem.hidesSearchBarWhenScrolling = false
+        }
+        
         NSLayoutConstraint.activate([
             navigationBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             navigationBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -129,11 +147,18 @@ class CircleSelectionViewController: UIViewController {
                 switch result {
                 case .success(let allCircles):
                     // Filter out the excluded circle if provided
+                    var circlesAfterExclusion = allCircles
                     if let excludedId = self.excludedCircleId {
-                        self.circles = allCircles.filter { $0.id != excludedId }
-                    } else {
-                        self.circles = allCircles
+                        circlesAfterExclusion = allCircles.filter { $0.id != excludedId }
                     }
+                    
+                    // Sort circles alphabetically by name
+                    let sortedCircles = circlesAfterExclusion.sorted { (circle1, circle2) in
+                        return circle1.name.localizedCaseInsensitiveCompare(circle2.name) == .orderedAscending
+                    }
+                    
+                    self.circles = sortedCircles
+                    self.filteredCircles = sortedCircles
                     
                     if self.circles.isEmpty {
                         self.tableView.isHidden = true
@@ -176,29 +201,15 @@ class CircleSelectionViewController: UIViewController {
                   let name = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !name.isEmpty else { return }
             
-            self.isCreatingNewCircle = true
-            self.loadingIndicator.startAnimating()
+            // Check if circle with this name already exists
+            let existingCircle = self.circles.first { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }
             
-            CircleService.shared.createCircle(name: name, description: nil, privacy: .myNetwork, category: .other) { result in
-                DispatchQueue.main.async {
-                    self.isCreatingNewCircle = false
-                    self.loadingIndicator.stopAnimating()
-                    
-                    switch result {
-                    case .success(let circle):
-                        if let placeDelegate = self.delegate as? CircleSelectionWithPlaceDelegate,
-                           let place = self.placeToMove {
-                            placeDelegate.circleSelectionViewController(self, didSelectCircle: circle, forPlace: place)
-                        } else {
-                            self.delegate?.circleSelectionViewController(self, didSelectCircle: circle)
-                        }
-                        self.dismiss(animated: true)
-                        
-                    case .failure(let error):
-                        self.showError(error)
-                    }
-                }
+            if let existing = existingCircle {
+                self.showDuplicateCircleAlert(existingName: name, existingCircle: existing)
+                return
             }
+            
+            self.createCircleWithName(name)
         }
         
         let cancelAction = UIAlertAction(title: "Cancel", style: .cancel)
@@ -207,6 +218,64 @@ class CircleSelectionViewController: UIViewController {
         alert.addAction(cancelAction)
         
         present(alert, animated: true)
+    }
+    
+    private func showDuplicateCircleAlert(existingName: String, existingCircle: Circle) {
+        let alert = UIAlertController(
+            title: "Circle Already Exists",
+            message: "A circle named '\(existingName)' already exists. Would you like to add anyway or select the existing circle?",
+            preferredStyle: .alert
+        )
+        
+        let addAnywayAction = UIAlertAction(title: "Add Anyway", style: .default) { [weak self] _ in
+            self?.createCircleWithName(existingName)
+        }
+        
+        let useExistingAction = UIAlertAction(title: "Use Existing", style: .default) { [weak self] _ in
+            guard let self = self else { return }
+            
+            if let placeDelegate = self.delegate as? CircleSelectionWithPlaceDelegate,
+               let place = self.placeToMove {
+                placeDelegate.circleSelectionViewController(self, didSelectCircle: existingCircle, forPlace: place)
+            } else {
+                self.delegate?.circleSelectionViewController(self, didSelectCircle: existingCircle)
+            }
+            self.dismiss(animated: true)
+        }
+        
+        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel)
+        
+        alert.addAction(addAnywayAction)
+        alert.addAction(useExistingAction)
+        alert.addAction(cancelAction)
+        
+        present(alert, animated: true)
+    }
+    
+    private func createCircleWithName(_ name: String) {
+        self.isCreatingNewCircle = true
+        self.loadingIndicator.startAnimating()
+        
+        CircleService.shared.createCircle(name: name, description: nil, privacy: .myNetwork, category: .other) { result in
+            DispatchQueue.main.async {
+                self.isCreatingNewCircle = false
+                self.loadingIndicator.stopAnimating()
+                
+                switch result {
+                case .success(let circle):
+                    if let placeDelegate = self.delegate as? CircleSelectionWithPlaceDelegate,
+                       let place = self.placeToMove {
+                        placeDelegate.circleSelectionViewController(self, didSelectCircle: circle, forPlace: place)
+                    } else {
+                        self.delegate?.circleSelectionViewController(self, didSelectCircle: circle)
+                    }
+                    self.dismiss(animated: true)
+                    
+                case .failure(let error):
+                    self.showError(error)
+                }
+            }
+        }
     }
 }
 
@@ -219,7 +288,7 @@ extension CircleSelectionViewController: UITableViewDataSource {
     
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         if section == 0 {
-            return circles.count
+            return filteredCircles.count
         } else {
             return 1 // Create new circle option
         }
@@ -229,13 +298,66 @@ extension CircleSelectionViewController: UITableViewDataSource {
         let cell = tableView.dequeueReusableCell(withIdentifier: "CircleCell", for: indexPath)
         
         if indexPath.section == 0 {
-            let circle = circles[indexPath.row]
-            cell.textLabel?.text = circle.name
-            cell.detailTextLabel?.text = "\(circle.placesCount ?? 0) places"
-            cell.accessoryType = .none
+            let circle = filteredCircles[indexPath.row]
+            
+            // Configure cell with content configuration for better layout
+            var content = cell.defaultContentConfiguration()
+            content.text = circle.name
+            content.secondaryText = "\(circle.placesCount ?? circle.places?.count ?? 0) places"
+            
+            // Set the image
+            if let coverImageUrl = circle.coverImage {
+                // Load circle cover image
+                content.image = UIImage(systemName: "circle.fill") // Placeholder
+                content.imageProperties.tintColor = .systemGray
+                content.imageProperties.maximumSize = CGSize(width: 60, height: 60)
+                content.imageProperties.cornerRadius = 30 // Make it circular
+                
+                // Load actual image asynchronously
+                ImageService.shared.loadImage(from: coverImageUrl) { [weak tableView] image in
+                    DispatchQueue.main.async {
+                        // Check if cell is still visible for this index path
+                        if let visibleIndexPaths = tableView?.indexPathsForVisibleRows,
+                           visibleIndexPaths.contains(indexPath),
+                           let cell = tableView?.cellForRow(at: indexPath) {
+                            var updatedContent = cell.defaultContentConfiguration()
+                            updatedContent.text = circle.name
+                            updatedContent.secondaryText = "\(circle.placesCount ?? circle.places?.count ?? 0) places"
+                            updatedContent.image = image
+                            updatedContent.imageProperties.maximumSize = CGSize(width: 60, height: 60)
+                            updatedContent.imageProperties.cornerRadius = 30
+                            cell.contentConfiguration = updatedContent
+                        }
+                    }
+                }
+            } else {
+                // Use category icon
+                let iconName: String
+                switch circle.category {
+                case .travel: iconName = "airplane.circle.fill"
+                case .food: iconName = "fork.knife.circle.fill"
+                case .services: iconName = "wrench.and.screwdriver.circle.fill"
+                case .shopping: iconName = "bag.circle.fill"
+                case .healthcare: iconName = "heart.circle.fill"
+                case .entertainment: iconName = "tv.circle.fill"
+                case .other: iconName = "circle.grid.3x3.circle.fill"
+                }
+                content.image = UIImage(systemName: iconName)
+                content.imageProperties.tintColor = Constants.Colors.primary
+                content.imageProperties.maximumSize = CGSize(width: 60, height: 60)
+            }
+            
+            cell.contentConfiguration = content
+            cell.accessoryType = .disclosureIndicator
         } else {
-            cell.textLabel?.text = "Create New Circle"
-            cell.textLabel?.textColor = .systemBlue
+            // Create New Circle row
+            var content = cell.defaultContentConfiguration()
+            content.text = "Create New Circle"
+            content.textProperties.color = .systemBlue
+            content.image = UIImage(systemName: "plus.circle.fill")
+            content.imageProperties.tintColor = .systemBlue
+            content.imageProperties.maximumSize = CGSize(width: 60, height: 60)
+            cell.contentConfiguration = content
             cell.accessoryType = .none
         }
         
@@ -250,7 +372,7 @@ extension CircleSelectionViewController: UITableViewDelegate {
         tableView.deselectRow(at: indexPath, animated: true)
         
         if indexPath.section == 0 {
-            let selectedCircle = circles[indexPath.row]
+            let selectedCircle = filteredCircles[indexPath.row]
             if let placeDelegate = delegate as? CircleSelectionWithPlaceDelegate,
                let place = placeToMove {
                 placeDelegate.circleSelectionViewController(self, didSelectCircle: selectedCircle, forPlace: place)
@@ -264,9 +386,48 @@ extension CircleSelectionViewController: UITableViewDelegate {
     }
     
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        if section == 0 && !circles.isEmpty {
+        if section == 0 && !filteredCircles.isEmpty {
             return "Your Circles"
         }
         return nil
+    }
+    
+    func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
+        return 80 // Fixed height for consistent circle image display
+    }
+}
+
+// MARK: - UISearchResultsUpdating
+
+extension CircleSelectionViewController: UISearchResultsUpdating {
+    func updateSearchResults(for searchController: UISearchController) {
+        let searchText = searchController.searchBar.text ?? ""
+        filterCircles(with: searchText)
+    }
+    
+    private func filterCircles(with searchText: String) {
+        if searchText.isEmpty {
+            filteredCircles = circles
+            isSearchActive = false
+        } else {
+            filteredCircles = circles.filter { circle in
+                circle.name.localizedCaseInsensitiveContains(searchText)
+            }
+            isSearchActive = true
+        }
+        
+        DispatchQueue.main.async {
+            self.tableView.reloadData()
+        }
+    }
+}
+
+// MARK: - UISearchBarDelegate
+
+extension CircleSelectionViewController: UISearchBarDelegate {
+    func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
+        filteredCircles = circles
+        isSearchActive = false
+        tableView.reloadData()
     }
 }

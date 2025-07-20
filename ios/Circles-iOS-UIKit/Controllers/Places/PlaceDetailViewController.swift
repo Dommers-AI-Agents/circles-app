@@ -7,6 +7,7 @@ class PlaceDetailViewController: BaseViewController {
     // MARK: - Properties
     private var place: Place
     private var circle: Circle?
+    private var creatorUser: User? // Store the creator user for navigation
     
     // MARK: - Configuration
     override var loadsDataOnViewDidLoad: Bool { false }
@@ -182,6 +183,7 @@ class PlaceDetailViewController: BaseViewController {
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
         label.textColor = Constants.Colors.secondaryLabel
         label.translatesAutoresizingMaskIntoConstraints = false
+        label.isUserInteractionEnabled = true
         return label
     }()
     
@@ -327,6 +329,7 @@ class PlaceDetailViewController: BaseViewController {
         label.textColor = Constants.Colors.gray
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
+        label.isUserInteractionEnabled = true
         return label
     }()
     
@@ -657,6 +660,15 @@ class PlaceDetailViewController: BaseViewController {
         creatorInfoView.addSubview(creatorLabel)
         infoContainerView.addSubview(ratingView)
         infoContainerView.addSubview(descriptionLabel)
+        
+        // Add tap gesture recognizer for clickable URLs in description
+        let descriptionTapGesture = UITapGestureRecognizer(target: self, action: #selector(descriptionLabelTapped(_:)))
+        descriptionLabel.addGestureRecognizer(descriptionTapGesture)
+        
+        // Add tap gesture recognizer for clickable username in creator label
+        let creatorTapGesture = UITapGestureRecognizer(target: self, action: #selector(creatorLabelTapped(_:)))
+        creatorLabel.addGestureRecognizer(creatorTapGesture)
+        
         infoContainerView.addSubview(addToCircleButton)
         infoContainerView.addSubview(addressTitleLabel)
         infoContainerView.addSubview(addressLabel)
@@ -1059,43 +1071,8 @@ class PlaceDetailViewController: BaseViewController {
         // Category
         categoryLabel.text = "  \(place.displayCategory)  " // Add padding with spaces
         
-        // Set category color and icon
-        switch place.category {
-        case .restaurant:
-            categoryLabel.backgroundColor = UIColor(hex: "#E53E3E") // Red
-        case .cafe:
-            categoryLabel.backgroundColor = UIColor(hex: "#DD6B20") // Orange
-        case .bar:
-            categoryLabel.backgroundColor = UIColor(hex: "#DD6B20") // Orange
-        case .hotel:
-            categoryLabel.backgroundColor = UIColor(hex: "#3182CE") // Blue
-        case .retail:
-            categoryLabel.backgroundColor = UIColor(hex: "#805AD5") // Purple
-        case .service:
-            categoryLabel.backgroundColor = UIColor(hex: "#38A169") // Green
-        case .attraction:
-            categoryLabel.backgroundColor = UIColor(hex: "#D69E2E") // Yellow
-        case .entertainment:
-            categoryLabel.backgroundColor = UIColor(hex: "#D69E2E") // Yellow
-        case .healthcare:
-            categoryLabel.backgroundColor = UIColor(hex: "#319795") // Teal
-        case .fitness:
-            categoryLabel.backgroundColor = UIColor(hex: "#38A169") // Green
-        case .education:
-            categoryLabel.backgroundColor = UIColor(hex: "#3182CE") // Blue
-        case .outdoor:
-            categoryLabel.backgroundColor = UIColor(hex: "#38A169") // Green
-        case .transport:
-            categoryLabel.backgroundColor = UIColor(hex: "#718096") // Gray
-        case .finance:
-            categoryLabel.backgroundColor = UIColor(hex: "#805AD5") // Purple
-        case .home:
-            categoryLabel.backgroundColor = UIColor(hex: "#3182CE") // Blue
-        case .work:
-            categoryLabel.backgroundColor = UIColor(hex: "#38A169") // Green
-        case .other:
-            categoryLabel.backgroundColor = UIColor(hex: "#38A169") // Green
-        }
+        // Set category color using centralized property
+        categoryLabel.backgroundColor = place.category.color
         
         // Set default image - this will be called before street view loads
         configureDefaultImage()
@@ -1122,7 +1099,7 @@ class PlaceDetailViewController: BaseViewController {
         
         // Description - only show if available
         if let description = place.description, !description.isEmpty {
-            descriptionLabel.text = description
+            descriptionLabel.attributedText = createAttributedDescription(from: description)
             descriptionLabel.isHidden = false
         } else {
             descriptionLabel.isHidden = true
@@ -1368,41 +1345,100 @@ class PlaceDetailViewController: BaseViewController {
     // MARK: - Configuration Helpers
     
     private func configureCreatorInfo() {
-        var creatorText = ""
-        
-        if let addedByUser = place.addedByUser {
-            creatorText = "Added by \(addedByUser.displayName)"
-        } else {
-            // If addedByUser is not populated, check if it's the current user
-            let currentUserId = AuthService.shared.getUserId() ?? ""
-            if place.addedBy == currentUserId {
-                creatorText = "Added by you"
-            } else {
-                // Try to find the user in the circle
-                if let circle = circle {
-                    if circle.owner == place.addedBy {
-                        if let ownerDetails = circle.ownerDetails {
-                            creatorText = "Added by \(ownerDetails.displayName)"
-                        } else {
-                            creatorText = "Added by circle owner"
-                        }
-                    } else {
-                        creatorText = "Added by a member"
-                    }
-                } else {
-                    creatorText = "Added by a connection"
-                }
-            }
-        }
-        
-        // Add the date when the place was added
         let dateFormatter = DateFormatter()
         dateFormatter.dateStyle = .medium
         dateFormatter.timeStyle = .none
         let dateString = dateFormatter.string(from: place.createdAt)
-        creatorText += " • \(dateString)"
         
-        creatorLabel.text = creatorText
+        let attributedString = NSMutableAttributedString()
+        
+        // Determine creator info and whether it should be clickable
+        let currentUserId = AuthService.shared.getUserId() ?? ""
+        var isClickable = false
+        
+        if let addedByUser = place.addedByUser {
+            // We have user details, make it clickable
+            creatorUser = addedByUser
+            isClickable = true
+            
+            let addedByText = NSAttributedString(string: "Added by ", attributes: [
+                .font: UIFont.systemFont(ofSize: Constants.FontSize.small),
+                .foregroundColor: Constants.Colors.secondaryLabel
+            ])
+            attributedString.append(addedByText)
+            
+            let nameText = NSAttributedString(string: addedByUser.displayName, attributes: [
+                .font: UIFont.systemFont(ofSize: Constants.FontSize.small, weight: .medium),
+                .foregroundColor: Constants.Colors.primary,
+                .underlineStyle: NSUnderlineStyle.single.rawValue
+            ])
+            attributedString.append(nameText)
+        } else if place.addedBy == currentUserId {
+            // Current user, not clickable
+            let text = NSAttributedString(string: "Added by you", attributes: [
+                .font: UIFont.systemFont(ofSize: Constants.FontSize.small),
+                .foregroundColor: Constants.Colors.secondaryLabel
+            ])
+            attributedString.append(text)
+        } else if let circle = circle {
+            if circle.owner == place.addedBy {
+                if let ownerDetails = circle.ownerDetails {
+                    // Circle owner with details, make it clickable
+                    creatorUser = ownerDetails
+                    isClickable = true
+                    
+                    let addedByText = NSAttributedString(string: "Added by ", attributes: [
+                        .font: UIFont.systemFont(ofSize: Constants.FontSize.small),
+                        .foregroundColor: Constants.Colors.secondaryLabel
+                    ])
+                    attributedString.append(addedByText)
+                    
+                    let nameText = NSAttributedString(string: ownerDetails.displayName, attributes: [
+                        .font: UIFont.systemFont(ofSize: Constants.FontSize.small, weight: .medium),
+                        .foregroundColor: Constants.Colors.primary,
+                        .underlineStyle: NSUnderlineStyle.single.rawValue
+                    ])
+                    attributedString.append(nameText)
+                } else {
+                    // No owner details
+                    let text = NSAttributedString(string: "Added by circle owner", attributes: [
+                        .font: UIFont.systemFont(ofSize: Constants.FontSize.small),
+                        .foregroundColor: Constants.Colors.secondaryLabel
+                    ])
+                    attributedString.append(text)
+                }
+            } else {
+                // Member without details
+                let text = NSAttributedString(string: "Added by a member", attributes: [
+                    .font: UIFont.systemFont(ofSize: Constants.FontSize.small),
+                    .foregroundColor: Constants.Colors.secondaryLabel
+                ])
+                attributedString.append(text)
+            }
+        } else {
+            // Connection without details
+            let text = NSAttributedString(string: "Added by a connection", attributes: [
+                .font: UIFont.systemFont(ofSize: Constants.FontSize.small),
+                .foregroundColor: Constants.Colors.secondaryLabel
+            ])
+            attributedString.append(text)
+        }
+        
+        // Add the date
+        let dateText = NSAttributedString(string: " • \(dateString)", attributes: [
+            .font: UIFont.systemFont(ofSize: Constants.FontSize.small),
+            .foregroundColor: Constants.Colors.secondaryLabel
+        ])
+        attributedString.append(dateText)
+        
+        creatorLabel.attributedText = attributedString
+        
+        // Update cursor if clickable
+        if isClickable {
+            creatorLabel.isUserInteractionEnabled = true
+        } else {
+            creatorLabel.isUserInteractionEnabled = false
+        }
     }
     
     private func configureAddToCircleButton() {
@@ -1469,8 +1505,11 @@ class PlaceDetailViewController: BaseViewController {
                         // No circles available
                         AlertPresenter.showError(title: "No Circles", message: "You need to create a circle first before adding places to it.", from: self)
                     } else {
+                        // Sort circles alphabetically for easy finding
+                        let sortedCircles = circles.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                        
                         // Show circle picker
-                        let pickerVC = CirclePickerViewController(circles: circles)
+                        let pickerVC = CirclePickerViewController(circles: sortedCircles)
                         pickerVC.onCircleSelected = { [weak self] selectedCircle in
                             self?.addPlaceToCircle(selectedCircle)
                         }
@@ -1483,6 +1522,18 @@ class PlaceDetailViewController: BaseViewController {
                 }
             }
         }
+    }
+    
+    @objc private func creatorLabelTapped(_ gesture: UITapGestureRecognizer) {
+        guard let user = creatorUser else { 
+            print("No creator user data available")
+            return 
+        }
+        
+        // Navigate to the user's profile
+        let profileVC = ProfileViewController()
+        profileVC.configureWith(user: user)
+        navigationController?.pushViewController(profileVC, animated: true)
     }
     
     @objc private func shareButtonTapped() {
@@ -1925,43 +1976,8 @@ class PlaceDetailViewController: BaseViewController {
             return
         }
         
-        // If no photos or street view, use category icon
-        switch place.category {
-        case .restaurant:
-            imageView.image = UIImage(systemName: "fork.knife")
-        case .cafe:
-            imageView.image = UIImage(systemName: "cup.and.saucer")
-        case .bar:
-            imageView.image = UIImage(systemName: "wineglass")
-        case .hotel:
-            imageView.image = UIImage(systemName: "bed.double")
-        case .retail:
-            imageView.image = UIImage(systemName: "bag")
-        case .service:
-            imageView.image = UIImage(systemName: "wrench.and.screwdriver")
-        case .attraction:
-            imageView.image = UIImage(systemName: "star")
-        case .entertainment:
-            imageView.image = UIImage(systemName: "ticket")
-        case .healthcare:
-            imageView.image = UIImage(systemName: "cross.case")
-        case .fitness:
-            imageView.image = UIImage(systemName: "figure.run")
-        case .education:
-            imageView.image = UIImage(systemName: "book")
-        case .outdoor:
-            imageView.image = UIImage(systemName: "tree")
-        case .transport:
-            imageView.image = UIImage(systemName: "car")
-        case .finance:
-            imageView.image = UIImage(systemName: "dollarsign.circle")
-        case .home:
-            imageView.image = UIImage(systemName: "house")
-        case .work:
-            imageView.image = UIImage(systemName: "building.2")
-        case .other:
-            imageView.image = UIImage(systemName: "mappin")
-        }
+        // If no photos or street view, use category icon from centralized property
+        imageView.image = UIImage(systemName: place.category.systemIconName)
         
         imageView.tintColor = Constants.Colors.primary
         imageView.contentMode = .scaleAspectFit
@@ -1980,6 +1996,77 @@ class PlaceDetailViewController: BaseViewController {
     
     @objc private func addNotesButtonTapped() {
         showNotesEditor()
+    }
+    
+    @objc private func descriptionLabelTapped(_ gesture: UITapGestureRecognizer) {
+        guard let attributedText = descriptionLabel.attributedText else { return }
+        
+        let location = gesture.location(in: descriptionLabel)
+        
+        // Create text container
+        let textContainer = NSTextContainer(size: descriptionLabel.bounds.size)
+        textContainer.lineFragmentPadding = 0
+        textContainer.maximumNumberOfLines = descriptionLabel.numberOfLines
+        textContainer.lineBreakMode = descriptionLabel.lineBreakMode
+        
+        // Create layout manager
+        let layoutManager = NSLayoutManager()
+        layoutManager.addTextContainer(textContainer)
+        
+        // Create text storage
+        let textStorage = NSTextStorage(attributedString: attributedText)
+        textStorage.addLayoutManager(layoutManager)
+        
+        // Find the character index at tap location
+        let characterIndex = layoutManager.characterIndex(
+            for: location,
+            in: textContainer,
+            fractionOfDistanceBetweenInsertionPoints: nil
+        )
+        
+        // Check if tap is on a URL
+        attributedText.enumerateAttribute(.link, in: NSRange(location: 0, length: attributedText.length), options: []) { (value, range, stop) in
+            if let url = value as? URL, NSLocationInRange(characterIndex, range) {
+                UIApplication.shared.open(url)
+                stop.pointee = true
+            }
+        }
+    }
+    
+    private func createAttributedDescription(from text: String) -> NSAttributedString {
+        let attributedString = NSMutableAttributedString(string: text)
+        
+        // Apply default attributes
+        let defaultAttributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: Constants.FontSize.medium),
+            .foregroundColor: Constants.Colors.gray
+        ]
+        attributedString.addAttributes(defaultAttributes, range: NSRange(location: 0, length: text.count))
+        
+        // Find "Website: " patterns and make URLs clickable
+        let websitePattern = "Website: (https?://[^\\s\\n]+)"
+        let regex = try? NSRegularExpression(pattern: websitePattern, options: [])
+        let matches = regex?.matches(in: text, options: [], range: NSRange(location: 0, length: text.count)) ?? []
+        
+        for match in matches {
+            // Get the URL part (capture group 1)
+            if match.numberOfRanges > 1 {
+                let urlRange = match.range(at: 1)
+                let urlString = (text as NSString).substring(with: urlRange)
+                
+                if let url = URL(string: urlString) {
+                    // Style the URL as clickable
+                    let urlAttributes: [NSAttributedString.Key: Any] = [
+                        .link: url,
+                        .foregroundColor: UIColor.systemBlue,
+                        .underlineStyle: NSUnderlineStyle.single.rawValue
+                    ]
+                    attributedString.addAttributes(urlAttributes, range: urlRange)
+                }
+            }
+        }
+        
+        return attributedString
     }
     
     private func showNotesEditor() {
@@ -2066,43 +2153,8 @@ class PlaceDetailViewController: BaseViewController {
     }
     
     private func setDefaultCategoryIcon() {
-        switch place.category {
-        case .restaurant:
-            imageView.image = UIImage(systemName: "fork.knife")
-        case .cafe:
-            imageView.image = UIImage(systemName: "cup.and.saucer")
-        case .bar:
-            imageView.image = UIImage(systemName: "wineglass")
-        case .hotel:
-            imageView.image = UIImage(systemName: "bed.double")
-        case .retail:
-            imageView.image = UIImage(systemName: "bag")
-        case .service:
-            imageView.image = UIImage(systemName: "wrench.and.screwdriver")
-        case .attraction:
-            imageView.image = UIImage(systemName: "star")
-        case .entertainment:
-            imageView.image = UIImage(systemName: "ticket")
-        case .healthcare:
-            imageView.image = UIImage(systemName: "cross.case")
-        case .fitness:
-            imageView.image = UIImage(systemName: "figure.run")
-        case .education:
-            imageView.image = UIImage(systemName: "book")
-        case .outdoor:
-            imageView.image = UIImage(systemName: "tree")
-        case .transport:
-            imageView.image = UIImage(systemName: "car")
-        case .finance:
-            imageView.image = UIImage(systemName: "dollarsign.circle")
-        case .home:
-            imageView.image = UIImage(systemName: "house")
-        case .work:
-            imageView.image = UIImage(systemName: "building.2")
-        case .other:
-            imageView.image = UIImage(systemName: "mappin")
-        }
-        
+        // Use centralized category icon property
+        imageView.image = UIImage(systemName: place.category.systemIconName)
         imageView.tintColor = Constants.Colors.primary
         imageView.contentMode = .scaleAspectFit
         imageView.backgroundColor = Constants.Colors.background

@@ -671,29 +671,37 @@ const getUserCircles = async (req, res) => {
     
     console.log('getUserCircles called:', { currentUserId, targetUserId });
 
-    // Verify the users are connected
-    const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', currentUserId)
-      .where('connectedUserId', '==', targetUserId)
-      .where('status', '==', 'accepted')
-      .get();
-      
-    const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', targetUserId)
-      .where('connectedUserId', '==', currentUserId)
-      .where('status', '==', 'accepted')
-      .get();
-
-    if (connection1.empty && connection2.empty) {
-      return res.status(403).json({
-        success: false,
-        message: 'You are not connected to this user'
-      });
-    }
+    // Check if this is a fake profile (demo users)
+    const isFakeProfile = ['brittany-demo', 'wesley-demo', 'salvatore-demo'].includes(targetUserId);
     
-    // Get the connection document to check for recent activity
-    const connectionDoc = !connection1.empty ? connection1.docs[0] : connection2.docs[0];
-    const connectionData = connectionDoc.data();
+    let connectionDoc = null;
+    let connectionData = null;
+    
+    if (!isFakeProfile) {
+      // Verify the users are connected for real profiles
+      const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', currentUserId)
+        .where('connectedUserId', '==', targetUserId)
+        .where('status', '==', 'accepted')
+        .get();
+        
+      const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', targetUserId)
+        .where('connectedUserId', '==', currentUserId)
+        .where('status', '==', 'accepted')
+        .get();
+
+      if (connection1.empty && connection2.empty) {
+        return res.status(403).json({
+          success: false,
+          message: 'You are not connected to this user'
+        });
+      }
+      
+      // Get the connection document to check for recent activity
+      connectionDoc = !connection1.empty ? connection1.docs[0] : connection2.docs[0];
+      connectionData = connectionDoc.data();
+    }
     
     // Track that the user viewed this connection
     const activityService = require('../services/activityService');
@@ -710,27 +718,31 @@ const getUserCircles = async (req, res) => {
 
     const userData = serializeDoc(userDoc);
 
-    // Get the user's connections count
-    const connectionsQuery1 = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', targetUserId)
-      .where('status', '==', 'accepted')
-      .get();
+    // For fake profiles, use their stored stats; for real users, calculate from connections
+    if (!isFakeProfile) {
+      // Get the user's connections count
+      const connectionsQuery1 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', targetUserId)
+        .where('status', '==', 'accepted')
+        .get();
+        
+      const connectionsQuery2 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', targetUserId)
+        .where('status', '==', 'accepted')
+        .get();
       
-    const connectionsQuery2 = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('connectedUserId', '==', targetUserId)
-      .where('status', '==', 'accepted')
-      .get();
-    
-    // Count unique connections (avoid duplicates)
-    const connectionIds = new Set();
-    connectionsQuery1.docs.forEach(doc => {
-      connectionIds.add(doc.data().connectedUserId);
-    });
-    connectionsQuery2.docs.forEach(doc => {
-      connectionIds.add(doc.data().userId);
-    });
-    
-    userData.connectionsCount = connectionIds.size;
+      // Count unique connections (avoid duplicates)
+      const connectionIds = new Set();
+      connectionsQuery1.docs.forEach(doc => {
+        connectionIds.add(doc.data().connectedUserId);
+      });
+      connectionsQuery2.docs.forEach(doc => {
+        connectionIds.add(doc.data().userId);
+      });
+      
+      userData.connectionsCount = connectionIds.size;
+    }
+    // For fake profiles, userData.connectionsCount is already set from the database
 
     // Check if current user is following target user
     const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(currentUserId).get();
@@ -756,8 +768,8 @@ const getUserCircles = async (req, res) => {
       return bDate.localeCompare(aDate);
     });
 
-    // Get recent activity from connection data
-    const recentActivity = connectionData.recentActivity || [];
+    // Get recent activity from connection data (empty for fake profiles)
+    const recentActivity = connectionData?.recentActivity || [];
     
     // Get the current user's lastLogin to determine what's "new"
     // (currentUserDoc already fetched above)
@@ -864,7 +876,7 @@ const getUserCircles = async (req, res) => {
       data: {
         user: userData,
         circles: circles,
-        hasRecentActivity: connectionData.hasNewActivity || connectionData.hasRecentPlace || false
+        hasRecentActivity: connectionData ? (connectionData.hasNewActivity || connectionData.hasRecentPlace || false) : false
       }
     });
 

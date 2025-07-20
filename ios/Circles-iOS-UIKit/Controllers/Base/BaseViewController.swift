@@ -186,6 +186,14 @@ class BaseViewController: UIViewController {
     func showErrorWithRetry(_ error: Error, retryHandler: @escaping () -> Void) {
         hideLoadingState()
         
+        // Filter out duplicate request errors - these are intentional and don't need user notification
+        let errorMessage = error.localizedDescription
+        if errorMessage == "Duplicate request prevented" || 
+           errorMessage == "Network error: Duplicate request prevented" ||
+           errorMessage.contains("Duplicate request prevented") {
+            return
+        }
+        
         AlertPresenter.showConfirmation(
             title: "Error",
             message: error.localizedDescription,

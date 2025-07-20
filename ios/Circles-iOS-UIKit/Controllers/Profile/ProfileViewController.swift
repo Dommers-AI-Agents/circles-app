@@ -1,5 +1,6 @@
 import UIKit
 import MapKit
+import CoreLocation
 
 // MARK: - Response Types
 struct UserCirclesResponse: Codable {
@@ -10,6 +11,12 @@ struct UserCirclesResponse: Codable {
 struct UserCirclesData: Codable {
     let user: User
     let circles: [Circle]
+}
+
+struct FollowResponse: Codable {
+    let success: Bool
+    let message: String
+    let user: User?
 }
 
 // MARK: - FollowListType
@@ -78,6 +85,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     var allPlaces: [Place] = []
     var filteredPlaces: [Place] = []
     private var selectedCategory: PlaceCategory?
+    private var availableCategories: [UnifiedCategory] = []
     private var selectedCity: String?
     var isSearching = false
     var searchResultsHeightConstraint: NSLayoutConstraint?
@@ -107,9 +115,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     // MARK: - Public Methods
     func configureWith(user: User) {
         self.user = user
-        if isViewLoaded {
-            loadUserProfile()
-        }
+        // Don't call loadUserProfile here - let the view lifecycle handle it
+        // This prevents duplicate API calls when reloadsDataOnAppear is true
     }
     
     func resetToListViewIfNeeded() {
@@ -372,6 +379,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         let mapView = MKMapView()
         mapView.translatesAutoresizingMaskIntoConstraints = false
         mapView.delegate = self
+        mapView.showsUserLocation = true
         return mapView
     }()
     
@@ -380,6 +388,15 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         button.tintColor = .white
         button.backgroundColor = UIColor.black.withAlphaComponent(0.6)
         button.layer.cornerRadius = 18
+        return button
+    }()
+    
+    private lazy var locationButton: UIButton = {
+        let button = UIButton.iconButton(systemName: "location.circle.fill")
+        button.tintColor = .white
+        button.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+        button.layer.cornerRadius = 18
+        button.addTarget(self, action: #selector(zoomToUserLocation), for: .touchUpInside)
         return button
     }()
     
@@ -515,6 +532,27 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         }
     }
     
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        
+        // Check if we should show the privacy settings tutorial step
+        let isCurrentUser = user?.id == AuthService.shared.getUserId()
+        if isCurrentUser && 
+           OnboardingManager.shared.shouldShowTutorial && 
+           OnboardingManager.shared.hasCompletedStep(.exploreNetwork) &&
+           !OnboardingManager.shared.hasCompletedStep(.privacySettings) {
+            // Show tutorial pointing to settings button
+            if let settingsButton = navigationItem.rightBarButtonItems?.first(where: { $0.image == UIImage(systemName: "gear") }) {
+                OnboardingManager.shared.showTutorialStep(
+                    .privacySettings,
+                    targetView: settingsButton.value(forKey: "view") as? UIView,
+                    in: self,
+                    arrowDirection: .top
+                )
+            }
+        }
+    }
+    
     deinit {
         NotificationCenter.default.removeObserver(self)
         SSEService.shared.removeDelegate(self)
@@ -539,9 +577,15 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     // MARK: - BaseViewController Data Loading
     override func loadData(completion: (() -> Void)? = nil) {
-        // Just call loadUserProfile which handles all cases properly
-        loadUserProfile()
-        completion?()
+        print("🚀 ProfileViewController: loadData called")
+        print("🚀 ProfileViewController: isLoadingData = \(isLoadingData)")
+        
+        // Note: BaseViewController already manages isLoadingData, so we don't need to check it here
+        // BaseViewController sets isLoadingData = true before calling this method
+        
+        // Call loadUserProfile with completion handler
+        print("🚀 ProfileViewController: Calling loadUserProfile")
+        loadUserProfile(completion: completion)
     }
     
     override func setupRefreshControl() {
@@ -593,6 +637,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         filterContainerView.addSubview(cityFilterButton)
         mapContainerView.addSubview(mapView)
         mapContainerView.addSubview(mapExpandButton)
+        mapContainerView.addSubview(locationButton)
         
         contentView.addSubview(logoutButton)
         contentView.addSubview(versionLabel)
@@ -787,6 +832,12 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             mapExpandButton.trailingAnchor.constraint(equalTo: mapView.trailingAnchor, constant: -8),
             mapExpandButton.widthAnchor.constraint(equalToConstant: 36),
             mapExpandButton.heightAnchor.constraint(equalToConstant: 36),
+            
+            // Location button (below expand button)
+            locationButton.topAnchor.constraint(equalTo: mapExpandButton.bottomAnchor, constant: 8),
+            locationButton.trailingAnchor.constraint(equalTo: mapView.trailingAnchor, constant: -8),
+            locationButton.widthAnchor.constraint(equalToConstant: 36),
+            locationButton.heightAnchor.constraint(equalToConstant: 36),
             
             // Logout button (position constraints)
             logoutButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
@@ -985,23 +1036,48 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
     
     private func setupCategoryFilterMenu() {
-        let categories: [PlaceCategory?] = [nil] + PlaceCategory.allCases
-        let categoryNames = ["All Categories"] + PlaceCategory.allCases.map { $0.displayName }
-        
         var menuActions: [UIAction] = []
         
-        for (index, category) in categories.enumerated() {
-            let action = UIAction(title: categoryNames[index]) { [weak self] _ in
+        // Add "All Categories" option
+        let allCategoriesAction = UIAction(title: "All Categories") { [weak self] _ in
+            guard let self = self else { return }
+            self.selectedCategory = nil
+            self.categoryFilterButton.setTitle("All Categories", for: .normal)
+            self.filterPlaces()
+            // Refresh the menu to update checkmarks
+            self.setupCategoryFilterMenu()
+        }
+        
+        // Add checkmark for selected category
+        if selectedCategory == nil {
+            allCategoriesAction.state = .on
+        }
+        menuActions.append(allCategoriesAction)
+        
+        // Add available categories
+        for category in availableCategories {
+            let isSelected: Bool
+            switch category {
+            case .standard(let placeCategory):
+                isSelected = selectedCategory == placeCategory
+            case .custom:
+                isSelected = false // Custom categories not supported in current selectedCategory
+            }
+            
+            let action = UIAction(title: category.displayName) { [weak self] _ in
                 guard let self = self else { return }
-                self.selectedCategory = category
-                self.categoryFilterButton.setTitle(categoryNames[index], for: .normal)
-                self.filterPlaces()
-                // Refresh the menu to update checkmarks
-                self.setupCategoryFilterMenu()
+                // For now, only support standard categories in filter
+                if case .standard(let placeCategory) = category {
+                    self.selectedCategory = placeCategory
+                    self.categoryFilterButton.setTitle(category.displayName, for: .normal)
+                    self.filterPlaces()
+                    // Refresh the menu to update checkmarks
+                    self.setupCategoryFilterMenu()
+                }
             }
             
             // Add checkmark for selected category
-            if category == selectedCategory {
+            if isSelected {
                 action.state = .on
             }
             
@@ -1257,7 +1333,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             endpoint: endpoint,
             method: .post,
             requiresAuth: true
-        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
+        ) { [weak self] (result: Result<FollowResponse, APIError>) in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 
@@ -1376,9 +1452,13 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
     
     @objc private func expandMapButtonTapped() {
+        // Pass all places to the full screen map, not the filtered ones
+        // Don't pass the selected category so the full screen map starts fresh
         let fullScreenMapVC = FullScreenMapViewController(
-            places: filteredPlaces,
-            initialRegion: mapView.region
+            places: allPlaces,  // Pass all places
+            initialRegion: mapView.region,
+            selectedCategory: nil,  // Don't pass the filter
+            selectedConnectionId: nil
         )
         fullScreenMapVC.delegate = self
         fullScreenMapVC.viewMode = .allPlaces
@@ -1387,6 +1467,41 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         let navigationController = UINavigationController(rootViewController: fullScreenMapVC)
         navigationController.modalPresentationStyle = .fullScreen
         present(navigationController, animated: true)
+    }
+    
+    @objc private func zoomToUserLocation() {
+        let locationManager = CLLocationManager()
+        
+        // Check if location services are enabled
+        guard CLLocationManager.locationServicesEnabled() else {
+            showError("Location services are disabled. Please enable them in Settings.")
+            return
+        }
+        
+        // Check authorization status
+        let status = locationManager.authorizationStatus
+        switch status {
+        case .notDetermined:
+            // Request permission
+            locationManager.requestWhenInUseAuthorization()
+        case .restricted, .denied:
+            showError("Location access is denied. Please enable it in Settings.")
+        case .authorizedWhenInUse, .authorizedAlways:
+            // Zoom to user location
+            if let userLocation = mapView.userLocation.location {
+                let region = MKCoordinateRegion(
+                    center: userLocation.coordinate,
+                    latitudinalMeters: 1000,
+                    longitudinalMeters: 1000
+                )
+                mapView.setRegion(region, animated: true)
+            } else {
+                // Try to get current location
+                locationManager.requestLocation()
+            }
+        @unknown default:
+            break
+        }
     }
     
     private func showAlert(title: String, message: String) {
@@ -1643,23 +1758,15 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
     
     private func filterPlaces() {
-        filteredPlaces = allPlaces
+        // Use centralized filtering extensions
+        let unifiedCategory = selectedCategory.map { UnifiedCategory.standard($0) }
+        let currentUserId = AuthService.shared.getUserId() ?? ""
         
-        // Filter by category
-        if let category = selectedCategory {
-            filteredPlaces = filteredPlaces.filter { $0.category == category }
-        }
-        
-        // Filter by city
-        if let city = selectedCity {
-            filteredPlaces = filteredPlaces.filter { place in
-                // Use the same city extraction logic for consistency
-                if let placeCity = extractCityFromAddress(place.address) {
-                    return placeCity == city
-                }
-                return false
-            }
-        }
+        filteredPlaces = allPlaces.filtered(
+            category: unifiedCategory,
+            city: selectedCity,
+            currentUserId: currentUserId
+        )
         
         // Update map pins
         updateMapPins()
@@ -1669,16 +1776,10 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         // Remove existing annotations
         mapView.removeAnnotations(mapView.annotations)
         
-        // Add filtered places as pins
+        // Add filtered places as pins using PlaceAnnotation for custom styling
         for place in filteredPlaces {
-            if let location = place.location {
-                let annotation = MKPointAnnotation()
-                annotation.coordinate = CLLocationCoordinate2D(
-                    latitude: location.coordinates[1],
-                    longitude: location.coordinates[0]
-                )
-                annotation.title = place.name
-                annotation.subtitle = place.address
+            if place.location?.clLocation != nil {
+                let annotation = PlaceAnnotation(place: place)
                 mapView.addAnnotation(annotation)
             }
         }
@@ -1690,25 +1791,41 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
     
     
-    private func loadUserProfile() {
+    private func loadUserProfile(completion: (() -> Void)? = nil) {
+        print("🚀 ProfileViewController: loadUserProfile called")
+        print("🚀 ProfileViewController: Has existing user? \(self.user != nil)")
+        
         if let user = self.user {
             // If user is provided, use it
+            print("✅ ProfileViewController: Using existing user: \(user.id)")
             displayUser(user)
             fetchUserStats(userId: user.id)
+            completion?()
         } else {
             // Otherwise fetch current user - always get fresh data
-            fetchFreshUserData()
+            print("🔄 ProfileViewController: No existing user, fetching fresh data")
+            fetchFreshUserData(completion: completion)
         }
     }
     
-    private func fetchFreshUserData() {
+    private func fetchFreshUserData(completion: (() -> Void)? = nil) {
+        print("🚀 ProfileViewController: fetchFreshUserData called")
+        
         // Always fetch fresh user data from the server
         UserService.shared.fetchUserProfile { [weak self] result in
-            guard let self = self else { return }
+            print("📡 ProfileViewController: fetchUserProfile callback received")
+            guard let self = self else {
+                print("⚠️ ProfileViewController: Self deallocated during fetch")
+                completion?()
+                return
+            }
             
             DispatchQueue.main.async {
                 switch result {
                 case .success(let user):
+                    print("✅ ProfileViewController: Successfully fetched user profile")
+                    print("✅ ProfileViewController: User ID: \(user.id)")
+                    print("✅ ProfileViewController: User name: \(user.displayName)")
                     self.user = user
                     self.displayUser(user)
                     self.fetchUserStats(userId: user.id)
@@ -1716,17 +1833,25 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                     // Update the cached user in AuthService
                     AuthService.shared.updateCurrentUser(user)
                     
-                case .failure:
+                case .failure(let error):
+                    print("❌ ProfileViewController: Failed to fetch user profile: \(error)")
+                    print("❌ ProfileViewController: Error type: \(type(of: error))")
+                    
                     // If we have cached data, use it as fallback
                     if let cachedUser = AuthService.shared.currentUser {
+                        print("⚠️ ProfileViewController: Using cached user as fallback: \(cachedUser.id)")
                         self.user = cachedUser
                         self.displayUser(cachedUser)
                         self.fetchUserStats(userId: cachedUser.id)
                     } else {
+                        print("❌ ProfileViewController: No cached user available, showing default profile")
                         // Show error or default values
                         self.displayDefaultProfile()
                     }
                 }
+                
+                // Call completion after all data loading is done
+                completion?()
             }
         }
     }
@@ -1790,10 +1915,15 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
     
     private func fetchUserStats(userId: String) {
+        print("🚀 ProfileViewController: fetchUserStats called for userId: \(userId)")
+        print("🚀 ProfileViewController: Current user ID: \(AuthService.shared.getUserId() ?? "nil")")
+        
         // For current user, fetch their circles
         if userId == AuthService.shared.getUserId() {
+            print("✅ ProfileViewController: Fetching stats for current user")
             // Fetch circles
             CircleService.shared.fetchUserCircles { [weak self] result in
+                print("📡 ProfileViewController: fetchUserCircles callback received")
                 DispatchQueue.main.async {
                     guard let self = self else { return }
                     
@@ -1827,7 +1957,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                         self.circlesCollectionView.reloadData()
                         self.updateCollectionViewHeight()
                         self.showErrorWithRetry(error) {
-                            self.loadUserProfile()
+                            self.loadUserProfile(completion: nil)
                         }
                     }
                 }
@@ -2434,10 +2564,21 @@ extension ProfileViewController: UICollectionViewDropDelegate {
             let deduplicatedPlaces = self.removeDuplicatePlaces(self.allPlaces)
             self.allPlaces = deduplicatedPlaces
             
+            // Update available categories based on loaded places
+            self.updateAvailableCategories()
+            
             print("🔍 ProfileViewController - Loaded \(self.allPlaces.count) total unique places for search (after deduplication)")
             // Update map with all places by default
             self.filterPlaces()
         }
+    }
+    
+    private func updateAvailableCategories() {
+        // Get unique categories from all places, including custom categories
+        availableCategories = PlaceCategory.uniqueCategories(from: allPlaces)
+        
+        // Update the category filter menu
+        setupCategoryFilterMenu()
     }
 }
 
@@ -2498,33 +2639,46 @@ extension ProfileViewController: SSEServiceDelegate {
 // MARK: - MKMapViewDelegate
 extension ProfileViewController: MKMapViewDelegate {
     func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
-        let identifier = "PlacePin"
-        var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
+        // Skip user location
+        if annotation is MKUserLocation {
+            return nil
+        }
+        
+        guard let placeAnnotation = annotation as? PlaceAnnotation else {
+            return nil
+        }
+        
+        let identifier = "PlaceAnnotation"
+        var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier) as? MKMarkerAnnotationView
         
         if annotationView == nil {
             annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
             annotationView?.canShowCallout = true
             
-            // Add a detail disclosure button
-            let button = UIButton(type: .detailDisclosure)
-            annotationView?.rightCalloutAccessoryView = button
+            // Add detail button
+            let detailButton = UIButton(type: .detailDisclosure)
+            annotationView?.rightCalloutAccessoryView = detailButton
         } else {
             annotationView?.annotation = annotation
+        }
+        
+        // Customize marker appearance based on category
+        if let markerView = annotationView {
+            markerView.markerTintColor = placeAnnotation.place.category.color
+            markerView.glyphImage = UIImage(systemName: placeAnnotation.place.category.systemIconName)
         }
         
         return annotationView
     }
     
     func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView, calloutAccessoryControlTapped control: UIControl) {
-        guard let annotation = view.annotation,
-              let place = filteredPlaces.first(where: { $0.name == annotation.title }) else {
-            return
-        }
+        guard let placeAnnotation = view.annotation as? PlaceAnnotation else { return }
         
         // Navigate to place detail view
-        let placeDetailVC = PlaceDetailViewController(place: place)
+        let placeDetailVC = PlaceDetailViewController(place: placeAnnotation.place)
         navigationController?.pushViewController(placeDetailVC, animated: true)
     }
+    
 }
 
 // MARK: - UISearchBarDelegate

@@ -1,5 +1,6 @@
 // backend/controllers/connectionController.js
 const { getFirestore } = require('../config/firebase');
+const { FieldValue } = require('firebase-admin/firestore');
 const { 
   COLLECTIONS, 
   createConnection, 
@@ -541,6 +542,57 @@ const acceptConnection = async (req, res) => {
       success: true,
       data: updatedConnection
     });
+
+    // Auto-follow: When connection is accepted, both users automatically follow each other
+    try {
+      console.log('🔄 Auto-follow on connection accept - Making users follow each other');
+      
+      // Use a batch to update both users atomically
+      const batch = db.batch();
+      
+      // User who accepted the connection follows the requester
+      const acceptingUserRef = db.collection(COLLECTIONS.USERS).doc(userId);
+      batch.update(acceptingUserRef, {
+        following: FieldValue.arrayUnion(connection.userId),
+        followingCount: FieldValue.increment(1),
+        updatedAt: new Date().toISOString()
+      });
+      
+      // Requester follows the user who accepted
+      const requesterRef = db.collection(COLLECTIONS.USERS).doc(connection.userId);
+      batch.update(requesterRef, {
+        following: FieldValue.arrayUnion(userId),
+        followingCount: FieldValue.increment(1),
+        updatedAt: new Date().toISOString()
+      });
+      
+      // Update followers arrays
+      batch.update(acceptingUserRef, {
+        followers: FieldValue.arrayUnion(connection.userId),
+        followersCount: FieldValue.increment(1)
+      });
+      
+      batch.update(requesterRef, {
+        followers: FieldValue.arrayUnion(userId),
+        followersCount: FieldValue.increment(1)
+      });
+      
+      await batch.commit();
+      console.log('✅ Auto-follow successful - Both users now follow each other');
+      
+      // Send SSE notifications for the follows
+      sseService.notifyUser(userId, 'following_added', {
+        targetUserId: connection.userId
+      });
+      
+      sseService.notifyUser(connection.userId, 'following_added', {
+        targetUserId: userId
+      });
+      
+    } catch (followError) {
+      console.error('❌ Error in auto-follow during connection accept:', followError);
+      // Don't fail the connection accept if auto-follow fails
+    }
 
     // Send notification to the requester that their connection was accepted
     try {

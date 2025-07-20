@@ -187,10 +187,15 @@ extension NotificationService {
     // MARK: - In-App Notifications
     
     func getNotifications(limit: Int = 50, offset: Int = 0, completion: @escaping (Result<NotificationsResponse, Error>) -> Void) {
+        print("🚀 NotificationService: getNotifications called")
+        print("🚀 NotificationService: limit: \(limit), offset: \(offset)")
+        
         let queryParams: [String: String] = [
             "limit": "\(limit)",
             "offset": "\(offset)"
         ]
+        
+        print("🚀 NotificationService: Making API request to 'notifications' endpoint")
         
         APIService.shared.request(
             endpoint: "notifications",
@@ -198,10 +203,16 @@ extension NotificationService {
             queryParams: queryParams,
             requiresAuth: true
         ) { (result: Result<NotificationsResponse, APIError>) in
+            print("📡 NotificationService: API callback received")
+            
             switch result {
             case .success(let response):
+                print("✅ NotificationService: Successfully fetched notifications")
+                print("✅ NotificationService: Notification count: \(response.notifications.count)")
                 completion(.success(response))
             case .failure(let error):
+                print("❌ NotificationService: Failed to fetch notifications: \(error)")
+                print("❌ NotificationService: Error type: \(type(of: error))")
                 completion(.failure(error))
             }
         }

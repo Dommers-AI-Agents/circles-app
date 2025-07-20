@@ -187,6 +187,47 @@ const getOrCreateDirectConversation = async (req, res) => {
       });
     }
 
+    // Check if users are connected (LinkedIn-style: only connections can message)
+    console.log('🔒 Checking if users are connected before allowing messaging');
+    const [connection1, connection2] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', currentUserId)
+        .where('connectedUserId', '==', targetUserId)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', targetUserId)
+        .where('connectedUserId', '==', currentUserId)
+        .where('status', '==', 'accepted')
+        .get()
+    ]);
+
+    const isConnected = !connection1.empty || !connection2.empty;
+    
+    if (!isConnected) {
+      console.log(`❌ Users ${currentUserId} and ${targetUserId} are not connected - messaging not allowed`);
+      
+      // Check if they are followers
+      const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(currentUserId).get();
+      const targetUserData = targetUserDoc.data();
+      const isFollowing = currentUserDoc.exists && (currentUserDoc.data().following || []).includes(targetUserId);
+      const isFollower = targetUserData && (targetUserData.followers || []).includes(currentUserId);
+      
+      if (isFollowing || isFollower) {
+        return res.status(403).json({
+          success: false,
+          message: 'You must be connected to send messages. Followers cannot message each other.'
+        });
+      }
+      
+      return res.status(403).json({
+        success: false,
+        message: 'You must be connected to this user to send messages'
+      });
+    }
+    
+    console.log(`✅ Users ${currentUserId} and ${targetUserId} are connected - messaging allowed`);
+
     // Check if a direct conversation already exists between these users
     console.log(`🔍 getOrCreateDirectConversation - Checking for existing conversation`);
     const existingQuery1 = await db.collection(COLLECTIONS.CONVERSATIONS)

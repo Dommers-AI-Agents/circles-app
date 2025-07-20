@@ -172,13 +172,11 @@ const getNetworkSuggestions = async (req, res) => {
       });
     }
 
-    // Get suggestions from connected users that haven't expired
+    // Get suggestions from connected users, sorted by most recent first
     const suggestionsQuery = await db.collection(COLLECTIONS.SUGGESTIONS)
       .where('userId', 'in', Array.from(connectedUserIds))
-      .where('expiresAt', '>', now.toISOString())
-      .orderBy('expiresAt', 'desc')
       .orderBy('createdAt', 'desc')
-      .limit(50)
+      .limit(100)  // Increased limit since suggestions don't expire
       .get();
 
     // Build response with user and place details
@@ -568,9 +566,77 @@ const unlikeSuggestion = async (req, res) => {
   }
 };
 
+// @desc    Get suggestions by specific user
+// @route   GET /api/suggestions/user/:userId
+// @access  Private
+const getSuggestionsByUser = async (req, res) => {
+  try {
+    const requestingUserId = req.user.uid;
+    const targetUserId = req.params.userId;
+    
+    // Verify that the requesting user is connected to the target user
+    const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
+      .where('userId', '==', requestingUserId)
+      .where('connectedUserId', '==', targetUserId)
+      .where('status', '==', 'accepted')
+      .get();
+      
+    const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
+      .where('userId', '==', targetUserId)
+      .where('connectedUserId', '==', requestingUserId)
+      .where('status', '==', 'accepted')
+      .get();
+    
+    const isConnected = !connection1.empty || !connection2.empty;
+    const isSelf = requestingUserId === targetUserId;
+    
+    if (!isConnected && !isSelf) {
+      return res.status(403).json({
+        success: false,
+        message: 'You must be connected to view this user\'s suggestions'
+      });
+    }
+    
+    // Get suggestions from the specific user, sorted by most recent first
+    const suggestionsQuery = await db.collection(COLLECTIONS.SUGGESTIONS)
+      .where('userId', '==', targetUserId)
+      .orderBy('createdAt', 'desc')
+      .limit(50)
+      .get();
+    
+    // Build response with user and place details
+    const suggestions = [];
+    for (const doc of suggestionsQuery.docs) {
+      const suggestion = serializeDoc(doc);
+      
+      // Get user details
+      const userDoc = await db.collection(COLLECTIONS.USERS).doc(suggestion.userId).get();
+      if (userDoc.exists) {
+        suggestion.userDetails = serializeDoc(userDoc);
+      }
+      
+      suggestions.push(suggestion);
+    }
+    
+    res.status(200).json({
+      success: true,
+      data: suggestions
+    });
+    
+  } catch (error) {
+    console.error('Error fetching user suggestions:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createNewSuggestion,
   getNetworkSuggestions,
+  getSuggestionsByUser,
   deleteSuggestion,
   cleanupExpiredSuggestions,
   addComment,

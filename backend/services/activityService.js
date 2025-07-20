@@ -8,6 +8,9 @@ const db = getFirestore();
 // Import createActivity helper from activity controller
 const { createActivity } = require('../controllers/activityController');
 
+// Import SSE service for real-time notifications
+const SSEService = require('./sseService');
+
 // Track when a user adds a new circle
 const trackCircleCreated = async (circleId, createdByUserId) => {
   try {
@@ -66,6 +69,40 @@ const trackCircleCreated = async (circleId, createdByUserId) => {
 
     await batch.commit();
     console.log(`Tracked circle creation activity for ${allConnections.length} connections`);
+    
+    // Send real-time SSE events to all connections
+    allConnections.forEach(doc => {
+      const connectionData = doc.data();
+      // Determine which user should receive the notification
+      const notifyUserId = connectionData.userId === createdByUserId 
+        ? connectionData.connectedUserId 
+        : connectionData.userId;
+      
+      // Send circle creation event
+      SSEService.sendEvent(notifyUserId, {
+        type: 'circle_created',
+        data: {
+          circleId: circleId,
+          circleName: circleName,
+          createdByUserId: createdByUserId,
+          connectionId: doc.id,
+          timestamp: new Date().toISOString()
+        }
+      });
+      
+      // Also send connection activity event
+      SSEService.sendEvent(notifyUserId, {
+        type: 'connection_activity',
+        data: {
+          connectionId: doc.id,
+          activityType: 'circle',
+          entityId: circleId,
+          entityName: circleName,
+          timestamp: new Date().toISOString()
+        }
+      });
+    });
+    
   } catch (error) {
     console.error('Error tracking circle creation:', error);
   }
@@ -99,6 +136,17 @@ const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedBy
       }
     );
 
+    // Get the circle to check privacy settings and shared connections
+    const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(circleId).get();
+    if (!circleDoc.exists) {
+      console.log('Circle not found, skipping activity tracking');
+      return;
+    }
+    
+    const circleData = circleDoc.data();
+    const circlePrivacy = circleData.privacy || 'private';
+    const sharedWith = circleData.sharedWith || [];
+    
     // Get all connections of the user who added the place (both directions)
     const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
       db.collection(COLLECTIONS.CONNECTIONS)
@@ -113,31 +161,105 @@ const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedBy
 
     const batch = db.batch();
     const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
+    let updatedConnectionsCount = 0;
     
     allConnections.forEach(doc => {
+      const connectionData = doc.data();
       const connectionRef = doc.ref;
-      const activity = {
-        type: 'place',
-        entityId: placeId,
-        circleId: circleId,
-        placeName: placeName || 'Unknown Place',
-        circleName: circleName || 'Unknown Circle',
-        createdAt: new Date().toISOString(),
-        viewedAt: null // Track when this specific activity was viewed
-      };
       
-      // Update connection with new activity
-      // Don't persist hasRecentPlace - it will be calculated dynamically
-      batch.update(connectionRef, {
-        hasNewActivity: true,
-        // hasRecentPlace: true, // REMOVED - calculated dynamically in getConnections
-        recentActivity: admin.firestore.FieldValue.arrayUnion(activity),
-        updatedAt: new Date().toISOString()
-      });
+      // Determine the other user's ID in this connection
+      const otherUserId = connectionData.userId === addedByUserId 
+        ? connectionData.connectedUserId 
+        : connectionData.userId;
+      
+      // Check if this connection should see the activity based on circle privacy
+      let shouldShowActivity = false;
+      
+      if (circlePrivacy === 'public') {
+        // Public circles - all connections see the activity
+        shouldShowActivity = true;
+      } else if (circlePrivacy === 'myNetwork') {
+        // My Network circles - all connections see the activity
+        shouldShowActivity = true;
+      } else if (circlePrivacy === 'private') {
+        // Private circles - only if explicitly shared with this connection
+        shouldShowActivity = sharedWith.includes(otherUserId);
+      }
+      
+      // Only update connections who should see this activity
+      if (shouldShowActivity) {
+        const activity = {
+          type: 'place',
+          entityId: placeId,
+          circleId: circleId,
+          placeName: placeName || 'Unknown Place',
+          circleName: circleName || 'Unknown Circle',
+          createdAt: new Date().toISOString(),
+          viewedAt: null // Track when this specific activity was viewed
+        };
+        
+        // Update connection with new activity
+        // Don't persist hasRecentPlace - it will be calculated dynamically
+        batch.update(connectionRef, {
+          hasNewActivity: true,
+          // hasRecentPlace: true, // REMOVED - calculated dynamically in getConnections
+          recentActivity: admin.firestore.FieldValue.arrayUnion(activity),
+          updatedAt: new Date().toISOString()
+        });
+        
+        updatedConnectionsCount++;
+      }
     });
 
     await batch.commit();
-    console.log(`Tracked place addition activity for ${allConnections.length} connections`);
+    console.log(`Tracked place addition activity for ${updatedConnectionsCount} connections (out of ${allConnections.length} total connections)`);
+    
+    // Send real-time SSE events to connections who should see this activity
+    allConnections.forEach(doc => {
+      const connectionData = doc.data();
+      const otherUserId = connectionData.userId === addedByUserId 
+        ? connectionData.connectedUserId 
+        : connectionData.userId;
+      
+      // Check if this connection should see the activity based on circle privacy  
+      let shouldShowActivity = false;
+      if (circlePrivacy === 'public' || circlePrivacy === 'myNetwork') {
+        shouldShowActivity = true;
+      } else if (circlePrivacy === 'private') {
+        shouldShowActivity = sharedWith.includes(otherUserId);
+      }
+      
+      if (shouldShowActivity) {
+        // Send place added event
+        SSEService.sendEvent(otherUserId, {
+          type: 'place_added',
+          data: {
+            placeId: placeId,
+            placeName: placeName || 'Unknown Place',
+            circleId: circleId,
+            circleName: circleName || 'Unknown Circle',
+            addedByUserId: addedByUserId,
+            connectionId: doc.id,
+            timestamp: new Date().toISOString()
+          }
+        });
+        
+        // Also send connection activity event
+        SSEService.sendEvent(otherUserId, {
+          type: 'connection_activity',
+          data: {
+            connectionId: doc.id,
+            activityType: 'place',
+            entityId: placeId,
+            entityName: placeName || 'Unknown Place',
+            circleId: circleId,
+            circleName: circleName || 'Unknown Circle',
+            timestamp: new Date().toISOString()
+          }
+        });
+      }
+    });
+    
   } catch (error) {
     console.error('Error tracking place addition:', error);
   }
@@ -267,59 +389,113 @@ const getConnectionsWithStats = async (userId) => {
           totalPlaces += (circleData.places || []).length;
         }
         
-        // Get the current user's lastLogin to check for new places since then
-        const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
-        const lastLogin = currentUserDoc.exists ? currentUserDoc.data().lastLogin : null;
-        
-        // Check if user added a place since the current user's last login
+        // Check for recent activity using real-time SSE approach (no lastLogin dependency)
+        // Show activity for places added within the last 24 hours
         let hasRecentPlace = false;
+        const twentyFourHoursAgo = new Date();
+        twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
         
-        if (lastLogin) {
-          const lastLoginDate = new Date(lastLogin);
-          hasRecentPlace = connectionData.recentActivity?.some(activity => 
+        if (connectionData.recentActivity && connectionData.recentActivity.length > 0) {
+          hasRecentPlace = connectionData.recentActivity.some(activity => 
             activity.type === 'place' && 
-            new Date(activity.createdAt) > lastLoginDate
-          ) || false;
-          console.log(`📅 Activity check - places since ${lastLogin}: ${hasRecentPlace}`);
+            new Date(activity.createdAt) > twentyFourHoursAgo
+          );
+          console.log(`📅 SSE Activity check - recent places within 24h: ${hasRecentPlace}`);
         } else {
-          // No lastLogin, don't show activity indicators
-          console.log(`⚠️ No lastLogin for user ${userId}, no activity indicators`);
-          hasRecentPlace = false;
+          console.log(`📅 No recent activity found for connection ${doc.id}`);
         }
+        
+        // Also check for recent circle creation
+        const hasRecentCircle = connectionData.recentActivity?.some(activity => 
+          activity.type === 'circle' && 
+          new Date(activity.createdAt) > twentyFourHoursAgo
+        ) || false;
+        
+        // Show activity indicator for either places or circles
+        const hasAnyRecentActivity = hasRecentPlace || hasRecentCircle;
+        console.log(`📅 Combined activity check - places: ${hasRecentPlace}, circles: ${hasRecentCircle}, total: ${hasAnyRecentActivity}`);
         
         // Properly serialize the connection document
         const serializedConnection = serializeDoc(doc);
         const serializedUser = serializeDoc(userDoc);
+        
+        // Get last message info for this connection
+        let lastMessageAt = null;
+        let lastMessageSenderId = null;
+        let hasRecentMessage = false;
+        
+        // Find conversations between current user and connected user
+        const conversationQuery1 = db.collection(COLLECTIONS.CONVERSATIONS)
+          .where('type', '==', 'direct')
+          .where('participants', 'array-contains', userId)
+          .get();
+          
+        const conversationSnapshot = await conversationQuery1;
+        
+        // Filter to find conversation with this specific connected user
+        const conversation = conversationSnapshot.docs.find(doc => {
+          const data = doc.data();
+          return data.participants.includes(connectedUserId);
+        });
+        
+        if (conversation) {
+          const convData = conversation.data();
+          if (convData.lastMessageTime) {
+            lastMessageAt = convData.lastMessageTime;
+            lastMessageSenderId = convData.lastMessageSenderId || null;
+            
+            // Check if message is recent (within last 7 days)
+            const messageDate = new Date(convData.lastMessageTime);
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            hasRecentMessage = messageDate > sevenDaysAgo;
+          }
+        }
         
         // Ensure all fields have defaults for backwards compatibility
         connections.push({
           ...serializedConnection,
           connectedUser: serializedUser,
           totalPlaces: totalPlaces,
-          hasRecentPlace: hasRecentPlace,
+          hasRecentPlace: hasAnyRecentActivity,
           viewCount: serializedConnection.viewCount || 0,
           recentActivity: serializedConnection.recentActivity || [],
           hasNewActivity: serializedConnection.hasNewActivity || false,
-          lastViewedAt: serializedConnection.lastViewedAt || null
+          lastViewedAt: serializedConnection.lastViewedAt || null,
+          lastMessageAt: lastMessageAt,
+          lastMessageSenderId: lastMessageSenderId,
+          hasRecentMessage: hasRecentMessage
         });
       }
     }
 
-    // Sort connections by criteria
+    // Sort connections by criteria - messages first, then activity
     connections.sort((a, b) => {
-      // First priority: view count
-      if (a.viewCount !== b.viewCount) {
+      // First priority: recent messages (most recent first)
+      if (a.lastMessageAt && b.lastMessageAt) {
+        // Both have messages - sort by most recent
+        return new Date(b.lastMessageAt) - new Date(a.lastMessageAt);
+      } else if (a.lastMessageAt) {
+        return -1; // a has messages, b doesn't - a comes first
+      } else if (b.lastMessageAt) {
+        return 1; // b has messages, a doesn't - b comes first
+      }
+      
+      // Second priority: recent activity (places or circles)
+      const aHasActivity = a.hasRecentPlace || a.hasNewActivity;
+      const bHasActivity = b.hasRecentPlace || b.hasNewActivity;
+      if (aHasActivity !== bHasActivity) {
+        return aHasActivity ? -1 : 1;
+      }
+      
+      // Third priority: view count (only if user has viewed them)
+      if ((a.viewCount > 0 || b.viewCount > 0) && a.viewCount !== b.viewCount) {
         return b.viewCount - a.viewCount;
       }
       
-      // Second priority: total places count
+      // Fourth priority: total places count
       if (a.totalPlaces !== b.totalPlaces) {
         return b.totalPlaces - a.totalPlaces;
-      }
-      
-      // Third priority: recent place activity
-      if (a.hasRecentPlace !== b.hasRecentPlace) {
-        return a.hasRecentPlace ? -1 : 1;
       }
       
       // Final: alphabetical by name
@@ -470,12 +646,112 @@ const trackPlaceView = async (viewerUserId, placeId, connectionUserId) => {
   }
 };
 
+// Track when a user likes a circle
+const trackCircleLiked = async (circleId, likedByUserId, circleOwnerId) => {
+  try {
+    // Don't track if user likes their own circle
+    if (likedByUserId === circleOwnerId) {
+      return;
+    }
+
+    // Get circle details
+    const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(circleId).get();
+    let circleName = 'Unknown Circle';
+    
+    if (circleDoc.exists) {
+      const circleData = circleDoc.data();
+      circleName = circleData.name || 'Unknown Circle';
+    }
+
+    // Create activity record
+    await createActivity(
+      'circle_liked',
+      likedByUserId,
+      'circle',
+      circleId,
+      circleName,
+      {
+        circleId: circleId,
+        circleName: circleName,
+        likedByUserId: likedByUserId
+      }
+    );
+
+    // Send real-time notification to circle owner
+    SSEService.sendEvent(circleOwnerId, {
+      type: 'circle_liked',
+      data: {
+        circleId: circleId,
+        circleName: circleName,
+        likedByUserId: likedByUserId,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+    console.log(`Tracked circle like activity: ${likedByUserId} liked circle ${circleId}`);
+  } catch (error) {
+    console.error('Error tracking circle like:', error);
+  }
+};
+
+// Track when a user comments on a circle
+const trackCircleCommented = async (circleId, commentedByUserId, circleOwnerId, commentText) => {
+  try {
+    // Don't track if user comments on their own circle
+    if (commentedByUserId === circleOwnerId) {
+      return;
+    }
+
+    // Get circle details
+    const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(circleId).get();
+    let circleName = 'Unknown Circle';
+    
+    if (circleDoc.exists) {
+      const circleData = circleDoc.data();
+      circleName = circleData.name || 'Unknown Circle';
+    }
+
+    // Create activity record
+    await createActivity(
+      'circle_commented',
+      commentedByUserId,
+      'circle',
+      circleId,
+      circleName,
+      {
+        circleId: circleId,
+        circleName: circleName,
+        commentedByUserId: commentedByUserId,
+        commentText: commentText.substring(0, 100) // Truncate long comments
+      }
+    );
+
+    // Send real-time notification to circle owner
+    SSEService.sendEvent(circleOwnerId, {
+      type: 'circle_commented',
+      data: {
+        circleId: circleId,
+        circleName: circleName,
+        commentedByUserId: commentedByUserId,
+        commentText: commentText.substring(0, 100),
+        timestamp: new Date().toISOString()
+      }
+    });
+
+    console.log(`Tracked circle comment activity: ${commentedByUserId} commented on circle ${circleId}`);
+  } catch (error) {
+    console.error('Error tracking circle comment:', error);
+  }
+};
+
 module.exports = {
   trackCircleCreated,
   trackPlaceAdded,
   trackConnectionView,
   trackCircleView,
   trackPlaceView,
+  trackCircleLiked,
+  trackCircleCommented,
   clearActivityNotification,
   getConnectionsWithStats,
   cleanupOldActivity

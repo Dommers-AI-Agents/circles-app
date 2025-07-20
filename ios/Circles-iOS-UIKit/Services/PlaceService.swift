@@ -73,15 +73,11 @@ class PlaceService {
     // MARK: - Fetch Places
     
     func fetchPlacesByCircleId(circleId: String, completion: @escaping (Result<[Place], Error>) -> Void) {
-        print("🔍 PlaceService: About to fetch places for circleId: \(circleId)")
-        
         let apiCompletion = createAPICompletion { (result: Result<PlacesResponse, Error>) in
             switch result {
             case .success(let response):
-                print("🔍 PlaceService: Successfully fetched \(response.places.count) places for circleId: \(circleId)")
                 completion(.success(response.places))
             case .failure(let error):
-                print("🔍 PlaceService: Failed to fetch places for circleId: \(circleId), error: \(error)")
                 completion(.failure(error))
             }
         }
@@ -89,6 +85,29 @@ class PlaceService {
         APIService.shared.request(
             endpoint: "circles/\(circleId)/places",
             method: .get,
+            requiresAuth: true,
+            completion: apiCompletion
+        )
+    }
+    
+    func fetchPlacesByMultipleCircles(circleIds: [String], completion: @escaping (Result<[Place], Error>) -> Void) {
+        let body: [String: Any] = [
+            "circleIds": circleIds
+        ]
+        
+        let apiCompletion = createAPICompletion { (result: Result<PlacesResponse, Error>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.places))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+        
+        APIService.shared.request(
+            endpoint: "places/batch",
+            method: .post,
+            body: body,
             requiresAuth: true,
             completion: apiCompletion
         )
@@ -151,7 +170,7 @@ class PlaceService {
         )
     }
     
-    func createPlace(name: String, description: String?, address: String, category: PlaceCategory, customCategory: String? = nil, subcategory: String? = nil, circleId: String, privacy: PlacePrivacy = .followCirclePrivacy, website: String? = nil, phone: String? = nil, tags: [String]? = nil, photos: [Data]? = nil, photoUrls: [String]? = nil, location: CLLocationCoordinate2D? = nil, googlePlaceId: String? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
+    func createPlace(name: String, description: String?, address: String, category: PlaceCategory, customCategory: String? = nil, subcategory: String? = nil, circleId: String, privacy: PlacePrivacy = .followCirclePrivacy, website: String? = nil, phone: String? = nil, tags: [String]? = nil, photos: [Data]? = nil, photoUrls: [String]? = nil, location: CLLocationCoordinate2D? = nil, googlePlaceId: String? = nil, privateNotes: String? = nil, publicNotes: String? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
         
         // Use provided location or geocode the address
         if let providedLocation = location {
@@ -168,7 +187,8 @@ class PlaceService {
                     phone: phone,
                     description: description,
                     circleId: circleId,
-                    notes: nil,
+                    notes: privateNotes,
+                    publicNotes: publicNotes,
                     googlePlaceId: googlePlaceId,
                     preUploadedPhotoUrls: photoUrls,
                     completion: completion
@@ -192,6 +212,8 @@ class PlaceService {
                 tags: tags,
                 photos: photos,
                 photoUrls: photoUrls,
+                privateNotes: privateNotes,
+                publicNotes: publicNotes,
                 completion: completion
             )
         } else {
@@ -214,6 +236,8 @@ class PlaceService {
                         tags: tags,
                         photos: photos,
                         photoUrls: photoUrls,
+                        privateNotes: privateNotes,
+                        publicNotes: publicNotes,
                         completion: completion
                     )
                 case .failure(let error):
@@ -223,7 +247,7 @@ class PlaceService {
         }
     }
     
-    private func continueCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photos: [Data]?, photoUrls: [String]?, completion: @escaping (Result<Place, Error>) -> Void) {
+    private func continueCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photos: [Data]?, photoUrls: [String]?, privateNotes: String?, publicNotes: String?, completion: @escaping (Result<Place, Error>) -> Void) {
         // If we already have photo URLs, use them directly
         if let urls = photoUrls, !urls.isEmpty {
             Logger.debug("Using \(urls.count) pre-uploaded photo URLs")
@@ -241,6 +265,8 @@ class PlaceService {
                 phone: phone,
                 tags: tags,
                 photoUrls: urls,
+                privateNotes: privateNotes,
+                publicNotes: publicNotes,
                 completion: completion
             )
         }
@@ -265,6 +291,8 @@ class PlaceService {
                         phone: phone,
                         tags: tags,
                         photoUrls: photoUrls,
+                        privateNotes: privateNotes,
+                        publicNotes: publicNotes,
                         completion: completion
                     )
                 case .failure(let error):
@@ -285,6 +313,8 @@ class PlaceService {
                         phone: phone,
                         tags: tags,
                         photoUrls: nil,
+                        privateNotes: privateNotes,
+                        publicNotes: publicNotes,
                         completion: completion
                     )
                 }
@@ -306,12 +336,24 @@ class PlaceService {
                 phone: phone,
                 tags: tags,
                 photoUrls: nil,
+                privateNotes: privateNotes,
+                publicNotes: publicNotes,
                 completion: completion
             )
         }
     }
     
-    private func performCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photoUrls: [String]?, completion: @escaping (Result<Place, Error>) -> Void) {
+    private func performCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photoUrls: [String]?, privateNotes: String?, publicNotes: String?, completion: @escaping (Result<Place, Error>) -> Void) {
+        
+        // Validate coordinates before sending to backend
+        guard location.latitude >= -90 && location.latitude <= 90 &&
+              location.longitude >= -180 && location.longitude <= 180 &&
+              !(location.longitude == -180 && location.latitude == -180) &&
+              !(location.longitude == 0 && location.latitude == 0) else {
+            Logger.error("PlaceService: Invalid coordinates detected: lat=\(location.latitude), lng=\(location.longitude)")
+            completion(.failure(PlaceError.invalidLocation))
+            return
+        }
         
         var body: [String: Any] = [
             "name": name,
@@ -330,7 +372,21 @@ class PlaceService {
         }
         
         if let customCategory = customCategory {
-            body["customCategoryId"] = customCategory
+            // Debug logging to track custom category values
+            print("🔍 PlaceService: Setting customCategoryId = '\(customCategory)'")
+            print("🔍 Category: \(category.rawValue), Subcategory: \(subcategory ?? "nil")")
+            print("🔍 CircleId: \(circleId)")
+            print("🔍 Stack trace:")
+            Thread.callStackSymbols.prefix(10).forEach { print("  \($0)") }
+            
+            if customCategory.contains("@") || (customCategory.components(separatedBy: " ").count == 2 && customCategory != "Other") {
+                print("⚠️ WARNING: Suspicious customCategoryId value: '\(customCategory)'")
+                print("⚠️ This looks like user data, not a category name!")
+                print("⚠️ BLOCKING: Not sending suspicious customCategoryId to backend")
+                // Don't set customCategoryId if it looks like user data
+            } else {
+                body["customCategoryId"] = customCategory
+            }
         }
         
         if let subcategory = subcategory {
@@ -351,6 +407,14 @@ class PlaceService {
         
         if let photoUrls = photoUrls, !photoUrls.isEmpty {
             body["photos"] = photoUrls
+        }
+        
+        if let privateNotes = privateNotes {
+            body["privateNotes"] = privateNotes
+        }
+        
+        if let publicNotes = publicNotes {
+            body["publicNotes"] = publicNotes
         }
         
         APIService.shared.request(
@@ -390,7 +454,7 @@ class PlaceService {
     
     // MARK: - Add Place from POI
     
-    func addPlaceFromPOI(name: String, address: String, location: GeoLocation?, category: PlaceCategory, website: String? = nil, phone: String? = nil, description: String? = nil, circleId: String, notes: String?, googlePlaceId: String? = nil, preUploadedPhotoUrls: [String]? = nil, rating: Double? = nil, userRatingsTotal: Int? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
+    func addPlaceFromPOI(name: String, address: String, location: GeoLocation?, category: PlaceCategory, website: String? = nil, phone: String? = nil, description: String? = nil, circleId: String, notes: String?, publicNotes: String? = nil, googlePlaceId: String? = nil, preUploadedPhotoUrls: [String]? = nil, rating: Double? = nil, userRatingsTotal: Int? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
         Logger.debug("PlaceService.addPlaceFromPOI called with name: \(name), googlePlaceId: \(googlePlaceId ?? "nil"), photos: \(preUploadedPhotoUrls?.count ?? 0)")
         
         var body: [String: Any] = [
@@ -402,6 +466,19 @@ class PlaceService {
         ]
         
         if let location = location {
+            // Validate coordinates before sending to backend
+            let longitude = location.coordinates[0]
+            let latitude = location.coordinates[1]
+            
+            guard latitude >= -90 && latitude <= 90 &&
+                  longitude >= -180 && longitude <= 180 &&
+                  !(longitude == -180 && latitude == -180) &&
+                  !(longitude == 0 && latitude == 0) else {
+                Logger.error("PlaceService: Invalid coordinates in addPlaceFromPOI: lat=\(latitude), lng=\(longitude)")
+                completion(.failure(PlaceError.invalidLocation))
+                return
+            }
+            
             body["location"] = [
                 "type": location.type,
                 "coordinates": location.coordinates
@@ -410,6 +487,10 @@ class PlaceService {
         
         if let notes = notes {
             body["privateNotes"] = notes
+        }
+        
+        if let publicNotes = publicNotes {
+            body["publicNotes"] = publicNotes
         }
         
         if let website = website {
@@ -522,10 +603,9 @@ class PlaceService {
                                         switch uploadResult {
                                         case .success(let imageUrl):
                                             collectedImageUrls.append(imageUrl)
-                                            print("✅ PlaceService: Google Places photo uploaded successfully: \(imageUrl)")
+                                            // Photo uploaded successfully
                                         case .failure(let error):
-                                            print("❌ PlaceService: Failed to upload Google Places photo: \(error)")
-                                            print("⚠️ PlaceService: Will continue place creation without this image")
+                                            print("⚠️ Failed to upload place photo, continuing without it")
                                             
                                             // Check if it's specifically a server error
                                             if let apiError = error as? APIError, case .serverError = apiError {
@@ -536,11 +616,11 @@ class PlaceService {
                                         imageCollectionGroup.leave()
                                     }
                                 } else {
-                                    print("❌ PlaceService: Failed to convert Google Places photo to JPEG")
+                                    // Failed to convert photo
                                     imageCollectionGroup.leave()
                                 }
                             case .failure(let error):
-                                print("❌ PlaceService: Failed to load Google Places photo: \(error)")
+                                // Failed to load photo
                                 imageCollectionGroup.leave()
                             }
                         }
@@ -549,7 +629,7 @@ class PlaceService {
                         imageCollectionGroup.leave()
                     }
                 case .failure(let error):
-                    print("❌ PlaceService: Failed to fetch Google Place details: \(error)")
+                    // Failed to fetch place details
                     imageCollectionGroup.leave()
                 }
             }
@@ -578,7 +658,7 @@ class PlaceService {
                 print("🔧 PlaceService: If images aren't uploading, check Firebase Storage configuration")
             }
             
-            print("📤 PlaceService: About to create place with \(body.keys.count) fields")
+            // Create the place with collected data
             
             // Create the place with collected images (or without if upload failed)
             self.createPlaceWithBody(body, completion: completion)
@@ -610,7 +690,6 @@ class PlaceService {
                     }
                     completion(.success(response.place))
                 case .failure(let error):
-                    print("❌ PlaceService: Failed to create place: \(error)")
                     completion(.failure(error))
                 }
             }
@@ -695,7 +774,20 @@ class PlaceService {
             }
             
             if let customCategory = customCategory {
-                body["customCategoryId"] = customCategory
+                // Debug logging to track custom category values during updates
+                print("🔍 PlaceService UPDATE: Setting customCategoryId = '\(customCategory)'")
+                print("🔍 Place ID: \(id)")
+                print("🔍 Stack trace:")
+                Thread.callStackSymbols.prefix(10).forEach { print("  \($0)") }
+                
+                if customCategory.contains("@") || (customCategory.components(separatedBy: " ").count == 2 && customCategory != "Other") {
+                    print("⚠️ WARNING: Suspicious customCategoryId value during update: '\(customCategory)'")
+                    print("⚠️ This looks like user data, not a category name!")
+                    print("⚠️ BLOCKING: Not sending suspicious customCategoryId to backend")
+                    // Don't set customCategoryId if it looks like user data
+                } else {
+                    body["customCategoryId"] = customCategory
+                }
             }
             
             if let privacy = privacy {
@@ -1112,7 +1204,6 @@ class PlaceService {
                     print("✅ PlaceService: Received \(response.comments.count) comments")
                     completion(.success(response.comments))
                 case .failure(let error):
-                    print("❌ PlaceService: Failed to fetch comments: \(error)")
                     completion(.failure(error))
                 }
             }
@@ -1134,7 +1225,6 @@ class PlaceService {
                     print("✅ PlaceService: Comment added successfully with ID: \(response.comment.id)")
                     completion(.success(response.comment))
                 case .failure(let error):
-                    print("❌ PlaceService: Failed to add comment: \(error)")
                     completion(.failure(error))
                 }
             }

@@ -1,9 +1,16 @@
 import UIKit
 
+// MARK: - ActivityFeedCellDelegate
+protocol ActivityFeedCellDelegate: AnyObject {
+    func didTapUserProfile(user: User)
+}
+
 class ActivityFeedCell: UITableViewCell {
     
     // MARK: - Properties
     static let identifier = "ActivityFeedCell"
+    weak var delegate: ActivityFeedCellDelegate?
+    private var currentActivity: Activity?
     
     // MARK: - UI Elements
     private let containerView: UIView = {
@@ -25,6 +32,7 @@ class ActivityFeedCell: UITableViewCell {
         imageView.clipsToBounds = true
         imageView.backgroundColor = Constants.Colors.lightGray
         imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.isUserInteractionEnabled = true
         return imageView
     }()
     
@@ -81,6 +89,10 @@ class ActivityFeedCell: UITableViewCell {
         backgroundColor = .clear
         selectionStyle = .none
         
+        // Add tap gesture to avatar
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(avatarTapped))
+        avatarImageView.addGestureRecognizer(tapGesture)
+        
         contentView.addSubview(containerView)
         containerView.addSubview(avatarImageView)
         containerView.addSubview(activityLabel)
@@ -127,6 +139,9 @@ class ActivityFeedCell: UITableViewCell {
     
     // MARK: - Configuration
     func configure(with activity: Activity) {
+        // Store the current activity
+        currentActivity = activity
+        
         // Configure avatar
         if let actor = activity.actor {
             avatarImageView.image = UIImage(systemName: "person.circle.fill")
@@ -184,6 +199,14 @@ class ActivityFeedCell: UITableViewCell {
         }
     }
     
+    // MARK: - Actions
+    @objc private func avatarTapped() {
+        guard let activity = currentActivity,
+              let actor = activity.actor else { return }
+        
+        delegate?.didTapUserProfile(user: actor)
+    }
+    
     // MARK: - Reuse
     override func prepareForReuse() {
         super.prepareForReuse()
@@ -192,5 +215,7 @@ class ActivityFeedCell: UITableViewCell {
         placeImageView.isHidden = true
         commentLabel.isHidden = true
         commentLabel.text = nil
+        currentActivity = nil
+        delegate = nil
     }
 }

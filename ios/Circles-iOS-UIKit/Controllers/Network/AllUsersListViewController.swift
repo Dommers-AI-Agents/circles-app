@@ -1,5 +1,6 @@
 import UIKit
 
+
 class AllUsersListViewController: UIViewController {
     
     // MARK: - UI Elements
@@ -574,6 +575,33 @@ extension AllUsersListViewController: AllUsersCellDelegate {
         tableView.reloadData()
     }
     
+    private func updateUserWithServerData(userId: String, updatedUser: User) {
+        // Update in all user arrays with server data
+        if let index = allUsers.firstIndex(where: { $0.id == userId }) {
+            allUsers[index] = updatedUser
+        }
+        
+        if let index = pendingIncomingUsers.firstIndex(where: { $0.id == userId }) {
+            pendingIncomingUsers[index] = updatedUser
+        }
+        
+        if let index = pendingOutgoingUsers.firstIndex(where: { $0.id == userId }) {
+            pendingOutgoingUsers[index] = updatedUser
+        }
+        
+        if let index = connectedUsers.firstIndex(where: { $0.id == userId }) {
+            connectedUsers[index] = updatedUser
+        }
+        
+        if let index = nonConnectedUsers.firstIndex(where: { $0.id == userId }) {
+            nonConnectedUsers[index] = updatedUser
+        }
+        
+        // Refresh the table view to update the UI
+        filterUsers()
+        tableView.reloadData()
+    }
+    
     private func createUpdatedUser(from user: User, isFollowing: Bool) -> User {
         return user.copy(isFollowing: isFollowing)
     }
@@ -845,14 +873,20 @@ extension AllUsersListViewController: AllUsersCellDelegate {
             endpoint: endpoint,
             method: .post,
             requiresAuth: true
-        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
+        ) { [weak self] (result: Result<FollowResponse, APIError>) in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 
                 switch result {
-                case .success:
+                case .success(let response):
                     print("✅ Successfully \(action)ed user: \(user.displayName)")
-                    // UI is already updated optimistically
+                    
+                    // Use the server response to update user data instead of optimistic update
+                    if let updatedUser = response.user {
+                        // Update the user with the server response data
+                        self.updateUserWithServerData(userId: user.id, updatedUser: updatedUser)
+                    }
+                    // If no user data in response, keep the optimistic update
                     
                 case .failure(let error):
                     print("❌ Failed to \(action) user: \(error)")

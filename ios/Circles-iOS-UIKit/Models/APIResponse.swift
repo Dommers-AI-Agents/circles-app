@@ -11,3 +11,10 @@ struct SimpleAPIResponse: Codable {
     let success: Bool
     let message: String?
 }
+
+// Tutorial status response
+struct TutorialStatusResponse: Codable {
+    let success: Bool
+    let hasCompletedTutorial: Bool
+    let onboardingCompleted: Bool
+}

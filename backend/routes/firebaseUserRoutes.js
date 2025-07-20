@@ -24,7 +24,10 @@ const {
   removePinnedPlace,
   getPinnedPlaces,
   reorderPinnedPlaces,
-  recalculateFollowerCounts
+  recalculateFollowerCounts,
+  getTutorialStatus,
+  completeTutorial,
+  retryOnboarding
 } = require('../controllers/firebaseUserController');
 const { protect } = require('../middleware/firebaseAuth');
 
@@ -105,6 +108,17 @@ router.route('/me/pinned-places/reorder')
 
 router.route('/me/pinned-places/:placeId')
   .delete(removePinnedPlace);
+
+// Tutorial routes
+router.route('/me/tutorial-status')
+  .get(getTutorialStatus);
+
+router.route('/me/complete-tutorial')
+  .post(completeTutorial);
+
+// Onboarding retry route
+router.route('/me/complete-onboarding')
+  .post(retryOnboarding);
 
 // Recalculate follower counts
 router.route('/:id/recalculate-counts')

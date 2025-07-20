@@ -88,7 +88,17 @@ class APIService {
     private let keychainService = KeychainService.shared
     
     // Logging
-    private var isLoggingEnabled = true
+    public enum APILogLevel: Int, Comparable {
+        case none = 0
+        case errors = 1
+        case minimal = 2
+        case verbose = 3
+        
+        public static func < (lhs: APILogLevel, rhs: APILogLevel) -> Bool {
+            return lhs.rawValue < rhs.rawValue
+        }
+    }
+    private var logLevel: APILogLevel = .errors  // Only log errors by default
     
     // Rate limiting
     private var rateLimitRemaining: Int = 100
@@ -158,7 +168,7 @@ class APIService {
     
     func configure(environment: APIEnvironment, loggingEnabled: Bool = true) {
         self.environment = environment
-        self.isLoggingEnabled = loggingEnabled
+        self.logLevel = loggingEnabled ? .minimal : .errors
     }
     
     func setAuthToken(_ token: String) {
@@ -189,6 +199,11 @@ class APIService {
         pendingRequestTimers.removeAll()
         
         Logger.debug("APIService: Cleared all pending requests and timers")
+    }
+    
+    // MARK: - Logging Configuration
+    func setLogLevel(_ level: APILogLevel) {
+        self.logLevel = level
     }
     
     // MARK: - Request Deduplication
@@ -244,7 +259,7 @@ class APIService {
             if currentDate < resetDate {
                 // Wait until rate limit resets
                 let delay = resetDate.timeIntervalSince(currentDate)
-                if isLoggingEnabled {
+                if logLevel >= .minimal {
                     Logger.warning("Rate limit almost exceeded. Delaying request for \(Int(delay)) seconds.")
                 }
                 
@@ -285,8 +300,18 @@ class APIService {
         retryCount: Int = 0,
         completion: @escaping (Result<T, APIError>) -> Void
     ) {
+        if logLevel == .verbose {
+            print("📡 API APIService: Starting request")
+            print("📡 API APIService: Endpoint: \(endpoint)")
+            print("📡 API APIService: Method: \(method.rawValue)")
+            print("📡 API APIService: Requires Auth: \(requiresAuth)")
+        }
+        
         // Build URL with query parameters
         guard var urlComponents = URLComponents(string: "\(environment.baseURL)/\(endpoint)") else {
+            if logLevel >= .errors {
+                print("❌ ERROR APIService: Invalid URL for endpoint: \(endpoint)")
+            }
             completion(.failure(.invalidURL))
             return
         }
@@ -312,10 +337,37 @@ class APIService {
         
         // Add auth token if required and available
         if requiresAuth {
+            if logLevel == .verbose {
+                print("🔐 AUTH APIService: Checking auth token for \(endpoint)")
+            }
+            
+            // Try to get token from keychain if not in memory
+            if authToken == nil {
+                if logLevel == .verbose {
+                    print("🔐 AUTH APIService: No token in memory, checking keychain")
+                }
+                if let token = keychainService.getAuthToken() {
+                    authToken = token
+                    if logLevel == .verbose {
+                        print("🔐 AUTH APIService: Retrieved token from keychain")
+                    }
+                } else {
+                    if logLevel >= .errors {
+                        print("❌ ERROR APIService: Failed to get token from keychain")
+                    }
+                }
+            }
+            
             if let token = authToken {
                 request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-                // Auth token added to request
+                if logLevel == .verbose {
+                    print("✅ SUCCESS APIService: Auth token added to request headers")
+                    print("🔐 AUTH APIService: Token length: \(token.count)")
+                }
             } else {
+                if logLevel >= .errors {
+                    print("❌ ERROR APIService: No auth token available for protected endpoint \(endpoint)")
+                }
                 Logger.warning("APIService: No auth token available for protected endpoint \(endpoint)")
                 completion(.failure(.unauthorized))
                 return
@@ -350,24 +402,50 @@ class APIService {
         }
         
         // Log request details if logging is enabled
-        if isLoggingEnabled {
+        if logLevel == .verbose {
             logRequest(request)
         }
         
         // Execute the request
+        if logLevel == .verbose {
+            print("📡 API APIService: Executing HTTP request to: \(url.absoluteString)")
+        }
         let task = session.dataTask(with: request) { [weak self] data, response, error in
-            guard let self = self else { return }
+            guard let self = self else { 
+                // Can't access instance properties when self is nil
+                print("❌ ERROR APIService: Self deallocated during request")
+                return 
+            }
+            
+            if self.logLevel == .verbose {
+                print("📡 API APIService: Response received for \(endpoint)")
+            }
             
             // Handle network errors
             if let error = error {
+                if self.logLevel >= .errors {
+                    print("❌ ERROR APIService: Network error for \(endpoint): \(error.localizedDescription)")
+                    if self.logLevel == .verbose {
+                        print("❌ ERROR APIService: Error type: \(type(of: error))")
+                        print("❌ ERROR APIService: Error domain: \((error as NSError).domain)")
+                        print("❌ ERROR APIService: Error code: \((error as NSError).code)")
+                    }
+                }
+                
                 let apiError: APIError
                 
                 if let urlError = error as? URLError {
                     switch urlError.code {
                     case .notConnectedToInternet, .networkConnectionLost:
                         apiError = .noInternet
+                        if self.logLevel >= .errors {
+                            print("❌ ERROR APIService: No internet connection")
+                        }
                     default:
                         apiError = .requestFailed(error)
+                        if self.logLevel >= .errors {
+                            print("❌ ERROR APIService: URL error: \(urlError.code)")
+                        }
                     }
                 } else {
                     apiError = .requestFailed(error)
@@ -389,6 +467,12 @@ class APIService {
             
             // Validate HTTP response
             guard let httpResponse = response as? HTTPURLResponse else {
+                if self.logLevel >= .errors {
+                    print("❌ ERROR APIService: Invalid response type for \(endpoint)")
+                    if self.logLevel == .verbose {
+                        print("❌ ERROR APIService: Response type: \(type(of: response))")
+                    }
+                }
                 self.logError(APIError.invalidResponse)
                 
                 // Clean up pending request tracking for GET requests
@@ -403,6 +487,13 @@ class APIService {
                 return
             }
             
+            if self.logLevel == .verbose {
+                print("📡 API APIService: HTTP Status Code: \(httpResponse.statusCode) for \(endpoint)")
+                print("📡 API APIService: Response headers: \(httpResponse.allHeaderFields)")
+            } else if self.logLevel == .minimal {
+                print("📡 API APIService: \(endpoint) - Status: \(httpResponse.statusCode)")
+            }
+            
             // Update rate limiting information if available
             if let remainingString = httpResponse.allHeaderFields["X-RateLimit-Remaining"] as? String,
                let remaining = Int(remainingString),
@@ -412,13 +503,13 @@ class APIService {
                 self.rateLimitRemaining = remaining
                 self.rateLimitReset = Date(timeIntervalSince1970: resetTimestamp)
                 
-                if self.isLoggingEnabled && remaining < 20 {
+                if self.logLevel >= .minimal && remaining < 20 {
                     Logger.warning("Rate limit warning: \(remaining) requests remaining")
                 }
             }
             
             // Log response details if logging is enabled
-            if self.isLoggingEnabled {
+            if self.logLevel == .verbose {
                 self.logResponse(httpResponse, data: data)
             }
             
@@ -429,12 +520,29 @@ class APIService {
                 break
                 
             case 401:
+                if self.logLevel >= .errors {
+                    print("❌ ERROR APIService: 401 Unauthorized for \(endpoint)")
+                }
+                if self.logLevel == .verbose {
+                    print("🔐 AUTH APIService: requiresAuth: \(requiresAuth), hasRefreshToken: \(self.refreshToken != nil), retryCount: \(retryCount)")
+                }
+                
+                if self.logLevel >= .errors, let data = data, let errorString = String(data: data, encoding: .utf8) {
+                    print("❌ ERROR APIService: 401 Response body: \(errorString)")
+                }
+                
                 // Handle unauthorized based on request type
                 if requiresAuth && self.refreshToken != nil && retryCount < 1 {
+                    if self.logLevel >= .minimal {
+                        print("🔐 AUTH APIService: Attempting to refresh token...")
+                    }
                     // Authenticated request with refresh token - try to refresh
                     self.refreshAuthToken { result in
                         switch result {
                         case .success(let newToken):
+                            if self.logLevel >= .minimal {
+                                print("✅ SUCCESS APIService: Token refreshed successfully")
+                            }
                             self.setAuthToken(newToken)
                             // Retry the original request with the new token
                             self.performRequest(
@@ -447,7 +555,10 @@ class APIService {
                                 retryCount: retryCount + 1,
                                 completion: completion
                             )
-                        case .failure:
+                        case .failure(let error):
+                            if self.logLevel >= .errors {
+                                print("❌ ERROR APIService: Token refresh failed: \(error)")
+                            }
                             // Clear tokens on refresh failure
                             self.clearTokens()
                             completion(.failure(.unauthorized))
@@ -455,11 +566,17 @@ class APIService {
                     }
                     return
                 } else if requiresAuth {
+                    if self.logLevel >= .errors {
+                        print("❌ ERROR APIService: No refresh token available, clearing tokens")
+                    }
                     // Authenticated request without refresh capability
                     self.clearTokens()
                     completion(.failure(.unauthorized))
                     return
                 } else {
+                    if self.logLevel >= .errors {
+                        print("❌ ERROR APIService: 401 on non-authenticated request (e.g., login)")
+                    }
                     // Non-authenticated request (like login) - preserve error message
                     // Clean up any pending GET request tracking
                     if method == .get {
@@ -497,7 +614,7 @@ class APIService {
                     let resetDate = Date(timeIntervalSince1970: resetTimestamp)
                     let delay = resetDate.timeIntervalSince(Date())
                     
-                    if self.isLoggingEnabled {
+                    if self.logLevel >= .minimal {
                         Logger.warning("Rate limit exceeded. Retrying in \(Int(delay)) seconds.")
                     }
                     
@@ -556,13 +673,32 @@ class APIService {
             
             // Ensure we have data
             guard let data = data else {
+                if self.logLevel >= .errors {
+                    print("❌ ERROR APIService: No data in response for \(endpoint)")
+                }
                 completion(.failure(.invalidResponse))
                 return
             }
             
+            if self.logLevel == .verbose {
+                print("📡 API APIService: Response data size: \(data.count) bytes for \(endpoint)")
+                
+                // Log raw response for debugging
+                if let jsonString = String(data: data, encoding: .utf8) {
+                    print("📡 API APIService: Raw response preview (first 500 chars): \(String(jsonString.prefix(500)))")
+                }
+            }
+            
             // Parse the data
             do {
+                if self.logLevel == .verbose {
+                    print("📡 API APIService: Attempting to decode response as \(T.self)")
+                }
                 let result = try self.decoder.decode(T.self, from: data)
+                if self.logLevel >= .minimal {
+                    print("✅ SUCCESS APIService: Successfully decoded response for \(endpoint)")
+                }
+                
                 // Remove from pending requests if it was a GET request
                 if method == .get {
                     let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)

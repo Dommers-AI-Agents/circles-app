@@ -8,9 +8,16 @@ const db = getFirestore();
 // @route   GET /api/notifications
 // @access  Private
 exports.getNotifications = async (req, res, next) => {
+  console.log('🚀 NOTIFICATION CONTROLLER: getNotifications called');
+  console.log('🚀 NOTIFICATION CONTROLLER: User ID:', req.user.uid);
+  console.log('🚀 NOTIFICATION CONTROLLER: Query params:', req.query);
+  
   try {
     const userId = req.user.uid;
     const { limit = 50, offset = 0 } = req.query;
+    
+    console.log('🔍 NOTIFICATION CONTROLLER: Fetching notifications');
+    console.log('🔍 NOTIFICATION CONTROLLER: Limit:', limit, 'Offset:', offset);
     
     // Get notifications for the user, sorted by most recent
     const notificationsSnapshot = await db.collection(COLLECTIONS.NOTIFICATIONS)
@@ -20,7 +27,12 @@ exports.getNotifications = async (req, res, next) => {
       .offset(parseInt(offset))
       .get();
     
+    console.log('✅ NOTIFICATION CONTROLLER: Notifications query executed');
+    console.log('✅ NOTIFICATION CONTROLLER: Found', notificationsSnapshot.size, 'notifications');
+    
     const notifications = serializeQuerySnapshot(notificationsSnapshot);
+    
+    console.log('✅ NOTIFICATION CONTROLLER: Sending response with', notifications.length, 'notifications');
     
     res.status(200).json({
       success: true,
@@ -28,7 +40,8 @@ exports.getNotifications = async (req, res, next) => {
       hasMore: notifications.length === parseInt(limit)
     });
   } catch (error) {
-    console.error('Error fetching notifications:', error);
+    console.error('❌ NOTIFICATION CONTROLLER: Error fetching notifications:', error);
+    console.error('❌ NOTIFICATION CONTROLLER: Error stack:', error.stack);
     next(error);
   }
 };

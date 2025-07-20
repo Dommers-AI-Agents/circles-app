@@ -249,6 +249,12 @@ class StreetViewService {
             }
         }
     }
+    
+    // MARK: - Cache Management
+    
+    func clearCache() {
+        imageCache.removeAllObjects()
+    }
 }
 
 // MARK: - Errors

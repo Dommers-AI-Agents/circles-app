@@ -169,9 +169,10 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
     }()
     
     // MARK: - Init
-    init(places: [Place] = [], initialRegion: MKCoordinateRegion? = nil, selectedCategory: UnifiedCategory? = nil) {
+    init(places: [Place] = [], initialRegion: MKCoordinateRegion? = nil, selectedCategory: UnifiedCategory? = nil, selectedConnectionId: String? = nil) {
         self.places = places
         self.selectedCategory = selectedCategory
+        self.selectedConnectionId = selectedConnectionId
         self.filteredPlaces = places
         
         // Calculate initial region
@@ -199,22 +200,51 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
     
     // MARK: - Public Methods
     func updatePlaces(_ newPlaces: [Place]) {
+        // Don't update if we're going from empty to empty (still loading)
+        if self.places.isEmpty && newPlaces.isEmpty {
+            // Keep showing "Loading..." - don't update
+            return
+        }
+        
         self.places = newPlaces
         updateAvailableCategories()
         // Apply existing filters to the new places
         applyFilter()
         // adjustMapRegion is already called in addAnnotationsToMap, no need to call it again
+        
+        // Show place count when places are loaded
+        showPlaceCount()
+    }
+    
+    func hidePlaceCount() {
+        placesCountLabel.isHidden = true
+    }
+    
+    func showPlaceCount() {
+        placesCountLabel.isHidden = false
     }
     
     func updatePlacesWithConnections(_ userPlaces: [Place], connections: [Connection], connectionPlaces: [String: [Place]]) {
+        // Debug logging
+        print("🔍 FullScreenMap: updatePlacesWithConnections called")
+        print("🔍 Connections count: \(connections.count)")
+        for (index, connection) in connections.enumerated() {
+            print("  \(index): \(connection.connectedUser?.displayName ?? "Unknown") - ID: \(connection.connectedUserId)")
+        }
+        print("🔍 Connection places map keys: \(connectionPlaces.keys.sorted())")
+        
         // Combine all places
         var allPlaces = userPlaces
-        for (_, places) in connectionPlaces {
+        for (userId, places) in connectionPlaces {
+            print("  User \(userId) has \(places.count) places")
             allPlaces.append(contentsOf: places)
         }
         
         self.places = allPlaces
-        self.connections = connections
+        // Sort connections alphabetically by display name for consistent ordering
+        self.connections = connections.sorted { 
+            ($0.connectedUser?.displayName ?? "").localizedCaseInsensitiveCompare($1.connectedUser?.displayName ?? "") == .orderedAscending
+        }
         self.connectionPlaces = connectionPlaces
         
         // Reload connection table if visible
@@ -238,6 +268,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
         setupTableView()
         updateAvailableCategories()
         updateFilterButtonTitle()
+        updateConnectionFilterButtonTitle()
         applyFilter()
     }
     
@@ -260,23 +291,26 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
         
         // Add places count label
         view.addSubview(placesCountLabel)
-        // Show place count if we already have places, otherwise show loading
-        if places.isEmpty {
-            placesCountLabel.text = "Loading..."
-        } else {
-            placesCountLabel.text = "\(places.count) places"
-        }
+        // Hide place count initially until places are loaded
+        placesCountLabel.isHidden = true
         
-        // Only add category filter button if NOT in allPlaces mode (to avoid redundancy)
-        if viewMode != .allPlaces {
+        // Add category filter button only if presented modally
+        if isPresentedModally {
             view.addSubview(categoryFilterButton)
             categoryFilterButton.addTarget(self, action: #selector(categoryFilterButtonTapped), for: .touchUpInside)
-        }
-        
-        // Add dropdown containers
-        if viewMode != .allPlaces {
+            
+            // Add dropdown containers
             view.addSubview(dropdownContainer)
             dropdownContainer.addSubview(categoryTableView)
+            
+            // Add connection filter for allPlaces mode
+            if viewMode == .allPlaces {
+                view.addSubview(connectionFilterButton)
+                connectionFilterButton.addTarget(self, action: #selector(connectionFilterButtonTapped), for: .touchUpInside)
+                
+                view.addSubview(connectionDropdownContainer)
+                connectionDropdownContainer.addSubview(connectionTableView)
+            }
         }
         
         // Setup base constraints
@@ -304,36 +338,75 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
             ])
         }
         
-        // Add category table view constraints only if NOT in allPlaces mode
-        if viewMode != .allPlaces {
-            constraints.append(contentsOf: [
-                // Category table view inside dropdown
-                categoryTableView.topAnchor.constraint(equalTo: dropdownContainer.topAnchor),
-                categoryTableView.leadingAnchor.constraint(equalTo: dropdownContainer.leadingAnchor),
-                categoryTableView.trailingAnchor.constraint(equalTo: dropdownContainer.trailingAnchor),
-                categoryTableView.bottomAnchor.constraint(equalTo: dropdownContainer.bottomAnchor)
-            ])
+        NSLayoutConstraint.activate(constraints)
+        
+        // Add category filter constraints only if presented modally
+        if isPresentedModally {
+            if viewMode == .allPlaces {
+                // When showing both filters, position them side by side
+                NSLayoutConstraint.activate([
+                    // Connection filter button - left side with spacing
+                    connectionFilterButton.trailingAnchor.constraint(equalTo: view.centerXAnchor, constant: -8),
+                    connectionFilterButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+                    connectionFilterButton.heightAnchor.constraint(equalToConstant: 32),
+                    connectionFilterButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 140),
+                    
+                    // Category filter button - right side with spacing
+                    categoryFilterButton.leadingAnchor.constraint(equalTo: view.centerXAnchor, constant: 8),
+                    categoryFilterButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+                    categoryFilterButton.heightAnchor.constraint(equalToConstant: 32),
+                    categoryFilterButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 140),
+                    
+                    // Connection dropdown container
+                    connectionDropdownContainer.centerXAnchor.constraint(equalTo: connectionFilterButton.centerXAnchor),
+                    connectionDropdownContainer.topAnchor.constraint(equalTo: connectionFilterButton.bottomAnchor, constant: 8),
+                    connectionDropdownContainer.widthAnchor.constraint(equalToConstant: 200),
+                    
+                    // Connection table view inside dropdown
+                    connectionTableView.topAnchor.constraint(equalTo: connectionDropdownContainer.topAnchor),
+                    connectionTableView.leadingAnchor.constraint(equalTo: connectionDropdownContainer.leadingAnchor),
+                    connectionTableView.trailingAnchor.constraint(equalTo: connectionDropdownContainer.trailingAnchor),
+                    connectionTableView.bottomAnchor.constraint(equalTo: connectionDropdownContainer.bottomAnchor),
+                    
+                    // Category dropdown container
+                    dropdownContainer.centerXAnchor.constraint(equalTo: categoryFilterButton.centerXAnchor),
+                    dropdownContainer.topAnchor.constraint(equalTo: categoryFilterButton.bottomAnchor, constant: 8),
+                    dropdownContainer.widthAnchor.constraint(equalToConstant: 200),
+                    
+                    // Category table view inside dropdown
+                    categoryTableView.topAnchor.constraint(equalTo: dropdownContainer.topAnchor),
+                    categoryTableView.leadingAnchor.constraint(equalTo: dropdownContainer.leadingAnchor),
+                    categoryTableView.trailingAnchor.constraint(equalTo: dropdownContainer.trailingAnchor),
+                    categoryTableView.bottomAnchor.constraint(equalTo: dropdownContainer.bottomAnchor)
+                ])
+                
+                // Create height constraint for connection dropdown
+                connectionDropdownHeightConstraint = connectionDropdownContainer.heightAnchor.constraint(equalToConstant: 0)
+                connectionDropdownHeightConstraint?.isActive = true
+            } else {
+                // Circle mode - only category filter centered
+                NSLayoutConstraint.activate([
+                    // Category filter button - center top
+                    categoryFilterButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+                    categoryFilterButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+                    categoryFilterButton.heightAnchor.constraint(equalToConstant: 32),
+                    
+                    // Dropdown container
+                    dropdownContainer.centerXAnchor.constraint(equalTo: categoryFilterButton.centerXAnchor),
+                    dropdownContainer.topAnchor.constraint(equalTo: categoryFilterButton.bottomAnchor, constant: 8),
+                    dropdownContainer.widthAnchor.constraint(equalToConstant: 200),
+                    
+                    // Category table view inside dropdown
+                    categoryTableView.topAnchor.constraint(equalTo: dropdownContainer.topAnchor),
+                    categoryTableView.leadingAnchor.constraint(equalTo: dropdownContainer.leadingAnchor),
+                    categoryTableView.trailingAnchor.constraint(equalTo: dropdownContainer.trailingAnchor),
+                    categoryTableView.bottomAnchor.constraint(equalTo: dropdownContainer.bottomAnchor)
+                ])
+            }
             
             // Create height constraint for dropdown
             dropdownHeightConstraint = dropdownContainer.heightAnchor.constraint(equalToConstant: 0)
             dropdownHeightConstraint?.isActive = true
-        }
-        
-        NSLayoutConstraint.activate(constraints)
-        
-        // Add category filter constraints if NOT in allPlaces mode
-        if viewMode != .allPlaces {
-            NSLayoutConstraint.activate([
-                // Category filter button - center top
-                categoryFilterButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-                categoryFilterButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
-                categoryFilterButton.heightAnchor.constraint(equalToConstant: 32),
-                
-                // Dropdown container
-                dropdownContainer.centerXAnchor.constraint(equalTo: categoryFilterButton.centerXAnchor),
-                dropdownContainer.topAnchor.constraint(equalTo: categoryFilterButton.bottomAnchor, constant: 8),
-                dropdownContainer.widthAnchor.constraint(equalToConstant: 200)
-            ])
         }
         
         
@@ -548,8 +621,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
         
         // Customize marker appearance based on category
         if let markerView = annotationView {
-            markerView.markerTintColor = categoryColor(for: placeAnnotation.place.category)
-            markerView.glyphImage = UIImage(systemName: categoryIcon(for: placeAnnotation.place.category))
+            markerView.markerTintColor = placeAnnotation.place.category.color
+            markerView.glyphImage = UIImage(systemName: placeAnnotation.place.category.systemIconName)
         }
         
         return annotationView
@@ -657,10 +730,13 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
         // Store the POI annotation for later use
         pendingPOIAnnotation = featureAnnotation
         
+        // Sort circles alphabetically for easy finding
+        let sortedCircles = circles.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        
         // Create and configure the vertical slider picker
         let circlePicker = CirclePickerSliderView()
         circlePicker.delegate = self
-        circlePicker.configure(with: circles)
+        circlePicker.configure(with: sortedCircles)
         
         // Store reference to dismiss later
         currentCirclePicker = circlePicker
@@ -801,83 +877,6 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
         }
     }
     
-    private func categoryColor(for category: PlaceCategory) -> UIColor {
-        switch category {
-        case .restaurant:
-            return UIColor(hex: "#E53E3E") // Red
-        case .cafe:
-            return UIColor(hex: "#DD6B20") // Orange
-        case .bar:
-            return UIColor(hex: "#DD6B20") // Orange
-        case .hotel:
-            return UIColor(hex: "#3182CE") // Blue
-        case .retail:
-            return UIColor(hex: "#805AD5") // Purple
-        case .service:
-            return UIColor(hex: "#38A169") // Green
-        case .attraction:
-            return UIColor(hex: "#D69E2E") // Yellow
-        case .entertainment:
-            return UIColor(hex: "#D69E2E") // Yellow
-        case .healthcare:
-            return UIColor(hex: "#319795") // Teal
-        case .fitness:
-            return UIColor(hex: "#38A169") // Green
-        case .education:
-            return UIColor(hex: "#3182CE") // Blue
-        case .outdoor:
-            return UIColor(hex: "#38A169") // Green
-        case .transport:
-            return UIColor(hex: "#718096") // Gray
-        case .finance:
-            return UIColor(hex: "#805AD5") // Purple
-        case .home:
-            return UIColor(hex: "#4A5568") // Dark Gray
-        case .work:
-            return UIColor(hex: "#2D3748") // Darker Gray
-        case .other:
-            return UIColor(hex: "#38A169") // Green
-        }
-    }
-    
-    private func categoryIcon(for category: PlaceCategory) -> String {
-        switch category {
-        case .restaurant:
-            return "fork.knife"
-        case .cafe:
-            return "cup.and.saucer.fill"
-        case .bar:
-            return "wineglass"
-        case .hotel:
-            return "bed.double.fill"
-        case .retail:
-            return "bag.fill"
-        case .service:
-            return "wrench.and.screwdriver.fill"
-        case .attraction:
-            return "star.fill"
-        case .entertainment:
-            return "ticket.fill"
-        case .healthcare:
-            return "cross.fill"
-        case .fitness:
-            return "figure.walk"
-        case .education:
-            return "graduationcap.fill"
-        case .outdoor:
-            return "leaf.fill"
-        case .transport:
-            return "car.fill"
-        case .finance:
-            return "banknote.fill"
-        case .home:
-            return "house.fill"
-        case .work:
-            return "briefcase.fill"
-        case .other:
-            return "mappin"
-        }
-    }
     
     // MARK: - Actions
     @objc private func closeButtonTapped() {
@@ -999,6 +998,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
     }
     
     private func selectConnection(_ connectionId: String?) {
+        print("🔍 FullScreenMap: selectConnection called with: \(connectionId ?? "nil")")
         selectedConnectionId = connectionId
         updateConnectionFilterButtonTitle()
         applyFilter()
@@ -1014,12 +1014,30 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
     }
     
     private func updateConnectionFilterButtonTitle() {
+        print("🔍 FullScreenMap: updateConnectionFilterButtonTitle called")
+        print("  selectedConnectionId: \(selectedConnectionId ?? "nil")")
+        
         if let connectionId = selectedConnectionId {
             if connectionId == "my_places_only" {
                 connectionFilterButton.setTitle("My Places Only", for: .normal)
-            } else if let connection = connections.first(where: { $0.id == connectionId }) {
-                let userName = connection.connectedUser?.displayName ?? "Unknown"
-                connectionFilterButton.setTitle(userName, for: .normal)
+            } else {
+                // Find the connection where the other user's ID matches
+                let currentUserId = AuthService.shared.getUserId() ?? ""
+                if let connection = connections.first(where: { conn in
+                    conn.otherUserId(currentUserId: currentUserId) == connectionId
+                }) {
+                    let userName = connection.connectedUser?.displayName ?? "Unknown"
+                    print("  Found connection: \(userName) for ID: \(connectionId)")
+                    connectionFilterButton.setTitle(userName, for: .normal)
+                } else {
+                    print("  WARNING: No connection found for ID: \(connectionId)")
+                    print("  Available connections:")
+                    for conn in connections {
+                        let otherUserId = conn.otherUserId(currentUserId: currentUserId)
+                        print("    - \(conn.connectedUser?.displayName ?? "Unknown") (otherUserId: \(otherUserId))")
+                    }
+                    connectionFilterButton.setTitle("Unknown", for: .normal)
+                }
             }
         } else {
             connectionFilterButton.setTitle("All Connections", for: .normal)
@@ -1027,43 +1045,58 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
     }
     
     private func applyFilter() {
-        var filtered = places
+        let currentUserId = AuthService.shared.getUserId() ?? ""
         
-        // Apply connection filter first (only in allPlaces mode)
-        if viewMode == .allPlaces, let connectionId = selectedConnectionId {
-            if connectionId == "my_places_only" {
-                // Show only user's own places
-                let currentUserId = AuthService.shared.getUserId() ?? ""
-                filtered = filtered.filter { $0.addedBy == currentUserId }
-            } else {
-                // Show only places from the selected connection
-                filtered = connectionPlaces[connectionId] ?? []
+        print("🔍 FullScreenMap: applyFilter called")
+        print("  selectedConnectionId: \(selectedConnectionId ?? "nil")")
+        print("  viewMode: \(viewMode)")
+        print("  Total places: \(places.count)")
+        
+        // Start with all places or connection-specific places
+        var placesToFilter = places
+        
+        // Apply connection filter for allPlaces mode
+        if viewMode == .allPlaces {
+            if let connectionId = selectedConnectionId {
+                if connectionId == "my_places_only" {
+                    // Filter to show only user's places
+                    placesToFilter = places.filter { $0.addedBy == currentUserId }
+                    print("  Filtered to user's places: \(placesToFilter.count)")
+                } else if let connPlaces = connectionPlaces[connectionId] {
+                    // Use connection-specific places
+                    placesToFilter = connPlaces
+                    print("  Using connection places for \(connectionId): \(placesToFilter.count) places")
+                } else {
+                    print("  WARNING: No places found for connectionId: \(connectionId)")
+                    print("  Available connectionPlaces keys: \(connectionPlaces.keys.sorted())")
+                }
+                // If nil (All Connections), use all places
             }
         }
         
-        // Then apply category filter
-        if let category = selectedCategory {
-            filtered = filtered.filter { category.matches(place: $0) }
-        }
+        // Apply category filter
+        filteredPlaces = placesToFilter.filtered(by: selectedCategory)
+        print("  Final filtered places: \(filteredPlaces.count)")
         
-        filteredPlaces = filtered
         updatePlacesCount()
         addAnnotationsToMap()
     }
     
     private func updateAvailableCategories() {
-        // Get unique categories from all places, including custom categories
-        var categoriesSet = Set<UnifiedCategory>()
-        for place in places {
-            categoriesSet.insert(UnifiedCategory.from(place: place))
-        }
-        availableCategories = Array(categoriesSet).sorted { $0.displayName < $1.displayName }
+        // Use centralized utility to get unique categories
+        availableCategories = PlaceCategory.uniqueCategories(from: places)
     }
     
     private func updatePlacesCount() {
         let totalPlaces = filteredPlaces.count
         let placesWithLocation = filteredPlaces.filter { $0.location?.clLocation != nil }.count
         let placesWithoutLocation = totalPlaces - placesWithLocation
+        
+        // Don't show "0 places" during initial loading
+        if totalPlaces == 0 && placesCountLabel.text == "Loading..." {
+            // Keep showing Loading...
+            return
+        }
         
         if placesWithoutLocation > 0 {
             placesCountLabel.text = "\(placesWithLocation) of \(totalPlaces) places on map"
@@ -1144,7 +1177,10 @@ extension FullScreenMapViewController: UITableViewDataSource {
                 let connection = connections[indexPath.row - 2]
                 let userName = connection.connectedUser?.displayName ?? "Unknown"
                 cell.textLabel?.text = userName
-                cell.textLabel?.textColor = selectedConnectionId == connection.id ? .systemBlue : .white
+                // Compare with the other user's ID
+                let currentUserId = AuthService.shared.getUserId() ?? ""
+                let otherUserId = connection.otherUserId(currentUserId: currentUserId)
+                cell.textLabel?.textColor = selectedConnectionId == otherUserId ? .systemBlue : .white
             }
             
             cell.backgroundColor = .clear
@@ -1173,7 +1209,10 @@ extension FullScreenMapViewController: UITableViewDelegate {
                 selectConnection("my_places_only") // My places only
             } else {
                 let connection = connections[indexPath.row - 2]
-                selectConnection(connection.id)
+                // Use the other user's ID (not the current user's ID)
+                let currentUserId = AuthService.shared.getUserId() ?? ""
+                let otherUserId = connection.otherUserId(currentUserId: currentUserId)
+                selectConnection(otherUserId)
             }
         }
     }

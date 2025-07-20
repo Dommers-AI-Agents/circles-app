@@ -38,13 +38,16 @@ struct User: Codable, Identifiable {
     // Whether the current user is following this user (for other user profiles)
     let isFollowing: Bool?
     
+    // Flag to identify fake profiles for onboarding
+    let isFakeProfile: Bool?
+    
     enum CodingKeys: String, CodingKey {
         case id = "_id"
-        case email, displayName, firstName, lastName, phoneNumber, profilePicture, bio, location, friends, friendRequests, circleOrder, preferences, createdAt, connectionStatus, connectionDirection, connectionId, followers, following, followersCount, followingCount, connectionsCount, pinnedPlaces, isFollowing
+        case email, displayName, firstName, lastName, phoneNumber, profilePicture, bio, location, friends, friendRequests, circleOrder, preferences, createdAt, connectionStatus, connectionDirection, connectionId, followers, following, followersCount, followingCount, connectionsCount, pinnedPlaces, isFollowing, isFakeProfile
     }
     
     // Convenience initializer for creating User objects directly
-    public init(id: String, email: String, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil, connectionDirection: String? = nil, connectionId: String? = nil, followers: [String]? = nil, following: [String]? = nil, followersCount: Int? = nil, followingCount: Int? = nil, connectionsCount: Int? = nil, pinnedPlaces: [String]? = nil, isFollowing: Bool? = nil) {
+    public init(id: String, email: String, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil, connectionDirection: String? = nil, connectionId: String? = nil, followers: [String]? = nil, following: [String]? = nil, followersCount: Int? = nil, followingCount: Int? = nil, connectionsCount: Int? = nil, pinnedPlaces: [String]? = nil, isFollowing: Bool? = nil, isFakeProfile: Bool? = nil) {
         self.id = id
         self.email = email
         self.displayName = displayName
@@ -69,6 +72,7 @@ struct User: Codable, Identifiable {
         self.connectionsCount = connectionsCount
         self.pinnedPlaces = pinnedPlaces
         self.isFollowing = isFollowing
+        self.isFakeProfile = isFakeProfile
     }
     
     // Custom decoder for JSON decoding
@@ -134,6 +138,9 @@ struct User: Codable, Identifiable {
         // Follow status (for other user profiles)
         isFollowing = try container.decodeIfPresent(Bool.self, forKey: .isFollowing)
         
+        // Fake profile flag
+        isFakeProfile = try container.decodeIfPresent(Bool.self, forKey: .isFakeProfile)
+        
         // Custom date decoding with multiple format support
         if let dateString = try container.decodeIfPresent(String.self, forKey: .createdAt) {
             let formatter = ISO8601DateFormatter()
@@ -153,6 +160,37 @@ struct User: Codable, Identifiable {
         } else {
             createdAt = nil
         }
+    }
+    
+    // Helper method to create a copy of the user with updated isFollowing status
+    func copy(isFollowing: Bool) -> User {
+        return User(
+            id: self.id,
+            email: self.email,
+            displayName: self.displayName,
+            firstName: self.firstName,
+            lastName: self.lastName,
+            phoneNumber: self.phoneNumber,
+            profilePicture: self.profilePicture,
+            bio: self.bio,
+            location: self.location,
+            friends: self.friends,
+            friendRequests: self.friendRequests,
+            circleOrder: self.circleOrder,
+            preferences: self.preferences,
+            createdAt: self.createdAt,
+            connectionStatus: self.connectionStatus,
+            connectionDirection: self.connectionDirection,
+            connectionId: self.connectionId,
+            followers: self.followers,
+            following: self.following,
+            followersCount: self.followersCount,
+            followingCount: self.followingCount,
+            connectionsCount: self.connectionsCount,
+            pinnedPlaces: self.pinnedPlaces,
+            isFollowing: isFollowing, // Updated value
+            isFakeProfile: self.isFakeProfile
+        )
     }
     
 }

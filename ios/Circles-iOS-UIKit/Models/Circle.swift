@@ -28,6 +28,9 @@ struct Circle: Codable, Identifiable {
     let isSharedWithMe: Bool? // True if this circle is shared with the current user
     let sharedBy: User? // Who shared this circle with me
     let myAccessLevel: AccessLevel? // My access level if this is a shared circle
+    let likes: [String]? // Array of user IDs who liked this circle
+    let likesCount: Int? // Count of likes for efficient display
+    let commentsCount: Int? // Count of comments for efficient display
     let createdAt: Date
     let updatedAt: Date
     var isNew: Bool? // Indicates if this is new activity
@@ -41,6 +44,7 @@ struct Circle: Codable, Identifiable {
         case places, placesCount, placesWithDetails, privacy, allowNetworkEdit, category, customCategoryId
         case location, tags, sharedWith, followers, activeShares, shareSettings
         case isSharedWithMe, sharedBy, myAccessLevel
+        case likes, likesCount, commentsCount
         case createdAt, updatedAt, isNew, hasNewPlaces, newPlacesCount
     }
     
@@ -80,6 +84,9 @@ struct Circle: Codable, Identifiable {
         isSharedWithMe = try container.decodeIfPresent(Bool.self, forKey: .isSharedWithMe)
         sharedBy = try container.decodeIfPresent(User.self, forKey: .sharedBy)
         myAccessLevel = try container.decodeIfPresent(AccessLevel.self, forKey: .myAccessLevel)
+        likes = try container.decodeIfPresent([String].self, forKey: .likes)
+        likesCount = try container.decodeIfPresent(Int.self, forKey: .likesCount)
+        commentsCount = try container.decodeIfPresent(Int.self, forKey: .commentsCount)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
         isNew = try container.decodeIfPresent(Bool.self, forKey: .isNew)
@@ -95,6 +102,7 @@ struct Circle: Codable, Identifiable {
          tags: [String]?, sharedWith: [String]?, followers: [String]?,
          activeShares: [CircleShare]?, shareSettings: ShareSettings?,
          isSharedWithMe: Bool?, sharedBy: User?, myAccessLevel: AccessLevel?,
+         likes: [String]? = nil, likesCount: Int? = nil, commentsCount: Int? = nil,
          createdAt: Date, updatedAt: Date, isNew: Bool? = nil,
          hasNewPlaces: Bool? = nil, newPlacesCount: Int? = nil) {
         self.id = id
@@ -121,6 +129,9 @@ struct Circle: Codable, Identifiable {
         self.isSharedWithMe = isSharedWithMe
         self.sharedBy = sharedBy
         self.myAccessLevel = myAccessLevel
+        self.likes = likes
+        self.likesCount = likesCount
+        self.commentsCount = commentsCount
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.isNew = isNew
@@ -135,6 +146,13 @@ struct Circle: Codable, Identifiable {
     
     var hasActiveShares: Bool {
         return shareCount > 0
+    }
+    
+    var displayCategory: String {
+        if category == .other, let customCategoryId = customCategoryId, !customCategoryId.isEmpty {
+            return customCategoryId
+        }
+        return category.displayName
     }
     
     var isOwner: Bool {
@@ -176,6 +194,20 @@ struct Circle: Codable, Identifiable {
             return sharedBy.displayName
         }
         return "Unknown"
+    }
+    
+    // Like and comment helper properties
+    var isLikedByCurrentUser: Bool {
+        guard let likes = likes, let userId = AuthService.shared.getUserId() else { return false }
+        return likes.contains(userId)
+    }
+    
+    var displayLikesCount: Int {
+        return likesCount ?? 0
+    }
+    
+    var displayCommentsCount: Int {
+        return commentsCount ?? 0
     }
 }
 

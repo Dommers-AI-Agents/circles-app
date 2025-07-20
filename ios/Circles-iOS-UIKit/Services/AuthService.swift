@@ -92,7 +92,10 @@ class AuthService {
     private var authStateListeners: [String: (Bool) -> Void] = [:]
     
     var isLoggedIn: Bool {
-        return getToken() != nil
+        let token = getToken()
+        let loggedIn = token != nil
+        print("🔐 AuthService: isLoggedIn called, token exists: \(token != nil), returning: \(loggedIn)")
+        return loggedIn
     }
     
     func isTokenExpired() -> Bool {
@@ -260,6 +263,25 @@ class AuthService {
     func logout(completion: ((Bool) -> Void)? = nil) {
         // Handle notifications cleanup
         NotificationService.shared.handleUserLogout()
+        
+        // Clear all cached data from various services
+        PreloadManager.shared.clearPreloadedData()
+        CategoryService.shared.clearCache()
+        
+        // Clear MessagingManager cached data
+        MessagingManager.shared.clearCache()
+        
+        // Clear NetworkManager cached data
+        NetworkManager.shared.clearCache()
+        
+        // Clear ImageService cache
+        ImageService.shared.clearCache()
+        
+        // Clear StreetViewService cache
+        StreetViewService.shared.clearCache()
+        
+        // Clear app-specific UserDefaults
+        clearAppUserDefaults()
         
         // Attempt to notify server about logout
         APIService.shared.request(
@@ -495,7 +517,9 @@ class AuthService {
     }
     
     func getToken() -> String? {
-        return keychainService.getAuthToken()
+        let token = keychainService.getAuthToken()
+        // Removed verbose logging - this method is called very frequently
+        return token
     }
     
     private func clearToken() {
@@ -515,11 +539,35 @@ class AuthService {
     }
     
     func getUserId() -> String? {
-        return keychainService.getUserId()
+        let userId = keychainService.getUserId()
+        // Removed verbose logging - this method is called very frequently
+        return userId
     }
     
     private func clearUserId() {
         keychainService.clearAllTokens()
+    }
+    
+    private func clearAppUserDefaults() {
+        // Clear all app-specific UserDefaults that might contain user data
+        let userDefaultsKeys = [
+            "pendingDeepLink",
+            "pendingConnectionInvite",
+            "linkedInAuthState",
+            "lastSuggestionsViewedTimestamp",
+            "notificationPromptLastShown",
+            "hasSeenTutorial",
+            "hasCompletedOnboarding"
+        ]
+        
+        for key in userDefaultsKeys {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+        
+        // Clear NetworkManager's pending connection invite
+        NetworkManager.clearPendingConnectionInvite()
+        
+        print("🧹 AuthService: Cleared app-specific UserDefaults")
     }
     
     private func saveAuthProvider(_ provider: String) {

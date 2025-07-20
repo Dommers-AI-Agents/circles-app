@@ -84,7 +84,6 @@ class ChatViewController: BaseViewController {
     private var keyboardHeight: CGFloat = 0
     private var messageInputBottomConstraint: NSLayoutConstraint!
     private let cellIdentifier = "MessageCell"
-    private var temporaryText: String = ""
     private var hasCompletedInitialLoad = false
     
     // MARK: - BaseViewController Configuration
@@ -385,8 +384,8 @@ class ChatViewController: BaseViewController {
     @objc private func sendMessage() {
         guard let conversationId = conversation?.id else { return }
         
-        // Get text from temporary storage or text view
-        let text = temporaryText.isEmpty ? (messageTextView.text ?? "") : temporaryText
+        // Get text directly from text view
+        let text = messageTextView.text ?? ""
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         
         guard !trimmedText.isEmpty else { return }
@@ -397,12 +396,7 @@ class ChatViewController: BaseViewController {
         // Clear input and temporary storage
         DispatchQueue.main.async { [weak self] in
             self?.messageTextView.text = ""
-            self?.temporaryText = ""
             self?.textViewDidChange(self?.messageTextView ?? UITextView())
-            
-            // Ensure the text view ends editing properly
-            self?.messageTextView.resignFirstResponder()
-            self?.messageTextView.becomeFirstResponder()
         }
         
         // Send message
@@ -538,40 +532,28 @@ extension ChatViewController: UITableViewDelegate {
 // MARK: - UITextViewDelegate
 extension ChatViewController: UITextViewDelegate {
     func textViewDidBeginEditing(_ textView: UITextView) {
-        // Store current text when editing begins
-        temporaryText = textView.text ?? ""
+        // No special handling needed
     }
     
     func textViewDidEndEditing(_ textView: UITextView) {
-        // Ensure text is preserved when ending editing
-        if textView.text.isEmpty && !temporaryText.isEmpty {
-            textView.text = temporaryText
-            textViewDidChange(textView)
-        }
-        temporaryText = ""
+        // No special handling needed
     }
     
     func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
-        // Handle text changes properly
-        guard let currentText = textView.text,
-              let textRange = Range(range, in: currentText) else { return true }
-        
-        let updatedText = currentText.replacingCharacters(in: textRange, with: text)
-        temporaryText = updatedText
-        
-        // Handle return key to send message
-        if text == "\n" && !updatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            sendMessage()
-            return false
+        // Only handle return key for sending messages
+        if text == "\n" {
+            let currentText = textView.text ?? ""
+            if !currentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                sendMessage()
+                return false
+            }
         }
         
+        // Let UITextView handle all other text changes naturally
         return true
     }
     
     func textViewDidChange(_ textView: UITextView) {
-        // Store current text
-        temporaryText = textView.text ?? ""
-        
         // Update placeholder visibility
         placeholderLabel.isHidden = !textView.text.isEmpty
         

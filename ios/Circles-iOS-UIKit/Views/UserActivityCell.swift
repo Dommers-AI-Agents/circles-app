@@ -187,4 +187,26 @@ class UserActivityCell: UICollectionViewCell {
         activityDotView.layer.removeAllAnimations()
         nameLabel.text = nil
     }
+    
+    // MARK: - Configure as Button
+    func configureAsButton(title: String, icon: String) {
+        // Reset normal configuration
+        profileImageView.image = nil
+        activityDotView.isHidden = true
+        
+        // Set up button appearance
+        profileImageView.image = UIImage(systemName: icon)
+        profileImageView.tintColor = Constants.Colors.primary
+        profileImageView.contentMode = .scaleAspectFit
+        profileImageView.backgroundColor = Constants.Colors.tertiaryBackground
+        
+        // Add button-like border
+        profileImageView.layer.borderColor = Constants.Colors.primary.cgColor
+        profileImageView.layer.borderWidth = 2
+        
+        // Set label
+        nameLabel.text = title
+        nameLabel.textColor = Constants.Colors.primary
+        nameLabel.font = UIFont.systemFont(ofSize: 12, weight: .semibold)
+    }
 }

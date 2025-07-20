@@ -13,21 +13,49 @@ const db = getFirestore();
 // @access  Private
 exports.getUserCategories = async (req, res, next) => {
   try {
+    console.log('🔍 getUserCategories called');
+    console.log('🔍 User:', req.user ? req.user.uid : 'NO USER');
+    
+    if (!req.user || !req.user.uid) {
+      console.error('❌ No user found in request');
+      return res.status(401).json({
+        success: false,
+        message: 'User not authenticated'
+      });
+    }
+    
     const userId = req.user.uid;
+    console.log(`🔍 Fetching categories for user: ${userId}`);
     
-    const categoriesSnapshot = await db.collection(COLLECTIONS.USER_CATEGORIES)
-      .where('userId', '==', userId)
-      .orderBy('createdAt', 'desc')
-      .get();
-    
-    const categories = serializeQuerySnapshot(categoriesSnapshot);
-    
-    res.status(200).json({
-      success: true,
-      data: categories
-    });
+    try {
+      const categoriesSnapshot = await db.collection(COLLECTIONS.USER_CATEGORIES)
+        .where('userId', '==', userId)
+        .orderBy('createdAt', 'desc')
+        .get();
+      
+      const categories = serializeQuerySnapshot(categoriesSnapshot);
+      console.log(`✅ Found ${categories.length} categories for user ${userId}`);
+      
+      // Return empty array if no categories exist (not an error)
+      return res.status(200).json({
+        success: true,
+        data: categories || []
+      });
+    } catch (queryError) {
+      // Handle case where collection doesn't exist or index is missing
+      if (queryError.code === 9 || queryError.message?.includes('index')) {
+        console.log('⚠️ Collection or index not found, returning empty categories');
+        return res.status(200).json({
+          success: true,
+          data: []
+        });
+      }
+      throw queryError;
+    }
   } catch (error) {
-    console.error('Error fetching user categories:', error);
+    console.error('❌ Error fetching user categories:', error);
+    console.error('Error details:', error.message);
+    console.error('Error stack:', error.stack);
     next(error);
   }
 };

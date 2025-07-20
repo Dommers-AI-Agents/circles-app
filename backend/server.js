@@ -52,6 +52,16 @@ const { protect } = require('./middleware/firebaseAuth');
 
 const app = express();
 
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log('🌐 SERVER: Incoming request');
+  console.log('🌐 SERVER: Method:', req.method);
+  console.log('🌐 SERVER: Path:', req.path);
+  console.log('🌐 SERVER: Query:', JSON.stringify(req.query));
+  console.log('🌐 SERVER: Headers:', JSON.stringify(req.headers, null, 2));
+  next();
+});
+
 // Middleware
 app.use(cors({
   origin: true, // Allow all origins in development
@@ -73,9 +83,20 @@ app.get('/', (req, res) => {
   });
 });
 
+// Debug middleware for all user routes
+app.use('/api/users', (req, res, next) => {
+  console.log('🔍 User route hit:', req.method, req.path, req.originalUrl);
+  if (req.path.includes('categories')) {
+    console.log('✅ Categories path detected in user route');
+  }
+  next();
+});
+
 // API Routes
 app.use('/api/auth', firebaseAuthRoutes);
 app.use('/api/auth', linkedinAuthRoutes); // LinkedIn auth routes
+// Mount categories routes at a separate path to avoid conflicts with user /:id routes
+app.use('/api/categories', userCategoriesRoutes);
 app.use('/api/users', firebaseUserRoutes);
 app.use('/api/circles', firebaseCircleRoutes);
 app.use('/api/places', firebasePlaceRoutes);
@@ -87,7 +108,6 @@ app.use('/api/suggestions', suggestionRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/sse', sseRoutes);
 app.use('/api', activityRoutes);
-app.use('/api/users/categories', userCategoriesRoutes);
 app.use('/api/app', require('./routes/appRoutes'));
 
 // LinkedIn OAuth callback route (outside /api prefix)
@@ -100,6 +120,9 @@ app.put('/api/circles/:id/places/reorder', protect, reorderPlacesInCircle);
 
 // 404 handler
 app.use('*', (req, res) => {
+  console.log('❌ 404 Error - Route not found:', req.originalUrl);
+  console.log('❌ Method:', req.method);
+  console.log('❌ Headers:', req.headers);
   res.status(404).json({
     success: false,
     message: `Route ${req.originalUrl} not found`
@@ -115,6 +138,11 @@ app.listen(PORT, () => {
   console.log(`🚀 Circles API server running on port ${PORT}`);
   console.log(`🔥 Firebase status: ${firebaseInitialized ? 'Connected' : 'Mock Mode'}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔐 JWT_SECRET configured: ${!!process.env.JWT_SECRET}`);
+  console.log(`🔐 JWT_EXPIRE: ${process.env.JWT_EXPIRE || 'Not set'}`);
+  console.log(`📧 Email service configured: ${!!process.env.GMAIL_USER && !!process.env.GMAIL_APP_PASSWORD}`);
+  console.log(`🗄️ Firebase Project ID: ${process.env.FIREBASE_PROJECT_ID || 'Not set'}`);
+  console.log(`🗄️ Firebase Storage Bucket: ${process.env.FIREBASE_STORAGE_BUCKET || 'Not set'}`);
   
   if (!firebaseInitialized) {
     console.log('\n📝 To enable real Firebase:');

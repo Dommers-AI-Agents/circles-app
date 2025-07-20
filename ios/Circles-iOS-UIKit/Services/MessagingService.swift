@@ -104,17 +104,17 @@ class MessagingService {
         before: String? = nil,
         completion: @escaping (Result<[Message], Error>) -> Void
     ) {
-        print("🔍 MessagingService: fetchMessages called")
-        print("🔍 MessagingService: conversationId: \(conversationId)")
-        print("🔍 MessagingService: limit: \(limit), before: \(before ?? "nil")")
+        // print("🔍 MessagingService: fetchMessages called")
+        // print("🔍 MessagingService: conversationId: \(conversationId)")
+        // print("🔍 MessagingService: limit: \(limit), before: \(before ?? "nil")")
         
         var endpoint = "messages/conversations/\(conversationId)/messages?limit=\(limit)"
         if let before = before {
             endpoint += "&before=\(before)"
         }
         
-        print("🔍 MessagingService: Making API request to endpoint: \(endpoint)")
-        print("🔐 MessagingService: Auth token available: \(AuthService.shared.getToken() != nil)")
+        // print("🔍 MessagingService: Making API request to endpoint: \(endpoint)")
+        // print("🔐 MessagingService: Auth token available: \(AuthService.shared.getToken() != nil)")
         
         apiService.request(
             endpoint: endpoint,
@@ -123,10 +123,10 @@ class MessagingService {
         ) { (result: Result<MessagesResponse, APIError>) in
             switch result {
             case .success(let response):
-                print("✅ MessagingService: Successfully fetched \(response.messages.count) messages")
-                for (index, message) in response.messages.prefix(3).enumerated() {
-                    print("   Message \(index): \(message.type.rawValue) - \(message.displayContent)")
-                }
+                // print("✅ MessagingService: Successfully fetched \(response.messages.count) messages")
+                // for (index, message) in response.messages.prefix(3).enumerated() {
+                //     print("   Message \(index): \(message.type.rawValue) - \(message.displayContent)")
+                // }
                 completion(.success(response.messages))
             case .failure(let error):
                 print("❌ MessagingService: Failed to fetch messages: \(error.localizedDescription)")
@@ -271,6 +271,29 @@ class MessagingService {
                 completion(.failure(error))
             }
         }
+    }
+    
+    // MARK: - Quick Reply
+    
+    func sendQuickReply(
+        conversationId: String,
+        message: String,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        // Send message to conversation
+        sendMessage(
+            conversationId: conversationId,
+            type: .text,
+            content: message,
+            completion: { result in
+                switch result {
+                case .success:
+                    completion(.success(()))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
+        )
     }
     
     // MARK: - Helper Methods

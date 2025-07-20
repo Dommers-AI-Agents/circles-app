@@ -576,7 +576,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         }
         
         // Category
-        categoryLabel.text = "  \(circle.category.rawValue.capitalized)  " // Add padding with spaces
+        categoryLabel.text = "  \(circle.displayCategory)  " // Add padding with spaces
         
         // Set category color
         switch circle.category {
@@ -1181,12 +1181,12 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         
         // Inner colored circle
         let innerCircle = UIView(frame: CGRect(x: 3, y: 3, width: markerSize - 6, height: markerSize - 6))
-        innerCircle.backgroundColor = categoryColor(for: category)
+        innerCircle.backgroundColor = category.color
         innerCircle.layer.cornerRadius = (markerSize - 6) / 2
         
         // Category icon
         let iconView = UIImageView(frame: CGRect(x: 8, y: 8, width: 20, height: 20))
-        iconView.image = UIImage(systemName: categoryIcon(for: category))
+        iconView.image = UIImage(systemName: category.systemIconName)
         iconView.tintColor = .white
         iconView.contentMode = .scaleAspectFit
         
@@ -1197,66 +1197,6 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         return view
     }
     
-    private func categoryColor(for category: PlaceCategory) -> UIColor {
-        switch category {
-        case .restaurant:
-            return UIColor(hex: "#E53E3E") // Red
-        case .cafe:
-            return UIColor(hex: "#DD6B20") // Orange
-        case .bar:
-            return UIColor(hex: "#7B341E") // Brown
-        case .hotel:
-            return UIColor(hex: "#3182CE") // Blue
-        case .retail:
-            return UIColor(hex: "#805AD5") // Purple
-        case .service:
-            return UIColor(hex: "#38A169") // Green
-        case .attraction:
-            return UIColor(hex: "#D69E2E") // Yellow
-        case .entertainment:
-            return UIColor(hex: "#9C4221") // Orange Brown
-        case .healthcare:
-            return UIColor(hex: "#319795") // Teal
-        case .fitness:
-            return UIColor(hex: "#2C7A7B") // Dark Teal
-        case .education:
-            return UIColor(hex: "#744210") // Dark Yellow
-        case .outdoor:
-            return UIColor(hex: "#2F855A") // Dark Green
-        case .transport:
-            return UIColor(hex: "#2B6CB0") // Dark Blue
-        case .finance:
-            return UIColor(hex: "#285E61") // Dark Teal
-        case .home:
-            return UIColor(hex: "#3182CE") // Blue
-        case .work:
-            return UIColor(hex: "#38A169") // Green
-        case .other:
-            return UIColor(hex: "#38A169") // Green
-        }
-    }
-    
-    private func categoryIcon(for category: PlaceCategory) -> String {
-        switch category {
-        case .restaurant: return "fork.knife"
-        case .cafe: return "cup.and.saucer"
-        case .bar: return "wineglass"
-        case .hotel: return "bed.double"
-        case .retail: return "bag"
-        case .service: return "wrench.and.screwdriver"
-        case .attraction: return "star"
-        case .entertainment: return "ticket"
-        case .healthcare: return "cross.case"
-        case .fitness: return "figure.run"
-        case .education: return "book"
-        case .outdoor: return "tree"
-        case .transport: return "car"
-        case .finance: return "dollarsign.circle"
-        case .home: return "house"
-        case .work: return "building.2"
-        case .other: return "mappin"
-        }
-    }
     
     // MARK: - Actions
     @objc private func shareButtonTapped() {
@@ -1621,6 +1561,11 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             if let url = URL(string: appleMapsURL) {
                 activityItems.append(url)
             }
+        }
+        
+        // Add Circles deep link as URL object so it appears in SMS
+        if let circlesURL = URL(string: deepLink) {
+            activityItems.append(circlesURL)
         }
         
         let activityViewController = UIActivityViewController(
@@ -3116,8 +3061,8 @@ extension CircleDetailViewController {
         
         // Customize marker appearance
         if let markerView = annotationView {
-            markerView.markerTintColor = categoryColor(for: placeAnnotation.place.category)
-            markerView.glyphImage = UIImage(systemName: categoryIcon(for: placeAnnotation.place.category))
+            markerView.markerTintColor = placeAnnotation.place.category.color
+            markerView.glyphImage = UIImage(systemName: placeAnnotation.place.category.systemIconName)
         }
         
         return annotationView

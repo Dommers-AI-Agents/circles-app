@@ -73,6 +73,12 @@ class MessagingManager {
         unreadCount = 0
         conversationsCache = nil
         conversationsCacheTime = nil
+        locallyMarkedAsRead = []
+    }
+    
+    // Public method to clear cache on logout
+    func clearCache() {
+        clearData()
     }
     
     // MARK: - Tab Management

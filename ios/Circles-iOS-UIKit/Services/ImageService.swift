@@ -29,9 +29,18 @@ class ImageService {
             Logger.debug("ImageService: Converted relative URL to absolute: \(finalURLString)")
         }
         
-        // Download image
-        guard let url = URL(string: finalURLString) else {
-            Logger.error("ImageService: Invalid URL: \(finalURLString)")
+        // Validate URL
+        guard let url = URL(string: finalURLString), 
+              let host = url.host, 
+              !host.isEmpty else {
+            Logger.error("ImageService: Invalid URL or missing hostname: \(finalURLString)")
+            completion(nil)
+            return
+        }
+        
+        // Additional validation for obviously invalid hostnames
+        if host.contains("..") || host.hasPrefix(".") || host.hasSuffix(".") {
+            Logger.error("ImageService: Invalid hostname format: \(host)")
             completion(nil)
             return
         }
@@ -89,5 +98,11 @@ class ImageService {
                 completion(image)
             }
         }.resume()
+    }
+    
+    // Clear cache on logout
+    func clearCache() {
+        cache.removeAllObjects()
+        Logger.debug("ImageService: Cleared image cache")
     }
 }

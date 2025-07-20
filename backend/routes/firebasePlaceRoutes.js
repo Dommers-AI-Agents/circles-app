@@ -17,7 +17,8 @@ const {
   likeComment,
   addExistingPlaceToCircle,
   trackPlaceView,
-  movePlace
+  movePlace,
+  getPlacesByMultipleCircles
 } = require('../controllers/firebasePlaceController');
 const { protect } = require('../middleware/firebaseAuth');
 
@@ -29,6 +30,10 @@ router.use(protect);
 // Place routes
 router.route('/')
   .post(createPlace);
+
+// Batch endpoint for fetching places from multiple circles
+router.route('/batch')
+  .post(getPlacesByMultipleCircles);
 
 router.route('/search')
   .get(searchPlaces);

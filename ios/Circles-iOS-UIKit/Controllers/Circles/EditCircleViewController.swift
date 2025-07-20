@@ -11,6 +11,8 @@ class EditCircleViewController: UIViewController {
     // MARK: - Properties
     weak var delegate: EditCircleDelegate?
     private let circle: Circle
+    private var selectedCategory: CategoryItem?
+    private var selectedCategoryType: CircleCategory
     
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
@@ -90,12 +92,16 @@ class EditCircleViewController: UIViewController {
         return label
     }()
     
-    private let categorySegmentedControl: UISegmentedControl = {
-        let categories = ["Travel", "Food", "Shopping", "Services", "Healthcare", "Entertainment", "Other"]
-        let segmentedControl = UISegmentedControl(items: categories)
-        segmentedControl.selectedSegmentIndex = 0
-        segmentedControl.translatesAutoresizingMaskIntoConstraints = false
-        return segmentedControl
+    private let categoryButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Select Category", for: .normal)
+        button.contentHorizontalAlignment = .left
+        button.titleEdgeInsets = UIEdgeInsets(top: 0, left: 10, bottom: 0, right: 10)
+        button.layer.borderWidth = 0.5
+        button.layer.borderColor = UIColor.lightGray.cgColor
+        button.layer.cornerRadius = 5
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
     }()
     
     private let privacyLabel: UILabel = {
@@ -235,6 +241,7 @@ class EditCircleViewController: UIViewController {
     // MARK: - Lifecycle
     init(circle: Circle) {
         self.circle = circle
+        self.selectedCategoryType = circle.category
         super.init(nibName: nil, bundle: nil)
     }
     
@@ -278,7 +285,7 @@ class EditCircleViewController: UIViewController {
         contentView.addSubview(descriptionLabel)
         contentView.addSubview(descriptionTextView)
         contentView.addSubview(categoryLabel)
-        contentView.addSubview(categorySegmentedControl)
+        contentView.addSubview(categoryButton)
         contentView.addSubview(privacyLabel)
         contentView.addSubview(privacySegmentedControl)
         contentView.addSubview(locationLabel)
@@ -343,13 +350,14 @@ class EditCircleViewController: UIViewController {
             categoryLabel.topAnchor.constraint(equalTo: descriptionTextView.bottomAnchor, constant: Constants.Spacing.medium),
             categoryLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             
-            // Category segmented control
-            categorySegmentedControl.topAnchor.constraint(equalTo: categoryLabel.bottomAnchor, constant: Constants.Spacing.small),
-            categorySegmentedControl.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            categorySegmentedControl.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            // Category button
+            categoryButton.topAnchor.constraint(equalTo: categoryLabel.bottomAnchor, constant: Constants.Spacing.small),
+            categoryButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            categoryButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            categoryButton.heightAnchor.constraint(equalToConstant: 40),
             
             // Privacy label
-            privacyLabel.topAnchor.constraint(equalTo: categorySegmentedControl.bottomAnchor, constant: Constants.Spacing.medium),
+            privacyLabel.topAnchor.constraint(equalTo: categoryButton.bottomAnchor, constant: Constants.Spacing.medium),
             privacyLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             
             // Privacy segmented control
@@ -412,6 +420,7 @@ class EditCircleViewController: UIViewController {
     
     private func setupActions() {
         addCoverPhotoButton.addTarget(self, action: #selector(addCoverPhotoButtonTapped), for: .touchUpInside)
+        categoryButton.addTarget(self, action: #selector(categoryButtonTapped), for: .touchUpInside)
         saveButton.addTarget(self, action: #selector(saveTapped), for: .touchUpInside)
         deleteButton.addTarget(self, action: #selector(deleteButtonTapped), for: .touchUpInside)
         addEditorButton.addTarget(self, action: #selector(addEditorTapped), for: .touchUpInside)
@@ -429,9 +438,14 @@ class EditCircleViewController: UIViewController {
         locationTextField.text = circle.location
         
         // Set category
-        let categories = [CircleCategory.travel, .food, .shopping, .services, .healthcare, .entertainment, .other]
-        if let categoryIndex = categories.firstIndex(of: circle.category) {
-            categorySegmentedControl.selectedSegmentIndex = categoryIndex
+        if circle.category == .other, let customCategoryId = circle.customCategoryId {
+            // Load custom category
+            categoryButton.setTitle(customCategoryId, for: .normal)
+            selectedCategoryType = .other
+            // We'll need to fetch the actual category details later
+        } else {
+            categoryButton.setTitle(circle.category.displayName, for: .normal)
+            selectedCategoryType = circle.category
         }
         
         // Set privacy
@@ -494,8 +508,7 @@ class EditCircleViewController: UIViewController {
     
     // MARK: - Helper Methods
     private func getCurrentCategory() -> CircleCategory {
-        let categories = [CircleCategory.travel, .food, .shopping, .services, .healthcare, .entertainment, .other]
-        return categories[categorySegmentedControl.selectedSegmentIndex]
+        return selectedCategoryType
     }
     
     private func getCurrentPrivacy() -> PrivacyLevel {
@@ -571,6 +584,7 @@ class EditCircleViewController: UIViewController {
             description: description,
             privacy: privacy,
             category: category,
+            customCategoryId: selectedCategory?.customCategoryId,
             location: location,
             tags: tags,
             coverImage: coverImageData
@@ -600,6 +614,13 @@ class EditCircleViewController: UIViewController {
     
     @objc private func addCoverPhotoButtonTapped() {
         checkPhotoLibraryPermissions()
+    }
+    
+    @objc private func categoryButtonTapped() {
+        let categoryPicker = CategoryPickerViewController(categoryType: .circle)
+        categoryPicker.delegate = self
+        let navController = UINavigationController(rootViewController: categoryPicker)
+        present(navController, animated: true)
     }
     
     @objc private func dismissKeyboard() {
@@ -848,6 +869,37 @@ extension EditCircleViewController: UserSearchViewControllerDelegate {
                     )
                 }
             }
+        }
+    }
+}
+
+// MARK: - CategoryPickerDelegate
+extension EditCircleViewController: CategoryPickerDelegate {
+    func categoryPicker(_ picker: CategoryPickerViewController, didSelectCategory category: CategoryItem) {
+        selectedCategory = category
+        categoryButton.setTitle(category.name, for: .normal)
+        
+        // Map the selected category to CircleCategory enum
+        switch category.name.lowercased() {
+        case "travel":
+            selectedCategoryType = .travel
+        case "food", "food & dining":
+            selectedCategoryType = .food
+        case "services":
+            selectedCategoryType = .services
+        case "shopping":
+            selectedCategoryType = .shopping
+        case "healthcare":
+            selectedCategoryType = .healthcare
+        case "entertainment":
+            selectedCategoryType = .entertainment
+        default:
+            selectedCategoryType = .other
+        }
+        
+        // If it's a custom category, we'll use .other with the customCategoryId
+        if category.isCustom {
+            selectedCategoryType = .other
         }
     }
 }

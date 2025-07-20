@@ -193,10 +193,6 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "expiresAt",
-          "order": "DESCENDING"
-        },
-        {
           "fieldPath": "createdAt",
           "order": "DESCENDING"
         }
@@ -304,6 +300,20 @@
       "fields": [
         {
           "fieldPath": "placeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "circleComments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "circleId",
           "order": "ASCENDING"
         },
         {

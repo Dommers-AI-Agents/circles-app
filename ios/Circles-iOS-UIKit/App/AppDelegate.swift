@@ -54,104 +54,59 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         )
         
         // Configure Google Sign-In using configuration from Info.plist
-        print("🔍 Setting up Google Sign-In configuration in AppDelegate using Info.plist")
-        
         guard let infoPlist = Bundle.main.infoDictionary,
               let clientId = infoPlist["CLIENT_ID"] as? String,
               let reversedClientId = infoPlist["REVERSED_CLIENT_ID"] as? String else {
-            print("🔍 ❌ Failed to load Google configuration from Info.plist in AppDelegate")
+            print("❌ Failed to load Google configuration from Info.plist")
             return true
         }
         
         GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientId)
-        print("🔍 Google Sign-In configuration complete with client ID: \(clientId)")
         
         // Verify URL scheme - IMPORTANT for Google Sign-In to work
-        print("🔍 Verifying URL schemes in AppDelegate")
         var hasRequiredScheme = false
         let requiredScheme = reversedClientId
         
         if let urlTypes = Bundle.main.infoDictionary?["CFBundleURLTypes"] as? [[String: Any]] {
             for urlType in urlTypes {
                 if let urlSchemes = urlType["CFBundleURLSchemes"] as? [String] {
-                    for scheme in urlSchemes {
-                        print("🔍 Found URL scheme: \(scheme)")
-                        if scheme == requiredScheme {
-                            hasRequiredScheme = true
-                            print("🔍 ✅ Found the Google Sign-In required URL scheme")
-                        }
-                    }
+                    hasRequiredScheme = urlSchemes.contains(requiredScheme)
+                    if hasRequiredScheme { break }
                 }
             }
         }
         
         if !hasRequiredScheme {
-            print("🔍 ⚠️ WARNING: Required Google Sign-In URL scheme not found: \(requiredScheme)")
-            print("🔍 ⚠️ Google Sign-In might not work properly")
+            print("⚠️ WARNING: Required Google Sign-In URL scheme not found")
         }
         
         // Try to restore previous Google Sign-In session
-        print("🔍 Attempting to restore Google Sign-In session")
-        
-        // Check if we have a stored auth token (our app's token, not Google's)
-        if AuthService.shared.isLoggedIn {
-            print("🔍 User has valid auth token, no need to restore Google session")
-        } else {
-            // Only attempt Google session restoration if we don't have our own auth token
-            print("🔍 No auth token found, checking for Google session")
-            
-            // Note: GIDSignIn.sharedInstance.restorePreviousSignIn is now handled differently in newer versions
-            // The SDK automatically manages session persistence
-        }
+        // Note: The SDK automatically manages session persistence in newer versions
         
         // Initialize Facebook SDK
         print("📘 Initializing Facebook SDK")
         ApplicationDelegate.shared.application(application, didFinishLaunchingWithOptions: launchOptions)
         
         // Initialize Google Places SDK
-        print("📍 Initializing Google Places SDK")
         if let gmsApiKey = infoPlist["GMSApiKey"] as? String {
-            print("📍 Full API Key length: \(gmsApiKey.count) characters")
-            print("📍 API Key prefix: \(String(gmsApiKey.prefix(10)))...")
-            print("📍 Bundle ID: \(Bundle.main.bundleIdentifier ?? "unknown")")
-            
-            // Debug: Test if API key is valid format
-            if gmsApiKey.hasPrefix("AIza") && gmsApiKey.count == 39 {
-                print("📍 ✅ API Key format appears valid")
-            } else {
-                print("📍 ⚠️ API Key format may be invalid")
-            }
-            
             GMSPlacesClient.provideAPIKey(gmsApiKey)
-            print("📍 Google Places SDK initialized with key (photos only)")
-            
-            // Add a test to verify the Places client is properly configured
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                print("📍 Testing Google Places client initialization...")
-                let placesClient = GMSPlacesClient.shared()
-                print("📍 Places client created: \(placesClient)")
-            }
+            print("📍 Google Places SDK initialized (photos only)")
         } else {
-            print("📍 ❌ Failed to load Google Places/Maps API key from Info.plist")
+            print("❌ Failed to load Google Places API key")
         }
         
         // Configure Push Notifications
         print("🔔 Configuring Push Notifications")
         UNUserNotificationCenter.current().delegate = self
         
-        // Request notification permissions
-        let authOptions: UNAuthorizationOptions = [.alert, .badge, .sound]
-        UNUserNotificationCenter.current().requestAuthorization(
-            options: authOptions,
-            completionHandler: { granted, error in
-                print("🔔 Push notification permission granted: \(granted)")
-                if let error = error {
-                    print("🔔 Error requesting notification permissions: \(error)")
-                }
-            }
-        )
+        // Configure notification categories for rich interactions
+        configureNotificationCategories()
         
-        // Register for remote notifications
+        // Don't request permissions automatically - wait for user context
+        // The app will prompt at appropriate times using NotificationPromptManager
+        
+        // Still register for remote notifications to get device token
+        // This is safe to call even without permission
         application.registerForRemoteNotifications()
         
         return true
@@ -185,21 +140,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             return true
         }
         
-        // Log detailed information about all URLs
-        print("🔍 ================== URL RECEIVED ==================")
-        print("🔍 URL: \(url.absoluteString)")
-        print("🔍 Host: \(url.host ?? "nil")")
-        print("🔍 Path: \(url.path)")
-        print("🔍 Query: \(url.query ?? "nil")")
-        print("🔍 Scheme: \(url.scheme ?? "nil")")
-        print("🔍 ==================================================")
-        
         // Try to handle with Google Sign-In SDK
-        let googleHandled = GIDSignIn.sharedInstance.handle(url)
-        print("🔍 Google Sign-In SDK handling result: \(googleHandled)")
-        
-        if googleHandled {
-            print("🔍 Google Sign-In successfully handled URL")
+        if GIDSignIn.sharedInstance.handle(url) {
             return true
         }
         
@@ -267,6 +209,87 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         print("🔔 Failed to register for remote notifications: \(error)")
     }
     
+    // MARK: - Notification Configuration
+    
+    private func configureNotificationCategories() {
+        // Connection request actions
+        let acceptAction = UNNotificationAction(
+            identifier: "ACCEPT_CONNECTION",
+            title: "Accept",
+            options: [.authenticationRequired, .foreground]
+        )
+        let declineAction = UNNotificationAction(
+            identifier: "DECLINE_CONNECTION",
+            title: "Decline",
+            options: [.authenticationRequired, .destructive]
+        )
+        let connectionCategory = UNNotificationCategory(
+            identifier: "CONNECTION_REQUEST",
+            actions: [acceptAction, declineAction],
+            intentIdentifiers: [],
+            options: []
+        )
+        
+        // Message actions
+        let replyAction = UNTextInputNotificationAction(
+            identifier: "REPLY_MESSAGE",
+            title: "Reply",
+            options: [.authenticationRequired],
+            textInputButtonTitle: "Send",
+            textInputPlaceholder: "Type your message..."
+        )
+        let viewAction = UNNotificationAction(
+            identifier: "VIEW_MESSAGE",
+            title: "View",
+            options: [.authenticationRequired, .foreground]
+        )
+        let messageCategory = UNNotificationCategory(
+            identifier: "NEW_MESSAGE",
+            actions: [replyAction, viewAction],
+            intentIdentifiers: [],
+            options: []
+        )
+        
+        // Place suggestion actions
+        let viewPlaceAction = UNNotificationAction(
+            identifier: "VIEW_PLACE",
+            title: "View Place",
+            options: [.authenticationRequired, .foreground]
+        )
+        let saveAction = UNNotificationAction(
+            identifier: "SAVE_PLACE",
+            title: "Save to Circle",
+            options: [.authenticationRequired]
+        )
+        let suggestionCategory = UNNotificationCategory(
+            identifier: "PLACE_SUGGESTION",
+            actions: [viewPlaceAction, saveAction],
+            intentIdentifiers: [],
+            options: []
+        )
+        
+        // Activity update category
+        let viewActivityAction = UNNotificationAction(
+            identifier: "VIEW_ACTIVITY",
+            title: "View",
+            options: [.authenticationRequired, .foreground]
+        )
+        let activityCategory = UNNotificationCategory(
+            identifier: "ACTIVITY_UPDATE",
+            actions: [viewActivityAction],
+            intentIdentifiers: [],
+            options: []
+        )
+        
+        // Set categories
+        UNUserNotificationCenter.current().setNotificationCategories([
+            connectionCategory,
+            messageCategory,
+            suggestionCategory,
+            activityCategory
+        ])
+    }
+    
     // MARK: - UNUserNotificationCenterDelegate
     
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
@@ -322,29 +345,88 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     }
     
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
-        // Handle notification tap
+        // Handle notification response (tap or action)
         let userInfo = response.notification.request.content.userInfo
-        print("🔔 Notification tapped with userInfo: \(userInfo)")
+        print("🔔 Notification response received - Action: \(response.actionIdentifier)")
+        print("🔔 UserInfo: \(userInfo)")
         
-        // Handle different notification types
+        // Handle notification actions
+        switch response.actionIdentifier {
+        case UNNotificationDefaultActionIdentifier:
+            // User tapped the notification itself
+            handleNotificationTap(userInfo: userInfo)
+            
+        case "ACCEPT_CONNECTION":
+            // Handle connection accept action
+            if let requestId = userInfo["requestId"] as? String {
+                handleAcceptConnection(requestId: requestId)
+            }
+            
+        case "DECLINE_CONNECTION":
+            // Handle connection decline action
+            if let requestId = userInfo["requestId"] as? String {
+                handleDeclineConnection(requestId: requestId)
+            }
+            
+        case "REPLY_MESSAGE":
+            // Handle message reply action
+            if let textResponse = response as? UNTextInputNotificationResponse,
+               let conversationId = userInfo["conversationId"] as? String {
+                handleQuickReply(conversationId: conversationId, message: textResponse.userText)
+            }
+            
+        case "VIEW_MESSAGE":
+            // Navigate to specific conversation
+            if let conversationId = userInfo["conversationId"] as? String {
+                NotificationCenter.default.post(
+                    name: Notification.Name("NavigateToConversation"),
+                    object: conversationId
+                )
+            }
+            
+        case "VIEW_PLACE":
+            // Navigate to place detail
+            if let placeId = userInfo["placeId"] as? String {
+                NotificationCenter.default.post(
+                    name: Notification.Name("NavigateToPlace"),
+                    object: placeId
+                )
+            }
+            
+        case "SAVE_PLACE":
+            // Handle save place action
+            if let placeId = userInfo["placeId"] as? String {
+                handleSavePlace(placeId: placeId)
+            }
+            
+        case "VIEW_ACTIVITY":
+            // Navigate based on activity type
+            handleViewActivity(userInfo: userInfo)
+            
+        default:
+            break
+        }
+        
+        completionHandler()
+    }
+    
+    // MARK: - Notification Action Handlers
+    
+    private func handleNotificationTap(userInfo: [AnyHashable: Any]) {
+        // Handle different notification types when user taps the notification
         if let type = userInfo["type"] as? String {
             switch type {
             case "new_message":
-                // Navigate to messages
                 NotificationCenter.default.post(name: Notification.Name("NavigateToMessages"), object: nil)
             case "new_suggestion":
-                // Navigate to suggestions
                 NotificationCenter.default.post(name: Notification.Name("NavigateToSuggestions"), object: nil)
             case "new_place":
-                // Navigate to the specific circle
                 if let circleId = userInfo["circleId"] as? String {
                     NotificationCenter.default.post(name: Notification.Name("NavigateToCircle"), object: circleId)
                 }
             case "connection_request":
-                // Navigate to network tab
                 NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
             case "connection_accepted":
-                // Store the newly accepted connection ID and navigate to network tab
                 if let acceptedByUserId = userInfo["acceptedByUserId"] as? String {
                     UserDefaults.standard.set(acceptedByUserId, forKey: "newlyAcceptedConnectionId")
                     UserDefaults.standard.set(Date(), forKey: "newlyAcceptedConnectionDate")
@@ -354,8 +436,110 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
                 break
             }
         }
-        
-        completionHandler()
+    }
+    
+    private func handleAcceptConnection(requestId: String) {
+        // Show loading indicator
+        DispatchQueue.main.async {
+            if let topVC = self.getTopViewController() {
+                let loading = AlertPresenter.showLoading(message: "Accepting connection...", from: topVC)
+                
+                // Make API call to accept connection
+                NetworkManager.shared.acceptConnectionRequest(requestId: requestId) { result in
+                    loading.dismiss(animated: true) {
+                        switch result {
+                        case .success:
+                            // Show success and navigate to network
+                            AlertPresenter.showSuccess("Connection accepted!", from: topVC)
+                            NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
+                        case .failure(let error):
+                            AlertPresenter.showError(error, from: topVC)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private func handleDeclineConnection(requestId: String) {
+        // Make API call to decline connection
+        NetworkManager.shared.declineConnectionRequest(requestId: requestId) { result in
+            DispatchQueue.main.async {
+                if let topVC = self.getTopViewController() {
+                    switch result {
+                    case .success:
+                        // Just show a brief confirmation
+                        AlertPresenter.showBriefMessage("Connection declined", from: topVC)
+                    case .failure(let error):
+                        AlertPresenter.showError(error, from: topVC)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func handleQuickReply(conversationId: String, message: String) {
+        // Send the message via messaging service
+        MessagingService.shared.sendQuickReply(conversationId: conversationId, message: message) { result in
+            DispatchQueue.main.async {
+                if let topVC = self.getTopViewController() {
+                    switch result {
+                    case .success:
+                        // Show brief success
+                        AlertPresenter.showBriefMessage("Reply sent", from: topVC)
+                    case .failure(let error):
+                        // Show error and offer to open conversation
+                        AlertPresenter.showConfirmation(
+                            title: "Reply Failed",
+                            message: "Failed to send reply. Open conversation?",
+                            from: topVC
+                        ) {
+                            NotificationCenter.default.post(
+                                name: Notification.Name("NavigateToConversation"),
+                                object: conversationId
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private func handleSavePlace(placeId: String) {
+        // Show circle picker to save place
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: Notification.Name("SavePlaceToCircle"),
+                object: placeId
+            )
+        }
+    }
+    
+    private func handleViewActivity(userInfo: [AnyHashable: Any]) {
+        // Navigate based on activity type
+        if let activityType = userInfo["activityType"] as? String {
+            switch activityType {
+            case "new_place", "place_liked":
+                if let circleId = userInfo["circleId"] as? String {
+                    NotificationCenter.default.post(
+                        name: Notification.Name("NavigateToCircle"),
+                        object: circleId
+                    )
+                }
+            case "new_connection":
+                NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
+            case "comment":
+                if let placeId = userInfo["placeId"] as? String {
+                    NotificationCenter.default.post(
+                        name: Notification.Name("NavigateToPlace"),
+                        object: placeId
+                    )
+                }
+            default:
+                // Navigate to home/activity feed
+                NotificationCenter.default.post(name: Notification.Name("NavigateToHome"), object: nil)
+            }
+        }
     }
 }
 

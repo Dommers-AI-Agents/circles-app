@@ -57,6 +57,21 @@ struct Place: Codable, Identifiable {
         self.photos = try container.decodeIfPresent([String].self, forKey: .photos)
         self.category = try container.decode(PlaceCategory.self, forKey: .category)
         self.customCategoryId = try container.decodeIfPresent(String.self, forKey: .customCategoryId)
+        
+        // Debug: Check for suspicious customCategoryId values during decoding
+        if let customCategoryId = self.customCategoryId, 
+           category == .other,
+           (customCategoryId.contains("@") || 
+            (customCategoryId.components(separatedBy: " ").count == 2 && 
+             customCategoryId != "Other" && 
+             !customCategoryId.isEmpty)) {
+            print("🔴 ALERT: Place decoded with suspicious customCategoryId!")
+            print("🔴 Place ID: \(self.id)")
+            print("🔴 Name: \(self.name)")
+            print("🔴 Category: \(category.rawValue)")
+            print("🔴 CustomCategoryId: '\(customCategoryId)'")
+            print("🔴 This appears to be user data, not a category name!")
+        }
         self.subcategory = try container.decodeIfPresent(String.self, forKey: .subcategory)
         self.rating = try container.decodeIfPresent(Double.self, forKey: .rating)
         self.userRatingsTotal = try container.decodeIfPresent(Int.self, forKey: .userRatingsTotal)
@@ -319,6 +334,45 @@ enum PlaceCategory: String, Codable, CaseIterable {
         case .other: return "mappin.circle.fill"
         }
     }
+    
+    var color: UIColor {
+        switch self {
+        case .restaurant:
+            return UIColor(hex: "#E53E3E") // Red
+        case .cafe:
+            return UIColor(hex: "#DD6B20") // Orange
+        case .bar:
+            return UIColor(hex: "#DD6B20") // Orange
+        case .hotel:
+            return UIColor(hex: "#3182CE") // Blue
+        case .retail:
+            return UIColor(hex: "#805AD5") // Purple
+        case .service:
+            return UIColor(hex: "#38A169") // Green
+        case .attraction:
+            return UIColor(hex: "#D69E2E") // Yellow
+        case .entertainment:
+            return UIColor(hex: "#D69E2E") // Yellow
+        case .healthcare:
+            return UIColor(hex: "#319795") // Teal
+        case .fitness:
+            return UIColor(hex: "#E53E3E") // Red
+        case .education:
+            return UIColor(hex: "#3182CE") // Blue
+        case .outdoor:
+            return UIColor(hex: "#22C55E") // Green
+        case .transport:
+            return UIColor(hex: "#718096") // Gray
+        case .finance:
+            return UIColor(hex: "#10B981") // Emerald
+        case .home:
+            return UIColor(hex: "#8B5CF6") // Violet
+        case .work:
+            return UIColor(hex: "#6366F1") // Indigo
+        case .other:
+            return UIColor(hex: "#38A169") // Green
+        }
+    }
 }
 
 // MARK: - Unified Category System
@@ -353,6 +407,15 @@ enum UnifiedCategory: Hashable, Equatable {
         }
     }
     
+    var color: UIColor {
+        switch self {
+        case .standard(let category):
+            return category.color
+        case .custom:
+            return UIColor(hex: "#718096") // Gray for custom categories
+        }
+    }
+    
     // Helper to match against a Place
     func matches(place: Place) -> Bool {
         switch self {
@@ -366,10 +429,57 @@ enum UnifiedCategory: Hashable, Equatable {
     // Helper to create from a Place
     static func from(place: Place) -> UnifiedCategory {
         if place.category == .other, let customName = place.customCategoryId, !customName.isEmpty {
-            return .custom(customName)
+            // Validate that this is actually a category name and not user data
+            if isValidCategoryName(customName) {
+                return .custom(customName)
+            } else {
+                // Fall back to "Other" category if invalid
+                print("⚠️ Invalid custom category detected: '\(customName)' - falling back to Other")
+                return .standard(.other)
+            }
         } else {
             return .standard(place.category)
         }
+    }
+    
+    // Validate that a string is a valid category name (not an email or user ID)
+    private static func isValidCategoryName(_ name: String) -> Bool {
+        // Check if it looks like an email
+        if name.contains("@") && name.contains(".") {
+            return false
+        }
+        
+        // Check if it's a numeric ID
+        if name.rangeOfCharacter(from: CharacterSet.decimalDigits.inverted) == nil && name.count > 10 {
+            return false
+        }
+        
+        // Check if it contains typical user name patterns (firstname lastname)
+        let components = name.components(separatedBy: " ")
+        if components.count == 2 {
+            // Check if both components start with capital letters (typical for names)
+            let firstComponent = components[0]
+            let secondComponent = components[1]
+            if !firstComponent.isEmpty && !secondComponent.isEmpty {
+                let firstChar = String(firstComponent.prefix(1))
+                let secondChar = String(secondComponent.prefix(1))
+                if firstChar == firstChar.uppercased() && secondChar == secondChar.uppercased() {
+                    // Likely a person's name, not a category
+                    return false
+                }
+            }
+        }
+        
+        // Additional checks for known invalid patterns
+        let invalidPatterns = ["admin", "user", "test"]
+        let lowercaseName = name.lowercased()
+        for pattern in invalidPatterns {
+            if lowercaseName == pattern {
+                return false
+            }
+        }
+        
+        return true
     }
 }
 
@@ -413,6 +523,92 @@ enum PlacePrivacy: String, Codable, CaseIterable {
         case .myNetwork: return "person.2"
         case .`private`: return "lock"
         }
+    }
+}
+
+// MARK: - Place Array Filtering Extensions
+extension Array where Element == Place {
+    // Filter by category
+    func filtered(by category: UnifiedCategory?) -> [Place] {
+        guard let category = category else { return self }
+        return self.filter { category.matches(place: $0) }
+    }
+    
+    // Filter by connection (for "My Places Only" etc)
+    func filtered(by connectionId: String?, currentUserId: String) -> [Place] {
+        guard let connectionId = connectionId else { return self }
+        
+        if connectionId == "my_places_only" {
+            // Show only user's own places
+            return self.filter { $0.addedBy == currentUserId }
+        } else {
+            // Show only places from the selected connection
+            return self.filter { $0.addedBy == connectionId }
+        }
+    }
+    
+    // Filter by city
+    func filtered(by city: String?) -> [Place] {
+        guard let city = city else { return self }
+        return self.filter { place in
+            // Extract city from address (assumes format: "..., City, State/Country")
+            let components = place.address.components(separatedBy: ", ")
+            if components.count >= 2 {
+                let cityComponent = components[components.count - 2]
+                return cityComponent.localizedCaseInsensitiveContains(city)
+            }
+            return false
+        }
+    }
+    
+    // Combined filter method
+    func filtered(category: UnifiedCategory? = nil,
+                 connectionId: String? = nil,
+                 city: String? = nil,
+                 currentUserId: String) -> [Place] {
+        var result = self
+        
+        // Apply filters in sequence
+        result = result.filtered(by: category)
+        result = result.filtered(by: connectionId, currentUserId: currentUserId)
+        result = result.filtered(by: city)
+        
+        return result
+    }
+}
+
+// MARK: - Category Utilities
+extension PlaceCategory {
+    // Get all unique categories from a list of places
+    static func uniqueCategories(from places: [Place]) -> [UnifiedCategory] {
+        var categoriesSet = Set<UnifiedCategory>()
+        
+        for place in places {
+            categoriesSet.insert(UnifiedCategory.from(place: place))
+        }
+        
+        return categoriesSet.sorted(by: { $0.displayName < $1.displayName })
+    }
+}
+
+// MARK: - Place Utilities
+extension Array where Element == Place {
+    // Get available cities from places
+    func uniqueCities() -> [String] {
+        var citiesSet = Set<String>()
+        
+        for place in self {
+            // Extract city from address (assumes format: "..., City, State/Country")
+            let components = place.address.components(separatedBy: ", ")
+            if components.count >= 2 {
+                let city = components[components.count - 2].trimmingCharacters(in: .whitespaces)
+                if !city.isEmpty {
+                    citiesSet.insert(city)
+                }
+            }
+        }
+        
+        return citiesSet.sorted()
     }
 }
 

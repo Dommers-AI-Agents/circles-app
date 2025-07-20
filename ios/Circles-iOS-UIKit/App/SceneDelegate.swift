@@ -181,6 +181,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                                     self.handlePendingDeepLink()
                                     // Process any pending connection invites
                                     NetworkManager.shared.processPendingConnectionInvite()
+                                    
+                                    // Check if user is new and should see tutorial
+                                    OnboardingManager.shared.checkIfUserNeedsTutorial { needsTutorial in
+                                        if needsTutorial {
+                                            OnboardingManager.shared.startTutorial()
+                                            Logger.info("New user detected - starting onboarding tutorial")
+                                        }
+                                    }
                                 })
                             }
                         }
@@ -193,20 +201,49 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                         if error is AuthError && (error as! AuthError) == .userNotFound {
                             AuthService.shared.logout()
                         } else {
-                            // For other errors, show an alert first
+                            // For other errors, show an alert with more details
                             DispatchQueue.main.async { [weak self] in
                                 guard let self = self else { return }
+                                
+                                // Provide more specific error messages
+                                var message = "Unable to load your data. Please try again."
+                                var showRetry = true
+                                
+                                if let nsError = error as? NSError {
+                                    if nsError.domain == "PreloadManager" {
+                                        switch nsError.code {
+                                        case -1:
+                                            message = "Loading is taking longer than expected. This may be due to a slow network connection."
+                                        case -2:
+                                            message = "You are not logged in. Please log in again."
+                                            showRetry = false
+                                        case -3:
+                                            message = "Your session has expired. Please log in again."
+                                            showRetry = false
+                                        default:
+                                            message = nsError.localizedDescription
+                                        }
+                                    } else if nsError.domain == NSURLErrorDomain {
+                                        message = "Network connection error. Please check your internet connection and try again."
+                                    }
+                                }
+                                
                                 let alert = UIAlertController(
                                     title: "Loading Error",
-                                    message: "Unable to load your data. Please try again.",
+                                    message: message,
                                     preferredStyle: .alert
                                 )
-                                alert.addAction(UIAlertAction(title: "Retry", style: .default) { _ in
-                                    self.updateRootViewController(isLoggedIn: true)
-                                })
+                                
+                                if showRetry {
+                                    alert.addAction(UIAlertAction(title: "Retry", style: .default) { _ in
+                                        self.updateRootViewController(isLoggedIn: true)
+                                    })
+                                }
+                                
                                 alert.addAction(UIAlertAction(title: "Logout", style: .destructive) { _ in
                                     AuthService.shared.logout()
                                 })
+                                
                                 splashVC.present(alert, animated: true)
                             }
                         }

@@ -13,7 +13,12 @@ const {
   addEditor,
   removeEditor,
   getEditors,
-  trackCircleView
+  trackCircleView,
+  likeCircle,
+  getCircleLikes,
+  getCircleComments,
+  addCircleComment,
+  deleteCircleComment
 } = require('../controllers/firebaseCircleController');
 const {
   shareCircle: newShareCircle,
@@ -75,5 +80,19 @@ router.route('/:id/editors/:userId')
 // Activity tracking routes
 router.route('/:id/track-view')
   .post(trackCircleView);
+
+// Like and comment routes
+router.route('/:id/like')
+  .post(likeCircle);
+
+router.route('/:id/likes')
+  .get(getCircleLikes);
+
+router.route('/:id/comments')
+  .get(getCircleComments)
+  .post(addCircleComment);
+
+router.route('/:circleId/comments/:commentId')
+  .delete(deleteCircleComment);
 
 module.exports = router;

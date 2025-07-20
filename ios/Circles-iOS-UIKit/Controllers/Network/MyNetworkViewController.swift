@@ -46,6 +46,9 @@ class MyNetworkViewController: BaseViewController {
         setupChildViewControllers()
         showConnectionsList()
         setupSSE()
+        
+        // Check if user needs notification prompt for connections
+        NotificationPromptManager.shared.checkAndPromptIfNeeded(in: self, context: .connections)
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -68,6 +71,35 @@ class MyNetworkViewController: BaseViewController {
                 }
             }
         }
+        
+        // Show network tutorial if needed (only if progressing through tutorial)
+        if OnboardingManager.shared.shouldShowTutorial && 
+           OnboardingManager.shared.hasCompletedStep(.addPlace) &&
+           !OnboardingManager.shared.hasCompletedStep(.exploreNetwork) {
+            // Give a slight delay for the UI to settle
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                guard let self = self else { return }
+                
+                // Find the add connection button in the navigation bar
+                if let addButton = self.navigationItem.rightBarButtonItem {
+                    if let buttonView = addButton.value(forKey: "view") as? UIView {
+                        OnboardingManager.shared.showTutorialStep(
+                            .exploreNetwork,
+                            targetView: buttonView,
+                            in: self,
+                            arrowDirection: .bottom
+                        )
+                    }
+                }
+            }
+        }
+    }
+    
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        
+        // Dismiss any tutorial bubble when leaving
+        OnboardingManager.shared.dismissCurrentBubble()
     }
     
     // MARK: - Setup

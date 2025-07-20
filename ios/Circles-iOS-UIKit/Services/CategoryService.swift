@@ -141,15 +141,26 @@ class CategoryService {
     
     /// Get user's custom categories
     func fetchUserCategories(completion: @escaping (Result<[UserCategory], Error>) -> Void) {
+        print("🔍 CategoryService: Fetching user categories")
+        
         APIService.shared.request(
-            endpoint: "users/categories",
+            endpoint: "categories",
             method: .get,
             requiresAuth: true
         ) { (result: Result<CategoriesResponse, APIError>) in
             switch result {
             case .success(let response):
+                print("✅ CategoryService: Successfully fetched \(response.data.count) categories")
                 completion(.success(response.data))
             case .failure(let error):
+                print("❌ CategoryService: Failed to fetch categories - \(error)")
+                print("❌ CategoryService: Error description - \(error.localizedDescription)")
+                
+                // Provide more context for 404 errors
+                if case .httpError(let statusCode, _) = error, statusCode == 404 {
+                    print("❌ CategoryService: 404 - The categories endpoint was not found")
+                }
+                
                 completion(.failure(error))
             }
         }
@@ -158,7 +169,7 @@ class CategoryService {
     /// Get predefined categories
     func fetchPredefinedCategories(completion: @escaping (Result<[PredefinedCategory], Error>) -> Void) {
         APIService.shared.request(
-            endpoint: "users/categories/predefined",
+            endpoint: "categories/predefined",
             method: .get,
             requiresAuth: true
         ) { (result: Result<PredefinedCategoriesResponse, APIError>) in
@@ -184,7 +195,7 @@ class CategoryService {
         if !subcategories.isEmpty { body["subcategories"] = subcategories }
         
         APIService.shared.request(
-            endpoint: "users/categories",
+            endpoint: "categories",
             method: .post,
             body: body,
             requiresAuth: true
@@ -211,7 +222,7 @@ class CategoryService {
         if let subcategories = subcategories { body["subcategories"] = subcategories }
         
         APIService.shared.request(
-            endpoint: "users/categories/\(categoryId)",
+            endpoint: "categories/\(categoryId)",
             method: .put,
             body: body,
             requiresAuth: true
@@ -232,7 +243,7 @@ class CategoryService {
     /// Delete a custom category
     func deleteCategory(categoryId: String, completion: @escaping (Result<Void, Error>) -> Void) {
         APIService.shared.request(
-            endpoint: "users/categories/\(categoryId)",
+            endpoint: "categories/\(categoryId)",
             method: .delete,
             requiresAuth: true
         ) { [weak self] (result: Result<EmptyResponse, APIError>) in

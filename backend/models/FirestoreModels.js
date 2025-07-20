@@ -16,6 +16,8 @@ const COLLECTIONS = {
   MESSAGE_READS: 'messageReads',
   SUGGESTIONS: 'suggestions',
   COMMENTS: 'comments',
+  PLACE_COMMENTS: 'placeComments',
+  CIRCLE_COMMENTS: 'circleComments',
   NOTIFICATIONS: 'notifications',
   ACTIVITIES: 'activities',
   USER_CATEGORIES: 'userCategories'
@@ -43,6 +45,7 @@ const createUser = (userData) => {
     following: userData.following || [],
     followersCount: userData.followersCount || 0,
     followingCount: userData.followingCount || 0,
+    connectionsCount: userData.connectionsCount || 0,
     // Pinned places (max 6)
     pinnedPlaces: userData.pinnedPlaces || [],
     notificationPreferences: userData.notificationPreferences || {
@@ -62,6 +65,7 @@ const createUser = (userData) => {
     },
     // Onboarding status
     onboardingCompleted: userData.onboardingCompleted || false,
+    hasCompletedTutorial: userData.hasCompletedTutorial || false,
     createdAt: now,
     updatedAt: now,
     // Firebase UID from authentication
@@ -96,6 +100,9 @@ const createCircle = (circleData, ownerId) => {
       maxShareDuration: null,
       allowReshare: false
     },
+    likes: circleData.likes || [],
+    likesCount: circleData.likesCount || 0,
+    commentsCount: circleData.commentsCount || 0,
     createdAt: now,
     updatedAt: now
   };
@@ -212,8 +219,6 @@ const createCircleShare = (shareData) => {
 // Suggestion model structure
 const createSuggestion = (suggestionData, userId) => {
   const now = new Date().toISOString();
-  const tomorrow = new Date();
-  tomorrow.setHours(tomorrow.getHours() + 24);
   
   return {
     userId: userId,
@@ -225,8 +230,8 @@ const createSuggestion = (suggestionData, userId) => {
     likes: suggestionData.likes || [],
     likesCount: suggestionData.likesCount || 0,
     createdAt: now,
-    updatedAt: now,
-    expiresAt: tomorrow.toISOString() // Suggestions expire after 24 hours
+    updatedAt: now
+    // Removed expiresAt - suggestions no longer expire
   };
 };
 
@@ -274,6 +279,15 @@ const validatePlace = (placeData) => {
       !Array.isArray(placeData.location.coordinates) || 
       placeData.location.coordinates.length !== 2) {
     errors.push('Valid location coordinates are required');
+  } else {
+    // Validate coordinate values
+    const [longitude, latitude] = placeData.location.coordinates;
+    if (typeof longitude !== 'number' || typeof latitude !== 'number' ||
+        longitude < -180 || longitude > 180 ||
+        latitude < -90 || latitude > 90 ||
+        (longitude === -180 && latitude === -180)) {
+      errors.push('Location coordinates must be valid latitude (-90 to 90) and longitude (-180 to 180) values');
+    }
   }
   
   if (!placeData.category) {
@@ -490,6 +504,19 @@ const createComment = (commentData) => {
   };
 };
 
+// Create circle comment object for Firestore
+const createCircleComment = (commentData) => {
+  const now = new Date().toISOString();
+  return {
+    circleId: commentData.circleId,
+    userId: commentData.userId,
+    text: commentData.text,
+    likes: commentData.likes || [],
+    likesCount: commentData.likesCount || 0,
+    createdAt: now
+  };
+};
+
 // Validate comment
 const validateComment = (commentData) => {
   const errors = [];
@@ -504,6 +531,25 @@ const validateComment = (commentData) => {
   
   if (!commentData.suggestionId) {
     errors.push('Suggestion ID is required');
+  }
+  
+  return errors;
+};
+
+// Validate circle comment
+const validateCircleComment = (commentData) => {
+  const errors = [];
+  
+  if (!commentData.text || commentData.text.trim().length === 0) {
+    errors.push('Comment text is required');
+  }
+  
+  if (commentData.text && commentData.text.length > 500) {
+    errors.push('Comment must be 500 characters or less');
+  }
+  
+  if (!commentData.circleId) {
+    errors.push('Circle ID is required');
   }
   
   return errors;
@@ -556,6 +602,7 @@ module.exports = {
   createCircleShare,
   createSuggestion,
   createComment,
+  createCircleComment,
   createConversation,
   createMessage,
   createMessageRead,
@@ -566,6 +613,7 @@ module.exports = {
   validateCircleShare,
   validateSuggestion,
   validateComment,
+  validateCircleComment,
   validateConversation,
   validateMessage,
   validateNotification,

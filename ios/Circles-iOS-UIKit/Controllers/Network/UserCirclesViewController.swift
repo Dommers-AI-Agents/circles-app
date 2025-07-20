@@ -156,7 +156,8 @@ class UserCirclesViewController: BaseViewController {
                 
                 switch result {
                 case .success(let response):
-                    self.userCircles = response.data.circles
+                    // Sort circles alphabetically for consistency
+                    self.userCircles = response.data.circles.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
                     self.hasRecentActivity = response.data.hasRecentActivity ?? false
                     self.updateUI(with: response.data.user)
                     self.tableView.reloadData()

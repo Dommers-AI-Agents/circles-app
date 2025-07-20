@@ -1,5 +1,6 @@
 import UIKit
 
+
 class ConnectionDetailViewController: BaseViewController {
     
     // MARK: - Properties
@@ -376,7 +377,7 @@ class ConnectionDetailViewController: BaseViewController {
             endpoint: endpoint,
             method: .post,
             requiresAuth: true
-        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
+        ) { [weak self] (result: Result<FollowResponse, APIError>) in
             guard let self = self else { return }
             DispatchQueue.main.async {
                 switch result {

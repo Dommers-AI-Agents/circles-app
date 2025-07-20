@@ -188,7 +188,7 @@ extension FollowersListViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "FollowerUserCell", for: indexPath) as! FollowerUserCell
         let user = isSearching ? filteredUsers[indexPath.row] : users[indexPath.row]
-        cell.configure(with: user)
+        cell.configure(with: user, listType: listType)
         cell.delegate = self
         return cell
     }
@@ -274,23 +274,48 @@ extension FollowersListViewController: FollowerUserCellDelegate {
     func didTapFollowButton(for user: User, isFollowing: Bool) {
         let endpoint = isFollowing ? "users/\(user.id)/unfollow" : "users/\(user.id)/follow"
         
+        // Find the cell to revert state if API call fails
+        var cellToUpdate: FollowerUserCell?
+        for indexPath in tableView.indexPathsForVisibleRows ?? [] {
+            if let cell = tableView.cellForRow(at: indexPath) as? FollowerUserCell,
+               let cellUser = cell.user,
+               cellUser.id == user.id {
+                cellToUpdate = cell
+                break
+            }
+        }
+        
         APIService.shared.request(
             endpoint: endpoint,
             method: .post,
             requiresAuth: true
-        ) { [weak self] (result: Result<EmptyResponse, APIError>) in
+        ) { [weak self] (result: Result<FollowResponse, APIError>) in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 
                 switch result {
                 case .success:
                     // Update will happen via SSE
-                    break
+                    // Update the user in our local array
+                    if let index = self.users.firstIndex(where: { $0.id == user.id }) {
+                        self.users[index] = user.copy(isFollowing: !isFollowing)
+                    }
+                    if let index = self.filteredUsers.firstIndex(where: { $0.id == user.id }) {
+                        self.filteredUsers[index] = user.copy(isFollowing: !isFollowing)
+                    }
                 case .failure(let error):
+                    // Revert the cell state on failure
+                    cellToUpdate?.setFollowingState(!isFollowing)
                     self.showError("Failed to \(isFollowing ? "unfollow" : "follow") user: \(error.localizedDescription)")
                 }
             }
         }
+    }
+    
+    func didTapViewButton(for user: User) {
+        // Navigate to user profile
+        let profileVC = ProfileViewController(user: user)
+        navigationController?.pushViewController(profileVC, animated: true)
     }
 }
 
@@ -312,17 +337,20 @@ struct FollowingResponse: Codable {
     let following: [User]
 }
 
+
 // MARK: - Follower User Cell
 protocol FollowerUserCellDelegate: AnyObject {
     func didTapFollowButton(for user: User, isFollowing: Bool)
+    func didTapViewButton(for user: User)
 }
 
 class FollowerUserCell: UITableViewCell {
     
     // MARK: - Properties
     weak var delegate: FollowerUserCellDelegate?
-    private var user: User?
+    private(set) var user: User?
     private var isFollowing = false
+    private var currentListType: FollowListType?
     
     // MARK: - UI Elements
     private let containerView: UIView = {
@@ -405,12 +433,14 @@ class FollowerUserCell: UITableViewCell {
             followButton.heightAnchor.constraint(equalToConstant: 32)
         ])
         
+        // Initial setup - will be updated in configure method based on follow status
         followButton.addTarget(self, action: #selector(followButtonTapped), for: .touchUpInside)
     }
     
     // MARK: - Configuration
-    func configure(with user: User) {
+    func configure(with user: User, listType: FollowListType) {
         self.user = user
+        self.currentListType = listType
         
         // Set user info
         if let firstName = user.firstName, let lastName = user.lastName {
@@ -433,8 +463,13 @@ class FollowerUserCell: UITableViewCell {
             profileImageView.tintColor = Constants.Colors.primary
         }
         
-        // Check follow status (this would need to be implemented)
-        checkFollowStatus()
+        // Check follow status - for following list, always show as following
+        if listType == .following {
+            isFollowing = true
+        } else {
+            isFollowing = user.isFollowing ?? false
+        }
+        updateFollowButton(listType: listType)
         
         // Hide follow button for current user
         if user.id == AuthService.shared.getUserId() {
@@ -445,26 +480,56 @@ class FollowerUserCell: UITableViewCell {
     }
     
     private func checkFollowStatus() {
-        // For now, default to not following
-        // This would need to check current user's following list
-        isFollowing = false
+        // Use the isFollowing field from the user model
+        isFollowing = user?.isFollowing ?? false
         updateFollowButton()
     }
     
-    private func updateFollowButton() {
+    private func updateFollowButton(listType: FollowListType? = nil) {
         if isFollowing {
-            followButton.setTitle("Following", for: .normal)
-            followButton.setStyle(.primary)
+            if listType == .following {
+                // In following list, show "Following" button that can unfollow
+                followButton.setTitle("Following", for: .normal)
+                followButton.setStyle(.primary)
+                followButton.removeTarget(self, action: #selector(viewButtonTapped), for: .touchUpInside)
+                followButton.addTarget(self, action: #selector(followButtonTapped), for: .touchUpInside)
+            } else {
+                // In followers list, show "View" button to view profile
+                followButton.setTitle("View", for: .normal)
+                followButton.setStyle(.secondary)
+                followButton.removeTarget(self, action: #selector(followButtonTapped), for: .touchUpInside)
+                followButton.addTarget(self, action: #selector(viewButtonTapped), for: .touchUpInside)
+            }
         } else {
+            // Not following - show "Follow" button
             followButton.setTitle("Follow", for: .normal)
             followButton.setStyle(.secondary)
+            followButton.removeTarget(self, action: #selector(viewButtonTapped), for: .touchUpInside)
+            followButton.addTarget(self, action: #selector(followButtonTapped), for: .touchUpInside)
         }
+    }
+    
+    // Public method to set following state (used for reverting on API failure)
+    func setFollowingState(_ following: Bool) {
+        isFollowing = following
+        updateFollowButton(listType: currentListType)
     }
     
     // MARK: - Actions
     @objc private func followButtonTapped() {
         guard let user = user else { return }
-        delegate?.didTapFollowButton(for: user, isFollowing: isFollowing)
+        
+        // Toggle the state immediately for better UX
+        isFollowing.toggle()
+        updateFollowButton(listType: currentListType)
+        
+        // Notify delegate with the previous state (before toggle)
+        delegate?.didTapFollowButton(for: user, isFollowing: !isFollowing)
+    }
+    
+    @objc private func viewButtonTapped() {
+        guard let user = user else { return }
+        delegate?.didTapViewButton(for: user)
     }
     
     // MARK: - Reuse
@@ -476,5 +541,10 @@ class FollowerUserCell: UITableViewCell {
         user = nil
         isFollowing = false
         followButton.isHidden = false
+        // Reset button to default state
+        followButton.removeTarget(nil, action: nil, for: .allEvents)
+        followButton.addTarget(self, action: #selector(followButtonTapped), for: .touchUpInside)
+        followButton.setTitle("Follow", for: .normal)
+        followButton.setStyle(.secondary)
     }
 }

@@ -240,7 +240,7 @@ class CircleService {
         )
     }
     
-    func updateCircle(id: String, name: String? = nil, description: String? = nil, privacy: PrivacyLevel? = nil, category: CircleCategory? = nil, location: String? = nil, tags: [String]? = nil, coverImage: Data? = nil, completion: @escaping (Result<Circle, Error>) -> Void) {
+    func updateCircle(id: String, name: String? = nil, description: String? = nil, privacy: PrivacyLevel? = nil, category: CircleCategory? = nil, customCategoryId: String? = nil, location: String? = nil, tags: [String]? = nil, coverImage: Data? = nil, completion: @escaping (Result<Circle, Error>) -> Void) {
         
         // First check if we need to upload an image
         if let imageData = coverImage {
@@ -248,18 +248,18 @@ class CircleService {
                 switch result {
                 case .success(let imageUrl):
                     // Now update the circle with the image URL
-                    self?.performUpdateCircle(id: id, name: name, description: description, privacy: privacy, category: category, location: location, tags: tags, coverImageUrl: imageUrl, completion: completion)
+                    self?.performUpdateCircle(id: id, name: name, description: description, privacy: privacy, category: category, customCategoryId: customCategoryId, location: location, tags: tags, coverImageUrl: imageUrl, completion: completion)
                 case .failure(let error):
                     completion(.failure(error))
                 }
             }
         } else {
             // Update circle without changing image
-            performUpdateCircle(id: id, name: name, description: description, privacy: privacy, category: category, location: location, tags: tags, coverImageUrl: nil, completion: completion)
+            performUpdateCircle(id: id, name: name, description: description, privacy: privacy, category: category, customCategoryId: customCategoryId, location: location, tags: tags, coverImageUrl: nil, completion: completion)
         }
     }
     
-    private func performUpdateCircle(id: String, name: String?, description: String?, privacy: PrivacyLevel?, category: CircleCategory?, location: String?, tags: [String]?, coverImageUrl: String?, completion: @escaping (Result<Circle, Error>) -> Void) {
+    private func performUpdateCircle(id: String, name: String?, description: String?, privacy: PrivacyLevel?, category: CircleCategory?, customCategoryId: String?, location: String?, tags: [String]?, coverImageUrl: String?, completion: @escaping (Result<Circle, Error>) -> Void) {
         
         var body: [String: Any] = [:]
         
@@ -277,6 +277,10 @@ class CircleService {
         
         if let category = category {
             body["category"] = category.rawValue
+        }
+        
+        if let customCategoryId = customCategoryId {
+            body["customCategoryId"] = customCategoryId
         }
         
         if let location = location {
@@ -638,6 +642,91 @@ class CircleService {
             }
         )
     }
+    
+    // MARK: - Circle Likes and Comments
+    
+    func likeCircle(id: String, completion: @escaping (Result<Circle, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "circles/\(id)/like",
+            method: .post,
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<CircleLikeResponse, APIError>) in
+                switch result {
+                case .success(let response):
+                    completion(.success(response.data))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
+        )
+    }
+    
+    func fetchCircleLikes(id: String, completion: @escaping (Result<CircleLikesResponse, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "circles/\(id)/likes",
+            method: .get,
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<CircleLikesResponse, APIError>) in
+                switch result {
+                case .success(let response):
+                    completion(.success(response))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
+        )
+    }
+    
+    func getCircleComments(circleId: String, completion: @escaping (Result<[CircleComment], Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "circles/\(circleId)/comments",
+            method: .get,
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<CircleCommentsResponse, APIError>) in
+                switch result {
+                case .success(let response):
+                    completion(.success(response.data))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
+        )
+    }
+    
+    func addCircleComment(circleId: String, text: String, completion: @escaping (Result<CircleComment, Error>) -> Void) {
+        let requestBody = ["text": text]
+        
+        APIService.shared.request(
+            endpoint: "circles/\(circleId)/comments",
+            method: .post,
+            body: requestBody,
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<CircleCommentResponse, APIError>) in
+                switch result {
+                case .success(let response):
+                    completion(.success(response.data))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
+        )
+    }
+    
+    func deleteCircleComment(circleId: String, commentId: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "circles/\(circleId)/comments/\(commentId)",
+            method: .delete,
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<EmptyResponse, APIError>) in
+                switch result {
+                case .success(_):
+                    completion(.success(()))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
+        )
+    }
 }
 
 // MARK: - Response Types
@@ -675,4 +764,24 @@ struct SharesResponse: Decodable {
 struct EditorsResponse: Decodable {
     let success: Bool
     let data: [User]
+}
+
+struct CircleLikeResponse: Decodable {
+    let success: Bool
+    let data: Circle
+}
+
+struct CircleLikesResponse: Decodable {
+    let success: Bool
+    let likes: [User]
+}
+
+struct CircleCommentsResponse: Decodable {
+    let success: Bool
+    let data: [CircleComment]
+}
+
+struct CircleCommentResponse: Decodable {
+    let success: Bool
+    let data: CircleComment
 }

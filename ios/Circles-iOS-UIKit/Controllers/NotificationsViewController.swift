@@ -63,36 +63,61 @@ class NotificationsViewController: BaseViewController {
     
     // MARK: - Data Loading
     override func loadData(completion: (() -> Void)? = nil) {
+        print("🚀 NotificationsViewController: loadData called")
         loadNotifications(refresh: false, completion: completion)
     }
     
     private func loadNotifications(refresh: Bool = false, completion: (() -> Void)? = nil) {
-        guard !isLoadingData else { return }
+        print("🚀 NotificationsViewController: loadNotifications called")
+        print("🚀 NotificationsViewController: refresh: \(refresh), isLoadingData: \(isLoadingData)")
+        
+        // Don't check isLoadingData here since BaseViewController manages it
+        // and we need to ensure the completion handler is called
         
         if refresh {
             currentOffset = 0
             hasMore = true
         }
         
+        print("🚀 NotificationsViewController: Calling NotificationService.getNotifications")
+        print("🚀 NotificationsViewController: limit: \(pageSize), offset: \(currentOffset)")
+        
         NotificationService.shared.getNotifications(limit: pageSize, offset: currentOffset) { [weak self] result in
+            print("📡 NotificationsViewController: getNotifications callback received")
+            
             DispatchQueue.main.async {
+                guard let self = self else {
+                    completion?()
+                    return
+                }
+                
                 switch result {
                 case .success(let response):
+                    print("✅ NotificationsViewController: Successfully loaded notifications")
+                    print("✅ NotificationsViewController: Received \(response.notifications.count) notifications")
+                    print("✅ NotificationsViewController: hasMore: \(response.hasMore)")
+                    
                     if refresh {
-                        self?.notifications = response.notifications
+                        self.notifications = response.notifications
                     } else {
-                        self?.notifications.append(contentsOf: response.notifications)
+                        self.notifications.append(contentsOf: response.notifications)
                     }
                     
-                    self?.hasMore = response.hasMore
-                    self?.currentOffset += response.notifications.count
+                    self.hasMore = response.hasMore
+                    self.currentOffset += response.notifications.count
                     
-                    self?.updateUI()
-                    self?.tableView.reloadData()
+                    print("✅ NotificationsViewController: Total notifications now: \(self.notifications.count)")
+                    
+                    self.updateUI()
+                    self.tableView.reloadData()
                     
                 case .failure(let error):
-                    self?.showError("Failed to load notifications: \(error.localizedDescription)")
+                    print("❌ NotificationsViewController: Failed to load notifications: \(error)")
+                    print("❌ NotificationsViewController: Error type: \(type(of: error))")
+                    self.showError("Failed to load notifications: \(error.localizedDescription)")
                 }
+                
+                // Always call completion to clear loading state
                 completion?()
             }
         }

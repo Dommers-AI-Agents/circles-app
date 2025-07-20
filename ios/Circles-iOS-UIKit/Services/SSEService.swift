@@ -13,6 +13,10 @@ enum SSEEventType: String {
     case followingAdded = "following_added"
     case followingRemoved = "following_removed"
     case newActivity = "new_activity"
+    case placeAdded = "place_added"
+    case circleCreated = "circle_created"
+    case connectionActivity = "connection_activity"
+    case onboardingCompleted = "onboarding_completed"
 }
 
 // MARK: - SSE Event

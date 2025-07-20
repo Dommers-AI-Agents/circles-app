@@ -14,8 +14,8 @@ exports.getNetworkActivities = async (req, res, next) => {
     console.log('📊 Fetching network activities for user:', userId);
     console.log('📊 Query params:', { limit, offset, since });
     
-    // Get user's connections
-    const [connections1, connections2] = await Promise.all([
+    // Get user's connections AND followed users
+    const [connections1, connections2, currentUserDoc] = await Promise.all([
       db.collection(COLLECTIONS.CONNECTIONS)
         .where('userId', '==', userId)
         .where('status', '==', 'accepted')
@@ -23,7 +23,8 @@ exports.getNetworkActivities = async (req, res, next) => {
       db.collection(COLLECTIONS.CONNECTIONS)
         .where('connectedUserId', '==', userId)
         .where('status', '==', 'accepted')
-        .get()
+        .get(),
+      db.collection(COLLECTIONS.USERS).doc(userId).get()
     ]);
     
     // Extract connected user IDs
@@ -39,14 +40,25 @@ exports.getNetworkActivities = async (req, res, next) => {
       connectedUserIds.add(data.userId);
     });
     
+    // Add followed users to the activity feed (LinkedIn-style)
+    if (currentUserDoc.exists) {
+      const userData = currentUserDoc.data();
+      const following = userData.following || [];
+      following.forEach(followedUserId => {
+        connectedUserIds.add(followedUserId);
+      });
+      console.log('📊 User is following:', following.length, 'users');
+    }
+    
     // Add the current user to see their own activities too
     connectedUserIds.add(userId);
     
-    console.log('📊 Found connections:', connectedUserIds.size - 1); // -1 for self
-    console.log('📊 Connected user IDs:', Array.from(connectedUserIds));
+    console.log('📊 Found connections:', Array.from(connectedUserIds).filter(id => id !== userId).length);
+    console.log('📊 Total users in feed (connections + followed):', connectedUserIds.size - 1); // -1 for self
+    console.log('📊 User IDs for activity feed:', Array.from(connectedUserIds));
     
     if (connectedUserIds.size === 1) { // Only self
-      console.log('📊 User has no connections, returning empty activities');
+      console.log('📊 User has no connections or followed users, returning empty activities');
       return res.status(200).json({
         success: true,
         activities: [],

@@ -397,10 +397,15 @@ exports.firebaseAuth = async (req, res, next) => {
       if (result.isNew) {
         console.log(`✅ New user created successfully with ID: ${simpleUid} (original: ${uid})`);
         
-        // Trigger onboarding for new user (async, don't wait)
-        OnboardingService.completeUserOnboarding(simpleUid).catch(error => {
+        // Complete onboarding for new user (synchronously)
+        try {
+          console.log(`🎯 Starting onboarding for new user ${simpleUid}...`);
+          await OnboardingService.completeUserOnboarding(simpleUid);
+          console.log(`✅ Onboarding completed for user ${simpleUid}`);
+        } catch (error) {
           console.error(`❌ Onboarding failed for user ${simpleUid}:`, error);
-        });
+          // Don't fail the registration if onboarding fails
+        }
       } else {
         console.log(`✅ Existing user updated successfully`);
       }
@@ -619,11 +624,16 @@ exports.register = async (req, res, next) => {
     if (result.isNew) {
       user = result.userData;
       
-      // Trigger onboarding for new user (async, don't wait)
+      // Complete onboarding for new user (synchronously)
       const userId = normalizeUserId(user.id || user.uid);
-      OnboardingService.completeUserOnboarding(userId).catch(error => {
+      try {
+        console.log(`🎯 Starting onboarding for new user ${userId}...`);
+        await OnboardingService.completeUserOnboarding(userId);
+        console.log(`✅ Onboarding completed for user ${userId}`);
+      } catch (error) {
         console.error(`❌ Onboarding failed for user ${userId}:`, error);
-      });
+        // Don't fail the registration if onboarding fails
+      }
     } else {
       const userDoc = await result.userRef.get();
       user = serializeDoc(userDoc);

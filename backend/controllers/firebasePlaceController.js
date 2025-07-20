@@ -2267,3 +2267,125 @@ exports.movePlace = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Get places from multiple circles in a single request
+// @route   POST /api/places/batch
+// @access  Private
+exports.getPlacesByMultipleCircles = async (req, res, next) => {
+  try {
+    console.log('🔍 getPlacesByMultipleCircles - START - Request details:', {
+      circleIds: req.body.circleIds?.length || 0,
+      userUid: req.user?.uid,
+      userEmail: req.user?.email
+    });
+
+    const { circleIds } = req.body;
+    
+    if (!circleIds || !Array.isArray(circleIds) || circleIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Circle IDs array is required'
+      });
+    }
+    
+    // Limit the number of circles to prevent abuse
+    if (circleIds.length > 50) {
+      return res.status(400).json({
+        success: false,
+        message: 'Maximum 50 circles allowed per batch request'
+      });
+    }
+    
+    const currentUserId = req.user.uid;
+    const allPlaces = [];
+    const processedCircles = new Set();
+    
+    // Process circles in chunks to avoid overwhelming the database
+    const chunkSize = 10;
+    for (let i = 0; i < circleIds.length; i += chunkSize) {
+      const chunk = circleIds.slice(i, i + chunkSize);
+      
+      // Fetch circles in this chunk
+      const circlesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
+        .where('__name__', 'in', chunk)
+        .get();
+      
+      for (const circleDoc of circlesSnapshot.docs) {
+        const circle = serializeDoc(circleDoc);
+        
+        // Skip if we've already processed this circle
+        if (processedCircles.has(circle.id)) {
+          continue;
+        }
+        processedCircles.add(circle.id);
+        
+        // Check permissions
+        const isOwner = circle.owner === currentUserId;
+        const isSharedWith = circle.sharedWith && circle.sharedWith.includes(currentUserId);
+        const isPublic = circle.privacy === 'public';
+        
+        // For myNetwork privacy, check if users are connected
+        let isConnected = false;
+        if (circle.privacy === 'myNetwork' && !isOwner) {
+          const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
+            .where('userId', '==', currentUserId)
+            .where('connectedUserId', '==', circle.owner)
+            .where('status', '==', 'accepted')
+            .limit(1)
+            .get();
+            
+          const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
+            .where('userId', '==', circle.owner)
+            .where('connectedUserId', '==', currentUserId)
+            .where('status', '==', 'accepted')
+            .limit(1)
+            .get();
+            
+          isConnected = !connection1.empty || !connection2.empty;
+        }
+        
+        // Skip if user doesn't have access
+        if (!isOwner && !isSharedWith && !isPublic && !(circle.privacy === 'myNetwork' && isConnected)) {
+          console.log(`⚠️ User doesn't have access to circle ${circle.id}`);
+          continue;
+        }
+        
+        // Get places from this circle
+        const placeIds = circle.places || [];
+        if (placeIds.length > 0) {
+          // Fetch places in chunks
+          const placeChunkSize = 10;
+          for (let j = 0; j < placeIds.length; j += placeChunkSize) {
+            const placeChunk = placeIds.slice(j, j + placeChunkSize);
+            
+            const placesSnapshot = await db.collection(COLLECTIONS.PLACES)
+              .where('__name__', 'in', placeChunk)
+              .where('deletedAt', '==', null)
+              .get();
+            
+            placesSnapshot.forEach(placeDoc => {
+              const place = serializeDoc(placeDoc);
+              // Ensure place belongs to the correct circle
+              if (place.circleId === circle.id) {
+                allPlaces.push(place);
+              }
+            });
+          }
+        }
+      }
+    }
+    
+    console.log(`✅ Batch fetched ${allPlaces.length} places from ${processedCircles.size} accessible circles`);
+    
+    res.status(200).json({
+      success: true,
+      places: allPlaces,
+      circlesProcessed: processedCircles.size,
+      totalPlaces: allPlaces.length
+    });
+    
+  } catch (error) {
+    console.error('Error in batch place fetch:', error);
+    next(error);
+  }
+};

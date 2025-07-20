@@ -4,10 +4,12 @@ const {
   COLLECTIONS, 
   createCircle, 
   validateCircle,
+  createCircleComment,
+  validateCircleComment,
   serializeDoc,
   serializeQuerySnapshot 
 } = require('../models/FirestoreModels');
-const { trackCircleCreated, trackCircleView } = require('../services/activityService');
+const { trackCircleCreated, trackCircleView, trackCircleLiked, trackCircleCommented } = require('../services/activityService');
 
 const db = getFirestore();
 
@@ -181,13 +183,28 @@ exports.getCircle = async (req, res, next) => {
       isConnected = !connectionQuery1.empty || !connectionQuery2.empty;
     }
     
-    // Allow access if user is owner, shared with, public, or connected (for myNetwork)
+    // For public circles, also check if user is following the circle owner
+    let isFollowing = false;
+    if (isPublic && !isOwner && !isSharedWith) {
+      const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(req.user.uid).get();
+      if (currentUserDoc.exists) {
+        const userData = currentUserDoc.data();
+        const following = userData.following || [];
+        isFollowing = following.includes(circle.owner);
+        console.log(`👀 User ${req.user.uid} is ${isFollowing ? '' : 'NOT '}following circle owner ${circle.owner}`);
+      }
+    }
+    
+    // Allow access if user is owner, shared with, public (including followers), or connected (for myNetwork)
     if (!isOwner && !isSharedWith && !isPublic && !(circle.privacy === 'myNetwork' && isConnected)) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to access this circle'
       });
     }
+    
+    // Note: Public circles are accessible to anyone, including followers
+    // The isFollowing check above is just for logging/analytics purposes
 
     res.status(200).json({
       success: true,
@@ -279,13 +296,31 @@ exports.updateCircle = async (req, res, next) => {
     }
 
     const circle = serializeDoc(circleDoc);
-    const userId = req.user.firebaseDocId || req.user.uid;
+    const userId = req.user.uid;  // Use uid consistently with circle creation
+    
+    // Debug logging to help diagnose authorization issues
+    console.log('🔍 Circle update authorization check:', {
+      circleId: req.params.id,
+      circleName: circle.name,
+      circleOwner: circle.owner,
+      requestingUserId: userId,
+      requestingUserEmail: req.user.email,
+      isOwnerMatch: circle.owner === userId
+    });
 
     // Check if user is owner or editor
     const isOwner = circle.owner === userId;
     const isEditor = (circle.editors || []).includes(userId);
     
     if (!isOwner && !isEditor) {
+      console.log('❌ Circle update authorization failed:', {
+        circleId: req.params.id,
+        circleOwner: circle.owner,
+        requestingUserId: userId,
+        isOwner: isOwner,
+        isEditor: isEditor,
+        editors: circle.editors || []
+      });
       return res.status(403).json({
         success: false,
         message: 'Not authorized to update this circle'
@@ -381,6 +416,12 @@ exports.updateCircle = async (req, res, next) => {
     // Get updated circle
     const updatedCircleDoc = await circleRef.get();
     const updatedCircle = serializeDoc(updatedCircleDoc);
+    
+    console.log('✅ Circle updated successfully:', {
+      circleId: req.params.id,
+      circleName: updatedCircle.name,
+      updatedFields: Object.keys(updateData)
+    });
 
     res.status(200).json({
       success: true,
@@ -746,6 +787,328 @@ exports.trackCircleView = async (req, res, next) => {
     });
   } catch (error) {
     console.error('Error tracking circle view:', error);
+    next(error);
+  }
+};
+
+// @desc    Like/unlike a circle
+// @route   POST /api/circles/:id/like
+// @access  Private
+exports.likeCircle = async (req, res, next) => {
+  try {
+    const circleId = req.params.id;
+    const userId = req.user.uid;
+    
+    console.log('❤️ likeCircle called:', {
+      circleId,
+      userId,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Get the circle
+    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(circleId);
+    const circleDoc = await circleRef.get();
+    
+    if (!circleDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Circle not found'
+      });
+    }
+    
+    const circle = serializeDoc(circleDoc);
+    const currentLikes = circle.likes || [];
+    const isLiked = currentLikes.includes(userId);
+    
+    let newLikes;
+    let action;
+    
+    if (isLiked) {
+      // Unlike - remove user from likes array
+      newLikes = currentLikes.filter(id => id !== userId);
+      action = 'unliked';
+      console.log('👎 User unliked circle');
+    } else {
+      // Like - add user to likes array
+      newLikes = [...currentLikes, userId];
+      action = 'liked';
+      console.log('👍 User liked circle');
+    }
+    
+    // Update the circle with new likes
+    await circleRef.update({
+      likes: newLikes,
+      likesCount: newLikes.length,
+      updatedAt: new Date().toISOString()
+    });
+    
+    console.log('✅ Circle like status updated successfully');
+    
+    // Track activity if circle was liked (not unliked)
+    if (!isLiked) {
+      await trackCircleLiked(circleId, userId, circle.owner);
+    }
+    
+    res.status(200).json({
+      success: true,
+      message: `Circle ${action} successfully`,
+      data: {
+        circleId,
+        isLiked: !isLiked,
+        likesCount: newLikes.length
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error liking circle:', error);
+    next(error);
+  }
+};
+
+// @desc    Get users who liked a circle
+// @route   GET /api/circles/:id/likes
+// @access  Private
+exports.getCircleLikes = async (req, res, next) => {
+  try {
+    const circleId = req.params.id;
+    const userId = req.user.uid;
+    
+    console.log('👥 getCircleLikes called:', {
+      circleId,
+      userId,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Get the circle
+    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(circleId);
+    const circleDoc = await circleRef.get();
+    
+    if (!circleDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Circle not found'
+      });
+    }
+    
+    const circle = serializeDoc(circleDoc);
+    const likeUserIds = circle.likes || [];
+    
+    // Get user details for all likes
+    const users = [];
+    for (const likeUserId of likeUserIds) {
+      const userDoc = await db.collection(COLLECTIONS.USERS).doc(likeUserId).get();
+      if (userDoc.exists) {
+        users.push(serializeDoc(userDoc));
+      }
+    }
+    
+    console.log(`✅ Found ${users.length} users who liked circle`);
+    
+    res.status(200).json({
+      success: true,
+      data: users
+    });
+    
+  } catch (error) {
+    console.error('Error getting circle likes:', error);
+    next(error);
+  }
+};
+
+// @desc    Get comments for a circle
+// @route   GET /api/circles/:id/comments
+// @access  Private
+exports.getCircleComments = async (req, res, next) => {
+  try {
+    const circleId = req.params.id;
+    const userId = req.user.uid;
+    
+    console.log('🔍 getCircleComments called:', {
+      circleId,
+      userId,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Get the circle to check permissions
+    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(circleId);
+    const circleDoc = await circleRef.get();
+    
+    if (!circleDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Circle not found'
+      });
+    }
+    
+    // Get comments for this circle
+    const commentsSnapshot = await db.collection(COLLECTIONS.CIRCLE_COMMENTS)
+      .where('circleId', '==', circleId)
+      .orderBy('createdAt', 'desc')
+      .get();
+    
+    const comments = [];
+    for (const commentDoc of commentsSnapshot.docs) {
+      const comment = serializeDoc(commentDoc);
+      
+      // Get user details for each comment
+      const userDoc = await db.collection(COLLECTIONS.USERS).doc(comment.userId).get();
+      if (userDoc.exists) {
+        comment.user = serializeDoc(userDoc);
+      }
+      
+      comments.push(comment);
+    }
+    
+    console.log(`✅ Found ${comments.length} comments for circle`);
+    
+    res.status(200).json({
+      success: true,
+      data: comments
+    });
+    
+  } catch (error) {
+    console.error('Error getting circle comments:', error);
+    next(error);
+  }
+};
+
+// @desc    Add comment to a circle
+// @route   POST /api/circles/:id/comments
+// @access  Private
+exports.addCircleComment = async (req, res, next) => {
+  try {
+    const circleId = req.params.id;
+    const userId = req.user.uid;
+    const { text } = req.body;
+    
+    console.log('💬 addCircleComment called:', {
+      circleId,
+      userId,
+      text: text?.substring(0, 50) + (text?.length > 50 ? '...' : ''),
+      timestamp: new Date().toISOString()
+    });
+    
+    if (!text || text.trim() === '') {
+      return res.status(400).json({
+        success: false,
+        message: 'Comment text is required'
+      });
+    }
+    
+    // Get the circle to check permissions and update comment count
+    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(circleId);
+    const circleDoc = await circleRef.get();
+    
+    if (!circleDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Circle not found'
+      });
+    }
+    
+    const circle = serializeDoc(circleDoc);
+    
+    // Create comment data
+    const commentData = createCircleComment({
+      circleId: circleId,
+      userId: userId,
+      text: text.trim()
+    });
+    
+    console.log('💾 Saving comment to circleComments collection');
+    const commentRef = await db.collection(COLLECTIONS.CIRCLE_COMMENTS).add(commentData);
+    const commentDoc = await commentRef.get();
+    const comment = serializeDoc(commentDoc);
+    console.log('✅ Comment saved successfully with ID:', comment.id);
+    
+    // Get user details
+    const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+    if (userDoc.exists) {
+      comment.user = serializeDoc(userDoc);
+    }
+    
+    // Update circle comment count
+    const currentCommentsCount = circle.commentsCount || 0;
+    await circleRef.update({
+      commentsCount: currentCommentsCount + 1,
+      updatedAt: new Date().toISOString()
+    });
+    
+    console.log('✅ Circle comment count updated');
+    
+    // Track activity for circle comment
+    await trackCircleCommented(circleId, userId, circle.owner, text.trim());
+    
+    res.status(201).json({
+      success: true,
+      data: comment
+    });
+    
+  } catch (error) {
+    console.error('Error adding circle comment:', error);
+    next(error);
+  }
+};
+
+// @desc    Delete a comment from a circle
+// @route   DELETE /api/circles/:circleId/comments/:commentId
+// @access  Private (comment owner or circle owner)
+exports.deleteCircleComment = async (req, res, next) => {
+  try {
+    const { circleId, commentId } = req.params;
+    const userId = req.user.uid;
+    
+    // Get the comment
+    const commentRef = db.collection(COLLECTIONS.CIRCLE_COMMENTS).doc(commentId);
+    const commentDoc = await commentRef.get();
+    
+    if (!commentDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Comment not found'
+      });
+    }
+    
+    const comment = serializeDoc(commentDoc);
+    
+    // Get the circle
+    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(circleId);
+    const circleDoc = await circleRef.get();
+    
+    if (!circleDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Circle not found'
+      });
+    }
+    
+    const circle = serializeDoc(circleDoc);
+    
+    // Check permission - only comment owner or circle owner can delete
+    if (comment.userId !== userId && circle.owner !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to delete this comment'
+      });
+    }
+    
+    // Delete the comment
+    await commentRef.delete();
+    
+    // Update circle comment count
+    const currentCommentsCount = circle.commentsCount || 0;
+    await circleRef.update({
+      commentsCount: Math.max(0, currentCommentsCount - 1),
+      updatedAt: new Date().toISOString()
+    });
+    
+    res.status(200).json({
+      success: true,
+      message: 'Comment deleted successfully'
+    });
+    
+  } catch (error) {
+    console.error('Error deleting circle comment:', error);
     next(error);
   }
 };

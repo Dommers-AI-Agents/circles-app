@@ -94,6 +94,7 @@ class OnboardingService {
         // Update user with onboarding completion and circle order
         transaction.update(userRef, {
           onboardingCompleted: true,
+          hasCompletedTutorial: false, // New users need to complete tutorial
           circleOrder: circleIds,
           updatedAt: new Date().toISOString()
         });
@@ -104,6 +105,13 @@ class OnboardingService {
       console.log(`✅ Onboarding completed for user ${userId}`);
       console.log(`📁 Created ${result.circleIds.length} default circles`);
       console.log(`📍 Added sample place: ${result.samplePlace.name}`);
+      
+      // Send SSE notification about onboarding completion
+      const sseService = require('./sseService');
+      sseService.notifyUser(userId, 'onboarding_completed', {
+        circlesCreated: result.circleIds.length,
+        samplePlace: result.samplePlace
+      });
       
       return {
         success: true,

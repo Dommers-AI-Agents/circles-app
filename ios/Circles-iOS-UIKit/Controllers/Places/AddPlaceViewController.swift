@@ -21,7 +21,10 @@ class PlaceSearchAnnotation: NSObject, MKAnnotation {
 class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     
     // MARK: - Properties
-    private let circleId: String
+    private var selectedCircleId: String
+    private var selectedCircle: Circle?
+    private var userCircles: [Circle] = []
+    private var isCircleDropdownVisible = false
     private let locationManager = CLLocationManager()
     private var userLocation: CLLocation?
     private var selectedLocation: CLLocationCoordinate2D?
@@ -153,8 +156,10 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     // Manual entry toggle
     private let manualEntryButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setTitle("Can't find it? Add manually", for: .normal)
+        button.setTitle("Can't find it? Add the address to the search bar above", for: .normal)
         button.titleLabel?.font = UIFont.systemFont(ofSize: 14)
+        button.titleLabel?.numberOfLines = 0
+        button.titleLabel?.textAlignment = .center
         button.setTitleColor(UIColor.systemBlue, for: .normal)
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
@@ -193,6 +198,59 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         textField.font = UIFont.systemFont(ofSize: 16)
         textField.translatesAutoresizingMaskIntoConstraints = false
         return textField
+    }()
+    
+    private let circleLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Circle"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
+        label.textColor = .darkGray
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let circleButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 16)
+        button.titleLabel?.lineBreakMode = .byTruncatingTail
+        button.contentHorizontalAlignment = .left
+        button.tintColor = .darkGray
+        button.backgroundColor = .white
+        button.layer.cornerRadius = 8
+        button.layer.borderWidth = 1
+        button.layer.borderColor = UIColor.systemBlue.withAlphaComponent(0.3).cgColor
+        button.contentEdgeInsets = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 40)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Add chevron
+        let chevron = UIImageView(image: UIImage(systemName: "chevron.down"))
+        chevron.tintColor = .systemGray
+        chevron.translatesAutoresizingMaskIntoConstraints = false
+        button.addSubview(chevron)
+        NSLayoutConstraint.activate([
+            chevron.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+            chevron.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -12),
+            chevron.widthAnchor.constraint(equalToConstant: 12),
+            chevron.heightAnchor.constraint(equalToConstant: 12)
+        ])
+        
+        return button
+    }()
+    
+    private let circleDropdownTableView: UITableView = {
+        let tableView = UITableView()
+        tableView.backgroundColor = .systemBackground
+        tableView.layer.cornerRadius = 8
+        tableView.layer.borderWidth = 1
+        tableView.layer.borderColor = UIColor.systemBlue.withAlphaComponent(0.3).cgColor
+        tableView.layer.shadowColor = UIColor.black.cgColor
+        tableView.layer.shadowOpacity = 0.1
+        tableView.layer.shadowOffset = CGSize(width: 0, height: 2)
+        tableView.layer.shadowRadius = 4
+        tableView.isHidden = true
+        tableView.alpha = 0
+        tableView.translatesAutoresizingMaskIntoConstraints = false
+        return tableView
     }()
     
     private let categoryLabel: UILabel = {
@@ -325,11 +383,11 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     private let addressTextView: UITextView = {
         let textView = UITextView()
         textView.font = UIFont.systemFont(ofSize: 16)
-        textView.backgroundColor = .white
+        textView.backgroundColor = .systemGray6
         textView.textColor = .darkGray
         textView.layer.cornerRadius = 8
         textView.layer.borderWidth = 1
-        textView.layer.borderColor = UIColor.systemBlue.withAlphaComponent(0.3).cgColor
+        textView.layer.borderColor = UIColor.systemGray4.cgColor
         textView.textContainerInset = UIEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
         textView.isEditable = false
         textView.translatesAutoresizingMaskIntoConstraints = false
@@ -421,7 +479,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     
     private let addPlaceButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setTitle("Add Place", for: .normal)
+        button.setTitle("Save Place", for: .normal)
         button.setTitleColor(.white, for: .normal)
         button.backgroundColor = UIColor.systemBlue
         button.layer.cornerRadius = 8
@@ -452,7 +510,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     // MARK: - Lifecycle
     
     init(circleId: String) {
-        self.circleId = circleId
+        self.selectedCircleId = circleId
         super.init(nibName: nil, bundle: nil)
     }
     
@@ -473,6 +531,13 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         // Build comprehensive category list with subcategories
         setupCategoryDropdownItems()
         
+        // Set up circle dropdown
+        circleDropdownTableView.delegate = self
+        circleDropdownTableView.dataSource = self
+        circleDropdownTableView.register(UITableViewCell.self, forCellReuseIdentifier: "CircleCell")
+        circleDropdownTableView.rowHeight = 44
+        circleDropdownTableView.separatorInset = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
+        
         // Set up category dropdown
         categoryDropdownTableView.delegate = self
         categoryDropdownTableView.dataSource = self
@@ -480,13 +545,16 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         categoryDropdownTableView.rowHeight = 44
         categoryDropdownTableView.separatorInset = UIEdgeInsets(top: 0, left: 50, bottom: 0, right: 0)
         
-        // Add tap gesture to dismiss dropdown
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissCategoryDropdown))
+        // Add tap gesture to dismiss dropdowns
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissDropdowns))
         tapGesture.cancelsTouchesInView = false
         tapGesture.delegate = self
         view.addGestureRecognizer(tapGesture)
         
         // Don't set initial region - wait for user location
+        
+        // Load user circles
+        loadUserCircles()
     }
     
     override func viewDidAppear(_ animated: Bool) {
@@ -494,6 +562,23 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         
         // Force map to render properly
         mapView.setNeedsDisplay()
+        
+        // Show add place tutorial if needed (only if progressing through tutorial)
+        if OnboardingManager.shared.shouldShowTutorial && 
+           OnboardingManager.shared.hasCompletedStep(.createCircle) &&
+           !OnboardingManager.shared.hasCompletedStep(.addPlace) {
+            // Give a slight delay for the UI to settle
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                guard let self = self else { return }
+                
+                OnboardingManager.shared.showTutorialStep(
+                    .addPlace,
+                    targetView: self.searchBar,
+                    in: self,
+                    arrowDirection: .top
+                )
+            }
+        }
         
         // Check current authorization status
         switch locationManager.authorizationStatus {
@@ -510,6 +595,13 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
         
         // Don't automatically search - wait for user location to search for coffee shops
+    }
+    
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        
+        // Dismiss any tutorial bubble when leaving
+        OnboardingManager.shared.dismissCurrentBubble()
     }
     
     // MARK: - Setup Methods
@@ -551,6 +643,8 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         formContainer.addSubview(photoImageView)
         formContainer.addSubview(addPhotoButton)
         formContainer.addSubview(removePhotoButton)
+        formContainer.addSubview(circleLabel)
+        formContainer.addSubview(circleButton)
         formContainer.addSubview(categoryLabel)
         formContainer.addSubview(categoryButton)
         // Don't add dropdown to formContainer - will add to main view later
@@ -665,7 +759,15 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             removePhotoButton.widthAnchor.constraint(equalToConstant: 30),
             removePhotoButton.heightAnchor.constraint(equalToConstant: 30),
             
-            categoryLabel.topAnchor.constraint(equalTo: addPhotoButton.bottomAnchor, constant: Constants.Spacing.medium),
+            circleLabel.topAnchor.constraint(equalTo: addPhotoButton.bottomAnchor, constant: Constants.Spacing.medium),
+            circleLabel.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
+            
+            circleButton.topAnchor.constraint(equalTo: circleLabel.bottomAnchor, constant: Constants.Spacing.small),
+            circleButton.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
+            circleButton.trailingAnchor.constraint(equalTo: formContainer.trailingAnchor, constant: -Constants.Spacing.large),
+            circleButton.heightAnchor.constraint(equalToConstant: 44),
+            
+            categoryLabel.topAnchor.constraint(equalTo: circleButton.bottomAnchor, constant: Constants.Spacing.medium),
             categoryLabel.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
             
             categoryButton.topAnchor.constraint(equalTo: categoryLabel.bottomAnchor, constant: Constants.Spacing.small),
@@ -747,8 +849,10 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         // Setup category buttons
         setupCategoryButtons()
         
-        // Add dropdown to main view last to ensure it's on top
+        // Add dropdowns to main view last to ensure they're on top
+        view.addSubview(circleDropdownTableView)
         view.addSubview(categoryDropdownTableView)
+        view.bringSubviewToFront(circleDropdownTableView)
         view.bringSubviewToFront(categoryDropdownTableView)
     }
     
@@ -836,6 +940,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         manualEntryButton.addTarget(self, action: #selector(manualEntryButtonTapped), for: .touchUpInside)
         addPhotoButton.addTarget(self, action: #selector(addPhotoButtonTapped), for: .touchUpInside)
         removePhotoButton.addTarget(self, action: #selector(removePhotoButtonTapped), for: .touchUpInside)
+        circleButton.addTarget(self, action: #selector(circleButtonTapped), for: .touchUpInside)
         categoryButton.addTarget(self, action: #selector(categoryButtonTapped), for: .touchUpInside)
         zoomToMeButton.addTarget(self, action: #selector(zoomToCurrentLocation), for: .touchUpInside)
     }
@@ -918,6 +1023,9 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                 self.addressTextView.text = address
                 self.selectedLocation = coordinate
                 
+                // Add a pin to show the selected location
+                self.addSelectedLocationPin(at: coordinate)
+                
                 // Search for nearby places at this location
                 self.searchNearbyPlaces(at: coordinate)
             }
@@ -998,11 +1106,19 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     }
     
     @objc private func manualEntryButtonTapped() {
-        // Clear any selected Google Place when manually entering
-        selectedGooglePlaceDetails = nil
-        hasSearchedCategory = false  // Reset category search flag
-        enableManualEntry()
-        nameTextField.becomeFirstResponder()
+        // Show message about using the search bar
+        let alert = UIAlertController(
+            title: "How to Add Places",
+            message: "To add a place:\n\n1. Type the address or place name in the search bar above\n2. Select the place from the search results\n3. Fill in the place name and details\n4. Tap 'Add Place' to save",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "Got it", style: .default) { [weak self] _ in
+            // Focus on the search bar
+            self?.searchBar.becomeFirstResponder()
+        })
+        
+        present(alert, animated: true)
     }
     
     @objc private func addPhotoButtonTapped() {
@@ -1076,6 +1192,11 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
+    @objc private func dismissDropdowns() {
+        dismissCategoryDropdown()
+        dismissCircleDropdown()
+    }
+    
     @objc private func dismissCategoryDropdown() {
         if isCategoryDropdownVisible {
             isCategoryDropdownVisible = false
@@ -1103,10 +1224,87 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         searchForCategory(category)
     }
     
+    @objc private func circleButtonTapped() {
+        isCategoryDropdownVisible = false
+        updateCategoryButtonTitle()
+        
+        isCircleDropdownVisible.toggle()
+        updateCircleDropdown()
+    }
+    
+    private func updateCircleDropdown() {
+        if isCircleDropdownVisible {
+            // Position dropdown below button
+            let buttonFrame = circleButton.convert(circleButton.bounds, to: view)
+            let availableHeight = view.frame.height - buttonFrame.maxY - 20
+            let dropdownHeight = min(CGFloat(userCircles.count * 44 + 20), min(300, availableHeight))
+            
+            circleDropdownTableView.frame = CGRect(
+                x: Constants.Spacing.large,
+                y: buttonFrame.maxY + 4,
+                width: view.frame.width - (Constants.Spacing.large * 2),
+                height: dropdownHeight
+            )
+            
+            // Ensure it's on top
+            view.bringSubviewToFront(circleDropdownTableView)
+            circleDropdownTableView.reloadData()
+            
+            // Set proper layer properties for visibility
+            circleDropdownTableView.layer.zPosition = 999
+        }
+        
+        UIView.animate(withDuration: 0.3) {
+            self.circleDropdownTableView.isHidden = !self.isCircleDropdownVisible
+            self.circleDropdownTableView.alpha = self.isCircleDropdownVisible ? 1.0 : 0.0
+            
+            // Rotate chevron
+            if self.isCircleDropdownVisible {
+                self.circleButton.subviews.first { $0 is UIImageView }?.transform = CGAffineTransform(rotationAngle: .pi)
+            } else {
+                self.circleButton.subviews.first { $0 is UIImageView }?.transform = .identity
+            }
+        }
+    }
+    
+    @objc private func dismissCircleDropdown() {
+        if isCircleDropdownVisible {
+            isCircleDropdownVisible = false
+            UIView.animate(withDuration: 0.3) {
+                self.circleDropdownTableView.isHidden = true
+                self.circleDropdownTableView.alpha = 0.0
+                self.circleButton.subviews.first { $0 is UIImageView }?.transform = .identity
+            }
+        }
+    }
+    
     @objc private func addPlaceButtonTapped() {
         guard let name = nameTextField.text, !name.isEmpty,
               let address = addressTextView.text, !address.isEmpty else {
             presentAlert(title: "Error", message: "Please provide a name and address")
+            return
+        }
+        
+        // Check if we have location data from any source
+        let hasLocation = selectedLocation != nil || selectedGooglePlaceDetails != nil || currentPOIData != nil
+        
+        if !hasLocation {
+            // Show alert to user that they need to select a location
+            let alert = UIAlertController(
+                title: "Location Required",
+                message: "Please select a location on the map or search for the place to set its location.",
+                preferredStyle: .alert
+            )
+            
+            alert.addAction(UIAlertAction(title: "Select on Map", style: .default) { [weak self] _ in
+                // Scroll to map and show instruction
+                self?.scrollView.setContentOffset(.zero, animated: true)
+                self?.presentAlert(title: "Tap on Map", message: "Tap on the map to set the location for this place")
+            })
+            
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            
+            present(alert, animated: true)
             return
         }
         
@@ -1134,14 +1332,29 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                     if let duplicate = duplicatePlace, let circle = duplicateCircle {
                         // Show alert about duplicate
                         let alert = UIAlertController(
-                            title: "Place Already Exists",
-                            message: "You already have \"\(duplicate.name)\" in your \"\(circle.name)\" circle. Would you like to view it?",
+                            title: "Similar Place Found",
+                            message: "You already have \"\(duplicate.name)\" in your \"\(circle.name)\" circle. What would you like to do?",
                             preferredStyle: .alert
                         )
                         
                         alert.addAction(UIAlertAction(title: "View Place", style: .default) { _ in
                             // Navigate to the circle detail view with the duplicate place
                             self?.navigateToCircleDetail()
+                        })
+                        
+                        alert.addAction(UIAlertAction(title: "Add Anyway", style: .default) { _ in
+                            // User wants to add the place despite it being a duplicate
+                            self?.proceedWithPlaceCreation(
+                                name: name,
+                                address: address,
+                                description: description,
+                                category: category,
+                                customCategory: customCategory,
+                                subcategory: subcategory,
+                                privacy: privacy,
+                                privateNotes: privateNotes.isEmpty ? nil : privateNotes,
+                                publicNotes: publicNotes.isEmpty ? nil : publicNotes
+                            )
                         })
                         
                         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
@@ -1345,66 +1558,78 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             print("  Name: \(name)")
             print("  GooglePlaceId: \(googleDetails.placeID)")
             print("  Has photos: \(googleDetails.photos.count > 0)")
+            print("  Coordinate: \(googleDetails.coordinate.latitude), \(googleDetails.coordinate.longitude)")
             
-            // Use addPlaceFromPOI which collects both Apple Look Around and Google Places photos
+            // Check if coordinates are valid
+            let isValidCoordinate = googleDetails.coordinate.latitude >= -90 && googleDetails.coordinate.latitude <= 90 &&
+                                  googleDetails.coordinate.longitude >= -180 && googleDetails.coordinate.longitude <= 180 &&
+                                  !(googleDetails.coordinate.longitude == -180 && googleDetails.coordinate.latitude == -180) &&
+                                  !(googleDetails.coordinate.longitude == 0 && googleDetails.coordinate.latitude == 0)
+            
+            if !isValidCoordinate {
+                print("⚠️ Google Place has invalid coordinates: \(googleDetails.coordinate.latitude), \(googleDetails.coordinate.longitude)")
+                print("🔄 Will attempt to geocode the address: \(address)")
+                
+                // Geocode the address to get valid coordinates
+                let geocoder = CLGeocoder()
+                geocoder.geocodeAddressString(address) { [weak self] placemarks, error in
+                    guard let self = self else { return }
+                    
+                    if let error = error {
+                        print("❌ Geocoding failed: \(error.localizedDescription)")
+                        loadingAlert.dismiss(animated: true) {
+                            self.presentAlert(title: "Location Error", 
+                                            message: "Unable to determine location for this address. Please select a location on the map.")
+                        }
+                        return
+                    }
+                    
+                    guard let placemark = placemarks?.first,
+                          let location = placemark.location else {
+                        print("❌ No location found for address")
+                        loadingAlert.dismiss(animated: true) {
+                            self.presentAlert(title: "Location Error", 
+                                            message: "Unable to find location for this address. Please select a location on the map.")
+                        }
+                        return
+                    }
+                    
+                    print("✅ Successfully geocoded address to: \(location.coordinate.latitude), \(location.coordinate.longitude)")
+                    
+                    // Create place with geocoded coordinates
+                    let geoLocation = GeoLocation(
+                        type: "Point", 
+                        coordinates: [location.coordinate.longitude, location.coordinate.latitude]
+                    )
+                    
+                    self.createPlaceWithGoogleDetails(googleDetails: googleDetails,
+                                                    name: name,
+                                                    address: address,
+                                                    location: geoLocation,
+                                                    category: category,
+                                                    description: description,
+                                                    privateNotes: privateNotes,
+                                                    publicNotes: publicNotes,
+                                                    loadingAlert: loadingAlert)
+                }
+                return
+            }
+            
+            // Coordinates are valid, proceed with normal creation
             let location = GeoLocation(
                 type: "Point", 
                 coordinates: [googleDetails.coordinate.longitude, googleDetails.coordinate.latitude]
             )
             
-            print("📸 Using pre-uploaded photos: \(self.uploadedPhotoUrls)")
-            
-            PlaceService.shared.addPlaceFromPOI(
-                name: name,
-                address: address,
-                location: location,
-                category: category,
-                website: googleDetails.website?.absoluteString,
-                phone: googleDetails.phoneNumber,
-                description: description.isEmpty ? nil : description,
-                circleId: circleId,
-                notes: privateNotes,
-                googlePlaceId: googleDetails.placeID.isEmpty ? nil : googleDetails.placeID,
-                preUploadedPhotoUrls: self.uploadedPhotoUrls.isEmpty ? nil : self.uploadedPhotoUrls
-            ) { [weak self] result in
-                DispatchQueue.main.async {
-                    loadingAlert.dismiss(animated: true) {
-                        switch result {
-                        case .success(let place):
-                            print("✅ Place created successfully")
-                            print("  ID: \(place.id)")
-                            print("  Photos count: \(place.photos?.count ?? 0)")
-                            if let photos = place.photos {
-                                for (index, photo) in photos.enumerated() {
-                                    print("  Photo \(index + 1): \(photo)")
-                                }
-                            }
-                            
-                            // TODO: Update place with publicNotes if provided
-                            // Currently addPlaceFromPOI only supports privateNotes through the 'notes' parameter
-                            // A separate update call would be needed for publicNotes
-                            if let publicNotes = publicNotes, !publicNotes.isEmpty {
-                                print("⚠️ Public notes were provided but not saved: \(publicNotes)")
-                                // PlaceService.shared.updatePlace(id: place.id, publicNotes: publicNotes) { _ in }
-                            }
-                            
-                            // Post notification that a place was added
-                            NotificationCenter.default.post(
-                                name: Notification.Name("PlaceAddedToCircle"),
-                                object: nil,
-                                userInfo: ["circleId": self?.circleId ?? "", "place": place]
-                            )
-                            
-                            self?.presentAlert(title: "Success", message: "Place added successfully") { _ in
-                                self?.navigateToCircleDetail()
-                            }
-                        case .failure(let error):
-                            print("❌ Failed to create place: \(error)")
-                            self?.presentAlert(title: "Error", message: error.localizedDescription)
-                        }
-                    }
-                }
-            }
+            createPlaceWithGoogleDetails(googleDetails: googleDetails,
+                                       name: name,
+                                       address: address,
+                                       location: location,
+                                       category: category,
+                                       description: description,
+                                       privateNotes: privateNotes,
+                                       publicNotes: publicNotes,
+                                       loadingAlert: loadingAlert)
         } else if let poiData = currentPOIData {
             // We have POI data but no Google details - use the POI location
             print("🚀 Creating place from POI data without Google details")
@@ -1424,7 +1649,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                 website: poiData.website,
                 phone: poiData.phoneNumber,
                 description: description.isEmpty ? nil : description,
-                circleId: circleId,
+                circleId: selectedCircleId,
                 notes: privateNotes,
                 googlePlaceId: nil,
                 preUploadedPhotoUrls: self.uploadedPhotoUrls.isEmpty ? nil : self.uploadedPhotoUrls
@@ -1435,14 +1660,10 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                         case .success(let place):
                             print("✅ Place created successfully from POI")
                             
-                            if let publicNotes = publicNotes, !publicNotes.isEmpty {
-                                print("⚠️ Public notes were provided but not saved: \(publicNotes)")
-                            }
-                            
                             NotificationCenter.default.post(
                                 name: Notification.Name("PlaceAddedToCircle"),
                                 object: nil,
-                                userInfo: ["circleId": self?.circleId ?? "", "place": place]
+                                userInfo: ["circleId": self?.selectedCircleId ?? "", "place": place]
                             )
                             
                             self?.presentAlert(title: "Success", message: "Place added successfully") { _ in
@@ -1519,6 +1740,9 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                                        subcategory: String?, privacy: PlacePrivacy,
                                        photoData: [Data]?, location: CLLocationCoordinate2D,
                                        loadingAlert: UIAlertController) {
+        // Get notes from text views
+        let privateNotes = privateNotesTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let publicNotes = publicNotesTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
         // Location is now mandatory - ensure it's valid
         guard location.latitude >= -90 && location.latitude <= 90 &&
               location.longitude >= -180 && location.longitude <= 180 &&
@@ -1539,7 +1763,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             category: category,
             customCategory: customCategory,
             subcategory: subcategory,
-            circleId: circleId,
+            circleId: selectedCircleId,
             privacy: privacy,
             website: nil,
             phone: nil,
@@ -1547,7 +1771,9 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             photos: photoData,
             photoUrls: self.uploadedPhotoUrls.isEmpty ? nil : self.uploadedPhotoUrls,
             location: location,
-            googlePlaceId: nil
+            googlePlaceId: nil,
+            privateNotes: privateNotes.isEmpty ? nil : privateNotes,
+            publicNotes: publicNotes.isEmpty ? nil : publicNotes
         ) { [weak self] result in
             DispatchQueue.main.async {
                 loadingAlert.dismiss(animated: true) {
@@ -1558,7 +1784,78 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                         NotificationCenter.default.post(
                             name: Notification.Name("PlaceAddedToCircle"),
                             object: nil,
-                            userInfo: ["circleId": self?.circleId ?? "", "place": place]
+                            userInfo: ["circleId": self?.selectedCircleId ?? "", "place": place]
+                        )
+                        
+                        self?.presentAlert(title: "Success", message: "Place added successfully") { _ in
+                            self?.navigateToCircleDetail()
+                        }
+                    case .failure(let error):
+                        print("❌ Failed to create place: \(error)")
+                        self?.presentAlert(title: "Error", message: error.localizedDescription)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func createPlaceWithGoogleDetails(googleDetails: GooglePlaceDetails,
+                                            name: String,
+                                            address: String,
+                                            location: GeoLocation,
+                                            category: PlaceCategory,
+                                            description: String,
+                                            privateNotes: String?,
+                                            publicNotes: String?,
+                                            loadingAlert: UIAlertController) {
+        print("📸 Using pre-uploaded photos: \(self.uploadedPhotoUrls)")
+        
+        // Debug: Log rating information
+        print("📊 Creating place with rating info:")
+        print("  Rating: \(googleDetails.rating ?? 0)")
+        print("  Total Ratings: \(googleDetails.userRatingsTotal ?? 0)")
+        
+        PlaceService.shared.addPlaceFromPOI(
+            name: name,
+            address: address,
+            location: location,
+            category: category,
+            website: googleDetails.website?.absoluteString,
+            phone: googleDetails.phoneNumber,
+            description: description.isEmpty ? nil : description,
+            circleId: selectedCircleId,
+            notes: privateNotes,
+            googlePlaceId: googleDetails.placeID.isEmpty ? nil : googleDetails.placeID,
+            preUploadedPhotoUrls: self.uploadedPhotoUrls.isEmpty ? nil : self.uploadedPhotoUrls,
+            rating: googleDetails.rating,
+            userRatingsTotal: googleDetails.userRatingsTotal
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    switch result {
+                    case .success(let place):
+                        print("✅ Place created successfully")
+                        print("  ID: \(place.id)")
+                        print("  Photos count: \(place.photos?.count ?? 0)")
+                        if let photos = place.photos {
+                            for (index, photo) in photos.enumerated() {
+                                print("  Photo \(index + 1): \(photo)")
+                            }
+                        }
+                        
+                        // TODO: Update place with publicNotes if provided
+                        // Currently addPlaceFromPOI only supports privateNotes through the 'notes' parameter
+                        // A separate update call would be needed for publicNotes
+                        if let publicNotes = publicNotes, !publicNotes.isEmpty {
+                            print("⚠️ Public notes were provided but not saved: \(publicNotes)")
+                            // PlaceService.shared.updatePlace(id: place.id, publicNotes: publicNotes) { _ in }
+                        }
+                        
+                        // Post notification that a place was added
+                        NotificationCenter.default.post(
+                            name: Notification.Name("PlaceAddedToCircle"),
+                            object: nil,
+                            userInfo: ["circleId": self?.selectedCircleId ?? "", "place": place]
                         )
                         
                         self?.presentAlert(title: "Success", message: "Place added successfully") { _ in
@@ -2177,6 +2474,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                 
                 self.addressTextView.text = address
                 self.selectedLocation = coordinate
+                self.addSelectedLocationPin(at: coordinate)
                 self.enableManualEntry()
             }
         }
@@ -2594,7 +2892,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             if let openingHours = place.openingHours {
                 // Use the GooglePlaceDetails method to properly format opening hours
                 let placeDetails = GooglePlaceDetails(from: place)
-                if let formattedHours = placeDetails.toPlaceData(circleId: self.circleId)["openingHours"] as? [[String: Any]] {
+                if let formattedHours = placeDetails.toPlaceData(circleId: self.selectedCircleId)["openingHours"] as? [[String: Any]] {
                     openingHoursArray = formattedHours
                 }
             }
@@ -2604,7 +2902,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                 "name": place.name ?? markerTitle,
                 "address": place.formattedAddress ?? "",
                 "googlePlaceId": placeId,
-                "circleId": self.circleId,
+                "circleId": self.selectedCircleId,
                 "category": category.rawValue,
                 "rating": place.rating,
                 "userRatingsTotal": place.userRatingsTotal,
@@ -3062,11 +3360,7 @@ extension AddPlaceViewController: MKMapViewDelegate {
                     self?.selectedLocation = coordinate
                     
                     // Add marker to map
-                    self?.clearPreviousAnnotations()
-                    let annotation = MKPointAnnotation()
-                    annotation.coordinate = coordinate
-                    annotation.title = poiName
-                    self?.mapView.addAnnotation(annotation)
+                    self?.addSelectedLocationPin(at: coordinate)
                     
                     // Center map on selected location
                     let region = MKCoordinateRegion(
@@ -3424,7 +3718,9 @@ extension AddPlaceViewController: MKLocalSearchCompleterDelegate {
 
 extension AddPlaceViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        if tableView == categoryDropdownTableView {
+        if tableView == circleDropdownTableView {
+            return userCircles.count
+        } else if tableView == categoryDropdownTableView {
             return categoryDropdownItems.count
         } else {
             // Add 1 for place type suggestion if applicable
@@ -3433,7 +3729,27 @@ extension AddPlaceViewController: UITableViewDataSource, UITableViewDelegate {
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        if tableView == categoryDropdownTableView {
+        if tableView == circleDropdownTableView {
+            let cell = tableView.dequeueReusableCell(withIdentifier: "CircleCell") ?? UITableViewCell(style: .default, reuseIdentifier: "CircleCell")
+            
+            // Set cell background for dark mode support
+            cell.backgroundColor = .secondarySystemBackground
+            
+            let circle = userCircles[indexPath.row]
+            cell.textLabel?.text = circle.name
+            cell.textLabel?.font = UIFont.systemFont(ofSize: 16)
+            cell.textLabel?.textColor = .label
+            
+            // Add checkmark for selected circle
+            if circle.id == selectedCircleId {
+                cell.accessoryType = .checkmark
+            } else {
+                cell.accessoryType = .none
+            }
+            
+            return cell
+            
+        } else if tableView == categoryDropdownTableView {
             let cell = tableView.dequeueReusableCell(withIdentifier: "CategoryCell") ?? UITableViewCell(style: .default, reuseIdentifier: "CategoryCell")
             
             // Set cell background for dark mode support
@@ -3534,7 +3850,17 @@ extension AddPlaceViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         
-        if tableView == categoryDropdownTableView {
+        if tableView == circleDropdownTableView {
+            let circle = userCircles[indexPath.row]
+            selectedCircle = circle
+            selectedCircleId = circle.id
+            circleButton.setTitle(circle.name, for: .normal)
+            
+            // Hide dropdown
+            isCircleDropdownVisible = false
+            updateCircleDropdown()
+            
+        } else if tableView == categoryDropdownTableView {
             let item = categoryDropdownItems[indexPath.row]
             
             // Check if "More..." was selected
@@ -3624,6 +3950,28 @@ extension AddPlaceViewController {
         }
         mapView.removeAnnotations(annotationsToRemove)
     }
+    
+    private func addSelectedLocationPin(at coordinate: CLLocationCoordinate2D) {
+        // Remove any existing "Selected Location" pins
+        clearPreviousAnnotations()
+        
+        // Add new pin for selected location
+        let annotation = PlaceSearchAnnotation()
+        annotation.coordinate = coordinate
+        annotation.title = "Selected Location"
+        annotation.subtitle = "Place will be added here"
+        annotation.isTemporary = true
+        mapView.addAnnotation(annotation)
+        annotations.append(annotation)
+        
+        // Center map on the selected location
+        let region = MKCoordinateRegion(
+            center: coordinate,
+            latitudinalMeters: 500,
+            longitudinalMeters: 500
+        )
+        mapView.setRegion(region, animated: true)
+    }
 }
 
 // MARK: - PHPickerViewControllerDelegate
@@ -3662,15 +4010,24 @@ extension AddPlaceViewController: UIGestureRecognizerDelegate {
             return true // Handle tap for manual location selection
         }
         
-        // Handle category dropdown tap
+        // Handle circle dropdown tap
         let location = touch.location(in: view)
-        let dropdownFrame = categoryDropdownTableView.convert(categoryDropdownTableView.bounds, to: view)
-        let buttonFrame = categoryButton.convert(categoryButton.bounds, to: view)
+        let circleDropdownFrame = circleDropdownTableView.convert(circleDropdownTableView.bounds, to: view)
+        let circleButtonFrame = circleButton.convert(circleButton.bounds, to: view)
         
-        if dropdownFrame.contains(location) || buttonFrame.contains(location) {
+        if circleDropdownFrame.contains(location) || circleButtonFrame.contains(location) {
             return false
         }
-        return isCategoryDropdownVisible
+        
+        // Handle category dropdown tap
+        let categoryDropdownFrame = categoryDropdownTableView.convert(categoryDropdownTableView.bounds, to: view)
+        let categoryButtonFrame = categoryButton.convert(categoryButton.bounds, to: view)
+        
+        if categoryDropdownFrame.contains(location) || categoryButtonFrame.contains(location) {
+            return false
+        }
+        
+        return isCategoryDropdownVisible || isCircleDropdownVisible
     }
     
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
@@ -3917,10 +4274,46 @@ extension AddPlaceViewController {
         }
     }
     
+    // MARK: - Circle Management
+    
+    private func loadUserCircles() {
+        CircleService.shared.fetchUserCircles { [weak self] result in
+            guard let self = self else { return }
+            
+            switch result {
+            case .success(let circles):
+                // Sort circles alphabetically for easy finding
+                self.userCircles = circles.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                
+                // Find and set the current circle
+                if let currentCircle = self.userCircles.first(where: { $0.id == self.selectedCircleId }) {
+                    self.selectedCircle = currentCircle
+                    DispatchQueue.main.async {
+                        self.circleButton.setTitle(currentCircle.name, for: .normal)
+                    }
+                } else if let firstCircle = circles.first {
+                    // Fallback to first circle if the selected one is not found
+                    self.selectedCircle = firstCircle
+                    self.selectedCircleId = firstCircle.id
+                    DispatchQueue.main.async {
+                        self.circleButton.setTitle(firstCircle.name, for: .normal)
+                    }
+                }
+                
+            case .failure(let error):
+                print("❌ Failed to load circles: \(error)")
+                // Still try to show the circle name if we have the ID
+                DispatchQueue.main.async {
+                    self.circleButton.setTitle("Loading...", for: .normal)
+                }
+            }
+        }
+    }
+    
     // MARK: - Navigation Helpers
     private func navigateToCircleDetail() {
         // Fetch the circle data first
-        CircleService.shared.fetchCircleById(id: circleId) { [weak self] result in
+        CircleService.shared.fetchCircleById(id: selectedCircleId) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 

@@ -15,19 +15,27 @@ const db = getFirestore();
 // @route   GET /api/users/:id or /api/users/me
 // @access  Private
 exports.getUser = async (req, res, next) => {
+  console.log('🚀 USER CONTROLLER: getUser called');
+  console.log('🚀 USER CONTROLLER: Request params:', req.params);
+  console.log('🚀 USER CONTROLLER: Request user:', JSON.stringify(req.user, null, 2));
+  
   try {
-    // Normalize user ID using centralized service
-    let userId = req.params.id === 'me' ? req.user.uid : normalizeUserId(req.params.id);
+    // Handle /me endpoint or when no ID is provided
+    const isMe = req.params.id === 'me' || req.params.id === undefined;
     
-    console.log('🔍 DEBUG getUser:', {
+    // Normalize user ID using centralized service
+    let userId = isMe ? req.user.uid : normalizeUserId(req.params.id);
+    
+    console.log('🔍 USER CONTROLLER: DEBUG getUser:', {
       paramId: req.params.id,
       normalizedId: userId,
       userUid: req.user.uid,
       originalUid: req.user.originalUid,
-      isMe: req.params.id === 'me'
+      isMe: isMe
     });
     
     if (!userId) {
+      console.log('❌ USER CONTROLLER: User ID is missing');
       return res.status(400).json({
         success: false,
         message: 'User ID is missing'
@@ -35,17 +43,20 @@ exports.getUser = async (req, res, next) => {
     }
     
     // First try with the normalized ID
+    console.log('🔐 USER CONTROLLER: Looking up user with ID:', userId);
     let userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+    console.log('🔐 USER CONTROLLER: User doc exists with normalized ID?', userDoc.exists);
     
     // If not found and this is a 'me' request, try original UID
-    if (!userDoc.exists && req.params.id === 'me' && req.user.originalUid && req.user.originalUid !== userId) {
-      console.log(`⚠️ User doc not found with normalized ID ${userId}, trying original ${req.user.originalUid}`);
+    if (!userDoc.exists && isMe && req.user.originalUid && req.user.originalUid !== userId) {
+      console.log(`⚠️ USER CONTROLLER: User doc not found with normalized ID ${userId}, trying original ${req.user.originalUid}`);
       userDoc = await db.collection(COLLECTIONS.USERS).doc(req.user.originalUid).get();
+      console.log('🔐 USER CONTROLLER: User doc exists with original ID?', userDoc.exists);
     }
     
     // If still not found and we have an email, try that
-    if (!userDoc.exists && req.params.id === 'me' && req.user.email) {
-      console.log(`⚠️ User doc not found by ID, trying email ${req.user.email}`);
+    if (!userDoc.exists && isMe && req.user.email) {
+      console.log(`⚠️ USER CONTROLLER: User doc not found by ID, trying email ${req.user.email}`);
       const usersWithEmail = await db.collection(COLLECTIONS.USERS)
         .where('email', '==', req.user.email)
         .limit(1)
@@ -53,12 +64,14 @@ exports.getUser = async (req, res, next) => {
       
       if (!usersWithEmail.empty) {
         userDoc = usersWithEmail.docs[0];
-        console.log(`✅ Found user by email, doc ID: ${userDoc.id}`);
+        console.log(`✅ USER CONTROLLER: Found user by email, doc ID: ${userDoc.id}`);
+      } else {
+        console.log('❌ USER CONTROLLER: No user found with email:', req.user.email);
       }
     }
     
     if (!userDoc.exists) {
-      console.error(`❌ User document not found. Tried IDs: ${userId}, ${req.user.originalUid}, email: ${req.user.email}`);
+      console.error(`❌ USER CONTROLLER: User document not found. Tried IDs: ${userId}, ${req.user.originalUid}, email: ${req.user.email}`);
       return res.status(404).json({
         success: false,
         message: 'User not found'
@@ -98,14 +111,75 @@ exports.getUser = async (req, res, next) => {
       } else {
         profileData.isFollowing = false;
       }
+      
+      // Calculate mutual connections count
+      try {
+        // Get current user's connections
+        const [currentUserConnections1, currentUserConnections2] = await Promise.all([
+          db.collection(COLLECTIONS.CONNECTIONS)
+            .where('userId', '==', req.user.uid)
+            .where('status', '==', 'accepted')
+            .get(),
+          db.collection(COLLECTIONS.CONNECTIONS)
+            .where('connectedUserId', '==', req.user.uid)
+            .where('status', '==', 'accepted')
+            .get()
+        ]);
+        
+        // Get target user's connections
+        const [targetUserConnections1, targetUserConnections2] = await Promise.all([
+          db.collection(COLLECTIONS.CONNECTIONS)
+            .where('userId', '==', userId)
+            .where('status', '==', 'accepted')
+            .get(),
+          db.collection(COLLECTIONS.CONNECTIONS)
+            .where('connectedUserId', '==', userId)
+            .where('status', '==', 'accepted')
+            .get()
+        ]);
+        
+        // Extract connection IDs for current user
+        const currentUserConnectionIds = new Set();
+        currentUserConnections1.docs.forEach(doc => {
+          currentUserConnectionIds.add(doc.data().connectedUserId);
+        });
+        currentUserConnections2.docs.forEach(doc => {
+          currentUserConnectionIds.add(doc.data().userId);
+        });
+        
+        // Extract connection IDs for target user
+        const targetUserConnectionIds = new Set();
+        targetUserConnections1.docs.forEach(doc => {
+          targetUserConnectionIds.add(doc.data().connectedUserId);
+        });
+        targetUserConnections2.docs.forEach(doc => {
+          targetUserConnectionIds.add(doc.data().userId);
+        });
+        
+        // Find mutual connections (intersection of both sets)
+        const mutualConnections = new Set(
+          [...currentUserConnectionIds].filter(id => targetUserConnectionIds.has(id))
+        );
+        
+        profileData.mutualConnectionsCount = mutualConnections.size;
+        
+        console.log(`👥 Mutual connections between ${req.user.uid} and ${userId}: ${mutualConnections.size}`);
+      } catch (mutualError) {
+        console.error('Error calculating mutual connections:', mutualError);
+        profileData.mutualConnectionsCount = 0;
+      }
     }
 
+    console.log('✅ USER CONTROLLER: Sending user profile response');
+    console.log('✅ USER CONTROLLER: Response data:', JSON.stringify(profileData, null, 2));
+    
     res.status(200).json({
       success: true,
       user: profileData
     });
   } catch (error) {
-    console.error('Error fetching user:', error);
+    console.error('❌ USER CONTROLLER: Error fetching user:', error);
+    console.error('❌ USER CONTROLLER: Error stack:', error.stack);
     next(error);
   }
 };
@@ -543,6 +617,11 @@ exports.searchUsers = async (req, res, next) => {
         }
       }
       
+      // Get current user's following list to check isFollowing for each user
+      const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(currentUserId).get();
+      const currentUserData = currentUserDoc.exists ? currentUserDoc.data() : {};
+      const following = currentUserData.following || [];
+      
       for (const doc of usersSnapshot.docs) {
         const user = serializeDoc(doc);
         
@@ -583,6 +662,9 @@ exports.searchUsers = async (req, res, next) => {
           }
         }
         
+        // Check if current user is following this user
+        const isFollowing = following.includes(targetUserId);
+        
         allUsers.push({
           _id: normalizeUserId(user.id), // Always return normalized ID
           displayName: user.displayName,
@@ -592,7 +674,8 @@ exports.searchUsers = async (req, res, next) => {
           profilePicture: user.profilePicture,
           connectionStatus: connectionStatus,
           connectionDirection: connectionDirection,
-          connectionId: connectionId
+          connectionId: connectionId,
+          isFollowing: isFollowing
         });
       }
       
@@ -617,6 +700,11 @@ exports.searchUsers = async (req, res, next) => {
     
     // Normalize the current user ID for consistent comparisons
     const simpleUserId = normalizeUserId(currentUserId);
+    
+    // Get current user's following list to check isFollowing for each user
+    const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(currentUserId).get();
+    const currentUserData = currentUserDoc.exists ? currentUserDoc.data() : {};
+    const following = currentUserData.following || [];
     
     const matchingUsers = [];
     for (const doc of usersSnapshot.docs) {
@@ -679,6 +767,9 @@ exports.searchUsers = async (req, res, next) => {
           }
         }
         
+        // Check if current user is following this user
+        const isFollowing = following.includes(targetUserId);
+        
         matchingUsers.push({
           _id: normalizeUserId(user.id), // Always return normalized ID
           displayName: user.displayName,
@@ -688,7 +779,8 @@ exports.searchUsers = async (req, res, next) => {
           profilePicture: user.profilePicture,
           connectionStatus: connectionStatus,
           connectionDirection: connectionDirection,
-          connectionId: connectionId
+          connectionId: connectionId,
+          isFollowing: isFollowing
         });
       }
     }
@@ -1253,9 +1345,24 @@ exports.followUser = async (req, res, next) => {
       followerId: currentUserId
     });
     
+    // Return updated target user data including isFollowing status
+    const responseUserData = {
+      _id: targetUserId,
+      email: targetUserData.email || '', // Include email field for iOS decoding with fallback
+      displayName: targetUserData.displayName,
+      profilePicture: targetUserData.profilePicture,
+      bio: targetUserData.bio,
+      location: targetUserData.location,
+      createdAt: targetUserData.createdAt,
+      followersCount: targetUserData.followersCount || 0,
+      followingCount: targetUserData.followingCount || 0,
+      isFollowing: true // Current user is now following this user
+    };
+
     res.status(200).json({
       success: true,
-      message: 'Successfully followed user'
+      message: 'Successfully followed user',
+      user: responseUserData
     });
     
   } catch (error) {
@@ -1504,9 +1611,24 @@ exports.unfollowUser = async (req, res, next) => {
       followerId: currentUserId
     });
     
+    // Return updated target user data including isFollowing status
+    const responseUserData = {
+      _id: targetUserId,
+      email: targetUserData.email || '', // Include email field for iOS decoding with fallback
+      displayName: targetUserData.displayName,
+      profilePicture: targetUserData.profilePicture,
+      bio: targetUserData.bio,
+      location: targetUserData.location,
+      createdAt: targetUserData.createdAt,
+      followersCount: targetUserData.followersCount || 0,
+      followingCount: targetUserData.followingCount || 0,
+      isFollowing: false // Current user is no longer following this user
+    };
+
     res.status(200).json({
       success: true,
-      message: 'Successfully unfollowed user'
+      message: 'Successfully unfollowed user',
+      user: responseUserData
     });
     
   } catch (error) {
@@ -1552,21 +1674,46 @@ exports.getUserFollowers = async (req, res, next) => {
     const user = serializeDoc(userDoc);
     const followerIds = user.followers || [];
     
-    // Get follower details with ID normalization
+    // Get follower details with batch fetching for performance
     const followers = [];
-    for (const followerId of followerIds) {
-      const normalizedFollowerId = normalizeUserId(followerId);
-      const followerDoc = await db.collection(COLLECTIONS.USERS).doc(normalizedFollowerId).get();
-      if (followerDoc.exists) {
-        const follower = serializeDoc(followerDoc);
-        followers.push({
-          id: normalizeUserId(follower.id), // Always return normalized ID
-          displayName: follower.displayName,
-          profilePicture: follower.profilePicture,
-          bio: follower.bio
+    
+    if (followerIds.length > 0) {
+      // Normalize all follower IDs
+      const normalizedFollowerIds = followerIds.map(id => normalizeUserId(id));
+      
+      // Batch fetch all followers in chunks of 10 (Firestore limit for 'in' queries)
+      const chunkSize = 10;
+      for (let i = 0; i < normalizedFollowerIds.length; i += chunkSize) {
+        const chunk = normalizedFollowerIds.slice(i, i + chunkSize);
+        
+        const followersSnapshot = await db.collection(COLLECTIONS.USERS)
+          .where('__name__', 'in', chunk)
+          .get();
+        
+        followersSnapshot.forEach(doc => {
+          const follower = serializeDoc(doc);
+          // Check if current user is following this follower back
+          const isFollowing = (user.following || []).includes(follower.id) || 
+                             (user.following || []).includes(normalizeUserId(follower.id));
+          
+          followers.push({
+            id: normalizeUserId(follower.id), // Always return normalized ID
+            email: follower.email || '', // Include email field for iOS decoding
+            displayName: follower.displayName,
+            profilePicture: follower.profilePicture || null,
+            bio: follower.bio || null,
+            firstName: follower.firstName || null,
+            lastName: follower.lastName || null,
+            isFollowing: isFollowing
+          });
         });
-      } else {
-        console.warn('⚠️ Follower not found:', { followerId, normalizedFollowerId });
+      }
+      
+      // Log any missing followers
+      const foundIds = followers.map(f => f.id);
+      const missingIds = normalizedFollowerIds.filter(id => !foundIds.includes(id));
+      if (missingIds.length > 0) {
+        console.warn('⚠️ Followers not found:', missingIds);
       }
     }
     
@@ -1619,21 +1766,43 @@ exports.getUserFollowing = async (req, res, next) => {
     const user = serializeDoc(userDoc);
     const followingIds = user.following || [];
     
-    // Get following details with ID normalization
+    // Get following details with batch fetching for performance
     const following = [];
-    for (const followingId of followingIds) {
-      const normalizedFollowingId = normalizeUserId(followingId);
-      const followingDoc = await db.collection(COLLECTIONS.USERS).doc(normalizedFollowingId).get();
-      if (followingDoc.exists) {
-        const followingUser = serializeDoc(followingDoc);
-        following.push({
-          id: normalizeUserId(followingUser.id), // Always return normalized ID
-          displayName: followingUser.displayName,
-          profilePicture: followingUser.profilePicture,
-          bio: followingUser.bio
+    
+    if (followingIds.length > 0) {
+      // Normalize all following IDs
+      const normalizedFollowingIds = followingIds.map(id => normalizeUserId(id));
+      
+      // Batch fetch all following users in chunks of 10 (Firestore limit for 'in' queries)
+      const chunkSize = 10;
+      for (let i = 0; i < normalizedFollowingIds.length; i += chunkSize) {
+        const chunk = normalizedFollowingIds.slice(i, i + chunkSize);
+        
+        const followingSnapshot = await db.collection(COLLECTIONS.USERS)
+          .where('__name__', 'in', chunk)
+          .get();
+        
+        followingSnapshot.forEach(doc => {
+          const followingUser = serializeDoc(doc);
+          // When viewing our following list, we are following all these users by definition
+          following.push({
+            id: normalizeUserId(followingUser.id), // Always return normalized ID
+            email: followingUser.email || '', // Include email field for iOS decoding
+            displayName: followingUser.displayName,
+            profilePicture: followingUser.profilePicture || null,
+            bio: followingUser.bio || null,
+            firstName: followingUser.firstName || null,
+            lastName: followingUser.lastName || null,
+            isFollowing: true // We are following all users in this list
+          });
         });
-      } else {
-        console.warn('⚠️ Following user not found:', { followingId, normalizedFollowingId });
+      }
+      
+      // Log any missing following users
+      const foundIds = following.map(f => f.id);
+      const missingIds = normalizedFollowingIds.filter(id => !foundIds.includes(id));
+      if (missingIds.length > 0) {
+        console.warn('⚠️ Following users not found:', missingIds);
       }
     }
     
@@ -2034,6 +2203,113 @@ exports.reorderPinnedPlaces = async (req, res, next) => {
     
   } catch (error) {
     console.error('Error reordering pinned places:', error);
+    next(error);
+  }
+};
+
+// @desc    Get tutorial status for current user
+// @route   GET /api/users/me/tutorial-status
+// @access  Private
+exports.getTutorialStatus = async (req, res, next) => {
+  try {
+    const userId = normalizeUserId(req.user.uid);
+    
+    const userRef = db.collection(COLLECTIONS.USERS).doc(userId);
+    const userDoc = await userRef.get();
+    
+    if (!userDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    const userData = userDoc.data();
+    
+    res.status(200).json({
+      success: true,
+      hasCompletedTutorial: userData.hasCompletedTutorial || false,
+      onboardingCompleted: userData.onboardingCompleted || false
+    });
+  } catch (error) {
+    console.error('Error getting tutorial status:', error);
+    next(error);
+  }
+};
+
+// @desc    Mark tutorial as completed
+// @route   POST /api/users/me/complete-tutorial
+// @access  Private
+exports.completeTutorial = async (req, res, next) => {
+  try {
+    const userId = normalizeUserId(req.user.uid);
+    
+    const userRef = db.collection(COLLECTIONS.USERS).doc(userId);
+    const userDoc = await userRef.get();
+    
+    if (!userDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    await userRef.update({
+      hasCompletedTutorial: true,
+      updatedAt: new Date().toISOString()
+    });
+    
+    console.log(`✅ Tutorial marked as completed for user ${userId}`);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Tutorial marked as completed'
+    });
+  } catch (error) {
+    console.error('Error completing tutorial:', error);
+    next(error);
+  }
+};
+
+// @desc    Retry onboarding for current user
+// @route   POST /api/users/me/complete-onboarding
+// @access  Private
+exports.retryOnboarding = async (req, res, next) => {
+  try {
+    const userId = normalizeUserId(req.user.uid);
+    const OnboardingService = require('../services/onboardingService');
+    
+    // Check if user already has circles
+    const circlesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
+      .where('owner', '==', userId)
+      .limit(1)
+      .get();
+    
+    if (!circlesSnapshot.empty) {
+      return res.status(400).json({
+        success: false,
+        message: 'User already has circles'
+      });
+    }
+    
+    // Run onboarding
+    const result = await OnboardingService.completeUserOnboarding(userId);
+    
+    if (result.success) {
+      res.status(200).json({
+        success: true,
+        message: 'Onboarding completed successfully',
+        circlesCreated: result.circlesCreated
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: 'Onboarding failed',
+        error: result.error
+      });
+    }
+  } catch (error) {
+    console.error('Error retrying onboarding:', error);
     next(error);
   }
 };

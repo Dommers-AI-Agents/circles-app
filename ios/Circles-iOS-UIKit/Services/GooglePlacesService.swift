@@ -100,8 +100,8 @@ class GooglePlacesService {
     func fetchPlaceDetails(placeID: String, completion: @escaping (Result<GMSPlace, Error>) -> Void) {
         print("⚠️ DEPRECATED: fetchPlaceDetails called. Only fetching photos for backward compatibility.")
         
-        // Only fetch photos field to comply with API usage policy
-        let fields: GMSPlaceField = [.photos, .placeID]
+        // Fetch photos, coordinate, and rating fields
+        let fields: GMSPlaceField = [.photos, .placeID, .coordinate, .rating, .userRatingsTotal]
         
         placesClient.fetchPlace(
             fromPlaceID: placeID,
@@ -126,8 +126,8 @@ class GooglePlacesService {
     func fetchPlaceDetailsWithReviews(placeID: String, completion: @escaping (Result<GMSPlace, Error>) -> Void) {
         print("⚠️ DEPRECATED: fetchPlaceDetailsWithReviews called. Only fetching photos for backward compatibility.")
         
-        // Only fetch photos field to comply with API usage policy
-        let fields: GMSPlaceField = [.photos, .placeID]
+        // Fetch photos, coordinate, and rating fields
+        let fields: GMSPlaceField = [.photos, .placeID, .coordinate, .rating, .userRatingsTotal]
         
         placesClient.fetchPlace(
             fromPlaceID: placeID,

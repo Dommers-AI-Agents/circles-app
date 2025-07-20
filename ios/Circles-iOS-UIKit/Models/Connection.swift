@@ -30,6 +30,9 @@ struct Connection: Codable, Identifiable {
     let lastViewedAt: Date?
     let totalPlaces: Int? // Populated by backend
     var hasRecentPlace: Bool? // Populated by backend
+    let lastMessageAt: Date? // Timestamp of last message exchanged
+    let lastMessageSenderId: String? // ID of who sent the last message  
+    let hasRecentMessage: Bool? // If message was within last 7 days
     let createdAt: Date
     let acceptedAt: Date?
     let updatedAt: Date
@@ -40,6 +43,7 @@ struct Connection: Codable, Identifiable {
         case sharedCircles, lastInteractionAt, interactionCount
         case lastAccessedCircles, recentActivity, hasNewActivity
         case viewCount, lastViewedAt, totalPlaces, hasRecentPlace
+        case lastMessageAt, lastMessageSenderId, hasRecentMessage
         case createdAt, acceptedAt, updatedAt
     }
     

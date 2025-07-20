@@ -61,18 +61,30 @@ class UserService {
     
     func fetchUserProfile(userId: String? = nil, completion: @escaping (Result<User, Error>) -> Void) {
         let endpoint = userId != nil ? "users/\(userId!)" : "users/me"
+        print("🚀 UserService: fetchUserProfile called")
+        print("🚀 UserService: userId parameter: \(userId ?? "nil")")
+        print("🚀 UserService: Using endpoint: \(endpoint)")
         
         APIService.shared.request(
             endpoint: endpoint,
             method: .get,
             requiresAuth: true
         ) { [weak self] (result: Result<UserResponse, APIError>) in
-            guard let self = self else { return }
+            print("📡 UserService: fetchUserProfile API callback received")
+            guard let self = self else { 
+                print("⚠️ UserService: Self deallocated during fetch")
+                return 
+            }
             
             switch result {
             case .success(let response):
+                print("✅ UserService: Successfully fetched user profile")
+                print("✅ UserService: User ID: \(response.user.id)")
+                print("✅ UserService: User name: \(response.user.displayName)")
                 completion(.success(response.user))
             case .failure(let error):
+                print("❌ UserService: Failed to fetch user profile: \(error)")
+                print("❌ UserService: Error type: \(type(of: error))")
                 let mappedError = self.mapAPIErrorToUserError(error)
                 completion(.failure(mappedError))
             }
