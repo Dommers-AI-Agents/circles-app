@@ -45,9 +45,10 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const sseRoutes = require('./routes/sseRoutes');
 const activityRoutes = require('./routes/activityRoutes');
 const userCategoriesRoutes = require('./routes/userCategoriesRoutes');
+const emailTestRoutes = require('./routes/emailTestRoutes');
 
 // Import Firebase Place controller for circle-specific routes
-const { getPlacesByCircleId, reorderPlacesInCircle } = require('./controllers/firebasePlaceController');
+const { getPlacesByCircleId, getPlacesByCircleIdPublic, reorderPlacesInCircle } = require('./controllers/firebasePlaceController');
 const { protect } = require('./middleware/firebaseAuth');
 
 const app = express();
@@ -109,6 +110,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/sse', sseRoutes);
 app.use('/api', activityRoutes);
 app.use('/api/app', require('./routes/appRoutes'));
+app.use('/api/email', emailTestRoutes);
 
 // LinkedIn OAuth callback route (outside /api prefix)
 const linkedinCallback = require('./routes/linkedinCallback');
@@ -116,6 +118,7 @@ app.use('/', linkedinCallback);
 
 // Special route for circle-specific places
 app.get('/api/circles/:circleId/places', protect, getPlacesByCircleId);
+app.get('/api/circles/:circleId/places/public', getPlacesByCircleIdPublic); // Public access endpoint
 app.put('/api/circles/:id/places/reorder', protect, reorderPlacesInCircle);
 
 // 404 handler
@@ -134,7 +137,7 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 3001;
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Circles API server running on port ${PORT}`);
   console.log(`🔥 Firebase status: ${firebaseInitialized ? 'Connected' : 'Mock Mode'}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
@@ -151,4 +154,29 @@ app.listen(PORT, () => {
     console.log('   3. Save as backend/config/firebase-service-account.json');
     console.log('   4. Update .env with your Firebase project ID\n');
   }
+  
+  // Schedule activity cleanup
+  const activityService = require('./services/activityService');
+  
+  // Run cleanup on startup after a delay
+  setTimeout(async () => {
+    console.log('🧹 Running initial activity cleanup...');
+    try {
+      await activityService.cleanupOldActivity(1); // Keep only last 24 hours
+      console.log('✅ Initial activity cleanup completed');
+    } catch (error) {
+      console.error('❌ Error in initial activity cleanup:', error);
+    }
+  }, 10000); // Wait 10 seconds after startup
+  
+  // Schedule daily cleanup
+  setInterval(async () => {
+    console.log('🧹 Running scheduled daily activity cleanup...');
+    try {
+      await activityService.cleanupOldActivity(1); // Keep only last 24 hours
+      console.log('✅ Scheduled activity cleanup completed');
+    } catch (error) {
+      console.error('❌ Error in scheduled activity cleanup:', error);
+    }
+  }, 24 * 60 * 60 * 1000); // Run every 24 hours
 });
