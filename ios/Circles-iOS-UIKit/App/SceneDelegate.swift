@@ -1,5 +1,6 @@
 import UIKit
 import FBSDKCoreKit
+import FirebaseMessaging
 
 // MARK: - Response Types
 struct ShareValidationResponse: Codable {
@@ -146,6 +147,34 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 window?.rootViewController = splashVC
             }
             
+            // Add failsafe timeout for splash screen - 30 seconds
+            var hasCompleted = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self, weak splashVC] in
+                guard let self = self, let splashVC = splashVC else { return }
+                guard !hasCompleted else { return } // Already completed normally
+                
+                print("⏰ SceneDelegate: Splash screen timeout reached (30 seconds)")
+                
+                // Show error with retry option
+                let alert = UIAlertController(
+                    title: "Loading Timeout",
+                    message: "The app is taking longer than expected to load. This might be due to network issues.",
+                    preferredStyle: .alert
+                )
+                
+                alert.addAction(UIAlertAction(title: "Retry", style: .default) { _ in
+                    print("🔄 User chose to retry from splash screen timeout")
+                    self.updateRootViewController(isLoggedIn: true)
+                })
+                
+                alert.addAction(UIAlertAction(title: "Logout", style: .destructive) { _ in
+                    print("🚪 User chose to logout from splash screen timeout")
+                    AuthService.shared.logout()
+                })
+                
+                splashVC.present(alert, animated: true)
+            }
+            
             // Start preloading all data
             PreloadManager.shared.preloadAllData(
                 progressHandler: { progress, status in
@@ -153,7 +182,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     splashVC.updateProgress(progress, status: status)
                 },
                 completion: { [weak self] result in
-                    print("🚦 PreloadManager completion called with result: \(result)")
+                    hasCompleted = true // Mark as completed to prevent timeout handler
+                    print("🚦 PreloadManager completion called")
                     switch result {
                     case .success(let preloadedData):
                         // Data loaded successfully, show main interface
@@ -182,11 +212,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                                     // Process any pending connection invites
                                     NetworkManager.shared.processPendingConnectionInvite()
                                     
-                                    // Check if user is new and should see tutorial
-                                    OnboardingManager.shared.checkIfUserNeedsTutorial { needsTutorial in
-                                        if needsTutorial {
-                                            OnboardingManager.shared.startTutorial()
-                                            Logger.info("New user detected - starting onboarding tutorial")
+                                    // Check if user is new and should see onboarding
+                                    if OnboardingManager.shared.shouldShowContactsOnboarding() {
+                                        self.showContactsOnboarding()
+                                    } else {
+                                        // Check if user needs tutorial
+                                        OnboardingManager.shared.checkIfUserNeedsTutorial { needsTutorial in
+                                            if needsTutorial {
+                                                OnboardingManager.shared.startTutorial()
+                                                Logger.info("New user detected - starting onboarding tutorial")
+                                            }
                                         }
                                     }
                                 })
@@ -363,7 +398,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
     }
     
-    private func navigateToCircle(circleId: String) {
+    private func navigateToCircle(circleId: String, isSharedViaLink: Bool = false) {
         guard AuthService.shared.isLoggedIn,
               let tabBarController = window?.rootViewController as? CirclesTabBarController else {
             // Store the deep link target to navigate after login
@@ -380,7 +415,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 switch result {
                 case .success(let circle):
                     if let navController = tabBarController.selectedViewController as? UINavigationController {
-                        let detailVC = CircleDetailViewController(circle: circle)
+                        let detailVC = CircleDetailViewController(circle: circle, isSharedViaLink: isSharedViaLink)
                         navController.pushViewController(detailVC, animated: true)
                     }
                 case .failure:
@@ -447,28 +482,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
     
     private func handleSharedCircleWithToken(circleId: String, shareToken: String) {
-        // If user is not logged in, store the share info and prompt login
-        guard AuthService.shared.isLoggedIn else {
-            UserDefaults.standard.set("shareToken:\(circleId):\(shareToken)", forKey: "pendingDeepLink")
-            
-            // Show alert prompting user to login
-            let alert = UIAlertController(
-                title: "Login Required",
-                message: "Please login to view the shared circle",
-                preferredStyle: .alert
-            )
-            alert.addAction(UIAlertAction(title: "Login", style: .default) { _ in
-                // The auth state listener will handle showing login screen
-            })
-            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-            
-            if let rootVC = window?.rootViewController {
-                rootVC.present(alert, animated: true)
-            }
-            return
-        }
-        
         // First, validate the share token with the backend
+        // This doesn't require authentication
         APIService.shared.request(
             endpoint: "circles/share/validate",
             method: .post,
@@ -479,12 +494,42 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 switch result {
                 case .success(let response):
                     if response.isValid {
-                        // If share is valid and user has access, navigate to the circle
-                        self?.navigateToCircle(circleId: circleId)
-                        
-                        // Show access level information if it's a limited share
-                        if let accessLevel = response.accessLevel, accessLevel != "full" {
-                            self?.showShareAccessBanner(accessLevel: accessLevel)
+                        // Try to fetch the circle details to check if it's public
+                        CircleService.shared.fetchCircleByIdPublic(id: circleId) { circleResult in
+                            DispatchQueue.main.async {
+                                switch circleResult {
+                                case .success(let circle):
+                                    // Circle is public, allow viewing even without login
+                                    if let tabBarController = self?.window?.rootViewController as? CirclesTabBarController,
+                                       let navController = tabBarController.selectedViewController as? UINavigationController {
+                                        let detailVC = CircleDetailViewController(circle: circle, isSharedViaLink: true)
+                                        navController.pushViewController(detailVC, animated: true)
+                                    }
+                                case .failure:
+                                    // Circle is not public or error occurred, require login
+                                    if AuthService.shared.isLoggedIn {
+                                        // User is logged in, navigate normally
+                                        self?.navigateToCircle(circleId: circleId, isSharedViaLink: true)
+                                    } else {
+                                        // User not logged in, store deep link and prompt login
+                                        UserDefaults.standard.set("shareToken:\(circleId):\(shareToken)", forKey: "pendingDeepLink")
+                                        
+                                        let alert = UIAlertController(
+                                            title: "Login Required",
+                                            message: "Please login to view this circle",
+                                            preferredStyle: .alert
+                                        )
+                                        alert.addAction(UIAlertAction(title: "Login", style: .default) { _ in
+                                            // The auth state listener will handle showing login screen
+                                        })
+                                        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+                                        
+                                        if let rootVC = self?.window?.rootViewController {
+                                            rootVC.present(alert, animated: true)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     } else {
                         // Share is invalid or expired
@@ -650,7 +695,40 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Called when the scene has moved from an inactive state to an active state.
         // Check for any pending notifications or updates
         if AuthService.shared.isLoggedIn {
-            // Refresh data if needed
+            // Proactively check and refresh token if needed
+            if AuthService.shared.isTokenExpired() {
+                print("🔄 SceneDelegate: Token expired, refreshing proactively on scene activation")
+                AuthService.shared.refreshToken { result in
+                    switch result {
+                    case .success():
+                        print("✅ SceneDelegate: Token refreshed successfully on activation")
+                    case .failure(let error):
+                        print("❌ SceneDelegate: Failed to refresh token on activation: \(error)")
+                        // Don't force logout here, let the user continue and handle errors when they occur
+                    }
+                }
+            }
+            
+            // Ensure push token is registered
+            if let fcmToken = UserDefaults.standard.string(forKey: "FCMToken") {
+                print("🎬 ===== SCENE ACTIVE - TOKEN CHECK =====")
+                print("🎬 Scene became active at: \(Date())")
+                print("🎬 Found saved FCM token: \(fcmToken.prefix(20))...")
+                print("🎬 Re-registering token with backend to ensure it's current")
+                NotificationService.shared.registerDeviceToken(fcmToken)
+            } else {
+                print("🎬 ===== SCENE ACTIVE - NO TOKEN =====")
+                print("🎬 Scene became active, but no FCM token saved")
+                print("🎬 Requesting new FCM token...")
+                Messaging.messaging().token { token, error in
+                    if let token = token {
+                        print("🎬 Got new FCM token: \(token.prefix(20))...")
+                        NotificationService.shared.registerDeviceToken(token)
+                    } else if let error = error {
+                        print("🎬 Failed to get FCM token: \(error)")
+                    }
+                }
+            }
         }
         
         // Check for app updates
@@ -854,6 +932,51 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 }
             }
         }
+    }
+    
+    private func showContactsOnboarding() {
+        guard let tabBarController = window?.rootViewController as? CirclesTabBarController else { return }
+        
+        // Mark that we're showing contacts permission
+        OnboardingManager.shared.markContactsPermissionShown()
+        
+        // Create contacts permission view controller
+        let contactsPermissionVC = ContactsPermissionViewController()
+        
+        // Configure callbacks
+        contactsPermissionVC.configure(
+            onPermissionGranted: { [weak self] in
+                // User completed contacts flow
+                Logger.info("User completed contacts onboarding flow")
+                
+                // Check if we should show tutorial
+                OnboardingManager.shared.checkIfUserNeedsTutorial { needsTutorial in
+                    if needsTutorial {
+                        OnboardingManager.shared.startTutorial()
+                        Logger.info("Starting tutorial after contacts onboarding")
+                    }
+                }
+            },
+            onSkip: { [weak self] in
+                // User skipped contacts permission
+                Logger.info("User skipped contacts onboarding")
+                
+                // Check if we should show tutorial
+                OnboardingManager.shared.checkIfUserNeedsTutorial { needsTutorial in
+                    if needsTutorial {
+                        OnboardingManager.shared.startTutorial()
+                        Logger.info("Starting tutorial after skipping contacts")
+                    }
+                }
+            }
+        )
+        
+        // Present in navigation controller
+        let navController = UINavigationController(rootViewController: contactsPermissionVC)
+        navController.modalPresentationStyle = .fullScreen
+        
+        // Present from the tab bar controller
+        tabBarController.present(navController, animated: true)
     }
 
     func sceneWillResignActive(_ scene: UIScene) {

@@ -1,0 +1,25 @@
+// Additional Info.plist settings
+
+// Facebook configuration
+INFOPLIST_KEY_FacebookAppID = 971348948407685
+INFOPLIST_KEY_FacebookClientToken = dac11cb53951c6c7d44f4ab3351451f6
+INFOPLIST_KEY_FacebookDisplayName = Circles
+INFOPLIST_KEY_FacebookAutoLogAppEventsEnabled = NO
+INFOPLIST_KEY_FacebookAdvertiserIDCollectionEnabled = NO
+
+// LinkedIn configuration
+INFOPLIST_KEY_LinkedInClientID = 86rx0d8w7xn8rq
+
+// Google configuration
+INFOPLIST_KEY_GMSApiKey = AIzaSyAwcmtCmYmq5dbsBsYA1T3Fx949VeK0Cv8
+INFOPLIST_KEY_CLIENT_ID = 778088177220-7ddtorl0um8te3s5dmv14fs4d2kirukt.apps.googleusercontent.com
+INFOPLIST_KEY_REVERSED_CLIENT_ID = com.googleusercontent.apps.778088177220-7ddtorl0um8te3s5dmv14fs4d2kirukt
+
+// App Transport Security
+INFOPLIST_KEY_NSAppTransportSecurity = {"NSAllowsArbitraryLoads":true}
+
+// Other settings
+INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO
+INFOPLIST_KEY_PLIST_VERSION = 1
+
+// URL Types - these need to be in the INFOPLIST_PREPROCESS_INFO_PLIST

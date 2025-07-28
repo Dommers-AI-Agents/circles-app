@@ -73,6 +73,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     private let cacheExpiryMinutes: TimeInterval = 5 // 5 minutes cache expiry
     private var loadDebounceTimer: Timer? // Debounce timer to prevent rapid successive loads
     private var preloadedData: PreloadedData? // Store preloaded data from splash screen
+    private var preloadedConnections: [Connection]? // Store preloaded connections for userListView
     private var notificationBadgeLabel: UILabel? // Badge label for notification count
     private var notificationBarButton: UIBarButtonItem? // Store reference to notification button
     
@@ -80,6 +81,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     private var currentSearchScope: SearchScope = .myPlaces
     private var networkPlaces: [Place] = [] // Cache for network places
     private var isLoadingNetworkPlaces = false
+    
+    // Suggested users overlay
+    private var suggestedUsersOverlay: SuggestedUsersOverlayView?
     
     override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
         super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
@@ -519,6 +523,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     private var isLoadingActivities = false
     private var activityTableHeightConstraint: NSLayoutConstraint?
     
+    // Suggested Users Overlay
+    private var hasCheckedForSuggestedUsers = false
+    private var hasCheckedTutorialAndOverlay = false
+    
     // Pagination properties
     private var currentOffset = 0
     private var hasMoreActivities = true
@@ -621,8 +629,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Don't hide the map initially - show it immediately
         mapLoadingView.isHidden = true
         
-        // Load connections immediately
-        userListView.refresh()
+        // Don't load connections here - will be handled in viewWillAppear
+        // This prevents loading connections before checking for preloaded data
         
         // Don't show loading state here - let fetchCircles handle it
         // The loading will be shown when fetchAllPlacesFromCircles is called
@@ -701,6 +709,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             hasStartedLoading = true  // Mark as loaded
             usePreloadedData(preloadedData)
             self.preloadedData = nil // Clear after use
+            
+            // Still need to refresh connections to get properly sorted data with message timestamps
+            userListView.refresh()
+            
             return  // Exit early, no timer needed
         }
         
@@ -732,15 +744,25 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Check if onboarding needs to be retried
         checkAndRetryOnboardingIfNeeded()
         
-        // Check tutorial immediately for new users
-        checkAndShowTutorial()
+        // Listen for connections to be loaded before checking tutorial/overlay
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(connectionsLoadedHandler),
+            name: .connectionsLoaded,
+            object: nil
+        )
+        
+        // Also check after a delay in case connections are already loaded
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.checkTutorialAndOverlay()
+        }
     }
     
     private func checkAndRetryOnboardingIfNeeded() {
         // If user has no circles and data has loaded, try onboarding
         if circles.isEmpty && !isLoadingCircles {
             APIService.shared.request(
-                endpoint: "/users/me/complete-onboarding",
+                endpoint: "users/me/complete-onboarding",
                 method: .post,
                 body: [:] // Empty dictionary for POST with no body
             ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
@@ -761,10 +783,55 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    private func checkAndShowTutorial() {
+    @objc private func connectionsLoadedHandler() {
+        print("🔔 Connections loaded notification received")
+        // Remove observer to prevent multiple calls
+        NotificationCenter.default.removeObserver(self, name: .connectionsLoaded, object: nil)
+        
+        // Check tutorial and overlay now that connections are loaded
+        checkTutorialAndOverlay()
+    }
+    
+    private func checkTutorialAndOverlay() {
+        // Only check once per session
+        guard !hasCheckedTutorialAndOverlay else {
+            print("⚠️ Already checked tutorial and overlay")
+            return
+        }
+        hasCheckedTutorialAndOverlay = true
+        
+        // First check if user has 0 connections - show suggested users overlay if so
+        let connectionCount = NetworkManager.shared.connections.count
+        print("🔍 checkTutorialAndOverlay - Connection count: \(connectionCount)")
+        
+        if connectionCount == 0 {
+            print("✅ User has 0 connections - checking if should show overlay")
+            // For users with 0 connections, always show the overlay unless they've explicitly dismissed it this session
+            // Reset the flag for users with 0 connections to ensure they see it
+            if !hasCheckedForSuggestedUsers {
+                // Enable the overlay for users with 0 connections
+                OnboardingManager.shared.enableSuggestedUsersOverlay()
+                print("✅ Enabled suggested users overlay for user with 0 connections")
+            }
+            
+            if OnboardingManager.shared.shouldShowSuggestedUsers {
+                print("✅ Should show suggested users overlay - calling showSuggestedUsersOverlay()")
+                showSuggestedUsersOverlay()
+                return
+            } else {
+                print("❌ Suggested users overlay disabled in settings")
+            }
+        }
+        
         // Check tutorial status from backend
         OnboardingManager.shared.checkIfUserNeedsTutorial { [weak self] needsTutorial in
-            guard let self = self, needsTutorial else { return }
+            guard let self = self, needsTutorial else { 
+                // If no tutorial needed and not already shown overlay, check for suggested users
+                if NetworkManager.shared.connections.count > 0 {
+                    self?.checkAndShowSuggestedUsers()
+                }
+                return 
+            }
             
             // User needs tutorial - start it
             OnboardingManager.shared.startTutorial()
@@ -783,6 +850,43 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     }
                 }
             }
+        }
+    }
+    
+    private func checkAndShowSuggestedUsers() {
+        // Only check once per session
+        guard !hasCheckedForSuggestedUsers else { 
+            print("⚠️ checkAndShowSuggestedUsers - Already checked this session")
+            return 
+        }
+        hasCheckedForSuggestedUsers = true
+        
+        // Get connection count from NetworkManager
+        let connectionCount = NetworkManager.shared.connections.count
+        print("🔍 checkAndShowSuggestedUsers - Connection count: \(connectionCount)")
+        
+        // Check if should show suggested users
+        if OnboardingManager.shared.shouldShowSuggestedUsersOverlay(connectionCount: connectionCount) {
+            print("✅ Should show suggested users overlay - calling showSuggestedUsersOverlay()")
+            showSuggestedUsersOverlay()
+        } else {
+            print("❌ Should NOT show suggested users overlay")
+        }
+    }
+    
+    private func showSuggestedUsersOverlay() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            // Don't show if already showing
+            guard self.suggestedUsersOverlay == nil else { return }
+            
+            let overlay = SuggestedUsersOverlayView()
+            overlay.delegate = self
+            self.suggestedUsersOverlay = overlay
+            
+            // Show overlay
+            overlay.show(in: self.view)
         }
     }
     
@@ -981,10 +1085,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             userListView.topAnchor.constraint(equalTo: quickAccessContainer.bottomAnchor, constant: Constants.Spacing.small),
             userListView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
             userListView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
-            userListView.heightAnchor.constraint(equalToConstant: 124),
+            userListView.heightAnchor.constraint(equalToConstant: 118),
             
             // Filter container
-            filterContainer.topAnchor.constraint(equalTo: userListView.bottomAnchor, constant: Constants.Spacing.xsmall),
+            filterContainer.topAnchor.constraint(equalTo: userListView.bottomAnchor, constant: Constants.Spacing.tiny),
             filterContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             filterContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             filterContainer.heightAnchor.constraint(equalToConstant: 60),
@@ -1322,6 +1426,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     // MARK: - Preloaded Data
     func setPreloadedData(_ data: PreloadedData) {
+        // Store connections separately so they're available when userListView is lazily created
+        self.preloadedConnections = data.connections
         self.preloadedData = data
     }
     
@@ -1331,7 +1437,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         print("📍 usePreloadedData: Got \(data.circles.count) circles")
         print("📍 usePreloadedData: Got \(data.allPlaces.count) places (INCOMPLETE!)")
+        print("📍 usePreloadedData: Got \(data.connections.count) connections")
         print("📍 usePreloadedData: Should have 124 places according to profile")
+        
+        // Don't set initial connections from preloaded data since they don't have message timestamps
+        // The connections will be properly loaded with all data in viewWillAppear via refresh()
+        print("✅ usePreloadedData: Skipping initial connections - will load with proper data via refresh()")
         
         // Don't use preloaded places - they're incomplete!
         // Instead, trigger a full fetch of all places
@@ -1485,6 +1596,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Unified method to load both circles and places
         print("🔄 Starting initial data load")
+        
+        // Ensure connections are loaded in NetworkManager
+        NetworkManager.shared.loadConnections()
         
         // Show loading state once if not already showing and no cached data
         if !isCacheValid() {
@@ -2182,6 +2296,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         )
         fullScreenMap.viewMode = .allPlaces
         fullScreenMap.isPresentedModally = true
+        fullScreenMap.delegate = self  // Set delegate to handle place selection
         
         // Separate user places from connection places
         var userPlaces: [Place] = []
@@ -3437,11 +3552,24 @@ extension CirclesHomeViewController: FullScreenMapViewControllerDelegate {
         // First check user's own circles
         if let circle = circles.first(where: { $0.places?.contains(place.id) == true }) {
             let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
-            navigationController?.pushViewController(placeDetailVC, animated: true)
+            presentPlaceDetail(placeDetailVC, from: controller)
         } 
         // Then check network circles
         else if let networkCircle = networkCircles.first(where: { $0.places?.contains(place.id) == true }) {
             let placeDetailVC = PlaceDetailViewController(place: place, circle: networkCircle)
+            presentPlaceDetail(placeDetailVC, from: controller)
+        }
+    }
+    
+    private func presentPlaceDetail(_ placeDetailVC: PlaceDetailViewController, from controller: FullScreenMapViewController) {
+        // Check if the map controller is presented modally
+        if controller.isPresentedModally {
+            // Present place detail modally on top of the full screen map
+            let navController = UINavigationController(rootViewController: placeDetailVC)
+            navController.modalPresentationStyle = .pageSheet
+            controller.present(navController, animated: true)
+        } else {
+            // For embedded map, use regular navigation push
             navigationController?.pushViewController(placeDetailVC, animated: true)
         }
     }
@@ -3804,6 +3932,44 @@ extension CirclesHomeViewController {
     
     func sseServiceDidDisconnect(_ service: SSEService, error: Error?) {
         // Connection lost
+    }
+}
+
+// MARK: - SuggestedUsersOverlayViewDelegate
+extension CirclesHomeViewController: SuggestedUsersOverlayViewDelegate {
+    func didSelectUser(_ user: User) {
+        // User selected a suggested user - refresh connections
+        userListView.refresh()
+    }
+    
+    func didTapExploreNetwork() {
+        // Navigate to My Network tab
+        if let tabBarController = self.tabBarController as? CirclesTabBarController {
+            tabBarController.selectedIndex = 1 // My Network tab
+        }
+    }
+    
+    func didTapImportContacts() {
+        // Navigate to My Network tab with contacts import
+        if let tabBarController = self.tabBarController as? CirclesTabBarController {
+            tabBarController.selectedIndex = 1 // My Network tab
+            
+            // Trigger contacts import in the My Network tab
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                NotificationCenter.default.post(name: NSNotification.Name("ShowContactsImport"), object: nil)
+            }
+        }
+    }
+    
+    func didDismissOverlay() {
+        // Clean up overlay reference
+        suggestedUsersOverlay = nil
+        
+        // Mark that user has dismissed the overlay
+        OnboardingManager.shared.disableSuggestedUsersOverlay()
+        
+        // Now check and show tutorial
+        checkTutorialAndOverlay()
     }
 }
 

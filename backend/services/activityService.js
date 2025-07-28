@@ -56,7 +56,9 @@ const trackCircleCreated = async (circleId, createdByUserId) => {
       const activity = {
         type: 'circle',
         entityId: circleId,
-        createdAt: new Date().toISOString()
+        entityName: circleName,
+        createdAt: new Date().toISOString(),
+        viewedBy: [createdByUserId] // Creator has already "viewed" their own activity
       };
       
       // Update connection with new activity
@@ -68,7 +70,7 @@ const trackCircleCreated = async (circleId, createdByUserId) => {
     });
 
     await batch.commit();
-    console.log(`Tracked circle creation activity for ${allConnections.length} connections`);
+    // Circle creation activity tracked
     
     // Send real-time SSE events to all connections
     allConnections.forEach(doc => {
@@ -191,11 +193,11 @@ const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedBy
         const activity = {
           type: 'place',
           entityId: placeId,
+          entityName: placeName || 'Unknown Place',
           circleId: circleId,
-          placeName: placeName || 'Unknown Place',
           circleName: circleName || 'Unknown Circle',
           createdAt: new Date().toISOString(),
-          viewedAt: null // Track when this specific activity was viewed
+          viewedBy: [addedByUserId] // Creator has already "viewed" their own activity
         };
         
         // Update connection with new activity
@@ -212,7 +214,7 @@ const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedBy
     });
 
     await batch.commit();
-    console.log(`Tracked place addition activity for ${updatedConnectionsCount} connections (out of ${allConnections.length} total connections)`);
+    // Place addition activity tracked
     
     // Send real-time SSE events to connections who should see this activity
     allConnections.forEach(doc => {
@@ -314,18 +316,26 @@ const clearActivityNotification = async (userId, connectedUserId) => {
     if (!connectionSnapshot.empty) {
       const connectionRef = connectionSnapshot.docs[0].ref;
       
-      // Clear activity indicators but keep activity history
-      // Only clear hasNewActivity - hasRecentPlace is calculated dynamically
+      // Mark all activities as viewed by this user
+      const connectionData = connectionSnapshot.docs[0].data();
+      const updatedActivities = (connectionData.recentActivity || []).map(activity => {
+        // Add viewer to viewedBy array if not already present
+        if (!activity.viewedBy || !activity.viewedBy.includes(userId)) {
+          return {
+            ...activity,
+            viewedBy: [...(activity.viewedBy || []), userId]
+          };
+        }
+        return activity;
+      });
+      
       await connectionRef.update({
         hasNewActivity: false,
-        // hasRecentPlace is not persisted anymore - calculated from recentActivity
-        // Don't clear recentActivity array - we need it for proper calculation
+        recentActivity: updatedActivities,
         updatedAt: new Date().toISOString()
       });
       
-      console.log(`Cleared activity notification for connection between ${userId} and ${connectedUserId}`);
-    } else {
-      console.log(`No connection found between ${userId} and ${connectedUserId}`);
+      // Activity notification cleared
     }
   } catch (error) {
     console.error('Error clearing activity notification:', error);
@@ -335,8 +345,6 @@ const clearActivityNotification = async (userId, connectedUserId) => {
 // Get all connections with sorting by view count and place count
 const getConnectionsWithStats = async (userId) => {
   try {
-    console.log(`Getting connections with stats for user: ${userId}`);
-    
     // Get connections where user is either the requester or the target
     const connectionsQuery1 = db.collection(COLLECTIONS.CONNECTIONS)
       .where('userId', '==', userId)
@@ -351,8 +359,7 @@ const getConnectionsWithStats = async (userId) => {
       connectionsQuery2.get()
     ]);
 
-    console.log(`Found ${snapshot1.size} connections as userId, ${snapshot2.size} as connectedUserId`);
-    console.log(`User ID format: ${userId}, length: ${userId.length}`);
+    // Connections found
 
     // Combine results and remove duplicates
     const allDocs = [...snapshot1.docs, ...snapshot2.docs];
@@ -376,8 +383,6 @@ const getConnectionsWithStats = async (userId) => {
         .get();
       
       if (userDoc.exists) {
-        console.log(`Processing connection with user: ${connectedUserId}`);
-        
         // Get total places count for this user
         const userCirclesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
           .where('owner', '==', connectedUserId)
@@ -389,31 +394,31 @@ const getConnectionsWithStats = async (userId) => {
           totalPlaces += (circleData.places || []).length;
         }
         
-        // Check for recent activity using real-time SSE approach (no lastLogin dependency)
-        // Show activity for places added within the last 24 hours
-        let hasRecentPlace = false;
-        const twentyFourHoursAgo = new Date();
-        twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+        // Check for unviewed activities (Instagram-style)
+        const recentActivity = connectionData.recentActivity || [];
+        const hasUnviewedActivity = recentActivity.some(activity => {
+          // Check if this user hasn't viewed this activity yet
+          const viewedBy = activity.viewedBy || [];
+          return !viewedBy.includes(userId);
+        });
         
-        if (connectionData.recentActivity && connectionData.recentActivity.length > 0) {
-          hasRecentPlace = connectionData.recentActivity.some(activity => 
-            activity.type === 'place' && 
-            new Date(activity.createdAt) > twentyFourHoursAgo
-          );
-          console.log(`📅 SSE Activity check - recent places within 24h: ${hasRecentPlace}`);
-        } else {
-          console.log(`📅 No recent activity found for connection ${doc.id}`);
-        }
+        // Count unviewed activities by type
+        const unviewedCounts = {
+          places: 0,
+          circles: 0,
+          suggestions: 0
+        };
         
-        // Also check for recent circle creation
-        const hasRecentCircle = connectionData.recentActivity?.some(activity => 
-          activity.type === 'circle' && 
-          new Date(activity.createdAt) > twentyFourHoursAgo
-        ) || false;
+        recentActivity.forEach(activity => {
+          const viewedBy = activity.viewedBy || [];
+          if (!viewedBy.includes(userId)) {
+            if (activity.type === 'place') unviewedCounts.places++;
+            else if (activity.type === 'circle') unviewedCounts.circles++;
+            else if (activity.type === 'suggestion') unviewedCounts.suggestions++;
+          }
+        });
         
-        // Show activity indicator for either places or circles
-        const hasAnyRecentActivity = hasRecentPlace || hasRecentCircle;
-        console.log(`📅 Combined activity check - places: ${hasRecentPlace}, circles: ${hasRecentCircle}, total: ${hasAnyRecentActivity}`);
+        // Calculate unviewed activities
         
         // Properly serialize the connection document
         const serializedConnection = serializeDoc(doc);
@@ -457,7 +462,9 @@ const getConnectionsWithStats = async (userId) => {
           ...serializedConnection,
           connectedUser: serializedUser,
           totalPlaces: totalPlaces,
-          hasRecentPlace: hasAnyRecentActivity,
+          hasRecentPlace: hasUnviewedActivity, // Now means hasUnviewedActivity
+          hasUnviewedActivity: hasUnviewedActivity,
+          unviewedCounts: unviewedCounts,
           viewCount: serializedConnection.viewCount || 0,
           recentActivity: serializedConnection.recentActivity || [],
           hasNewActivity: serializedConnection.hasNewActivity || false,
@@ -481,9 +488,9 @@ const getConnectionsWithStats = async (userId) => {
         return 1; // b has messages, a doesn't - b comes first
       }
       
-      // Second priority: recent activity (places or circles)
-      const aHasActivity = a.hasRecentPlace || a.hasNewActivity;
-      const bHasActivity = b.hasRecentPlace || b.hasNewActivity;
+      // Second priority: unviewed activity
+      const aHasActivity = a.hasUnviewedActivity;
+      const bHasActivity = b.hasUnviewedActivity;
       if (aHasActivity !== bHasActivity) {
         return aHasActivity ? -1 : 1;
       }
@@ -504,7 +511,6 @@ const getConnectionsWithStats = async (userId) => {
       return nameA.localeCompare(nameB);
     });
 
-    console.log(`Returning ${connections.length} connections with stats`);
     return connections;
   } catch (error) {
     console.error('Error getting connections with stats:', error);
@@ -545,7 +551,7 @@ const cleanupOldActivity = async (daysToKeep = 30) => {
 
     if (updateCount > 0) {
       await batch.commit();
-      console.log(`Cleaned up old activity for ${updateCount} connections`);
+      // Old activity cleaned up
     }
   } catch (error) {
     console.error('Error cleaning up old activity:', error);
@@ -591,7 +597,7 @@ const trackCircleView = async (viewerUserId, circleId, connectionUserId) => {
           updatedAt: new Date().toISOString()
         });
         
-        console.log(`Marked circle ${circleId} activities as viewed for connection`);
+        // Circle activities marked as viewed
       }
     }
   } catch (error) {
@@ -638,7 +644,7 @@ const trackPlaceView = async (viewerUserId, placeId, connectionUserId) => {
           updatedAt: new Date().toISOString()
         });
         
-        console.log(`Marked place ${placeId} as viewed for connection`);
+        // Place marked as viewed
       }
     }
   } catch (error) {
@@ -688,7 +694,7 @@ const trackCircleLiked = async (circleId, likedByUserId, circleOwnerId) => {
       }
     });
 
-    console.log(`Tracked circle like activity: ${likedByUserId} liked circle ${circleId}`);
+    // Circle like activity tracked
   } catch (error) {
     console.error('Error tracking circle like:', error);
   }
@@ -738,9 +744,129 @@ const trackCircleCommented = async (circleId, commentedByUserId, circleOwnerId, 
       }
     });
 
-    console.log(`Tracked circle comment activity: ${commentedByUserId} commented on circle ${circleId}`);
+    // Circle comment activity tracked
   } catch (error) {
     console.error('Error tracking circle comment:', error);
+  }
+};
+
+// Mark a specific circle's activities as viewed
+const markCircleActivitiesAsViewed = async (userId, circleId) => {
+  try {
+    // Get all connections for this user
+    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', userId)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', userId)
+        .where('status', '==', 'accepted')
+        .get()
+    ]);
+
+    const batch = db.batch();
+    const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
+    let updateCount = 0;
+
+    allConnections.forEach(doc => {
+      const connectionData = doc.data();
+      const recentActivity = connectionData.recentActivity || [];
+      
+      // Update activities for this circle
+      const updatedActivities = recentActivity.map(activity => {
+        // Mark place activities in this circle as viewed
+        if (activity.type === 'place' && activity.circleId === circleId) {
+          if (!activity.viewedBy || !activity.viewedBy.includes(userId)) {
+            return {
+              ...activity,
+              viewedBy: [...(activity.viewedBy || []), userId]
+            };
+          }
+        }
+        // Mark circle creation activity as viewed
+        else if (activity.type === 'circle' && activity.entityId === circleId) {
+          if (!activity.viewedBy || !activity.viewedBy.includes(userId)) {
+            return {
+              ...activity,
+              viewedBy: [...(activity.viewedBy || []), userId]
+            };
+          }
+        }
+        return activity;
+      });
+
+      // Only update if something changed
+      if (JSON.stringify(updatedActivities) !== JSON.stringify(recentActivity)) {
+        batch.update(doc.ref, {
+          recentActivity: updatedActivities,
+          updatedAt: new Date().toISOString()
+        });
+        updateCount++;
+      }
+    });
+
+    if (updateCount > 0) {
+      await batch.commit();
+      // Circle activities marked as viewed
+    }
+  } catch (error) {
+    console.error('Error marking circle activities as viewed:', error);
+  }
+};
+
+// Mark a specific place as viewed
+const markPlaceAsViewed = async (userId, placeId, circleId) => {
+  try {
+    // Get all connections for this user
+    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', userId)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', userId)
+        .where('status', '==', 'accepted')
+        .get()
+    ]);
+
+    const batch = db.batch();
+    const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
+    let updateCount = 0;
+
+    allConnections.forEach(doc => {
+      const connectionData = doc.data();
+      const recentActivity = connectionData.recentActivity || [];
+      
+      // Update activities for this place
+      const updatedActivities = recentActivity.map(activity => {
+        if (activity.type === 'place' && activity.entityId === placeId) {
+          if (!activity.viewedBy || !activity.viewedBy.includes(userId)) {
+            return {
+              ...activity,
+              viewedBy: [...(activity.viewedBy || []), userId]
+            };
+          }
+        }
+        return activity;
+      });
+
+      // Only update if something changed
+      if (JSON.stringify(updatedActivities) !== JSON.stringify(recentActivity)) {
+        batch.update(doc.ref, {
+          recentActivity: updatedActivities,
+          updatedAt: new Date().toISOString()
+        });
+        updateCount++;
+      }
+    });
+
+    if (updateCount > 0) {
+      await batch.commit();
+      // Place marked as viewed
+    }
+  } catch (error) {
+    console.error('Error marking place as viewed:', error);
   }
 };
 
@@ -754,5 +880,7 @@ module.exports = {
   trackCircleCommented,
   clearActivityNotification,
   getConnectionsWithStats,
-  cleanupOldActivity
+  cleanupOldActivity,
+  markCircleActivitiesAsViewed,
+  markPlaceAsViewed
 };

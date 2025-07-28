@@ -29,8 +29,10 @@ extension User {
         followersCount: Int? = nil,
         followingCount: Int? = nil,
         connectionsCount: Int? = nil,
+        placesCount: Int? = nil,
         pinnedPlaces: [String]? = nil,
-        isFollowing: Bool? = nil
+        isFollowing: Bool? = nil,
+        notificationPreferences: NotificationPreferences? = nil
     ) -> User {
         return User(
             id: id ?? self.id,
@@ -55,8 +57,10 @@ extension User {
             followersCount: followersCount ?? self.followersCount,
             followingCount: followingCount ?? self.followingCount,
             connectionsCount: connectionsCount ?? self.connectionsCount,
+            placesCount: placesCount ?? self.placesCount,
             pinnedPlaces: pinnedPlaces ?? self.pinnedPlaces,
-            isFollowing: isFollowing ?? self.isFollowing
+            isFollowing: isFollowing ?? self.isFollowing,
+            notificationPreferences: notificationPreferences ?? self.notificationPreferences
         )
     }
     

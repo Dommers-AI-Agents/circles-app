@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# Quick deployment script for updates
-# Run this after initial deployment to quickly push changes
+# Quick deployment script for code-only updates
+# Use this for deploying code changes without updating environment variables
+# For full deployment with env var updates, use ./deploy.sh
 
 set -e
 
@@ -36,7 +37,8 @@ gcloud run deploy $SERVICE_NAME \
     --platform managed \
     --region $REGION \
     --project=$PROJECT_ID \
-    --allow-unauthenticated
+    --allow-unauthenticated \
+    --port=8080
 
 # Get the service URL
 SERVICE_URL=$(gcloud run services describe $SERVICE_NAME \

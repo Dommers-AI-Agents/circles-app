@@ -4,6 +4,78 @@ struct UserPreferences: Codable {
     let defaultHomeView: String? // "list" or "map"
 }
 
+struct NotificationPreferences: Codable {
+    var newMessages: Bool = true
+    var newSuggestions: Bool = true
+    var newPlaces: Bool = true
+    var connectionRequests: Bool = true
+    var circleInvites: Bool = true
+    var newFollowers: Bool = true
+    var dailyDigest: Bool = false
+    
+    // Daily summary settings
+    var dailySummary: Bool = true
+    var summaryTime: String = "12:00"
+    var timezone: String = "America/New_York"
+    
+    // Additional notification types
+    var socialActivity: Bool = true
+    var discoveryPrompts: Bool = true
+    var milestones: Bool = true
+    var weekendRecommendations: Bool = true
+    var reengagement: Bool = true
+    var frequency: String = "normal" // "minimal", "normal", "all"
+    
+    // Quiet hours
+    var quietHoursEnabled: Bool = false
+    var quietHoursStart: String = "22:00"
+    var quietHoursEnd: String = "08:00"
+    
+    // Default initializer
+    init() {
+        // All properties already have default values assigned above
+    }
+    
+    // Custom decoder to handle missing fields with default values
+    enum CodingKeys: String, CodingKey {
+        case newMessages, newSuggestions, newPlaces, connectionRequests, circleInvites, newFollowers, dailyDigest
+        case dailySummary, summaryTime, timezone
+        case socialActivity, discoveryPrompts, milestones, weekendRecommendations, reengagement, frequency
+        case quietHoursEnabled, quietHoursStart, quietHoursEnd
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        // Use decodeIfPresent with fallback to default values
+        newMessages = try container.decodeIfPresent(Bool.self, forKey: .newMessages) ?? true
+        newSuggestions = try container.decodeIfPresent(Bool.self, forKey: .newSuggestions) ?? true
+        newPlaces = try container.decodeIfPresent(Bool.self, forKey: .newPlaces) ?? true
+        connectionRequests = try container.decodeIfPresent(Bool.self, forKey: .connectionRequests) ?? true
+        circleInvites = try container.decodeIfPresent(Bool.self, forKey: .circleInvites) ?? true
+        newFollowers = try container.decodeIfPresent(Bool.self, forKey: .newFollowers) ?? true
+        dailyDigest = try container.decodeIfPresent(Bool.self, forKey: .dailyDigest) ?? false
+        
+        // Daily summary settings
+        dailySummary = try container.decodeIfPresent(Bool.self, forKey: .dailySummary) ?? true
+        summaryTime = try container.decodeIfPresent(String.self, forKey: .summaryTime) ?? "12:00"
+        timezone = try container.decodeIfPresent(String.self, forKey: .timezone) ?? "America/New_York"
+        
+        // Additional notification types
+        socialActivity = try container.decodeIfPresent(Bool.self, forKey: .socialActivity) ?? true
+        discoveryPrompts = try container.decodeIfPresent(Bool.self, forKey: .discoveryPrompts) ?? true
+        milestones = try container.decodeIfPresent(Bool.self, forKey: .milestones) ?? true
+        weekendRecommendations = try container.decodeIfPresent(Bool.self, forKey: .weekendRecommendations) ?? true
+        reengagement = try container.decodeIfPresent(Bool.self, forKey: .reengagement) ?? true
+        frequency = try container.decodeIfPresent(String.self, forKey: .frequency) ?? "normal"
+        
+        // Quiet hours
+        quietHoursEnabled = try container.decodeIfPresent(Bool.self, forKey: .quietHoursEnabled) ?? false
+        quietHoursStart = try container.decodeIfPresent(String.self, forKey: .quietHoursStart) ?? "22:00"
+        quietHoursEnd = try container.decodeIfPresent(String.self, forKey: .quietHoursEnd) ?? "08:00"
+    }
+}
+
 struct User: Codable, Identifiable {
     let id: String
     let email: String
@@ -32,6 +104,12 @@ struct User: Codable, Identifiable {
     // Connections count (LinkedIn-style professional network)
     let connectionsCount: Int?
     
+    // Places count (total places across all circles)
+    let placesCount: Int?
+    
+    // Circles count (total circles created by user)
+    let circlesCount: Int?
+    
     // Pinned places (max 6)
     let pinnedPlaces: [String]?
     
@@ -41,13 +119,16 @@ struct User: Codable, Identifiable {
     // Flag to identify fake profiles for onboarding
     let isFakeProfile: Bool?
     
+    // Notification preferences
+    let notificationPreferences: NotificationPreferences?
+    
     enum CodingKeys: String, CodingKey {
         case id = "_id"
-        case email, displayName, firstName, lastName, phoneNumber, profilePicture, bio, location, friends, friendRequests, circleOrder, preferences, createdAt, connectionStatus, connectionDirection, connectionId, followers, following, followersCount, followingCount, connectionsCount, pinnedPlaces, isFollowing, isFakeProfile
+        case email, displayName, firstName, lastName, phoneNumber, profilePicture, bio, location, friends, friendRequests, circleOrder, preferences, createdAt, connectionStatus, connectionDirection, connectionId, followers, following, followersCount, followingCount, connectionsCount, placesCount, circlesCount, pinnedPlaces, isFollowing, isFakeProfile, notificationPreferences
     }
     
     // Convenience initializer for creating User objects directly
-    public init(id: String, email: String, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil, connectionDirection: String? = nil, connectionId: String? = nil, followers: [String]? = nil, following: [String]? = nil, followersCount: Int? = nil, followingCount: Int? = nil, connectionsCount: Int? = nil, pinnedPlaces: [String]? = nil, isFollowing: Bool? = nil, isFakeProfile: Bool? = nil) {
+    public init(id: String, email: String, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil, connectionDirection: String? = nil, connectionId: String? = nil, followers: [String]? = nil, following: [String]? = nil, followersCount: Int? = nil, followingCount: Int? = nil, connectionsCount: Int? = nil, placesCount: Int? = nil, circlesCount: Int? = nil, pinnedPlaces: [String]? = nil, isFollowing: Bool? = nil, isFakeProfile: Bool? = nil, notificationPreferences: NotificationPreferences? = nil) {
         self.id = id
         self.email = email
         self.displayName = displayName
@@ -70,9 +151,12 @@ struct User: Codable, Identifiable {
         self.followersCount = followersCount
         self.followingCount = followingCount
         self.connectionsCount = connectionsCount
+        self.placesCount = placesCount
+        self.circlesCount = circlesCount
         self.pinnedPlaces = pinnedPlaces
         self.isFollowing = isFollowing
         self.isFakeProfile = isFakeProfile
+        self.notificationPreferences = notificationPreferences
     }
     
     // Custom decoder for JSON decoding
@@ -132,6 +216,12 @@ struct User: Codable, Identifiable {
         // Connections count (LinkedIn-style professional network)
         connectionsCount = try container.decodeIfPresent(Int.self, forKey: .connectionsCount)
         
+        // Places count
+        placesCount = try container.decodeIfPresent(Int.self, forKey: .placesCount)
+        
+        // Circles count
+        circlesCount = try container.decodeIfPresent(Int.self, forKey: .circlesCount)
+        
         // Pinned places
         pinnedPlaces = try container.decodeIfPresent([String].self, forKey: .pinnedPlaces)
         
@@ -140,6 +230,9 @@ struct User: Codable, Identifiable {
         
         // Fake profile flag
         isFakeProfile = try container.decodeIfPresent(Bool.self, forKey: .isFakeProfile)
+        
+        // Notification preferences
+        notificationPreferences = try container.decodeIfPresent(NotificationPreferences.self, forKey: .notificationPreferences)
         
         // Custom date decoding with multiple format support
         if let dateString = try container.decodeIfPresent(String.self, forKey: .createdAt) {
@@ -187,6 +280,7 @@ struct User: Codable, Identifiable {
             followersCount: self.followersCount,
             followingCount: self.followingCount,
             connectionsCount: self.connectionsCount,
+            placesCount: self.placesCount,
             pinnedPlaces: self.pinnedPlaces,
             isFollowing: isFollowing, // Updated value
             isFakeProfile: self.isFakeProfile

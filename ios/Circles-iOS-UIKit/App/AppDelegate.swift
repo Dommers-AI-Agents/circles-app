@@ -11,10 +11,11 @@ import GoogleSignIn
 import FBSDKCoreKit
 import GooglePlaces
 import Firebase
+import FirebaseMessaging
 import UserNotifications
 
 @main
-class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate, MessagingDelegate {
     
     // Used to store Apple Sign-In credentials for an extended period
     var appleIDCompletionHandler: ((ASAuthorization?, Error?) -> Void)?
@@ -24,6 +25,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
 
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        print("🚀 DAILY SUMMARY VERSION: App launched with enhanced notification handling - v2025.7.28")
         // Override point for customization after application launch.
         
         // Suppress Google Maps SDK duplicate class warnings in debug builds
@@ -33,6 +35,42 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         
         // Configure Firebase first
         FirebaseApp.configure()
+        
+        // Configure Firebase Messaging
+        Messaging.messaging().delegate = self
+        
+        // Get FCM token if available
+        print("🔔 ===== PUSH NOTIFICATION SETUP =====")
+        print("🔔 App launched at: \(Date())")
+        print("🔔 Requesting FCM token on app launch...")
+        
+        Messaging.messaging().token { token, error in
+            if let error = error {
+                print("🔔 ❌ Error fetching FCM registration token: \(error)")
+                print("🔔 Error domain: \(error._domain)")
+                print("🔔 Error code: \(error._code)")
+            } else if let token = token {
+                print("🔔 ✅ FCM registration token retrieved on launch")
+                print("🔔 Token length: \(token.count) characters")
+                print("🔔 Token preview: \(token.prefix(20))...")
+                
+                // Save to UserDefaults
+                UserDefaults.standard.set(token, forKey: "FCMToken")
+                UserDefaults.standard.synchronize()
+                print("🔔 Token saved to UserDefaults")
+                
+                // Send to backend if user is logged in
+                if AuthService.shared.isLoggedIn {
+                    print("🔔 User is logged in on launch, registering token with backend")
+                    print("🔔 Backend URL: \(APIEnvironment.current.baseURL)")
+                    NotificationService.shared.registerDeviceToken(token)
+                } else {
+                    print("🔔 User not logged in on launch, token saved for later registration")
+                }
+            } else {
+                print("🔔 ⚠️ No FCM token available on launch")
+            }
+        }
         
         // Note: AuthManager removed - using AuthService directly
         
@@ -53,11 +91,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             object: nil
         )
         
-        // Configure Google Sign-In using configuration from Info.plist
-        guard let infoPlist = Bundle.main.infoDictionary,
-              let clientId = infoPlist["CLIENT_ID"] as? String,
-              let reversedClientId = infoPlist["REVERSED_CLIENT_ID"] as? String else {
-            print("❌ Failed to load Google configuration from Info.plist")
+        // Configure Google Sign-In using configuration from GoogleService-Info.plist
+        guard let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
+              let plist = NSDictionary(contentsOfFile: path),
+              let clientId = plist["CLIENT_ID"] as? String,
+              let reversedClientId = plist["REVERSED_CLIENT_ID"] as? String else {
+            print("❌ Failed to load Google configuration from GoogleService-Info.plist")
             return true
         }
         
@@ -87,8 +126,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         print("📘 Initializing Facebook SDK")
         ApplicationDelegate.shared.application(application, didFinishLaunchingWithOptions: launchOptions)
         
-        // Initialize Google Places SDK
-        if let gmsApiKey = infoPlist["GMSApiKey"] as? String {
+        // Initialize Google Places SDK using API_KEY from GoogleService-Info.plist
+        if let gmsApiKey = plist["API_KEY"] as? String {
             GMSPlacesClient.provideAPIKey(gmsApiKey)
             print("📍 Google Places SDK initialized (photos only)")
         } else {
@@ -196,17 +235,61 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         let tokenParts = deviceToken.map { data in String(format: "%02.2hhx", data) }
         let token = tokenParts.joined()
-        print("🔔 Device Token: \(token)")
+        print("🔔 ===== APNS REGISTRATION SUCCESS =====")
+        print("🔔 APNs Device Token: \(token)")
+        print("🔔 Token length: \(token.count) characters")
         
-        // Save token to UserDefaults for later use
-        UserDefaults.standard.set(token, forKey: "PushNotificationToken")
+        // Set APNs token for Firebase Messaging
+        print("🔔 Setting APNs token for Firebase Messaging...")
+        Messaging.messaging().apnsToken = deviceToken
+        print("🔔 APNs token set, waiting for FCM token...")
         
-        // Send device token to backend
-        NotificationService.shared.registerDeviceToken(token)
+        // The FCM token will be received in the MessagingDelegate callback
     }
     
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         print("🔔 Failed to register for remote notifications: \(error)")
+    }
+    
+    // MARK: - Background Notification Handling
+    
+    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable : Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        print("🔔 Received remote notification in background/terminated state")
+        print("🔔 UserInfo: \(userInfo)")
+        
+        // Process the notification
+        if let aps = userInfo["aps"] as? [String: Any] {
+            // Update badge count if provided
+            if let badge = aps["badge"] as? Int {
+                UIApplication.shared.applicationIconBadgeNumber = badge
+            }
+            
+            // Handle different notification types
+            if let type = userInfo["type"] as? String {
+                switch type {
+                case "new_message":
+                    // Update unread message count
+                    MessagingManager.shared.updateUnreadCount()
+                    completionHandler(.newData)
+                    
+                case "connection_request", "connection_accepted":
+                    // Update network badge by reloading connections
+                    NetworkManager.shared.loadConnections()
+                    completionHandler(.newData)
+                    
+                case "new_place", "place_like", "place_comment", "circle_liked", "circle_commented":
+                    // These might trigger activity feed updates
+                    completionHandler(.newData)
+                    
+                default:
+                    completionHandler(.noData)
+                }
+            } else {
+                completionHandler(.noData)
+            }
+        } else {
+            completionHandler(.noData)
+        }
     }
     
     // MARK: - Notification Configuration
@@ -344,11 +427,58 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         return nil
     }
     
+    private func presentDailySummary(with userInfo: [AnyHashable: Any]) {
+        print("📊 Presenting daily summary modal")
+        
+        // Function to actually present the modal
+        let presentModal = {
+            guard let topViewController = self.getTopViewController() else {
+                print("⚠️ Could not find top view controller")
+                // Try again after a short delay in case app is still launching
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    self.presentDailySummary(with: userInfo)
+                }
+                return
+            }
+            
+            // Convert userInfo to String dictionary for DailySummaryViewController
+            var notificationData: [String: Any] = [:]
+            for (key, value) in userInfo {
+                if let stringKey = key as? String {
+                    notificationData[stringKey] = value
+                }
+            }
+            
+            // Create and present daily summary
+            let summaryVC = DailySummaryViewController(notificationData: notificationData)
+            
+            // Check if topViewController can present
+            if topViewController.presentedViewController != nil {
+                topViewController.dismiss(animated: false) {
+                    topViewController.present(summaryVC, animated: true) {
+                        print("✅ Daily summary modal presented")
+                    }
+                }
+            } else {
+                topViewController.present(summaryVC, animated: true) {
+                    print("✅ Daily summary modal presented")
+                }
+            }
+        }
+        
+        // Present immediately if on main thread, otherwise dispatch to main
+        if Thread.isMainThread {
+            presentModal()
+        } else {
+            DispatchQueue.main.async {
+                presentModal()
+            }
+        }
+    }
+    
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         // Handle notification response (tap or action)
         let userInfo = response.notification.request.content.userInfo
-        print("🔔 Notification response received - Action: \(response.actionIdentifier)")
-        print("🔔 UserInfo: \(userInfo)")
         
         // Handle notification actions
         switch response.actionIdentifier {
@@ -413,28 +543,53 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     // MARK: - Notification Action Handlers
     
     private func handleNotificationTap(userInfo: [AnyHashable: Any]) {
-        // Handle different notification types when user taps the notification
+        // Check for notification type
+        var notificationType: String?
+        
+        // Check multiple possible locations for the type field
         if let type = userInfo["type"] as? String {
-            switch type {
-            case "new_message":
-                NotificationCenter.default.post(name: Notification.Name("NavigateToMessages"), object: nil)
-            case "new_suggestion":
-                NotificationCenter.default.post(name: Notification.Name("NavigateToSuggestions"), object: nil)
-            case "new_place":
-                if let circleId = userInfo["circleId"] as? String {
-                    NotificationCenter.default.post(name: Notification.Name("NavigateToCircle"), object: circleId)
-                }
-            case "connection_request":
-                NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
-            case "connection_accepted":
-                if let acceptedByUserId = userInfo["acceptedByUserId"] as? String {
-                    UserDefaults.standard.set(acceptedByUserId, forKey: "newlyAcceptedConnectionId")
-                    UserDefaults.standard.set(Date(), forKey: "newlyAcceptedConnectionDate")
-                }
-                NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
-            default:
-                break
+            notificationType = type
+        } else if let customData = userInfo["customData"] as? [String: Any],
+                  let type = customData["type"] as? String {
+            notificationType = type
+        } else if let data = userInfo["data"] as? [String: Any],
+                  let type = data["type"] as? String {
+            notificationType = type
+        }
+        
+        guard let type = notificationType else {
+            print("⚠️ No notification type found")
+            return
+        }
+        
+        // Handle different notification types when user taps the notification
+        switch type {
+        case "new_message":
+            NotificationCenter.default.post(name: Notification.Name("NavigateToMessages"), object: nil)
+        case "new_suggestion":
+            NotificationCenter.default.post(name: Notification.Name("NavigateToSuggestions"), object: nil)
+        case "new_place":
+            if let circleId = userInfo["circleId"] as? String {
+                NotificationCenter.default.post(name: Notification.Name("NavigateToCircle"), object: circleId)
             }
+        case "connection_request":
+            NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
+        case "connection_accepted":
+            if let acceptedByUserId = userInfo["acceptedByUserId"] as? String {
+                UserDefaults.standard.set(acceptedByUserId, forKey: "newlyAcceptedConnectionId")
+                UserDefaults.standard.set(Date(), forKey: "newlyAcceptedConnectionDate")
+            }
+            NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
+        case "daily_summary":
+            // Clear badge count since daily summaries are informational only
+            UIApplication.shared.applicationIconBadgeNumber = 0
+            
+            // Present daily summary modal
+            DispatchQueue.main.async {
+                self.presentDailySummary(with: userInfo)
+            }
+        default:
+            break
         }
     }
     
@@ -539,6 +694,35 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
                 // Navigate to home/activity feed
                 NotificationCenter.default.post(name: Notification.Name("NavigateToHome"), object: nil)
             }
+        }
+    }
+    
+    // MARK: - MessagingDelegate
+    
+    func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
+        print("🔔 Firebase FCM registration token received: \(fcmToken ?? "nil")")
+        
+        if let fcmToken = fcmToken {
+            print("🔔 FCM Token length: \(fcmToken.count) characters")
+            
+            // Save FCM token to UserDefaults
+            UserDefaults.standard.set(fcmToken, forKey: "FCMToken")
+            UserDefaults.standard.synchronize()
+            print("🔔 Saved FCM token to UserDefaults")
+            
+            // Send FCM token to backend
+            print("🔔 Calling NotificationService.registerDeviceToken")
+            NotificationService.shared.registerDeviceToken(fcmToken)
+            
+            // Also check if user is logged in and update backend
+            if AuthService.shared.isLoggedIn {
+                print("🔔 User is logged in, updating push token")
+                NotificationService.shared.updatePushToken()
+            } else {
+                print("🔔 User not logged in, token will be sent on next login")
+            }
+        } else {
+            print("🔔 ❌ Received nil FCM token")
         }
     }
 }

@@ -28,13 +28,21 @@ class OnboardingService {
       const userData = userDoc.data();
       if (userData.onboardingCompleted) {
         console.log(`⚠️ User ${userId} already completed onboarding`);
-        return;
+        // Return success but indicate already completed
+        return {
+          success: true,
+          circlesCreated: 0,
+          message: 'Onboarding already completed'
+        };
       }
       
       // Create default circles and sample place in a transaction
+      console.log(`🔄 Starting transaction for user ${userId}`);
       const result = await db.runTransaction(async (transaction) => {
+        console.log(`📝 Inside transaction for user ${userId}`);
         const circleRefs = [];
         const circleIds = [];
+        let samplePlaceData = null; // Define at transaction scope
         
         // Create the three default circles
         for (const circleTemplate of DEFAULT_CIRCLES) {
@@ -60,7 +68,7 @@ class OnboardingService {
           const favoriteCircleId = circleIds[favoriteLocalSpotsIndex];
           
           // Get a random local place
-          const samplePlaceData = getRandomLocalPlace(userLocation);
+          samplePlaceData = getRandomLocalPlace(userLocation);
           
           // Create sample place
           const placeRef = db.collection(COLLECTIONS.PLACES).doc();
@@ -104,19 +112,21 @@ class OnboardingService {
       
       console.log(`✅ Onboarding completed for user ${userId}`);
       console.log(`📁 Created ${result.circleIds.length} default circles`);
-      console.log(`📍 Added sample place: ${result.samplePlace.name}`);
+      if (result.samplePlace) {
+        console.log(`📍 Added sample place: ${result.samplePlace.name}`);
+      }
       
       // Send SSE notification about onboarding completion
       const sseService = require('./sseService');
       sseService.notifyUser(userId, 'onboarding_completed', {
         circlesCreated: result.circleIds.length,
-        samplePlace: result.samplePlace
+        samplePlace: result.samplePlace || null
       });
       
       return {
         success: true,
         circlesCreated: result.circleIds.length,
-        samplePlace: result.samplePlace
+        samplePlace: result.samplePlace ? result.samplePlace.name : "No sample place added"
       };
       
     } catch (error) {

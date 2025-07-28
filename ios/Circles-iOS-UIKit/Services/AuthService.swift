@@ -432,6 +432,16 @@ class AuthService {
         print("🔐 handleAuthResponse called, success: \(response.success)")
         
         if response.success {
+            // Check if this is a different user than the last one
+            let previousUserId = getUserId()
+            let isNewUser = previousUserId != response.user.id
+            
+            if isNewUser && previousUserId != nil {
+                print("🔐 Different user detected - resetting onboarding state")
+                // Reset onboarding state for the new user
+                OnboardingManager.shared.resetForNewUser()
+            }
+            
             // Save tokens with expiration
             let expiration: Date?
             if let expiresIn = response.expiresIn {
@@ -466,8 +476,11 @@ class AuthService {
             notifyAuthStateChange(isLoggedIn: true)
             
             // Register device token if available
-            if let savedToken = UserDefaults.standard.string(forKey: "PushNotificationToken") {
+            if let savedToken = UserDefaults.standard.string(forKey: "FCMToken") {
+                print("🔐 Found saved FCM token, registering with backend")
                 NotificationService.shared.registerDeviceToken(savedToken)
+            } else {
+                print("🔐 No saved FCM token found")
             }
             
             completion(.success(response.user))
@@ -653,10 +666,7 @@ struct UserResponse: Decodable {
     let user: User
 }
 
-struct ErrorResponse: Decodable {
-    let success: Bool
-    let message: String
-}
+// ErrorResponse moved to Models/ErrorResponse.swift for shared use
 
 
 struct VerificationStatusResponse: Decodable {

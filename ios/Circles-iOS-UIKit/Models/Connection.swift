@@ -1,5 +1,14 @@
 import Foundation
 
+// Score components breakdown
+struct ScoreComponents: Codable {
+    let messages: Double
+    let engagement: Double
+    let content: Double
+    let recency: Double
+    let total: Double
+}
+
 enum ConnectionStatus: String, Codable {
     case pending
     case accepted
@@ -33,9 +42,12 @@ struct Connection: Codable, Identifiable {
     let lastMessageAt: Date? // Timestamp of last message exchanged
     let lastMessageSenderId: String? // ID of who sent the last message  
     let hasRecentMessage: Bool? // If message was within last 7 days
-    let createdAt: Date
+    let connectionScore: Double? // Weighted score calculated by backend
+    let scoreComponents: ScoreComponents? // Breakdown of score components
+    let scoreLastCalculated: Date? // When score was last calculated
+    let createdAt: Date?
     let acceptedAt: Date?
-    let updatedAt: Date
+    let updatedAt: Date?
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -44,6 +56,7 @@ struct Connection: Codable, Identifiable {
         case lastAccessedCircles, recentActivity, hasNewActivity
         case viewCount, lastViewedAt, totalPlaces, hasRecentPlace
         case lastMessageAt, lastMessageSenderId, hasRecentMessage
+        case connectionScore, scoreComponents, scoreLastCalculated
         case createdAt, acceptedAt, updatedAt
     }
     
@@ -69,7 +82,7 @@ struct Connection: Codable, Identifiable {
 // Circle access tracking
 struct CircleAccess: Codable {
     let circleId: String
-    let accessedAt: Date
+    let accessedAt: Date?
 }
 
 // User activity tracking
@@ -77,7 +90,7 @@ struct UserActivity: Codable {
     let type: ActivityType
     let entityId: String
     let circleId: String?
-    let createdAt: Date
+    let createdAt: Date?
     
     enum ActivityType: String, Codable {
         case circle = "circle"

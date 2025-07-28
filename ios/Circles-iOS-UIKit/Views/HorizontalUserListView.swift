@@ -55,7 +55,58 @@ class HorizontalUserListView: UIView, SSEServiceDelegate {
         // Register for SSE events
         SSEService.shared.addDelegate(self)
         
-        loadActiveConnections()
+        // Register for connection change notifications
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleConnectionsChanged),
+            name: NSNotification.Name("ConnectionsChanged"),
+            object: nil
+        )
+        
+        // Don't automatically load connections - wait for either:
+        // 1. Initial connections to be set via setInitialConnections()
+        // 2. Manual refresh() call
+        // This prevents showing fake users during app startup
+        
+        // Show loading state initially
+        loadingIndicator.startAnimating()
+        collectionView.isHidden = true
+        
+        // Set a timer to load connections if initial connections aren't provided quickly
+        // This prevents the view from staying in loading state indefinitely
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self = self else { return }
+            if !self.hasLoadedConnections {
+                print("⏰ HorizontalUserListView: No initial connections received after 0.5 seconds, loading from network")
+                self.loadActiveConnections()
+            }
+        }
+    }
+    
+    // Initializer with preloaded connections to prevent race condition
+    init(frame: CGRect = .zero, initialConnections: [Connection]?) {
+        super.init(frame: frame)
+        setupUI()
+        setupCollectionView()
+        
+        // Register for SSE events
+        SSEService.shared.addDelegate(self)
+        
+        // Register for connection change notifications
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleConnectionsChanged),
+            name: NSNotification.Name("ConnectionsChanged"),
+            object: nil
+        )
+        
+        if let connections = initialConnections {
+            // Use preloaded connections to prevent showing fake users
+            useInitialConnections(connections)
+        } else {
+            // Fall back to loading from network
+            loadActiveConnections()
+        }
     }
     
     required init?(coder: NSCoder) {
@@ -64,6 +115,7 @@ class HorizontalUserListView: UIView, SSEServiceDelegate {
     
     deinit {
         SSEService.shared.removeDelegate(self)
+        NotificationCenter.default.removeObserver(self)
     }
     
     // MARK: - Setup
@@ -80,7 +132,7 @@ class HorizontalUserListView: UIView, SSEServiceDelegate {
             collectionView.topAnchor.constraint(equalTo: topAnchor, constant: 12),
             collectionView.leadingAnchor.constraint(equalTo: leadingAnchor),
             collectionView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            collectionView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
+            collectionView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
             collectionView.heightAnchor.constraint(equalToConstant: 100),
             
             // Loading indicator
@@ -103,203 +155,253 @@ class HorizontalUserListView: UIView, SSEServiceDelegate {
     private func loadActiveConnections() {
         loadingIndicator.startAnimating()
         collectionView.isHidden = true
-        emptyStateLabel.isHidden = true // Hide empty state while loading
+        emptyStateLabel.isHidden = true
         
-        // Use the active connections endpoint with message sorting
-        NetworkManager.shared.fetchActiveConnections { [weak self] connections, error in
-            self?.loadingIndicator.stopAnimating()
-            self?.hasLoadedConnections = true
+        // First, check if user has ANY connections at all
+        NetworkManager.shared.fetchConnections { [weak self] allConnections, error in
+            guard let self = self else { return }
             
-            print("🔍 HorizontalUserListView: Received \(connections?.count ?? 0) connections from NetworkManager")
             if let error = error {
-                print("❌ HorizontalUserListView: Error loading connections: \(error)")
+                print("❌ HorizontalUserListView: Error checking connections: \(error)")
+                self.hasLoadedConnections = true
+                self.loadingIndicator.stopAnimating()
+                self.emptyStateLabel.isHidden = false
+                return
             }
             
-            if let connections = connections, !connections.isEmpty {
-                // Filter for accepted connections only
-                let acceptedConnections = connections.filter { $0.status == .accepted }
-                print("🔍 HorizontalUserListView: Filtered to \(acceptedConnections.count) accepted connections")
+            let acceptedConnections = allConnections?.filter { $0.status == .accepted } ?? []
+            print("🔍 HorizontalUserListView: User has \(acceptedConnections.count) accepted connections total")
+            
+            if acceptedConnections.isEmpty {
+                // User truly has no connections - but still try active connections endpoint
+                print("🔍 HorizontalUserListView: No accepted connections found, checking active connections endpoint")
                 
-                
-                // Sort connections by activity - messages first, then recent activity
-                let sortedConnections = acceptedConnections.sorted { (a, b) in
-                    // First priority: recent messages (most recent first)
-                    if let aMessageTime = a.lastMessageAt, let bMessageTime = b.lastMessageAt {
-                        return aMessageTime > bMessageTime
-                    } else if a.lastMessageAt != nil {
-                        return true // a has messages, b doesn't - a comes first
-                    } else if b.lastMessageAt != nil {
-                        return false // b has messages, a doesn't - b comes first
-                    }
+                NetworkManager.shared.fetchActiveConnections { [weak self] activeConnections, error in
+                    guard let self = self else { return }
                     
-                    // Second priority: recent activity (places or circles)
-                    let aHasActivity = (a.hasRecentPlace ?? false) || (a.hasNewActivity ?? false)
-                    let bHasActivity = (b.hasRecentPlace ?? false) || (b.hasNewActivity ?? false)
-                    if aHasActivity != bHasActivity {
-                        return aHasActivity
-                    }
+                    self.hasLoadedConnections = true
                     
-                    // Third priority: view count (only if user has viewed them)
-                    let aViewCount = a.viewCount ?? 0
-                    let bViewCount = b.viewCount ?? 0
-                    if (aViewCount > 0 || bViewCount > 0) && aViewCount != bViewCount {
-                        return aViewCount > bViewCount
-                    }
-                    
-                    // Fourth priority: total places count
-                    let aPlaces = a.totalPlaces ?? 0
-                    let bPlaces = b.totalPlaces ?? 0
-                    if aPlaces != bPlaces {
-                        return aPlaces > bPlaces
-                    }
-                    
-                    // Default: alphabetical by name
-                    let aName = a.connectedUser?.displayName ?? ""
-                    let bName = b.connectedUser?.displayName ?? ""
-                    return aName < bName
+                    // If active connections also returns empty, then truly show empty state
+                    print("🔍 HorizontalUserListView: Active connections check complete - truly no connections")
+                    self.displayConnections([], alreadySorted: false, allowEmptyState: true)
                 }
-                
-                // Take top 10 for horizontal display
-                self?.connections = Array(sortedConnections.prefix(10))
-                print("🔍 HorizontalUserListView: Final connections to display: \(self?.connections.count ?? 0)")
-                for connection in self?.connections ?? [] {
-                    let messageInfo = connection.lastMessageAt != nil ? " | Last message: \(connection.lastMessageAt!)" : " | No messages"
-                    let activityInfo = (connection.hasRecentPlace ?? false) ? " | Recent place" : ""
-                    print("   - \(connection.connectedUser?.displayName ?? "Unknown") (status: \(connection.status.rawValue))\(messageInfo)\(activityInfo)")
-                }
-                self?.collectionView.reloadData()
-                self?.collectionView.isHidden = false
-                self?.emptyStateLabel.isHidden = true
             } else {
-                // No real connections - show fake profiles for onboarding
-                print("🔍 HorizontalUserListView: No connections found, showing fake profiles")
-                self?.connections = self?.createFakeConnections() ?? []
-                self?.collectionView.reloadData()
-                self?.collectionView.isHidden = false
-                self?.emptyStateLabel.isHidden = true
+                // User has connections - try to get active ones, but fall back to all if needed
+                NetworkManager.shared.fetchActiveConnections { [weak self] activeConnections, error in
+                    guard let self = self else { return }
+                    
+                    self.hasLoadedConnections = true
+                    
+                    print("🔍 HorizontalUserListView: Received \(activeConnections?.count ?? 0) active connections")
+                    if let error = error {
+                        print("❌ HorizontalUserListView: Error loading active connections: \(error)")
+                    }
+                    
+                    // Debug: Log all active connections received from backend
+                    if let activeConnections = activeConnections {
+                        print("🔍 HorizontalUserListView: Raw active connections from backend:")
+                        for (index, connection) in activeConnections.enumerated() {
+                            let name = connection.connectedUser?.displayName ?? "Unknown"
+                            let score = connection.connectionScore != nil ? String(format: "%.2f", connection.connectionScore!) : "NO SCORE"
+                            let hasMessages = connection.lastMessageAt != nil ? "✓" : "✗"
+                            let hasActivity = (connection.hasRecentPlace ?? false) ? "✓" : "✗"
+                            print("   \(index + 1). \(name) | Score: \(score) | Messages: \(hasMessages) | Activity: \(hasActivity)")
+                            
+                            // Special attention to Dan Wickner
+                            if name.lowercased().contains("dan") || name.lowercased().contains("wickner") {
+                                print("      🎯 FOUND DAN WICKNER at position \(index + 1)")
+                                if let components = connection.scoreComponents {
+                                    print("      Score components: M:\(components.messages) E:\(components.engagement) C:\(components.content) R:\(components.recency)")
+                                }
+                            }
+                        }
+                    }
+                    
+                    if let activeConnections = activeConnections, !activeConnections.isEmpty {
+                        // Use active connections (already sorted by backend)
+                        print("🔍 HorizontalUserListView: ✅ USING BACKEND-SORTED ACTIVE CONNECTIONS")
+                        print("🔍 HorizontalUserListView: This should preserve backend ordering with Dan first if scored correctly")
+                        self.displayConnections(activeConnections, alreadySorted: true, allowEmptyState: true)
+                    } else {
+                        // Fall back to all connections if active endpoint returns empty
+                        print("🔍 HorizontalUserListView: ❌ FALLING BACK TO CLIENT-SIDE SORTING")
+                        print("🔍 HorizontalUserListView: This means active endpoint failed or returned empty")
+                        self.displayConnections(acceptedConnections, alreadySorted: false, allowEmptyState: true)
+                    }
+                }
             }
         }
-    }
-    
-    // MARK: - Fake Connections for Onboarding
-    private func createFakeConnections() -> [Connection] {
-        // Create fake user profiles
-        let brittanyUser = User(
-            id: "brittany-demo",
-            email: "brittany.demo@favcircles.com",
-            displayName: "Brittany Demo",
-            profilePicture: "https://ui-avatars.com/api/?name=BD&background=FF6B6B&color=fff&size=200&font-size=0.4&bold=true",
-            bio: "Discover the best fashion, beauty, and lifestyle spots in your area",
-            location: "New York, NY",
-            friends: nil,
-            friendRequests: nil,
-            isFakeProfile: true
-        )
-        
-        let wesleyUser = User(
-            id: "wesley-demo",
-            email: "wesley.demo@favcircles.com",
-            displayName: "Wesley Demo",
-            profilePicture: "https://ui-avatars.com/api/?name=WD&background=4ECDC4&color=fff&size=200&font-size=0.4&bold=true",
-            bio: "Food enthusiast and travel lover sharing hidden gems",
-            location: "San Francisco, CA",
-            friends: nil,
-            friendRequests: nil,
-            isFakeProfile: true
-        )
-        
-        let salvatoreUser = User(
-            id: "salvatore-demo",
-            email: "salvatore.demo@favcircles.com",
-            displayName: "Salvatore Demo",
-            profilePicture: "https://ui-avatars.com/api/?name=SD&background=45B7D1&color=fff&size=200&font-size=0.4&bold=true",
-            bio: "Local expert curating the best neighborhood spots",
-            location: "Chicago, IL",
-            friends: nil,
-            friendRequests: nil,
-            isFakeProfile: true
-        )
-        
-        // Create fake connections
-        let currentUserId = AuthService.shared.currentUser?.id ?? ""
-        let fakeConnections = [
-            Connection(
-                id: "fake-1",
-                userId: currentUserId,
-                connectedUserId: brittanyUser.id,
-                connectedUser: brittanyUser,
-                status: .accepted,
-                sharedCircles: nil,
-                lastInteractionAt: nil,
-                interactionCount: nil,
-                lastAccessedCircles: nil,
-                recentActivity: nil,
-                hasNewActivity: false,
-                viewCount: 0,
-                lastViewedAt: nil,
-                totalPlaces: 42,
-                hasRecentPlace: true,
-                lastMessageAt: nil,
-                lastMessageSenderId: nil,
-                hasRecentMessage: false,
-                createdAt: Date(),
-                acceptedAt: Date(),
-                updatedAt: Date()
-            ),
-            Connection(
-                id: "fake-2",
-                userId: currentUserId,
-                connectedUserId: wesleyUser.id,
-                connectedUser: wesleyUser,
-                status: .accepted,
-                sharedCircles: nil,
-                lastInteractionAt: nil,
-                interactionCount: nil,
-                lastAccessedCircles: nil,
-                recentActivity: nil,
-                hasNewActivity: false,
-                viewCount: 0,
-                lastViewedAt: nil,
-                totalPlaces: 67,
-                hasRecentPlace: true,
-                lastMessageAt: nil,
-                lastMessageSenderId: nil,
-                hasRecentMessage: false,
-                createdAt: Date(),
-                acceptedAt: Date(),
-                updatedAt: Date()
-            ),
-            Connection(
-                id: "fake-3",
-                userId: currentUserId,
-                connectedUserId: salvatoreUser.id,
-                connectedUser: salvatoreUser,
-                status: .accepted,
-                sharedCircles: nil,
-                lastInteractionAt: nil,
-                interactionCount: nil,
-                lastAccessedCircles: nil,
-                recentActivity: nil,
-                hasNewActivity: false,
-                viewCount: 0,
-                lastViewedAt: nil,
-                totalPlaces: 89,
-                hasRecentPlace: true,
-                lastMessageAt: nil,
-                lastMessageSenderId: nil,
-                hasRecentMessage: false,
-                createdAt: Date(),
-                acceptedAt: Date(),
-                updatedAt: Date()
-            )
-        ]
-        
-        return fakeConnections
     }
     
     // MARK: - Public Methods
     func refresh() {
         loadActiveConnections()
+    }
+    
+    func setInitialConnections(_ connections: [Connection]) {
+        // Only set if we haven't loaded connections yet to prevent overriding fresh data
+        if !hasLoadedConnections {
+            useInitialConnections(connections)
+        }
+    }
+    
+    // MARK: - Notification Handlers
+    @objc private func handleConnectionsChanged() {
+        print("🔄 HorizontalUserListView: Connections changed notification received, refreshing")
+        refresh()
+    }
+    
+    // MARK: - Sorting Logic
+    static func sortConnections(_ connections: [Connection]) -> [Connection] {
+        // Filter for accepted connections only
+        let acceptedConnections = connections.filter { $0.status == .accepted }
+        
+        // Sort connections by weighted score if available
+        let sortedConnections = acceptedConnections.sorted { (a, b) in
+            let aScore = a.connectionScore
+            let bScore = b.connectionScore
+            
+            // If both connections have backend scores, trust the backend completely
+            if let aScore = aScore, let bScore = bScore {
+                if aScore != bScore {
+                    return aScore > bScore
+                }
+                // If scores are equal, use display name for consistent ordering
+                let aName = a.connectedUser?.displayName ?? ""
+                let bName = b.connectedUser?.displayName ?? ""
+                return aName < bName
+            }
+            
+            // If only one has a score, prioritize it
+            if aScore != nil && bScore == nil {
+                return true
+            }
+            if bScore != nil && aScore == nil {
+                return false
+            }
+            
+            // If neither has a score, use simplified fallback logic
+            // Priority 1: Recent messages (most recent first)
+            if let aMessageTime = a.lastMessageAt, let bMessageTime = b.lastMessageAt {
+                return aMessageTime > bMessageTime
+            } else if a.lastMessageAt != nil {
+                return true // a has messages, b doesn't - a comes first
+            } else if b.lastMessageAt != nil {
+                return false // b has messages, a doesn't - b comes first
+            }
+            
+            // Priority 2: Recent activity
+            let aHasActivity = (a.hasRecentPlace ?? false) || (a.hasNewActivity ?? false)
+            let bHasActivity = (b.hasRecentPlace ?? false) || (b.hasNewActivity ?? false)
+            if aHasActivity != bHasActivity {
+                return aHasActivity
+            }
+            
+            // Priority 3: Total places count
+            let aPlaces = a.totalPlaces ?? 0
+            let bPlaces = b.totalPlaces ?? 0
+            if aPlaces != bPlaces {
+                return aPlaces > bPlaces
+            }
+            
+            // Default: alphabetical by name
+            let aName = a.connectedUser?.displayName ?? ""
+            let bName = b.connectedUser?.displayName ?? ""
+            return aName < bName
+        }
+        
+        return sortedConnections
+    }
+    
+    // MARK: - Shared Display Logic
+    private func displayConnections(_ connectionList: [Connection], alreadySorted: Bool = false, allowEmptyState: Bool = true) {
+        // Keep loading state visible while we process and sort connections
+        loadingIndicator.startAnimating()
+        collectionView.isHidden = true
+        emptyStateLabel.isHidden = true
+        
+        // Process connections on a background queue to prevent UI blocking
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            if !connectionList.isEmpty {
+                let finalConnections: [Connection]
+                
+                if alreadySorted {
+                    // Trust backend sorting - just filter for accepted and take top 10
+                    let acceptedConnections = connectionList.filter { $0.status == .accepted }
+                    finalConnections = Array(acceptedConnections.prefix(10))
+                    print("🔍 HorizontalUserListView: Using backend-sorted connections, filtered to \(finalConnections.count) accepted")
+                } else {
+                    // Use client-side sorting for fallback data
+                    let sortedConnections = HorizontalUserListView.sortConnections(connectionList)
+                    finalConnections = Array(sortedConnections.prefix(10))
+                    print("🔍 HorizontalUserListView: Client-sorted to \(finalConnections.count) accepted connections")
+                }
+                print("🔍 HorizontalUserListView: Final connections to display: \(finalConnections.count)")
+                
+                // Log connections being displayed
+                print("🔍 HorizontalUserListView: Final connections in display order:")
+                for (index, connection) in finalConnections.enumerated() {
+                    let messageInfo = connection.lastMessageAt != nil ? " | Has messages" : " | No messages"
+                    let activityInfo = (connection.hasRecentPlace ?? false) ? " | Recent activity" : ""
+                    let scoreInfo = connection.connectionScore != nil ? " | Score: \(String(format: "%.2f", connection.connectionScore!))" : " | NO SCORE"
+                    let componentsInfo = connection.scoreComponents != nil ? " | Components: M:\(String(format: "%.1f", connection.scoreComponents!.messages)) E:\(String(format: "%.1f", connection.scoreComponents!.engagement)) C:\(String(format: "%.1f", connection.scoreComponents!.content)) R:\(String(format: "%.1f", connection.scoreComponents!.recency))" : ""
+                    print("   \(index + 1). \(connection.connectedUser?.displayName ?? "Unknown")\(scoreInfo)\(componentsInfo)\(messageInfo)\(activityInfo)")
+                    
+                    // Log missing score reasons
+                    if connection.connectionScore == nil {
+                        print("      ⚠️ Missing score for \(connection.connectedUser?.displayName ?? "Unknown") - using fallback sorting")
+                    }
+                }
+                
+                // Update UI on main thread after sorting is complete
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    
+                    // Update connections
+                    self.connections = finalConnections
+                    
+                    // Stop loading and show the sorted connections
+                    self.loadingIndicator.stopAnimating()
+                    
+                    // Small delay ensures smooth transition from loading to content
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                        self?.collectionView.reloadData()
+                        self?.collectionView.isHidden = false
+                        self?.emptyStateLabel.isHidden = true
+                    }
+                }
+            } else {
+                // No connections - show empty state only if allowed
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    
+                    self.connections = []
+                    
+                    if allowEmptyState {
+                        // Show empty state - user truly has no connections
+                        print("🔍 HorizontalUserListView: Showing empty state - no connections available")
+                        self.loadingIndicator.stopAnimating()
+                        self.collectionView.isHidden = true
+                        self.emptyStateLabel.isHidden = false
+                    } else {
+                        // Keep loading state - this might be temporary (e.g., active connections failed but fallback is coming)
+                        print("🔍 HorizontalUserListView: Keeping loading state - empty state not allowed")
+                        // Keep the loading indicator running and views hidden
+                    }
+                }
+            }
+        }
+    }
+    
+    private func useInitialConnections(_ initialConnections: [Connection]) {
+        hasLoadedConnections = true
+        
+        print("🔍 HorizontalUserListView: Using \(initialConnections.count) preloaded connections")
+        
+        // Use the shared display logic - allow empty state since these are preloaded connections
+        displayConnections(initialConnections, alreadySorted: false, allowEmptyState: true)
     }
     
     func clearActivityForConnection(_ connectionId: String) {
@@ -334,22 +436,12 @@ class HorizontalUserListView: UIView, SSEServiceDelegate {
 // MARK: - UICollectionViewDataSource
 extension HorizontalUserListView: UICollectionViewDataSource {
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-        // Add one extra cell for "Find More" button if showing fake connections
-        let showingFakeConnections = connections.first?.id.hasPrefix("fake-") ?? false
-        return showingFakeConnections ? connections.count + 1 : connections.count
+        return connections.count
     }
     
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: UserActivityCell.reuseIdentifier, for: indexPath) as! UserActivityCell
-        
-        let showingFakeConnections = connections.first?.id.hasPrefix("fake-") ?? false
-        
-        if showingFakeConnections && indexPath.item == connections.count {
-            // Configure as "Find More" button
-            cell.configureAsButton(title: "Find More", icon: "plus.circle.fill")
-        } else {
-            cell.configure(with: connections[indexPath.item])
-        }
+        cell.configure(with: connections[indexPath.item])
         return cell
     }
 }
@@ -357,16 +449,6 @@ extension HorizontalUserListView: UICollectionViewDataSource {
 // MARK: - UICollectionViewDelegate
 extension HorizontalUserListView: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-        let showingFakeConnections = connections.first?.id.hasPrefix("fake-") ?? false
-        
-        if showingFakeConnections && indexPath.item == connections.count {
-            // Handle "Find More" button tap - navigate to My Network tab
-            if let tabBarController = self.window?.rootViewController as? CirclesTabBarController {
-                tabBarController.selectedIndex = 1 // My Network tab
-            }
-            return
-        }
-        
         let connection = connections[indexPath.item]
         if let user = connection.connectedUser {
             // Track the view
@@ -399,6 +481,12 @@ extension HorizontalUserListView {
         switch event.type {
         case .placeAdded, .circleCreated, .connectionActivity:
             handleActivityEvent(event)
+        case .connectionAccepted, .connectionDeclined:
+            // Connection status changed, refresh the list
+            print("🔄 HorizontalUserListView: Connection status changed, refreshing")
+            DispatchQueue.main.async { [weak self] in
+                self?.refresh()
+            }
         default:
             break
         }

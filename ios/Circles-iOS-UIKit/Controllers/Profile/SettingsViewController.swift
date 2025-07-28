@@ -192,10 +192,9 @@ class SettingsViewController: BaseTableViewController {
                     // Previously denied - guide to settings
                     self?.showNotificationDeniedAlert()
                 case .authorized, .provisional, .ephemeral:
-                    // Already enabled - go to settings
-                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(url)
-                    }
+                    // Already enabled - show detailed preferences
+                    let preferencesVC = NotificationPreferencesViewController()
+                    self?.navigationController?.pushViewController(preferencesVC, animated: true)
                 @unknown default:
                     // Unknown state - try settings
                     if let url = URL(string: UIApplication.openSettingsURLString) {
@@ -355,17 +354,20 @@ extension SettingsViewController {
                 case .pushNotifications:
                     var config = cell.defaultContentConfiguration()
                     config.text = row.title
-                    config.secondaryText = notificationPermissionStatus
                     
-                    // Color code the status
+                    // Show different text based on permission status
                     switch notificationPermissionStatus {
                     case "Enabled":
-                        config.secondaryTextProperties.color = .systemGreen
+                        config.secondaryText = "Manage preferences"
+                        config.secondaryTextProperties.color = .secondaryLabel
                     case "Disabled":
+                        config.secondaryText = "Tap to enable"
                         config.secondaryTextProperties.color = .systemRed
                     case "Not Set":
+                        config.secondaryText = "Tap to set up"
                         config.secondaryTextProperties.color = .systemOrange
                     default:
+                        config.secondaryText = notificationPermissionStatus
                         config.secondaryTextProperties.color = .secondaryLabel
                     }
                     

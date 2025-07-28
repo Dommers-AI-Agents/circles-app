@@ -73,22 +73,23 @@ class SocialAuthService: NSObject {
         // CRITICAL: Store a strong reference to the view controller to prevent deallocation
         self.presentingViewController = viewController
         
-        print("🔍 Starting Google Sign-In process with configuration from Info.plist")
+        print("🔍 Starting Google Sign-In process with configuration from GoogleService-Info.plist")
         print("🔍 Storing strong reference to view controller: \(viewController)")
         
-        // Load configuration from Info.plist
-        guard let infoPlist = Bundle.main.infoDictionary,
-              let clientId = infoPlist["CLIENT_ID"] as? String,
-              let reversedClientId = infoPlist["REVERSED_CLIENT_ID"] as? String else {
-            print("🔍 ❌ Failed to load Google configuration from Info.plist")
+        // Load configuration from GoogleService-Info.plist
+        guard let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
+              let plist = NSDictionary(contentsOfFile: path),
+              let clientId = plist["CLIENT_ID"] as? String,
+              let reversedClientId = plist["REVERSED_CLIENT_ID"] as? String else {
+            print("🔍 ❌ Failed to load Google configuration from GoogleService-Info.plist")
             let error = NSError(domain: "com.circles.auth.google", code: -1, 
-                               userInfo: [NSLocalizedDescriptionKey: "Google Sign-In configuration not found in Info.plist"])
+                               userInfo: [NSLocalizedDescriptionKey: "Google Sign-In configuration not found in GoogleService-Info.plist"])
             completion(.failure(error))
             return
         }
         
         // Debug info for troubleshooting
-        print("🔍 DEBUG: Loaded from Info.plist:")
+        print("🔍 DEBUG: Loaded from GoogleService-Info.plist:")
         print("🔍 DEBUG: Client ID: \(clientId)")
         print("🔍 DEBUG: Reversed Client ID (URL Scheme): \(reversedClientId)")
         print("🔍 DEBUG: Bundle ID: \(Bundle.main.bundleIdentifier ?? "Unknown")")

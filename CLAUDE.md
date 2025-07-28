@@ -284,11 +284,168 @@ user.withFollowerCounts(followers: 100, following: 50)
 - **Authentication**: Firebase SDK + custom AuthService
 - **Push Notifications**: Firebase Cloud Messaging
 
+### **Info.plist Configuration (Important)**
+
+**⚠️ CRITICAL: Manual Info.plist Management**
+
+As of July 2025, the iOS app uses **manual Info.plist management** instead of auto-generation:
+- `GENERATE_INFOPLIST_FILE = NO` in project.pbxproj
+- Info.plist location: `/ios/Circles-iOS-UIKit/Info.plist`
+
+#### **Why Manual Management?**
+When we added `UIBackgroundModes` for push notifications, it created conflicts with Xcode's auto-generation during distribution builds. Manual management was chosen as the solution.
+
+#### **Required Info.plist Keys**
+These keys MUST be present for successful distribution:
+```xml
+<key>CFBundleIdentifier</key>
+<string>com.favcircles.circles</string>
+<key>CFBundleExecutable</key>
+<string>$(EXECUTABLE_NAME)</string>
+<key>CFBundleName</key>
+<string>$(PRODUCT_NAME)</string>
+<key>CFBundlePackageType</key>
+<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+<key>CFBundleShortVersionString</key>
+<string>1.0</string>
+<key>CFBundleVersion</key>
+<string>1</string>
+```
+
+#### **Custom Configurations in Info.plist**
+- **Background Modes**: `remote-notification`, `fetch`, `processing`
+- **Facebook SDK**: App ID, Client Token, Display Name
+- **Google Sign-In**: Reversed client ID URL scheme
+- **URL Schemes**: Deep linking support
+- **Privacy Descriptions**: Camera, Photos, Location, Contacts
+
+#### **Important Notes**
+- **Version Updates**: Must manually update `CFBundleShortVersionString` and `CFBundleVersion`
+- **New Capabilities**: Require manual Info.plist edits
+- **Distribution Errors**: Usually caused by missing required keys
+
+#### **Future Consideration**
+Switching back to auto-generated Info.plist would be more robust:
+1. Set `GENERATE_INFOPLIST_FILE = YES`
+2. Add capabilities through Xcode UI
+3. Delete manual Info.plist
+4. Use build settings for custom values
+
+## Backend Configuration & Deployment
+
+### **🚀 Cloud Run Deployment Configuration (Updated July 2025)**
+
+#### **Port Configuration**
+- **IMPORTANT**: Cloud Run dynamically assigns the PORT environment variable
+- **Default**: PORT=8080 (not 3001 as in local development)
+- **Server Configuration**: `app.listen(PORT, '0.0.0.0')` - binds to all interfaces
+- **Dockerfile**: No EXPOSE directive needed - Cloud Run handles port exposure
+
+#### **Deployment Script**
+```bash
+# Use deploy-skip-apis.sh for deployment
+./deploy-skip-apis.sh
+
+# Key deployment parameters:
+--port=8080              # Explicitly set port for Cloud Run
+--allow-unauthenticated  # Public API access
+--memory=512Mi           # Memory allocation
+--max-instances=100      # Auto-scaling limit
+--concurrency=80         # Requests per instance
+```
+
+#### **Environment Variables**
+Critical environment variables for Cloud Run:
+- `NODE_ENV=production`
+- `PORT` - Set automatically by Cloud Run
+- `JWT_SECRET` - Required for authentication
+- `JWT_EXPIRE=30d` - Token expiration
+- `FIREBASE_PROJECT_ID` - Firebase project identifier
+- `FIREBASE_STORAGE_BUCKET` - Storage bucket name
+
+### **📧 Email Configuration (Updated July 2025)**
+
+#### **Email Service Setup**
+The app uses custom SMTP configuration for email delivery:
+
+```javascript
+// Email service configuration
+EMAIL_SERVICE=custom
+SMTP_HOST=mail.favcircles.com
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=wesley@favcircles.com
+SMTP_PASS=[encrypted]
+EMAIL_FROM_ADDRESS=wesley@favcircles.com
+EMAIL_FROM_NAME=Circles
+```
+
+#### **Nodemailer Configuration**
+- **Important Fix**: Use `nodemailer.createTransport()` (not `createTransporter`)
+- **TLS Configuration**: `rejectUnauthorized: false` for self-signed certificates
+
+#### **Email Test Endpoints**
+Available test routes at `/api/email/*`:
+- `GET /test-config` - Check email configuration
+- `POST /test-send` - Send test email
+- `POST /test-connection-request` - Test connection request email
+- `POST /test-connection-accepted` - Test connection accepted email
+
+#### **Testing Email**
+```bash
+# Use the provided test script
+./test-email-simple.sh
+```
+
+## Recent Deployment Fixes (July 2025)
+
+### **Port Configuration Issue**
+- **Problem**: Server failed to start on Cloud Run with "PORT=3001" error
+- **Root Cause**: Hardcoded port values and incorrect server binding
+- **Solution**: 
+  1. Updated server to use dynamic PORT: `const PORT = process.env.PORT || 8080`
+  2. Bind to all interfaces: `app.listen(PORT, '0.0.0.0')`
+  3. Added `--port=8080` to deployment script
+  4. Removed hardcoded EXPOSE from Dockerfile
+
+### **Nodemailer Import Error**
+- **Problem**: `TypeError: nodemailer.createTransporter is not a function`
+- **Root Cause**: Incorrect function name
+- **Solution**: Changed all instances to `nodemailer.createTransport()`
+
+### **Deployment Script Updates**
+Updated `deploy-skip-apis.sh` to include:
+- Explicit port configuration
+- Better error handling
+- Deployment status verification
+
+## Known Issues & Solutions
+
+### **Firestore Index Requirements**
+- **Issue**: Suggestions query requires composite index
+- **Error**: `FAILED_PRECONDITION: The query requires an index`
+- **Solution**: 
+  1. Click the URL in the error message to create index in Firebase Console
+  2. Index configuration: `userId (ASC)`, `createdAt (DESC)`
+  3. Wait 5-10 minutes for index to build
+
+### **Authentication Token Expiration**
+- **Issue**: iOS app loses authentication after token expires
+- **Symptoms**: Repeated "No auth token available" errors
+- **Solution**: Log out and log back in to refresh token
+
+### **Image Storage URL Issues**
+- **Issue**: `storage.circles-app.com` hostname not found
+- **Cause**: Legacy storage URLs in database
+- **Solution**: Update to use Firebase Storage URLs
+
 [... rest of the existing content remains the same ...]
 
 ## AI Interaction Memory
 
 ### Recent AI Assistant Interactions
+- Fixed Cloud Run deployment port configuration issue (July 2025)
+- Resolved nodemailer function naming error (July 2025)
 - Successfully implemented Server-Sent Events (SSE) notification system in July 2025
 - Added LinkedIn-style activity feed to home screen in January 2025
 - Integrated real-time connection and messaging updates

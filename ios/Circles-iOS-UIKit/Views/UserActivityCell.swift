@@ -22,10 +22,11 @@ class UserActivityCell: UICollectionViewCell {
         return imageView
     }()
     
-    private let activityDotView: UIView = {
+    private let activityRingView: UIView = {
         let view = UIView()
-        view.backgroundColor = .systemRed
-        view.layer.cornerRadius = 6
+        view.backgroundColor = .clear
+        view.layer.borderColor = UIColor.systemBlue.cgColor
+        view.layer.borderWidth = 2.5
         view.translatesAutoresizingMaskIntoConstraints = false
         view.isHidden = true
         return view
@@ -55,7 +56,7 @@ class UserActivityCell: UICollectionViewCell {
     private func setupUI() {
         contentView.addSubview(containerView)
         containerView.addSubview(profileImageView)
-        containerView.addSubview(activityDotView)
+        containerView.addSubview(activityRingView)
         contentView.addSubview(nameLabel)
         
         NSLayoutConstraint.activate([
@@ -71,11 +72,11 @@ class UserActivityCell: UICollectionViewCell {
             profileImageView.widthAnchor.constraint(equalToConstant: 56),
             profileImageView.heightAnchor.constraint(equalToConstant: 56),
             
-            // Activity dot
-            activityDotView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 2),
-            activityDotView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -2),
-            activityDotView.widthAnchor.constraint(equalToConstant: 12),
-            activityDotView.heightAnchor.constraint(equalToConstant: 12),
+            // Activity ring (surrounds profile image)
+            activityRingView.centerXAnchor.constraint(equalTo: profileImageView.centerXAnchor),
+            activityRingView.centerYAnchor.constraint(equalTo: profileImageView.centerYAnchor),
+            activityRingView.widthAnchor.constraint(equalTo: profileImageView.widthAnchor, constant: 8),
+            activityRingView.heightAnchor.constraint(equalTo: profileImageView.heightAnchor, constant: 8),
             
             // Name label
             nameLabel.topAnchor.constraint(equalTo: containerView.bottomAnchor, constant: 4),
@@ -88,6 +89,13 @@ class UserActivityCell: UICollectionViewCell {
         profileImageView.layer.cornerRadius = 28
         profileImageView.layer.borderWidth = 2
         profileImageView.layer.borderColor = Constants.Colors.lightGray.cgColor
+    }
+    
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        
+        // Make activity ring circular
+        activityRingView.layer.cornerRadius = activityRingView.frame.width / 2
     }
     
     // MARK: - Configuration
@@ -123,12 +131,12 @@ class UserActivityCell: UICollectionViewCell {
             }
         }
         
-        // Show/hide activity dot based on recent place additions
-        activityDotView.isHidden = !(connection.hasRecentPlace ?? false)
+        // Show/hide activity ring based on unviewed activity
+        activityRingView.isHidden = !(connection.hasRecentPlace ?? false)
         
-        // Add pulse animation to activity dot if visible
-        if !activityDotView.isHidden {
-            addPulseAnimation()
+        // Add subtle animation to activity ring if visible
+        if !activityRingView.isHidden {
+            addRingAnimation()
         }
     }
     
@@ -163,15 +171,16 @@ class UserActivityCell: UICollectionViewCell {
         }
     }
     
-    private func addPulseAnimation() {
-        let pulse = CABasicAnimation(keyPath: "opacity")
-        pulse.duration = 1.0
-        pulse.fromValue = 1.0
-        pulse.toValue = 0.3
-        pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        pulse.autoreverses = true
-        pulse.repeatCount = .infinity
-        activityDotView.layer.add(pulse, forKey: "pulse")
+    private func addRingAnimation() {
+        // Subtle fade animation for the ring
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.duration = 2.0
+        fade.fromValue = 0.7
+        fade.toValue = 1.0
+        fade.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        fade.autoreverses = true
+        fade.repeatCount = .infinity
+        activityRingView.layer.add(fade, forKey: "fade")
     }
     
     // MARK: - Reuse
@@ -183,8 +192,8 @@ class UserActivityCell: UICollectionViewCell {
         
         // Clear UI elements
         profileImageView.image = nil
-        activityDotView.isHidden = true
-        activityDotView.layer.removeAllAnimations()
+        activityRingView.isHidden = true
+        activityRingView.layer.removeAllAnimations()
         nameLabel.text = nil
     }
     
@@ -192,7 +201,7 @@ class UserActivityCell: UICollectionViewCell {
     func configureAsButton(title: String, icon: String) {
         // Reset normal configuration
         profileImageView.image = nil
-        activityDotView.isHidden = true
+        activityRingView.isHidden = true
         
         // Set up button appearance
         profileImageView.image = UIImage(systemName: icon)

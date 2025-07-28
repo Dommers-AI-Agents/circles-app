@@ -288,6 +288,141 @@ exports.getPlacesByCircleId = async (req, res, next) => {
   }
 };
 
+// @desc    Get places by circle ID (public access)
+// @route   GET /api/circles/:circleId/places/public
+// @access  Public
+exports.getPlacesByCircleIdPublic = async (req, res, next) => {
+  try {
+    console.log('🔍 getPlacesByCircleIdPublic - START - Request details:', {
+      circleId: req.params.circleId,
+      method: req.method,
+      url: req.url
+    });
+
+    const { circleId } = req.params;
+
+    // First get the circle to check if it's public
+    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(circleId);
+    const circleDoc = await circleRef.get();
+
+    if (!circleDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Circle not found'
+      });
+    }
+
+    const circle = serializeDoc(circleDoc);
+    
+    console.log('🔍 getPlacesByCircleIdPublic - Circle check:', {
+      circleId: circleId,
+      circleName: circle.name,
+      circlePrivacy: circle.privacy
+    });
+    
+    // Only allow access to public circles
+    if (circle.privacy !== 'public') {
+      return res.status(403).json({
+        success: false,
+        message: 'This circle is not public'
+      });
+    }
+    
+    // Get all places for this circle using the same query method as authenticated endpoint
+    console.log('🔍 getPlacesByCircleIdPublic - Querying places by circleId:', circleId);
+    
+    const placesSnapshot = await db.collection(COLLECTIONS.PLACES)
+      .where('circleId', '==', circleId)
+      .orderBy('createdAt', 'desc')
+      .get();
+    
+    console.log('🔍 Public places query results:', {
+      isEmpty: placesSnapshot.empty,
+      size: placesSnapshot.size
+    });
+    
+    // Filter out soft-deleted places
+    const allPlaces = serializeQuerySnapshot(placesSnapshot);
+    const places = allPlaces.filter(place => {
+      const isDeleted = place.deletedAt !== null && place.deletedAt !== undefined;
+      return !isDeleted;
+    });
+    
+    console.log(`🔍 Found ${places.length} active places for public circle`);
+    
+    // Get unique user IDs who added places
+    const userIds = [...new Set(places.map(place => place.addedBy))];
+    
+    // Fetch user information for all users who added places
+    const userPromises = userIds.map(userId => {
+      let actualUserId = userId;
+      if (userId && userId.includes('.')) {
+        const parts = userId.split('.');
+        if (parts.length >= 2) {
+          actualUserId = parts[1];
+        }
+      }
+      return db.collection(COLLECTIONS.USERS).doc(actualUserId).get();
+    });
+    const userDocs = await Promise.all(userPromises);
+    
+    // Create a map of user information
+    const userMap = new Map();
+    userDocs.forEach((doc, index) => {
+      if (doc.exists) {
+        const userData = serializeDoc(doc);
+        const originalUserId = userIds[index];
+        
+        userMap.set(userData.id, {
+          id: userData.id,
+          displayName: userData.displayName || 'Unknown User',
+          email: userData.email,
+          profilePicture: userData.profilePicture
+        });
+        
+        if (originalUserId !== userData.id) {
+          userMap.set(originalUserId, userMap.get(userData.id));
+        }
+      }
+    });
+    
+    // Attach user information to each place
+    const placesWithUsers = places.map(place => ({
+      ...place,
+      addedByUser: userMap.get(place.addedBy) || null
+    }));
+    
+    // Order places - if circle has places array, use it for ordering, otherwise use creation date
+    let orderedPlaces = [];
+    if (circle.places && circle.places.length > 0) {
+      // Create a map for quick lookup
+      const placesMap = new Map();
+      placesWithUsers.forEach(place => {
+        placesMap.set(place.id, place);
+      });
+      
+      // Return places in the order specified in the circle's places array
+      orderedPlaces = circle.places
+        .map(placeId => placesMap.get(placeId))
+        .filter(place => place !== undefined); // Filter out any deleted places
+    } else {
+      // Fallback to date-based sorting if no order is specified
+      orderedPlaces = placesWithUsers.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    }
+    
+    console.log(`🔍 Returning ${orderedPlaces.length} ordered places for public circle`);
+    
+    res.status(200).json({
+      success: true,
+      count: orderedPlaces.length,
+      places: orderedPlaces
+    });
+  } catch (error) {
+    console.error('Error fetching public places:', error);
+    next(error);
+  }
+};
+
 // @desc    Get single place
 // @route   GET /api/places/:id
 // @access  Private

@@ -671,37 +671,29 @@ const getUserCircles = async (req, res) => {
     
     console.log('getUserCircles called:', { currentUserId, targetUserId });
 
-    // Check if this is a fake profile (demo users)
-    const isFakeProfile = ['brittany-demo', 'wesley-demo', 'salvatore-demo'].includes(targetUserId);
-    
-    let connectionDoc = null;
-    let connectionData = null;
-    
-    if (!isFakeProfile) {
-      // Verify the users are connected for real profiles
-      const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', currentUserId)
-        .where('connectedUserId', '==', targetUserId)
-        .where('status', '==', 'accepted')
-        .get();
-        
-      const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', targetUserId)
-        .where('connectedUserId', '==', currentUserId)
-        .where('status', '==', 'accepted')
-        .get();
-
-      if (connection1.empty && connection2.empty) {
-        return res.status(403).json({
-          success: false,
-          message: 'You are not connected to this user'
-        });
-      }
+    // Verify the users are connected
+    const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
+      .where('userId', '==', currentUserId)
+      .where('connectedUserId', '==', targetUserId)
+      .where('status', '==', 'accepted')
+      .get();
       
-      // Get the connection document to check for recent activity
-      connectionDoc = !connection1.empty ? connection1.docs[0] : connection2.docs[0];
-      connectionData = connectionDoc.data();
+    const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
+      .where('userId', '==', targetUserId)
+      .where('connectedUserId', '==', currentUserId)
+      .where('status', '==', 'accepted')
+      .get();
+
+    if (connection1.empty && connection2.empty) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not connected to this user'
+      });
     }
+    
+    // Get the connection document to check for recent activity
+    const connectionDoc = !connection1.empty ? connection1.docs[0] : connection2.docs[0];
+    const connectionData = connectionDoc.data();
     
     // Track that the user viewed this connection
     const activityService = require('../services/activityService');
@@ -718,31 +710,27 @@ const getUserCircles = async (req, res) => {
 
     const userData = serializeDoc(userDoc);
 
-    // For fake profiles, use their stored stats; for real users, calculate from connections
-    if (!isFakeProfile) {
-      // Get the user's connections count
-      const connectionsQuery1 = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', targetUserId)
-        .where('status', '==', 'accepted')
-        .get();
-        
-      const connectionsQuery2 = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', targetUserId)
-        .where('status', '==', 'accepted')
-        .get();
+    // Get the user's connections count
+    const connectionsQuery1 = await db.collection(COLLECTIONS.CONNECTIONS)
+      .where('userId', '==', targetUserId)
+      .where('status', '==', 'accepted')
+      .get();
       
-      // Count unique connections (avoid duplicates)
-      const connectionIds = new Set();
-      connectionsQuery1.docs.forEach(doc => {
-        connectionIds.add(doc.data().connectedUserId);
-      });
-      connectionsQuery2.docs.forEach(doc => {
-        connectionIds.add(doc.data().userId);
-      });
-      
-      userData.connectionsCount = connectionIds.size;
-    }
-    // For fake profiles, userData.connectionsCount is already set from the database
+    const connectionsQuery2 = await db.collection(COLLECTIONS.CONNECTIONS)
+      .where('connectedUserId', '==', targetUserId)
+      .where('status', '==', 'accepted')
+      .get();
+    
+    // Count unique connections (avoid duplicates)
+    const connectionIds = new Set();
+    connectionsQuery1.docs.forEach(doc => {
+      connectionIds.add(doc.data().connectedUserId);
+    });
+    connectionsQuery2.docs.forEach(doc => {
+      connectionIds.add(doc.data().userId);
+    });
+    
+    userData.connectionsCount = connectionIds.size;
 
     // Check if current user is following target user
     const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(currentUserId).get();
@@ -771,40 +759,34 @@ const getUserCircles = async (req, res) => {
     // Get recent activity from connection data (empty for fake profiles)
     const recentActivity = connectionData?.recentActivity || [];
     
-    // Get the current user's lastLogin to determine what's "new"
-    // (currentUserDoc already fetched above)
-    const lastLogin = currentUserDoc.exists ? currentUserDoc.data().lastLogin : null;
+    // Filter activities that haven't been viewed by the current user
+    const unviewedActivities = recentActivity.filter(activity => {
+      const viewedBy = activity.viewedBy || [];
+      return !viewedBy.includes(currentUserId);
+    });
     
-    let recentActivitySinceLogin = [];
-    if (lastLogin) {
-      const lastLoginDate = new Date(lastLogin);
-      recentActivitySinceLogin = recentActivity.filter(activity => 
-        new Date(activity.createdAt) > lastLoginDate
-      );
-    }
-    
-    // Create sets of recent circle and place IDs for easy lookup
-    const recentCircleIds = new Set(
-      recentActivitySinceLogin
+    // Create sets of unviewed circle and place IDs for easy lookup
+    const unviewedCircleIds = new Set(
+      unviewedActivities
         .filter(a => a.type === 'circle')
         .map(a => a.entityId)
     );
     
-    const recentPlaceIds = new Set(
-      recentActivitySinceLogin
+    const unviewedPlaceIds = new Set(
+      unviewedActivities
         .filter(a => a.type === 'place')
         .map(a => a.entityId)
     );
     
-    // Create a map of circleId -> array of new place activities
-    const newPlacesByCircle = new Map();
-    recentActivitySinceLogin
+    // Create a map of circleId -> array of unviewed place activities
+    const unviewedPlacesByCircle = new Map();
+    unviewedActivities
       .filter(a => a.type === 'place' && a.circleId)
       .forEach(activity => {
-        if (!newPlacesByCircle.has(activity.circleId)) {
-          newPlacesByCircle.set(activity.circleId, []);
+        if (!unviewedPlacesByCircle.has(activity.circleId)) {
+          unviewedPlacesByCircle.set(activity.circleId, []);
         }
-        newPlacesByCircle.get(activity.circleId).push(activity);
+        unviewedPlacesByCircle.get(activity.circleId).push(activity);
       });
 
     // Fetch places for each circle
@@ -812,12 +794,12 @@ const getUserCircles = async (req, res) => {
       const circle = serializeDoc(doc);
       circle.ownerDetails = userData;
       
-      // Mark if this circle is new
-      circle.isNew = recentCircleIds.has(circle._id);
+      // Mark if this circle is new (unviewed)
+      circle.isNew = unviewedCircleIds.has(circle._id);
       
-      // Check if this circle has any new places
-      circle.hasNewPlaces = newPlacesByCircle.has(circle._id);
-      circle.newPlacesCount = newPlacesByCircle.get(circle._id)?.length || 0;
+      // Check if this circle has any unviewed places
+      circle.hasNewPlaces = unviewedPlacesByCircle.has(circle._id);
+      circle.newPlacesCount = unviewedPlacesByCircle.get(circle._id)?.length || 0;
       
       // Only fetch places for circles with appropriate privacy settings
       if (circle.privacy === 'myNetwork' || circle.privacy === 'public') {
@@ -835,7 +817,7 @@ const getUserCircles = async (req, res) => {
           // Mark which places are new
           circle.placesWithDetails = circle.placesWithDetails.map(place => ({
             ...place,
-            isNew: recentPlaceIds.has(place._id)
+            isNew: unviewedPlaceIds.has(place._id)
           }));
         } catch (indexError) {
           // Fallback: fetch without orderBy and sort in memory
@@ -856,7 +838,7 @@ const getUserCircles = async (req, res) => {
             const place = serializeDoc(doc);
             return {
               ...place,
-              isNew: recentPlaceIds.has(place._id)
+              isNew: unviewedPlaceIds.has(place._id)
             };
           });
         }

@@ -7,9 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		6F2DD4FB2E302B9E0051A043 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 6F2DD4FA2E302B9E0051A043 /* FirebaseFirestore */; };
+		6F2DD4FD2E302B9E0051A043 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 6F2DD4FC2E302B9E0051A043 /* FirebaseMessaging */; };
+		6F2DD4FF2E302B9E0051A043 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = 6F2DD4FE2E302B9E0051A043 /* FirebaseStorage */; };
 		6F545FB72DE6021A00EC377D /* FacebookBasics in Frameworks */ = {isa = PBXBuildFile; productRef = 6F545FB62DE6021A00EC377D /* FacebookBasics */; };
 		6F545FB92DE6021A00EC377D /* FacebookCore in Frameworks */ = {isa = PBXBuildFile; productRef = 6F545FB82DE6021A00EC377D /* FacebookCore */; };
 		6F545FBB2DE6021A00EC377D /* FacebookLogin in Frameworks */ = {isa = PBXBuildFile; productRef = 6F545FBA2DE6021A00EC377D /* FacebookLogin */; };
+		6FB901EF2E33966C0043EAA1 /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6FB901EE2E33966C0043EAA1 /* AVKit.framework */; };
 		6FD75B802DF917F60047CD9E /* GooglePlaces in Frameworks */ = {isa = PBXBuildFile; productRef = 6FD75B7F2DF917F60047CD9E /* GooglePlaces */; };
 		6FD75B822DF917F60047CD9E /* GooglePlacesSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 6FD75B812DF917F60047CD9E /* GooglePlacesSwift */; };
 		6FD782322DDB603400443471 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 6FD782312DDB603400443471 /* GoogleSignIn */; };
@@ -39,6 +43,7 @@
 		6F9360972DD9725A0065A440 /* Circles-iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Circles-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		6F9360AD2DD9725C0065A440 /* Circles-iOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Circles-iOSTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		6F9360B72DD9725C0065A440 /* Circles-iOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Circles-iOSUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		6FB901EE2E33966C0043EAA1 /* AVKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVKit.framework; path = System/Library/Frameworks/AVKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -80,11 +85,15 @@
 				6F545FBB2DE6021A00EC377D /* FacebookLogin in Frameworks */,
 				6FD75B802DF917F60047CD9E /* GooglePlaces in Frameworks */,
 				6F545FB72DE6021A00EC377D /* FacebookBasics in Frameworks */,
+				6F2DD4FB2E302B9E0051A043 /* FirebaseFirestore in Frameworks */,
 				6FE8F0B72DF7C276007CB88E /* FirebaseAnalytics in Frameworks */,
+				6F2DD4FF2E302B9E0051A043 /* FirebaseStorage in Frameworks */,
 				6FD782322DDB603400443471 /* GoogleSignIn in Frameworks */,
 				6FD75B822DF917F60047CD9E /* GooglePlacesSwift in Frameworks */,
 				6FD782342DDB603400443471 /* GoogleSignInSwift in Frameworks */,
 				6FE8F0B92DF7C291007CB88E /* FirebaseAuth in Frameworks */,
+				6FB901EF2E33966C0043EAA1 /* AVKit.framework in Frameworks */,
+				6F2DD4FD2E302B9E0051A043 /* FirebaseMessaging in Frameworks */,
 				6F545FB92DE6021A00EC377D /* FacebookCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -130,6 +139,7 @@
 		6FE8F0B52DF7C276007CB88E /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				6FB901EE2E33966C0043EAA1 /* AVKit.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -163,6 +173,9 @@
 				6FE8F0B82DF7C291007CB88E /* FirebaseAuth */,
 				6FD75B7F2DF917F60047CD9E /* GooglePlaces */,
 				6FD75B812DF917F60047CD9E /* GooglePlacesSwift */,
+				6F2DD4FA2E302B9E0051A043 /* FirebaseFirestore */,
+				6F2DD4FC2E302B9E0051A043 /* FirebaseMessaging */,
+				6F2DD4FE2E302B9E0051A043 /* FirebaseStorage */,
 			);
 			productName = "Circles-iOS-UIKit";
 			productReference = 6F9360972DD9725A0065A440 /* Circles-iOS.app */;
@@ -226,6 +239,14 @@
 				TargetAttributes = {
 					6F9360962DD9725A0065A440 = {
 						CreatedOnToolsVersion = 16.3;
+						SystemCapabilities = {
+							com.apple.BackgroundModes = {
+								enabled = 1;
+							};
+							com.apple.Push = {
+								enabled = 1;
+							};
+						};
 					};
 					6F9360AC2DD9725C0065A440 = {
 						CreatedOnToolsVersion = 16.3;
@@ -346,6 +367,7 @@
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Circles needs permission to save photos to your library.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Circles needs access to your photos to upload images for places and profiles.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIBackgroundModes = "remote-notification fetch processing";
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
 				INFOPLIST_KEY_UIRequiresFullScreen = NO;
@@ -389,6 +411,7 @@
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Circles needs permission to save photos to your library.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Circles needs access to your photos to upload images for places and profiles.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIBackgroundModes = "remote-notification fetch processing";
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
 				INFOPLIST_KEY_UIRequiresFullScreen = NO;
@@ -682,6 +705,21 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		6F2DD4FA2E302B9E0051A043 /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6FE8F0B42DF7BFA7007CB88E /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+		6F2DD4FC2E302B9E0051A043 /* FirebaseMessaging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6FE8F0B42DF7BFA7007CB88E /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseMessaging;
+		};
+		6F2DD4FE2E302B9E0051A043 /* FirebaseStorage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6FE8F0B42DF7BFA7007CB88E /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseStorage;
+		};
 		6F545FB62DE6021A00EC377D /* FacebookBasics */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 6F545FB52DE6021A00EC377D /* XCRemoteSwiftPackageReference "facebook-ios-sdk" */;

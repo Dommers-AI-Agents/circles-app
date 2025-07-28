@@ -6,13 +6,14 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN npm ci --production
 
 # Copy application files
 COPY . .
 
-# Expose port (Cloud Run will set PORT env variable)
-EXPOSE 3001
+# Cloud Run sets PORT env variable dynamically
+# Don't hardcode the port - let Cloud Run handle it
+# EXPOSE directive removed - Cloud Run handles port exposure
 
 # Start the application
 CMD ["node", "server.js"]

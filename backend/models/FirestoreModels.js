@@ -56,6 +56,17 @@ const createUser = (userData) => {
       circleInvites: true,
       newFollowers: true,
       dailyDigest: false,
+      // New notification preferences
+      dailySummary: true,
+      summaryTime: '12:00',
+      timezone: 'America/New_York',
+      socialActivity: true,
+      discoveryPrompts: true,
+      milestones: true,
+      weekendRecommendations: true,
+      reengagement: true,
+      frequency: 'normal', // 'minimal', 'normal', 'all'
+      // Quiet hours
       quietHoursEnabled: false,
       quietHoursStart: '22:00',
       quietHoursEnd: '08:00'
@@ -189,7 +200,7 @@ const createConnection = (userId, connectedUserId, message = null) => {
     lastInteractionAt: null,
     interactionCount: 0,
     lastAccessedCircles: [], // Array of {circleId, accessedAt}
-    recentActivity: [], // Array of {type: 'circle'|'place', entityId, createdAt}
+    recentActivity: [], // Array of {type: 'circle'|'place'|'suggestion', entityId, entityName, circleId?, circleName?, createdAt, viewedBy: []}
     hasNewActivity: false, // Flag for red dot notification
     viewCount: 0, // Number of times this connection's profile was viewed
     lastViewedAt: null, // Last time this connection was viewed

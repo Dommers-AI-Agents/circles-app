@@ -46,6 +46,8 @@ const sseRoutes = require('./routes/sseRoutes');
 const activityRoutes = require('./routes/activityRoutes');
 const userCategoriesRoutes = require('./routes/userCategoriesRoutes');
 const emailTestRoutes = require('./routes/emailTestRoutes');
+const userContactsRoutes = require('./routes/userContactsRoutes');
+const taskRoutes = require('./routes/taskRoutes');
 
 // Import Firebase Place controller for circle-specific routes
 const { getPlacesByCircleId, getPlacesByCircleIdPublic, reorderPlacesInCircle } = require('./controllers/firebasePlaceController');
@@ -55,11 +57,8 @@ const app = express();
 
 // Request logging middleware
 app.use((req, res, next) => {
-  console.log('🌐 SERVER: Incoming request');
-  console.log('🌐 SERVER: Method:', req.method);
-  console.log('🌐 SERVER: Path:', req.path);
-  console.log('🌐 SERVER: Query:', JSON.stringify(req.query));
-  console.log('🌐 SERVER: Headers:', JSON.stringify(req.headers, null, 2));
+  // Request logging (reduced verbosity)
+  console.log(`🌐 ${req.method} ${req.path}`);
   next();
 });
 
@@ -84,12 +83,8 @@ app.get('/', (req, res) => {
   });
 });
 
-// Debug middleware for all user routes
+// Route debug middleware (reduced logging)
 app.use('/api/users', (req, res, next) => {
-  console.log('🔍 User route hit:', req.method, req.path, req.originalUrl);
-  if (req.path.includes('categories')) {
-    console.log('✅ Categories path detected in user route');
-  }
   next();
 });
 
@@ -98,6 +93,8 @@ app.use('/api/auth', firebaseAuthRoutes);
 app.use('/api/auth', linkedinAuthRoutes); // LinkedIn auth routes
 // Mount categories routes at a separate path to avoid conflicts with user /:id routes
 app.use('/api/categories', userCategoriesRoutes);
+// Mount contacts routes BEFORE generic user routes to avoid conflicts
+app.use('/api/users/contacts', userContactsRoutes);
 app.use('/api/users', firebaseUserRoutes);
 app.use('/api/circles', firebaseCircleRoutes);
 app.use('/api/places', firebasePlaceRoutes);
@@ -111,6 +108,8 @@ app.use('/api/sse', sseRoutes);
 app.use('/api', activityRoutes);
 app.use('/api/app', require('./routes/appRoutes'));
 app.use('/api/email', emailTestRoutes);
+app.use('/api/diagnostics', require('./routes/diagnosticRoutes'));
+app.use('/api/tasks', taskRoutes);
 
 // LinkedIn OAuth callback route (outside /api prefix)
 const linkedinCallback = require('./routes/linkedinCallback');
@@ -124,8 +123,6 @@ app.put('/api/circles/:id/places/reorder', protect, reorderPlacesInCircle);
 // 404 handler
 app.use('*', (req, res) => {
   console.log('❌ 404 Error - Route not found:', req.originalUrl);
-  console.log('❌ Method:', req.method);
-  console.log('❌ Headers:', req.headers);
   res.status(404).json({
     success: false,
     message: `Route ${req.originalUrl} not found`
@@ -135,7 +132,7 @@ app.use('*', (req, res) => {
 // Error handling middleware
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Circles API server running on port ${PORT}`);
@@ -160,10 +157,8 @@ app.listen(PORT, '0.0.0.0', () => {
   
   // Run cleanup on startup after a delay
   setTimeout(async () => {
-    console.log('🧹 Running initial activity cleanup...');
     try {
       await activityService.cleanupOldActivity(1); // Keep only last 24 hours
-      console.log('✅ Initial activity cleanup completed');
     } catch (error) {
       console.error('❌ Error in initial activity cleanup:', error);
     }
@@ -171,12 +166,15 @@ app.listen(PORT, '0.0.0.0', () => {
   
   // Schedule daily cleanup
   setInterval(async () => {
-    console.log('🧹 Running scheduled daily activity cleanup...');
     try {
       await activityService.cleanupOldActivity(1); // Keep only last 24 hours
-      console.log('✅ Scheduled activity cleanup completed');
     } catch (error) {
       console.error('❌ Error in scheduled activity cleanup:', error);
     }
   }, 24 * 60 * 60 * 1000); // Run every 24 hours
+  
+  // Initialize scheduled notifications
+  const scheduledNotifications = require('./services/scheduledNotifications');
+  scheduledNotifications.initialize();
+  console.log('🔔 Scheduled notifications initialized');
 });

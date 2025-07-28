@@ -428,10 +428,16 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
     
     private func setupMap() {
         mapView.delegate = self
+        print("🗺️ Map delegate set. View mode: \(viewMode)")
         
-        // Enable POI selection for iOS 16+
+        // Enable POI selection for iOS 16+ only in allPlaces mode
+        // In circle mode, we don't want POI selection to interfere with place annotations
         if #available(iOS 16.0, *) {
-            mapView.selectableMapFeatures = [.pointsOfInterest]
+            if viewMode == .allPlaces {
+                mapView.selectableMapFeatures = [.pointsOfInterest]
+            } else {
+                mapView.selectableMapFeatures = []
+            }
         }
         
         // Request location permission and zoom to user location if available
@@ -612,11 +618,24 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
             annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
             annotationView?.canShowCallout = true
             
-            // Add detail button
+            // Create detail button with explicit target-action as a workaround
             let detailButton = UIButton(type: .detailDisclosure)
+            detailButton.tag = 999 // Tag to identify it
+            detailButton.addTarget(self, action: #selector(detailButtonTapped(_:)), for: .touchUpInside)
             annotationView?.rightCalloutAccessoryView = detailButton
+            
+            // Ensure the annotation view is interactive
+            annotationView?.isEnabled = true
+            annotationView?.isUserInteractionEnabled = true
         } else {
             annotationView?.annotation = annotation
+            // Ensure button is still there and interactive
+            if let button = annotationView?.rightCalloutAccessoryView as? UIButton, button.tag != 999 {
+                let detailButton = UIButton(type: .detailDisclosure)
+                detailButton.tag = 999
+                detailButton.addTarget(self, action: #selector(detailButtonTapped(_:)), for: .touchUpInside)
+                annotationView?.rightCalloutAccessoryView = detailButton
+            }
         }
         
         // Customize marker appearance based on category
@@ -629,10 +648,22 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
     }
     
     func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView, calloutAccessoryControlTapped control: UIControl) {
-        guard let placeAnnotation = view.annotation as? PlaceAnnotation else { return }
+        print("🔵 Info button tapped!")
+        guard let placeAnnotation = view.annotation as? PlaceAnnotation else { 
+            print("❌ Failed to cast annotation to PlaceAnnotation")
+            return 
+        }
+        
+        print("✅ Place: \(placeAnnotation.place.name)")
+        print("📱 Delegate exists: \(delegate != nil)")
         
         // Notify delegate
-        delegate?.mapViewController(self, didSelectPlace: placeAnnotation.place)
+        if let delegate = delegate {
+            print("🎯 Calling delegate.mapViewController")
+            delegate.mapViewController(self, didSelectPlace: placeAnnotation.place)
+        } else {
+            print("⚠️ No delegate set!")
+        }
         
         // Dismiss if not in allPlaces mode
         if viewMode != .allPlaces {
@@ -649,9 +680,10 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
             }
         }
         
-        // Handle regular place annotations
+        // For regular place annotations, don't interfere with the default behavior
+        // The callout with info button will be shown automatically
         if let placeAnnotation = annotation as? PlaceAnnotation {
-            // Existing behavior - show callout
+            print("📍 Selected place annotation: \(placeAnnotation.place.name)")
         }
     }
     
@@ -881,6 +913,38 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
     // MARK: - Actions
     @objc private func closeButtonTapped() {
         dismiss(animated: true)
+    }
+    
+    @objc private func detailButtonTapped(_ sender: UIButton) {
+        print("🔵 Detail button tapped via target-action!")
+        
+        // Find the annotation view that contains this button
+        var view: UIView? = sender
+        while view != nil && !(view is MKAnnotationView) {
+            view = view?.superview
+        }
+        
+        guard let annotationView = view as? MKAnnotationView,
+              let placeAnnotation = annotationView.annotation as? PlaceAnnotation else {
+            print("❌ Could not find annotation view or place annotation")
+            return
+        }
+        
+        print("✅ Place: \(placeAnnotation.place.name)")
+        print("📱 Delegate exists: \(delegate != nil)")
+        
+        // Notify delegate
+        if let delegate = delegate {
+            print("🎯 Calling delegate.mapViewController")
+            delegate.mapViewController(self, didSelectPlace: placeAnnotation.place)
+        } else {
+            print("⚠️ No delegate set!")
+        }
+        
+        // Dismiss if not in allPlaces mode
+        if viewMode != .allPlaces {
+            dismiss(animated: true)
+        }
     }
     
     @objc private func categoryFilterButtonTapped() {

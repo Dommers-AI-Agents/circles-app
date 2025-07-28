@@ -574,6 +574,11 @@ class PlaceDetailViewController: BaseViewController {
         checkStreetViewAvailability()
         autoLoadStreetView()
         
+        // Mark place as viewed if it was marked as new
+        if place.isNew == true {
+            markPlaceAsViewed()
+        }
+        
         // Fetch rating if not available
         if place.rating == nil || place.rating == 0 {
             fetchPlaceRating()
@@ -627,6 +632,17 @@ class PlaceDetailViewController: BaseViewController {
         }
     }
     
+    private func markPlaceAsViewed() {
+        // Mark this place as viewed to clear the red dot
+        NetworkManager.shared.markPlaceAsViewed(placeId: place.id, circleId: place.circleId) { error in
+            if let error = error {
+                print("Error marking place as viewed: \(error)")
+            } else {
+                print("Successfully marked place as viewed")
+            }
+        }
+    }
+    
     // MARK: - UI Setup
     
     private func setupUI() {
@@ -636,6 +652,15 @@ class PlaceDetailViewController: BaseViewController {
         // Add share button to navigation bar
         let shareBarButton = UIBarButtonItem(barButtonSystemItem: .action, target: self, action: #selector(shareButtonTapped))
         navigationItem.rightBarButtonItem = shareBarButton
+        
+        // Add close button if presented modally
+        if presentingViewController != nil && navigationController?.viewControllers.first == self {
+            navigationItem.leftBarButtonItem = UIBarButtonItem(
+                barButtonSystemItem: .close,
+                target: self,
+                action: #selector(closeButtonTapped)
+            )
+        }
         
         // Add subviews
         view.addSubview(scrollView)
@@ -1534,6 +1559,10 @@ class PlaceDetailViewController: BaseViewController {
         let profileVC = ProfileViewController()
         profileVC.configureWith(user: user)
         navigationController?.pushViewController(profileVC, animated: true)
+    }
+    
+    @objc private func closeButtonTapped() {
+        dismiss(animated: true)
     }
     
     @objc private func shareButtonTapped() {

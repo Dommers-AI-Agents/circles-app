@@ -12,7 +12,13 @@ class NotificationService {
     // MARK: - Device Token Management
     
     func registerDeviceToken(_ token: String) {
+        print("🔔 Registering device token: \(token.prefix(20))...")
         self.deviceToken = token
+        
+        // Save to UserDefaults for persistence
+        UserDefaults.standard.set(token, forKey: "FCMToken")
+        UserDefaults.standard.synchronize()
+        print("🔔 Saved FCM token to UserDefaults")
         
         // Only send to backend if user is logged in
         guard AuthService.shared.isLoggedIn else {
@@ -20,10 +26,12 @@ class NotificationService {
             return
         }
         
+        print("🔔 User is logged in, sending token to backend")
         sendDeviceTokenToBackend(token)
     }
     
     private func sendDeviceTokenToBackend(_ token: String) {
+        print("🔔 Sending device token to backend...")
         let body: [String: Any] = [
             "deviceToken": token,
             "platform": "ios"
@@ -37,9 +45,10 @@ class NotificationService {
         ) { (result: Result<EmptyResponse, APIError>) in
             switch result {
             case .success:
-                print("🔔 Device token registered successfully")
+                print("🔔 ✅ Device token registered successfully with backend")
             case .failure(let error):
-                print("🔔 Failed to register device token: \(error)")
+                print("🔔 ❌ Failed to register device token: \(error)")
+                print("🔔 Error details: \(error.localizedDescription)")
             }
         }
     }
@@ -130,6 +139,16 @@ class NotificationService {
         // Send stored device token to backend if available
         if let token = deviceToken {
             sendDeviceTokenToBackend(token)
+        } else if let fcmToken = UserDefaults.standard.string(forKey: "FCMToken") {
+            // If no device token but FCM token exists, use that
+            registerDeviceToken(fcmToken)
+        }
+    }
+    
+    func updatePushToken() {
+        // Called when FCM token is refreshed
+        if let fcmToken = UserDefaults.standard.string(forKey: "FCMToken") {
+            registerDeviceToken(fcmToken)
         }
     }
     

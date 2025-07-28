@@ -11,6 +11,7 @@ const {
 const activityService = require('../services/activityService');
 const notificationService = require('../services/notificationService');
 const sseService = require('../services/sseService');
+const scoringService = require('../services/scoringService');
 
 const db = getFirestore();
 
@@ -141,40 +142,54 @@ const getConnections = async (req, res) => {
               totalPlaces += (circleData.places || []).length;
             }
             
-            // Get the current user's lastLogin to check for new places since then
-            const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
-            const lastLogin = currentUserDoc.exists ? currentUserDoc.data().lastLogin : null;
+            // Check for unviewed activities (Instagram-style)
+            const recentActivity = connection.recentActivity || [];
+            const hasUnviewedActivity = recentActivity.some(activity => {
+              // Check if this user hasn't viewed this activity yet
+              const viewedBy = activity.viewedBy || [];
+              return !viewedBy.includes(userId);
+            });
             
-            // Check if user added a place since the current user's last login
-            // ALWAYS calculate from recentActivity array, never use persisted value
-            let calculatedHasRecentPlace = false;
+            // Count unviewed activities by type
+            const unviewedCounts = {
+              places: 0,
+              circles: 0,
+              suggestions: 0
+            };
             
-            if (lastLogin) {
-              const lastLoginDate = new Date(lastLogin);
-              const recentActivity = connection.recentActivity || [];
-              calculatedHasRecentPlace = recentActivity.some(activity => 
-                activity.type === 'place' && 
-                new Date(activity.createdAt) > lastLoginDate
-              );
-              
-              console.log(`📅 Checking places since last login: ${lastLogin}, found new places: ${calculatedHasRecentPlace}`);
-            } else {
-              // Fallback: if no lastLogin, don't show any red dots
-              console.log(`⚠️ No lastLogin found for user ${userId}, not showing activity indicators`);
-              calculatedHasRecentPlace = false;
-            }
+            recentActivity.forEach(activity => {
+              const viewedBy = activity.viewedBy || [];
+              if (!viewedBy.includes(userId)) {
+                if (activity.type === 'place') unviewedCounts.places++;
+                else if (activity.type === 'circle') unviewedCounts.circles++;
+                else if (activity.type === 'suggestion') unviewedCounts.suggestions++;
+              }
+            });
+            
+            // Unviewed activities calculated
+            
+            // Replace hasRecentPlace with hasUnviewedActivity
+            const calculatedHasRecentPlace = hasUnviewedActivity;
             
             // Add stats to connection - ALWAYS override with calculated value
             connection.totalPlaces = totalPlaces;
-            connection.hasRecentPlace = calculatedHasRecentPlace; // Always use calculated value
+            connection.hasRecentPlace = calculatedHasRecentPlace; // Now means hasUnviewedActivity
+            connection.hasUnviewedActivity = hasUnviewedActivity;
+            connection.unviewedCounts = unviewedCounts;
             
             // Log for debugging
             if (connection.hasRecentPlace !== calculatedHasRecentPlace) {
-              console.log(`🔧 Overriding persisted hasRecentPlace (${connection.hasRecentPlace}) with calculated value (${calculatedHasRecentPlace}) for connection ${connection.id}`);
+              // Overriding hasRecentPlace with calculated value
             }
             connection.viewCount = connection.viewCount || 0;
             
-            console.log(`📊 Stats for ${connection.connectedUser.displayName}: Places=${totalPlaces}, Views=${connection.viewCount}, Recent=${calculatedHasRecentPlace}`);
+            // Calculate connection score
+            const scoreData = scoringService.calculateConnectionScore(connection, userId);
+            connection.connectionScore = scoreData.score;
+            connection.scoreComponents = scoreData.components;
+            connection.scoreLastCalculated = scoreData.calculatedAt;
+            
+            // Connection stats calculated
           } else {
             console.log(`⚠️ Connected user not found for ID: ${otherUserId}`);
           }
@@ -882,18 +897,185 @@ const removeConnection = async (req, res) => {
   }
 };
 
-// @desc    Get connections sorted by activity and stats
+// @desc    Get connections sorted by weighted score
 // @route   GET /api/connections/active
 // @access  Private
 const getActiveConnections = async (req, res) => {
   try {
     const userId = req.user.firebaseDocId || req.user.uid;
+    const limit = parseInt(req.query.limit) || 10;
     
-    const connections = await activityService.getConnectionsWithStats(userId);
+    console.log(`🔍 Getting active connections for user ${userId} with limit ${limit}`);
+    
+    // Get all accepted connections
+    const connectionsQuery1 = db.collection(COLLECTIONS.CONNECTIONS)
+      .where('userId', '==', userId)
+      .where('status', '==', 'accepted');
+      
+    const connectionsQuery2 = db.collection(COLLECTIONS.CONNECTIONS)
+      .where('connectedUserId', '==', userId)
+      .where('status', '==', 'accepted');
+
+    const [snapshot1, snapshot2] = await Promise.all([
+      connectionsQuery1.get(),
+      connectionsQuery2.get()
+    ]);
+
+    // Combine and deduplicate
+    const allConnections = [...snapshot1.docs, ...snapshot2.docs];
+    const uniqueConnections = allConnections.filter((doc, index, self) => 
+      index === self.findIndex(d => d.id === doc.id)
+    );
+
+    // Process connections with all necessary data
+    const connectionsWithScores = await Promise.all(
+      uniqueConnections.map(async (doc) => {
+        const connection = serializeDoc(doc);
+        
+        // Get the connected user
+        const otherUserId = connection.userId === userId ? connection.connectedUserId : connection.userId;
+        
+        try {
+          const userDoc = await db.collection(COLLECTIONS.USERS).doc(otherUserId).get();
+          if (userDoc.exists) {
+            connection.connectedUser = serializeDoc(userDoc);
+            
+            // Get total places count
+            const userCirclesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
+              .where('owner', '==', otherUserId)
+              .get();
+            
+            let totalPlaces = 0;
+            for (const circleDoc of userCirclesSnapshot.docs) {
+              const circleData = circleDoc.data();
+              totalPlaces += (circleData.places || []).length;
+            }
+            
+            // Check for unviewed activities AND calculate total activity
+            const recentActivity = connection.recentActivity || [];
+            const hasUnviewedActivity = recentActivity.some(activity => {
+              const viewedBy = activity.viewedBy || [];
+              return !viewedBy.includes(userId);
+            });
+            
+            // Calculate total activity count (viewed + unviewed) for highly active user detection
+            const totalActivityCount = recentActivity.length;
+            const unviewedActivityCount = recentActivity.filter(activity => {
+              const viewedBy = activity.viewedBy || [];
+              return !viewedBy.includes(userId);
+            }).length;
+            
+            // Get last message info for this connection (THIS WAS MISSING!)
+            let lastMessageAt = null;
+            let lastMessageSenderId = null;
+            let hasRecentMessage = false;
+            
+            // Find conversations between current user and connected user
+            const conversationQuery = db.collection(COLLECTIONS.CONVERSATIONS)
+              .where('type', '==', 'direct')
+              .where('participants', 'array-contains', userId);
+              
+            const conversationSnapshot = await conversationQuery.get();
+            
+            // Filter to find conversation with this specific connected user
+            const conversation = conversationSnapshot.docs.find(doc => {
+              const data = doc.data();
+              return data.participants.includes(otherUserId);
+            });
+            
+            if (conversation) {
+              const convData = conversation.data();
+              if (convData.lastMessageTime) {
+                lastMessageAt = convData.lastMessageTime;
+                lastMessageSenderId = convData.lastMessageSenderId || null;
+                
+                // Check if message is recent (within last 7 days)
+                const messageDate = new Date(convData.lastMessageTime);
+                const sevenDaysAgo = new Date();
+                sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+                hasRecentMessage = messageDate > sevenDaysAgo;
+              }
+            }
+            
+            // Add stats
+            connection.totalPlaces = totalPlaces;
+            connection.hasRecentPlace = hasUnviewedActivity;
+            connection.hasNewActivity = hasUnviewedActivity;
+            connection.viewCount = connection.viewCount || 0;
+            connection.lastMessageAt = lastMessageAt;
+            connection.lastMessageSenderId = lastMessageSenderId;
+            connection.hasRecentMessage = hasRecentMessage;
+            
+            // Add total activity tracking for highly active users
+            connection.totalActivityCount = totalActivityCount;
+            connection.unviewedActivityCount = unviewedActivityCount;
+            
+            // Calculate score
+            const scoreData = scoringService.calculateConnectionScore(connection, userId);
+            connection.connectionScore = scoreData.score;
+            connection.scoreComponents = scoreData.components;
+            connection.scoreLastCalculated = scoreData.calculatedAt;
+            
+            // Score calculated for connection
+            
+            // Score processing completed
+          }
+        } catch (error) {
+          console.error(`Error processing connection ${doc.id}:`, error);
+        }
+        
+        return connection;
+      })
+    );
+
+    // Filter valid connections and sort by score
+    const validConnections = connectionsWithScores
+      .filter(conn => conn.connectedUser && conn.connectionScore !== undefined)
+      .sort((a, b) => b.connectionScore - a.connectionScore);
+
+    // 🔍 DEBUG: Log all connections with scores to debug Dan Wickner ordering
+    console.log('🔍 DEBUG: All connections with scores (before limit):');
+    validConnections.forEach((conn, index) => {
+      const name = conn.connectedUser?.displayName || 'Unknown';
+      const score = conn.connectionScore || 0;
+      const components = conn.scoreComponents;
+      const hasMessages = conn.lastMessageAt ? '✓' : '✗';
+      const hasActivity = conn.hasRecentPlace ? '✓' : '✗';
+      const messageAge = conn.lastMessageAt ? Math.round((Date.now() - new Date(conn.lastMessageAt).getTime()) / (1000 * 60 * 60 * 24)) + 'd' : 'none';
+      
+      console.log(`   ${index + 1}. ${name} | Score: ${score} | Messages: ${hasMessages} (${messageAge}) | Activity: ${hasActivity} | Places: ${conn.totalPlaces || 0} | Views: ${conn.viewCount || 0} | TotalActivity: ${conn.totalActivityCount || 0}`);
+      
+      if (components) {
+        console.log(`      Components: M:${components.messages} E:${components.engagement} C:${components.content} R:${components.recency} = ${components.total}`);
+      }
+      
+      // Special attention to Dan Wickner
+      if (name.toLowerCase().includes('dan') || name.toLowerCase().includes('wickner')) {
+        console.log(`      🎯 DAN WICKNER FOUND at position ${index + 1}!`);
+        console.log(`      🔍 Last message: ${conn.lastMessageAt || 'NONE'}`);
+        console.log(`      🔍 Recent activity: ${JSON.stringify(conn.recentActivity || [])}`);
+        console.log(`      🔍 Has unviewed activity: ${conn.hasRecentPlace}`);
+        console.log(`      🔍 Total places: ${conn.totalPlaces}`);
+        console.log(`      🔍 View count: ${conn.viewCount}`);
+        console.log(`      🔍 Total activity count: ${conn.totalActivityCount || 0}`);
+        console.log(`      🔍 Unviewed activity count: ${conn.unviewedActivityCount || 0}`);
+      }
+    });
+
+    const finalConnections = validConnections.slice(0, limit);
+    
+    // Log final order
+    console.log(`🔍 DEBUG: Final ${limit} connections being returned:`);
+    finalConnections.forEach((conn, index) => {
+      const name = conn.connectedUser?.displayName || 'Unknown';
+      console.log(`   ${index + 1}. ${name} (Score: ${conn.connectionScore})`);
+    });
+
+    // Returning connections sorted by score
     
     res.status(200).json({
       success: true,
-      connections: connections
+      connections: finalConnections
     });
   } catch (error) {
     console.error('Error fetching active connections:', error);

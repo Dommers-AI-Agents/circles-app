@@ -10,6 +10,7 @@ const {
   serializeQuerySnapshot 
 } = require('../models/FirestoreModels');
 const { trackCircleCreated, trackCircleView, trackCircleLiked, trackCircleCommented } = require('../services/activityService');
+const { normalizeUserId } = require('../services/idService');
 
 const db = getFirestore();
 
@@ -159,9 +160,13 @@ exports.getCircle = async (req, res, next) => {
 
     const circle = serializeDoc(circleDoc);
     
+    // Normalize IDs for consistent comparison
+    const normalizedCircleOwner = normalizeUserId(circle.owner);
+    const normalizedUserId = normalizeUserId(req.user.uid);
+    
     // Check permissions
-    const isOwner = circle.owner === req.user.uid;
-    const isSharedWith = circle.sharedWith.includes(req.user.uid);
+    const isOwner = normalizedCircleOwner === normalizedUserId;
+    const isSharedWith = (circle.sharedWith || []).some(userId => normalizeUserId(userId) === normalizedUserId);
     const isPublic = circle.privacy === 'public';
     
     // For myNetwork privacy, check if users are connected
@@ -212,6 +217,41 @@ exports.getCircle = async (req, res, next) => {
     });
   } catch (error) {
     console.error('Error fetching circle:', error);
+    next(error);
+  }
+};
+
+// @desc    Get single circle (public access)
+// @route   GET /api/circles/:id/public
+// @access  Public
+exports.getCirclePublic = async (req, res, next) => {
+  try {
+    const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(req.params.id).get();
+    
+    if (!circleDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Circle not found'
+      });
+    }
+
+    const circle = serializeDoc(circleDoc);
+    
+    // Only allow access to public circles
+    if (circle.privacy !== 'public') {
+      return res.status(403).json({
+        success: false,
+        message: 'This circle is not public'
+      });
+    }
+
+    // For public circles, anyone can view them
+    res.status(200).json({
+      success: true,
+      circle: circle
+    });
+  } catch (error) {
+    console.error('Error fetching public circle:', error);
     next(error);
   }
 };
@@ -298,25 +338,33 @@ exports.updateCircle = async (req, res, next) => {
     const circle = serializeDoc(circleDoc);
     const userId = req.user.uid;  // Use uid consistently with circle creation
     
+    // Normalize IDs for comparison to handle both complex and simple ID formats
+    const normalizedCircleOwner = normalizeUserId(circle.owner);
+    const normalizedUserId = normalizeUserId(userId);
+    
     // Debug logging to help diagnose authorization issues
     console.log('🔍 Circle update authorization check:', {
       circleId: req.params.id,
       circleName: circle.name,
       circleOwner: circle.owner,
+      normalizedCircleOwner: normalizedCircleOwner,
       requestingUserId: userId,
+      normalizedUserId: normalizedUserId,
       requestingUserEmail: req.user.email,
-      isOwnerMatch: circle.owner === userId
+      isOwnerMatch: normalizedCircleOwner === normalizedUserId
     });
 
-    // Check if user is owner or editor
-    const isOwner = circle.owner === userId;
-    const isEditor = (circle.editors || []).includes(userId);
+    // Check if user is owner or editor (using normalized IDs)
+    const isOwner = normalizedCircleOwner === normalizedUserId;
+    const isEditor = (circle.editors || []).some(editorId => normalizeUserId(editorId) === normalizedUserId);
     
     if (!isOwner && !isEditor) {
       console.log('❌ Circle update authorization failed:', {
         circleId: req.params.id,
         circleOwner: circle.owner,
+        normalizedCircleOwner: normalizedCircleOwner,
         requestingUserId: userId,
+        normalizedUserId: normalizedUserId,
         isOwner: isOwner,
         isEditor: isEditor,
         editors: circle.editors || []
@@ -450,8 +498,18 @@ exports.deleteCircle = async (req, res, next) => {
 
     const circle = serializeDoc(circleDoc);
 
-    // Make sure user is circle owner
-    if (circle.owner !== req.user.uid) {
+    // Make sure user is circle owner (using normalized IDs)
+    const normalizedCircleOwner = normalizeUserId(circle.owner);
+    const normalizedUserId = normalizeUserId(req.user.uid);
+    
+    if (normalizedCircleOwner !== normalizedUserId) {
+      console.log('❌ Circle delete authorization failed:', {
+        circleId: req.params.id,
+        circleOwner: circle.owner,
+        normalizedCircleOwner: normalizedCircleOwner,
+        requestingUserId: req.user.uid,
+        normalizedUserId: normalizedUserId
+      });
       return res.status(403).json({
         success: false,
         message: 'Not authorized to delete this circle'
@@ -509,8 +567,18 @@ exports.shareCircle = async (req, res, next) => {
 
     const circle = serializeDoc(circleDoc);
 
-    // Make sure user is circle owner
-    if (circle.owner !== req.user.uid) {
+    // Make sure user is circle owner (using normalized IDs)
+    const normalizedCircleOwner = normalizeUserId(circle.owner);
+    const normalizedUserId = normalizeUserId(req.user.uid);
+    
+    if (normalizedCircleOwner !== normalizedUserId) {
+      console.log('❌ Circle share authorization failed:', {
+        circleId: req.params.id,
+        circleOwner: circle.owner,
+        normalizedCircleOwner: normalizedCircleOwner,
+        requestingUserId: req.user.uid,
+        normalizedUserId: normalizedUserId
+      });
       return res.status(403).json({
         success: false,
         message: 'Not authorized to share this circle'
@@ -593,7 +661,7 @@ exports.addEditor = async (req, res, next) => {
   try {
     const circleId = req.params.id;
     const { userId } = req.body;
-    const requesterId = req.user.firebaseDocId || req.user.uid;
+    const requesterId = req.user.uid; // Use uid consistently
 
     if (!userId) {
       return res.status(400).json({
@@ -614,8 +682,18 @@ exports.addEditor = async (req, res, next) => {
 
     const circle = circleDoc.data();
 
-    // Check if requester is the owner
-    if (circle.owner !== requesterId) {
+    // Check if requester is the owner (using normalized IDs)
+    const normalizedCircleOwner = normalizeUserId(circle.owner);
+    const normalizedRequesterId = normalizeUserId(requesterId);
+    
+    if (normalizedCircleOwner !== normalizedRequesterId) {
+      console.log('❌ Add editor authorization failed:', {
+        circleId: circleId,
+        circleOwner: circle.owner,
+        normalizedCircleOwner: normalizedCircleOwner,
+        requesterId: requesterId,
+        normalizedRequesterId: normalizedRequesterId
+      });
       return res.status(403).json({
         success: false,
         message: 'Only the circle owner can add editors'
@@ -667,7 +745,7 @@ exports.removeEditor = async (req, res, next) => {
   try {
     const circleId = req.params.id;
     const userIdToRemove = req.params.userId;
-    const requesterId = req.user.firebaseDocId || req.user.uid;
+    const requesterId = req.user.uid; // Use uid consistently
 
     // Get circle
     const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(circleId).get();
@@ -681,8 +759,18 @@ exports.removeEditor = async (req, res, next) => {
 
     const circle = circleDoc.data();
 
-    // Check if requester is the owner
-    if (circle.owner !== requesterId) {
+    // Check if requester is the owner (using normalized IDs)
+    const normalizedCircleOwner = normalizeUserId(circle.owner);
+    const normalizedRequesterId = normalizeUserId(requesterId);
+    
+    if (normalizedCircleOwner !== normalizedRequesterId) {
+      console.log('❌ Remove editor authorization failed:', {
+        circleId: circleId,
+        circleOwner: circle.owner,
+        normalizedCircleOwner: normalizedCircleOwner,
+        requesterId: requesterId,
+        normalizedRequesterId: normalizedRequesterId
+      });
       return res.status(403).json({
         success: false,
         message: 'Only the circle owner can remove editors'
@@ -718,7 +806,7 @@ exports.removeEditor = async (req, res, next) => {
 exports.getEditors = async (req, res, next) => {
   try {
     const circleId = req.params.id;
-    const requesterId = req.user.firebaseDocId || req.user.uid;
+    const requesterId = req.user.uid; // Use uid consistently
 
     // Get circle
     const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(circleId).get();
@@ -732,9 +820,23 @@ exports.getEditors = async (req, res, next) => {
 
     const circle = circleDoc.data();
 
-    // Check if user has access to view editors (owner or editor)
+    // Check if user has access to view editors (owner or editor) using normalized IDs
+    const normalizedCircleOwner = normalizeUserId(circle.owner);
+    const normalizedRequesterId = normalizeUserId(requesterId);
     const editors = circle.editors || [];
-    if (circle.owner !== requesterId && !editors.includes(requesterId)) {
+    const isOwner = normalizedCircleOwner === normalizedRequesterId;
+    const isEditor = editors.some(editorId => normalizeUserId(editorId) === normalizedRequesterId);
+    
+    if (!isOwner && !isEditor) {
+      console.log('❌ Get editors authorization failed:', {
+        circleId: circleId,
+        circleOwner: circle.owner,
+        normalizedCircleOwner: normalizedCircleOwner,
+        requesterId: requesterId,
+        normalizedRequesterId: normalizedRequesterId,
+        isOwner: isOwner,
+        isEditor: isEditor
+      });
       return res.status(403).json({
         success: false,
         message: 'Not authorized to view editors'
@@ -1084,8 +1186,21 @@ exports.deleteCircleComment = async (req, res, next) => {
     
     const circle = serializeDoc(circleDoc);
     
-    // Check permission - only comment owner or circle owner can delete
-    if (comment.userId !== userId && circle.owner !== userId) {
+    // Check permission - only comment owner or circle owner can delete (using normalized IDs)
+    const normalizedCommentUserId = normalizeUserId(comment.userId);
+    const normalizedCircleOwner = normalizeUserId(circle.owner);
+    const normalizedUserId = normalizeUserId(userId);
+    
+    if (normalizedCommentUserId !== normalizedUserId && normalizedCircleOwner !== normalizedUserId) {
+      console.log('❌ Delete comment authorization failed:', {
+        commentId: commentId,
+        commentUserId: comment.userId,
+        normalizedCommentUserId: normalizedCommentUserId,
+        circleOwner: circle.owner,
+        normalizedCircleOwner: normalizedCircleOwner,
+        requestingUserId: userId,
+        normalizedUserId: normalizedUserId
+      });
       return res.status(403).json({
         success: false,
         message: 'Not authorized to delete this comment'
@@ -1109,6 +1224,182 @@ exports.deleteCircleComment = async (req, res, next) => {
     
   } catch (error) {
     console.error('Error deleting circle comment:', error);
+    next(error);
+  }
+};
+
+// @desc    Copy a circle with all its places
+// @route   POST /api/circles/:id/copy
+// @access  Private
+exports.copyCircle = async (req, res, next) => {
+  try {
+    const userId = req.user.uid;
+    const sourceCircleId = req.params.id;
+    
+    console.log('📋 copyCircle called:', {
+      userId,
+      sourceCircleId,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Get the source circle
+    const sourceCircleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(sourceCircleId).get();
+    
+    if (!sourceCircleDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Source circle not found'
+      });
+    }
+    
+    const sourceCircle = serializeDoc(sourceCircleDoc);
+    
+    // Check if user has access to the source circle
+    const isOwner = sourceCircle.owner === userId;
+    const isPublic = sourceCircle.privacy === 'public';
+    const isSharedWith = sourceCircle.sharedWith && sourceCircle.sharedWith.includes(userId);
+    
+    // For myNetwork privacy, check if users are connected
+    let isConnected = false;
+    if (sourceCircle.privacy === 'myNetwork' && !isOwner) {
+      const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', userId)
+        .where('connectedUserId', '==', sourceCircle.owner)
+        .where('status', '==', 'accepted')
+        .get();
+        
+      const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', sourceCircle.owner)
+        .where('connectedUserId', '==', userId)
+        .where('status', '==', 'accepted')
+        .get();
+        
+      isConnected = !connection1.empty || !connection2.empty;
+    }
+    
+    // Check if user has access to view the circle
+    if (!isOwner && !isPublic && !isSharedWith && !(sourceCircle.privacy === 'myNetwork' && isConnected)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to copy this circle'
+      });
+    }
+    
+    // Create a new circle name (append "Copy" if not provided)
+    const newCircleName = req.body.name || `${sourceCircle.name} (Copy)`;
+    
+    // Check if user already has a circle with this name
+    const existingCirclesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
+      .where('owner', '==', userId)
+      .where('name', '==', newCircleName)
+      .get();
+    
+    if (!existingCirclesSnapshot.empty) {
+      return res.status(400).json({
+        success: false,
+        message: 'You already have a circle with this name. Please choose a different name.'
+      });
+    }
+    
+    // Create new circle data
+    const newCircleData = {
+      name: newCircleName,
+      description: sourceCircle.description || '',
+      privacy: 'private', // Always start copied circles as private
+      category: sourceCircle.category,
+      customCategoryId: sourceCircle.customCategoryId,
+      location: sourceCircle.location,
+      tags: sourceCircle.tags || [],
+      coverImage: sourceCircle.coverImage || null,
+      allowNetworkEdit: false,
+      owner: userId,
+      sharedWith: [],
+      followers: [],
+      activeShares: [],
+      places: [], // Will be populated with copied places
+      placesCount: 0,
+      likes: [],
+      likesCount: 0,
+      commentsCount: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    
+    // Create the new circle
+    const newCircleRef = await db.collection(COLLECTIONS.CIRCLES).add(newCircleData);
+    const newCircleId = newCircleRef.id;
+    
+    console.log('✅ Created new circle:', newCircleId);
+    
+    // Get all places from the source circle
+    let copiedPlaceIds = [];
+    if (sourceCircle.places && sourceCircle.places.length > 0) {
+      // Batch get the places
+      const placePromises = sourceCircle.places.map(placeId => 
+        db.collection(COLLECTIONS.PLACES).doc(placeId).get()
+      );
+      const placeDocs = await Promise.all(placePromises);
+      
+      // Copy each place
+      for (const placeDoc of placeDocs) {
+        if (placeDoc.exists && !placeDoc.data().deletedAt) {
+          const sourcePlace = serializeDoc(placeDoc);
+          
+          // Create new place data
+          const newPlaceData = {
+            name: sourcePlace.name,
+            address: sourcePlace.address,
+            googlePlaceId: sourcePlace.googlePlaceId,
+            appleMapItemId: sourcePlace.appleMapItemId,
+            category: sourcePlace.category,
+            phone: sourcePlace.phone || null,
+            website: sourcePlace.website || null,
+            priceLevel: sourcePlace.priceLevel || null,
+            rating: sourcePlace.rating || null,
+            userRatingsTotal: sourcePlace.userRatingsTotal || null,
+            location: sourcePlace.location,
+            photos: sourcePlace.photos || [],
+            userNotes: '', // Clear user notes for copied places
+            circleId: newCircleId,
+            userId: userId,
+            addedBy: userId,
+            likes: [],
+            likesCount: 0,
+            commentsCount: 0,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+          
+          // Add the new place
+          const newPlaceRef = await db.collection(COLLECTIONS.PLACES).add(newPlaceData);
+          copiedPlaceIds.push(newPlaceRef.id);
+          
+          console.log(`📍 Copied place: ${sourcePlace.name}`);
+        }
+      }
+    }
+    
+    // Update the new circle with the copied place IDs
+    await newCircleRef.update({
+      places: copiedPlaceIds,
+      placesCount: copiedPlaceIds.length,
+      updatedAt: new Date().toISOString()
+    });
+    
+    // Get the created circle with all data
+    const createdCircleDoc = await newCircleRef.get();
+    const createdCircle = serializeDoc(createdCircleDoc);
+    
+    console.log(`✅ Successfully copied circle with ${copiedPlaceIds.length} places`);
+    
+    res.status(201).json({
+      success: true,
+      message: `Successfully copied circle with ${copiedPlaceIds.length} places`,
+      circle: createdCircle
+    });
+    
+  } catch (error) {
+    console.error('Error copying circle:', error);
     next(error);
   }
 };

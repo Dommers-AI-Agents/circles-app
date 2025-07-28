@@ -13,6 +13,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     private let locationManager = CLLocationManager()
     private var userLocation: CLLocation?
     private var selectedCategory: PlaceCategory?
+    private var isSharedViaLink: Bool = false
     
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
@@ -211,8 +212,9 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     
     // MARK: - Init
     
-    init(circle: Circle) {
+    init(circle: Circle, isSharedViaLink: Bool = false) {
         self.circle = circle
+        self.isSharedViaLink = isSharedViaLink
         super.init(nibName: nil, bundle: nil)
     }
     
@@ -503,6 +505,12 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         let shareButton = UIBarButtonItem(barButtonSystemItem: .action, target: self, action: #selector(shareButtonTapped))
         rightBarButtons.append(shareButton)
         
+        // Show copy button for non-owner users viewing public or shared circles
+        if !circle.isOwner {
+            let copyButton = UIBarButtonItem(title: "Copy", style: .plain, target: self, action: #selector(copyCircleButtonTapped))
+            rightBarButtons.append(copyButton)
+        }
+        
         // Only show edit button if user can edit
         if circle.canEdit {
             let editButton = UIBarButtonItem(barButtonSystemItem: .edit, target: self, action: #selector(editButtonTapped))
@@ -623,35 +631,72 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     
     private func fetchPlaces() {
         print("🔍 CircleDetailViewController: About to fetch places for circle: \(circle.name) (ID: \(circle.id))")
+        print("   - Circle privacy: \(circle.privacy)")
+        print("   - Is shared via link: \(isSharedViaLink)")
         
-        PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { [weak self] result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let places):
-                    Logger.info("Fetched \(places.count) places for circle: \(self?.circle.name ?? "")")
-                    
-                    // Places are already ordered by the backend based on the circle's places array
-                    self?.places = places
-                    self?.applyFilter()
-                case .failure(let error):
-                    Logger.error("Failed to fetch places: \(error.localizedDescription)")
-                    // Don't use sample places - show empty state instead
-                    self?.places = []
-                    self?.filteredPlaces = []
-                }
-                
-                self?.tableView.reloadData()
-                
-                // End refresh animation
-                self?.scrollView.refreshControl?.endRefreshing()
-                
-                // Force layout update to calculate correct content size
+        // Use public endpoint for public circles accessed via share link
+        if circle.privacy == .public && isSharedViaLink {
+            PlaceService.shared.fetchPlacesByCircleIdPublic(circleId: circle.id) { [weak self] result in
                 DispatchQueue.main.async {
-                    self?.tableView.layoutIfNeeded()
-                    self?.updateTableViewHeight()
+                    switch result {
+                    case .success(let places):
+                        Logger.info("Fetched \(places.count) places for public circle: \(self?.circle.name ?? "")")
+                        
+                        // Places are already ordered by the backend based on the circle's places array
+                        self?.places = places
+                        self?.applyFilter()
+                    case .failure(let error):
+                        Logger.error("Failed to fetch places for public circle: \(error.localizedDescription)")
+                        // Don't use sample places - show empty state instead
+                        self?.places = []
+                        self?.filteredPlaces = []
+                    }
+                    
+                    self?.tableView.reloadData()
+                    
+                    // End refresh animation
+                    self?.scrollView.refreshControl?.endRefreshing()
+                    
+                    // Force layout update to calculate correct content size
+                    DispatchQueue.main.async {
+                        self?.tableView.layoutIfNeeded()
+                        self?.updateTableViewHeight()
+                    }
+                    
+                    self?.addAnnotationsToMap()
                 }
-                
-                self?.addAnnotationsToMap()
+            }
+        } else {
+            // Use authenticated endpoint for private circles or authenticated users
+            PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { [weak self] result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(let places):
+                        Logger.info("Fetched \(places.count) places for circle: \(self?.circle.name ?? "")")
+                        
+                        // Places are already ordered by the backend based on the circle's places array
+                        self?.places = places
+                        self?.applyFilter()
+                    case .failure(let error):
+                        Logger.error("Failed to fetch places: \(error.localizedDescription)")
+                        // Don't use sample places - show empty state instead
+                        self?.places = []
+                        self?.filteredPlaces = []
+                    }
+                    
+                    self?.tableView.reloadData()
+                    
+                    // End refresh animation
+                    self?.scrollView.refreshControl?.endRefreshing()
+                    
+                    // Force layout update to calculate correct content size
+                    DispatchQueue.main.async {
+                        self?.tableView.layoutIfNeeded()
+                        self?.updateTableViewHeight()
+                    }
+                    
+                    self?.addAnnotationsToMap()
+                }
             }
         }
     }
@@ -1321,6 +1366,78 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         present(navController, animated: true)
     }
     
+    @objc private func copyCircleButtonTapped() {
+        // Show confirmation alert
+        let alert = UIAlertController(
+            title: "Copy Circle",
+            message: "Would you like to copy '\(circle.name)' and all its places to your circles?",
+            preferredStyle: .alert
+        )
+        
+        // Add text field for custom name
+        alert.addTextField { textField in
+            textField.placeholder = "\(self.circle.name) (Copy)"
+            textField.text = "\(self.circle.name) (Copy)"
+            textField.autocapitalizationType = .words
+        }
+        
+        alert.addAction(UIAlertAction(title: "Copy", style: .default) { [weak self] _ in
+            guard let self = self else { return }
+            
+            let customName = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            // Show loading indicator
+            let loadingAlert = UIAlertController(title: nil, message: "Copying circle...", preferredStyle: .alert)
+            let loadingIndicator = UIActivityIndicatorView(style: .large)
+            loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
+            loadingIndicator.startAnimating()
+            loadingAlert.view.addSubview(loadingIndicator)
+            NSLayoutConstraint.activate([
+                loadingIndicator.centerXAnchor.constraint(equalTo: loadingAlert.view.centerXAnchor),
+                loadingIndicator.centerYAnchor.constraint(equalTo: loadingAlert.view.centerYAnchor, constant: 30)
+            ])
+            self.present(loadingAlert, animated: true)
+            
+            // Copy the circle
+            CircleService.shared.copyCircle(circleId: self.circle.id, newName: customName) { result in
+                DispatchQueue.main.async {
+                    loadingAlert.dismiss(animated: true) {
+                        switch result {
+                        case .success(let copiedCircle):
+                            // Show success message
+                            let successAlert = UIAlertController(
+                                title: "Success",
+                                message: "Circle copied successfully!",
+                                preferredStyle: .alert
+                            )
+                            successAlert.addAction(UIAlertAction(title: "View Circle", style: .default) { _ in
+                                // Navigate to the new circle
+                                let detailVC = CircleDetailViewController(circle: copiedCircle)
+                                self.navigationController?.pushViewController(detailVC, animated: true)
+                            })
+                            successAlert.addAction(UIAlertAction(title: "OK", style: .cancel))
+                            self.present(successAlert, animated: true)
+                            
+                        case .failure(let error):
+                            // Show error message
+                            let errorMessage = (error as? APIError)?.localizedDescription ?? error.localizedDescription
+                            let errorAlert = UIAlertController(
+                                title: "Copy Failed",
+                                message: errorMessage,
+                                preferredStyle: .alert
+                            )
+                            errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                            self.present(errorAlert, animated: true)
+                        }
+                    }
+                }
+            }
+        })
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
+    }
+    
     @objc private func addPlaceButtonTapped() {
         // Directly open the AddPlaceViewController with map and search functionality
         let addPlaceVC = AddPlaceViewController(circleId: circle.id)
@@ -1699,6 +1816,17 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
         print("  - Has photos: \(place.hasPhotos)")
         print("  - Photos array: \(place.photos ?? [])")
         print("  - Photos count: \(place.photos?.count ?? 0)")
+        
+        // Mark place as viewed if it's new
+        if place.isNew == true {
+            NetworkManager.shared.markPlaceAsViewed(placeId: place.id, circleId: circle.id) { error in
+                if let error = error {
+                    print("Error marking place as viewed: \(error)")
+                } else {
+                    print("Successfully marked place as viewed")
+                }
+            }
+        }
         
         let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
         navigationController?.pushViewController(placeDetailVC, animated: true)
@@ -3164,6 +3292,16 @@ extension CircleDetailViewController: FullScreenMapViewControllerDelegate {
     func mapViewController(_ controller: FullScreenMapViewController, didSelectPlace place: Place) {
         // Navigate to place details
         let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
-        navigationController?.pushViewController(placeDetailVC, animated: true)
+        
+        // Check if the map controller is presented modally
+        if controller.isPresentedModally {
+            // Present place detail modally on top of the full screen map
+            let navController = UINavigationController(rootViewController: placeDetailVC)
+            navController.modalPresentationStyle = .pageSheet
+            controller.present(navController, animated: true)
+        } else {
+            // For embedded map, use regular navigation push
+            navigationController?.pushViewController(placeDetailVC, animated: true)
+        }
     }
 }

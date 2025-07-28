@@ -17,7 +17,7 @@ const db = getFirestore();
 exports.getUser = async (req, res, next) => {
   console.log('🚀 USER CONTROLLER: getUser called');
   console.log('🚀 USER CONTROLLER: Request params:', req.params);
-  console.log('🚀 USER CONTROLLER: Request user:', JSON.stringify(req.user, null, 2));
+  // User controller processing
   
   try {
     // Handle /me endpoint or when no ID is provided
@@ -97,10 +97,14 @@ exports.getUser = async (req, res, next) => {
     // Include private data only for own profile
     if (isOwnProfile) {
       profileData.email = user.email;
+      profileData.firstName = user.firstName || null;
+      profileData.lastName = user.lastName || null;
+      profileData.phoneNumber = user.phoneNumber || null;
       profileData.friends = user.friends;
       profileData.friendRequests = user.friendRequests;
       profileData.followers = user.followers;
       profileData.following = user.following;
+      profileData.deviceTokens = user.deviceTokens; // Include device tokens for own profile
     } else {
       // For other users, check if current user is following them
       const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(req.user.uid).get();
@@ -171,7 +175,12 @@ exports.getUser = async (req, res, next) => {
     }
 
     console.log('✅ USER CONTROLLER: Sending user profile response');
-    console.log('✅ USER CONTROLLER: Response data:', JSON.stringify(profileData, null, 2));
+    // Profile data prepared
+    
+    // Debug log for optional fields
+    if (isOwnProfile) {
+      console.log('🔍 USER CONTROLLER: Optional fields - firstName:', profileData.firstName, 'lastName:', profileData.lastName, 'phoneNumber:', profileData.phoneNumber);
+    }
     
     res.status(200).json({
       success: true,

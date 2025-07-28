@@ -1857,6 +1857,15 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
     
     private func displayUser(_ user: User) {
+        // Debug logging
+        print("🔍 ProfileViewController - Displaying user data:")
+        print("   - Display Name: \(user.displayName)")
+        print("   - First Name: \(user.firstName ?? "nil")")
+        print("   - Last Name: \(user.lastName ?? "nil")")
+        print("   - Phone Number: \(user.phoneNumber ?? "nil")")
+        print("   - Bio: \(user.bio ?? "nil")")
+        print("   - Location: \(user.location ?? "nil")")
+        
         // Update UI with user data
         if let profileImageUrl = user.profilePicture {
             // In a real app, load image from URL
@@ -1879,11 +1888,11 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         
         // Combine full name and bio like Instagram
         var bioText = ""
-        if let firstName = user.firstName, let lastName = user.lastName {
+        if let firstName = user.firstName, !firstName.isEmpty, let lastName = user.lastName, !lastName.isEmpty {
             bioText = "\(firstName) \(lastName)"
-        } else if let firstName = user.firstName {
+        } else if let firstName = user.firstName, !firstName.isEmpty {
             bioText = firstName
-        } else if let lastName = user.lastName {
+        } else if let lastName = user.lastName, !lastName.isEmpty {
             bioText = lastName
         }
         

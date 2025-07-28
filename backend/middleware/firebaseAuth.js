@@ -11,7 +11,7 @@ exports.protect = async (req, res, next) => {
   console.log('🔐 AUTH MIDDLEWARE: protect function called');
   console.log('🔐 AUTH MIDDLEWARE: Request path:', req.path);
   console.log('🔐 AUTH MIDDLEWARE: Request method:', req.method);
-  console.log('🔐 AUTH MIDDLEWARE: Headers:', JSON.stringify(req.headers, null, 2));
+  // Auth middleware processing
   
   try {
     let token;
@@ -37,7 +37,7 @@ exports.protect = async (req, res, next) => {
       // Verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       console.log('✅ AUTH MIDDLEWARE: Token verified successfully');
-      console.log('🔐 AUTH MIDDLEWARE: Decoded token:', JSON.stringify(decoded, null, 2));
+      // Token decoded successfully
 
       // Normalize the user ID using our centralized service
       const normalizedUid = normalizeUserId(decoded.uid);

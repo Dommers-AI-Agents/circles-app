@@ -149,7 +149,7 @@ const getAuth = () => {
 const getMessaging = () => {
   if (global.mockFirebase) {
     return {
-      sendMulticast: async (message) => {
+      sendEachForMulticast: async (message) => {
         console.log('🔔 Mock: Would send notification to', message.tokens?.length || 0, 'devices');
         return {
           successCount: message.tokens?.length || 0,

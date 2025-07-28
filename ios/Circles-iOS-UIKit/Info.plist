@@ -2,6 +2,18 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.favcircles.circles</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -41,7 +53,7 @@
 			<string>google-sign-in</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.googleusercontent.apps.778088177220-7ddtorl0um8te3s5dmv14fs4d2kirukt</string>
+				<string>com.googleusercontent.apps.196924649787-rh9h60ndcfn6qes1tjde4ipo4tqlpko8</string>
 			</array>
 		</dict>
 		<dict>
@@ -65,8 +77,6 @@
 			</array>
 		</dict>
 	</array>
-	<key>CFBundleIdentifier</key>
-	<string>com.favcircles.circles</string>
 	<key>FacebookAppID</key>
 	<string>971348948407685</string>
 	<key>FacebookClientToken</key>
@@ -114,9 +124,9 @@
 		</dict>
 	</dict>
 	<key>CLIENT_ID</key>
-	<string>778088177220-7ddtorl0um8te3s5dmv14fs4d2kirukt.apps.googleusercontent.com</string>
+	<string>196924649787-rh9h60ndcfn6qes1tjde4ipo4tqlpko8.apps.googleusercontent.com</string>
 	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.778088177220-7ddtorl0um8te3s5dmv14fs4d2kirukt</string>
+	<string>com.googleusercontent.apps.196924649787-rh9h60ndcfn6qes1tjde4ipo4tqlpko8</string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
@@ -133,5 +143,23 @@
 	<false/>
 	<key>FacebookAdvertiserIDCollectionEnabled</key>
 	<false/>
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<false/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.favcircles.circles.refresh</string>
+		<string>com.favcircles.circles.cleanup</string>
+		<string>com.favcircles.circles.sync</string>
+	</array>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
 </dict>
 </plist>

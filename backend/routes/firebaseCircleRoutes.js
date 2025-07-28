@@ -4,6 +4,7 @@ const {
   getMyCircles,
   getSharedCircles,
   getCircle,
+  getCirclePublic,
   createCircle,
   updateCircle,
   deleteCircle,
@@ -18,7 +19,8 @@ const {
   getCircleLikes,
   getCircleComments,
   addCircleComment,
-  deleteCircleComment
+  deleteCircleComment,
+  copyCircle
 } = require('../controllers/firebaseCircleController');
 const {
   shareCircle: newShareCircle,
@@ -33,6 +35,9 @@ const router = express.Router();
 // Public routes (no auth required)
 router.route('/share/validate')
   .post(validateShareToken);
+
+router.route('/:id/public')
+  .get(getCirclePublic);
 
 // Apply auth middleware to all remaining routes
 router.use(protect);
@@ -94,5 +99,33 @@ router.route('/:id/comments')
 
 router.route('/:circleId/comments/:commentId')
   .delete(deleteCircleComment);
+
+// Copy circle route
+router.route('/:id/copy')
+  .post(copyCircle);
+
+// Mark circle activities as viewed
+router.route('/:id/mark-activities-viewed')
+  .post(async (req, res) => {
+    try {
+      const userId = req.user.firebaseDocId || req.user.uid;
+      const { id: circleId } = req.params;
+      
+      const activityService = require('../services/activityService');
+      await activityService.markCircleActivitiesAsViewed(userId, circleId);
+      
+      res.status(200).json({
+        success: true,
+        message: 'Circle activities marked as viewed'
+      });
+    } catch (error) {
+      console.error('Error marking circle activities as viewed:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to mark circle activities as viewed',
+        error: error.message
+      });
+    }
+  });
 
 module.exports = router;

@@ -11,8 +11,7 @@ exports.getNetworkActivities = async (req, res, next) => {
     const userId = req.user.uid;
     const { limit = 20, offset = 0, since } = req.query;
     
-    console.log('📊 Fetching network activities for user:', userId);
-    console.log('📊 Query params:', { limit, offset, since });
+    // Fetching network activities for user
     
     // Get user's connections AND followed users
     const [connections1, connections2, currentUserDoc] = await Promise.all([
@@ -47,18 +46,17 @@ exports.getNetworkActivities = async (req, res, next) => {
       following.forEach(followedUserId => {
         connectedUserIds.add(followedUserId);
       });
-      console.log('📊 User is following:', following.length, 'users');
+      // User following count tracked
     }
     
     // Add the current user to see their own activities too
     connectedUserIds.add(userId);
     
-    console.log('📊 Found connections:', Array.from(connectedUserIds).filter(id => id !== userId).length);
-    console.log('📊 Total users in feed (connections + followed):', connectedUserIds.size - 1); // -1 for self
-    console.log('📊 User IDs for activity feed:', Array.from(connectedUserIds));
+    // Found connections for activity feed
+    // Activity feed includes connections and followed users
     
     if (connectedUserIds.size === 1) { // Only self
-      console.log('📊 User has no connections or followed users, returning empty activities');
+      // No connections found, returning empty activities
       return res.status(200).json({
         success: true,
         activities: [],
@@ -71,18 +69,10 @@ exports.getNetworkActivities = async (req, res, next) => {
     const userIds = Array.from(connectedUserIds);
     
     // Build query
-    console.log('📊 Building activities query with userIds:', userIds);
     let activitiesQuery = db.collection(COLLECTIONS.ACTIVITIES)
       .where('actorId', 'in', userIds)
       .orderBy('timestamp', 'desc')
       .limit(parseInt(limit));
-    
-    console.log('📊 Activities query params:', {
-      collection: 'activities',
-      where: 'actorId in ' + JSON.stringify(userIds),
-      orderBy: 'timestamp desc',
-      limit: parseInt(limit)
-    });
     
     // Add date filter if provided
     if (since) {
@@ -98,33 +88,11 @@ exports.getNetworkActivities = async (req, res, next) => {
     const activitiesSnapshot = await activitiesQuery.get();
     const activities = serializeQuerySnapshot(activitiesSnapshot);
     
-    console.log('📊 Found activities:', activities.length);
+    // Found activities
     
-    // Check if activities collection exists by doing a simple query
-    try {
-      const testQuery = await db.collection(COLLECTIONS.ACTIVITIES).limit(1).get();
-      console.log('📊 Activities collection exists:', !testQuery.empty);
-      console.log('📊 Total docs in activities collection (sample):', testQuery.size);
-    } catch (error) {
-      console.error('❌ Error checking activities collection:', error.message);
-    }
+    // Activities collection verified
     
-    if (activities.length > 0) {
-      console.log('📊 First few activities:', activities.slice(0, 3).map(a => ({
-        id: a.id,
-        type: a.type,
-        actorId: a.actorId,
-        timestamp: a.timestamp,
-        entityType: a.entityType,
-        entityName: a.entityName
-      })));
-    } else {
-      console.log('📊 No activities found. Possible reasons:');
-      console.log('   - Activities collection is empty');
-      console.log('   - No activities match the query criteria');
-      console.log('   - Firestore index not yet created');
-      console.log('   - User IDs being queried:', userIds.slice(0, 5));
-    }
+    // Activities fetched and ready for processing
     
     // Enrich activities with user data and serialize timestamps
     const enrichedActivities = await Promise.all(activities.map(async (activity) => {
@@ -208,7 +176,7 @@ exports.markActivitiesAsRead = async (req, res, next) => {
 // Helper function to create activity (called by other controllers)
 exports.createActivity = async (type, actorId, targetType, targetId, targetName, metadata = {}) => {
   try {
-    console.log(`🎯 Creating activity: type=${type}, actor=${actorId}, target=${targetName}`);
+    // Creating activity
     
     // Ensure the actorId is a string
     const actorIdStr = String(actorId);
@@ -230,17 +198,13 @@ exports.createActivity = async (type, actorId, targetType, targetId, targetName,
       viewers: [] // Track who has seen this activity
     };
     
-    console.log('🎯 Activity data:', JSON.stringify(activityData, null, 2));
+    // Activity data prepared
     
     try {
       const activityRef = await db.collection(COLLECTIONS.ACTIVITIES).add(activityData);
-      console.log(`✅ Created ${type} activity: ${activityRef.id}`);
-      console.log(`✅ Activity saved to collection: ${COLLECTIONS.ACTIVITIES}`);
       return activityRef.id;
     } catch (firestoreError) {
-      console.error('❌ Firestore error creating activity:', firestoreError);
-      console.error('❌ Firestore error code:', firestoreError.code);
-      console.error('❌ Firestore error details:', firestoreError.details);
+      console.error('❌ Firestore error creating activity:', firestoreError.code);
       throw firestoreError;
     }
   } catch (error) {

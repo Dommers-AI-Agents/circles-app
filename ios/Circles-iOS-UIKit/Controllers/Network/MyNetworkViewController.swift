@@ -23,6 +23,43 @@ class MyNetworkViewController: BaseViewController {
         return control
     }()
     
+    private let findContactsBar: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.background
+        view.layer.cornerRadius = 12
+        view.layer.borderWidth = 1
+        view.layer.borderColor = UIColor.systemGray5.cgColor
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let findContactsLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Find Contacts"
+        label.font = .systemFont(ofSize: 16, weight: .medium)
+        label.textColor = Constants.Colors.primary
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let findContactsIcon: UIImageView = {
+        let imageView = UIImageView()
+        imageView.image = UIImage(systemName: "person.badge.plus")
+        imageView.tintColor = Constants.Colors.primary
+        imageView.contentMode = .scaleAspectFit
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        return imageView
+    }()
+    
+    private let findContactsChevron: UIImageView = {
+        let imageView = UIImageView()
+        imageView.image = UIImage(systemName: "chevron.right")
+        imageView.tintColor = Constants.Colors.secondaryLabel
+        imageView.contentMode = .scaleAspectFit
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        return imageView
+    }()
+    
     private let containerView: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -49,6 +86,14 @@ class MyNetworkViewController: BaseViewController {
         
         // Check if user needs notification prompt for connections
         NotificationPromptManager.shared.checkAndPromptIfNeeded(in: self, context: .connections)
+        
+        // Listen for contacts import notification
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleShowContactsImport),
+            name: NSNotification.Name("ShowContactsImport"),
+            object: nil
+        )
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -109,7 +154,13 @@ class MyNetworkViewController: BaseViewController {
         
         view.addSubview(searchBar)
         view.addSubview(segmentedControl)
+        view.addSubview(findContactsBar)
         view.addSubview(containerView)
+        
+        // Add subviews to findContactsBar
+        findContactsBar.addSubview(findContactsIcon)
+        findContactsBar.addSubview(findContactsLabel)
+        findContactsBar.addSubview(findContactsChevron)
         
         NSLayoutConstraint.activate([
             searchBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
@@ -121,7 +172,26 @@ class MyNetworkViewController: BaseViewController {
             segmentedControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             segmentedControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             
-            containerView.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 16),
+            findContactsBar.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 16),
+            findContactsBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            findContactsBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            findContactsBar.heightAnchor.constraint(equalToConstant: 56),
+            
+            // Find Contacts Bar internal layout
+            findContactsIcon.leadingAnchor.constraint(equalTo: findContactsBar.leadingAnchor, constant: 16),
+            findContactsIcon.centerYAnchor.constraint(equalTo: findContactsBar.centerYAnchor),
+            findContactsIcon.widthAnchor.constraint(equalToConstant: 24),
+            findContactsIcon.heightAnchor.constraint(equalToConstant: 24),
+            
+            findContactsLabel.leadingAnchor.constraint(equalTo: findContactsIcon.trailingAnchor, constant: 12),
+            findContactsLabel.centerYAnchor.constraint(equalTo: findContactsBar.centerYAnchor),
+            
+            findContactsChevron.trailingAnchor.constraint(equalTo: findContactsBar.trailingAnchor, constant: -16),
+            findContactsChevron.centerYAnchor.constraint(equalTo: findContactsBar.centerYAnchor),
+            findContactsChevron.widthAnchor.constraint(equalToConstant: 16),
+            findContactsChevron.heightAnchor.constraint(equalToConstant: 16),
+            
+            containerView.topAnchor.constraint(equalTo: findContactsBar.bottomAnchor, constant: 16),
             containerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             containerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             containerView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
@@ -129,6 +199,11 @@ class MyNetworkViewController: BaseViewController {
         
         searchBar.delegate = self
         segmentedControl.addTarget(self, action: #selector(segmentChanged), for: .valueChanged)
+        
+        // Add tap gesture to Find Contacts bar
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(findContactsTapped))
+        findContactsBar.addGestureRecognizer(tapGesture)
+        findContactsBar.isUserInteractionEnabled = true
     }
     
     private func setupChildViewControllers() {
@@ -152,6 +227,57 @@ class MyNetworkViewController: BaseViewController {
     @objc private func showConnectionMenu() {
         // Directly show the share sheet without a menu
         shareConnectionInvite()
+    }
+    
+    @objc private func findContactsTapped() {
+        // Check if contacts permission is already granted
+        let contactsStatus = ContactsService.shared.checkContactsPermission()
+        
+        if contactsStatus == .authorized {
+            // Permission already granted, show contacts list
+            showContactsList()
+        } else if contactsStatus == .notDetermined {
+            // Request permission first
+            ContactsService.shared.requestContactsPermission { [weak self] granted in
+                if granted {
+                    self?.showContactsList()
+                } else {
+                    self?.showContactsPermissionDenied()
+                }
+            }
+        } else {
+            // Permission denied or restricted
+            showContactsPermissionDenied()
+        }
+    }
+    
+    private func showContactsList() {
+        let contactsVC = FindContactsViewController()
+        let navController = UINavigationController(rootViewController: contactsVC)
+        navController.modalPresentationStyle = .fullScreen
+        present(navController, animated: true)
+    }
+    
+    private func showContactsPermissionDenied() {
+        let alert = UIAlertController(
+            title: "Contacts Access Required",
+            message: "To find and invite your contacts, please enable contacts access in Settings.",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Open Settings", style: .default) { _ in
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(url)
+            }
+        })
+        
+        present(alert, animated: true)
+    }
+    
+    @objc private func handleShowContactsImport() {
+        // Trigger the find contacts flow when coming from suggested users overlay
+        findContactsTapped()
     }
     
     

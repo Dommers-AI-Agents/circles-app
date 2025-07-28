@@ -81,6 +81,9 @@ router.route('/friend/:id')
 router.route('/:id/circles')
   .get(getUserPublicCircles);
 
+router.route('/me')
+  .put(updateUser);
+
 router.route('/:id')
   .get(getUser);
 

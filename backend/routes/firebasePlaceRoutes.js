@@ -70,6 +70,31 @@ router.route('/:id/track-view')
 router.route('/:id/move')
   .post(movePlace);
 
+// Mark place as viewed
+router.route('/:id/mark-viewed')
+  .post(async (req, res) => {
+    try {
+      const userId = req.user.firebaseDocId || req.user.uid;
+      const { id: placeId } = req.params;
+      const { circleId } = req.body;
+      
+      const activityService = require('../services/activityService');
+      await activityService.markPlaceAsViewed(userId, placeId, circleId);
+      
+      res.status(200).json({
+        success: true,
+        message: 'Place marked as viewed'
+      });
+    } catch (error) {
+      console.error('Error marking place as viewed:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to mark place as viewed',
+        error: error.message
+      });
+    }
+  });
+
 router.route('/:id')
   .get(getPlace)
   .put(updatePlace)

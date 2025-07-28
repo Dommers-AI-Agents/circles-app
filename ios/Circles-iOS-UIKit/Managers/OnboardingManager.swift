@@ -30,7 +30,7 @@ enum TutorialStep: String, CaseIterable {
     var description: String {
         switch self {
         case .welcome:
-            return "We've created some starter circles for you! Tap the + button to create your own custom circle"
+            return "Start building your collection of favorite places. Tap the + button to create your first circle"
         case .createCircle:
             return "Give your circle a unique name like 'Best Coffee Shops' or 'Date Night Spots' and choose a category"
         case .addPlace:
@@ -52,6 +52,8 @@ class OnboardingManager {
     private let completedTutorialStepsKey = "completedTutorialSteps"
     private let tutorialStartDateKey = "tutorialStartDate"
     private let shouldShowTutorialKey = "shouldShowTutorial"
+    private let hasShownContactsPermissionKey = "hasShownContactsPermission"
+    private let shouldShowSuggestedUsersKey = "shouldShowSuggestedUsers"
     
     // Current tutorial state
     private var completedSteps: Set<String> {
@@ -67,6 +69,19 @@ class OnboardingManager {
     private var currentBubbleView: BubbleView?
     
     private init() {}
+    
+    /// Reset all onboarding flags for a new user
+    func resetForNewUser() {
+        UserDefaults.standard.removeObject(forKey: hasCompletedOnboardingKey)
+        UserDefaults.standard.removeObject(forKey: completedTutorialStepsKey)
+        UserDefaults.standard.removeObject(forKey: tutorialStartDateKey)
+        UserDefaults.standard.removeObject(forKey: shouldShowTutorialKey)
+        UserDefaults.standard.removeObject(forKey: hasShownContactsPermissionKey)
+        UserDefaults.standard.removeObject(forKey: shouldShowSuggestedUsersKey)
+        // Ensure the flag returns to default state (true)
+        shouldShowSuggestedUsers = true
+        Logger.info("Onboarding state reset for new user")
+    }
     
     // MARK: - Public Methods
     
@@ -273,7 +288,7 @@ class OnboardingManager {
     /// Check if user needs tutorial from backend
     func checkIfUserNeedsTutorial(completion: @escaping (Bool) -> Void) {
         APIService.shared.request(
-            endpoint: "/users/me/tutorial-status",
+            endpoint: "users/me/tutorial-status",
             method: .get
         ) { (result: Result<TutorialStatusResponse, APIError>) in
             switch result {
@@ -301,7 +316,7 @@ class OnboardingManager {
     /// Mark tutorial as completed on backend
     func markTutorialCompleted() {
         APIService.shared.request(
-            endpoint: "/users/me/complete-tutorial",
+            endpoint: "users/me/complete-tutorial",
             method: .post,
             body: [:] // Empty dictionary for POST with no body
         ) { (result: Result<SimpleAPIResponse, APIError>) in
@@ -312,5 +327,75 @@ class OnboardingManager {
                 Logger.error("Failed to mark tutorial completed: \(error)")
             }
         }
+    }
+    
+    // MARK: - Contacts Onboarding
+    
+    /// Check if contacts permission has been shown
+    var hasShownContactsPermission: Bool {
+        get {
+            return UserDefaults.standard.bool(forKey: hasShownContactsPermissionKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: hasShownContactsPermissionKey)
+        }
+    }
+    
+    /// Check if suggested users should be shown
+    var shouldShowSuggestedUsers: Bool {
+        get {
+            // Show if not explicitly set to false
+            if UserDefaults.standard.object(forKey: shouldShowSuggestedUsersKey) != nil {
+                return UserDefaults.standard.bool(forKey: shouldShowSuggestedUsersKey)
+            }
+            return true // Default to true for new users
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: shouldShowSuggestedUsersKey)
+        }
+    }
+    
+    /// Check if user needs contacts onboarding
+    func shouldShowContactsOnboarding() -> Bool {
+        // Show contacts permission if:
+        // 1. User is new (hasn't completed onboarding)
+        // 2. Haven't shown contacts permission before
+        return !hasCompletedOnboarding && !hasShownContactsPermission
+    }
+    
+    /// Mark contacts permission as shown
+    func markContactsPermissionShown() {
+        hasShownContactsPermission = true
+    }
+    
+    /// Check if user should see suggested users overlay
+    func shouldShowSuggestedUsersOverlay(connectionCount: Int) -> Bool {
+        // Show suggested users if:
+        // 1. User has 0 connections
+        // 2. Feature is enabled (not explicitly disabled)
+        // Always show for users with 0 connections, regardless of tutorial or onboarding status
+        
+        // If user has 0 connections and we haven't checked yet this session,
+        // enable the overlay to ensure they see it
+        if connectionCount == 0 && !hasCheckedSuggestedUsersThisSession {
+            hasCheckedSuggestedUsersThisSession = true
+            shouldShowSuggestedUsers = true
+            Logger.info("Auto-enabled suggested users overlay for user with 0 connections")
+        }
+        
+        return connectionCount == 0 && shouldShowSuggestedUsers
+    }
+    
+    // Track if we've checked this session to avoid overriding user's choice
+    private var hasCheckedSuggestedUsersThisSession = false
+    
+    /// Disable suggested users overlay
+    func disableSuggestedUsersOverlay() {
+        shouldShowSuggestedUsers = false
+    }
+    
+    /// Enable suggested users overlay (for testing or resetting)
+    func enableSuggestedUsersOverlay() {
+        shouldShowSuggestedUsers = true
     }
 }

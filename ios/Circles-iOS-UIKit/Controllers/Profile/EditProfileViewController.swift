@@ -389,17 +389,10 @@ class EditProfileViewController: BaseViewController {
             "displayName": displayName
         ]
         
-        if let firstName = firstNameTextField.text, !firstName.isEmpty {
-            updates["firstName"] = firstName
-        }
-        
-        if let lastName = lastNameTextField.text, !lastName.isEmpty {
-            updates["lastName"] = lastName
-        }
-        
-        if let phoneNumber = phoneNumberTextField.text, !phoneNumber.isEmpty {
-            updates["phoneNumber"] = phoneNumber
-        }
+        // Always include these fields to ensure they're saved
+        updates["firstName"] = firstNameTextField.text ?? ""
+        updates["lastName"] = lastNameTextField.text ?? ""
+        updates["phoneNumber"] = phoneNumberTextField.text ?? ""
         
         if let location = locationTextField.text, !location.isEmpty {
             updates["location"] = location
@@ -424,6 +417,15 @@ class EditProfileViewController: BaseViewController {
         let location = updates["location"] as? String
         let bio = updates["bio"] as? String
         
+        // Debug logging
+        print("🔍 EditProfileViewController - Sending updates:")
+        print("   - Display Name: \(displayName ?? "nil")")
+        print("   - First Name: \(updates["firstName"] ?? "nil")")
+        print("   - Last Name: \(updates["lastName"] ?? "nil")")
+        print("   - Phone Number: \(updates["phoneNumber"] ?? "nil")")
+        print("   - Location: \(location ?? "nil")")
+        print("   - Bio: \(bio ?? "nil")")
+        
         // Convert selected image to data if available
         var profileImageData: Data?
         if let image = selectedImage {
@@ -446,6 +448,13 @@ class EditProfileViewController: BaseViewController {
                 
                 switch result {
                 case .success(let updatedUser):
+                    // Debug logging
+                    print("✅ EditProfileViewController - Received updated user:")
+                    print("   - Display Name: \(updatedUser.displayName)")
+                    print("   - First Name: \(updatedUser.firstName ?? "nil")")
+                    print("   - Last Name: \(updatedUser.lastName ?? "nil")")
+                    print("   - Phone Number: \(updatedUser.phoneNumber ?? "nil")")
+                    
                     // Update the cached user
                     AuthService.shared.updateCurrentUser(updatedUser)
                     

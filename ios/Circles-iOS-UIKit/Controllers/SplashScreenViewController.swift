@@ -48,6 +48,18 @@ class SplashScreenViewController: BaseViewController {
         return label
     }()
     
+    private let taglineLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Tired of reviews? Trust yourself, create a Circle and add places."
+        label.font = UIFont.systemFont(ofSize: 14, weight: .regular)
+        label.textColor = .white.withAlphaComponent(0.8)
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.alpha = 0
+        return label
+    }()
+    
     private let loadingDotsContainer: UIStackView = {
         let stack = UIStackView()
         stack.axis = .horizontal
@@ -134,6 +146,7 @@ class SplashScreenViewController: BaseViewController {
         
         // Add all views
         view.addSubview(appNameLabel)
+        view.addSubview(taglineLabel)
         view.addSubview(loadingDotsContainer)
         view.addSubview(statusLabel)
         
@@ -159,8 +172,13 @@ class SplashScreenViewController: BaseViewController {
             appNameLabel.topAnchor.constraint(equalTo: logoContainerView.bottomAnchor, constant: 24),
             appNameLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             
+            // Tagline
+            taglineLabel.topAnchor.constraint(equalTo: appNameLabel.bottomAnchor, constant: 12),
+            taglineLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
+            taglineLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
+            
             // Loading dots
-            loadingDotsContainer.topAnchor.constraint(equalTo: appNameLabel.bottomAnchor, constant: 40),
+            loadingDotsContainer.topAnchor.constraint(equalTo: taglineLabel.bottomAnchor, constant: 30),
             loadingDotsContainer.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             
             // Status label
@@ -197,6 +215,11 @@ class SplashScreenViewController: BaseViewController {
         // Animate app name
         UIView.animate(withDuration: 0.3, delay: 0.1, options: .curveEaseOut) {
             self.appNameLabel.alpha = 1.0
+        }
+        
+        // Animate tagline
+        UIView.animate(withDuration: 0.3, delay: 0.15, options: .curveEaseOut) {
+            self.taglineLabel.alpha = 1.0
         }
         
         // Animate loading dots and status
@@ -291,6 +314,7 @@ class SplashScreenViewController: BaseViewController {
                 self?.logoImageView.transform = CGAffineTransform(scaleX: 1.1, y: 1.1)
                 self?.logoImageView.alpha = 0
                 self?.appNameLabel.alpha = 0
+                self?.taglineLabel.alpha = 0
                 self?.loadingDotsContainer.alpha = 0
                 self?.statusLabel.alpha = 0
             }) { _ in

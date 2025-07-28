@@ -118,6 +118,7 @@ class UserService {
             body["displayName"] = displayName
         }
         
+        // Always include these fields (even if empty) to ensure they're saved
         if let firstName = firstName {
             body["firstName"] = firstName
         }
@@ -141,6 +142,16 @@ class UserService {
         if let profilePictureUrl = profilePictureUrl {
             body["profilePicture"] = profilePictureUrl
         }
+        
+        // Debug logging
+        print("🔍 UserService - performUpdateProfile sending body:")
+        print("   - displayName: \(body["displayName"] ?? "nil")")
+        print("   - firstName: \(body["firstName"] ?? "nil")")
+        print("   - lastName: \(body["lastName"] ?? "nil")")
+        print("   - phoneNumber: \(body["phoneNumber"] ?? "nil")")
+        print("   - bio: \(body["bio"] ?? "nil")")
+        print("   - location: \(body["location"] ?? "nil")")
+        print("   - profilePicture: \(body["profilePicture"] ?? "nil")")
         
         // Only proceed if there are changes to make
         guard !body.isEmpty else {
@@ -175,6 +186,49 @@ class UserService {
         
         APIService.shared.request(
             endpoint: "users/me",
+            method: .put,
+            body: body,
+            requiresAuth: true
+        ) { [weak self] (result: Result<UserResponse, APIError>) in
+            guard let self = self else { return }
+            
+            switch result {
+            case .success(let response):
+                completion(.success(response.user))
+            case .failure(let error):
+                let mappedError = self.mapAPIErrorToUserError(error)
+                completion(.failure(mappedError))
+            }
+        }
+    }
+    
+    func updateNotificationPreferences(_ preferences: NotificationPreferences, completion: @escaping (Result<User, Error>) -> Void) {
+        let body: [String: Any] = [
+            "notificationPreferences": [
+                "newMessages": preferences.newMessages,
+                "newSuggestions": preferences.newSuggestions,
+                "newPlaces": preferences.newPlaces,
+                "connectionRequests": preferences.connectionRequests,
+                "circleInvites": preferences.circleInvites,
+                "newFollowers": preferences.newFollowers,
+                "dailyDigest": preferences.dailyDigest,
+                "dailySummary": preferences.dailySummary,
+                "summaryTime": preferences.summaryTime,
+                "timezone": preferences.timezone,
+                "socialActivity": preferences.socialActivity,
+                "discoveryPrompts": preferences.discoveryPrompts,
+                "milestones": preferences.milestones,
+                "weekendRecommendations": preferences.weekendRecommendations,
+                "reengagement": preferences.reengagement,
+                "frequency": preferences.frequency,
+                "quietHoursEnabled": preferences.quietHoursEnabled,
+                "quietHoursStart": preferences.quietHoursStart,
+                "quietHoursEnd": preferences.quietHoursEnd
+            ]
+        ]
+        
+        APIService.shared.request(
+            endpoint: "users/notification-preferences",
             method: .put,
             body: body,
             requiresAuth: true

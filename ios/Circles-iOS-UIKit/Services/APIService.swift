@@ -1,6 +1,15 @@
 import Foundation
 
 // MARK: - API Errors
+/**
+ Enhanced API error handling that parses server error responses to provide user-friendly messages.
+ 
+ Features:
+ - Parses server error responses to extract meaningful error messages
+ - Falls back to user-friendly status code messages when server response unavailable
+ - Polishes error message formatting (capitalization, punctuation)
+ - Provides context-appropriate error messages for different HTTP statuses
+ */
 enum APIError: Error, LocalizedError {
     case invalidURL
     case requestFailed(Error)
@@ -21,8 +30,8 @@ enum APIError: Error, LocalizedError {
             return "Request failed: \(error.localizedDescription)"
         case .invalidResponse:
             return "Invalid server response"
-        case .httpError(let statusCode, _):
-            return "HTTP Error: \(statusCode)"
+        case .httpError(let statusCode, let data):
+            return parseServerErrorMessage(statusCode: statusCode, data: data)
         case .decodingFailed(let error):
             return "Failed to decode response: \(error.localizedDescription)"
         case .noInternet:
@@ -37,6 +46,75 @@ enum APIError: Error, LocalizedError {
             return "Unknown error occurred"
         }
     }
+    
+    // MARK: - Server Error Message Parsing  
+    private func parseServerErrorMessage(statusCode: Int, data: Data?) -> String {
+        // Debug logging for error parsing
+        if let data = data, let rawResponse = String(data: data, encoding: .utf8) {
+            Logger.debug("APIError: Parsing error response - Status: \(statusCode), Response: \(rawResponse)")
+        }
+        
+        // Try to parse server error response
+        if let data = data,
+           let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
+            // Use server's error message if available
+            if !errorResponse.message.isEmpty {
+                Logger.debug("APIError: Using server message: \(errorResponse.message)")
+                // Make the message more user-friendly
+                return polishErrorMessage(errorResponse.message)
+            }
+            
+            // If there are specific errors, show the first one
+            if let errors = errorResponse.errors, !errors.isEmpty {
+                return polishErrorMessage(errors.first ?? "Server error occurred")
+            }
+        }
+        
+        // If we can't parse the response, try to extract a simple message
+        if let data = data,
+           let jsonObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let simpleMessage = jsonObject["message"] as? String {
+            return polishErrorMessage(simpleMessage)
+        }
+        
+        // Fallback to user-friendly status code messages
+        return userFriendlyStatusMessage(for: statusCode)
+    }
+    
+    private func polishErrorMessage(_ message: String) -> String {
+        // Capitalize first letter and ensure proper punctuation
+        var polished = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !polished.isEmpty {
+            polished = polished.prefix(1).uppercased() + polished.dropFirst()
+            if !polished.hasSuffix(".") && !polished.hasSuffix("!") && !polished.hasSuffix("?") {
+                polished += "."
+            }
+        }
+        return polished.isEmpty ? "An error occurred." : polished
+    }
+    
+    private func userFriendlyStatusMessage(for statusCode: Int) -> String {
+        switch statusCode {
+        case 400:
+            return "Invalid request. Please check your input and try again."
+        case 401:
+            return "You are not logged in. Please log in and try again."
+        case 403:
+            return "You don't have permission to perform this action."
+        case 404:
+            return "The requested resource could not be found."
+        case 409:
+            return "This action conflicts with existing data. Please try again."
+        case 422:
+            return "The provided data is invalid. Please check your input."
+        case 429:
+            return "Too many requests. Please wait a moment and try again."
+        case 500...599:
+            return "Server error occurred. Please try again later."
+        default:
+            return "An error occurred (Error \(statusCode)). Please try again."
+        }
+    }
 }
 
 // MARK: - API Environment
@@ -44,6 +122,16 @@ enum APIEnvironment {
     case development
     case staging
     case production
+    
+    // Static current environment based on build configuration
+    static var current: APIEnvironment {
+        #if DEBUG
+        // Use production environment even in DEBUG to connect to Firebase backend
+        return .production
+        #else
+        return .production
+        #endif
+    }
     
     var baseURL: String {
         switch self {
@@ -70,13 +158,8 @@ enum RequestMethod: String {
 class APIService {
     static let shared = APIService()
     
-    // Current environment
-    #if DEBUG
-    // Use production environment even in DEBUG to connect to Firebase backend
-    private var environment: APIEnvironment = .production
-    #else
-    private var environment: APIEnvironment = .production
-    #endif
+    // Current environment - defaults to static property but can be overridden
+    private var environment: APIEnvironment = APIEnvironment.current
     
     // Session and configuration
     private let session: URLSession
@@ -694,6 +777,15 @@ class APIService {
                 if self.logLevel == .verbose {
                     print("📡 API APIService: Attempting to decode response as \(T.self)")
                 }
+                
+                // Special logging for connections endpoint (only in verbose mode)
+                if endpoint == "connections" && self.logLevel == .verbose {
+                    print("🔍 APIService: Decoding connections response...")
+                    if let jsonString = String(data: data, encoding: .utf8) {
+                        print("📡 APIService: Full connections response: \(jsonString)")
+                    }
+                }
+                
                 let result = try self.decoder.decode(T.self, from: data)
                 if self.logLevel >= .minimal {
                     print("✅ SUCCESS APIService: Successfully decoded response for \(endpoint)")

@@ -382,6 +382,12 @@ class NetworkManager {
                             // Post notification to update badge count
                             NotificationCenter.default.post(name: .pendingConnectionsCountChanged, object: nil)
                             
+                            // Post notification for UI updates
+                            NotificationCenter.default.post(
+                                name: NSNotification.Name("ConnectionsChanged"),
+                                object: nil
+                            )
+                            
                             completion(.success(connection))
                         } else {
                             completion(.failure(APIError.invalidResponse))
@@ -468,6 +474,13 @@ class NetworkManager {
                     switch result {
                     case .success:
                         self.connections.removeAll { $0.id == connectionId }
+                        
+                        // Post notification for UI updates
+                        NotificationCenter.default.post(
+                            name: NSNotification.Name("ConnectionsChanged"),
+                            object: nil
+                        )
+                        
                         completion(.success(()))
                     case .failure(let error):
                         completion(.failure(error))
@@ -622,6 +635,8 @@ class NetworkManager {
     // MARK: - Connection Fetching (for UIKit compatibility)
     
     func fetchConnections(completion: @escaping ([Connection]?, Error?) -> Void) {
+        print("🔍 NetworkManager.fetchConnections: Starting to fetch connections...")
+        
         // Load connections from server
         apiService.request(
             endpoint: "connections",
@@ -631,10 +646,15 @@ class NetworkManager {
                 DispatchQueue.main.async(flags: .barrier) {
                     switch result {
                     case .success(let response):
+                        print("✅ NetworkManager.fetchConnections: Received response with success=\(response.success)")
+                        print("📊 NetworkManager.fetchConnections: Total connections in response: \(response.connections.count)")
+                        
                         let connections = response.connections
                         
                         // Filter out invalid self-connections (where current user is connected to themselves)
                         let currentUserId = AuthService.shared.getUserId() ?? ""
+                        print("🔍 NetworkManager.fetchConnections: Current user ID: \(currentUserId)")
+                        
                         let validConnections = connections.filter { connection in
                             // A self-connection is when both userId and connectedUserId are the current user
                             let isSelfConnection = (connection.userId == currentUserId && connection.connectedUserId == currentUserId)
@@ -655,11 +675,18 @@ class NetworkManager {
                             return !isSelfConnection
                         }
                         
+                        print("📊 NetworkManager.fetchConnections: Valid connections after filtering: \(validConnections.count)")
+                        
                         self.connections = validConnections.filter { $0.status == .accepted }
                         self.pendingConnections = validConnections.filter { $0.status == .pending }
+                        
+                        print("📊 NetworkManager.fetchConnections: Accepted connections: \(self.connections.count)")
+                        print("📊 NetworkManager.fetchConnections: Pending connections: \(self.pendingConnections.count)")
+                        
                         // Return only accepted connections
                         completion(self.connections, nil)
                     case .failure(let error):
+                        print("❌ NetworkManager.fetchConnections: Failed with error: \(error)")
                         completion(nil, error)
                     }
                 }
@@ -668,17 +695,31 @@ class NetworkManager {
     }
     
     func fetchActiveConnections(limit: Int = 10, completion: @escaping ([Connection]?, Error?) -> Void) {
+        print("🔍 NetworkManager: fetchActiveConnections called with limit: \(limit)")
+        
         // Load active connections sorted by activity
+        let queryParams = ["limit": "\(limit)"]
+        
         apiService.request(
-            endpoint: "connections/active?limit=\(limit)",
+            endpoint: "connections/active",
             method: .get,
+            queryParams: queryParams,
             requiresAuth: true,
             completion: createAPICompletion { (result: Result<ConnectionsResponse, Error>) in
                 DispatchQueue.main.async(flags: .barrier) {
                     switch result {
                     case .success(let response):
+                        print("✅ NetworkManager: fetchActiveConnections received \(response.connections.count) connections")
+                        // Log first few connections to verify sorting and scores
+                        for (index, connection) in response.connections.prefix(3).enumerated() {
+                            let messageInfo = connection.lastMessageAt != nil ? "has messages" : "no messages"
+                            let activityInfo = connection.hasRecentPlace == true ? "has recent activity" : "no recent activity"
+                            let scoreInfo = connection.connectionScore != nil ? ", score: \(connection.connectionScore!)" : ", no score"
+                            print("   \(index + 1). \(connection.connectedUser?.displayName ?? "Unknown") - \(messageInfo), \(activityInfo)\(scoreInfo)")
+                        }
                         completion(response.connections, nil)
                     case .failure(let error):
+                        print("❌ NetworkManager: fetchActiveConnections failed: \(error)")
                         completion(nil, error)
                     }
                 }
@@ -722,6 +763,44 @@ class NetworkManager {
         )
     }
     
+    func markCircleActivitiesAsViewed(circleId: String, completion: @escaping (Error?) -> Void) {
+        apiService.request(
+            endpoint: "circles/\(circleId)/mark-activities-viewed",
+            method: .post,
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<EmptyResponse, Error>) in
+                DispatchQueue.main.async(flags: .barrier) {
+                    switch result {
+                    case .success:
+                        completion(nil)
+                    case .failure(let error):
+                        completion(error)
+                    }
+                }
+            }
+        )
+    }
+    
+    func markPlaceAsViewed(placeId: String, circleId: String, completion: @escaping (Error?) -> Void) {
+        let body = ["circleId": circleId]
+        apiService.request(
+            endpoint: "places/\(placeId)/mark-viewed",
+            method: .post,
+            body: body,
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<EmptyResponse, Error>) in
+                DispatchQueue.main.async(flags: .barrier) {
+                    switch result {
+                    case .success:
+                        completion(nil)
+                    case .failure(let error):
+                        completion(error)
+                    }
+                }
+            }
+        )
+    }
+    
     func removeConnection(connectionId: String, completion: @escaping (Error?) -> Void) {
         apiService.request(
             endpoint: "connections/\(connectionId)",
@@ -734,6 +813,13 @@ class NetworkManager {
                         // Remove from local list
                         self.connections.removeAll { $0.id == connectionId }
                         self.pendingConnections.removeAll { $0.id == connectionId }
+                        
+                        // Post notification for UI updates
+                        NotificationCenter.default.post(
+                            name: NSNotification.Name("ConnectionsChanged"),
+                            object: nil
+                        )
+                        
                         completion(nil)
                     case .failure(let error):
                         completion(error)
@@ -859,13 +945,31 @@ struct ConnectionsResponse: Codable {
         success = try container.decode(Bool.self, forKey: .success)
         
         // Try to decode from 'connections' key first, fallback to 'data'
-        if let connections = try? container.decode([Connection].self, forKey: .connections) {
-            self.connections = connections
-        } else if let data = try? container.decode([Connection].self, forKey: .data) {
-            self.connections = data
-        } else {
-            // If neither key exists or both are empty, use empty array
-            self.connections = []
+        do {
+            self.connections = try container.decode([Connection].self, forKey: .connections)
+            print("✅ NetworkManager: Successfully decoded \(self.connections.count) connections from 'connections' key")
+        } catch let connectionsError {
+            print("⚠️ NetworkManager: Failed to decode from 'connections' key: \(connectionsError)")
+            
+            do {
+                self.connections = try container.decode([Connection].self, forKey: .data)
+                print("✅ NetworkManager: Successfully decoded \(self.connections.count) connections from 'data' key")
+            } catch let dataError {
+                print("❌ NetworkManager: Failed to decode from 'data' key: \(dataError)")
+                
+                // Check if keys exist
+                let allKeys = container.allKeys.map { $0.rawValue }.joined(separator: ", ")
+                print("❌ NetworkManager: Available keys in response: \(allKeys)")
+                
+                // Try to get raw value to see what's there
+                if let rawConnections = try? container.decodeIfPresent(String.self, forKey: .connections) {
+                    print("❌ NetworkManager: Raw 'connections' value (as string): \(rawConnections)")
+                }
+                
+                // If neither key exists or both fail to decode, use empty array
+                self.connections = []
+                print("⚠️ NetworkManager: Using empty connections array as fallback")
+            }
         }
     }
     

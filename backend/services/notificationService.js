@@ -16,39 +16,76 @@ class NotificationService {
   // Send notification to a specific user
   async sendToUser(userId, notification) {
     try {
+      // Sending notification to user
+      
       // Get user document
       const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
       if (!userDoc.exists) {
-        console.log(`🔔 User ${userId} not found`);
+        console.log(`🔔 User ${userId} not found in Firestore`);
         return;
       }
 
       const userData = userDoc.data();
+      
       const { deviceTokens = [], notificationPreferences = {} } = userData;
+      
+      if (deviceTokens.length > 0) {
+        // Device tokens retrieved
+      }
 
       if (deviceTokens.length === 0) {
-        console.log(`🔔 No device tokens for user ${userId}`);
-        return;
+        return { success: false, error: 'No device tokens' };
       }
 
       // Check if this notification type is enabled
       if (!this.isNotificationEnabled(notification.type, notificationPreferences)) {
-        console.log(`🔔 Notification type ${notification.type} disabled for user ${userId}`);
         return;
       }
 
       // Check quiet hours
       if (this.isInQuietHours(notificationPreferences)) {
-        console.log(`🔔 User ${userId} is in quiet hours`);
         return;
+      }
+
+      // Determine category based on notification type
+      let category = null;
+      switch (notification.type) {
+        case 'new_message':
+          category = 'NEW_MESSAGE';
+          break;
+        case 'connection_request':
+          category = 'CONNECTION_REQUEST';
+          break;
+        case 'new_suggestion':
+          category = 'PLACE_SUGGESTION';
+          break;
+        case 'new_place':
+        case 'place_like':
+        case 'place_comment':
+          category = 'ACTIVITY_UPDATE';
+          break;
+        case 'daily_summary':
+          category = 'DAILY_SUMMARY';
+          break;
+        case 'discovery_prompt':
+          category = 'DISCOVERY_PROMPT';
+          break;
+        case 'weekend_recommendations':
+          category = 'WEEKEND_RECOMMENDATIONS';
+          break;
+        case 'social_activity':
+          category = 'SOCIAL_ACTIVITY';
+          break;
+        case 'milestone':
+          category = 'MILESTONE';
+          break;
       }
 
       // Prepare the message with enhanced iOS configuration
       const message = {
         notification: {
           title: notification.title,
-          body: notification.body,
-          badge: notification.badge?.toString() || '1'
+          body: notification.body
         },
         data: notification.data || {},
         apns: {
@@ -63,7 +100,8 @@ class NotificationService {
               sound: 'default',
               'content-available': 1,
               'mutable-content': 1, // Allows notification service extension to modify content
-              'interruption-level': 'active' // iOS 15+ for prominent notifications
+              'interruption-level': 'active', // iOS 15+ for prominent notifications
+              ...(category && { category }) // Add category if defined
             }
           },
           headers: {
@@ -75,12 +113,12 @@ class NotificationService {
 
       // Send to all device tokens
       const tokens = deviceTokens.map(dt => dt.token);
-      const response = await this.messaging.sendMulticast({
+      const response = await this.messaging.sendEachForMulticast({
         ...message,
         tokens: tokens
       });
 
-      console.log(`🔔 Sent notification to ${response.successCount}/${tokens.length} devices for user ${userId}`);
+      // Notification sent successfully
       
       // Handle failed tokens
       if (response.failureCount > 0) {
@@ -88,7 +126,6 @@ class NotificationService {
         response.responses.forEach((resp, idx) => {
           if (!resp.success) {
             failedTokens.push(tokens[idx]);
-            console.log(`🔔 Failed to send to token: ${resp.error?.message}`);
           }
         });
         
@@ -132,7 +169,12 @@ class NotificationService {
       'new_suggestion': 'newSuggestions',
       'new_place': 'newPlaces',
       'connection_request': 'connectionRequests',
-      'circle_invite': 'circleInvites'
+      'circle_invite': 'circleInvites',
+      'daily_summary': 'dailySummary',
+      'discovery_prompt': 'discoveryPrompts',
+      'weekend_recommendations': 'weekendRecommendations',
+      'social_activity': 'socialActivity',
+      'milestone': 'milestones'
     };
 
     const preferencesKey = typeMap[type];
@@ -181,7 +223,7 @@ class NotificationService {
         updatedAt: new Date().toISOString()
       });
 
-      console.log(`🔔 Removed ${invalidTokens.length} invalid tokens for user ${userId}`);
+      // Invalid tokens removed
     } catch (error) {
       console.error('🔔 Error removing invalid tokens:', error);
     }
@@ -281,7 +323,6 @@ class NotificationService {
     const validationErrors = validateNotification(notificationData);
     if (validationErrors.length === 0) {
       const notificationRef = await this.db.collection(COLLECTIONS.NOTIFICATIONS).add(notificationData);
-      console.log(`🔔 Created notification document for connection request from ${fromUserName} to user ${toUserId}`);
       
       // Send SSE event for real-time notification count update
       sseService.notifyUser(toUserId, 'new_notification', {
@@ -377,12 +418,12 @@ class NotificationService {
       };
 
       const tokens = deviceTokens.map(dt => dt.token);
-      await this.messaging.sendMulticast({
+      await this.messaging.sendEachForMulticast({
         ...message,
         tokens: tokens
       });
 
-      console.log(`🔔 Updated badge count to ${totalUnread} for user ${userId}`);
+      // Badge count updated
     } catch (error) {
       console.error('🔔 Error updating badge count:', error);
     }

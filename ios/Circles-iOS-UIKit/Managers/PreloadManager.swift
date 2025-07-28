@@ -104,16 +104,18 @@ class PreloadManager {
         if AuthService.shared.isTokenExpired() {
             print("⚠️ PreloadManager: Token is expired, attempting refresh before preload")
             AuthService.shared.refreshToken { [weak self] result in
+                guard let self = self else { return }
+                
                 switch result {
                 case .success():
                     print("✅ PreloadManager: Token refreshed successfully, proceeding with preload")
-                    // Retry preload after successful refresh
-                    DispatchQueue.main.async {
-                        self?.preloadAllData(progressHandler: progressHandler, completion: completion)
-                    }
+                    // Important: Reset the isPreloading flag before continuing
+                    self.isPreloading = false
+                    // Continue with the preload process inline rather than recursively
+                    self.performPreloadAfterTokenRefresh(progressHandler: progressHandler, completion: completion)
                 case .failure(let error):
                     print("❌ PreloadManager: Token refresh failed: \(error)")
-                    self?.isPreloading = false
+                    self.isPreloading = false
                     let refreshError = NSError(domain: "PreloadManager", code: -3, userInfo: [
                         NSLocalizedDescriptionKey: "Failed to refresh authentication token",
                         NSUnderlyingErrorKey: error
@@ -124,231 +126,8 @@ class PreloadManager {
             return
         }
         
-        // Add timeout protection - 20 seconds (increased from 10)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
-            guard let self = self else { return }
-            guard self.isPreloading else { return }
-            
-            print("⏰ PreloadManager: Loading timeout reached")
-            self.logDetailedErrorInfo()
-            
-            self.isPreloading = false
-            let error = NSError(domain: "PreloadManager", code: -1, userInfo: [
-                NSLocalizedDescriptionKey: "Loading timeout"
-            ])
-            completion(.failure(error))
-        }
-        updateProgress(status: "Loading your profile...")
-        
-        // Create dispatch group for parallel loading
-        let loadGroup = DispatchGroup()
-        
-        // Variables to store loaded data
-        var loadedUser: User?
-        var loadedCircles: [Circle] = []
-        var loadedNetworkCircles: [Circle] = []
-        var loadedPlaces: [Place] = []
-        var loadedConnections: [Connection] = []
-        var unreadCount = 0
-        var pendingCount = 0
-        
-        var loadError: Error?
-        
-        // 1. Load User Profile (with retry)
-        loadGroup.enter()
-        let userStartTime = Date()
-        
-        retryTask(taskName: "user", operation: { completion in
-            AuthService.shared.fetchCurrentUser(completion: completion)
-        }) { [weak self] result in
-            defer { loadGroup.leave() }
-            let duration = Date().timeIntervalSince(userStartTime)
-            self?.taskCompletionTimes["user"] = Date()
-            
-            switch result {
-            case .success(let user):
-                loadedUser = user
-                self?.incrementProgress(status: "Loading your circles...")
-                print("✅ PreloadManager: User profile loaded")
-            case .failure(let error):
-                self?.taskErrors["user"] = error
-                loadError = error
-                print("❌ PreloadManager: Failed to load user profile: \(error.localizedDescription)")
-            }
-        }
-        
-        // 2. Load Circles (with retry)
-        loadGroup.enter()
-        let circlesStartTime = Date()
-        
-        retryTask(taskName: "circles", operation: { completion in
-            CircleService.shared.fetchUserCircles(completion: completion)
-        }) { [weak self] result in
-            defer { loadGroup.leave() }
-            let duration = Date().timeIntervalSince(circlesStartTime)
-            self?.taskCompletionTimes["circles"] = Date()
-            
-            switch result {
-            case .success(let circles):
-                loadedCircles = circles
-                self?.incrementProgress(status: "Loading your places...")
-                print("✅ PreloadManager: Loaded \(circles.count) circles")
-            case .failure(let error):
-                self?.taskErrors["circles"] = error
-                loadError = error
-                print("❌ PreloadManager: Failed to load circles: \(error.localizedDescription)")
-            }
-        }
-        
-        // 3. Load Network Circles (circles shared with user by others)
-        loadGroup.enter()
-        let networkCirclesStartTime = Date()
-        
-        struct NetworkCirclesResponse: Codable {
-            let success: Bool
-            let data: [Circle]
-        }
-        
-        retryTask(taskName: "networkCircles", operation: { (completion: @escaping (Result<[Circle], Error>) -> Void) in
-            APIService.shared.request(
-                endpoint: "network/circles-shared-with-me",
-                method: .get,
-                requiresAuth: true,
-                completion: { (result: Result<NetworkCirclesResponse, APIError>) in
-                    switch result {
-                    case .success(let response):
-                        completion(.success(response.data))
-                    case .failure(let error):
-                        completion(.failure(error))
-                    }
-                }
-            )
-        }) { [weak self] result in
-            defer { loadGroup.leave() }
-            let duration = Date().timeIntervalSince(networkCirclesStartTime)
-            self?.taskCompletionTimes["networkCircles"] = Date()
-            
-            switch result {
-            case .success(let circles):
-                loadedNetworkCircles = circles
-                self?.incrementProgress(status: "Loading connections...")
-                print("✅ PreloadManager: Loaded \(circles.count) network circles")
-            case .failure(let error):
-                self?.taskErrors["networkCircles"] = error
-                // Don't fail entire preload for network circles
-                print("⚠️ PreloadManager: Failed to load network circles, continuing without them")
-            }
-        }
-        
-        // 4. Load All Places (will be loaded after circles complete)
-        // We'll handle this in the notify block to avoid deadlock
-        
-        // 5. Load Connections (with retry)
-        loadGroup.enter()
-        let connectionsStartTime = Date()
-        retryTask(taskName: "connections", operation: { (completion: @escaping (Result<[Connection], Error>) -> Void) in
-            NetworkManager.shared.fetchConnections { connections, error in
-                if let error = error {
-                    completion(.failure(error))
-                } else {
-                    completion(.success(connections ?? []))
-                }
-            }
-        }) { [weak self] result in
-            defer { loadGroup.leave() }
-            let duration = Date().timeIntervalSince(connectionsStartTime)
-            self?.taskCompletionTimes["connections"] = Date()
-            
-            switch result {
-            case .success(let connections):
-                loadedConnections = connections.filter { $0.status == ConnectionStatus.accepted }
-                self?.incrementProgress(status: "Checking messages...")
-                print("✅ PreloadManager: Loaded \(loadedConnections.count) connections")
-            case .failure(let error):
-                self?.taskErrors["connections"] = error
-                loadError = error
-                print("❌ PreloadManager: Failed to load connections")
-            }
-        }
-        
-        // 6. Load Unread Message Count
-        loadGroup.enter()
-        let messagesStartTime = Date()
-        MessagingManager.shared.updateUnreadCount()
-        // Give it a moment to update, then read the value
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            defer { loadGroup.leave() }
-            let duration = Date().timeIntervalSince(messagesStartTime)
-            self?.taskCompletionTimes["messages"] = Date()
-            
-            unreadCount = MessagingManager.shared.unreadCount
-            self?.incrementProgress(status: "Checking connection requests...")
-            print("✅ PreloadManager: Unread messages: \(unreadCount)")
-        }
-        
-        // 7. Load Pending Connection Count
-        loadGroup.enter()
-        let pendingStartTime = Date()
-        NetworkManager.shared.getPendingConnectionsCount { [weak self] count in
-            defer { loadGroup.leave() }
-            let duration = Date().timeIntervalSince(pendingStartTime)
-            self?.taskCompletionTimes["pending"] = Date()
-            
-            pendingCount = count
-            self?.incrementProgress(status: "Almost ready...")
-            print("✅ PreloadManager: Pending connections: \(count)")
-        }
-        
-        // Wait for initial tasks to complete
-        loadGroup.notify(queue: .main) { [weak self] in
-            guard let self = self else { return }
-            
-            let mainTasksDuration = Date().timeIntervalSince(self.startTime)
-            print("🏁 PreloadManager: Main tasks completed")
-            
-            // Check for errors first
-            if let error = loadError {
-                self.isPreloading = false
-                print("❌ PreloadManager: Preload failed with error: \(error)")
-                self.logDetailedErrorInfo()
-                completion(.failure(error))
-                return
-            }
-            
-            // Now load places based on the circles we got (both user's and network circles)
-            let allCircles = loadedCircles + loadedNetworkCircles
-            if !allCircles.isEmpty {
-                self.progressHandler?(0.9, "Loading your places...")
-                self.fetchAllPlacesFromCircles(circles: allCircles) { places in
-                    loadedPlaces = places
-                    print("✅ PreloadManager: Loaded \(places.count) places from \(allCircles.count) circles")
-                    
-                    // Complete the preload
-                    self.completePreload(
-                        user: loadedUser,
-                        circles: loadedCircles,
-                        networkCircles: loadedNetworkCircles,
-                        places: loadedPlaces,
-                        connections: loadedConnections,
-                        unreadCount: unreadCount,
-                        pendingCount: pendingCount,
-                        completion: completion
-                    )
-                }
-            } else {
-                // No circles, complete without places
-                self.completePreload(
-                    user: loadedUser,
-                    circles: loadedCircles,
-                    networkCircles: loadedNetworkCircles,
-                    places: loadedPlaces,
-                    connections: loadedConnections,
-                    unreadCount: unreadCount,
-                    pendingCount: pendingCount,
-                    completion: completion
-                )
-            }
-        }
+        // Use the new extracted method for the main preload logic
+        continuePreloadProcess(progressHandler: progressHandler, completion: completion)
     }
     
     func getPreloadedData() -> PreloadedData? {
@@ -463,6 +242,261 @@ class PreloadManager {
     }
     
     // MARK: - Private Methods
+    
+    private func performPreloadAfterTokenRefresh(progressHandler: @escaping (Double, String) -> Void,
+                                                completion: @escaping (Result<PreloadedData, Error>) -> Void) {
+        // Check cache first (in case it was populated during token refresh)
+        if let cachedData = loadFromCache() {
+            print("🚀 PreloadManager: Using cached data after token refresh")
+            self.preloadedData = cachedData
+            progressHandler(1.0, "Ready!")
+            completion(.success(cachedData))
+            return
+        }
+        
+        // Restart the preload process
+        isPreloading = true
+        completedTasks = 0
+        taskErrors.removeAll()
+        taskCompletionTimes.removeAll()
+        retryAttempts.removeAll()
+        self.progressHandler = progressHandler
+        
+        print("🚀 PreloadManager: Starting data preload after token refresh")
+        
+        // Continue with the normal preload flow
+        continuePreloadProcess(progressHandler: progressHandler, completion: completion)
+    }
+    
+    private func continuePreloadProcess(progressHandler: @escaping (Double, String) -> Void,
+                                       completion: @escaping (Result<PreloadedData, Error>) -> Void) {
+        // This contains the main preload logic extracted from preloadAllData
+        updateProgress(status: "Loading your profile...")
+        
+        // Create dispatch group for parallel loading
+        let loadGroup = DispatchGroup()
+        
+        // Variables to store loaded data
+        var loadedUser: User?
+        var loadedCircles: [Circle] = []
+        var loadedNetworkCircles: [Circle] = []
+        var loadedPlaces: [Place] = []
+        var loadedConnections: [Connection] = []
+        var unreadCount = 0
+        var pendingCount = 0
+        
+        var loadError: Error?
+        
+        // Add timeout protection - 20 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
+            guard let self = self else { return }
+            guard self.isPreloading else { return }
+            
+            print("⏰ PreloadManager: Loading timeout reached")
+            self.logDetailedErrorInfo()
+            
+            self.isPreloading = false
+            let error = NSError(domain: "PreloadManager", code: -1, userInfo: [
+                NSLocalizedDescriptionKey: "Loading timeout"
+            ])
+            completion(.failure(error))
+        }
+        
+        // [Rest of the preload logic goes here - copy from original preloadAllData method]
+        // 1. Load User Profile (with retry)
+        loadGroup.enter()
+        let userStartTime = Date()
+        
+        retryTask(taskName: "user", operation: { completion in
+            AuthService.shared.fetchCurrentUser(completion: completion)
+        }) { [weak self] result in
+            defer { loadGroup.leave() }
+            let duration = Date().timeIntervalSince(userStartTime)
+            self?.taskCompletionTimes["user"] = Date()
+            
+            switch result {
+            case .success(let user):
+                loadedUser = user
+                self?.incrementProgress(status: "Loading your circles...")
+                print("✅ PreloadManager: User profile loaded")
+            case .failure(let error):
+                self?.taskErrors["user"] = error
+                loadError = error
+                print("❌ PreloadManager: Failed to load user profile: \(error.localizedDescription)")
+            }
+        }
+        
+        // 2. Load Circles (with retry)
+        loadGroup.enter()
+        let circlesStartTime = Date()
+        
+        retryTask(taskName: "circles", operation: { completion in
+            CircleService.shared.fetchUserCircles(completion: completion)
+        }) { [weak self] result in
+            defer { loadGroup.leave() }
+            let duration = Date().timeIntervalSince(circlesStartTime)
+            self?.taskCompletionTimes["circles"] = Date()
+            
+            switch result {
+            case .success(let circles):
+                loadedCircles = circles
+                self?.incrementProgress(status: "Loading your places...")
+                print("✅ PreloadManager: Loaded \(circles.count) circles")
+            case .failure(let error):
+                self?.taskErrors["circles"] = error
+                loadError = error
+                print("❌ PreloadManager: Failed to load circles: \(error.localizedDescription)")
+            }
+        }
+        
+        // 3. Load Network Circles (circles shared with user by others)
+        loadGroup.enter()
+        let networkCirclesStartTime = Date()
+        
+        struct NetworkCirclesResponse: Codable {
+            let success: Bool
+            let data: [Circle]
+        }
+        
+        retryTask(taskName: "networkCircles", operation: { (completion: @escaping (Result<[Circle], Error>) -> Void) in
+            APIService.shared.request(
+                endpoint: "network/circles-shared-with-me",
+                method: .get,
+                requiresAuth: true,
+                completion: { (result: Result<NetworkCirclesResponse, APIError>) in
+                    switch result {
+                    case .success(let response):
+                        completion(.success(response.data))
+                    case .failure(let error):
+                        completion(.failure(error))
+                    }
+                }
+            )
+        }) { [weak self] result in
+            defer { loadGroup.leave() }
+            let duration = Date().timeIntervalSince(networkCirclesStartTime)
+            self?.taskCompletionTimes["networkCircles"] = Date()
+            
+            switch result {
+            case .success(let circles):
+                loadedNetworkCircles = circles
+                self?.incrementProgress(status: "Loading connections...")
+                print("✅ PreloadManager: Loaded \(circles.count) network circles")
+            case .failure(let error):
+                self?.taskErrors["networkCircles"] = error
+                // Don't fail entire preload for network circles
+                print("⚠️ PreloadManager: Failed to load network circles, continuing without them")
+            }
+        }
+        
+        // 5. Load Connections (with retry)
+        loadGroup.enter()
+        let connectionsStartTime = Date()
+        retryTask(taskName: "connections", operation: { (completion: @escaping (Result<[Connection], Error>) -> Void) in
+            NetworkManager.shared.fetchConnections { connections, error in
+                if let error = error {
+                    completion(.failure(error))
+                } else {
+                    completion(.success(connections ?? []))
+                }
+            }
+        }) { [weak self] result in
+            defer { loadGroup.leave() }
+            let duration = Date().timeIntervalSince(connectionsStartTime)
+            self?.taskCompletionTimes["connections"] = Date()
+            
+            switch result {
+            case .success(let connections):
+                loadedConnections = connections.filter { $0.status == ConnectionStatus.accepted }
+                self?.incrementProgress(status: "Checking messages...")
+                print("✅ PreloadManager: Loaded \(loadedConnections.count) connections")
+            case .failure(let error):
+                self?.taskErrors["connections"] = error
+                loadError = error
+                print("❌ PreloadManager: Failed to load connections")
+            }
+        }
+        
+        // 6. Load Unread Message Count
+        loadGroup.enter()
+        let messagesStartTime = Date()
+        MessagingManager.shared.updateUnreadCount()
+        // Give it a moment to update, then read the value
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            defer { loadGroup.leave() }
+            let duration = Date().timeIntervalSince(messagesStartTime)
+            self?.taskCompletionTimes["messages"] = Date()
+            
+            unreadCount = MessagingManager.shared.unreadCount
+            self?.incrementProgress(status: "Checking connection requests...")
+            print("✅ PreloadManager: Unread messages: \(unreadCount)")
+        }
+        
+        // 7. Load Pending Connection Count
+        loadGroup.enter()
+        let pendingStartTime = Date()
+        NetworkManager.shared.getPendingConnectionsCount { [weak self] count in
+            defer { loadGroup.leave() }
+            let duration = Date().timeIntervalSince(pendingStartTime)
+            self?.taskCompletionTimes["pending"] = Date()
+            
+            pendingCount = count
+            self?.incrementProgress(status: "Almost ready...")
+            print("✅ PreloadManager: Pending connections: \(count)")
+        }
+        
+        // Wait for initial tasks to complete
+        loadGroup.notify(queue: .main) { [weak self] in
+            guard let self = self else { return }
+            
+            let mainTasksDuration = Date().timeIntervalSince(self.startTime)
+            print("🏁 PreloadManager: Main tasks completed")
+            
+            // Check for errors first
+            if let error = loadError {
+                self.isPreloading = false
+                print("❌ PreloadManager: Preload failed with error: \(error)")
+                self.logDetailedErrorInfo()
+                completion(.failure(error))
+                return
+            }
+            
+            // Now load places based on the circles we got (both user's and network circles)
+            let allCircles = loadedCircles + loadedNetworkCircles
+            if !allCircles.isEmpty {
+                self.progressHandler?(0.9, "Loading your places...")
+                self.fetchAllPlacesFromCircles(circles: allCircles) { places in
+                    loadedPlaces = places
+                    print("✅ PreloadManager: Loaded \(places.count) places from \(allCircles.count) circles")
+                    
+                    // Complete the preload
+                    self.completePreload(
+                        user: loadedUser,
+                        circles: loadedCircles,
+                        networkCircles: loadedNetworkCircles,
+                        places: loadedPlaces,
+                        connections: loadedConnections,
+                        unreadCount: unreadCount,
+                        pendingCount: pendingCount,
+                        completion: completion
+                    )
+                }
+            } else {
+                // No circles, complete without places
+                self.completePreload(
+                    user: loadedUser,
+                    circles: loadedCircles,
+                    networkCircles: loadedNetworkCircles,
+                    places: loadedPlaces,
+                    connections: loadedConnections,
+                    unreadCount: unreadCount,
+                    pendingCount: pendingCount,
+                    completion: completion
+                )
+            }
+        }
+    }
+    
     private func incrementProgress(status: String) {
         completedTasks += 1
         updateProgress(status: status)

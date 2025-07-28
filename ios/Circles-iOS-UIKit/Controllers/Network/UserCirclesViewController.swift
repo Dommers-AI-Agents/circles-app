@@ -350,6 +350,12 @@ extension UserCirclesViewController: UITableViewDelegate {
         // Track circle view if it has new places
         if circle.hasNewPlaces == true {
             trackCircleView(circleId: circle.id)
+            // Mark circle activities as viewed
+            NetworkManager.shared.markCircleActivitiesAsViewed(circleId: circle.id) { error in
+                if let error = error {
+                    print("Error marking circle activities as viewed: \(error)")
+                }
+            }
         }
         
         let detailVC = CircleDetailViewController(circle: circle)

@@ -118,6 +118,24 @@ class CircleService {
         })
     }
     
+    func fetchCircleByIdPublic(id: String, completion: @escaping (Result<Circle, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "circles/\(id)/public",
+            method: .get,
+            requiresAuth: false,
+            completion: { [weak self] (result: Result<CircleResponse, APIError>) in
+            guard let self = self else { return }
+            
+            switch result {
+            case .success(let response):
+                completion(.success(response.circle))
+            case .failure(let error):
+                let mappedError = self.mapAPIErrorToCircleError(error)
+                completion(.failure(mappedError))
+            }
+        })
+    }
+    
     func fetchPublicCircles(page: Int = 1, limit: Int = 20, category: CircleCategory? = nil, completion: @escaping (Result<[Circle], Error>) -> Void) {
         var queryParams: [String: String] = [
             "page": "\(page)",
@@ -727,6 +745,32 @@ class CircleService {
             }
         )
     }
+    
+    func copyCircle(circleId: String, newName: String? = nil, completion: @escaping (Result<Circle, Error>) -> Void) {
+        var requestBody: [String: Any] = [:]
+        if let name = newName {
+            requestBody["name"] = name
+        }
+        
+        APIService.shared.request(
+            endpoint: "circles/\(circleId)/copy",
+            method: .post,
+            body: requestBody.isEmpty ? nil : requestBody,
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<CircleCopyResponse, APIError>) in
+                guard let self = self else { return }
+                
+                switch result {
+                case .success(let response):
+                    // Return the new circle (caching is handled by the view controller)
+                    completion(.success(response.circle))
+                case .failure(let error):
+                    let mappedError = self.mapAPIErrorToCircleError(error)
+                    completion(.failure(mappedError))
+                }
+            }
+        )
+    }
 }
 
 // MARK: - Response Types
@@ -784,4 +828,10 @@ struct CircleCommentsResponse: Decodable {
 struct CircleCommentResponse: Decodable {
     let success: Bool
     let data: CircleComment
+}
+
+struct CircleCopyResponse: Decodable {
+    let success: Bool
+    let message: String
+    let circle: Circle
 }

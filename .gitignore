@@ -122,9 +122,12 @@ Archived-SwiftUI-Views/
 backend/scripts/deploy-storage-rules.sh
 backend/scripts/migrate-storage-urls.js
 
-# Backend scripts and migrations
+# Backend scripts and migrations and tests
 backend/scripts/
 backend/migrations/
+backend/test*
+backend/check*
+backend/update*
 
 # Planning documents
 LOCATION_TRACKING_PLAN.md

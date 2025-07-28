@@ -841,6 +841,9 @@ exports.getMe = async (req, res, next) => {
         _id: normalizedId, // Always normalized ID
         email: user.email,
         displayName: user.displayName,
+        firstName: user.firstName || null,
+        lastName: user.lastName || null,
+        phoneNumber: user.phoneNumber || null,
         profilePicture: user.profilePicture,
         bio: user.bio,
         location: user.location,
@@ -861,16 +864,32 @@ exports.getMe = async (req, res, next) => {
 // @access  Private
 exports.updateProfile = async (req, res, next) => {
   try {
-    const { displayName, bio, location, profilePicture } = req.body;
+    const { displayName, firstName, lastName, phoneNumber, bio, location, profilePicture } = req.body;
+    
+    // Debug logging
+    console.log('🔍 updateProfile - Received data:');
+    console.log('   - displayName:', displayName);
+    console.log('   - firstName:', firstName);
+    console.log('   - lastName:', lastName);
+    console.log('   - phoneNumber:', phoneNumber);
+    console.log('   - bio:', bio);
+    console.log('   - location:', location);
+    console.log('   - profilePicture:', profilePicture ? 'provided' : 'not provided');
     
     const updateData = {
       updatedAt: new Date().toISOString()
     };
 
     if (displayName !== undefined) updateData.displayName = displayName;
+    if (firstName !== undefined) updateData.firstName = firstName;
+    if (lastName !== undefined) updateData.lastName = lastName;
+    if (phoneNumber !== undefined) updateData.phoneNumber = phoneNumber;
     if (bio !== undefined) updateData.bio = bio;
     if (location !== undefined) updateData.location = location;
     if (profilePicture !== undefined) updateData.profilePicture = profilePicture;
+    
+    // Debug logging of update data
+    console.log('📝 updateProfile - Update data to be saved:', updateData);
 
     const userRef = db.collection(COLLECTIONS.USERS).doc(req.user.uid);
     await userRef.update(updateData);
@@ -881,12 +900,21 @@ exports.updateProfile = async (req, res, next) => {
 
     const normalizedId = normalizeUserId(user.id);
     
+    // Debug logging of retrieved user
+    console.log('✅ updateProfile - Retrieved user after update:');
+    console.log('   - firstName:', user.firstName);
+    console.log('   - lastName:', user.lastName);
+    console.log('   - phoneNumber:', user.phoneNumber);
+    
     res.status(200).json({
       success: true,
       user: {
         _id: normalizedId, // Always normalized ID
         email: user.email,
         displayName: user.displayName,
+        firstName: user.firstName || null,
+        lastName: user.lastName || null,
+        phoneNumber: user.phoneNumber || null,
         profilePicture: user.profilePicture,
         bio: user.bio,
         location: user.location,

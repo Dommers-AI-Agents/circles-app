@@ -90,6 +90,25 @@ class PlaceService {
         )
     }
     
+    // Fetch places without requiring authentication (for public circles accessed via share links)
+    func fetchPlacesByCircleIdPublic(circleId: String, completion: @escaping (Result<[Place], Error>) -> Void) {
+        let apiCompletion = createAPICompletion { (result: Result<PlacesResponse, Error>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.places))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+        
+        APIService.shared.request(
+            endpoint: "circles/\(circleId)/places/public",
+            method: .get,
+            requiresAuth: false,
+            completion: apiCompletion
+        )
+    }
+    
     func fetchPlacesByMultipleCircles(circleIds: [String], completion: @escaping (Result<[Place], Error>) -> Void) {
         let body: [String: Any] = [
             "circleIds": circleIds
