@@ -325,7 +325,12 @@ class RegisterViewController: BaseViewController {
                     print("Successfully registered with social auth: \(user.displayName)")
                     self?.showSuccessMessage()
                 case .failure(let error):
-                    self?.showError(error)
+                    // Check if it's a private relay error
+                    if let authError = error as? AuthError, authError == .privateRelayNotAllowed {
+                        self?.showPrivateRelayGuidance()
+                    } else {
+                        self?.showError(error)
+                    }
                 }
             }
         }
@@ -360,6 +365,28 @@ class RegisterViewController: BaseViewController {
     private func findFirstResponder() -> UIView? {
         let responders: [UIView] = [emailTextField, passwordTextField, confirmPasswordTextField]
         return responders.first { $0.isFirstResponder }
+    }
+    
+    // MARK: - Private Relay Guidance
+    private func showPrivateRelayGuidance() {
+        let alert = UIAlertController(
+            title: "Private Relay Not Allowed",
+            message: "To create an account with Circles, please sign in with Apple again and choose 'Share My Email' instead of 'Hide My Email'. This ensures you can access your account from all devices.",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "Try Again", style: .default) { [weak self] _ in
+            self?.appleSignInButtonTapped()
+        })
+        
+        alert.addAction(UIAlertAction(title: "Use Email Instead", style: .default) { [weak self] _ in
+            // Focus on email field for manual registration
+            self?.emailTextField.becomeFirstResponder()
+        })
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        
+        present(alert, animated: true)
     }
     
     // MARK: - Keyboard Handling

@@ -1832,52 +1832,100 @@ exports.getUserFollowing = async (req, res, next) => {
 // @access  Private (Admin only)
 exports.findDuplicateAccounts = async (req, res, next) => {
   try {
-    // This endpoint should be restricted to admin users
-    // For now, we'll just log the duplicates
+    const { email, displayName } = req.body;
+    const currentUserId = req.user.uid;
     
-    const usersSnapshot = await db.collection(COLLECTIONS.USERS).get();
-    const usersByEmail = new Map();
-    const duplicates = [];
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
     
-    // Group users by email
-    usersSnapshot.docs.forEach(doc => {
+    console.log(`🔍 Finding duplicates for user: ${email} (${displayName})`);
+    
+    const duplicateAccounts = [];
+    const currentUserEmail = email.toLowerCase();
+    
+    // Find accounts with same email (exact match)
+    const emailQuery = await db.collection(COLLECTIONS.USERS)
+      .where('email', '==', email)
+      .get();
+    
+    emailQuery.docs.forEach(doc => {
       const user = serializeDoc(doc);
-      if (user.email) {
-        const email = user.email.toLowerCase();
-        if (!usersByEmail.has(email)) {
-          usersByEmail.set(email, []);
-        }
-        usersByEmail.get(email).push({
-          id: user.id,
-          email: user.email,
-          displayName: user.displayName,
-          createdAt: user.createdAt
+      if (user.id !== currentUserId) {
+        duplicateAccounts.push({
+          ...user,
+          matchType: 'email',
+          reason: 'Same email address'
         });
       }
     });
     
-    // Find accounts with multiple entries
-    for (const [email, users] of usersByEmail) {
-      if (users.length > 1) {
-        // Sort by creation date to identify the primary account
-        users.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-        
-        duplicates.push({
-          email: email,
-          accounts: users,
-          primaryAccount: users[0], // Oldest account
-          duplicateCount: users.length - 1
+    // Find accounts in alternateEmails array
+    const alternateEmailQuery = await db.collection(COLLECTIONS.USERS)
+      .where('alternateEmails', 'array-contains', email)
+      .get();
+    
+    alternateEmailQuery.docs.forEach(doc => {
+      const user = serializeDoc(doc);
+      if (user.id !== currentUserId && !duplicateAccounts.find(acc => acc.id === user.id)) {
+        duplicateAccounts.push({
+          ...user,
+          matchType: 'alternateEmail',
+          reason: 'Email found in alternate emails'
         });
       }
+    });
+    
+    // Find potential Apple Sign In duplicates by displayName (if current email is private relay)
+    if (email.includes('@privaterelay.appleid.com') && displayName) {
+      const nameQuery = await db.collection(COLLECTIONS.USERS)
+        .where('displayName', '==', displayName)
+        .get();
+      
+      nameQuery.docs.forEach(doc => {
+        const user = serializeDoc(doc);
+        if (user.id !== currentUserId && 
+            !user.email.includes('@privaterelay.appleid.com') && 
+            !duplicateAccounts.find(acc => acc.id === user.id)) {
+          duplicateAccounts.push({
+            ...user,
+            matchType: 'displayName',
+            reason: 'Same display name (potential Apple Sign In duplicate)'
+          });
+        }
+      });
     }
     
-    console.log(`Found ${duplicates.length} email addresses with duplicate accounts`);
+    // Find accounts where current email is in their alternateEmails
+    if (!email.includes('@privaterelay.appleid.com')) {
+      const usersSnapshot = await db.collection(COLLECTIONS.USERS).get();
+      
+      usersSnapshot.docs.forEach(doc => {
+        const user = serializeDoc(doc);
+        if (user.id !== currentUserId && 
+            user.email && 
+            user.email.includes('@privaterelay.appleid.com') &&
+            user.displayName === displayName &&
+            !duplicateAccounts.find(acc => acc.id === user.id)) {
+          duplicateAccounts.push({
+            ...user,
+            matchType: 'privateRelay',
+            reason: 'Private relay account with same display name'
+          });
+        }
+      });
+    }
+    
+    console.log(`Found ${duplicateAccounts.length} potential duplicate accounts for ${email}`);
     
     res.status(200).json({
       success: true,
-      duplicatesFound: duplicates.length,
-      duplicates: duplicates
+      duplicateAccounts: duplicateAccounts
     });
+    
   } catch (error) {
     console.error('Error finding duplicate accounts:', error);
     next(error);
@@ -2408,6 +2456,167 @@ exports.recalculateFollowerCounts = async (req, res, next) => {
     
   } catch (error) {
     console.error('Error recalculating follower counts:', error);
+    next(error);
+  }
+};
+
+// @desc    Merge duplicate user accounts
+// @route   POST /api/users/merge-accounts
+// @access  Private (Admin only or same user)
+exports.mergeUserAccounts = async (req, res, next) => {
+  try {
+    const { primaryAccountId, secondaryAccountId } = req.body;
+    
+    if (!primaryAccountId || !secondaryAccountId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Both primaryAccountId and secondaryAccountId are required'
+      });
+    }
+    
+    if (primaryAccountId === secondaryAccountId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot merge account with itself'
+      });
+    }
+    
+    // Get both user documents
+    const primaryRef = db.collection(COLLECTIONS.USERS).doc(primaryAccountId);
+    const secondaryRef = db.collection(COLLECTIONS.USERS).doc(secondaryAccountId);
+    
+    const [primaryDoc, secondaryDoc] = await Promise.all([
+      primaryRef.get(),
+      secondaryRef.get()
+    ]);
+    
+    if (!primaryDoc.exists || !secondaryDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'One or both user accounts not found'
+      });
+    }
+    
+    const primaryUser = serializeDoc(primaryDoc);
+    const secondaryUser = serializeDoc(secondaryDoc);
+    
+    // Verify user has permission (admin or owns one of the accounts)
+    const isAdmin = req.user.role === 'admin'; // Assuming admin role exists
+    const ownsAccount = req.user.uid === primaryAccountId || req.user.uid === secondaryAccountId;
+    
+    if (!isAdmin && !ownsAccount) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to merge these accounts'
+      });
+    }
+    
+    console.log(`🔄 Merging accounts: ${secondaryAccountId} -> ${primaryAccountId}`);
+    console.log(`Primary: ${primaryUser.email} (${primaryUser.displayName})`);
+    console.log(`Secondary: ${secondaryUser.email} (${secondaryUser.displayName})`);
+    
+    // Prepare merged data
+    const mergedData = {
+      // Merge alternate emails
+      alternateEmails: [
+        ...(primaryUser.alternateEmails || []),
+        ...(secondaryUser.alternateEmails || []),
+        // Add secondary email if different from primary
+        ...(secondaryUser.email && secondaryUser.email !== primaryUser.email ? [secondaryUser.email] : [])
+      ].filter((email, index, arr) => arr.indexOf(email) === index && email !== primaryUser.email), // Remove duplicates and primary email
+      
+      // Merge linked providers
+      linkedProviders: {
+        ...(primaryUser.linkedProviders || {}),
+        ...(secondaryUser.linkedProviders || {})
+      },
+      
+      // Keep better display name if secondary has one and primary doesn't
+      displayName: primaryUser.displayName || secondaryUser.displayName,
+      
+      // Keep better profile picture if secondary has one and primary doesn't
+      profilePicture: primaryUser.profilePicture || secondaryUser.profilePicture,
+      
+      // Merge other fields intelligently
+      firstName: primaryUser.firstName || secondaryUser.firstName,
+      lastName: primaryUser.lastName || secondaryUser.lastName,
+      phoneNumber: primaryUser.phoneNumber || secondaryUser.phoneNumber,
+      bio: primaryUser.bio || secondaryUser.bio,
+      location: primaryUser.location || secondaryUser.location,
+      
+      // Merge arrays
+      followers: [...(primaryUser.followers || []), ...(secondaryUser.followers || [])].filter((id, index, arr) => arr.indexOf(id) === index),
+      following: [...(primaryUser.following || []), ...(secondaryUser.following || [])].filter((id, index, arr) => arr.indexOf(id) === index),
+      deviceTokens: [...(primaryUser.deviceTokens || []), ...(secondaryUser.deviceTokens || [])].filter((token, index, arr) => arr.indexOf(token) === index),
+      pinnedPlaces: [...(primaryUser.pinnedPlaces || []), ...(secondaryUser.pinnedPlaces || [])].slice(0, 6), // Max 6
+      
+      // Update counts
+      followersCount: 0, // Will be recalculated
+      followingCount: 0, // Will be recalculated
+      
+      // Keep notification preferences from primary (user can update if needed)
+      notificationPreferences: primaryUser.notificationPreferences || secondaryUser.notificationPreferences,
+      
+      updatedAt: new Date().toISOString()
+    };
+    
+    // Recalculate counts
+    mergedData.followersCount = mergedData.followers.length;
+    mergedData.followingCount = mergedData.following.length;
+    
+    // Use transaction to ensure consistency
+    await db.runTransaction(async (transaction) => {
+      // Update primary account with merged data
+      transaction.update(primaryRef, mergedData);
+      
+      // Update all connections that point to secondary account
+      const connectionsQuery = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', secondaryAccountId)
+        .get();
+      
+      const connectedToQuery = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', secondaryAccountId)
+        .get();
+      
+      // Update connections where secondary was the user
+      connectionsQuery.forEach(doc => {
+        transaction.update(doc.ref, { userId: primaryAccountId });
+      });
+      
+      // Update connections where secondary was the connected user
+      connectedToQuery.forEach(doc => {
+        transaction.update(doc.ref, { connectedUserId: primaryAccountId });
+      });
+      
+      // TODO: Also update circles, places, messages, etc. that belong to secondary account
+      // For now, we'll just mark the secondary account as merged
+      transaction.update(secondaryRef, {
+        mergedInto: primaryAccountId,
+        mergedAt: new Date().toISOString(),
+        active: false
+      });
+    });
+    
+    console.log(`✅ Successfully merged ${secondaryAccountId} into ${primaryAccountId}`);
+    
+    // Get updated primary user
+    const updatedPrimaryDoc = await primaryRef.get();
+    const updatedUser = serializeDoc(updatedPrimaryDoc);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Accounts merged successfully',
+      primaryAccount: updatedUser,
+      mergedData: {
+        alternateEmailsAdded: mergedData.alternateEmails.filter(email => !(primaryUser.alternateEmails || []).includes(email)),
+        providersLinked: Object.keys(secondaryUser.linkedProviders || {}),
+        followersAdded: (secondaryUser.followers || []).length,
+        followingAdded: (secondaryUser.following || []).length
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error merging accounts:', error);
     next(error);
   }
 };

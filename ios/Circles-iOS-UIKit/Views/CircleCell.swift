@@ -155,34 +155,40 @@ class CircleCell: UICollectionViewCell {
         
         // Load cover image
         if let coverImageUrl = circle.coverImage {
-            ImageService.shared.loadImage(from: coverImageUrl) { [weak self] image in
-                DispatchQueue.main.async {
-                    self?.coverImageView.image = image
-                    self?.updateCornerRadius()
+            // Check if it's a default SF Symbol
+            if coverImageUrl.starts(with: "sf-symbol:") {
+                let symbolName = String(coverImageUrl.dropFirst("sf-symbol:".count))
+                if let defaultCase = DefaultImages.CircleDefault.allCases.first(where: { $0.rawValue == symbolName }) {
+                    coverImageView.image = defaultCase.image(size: 60)
+                    coverImageView.tintColor = defaultCase.color
+                    coverImageView.contentMode = .scaleAspectFit
+                } else {
+                    // Fallback to the symbol name directly
+                    coverImageView.image = UIImage(systemName: symbolName)
+                    coverImageView.tintColor = Constants.Colors.primary
+                    coverImageView.contentMode = .scaleAspectFit
+                }
+            } else {
+                // Regular image URL
+                ImageService.shared.loadImage(from: coverImageUrl) { [weak self] image in
+                    DispatchQueue.main.async {
+                        self?.coverImageView.image = image
+                        self?.coverImageView.contentMode = .scaleAspectFill
+                        self?.updateCornerRadius()
+                    }
                 }
             }
         } else {
             // Set default image based on category
-            coverImageView.image = UIImage(systemName: categoryIcon(for: circle.category))
-            coverImageView.tintColor = Constants.Colors.primary
+            let defaultImage = DefaultImages.circleImageForCategory(circle.category)
+            coverImageView.image = defaultImage.image(size: 60)
+            coverImageView.tintColor = defaultImage.color
             coverImageView.contentMode = .scaleAspectFit
         }
         
         // Force layout to ensure circular shape is applied immediately
         setNeedsLayout()
         layoutIfNeeded()
-    }
-    
-    private func categoryIcon(for category: CircleCategory) -> String {
-        switch category {
-        case .travel: return "airplane"
-        case .food: return "fork.knife"
-        case .services: return "wrench.and.screwdriver"
-        case .shopping: return "bag"
-        case .healthcare: return "heart"
-        case .entertainment: return "tv"
-        case .other: return "circle.grid.3x3"
-        }
     }
     
     // MARK: - Reuse

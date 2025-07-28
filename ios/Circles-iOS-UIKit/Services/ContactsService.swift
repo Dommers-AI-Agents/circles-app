@@ -176,7 +176,7 @@ class ContactsService {
         let body: [String: Any] = ["contacts": contactsToSync]
         
         apiService.request(
-            endpoint: "user-contacts/sync-contacts",
+            endpoint: "users/contacts/sync-contacts",
             method: .post,
             body: body
         ) { (result: Result<SyncContactsResponse, APIError>) in
@@ -225,7 +225,7 @@ class ContactsService {
         let body: [String: Any] = ["invites": invitesArray]
         
         apiService.request(
-            endpoint: "user-contacts/invite-contacts",
+            endpoint: "users/contacts/invite-contacts",
             method: .post,
             body: body
         ) { (result: Result<InviteContactsResponse, APIError>) in

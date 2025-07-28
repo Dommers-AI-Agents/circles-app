@@ -2713,7 +2713,8 @@ extension CircleDetailViewController: PlaceSearchDelegate {
                 website: website,
                 phone: phone,
                 tags: nil,
-                photos: nil
+                photos: nil,
+                location: coordinate  // Pass the exact coordinates from the search
             ) { [weak self] result in
                 loadingAlert.dismiss(animated: true) {
                     guard let self = self else { return }

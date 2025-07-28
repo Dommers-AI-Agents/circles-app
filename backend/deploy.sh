@@ -42,6 +42,9 @@ if [ ! -z "$GOOGLE_MAPS_API_KEY" ]; then
     ENV_VARS="$ENV_VARS,GOOGLE_MAPS_API_KEY=$GOOGLE_MAPS_API_KEY"
 fi
 
+# Add Firebase API Key
+ENV_VARS="$ENV_VARS,FIREBASE_API_KEY=AIzaSyDMWyL8jI_MZSuASgxc_aSpyqJpxUSARYI"
+
 # Deploy to Cloud Run
 echo -e "\n${YELLOW}Deploying to Cloud Run...${NC}"
 

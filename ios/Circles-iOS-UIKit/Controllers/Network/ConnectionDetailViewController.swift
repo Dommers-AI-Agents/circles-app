@@ -53,7 +53,7 @@ class ConnectionDetailViewController: BaseViewController {
         return label
     }()
     
-    private let emailLabel: UILabel = {
+    private let userInfoLabel: UILabel = {
         let label = UILabel()
         label.font = .systemFont(ofSize: 16)
         label.textColor = .secondaryLabel
@@ -152,7 +152,7 @@ class ConnectionDetailViewController: BaseViewController {
         
         contentView.addSubview(profileImageView)
         contentView.addSubview(nameLabel)
-        contentView.addSubview(emailLabel)
+        contentView.addSubview(userInfoLabel)
         contentView.addSubview(connectionDateLabel)
         contentView.addSubview(messageButton)
         contentView.addSubview(followButton)
@@ -183,11 +183,11 @@ class ConnectionDetailViewController: BaseViewController {
             nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             nameLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
             
-            emailLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
-            emailLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            emailLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            userInfoLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
+            userInfoLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            userInfoLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
             
-            connectionDateLabel.topAnchor.constraint(equalTo: emailLabel.bottomAnchor, constant: 8),
+            connectionDateLabel.topAnchor.constraint(equalTo: userInfoLabel.bottomAnchor, constant: 8),
             connectionDateLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             connectionDateLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
             
@@ -256,7 +256,14 @@ class ConnectionDetailViewController: BaseViewController {
             nameLabel.text = connection.connectedUser?.displayName ?? "Unknown User"
         }
         
-        emailLabel.text = connection.connectedUser?.email ?? ""
+        // Display user info instead of email for privacy
+        if let phoneNumber = connection.connectedUser?.phoneNumber, !phoneNumber.isEmpty {
+            userInfoLabel.text = "📞 \(phoneNumber)"
+        } else if let bio = connection.connectedUser?.bio, !bio.isEmpty {
+            userInfoLabel.text = bio
+        } else {
+            userInfoLabel.text = "Circles member"
+        }
         
         if let acceptedAt = connection.acceptedAt {
             let formatter = DateFormatter()

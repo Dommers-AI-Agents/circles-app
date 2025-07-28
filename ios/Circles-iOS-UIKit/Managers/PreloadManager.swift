@@ -94,7 +94,7 @@ class PreloadManager {
             print("❌ PreloadManager: User not logged in, aborting preload")
             isPreloading = false
             let error = NSError(domain: "PreloadManager", code: -2, userInfo: [
-                NSLocalizedDescriptionKey: "User not logged in"
+                NSLocalizedDescriptionKey: "You are not logged in. Please log in again."
             ])
             completion(.failure(error))
             return
@@ -117,7 +117,7 @@ class PreloadManager {
                     print("❌ PreloadManager: Token refresh failed: \(error)")
                     self.isPreloading = false
                     let refreshError = NSError(domain: "PreloadManager", code: -3, userInfo: [
-                        NSLocalizedDescriptionKey: "Failed to refresh authentication token",
+                        NSLocalizedDescriptionKey: "Your session has expired. Please log in again.",
                         NSUnderlyingErrorKey: error
                     ])
                     completion(.failure(refreshError))
@@ -287,17 +287,17 @@ class PreloadManager {
         
         var loadError: Error?
         
-        // Add timeout protection - 20 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
+        // Add timeout protection - 45 seconds (extended to handle slow networks)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 45) { [weak self] in
             guard let self = self else { return }
             guard self.isPreloading else { return }
             
-            print("⏰ PreloadManager: Loading timeout reached")
+            print("⏰ PreloadManager: Loading timeout reached (45 seconds)")
             self.logDetailedErrorInfo()
             
             self.isPreloading = false
             let error = NSError(domain: "PreloadManager", code: -1, userInfo: [
-                NSLocalizedDescriptionKey: "Loading timeout"
+                NSLocalizedDescriptionKey: "Loading is taking longer than expected. This may be due to a slow network connection."
             ])
             completion(.failure(error))
         }
@@ -317,7 +317,7 @@ class PreloadManager {
             switch result {
             case .success(let user):
                 loadedUser = user
-                self?.incrementProgress(status: "Loading your circles...")
+                self?.incrementProgress(status: "Loading your circles and network data...")
                 print("✅ PreloadManager: User profile loaded")
             case .failure(let error):
                 self?.taskErrors["user"] = error
@@ -340,7 +340,7 @@ class PreloadManager {
             switch result {
             case .success(let circles):
                 loadedCircles = circles
-                self?.incrementProgress(status: "Loading your places...")
+                self?.incrementProgress(status: "Loading network circles...")
                 print("✅ PreloadManager: Loaded \(circles.count) circles")
             case .failure(let error):
                 self?.taskErrors["circles"] = error
@@ -380,7 +380,7 @@ class PreloadManager {
             switch result {
             case .success(let circles):
                 loadedNetworkCircles = circles
-                self?.incrementProgress(status: "Loading connections...")
+                self?.incrementProgress(status: "Checking connection requests...")
                 print("✅ PreloadManager: Loaded \(circles.count) network circles")
             case .failure(let error):
                 self?.taskErrors["networkCircles"] = error
@@ -464,7 +464,7 @@ class PreloadManager {
             // Now load places based on the circles we got (both user's and network circles)
             let allCircles = loadedCircles + loadedNetworkCircles
             if !allCircles.isEmpty {
-                self.progressHandler?(0.9, "Loading your places...")
+                self.progressHandler?(0.9, "Loading places from your circles...")
                 self.fetchAllPlacesFromCircles(circles: allCircles) { places in
                     loadedPlaces = places
                     print("✅ PreloadManager: Loaded \(places.count) places from \(allCircles.count) circles")
@@ -527,7 +527,7 @@ class PreloadManager {
         )
         
         self.preloadedData = preloadedData
-        self.progressHandler?(1.0, "Ready!")  // Show 100% completion
+        self.progressHandler?(1.0, "Almost ready...")  // Show 100% completion
         self.isPreloading = false
         
         // Save to cache for future use

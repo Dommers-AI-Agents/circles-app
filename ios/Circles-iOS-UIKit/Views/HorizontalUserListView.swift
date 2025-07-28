@@ -45,6 +45,7 @@ class HorizontalUserListView: UIView, SSEServiceDelegate {
     }()
     
     private var hasLoadedConnections = false
+    private var hasCompletedInitialLoad = false
     
     // MARK: - Init
     override init(frame: CGRect) {
@@ -164,8 +165,8 @@ class HorizontalUserListView: UIView, SSEServiceDelegate {
             if let error = error {
                 print("❌ HorizontalUserListView: Error checking connections: \(error)")
                 self.hasLoadedConnections = true
-                self.loadingIndicator.stopAnimating()
-                self.emptyStateLabel.isHidden = false
+                // Keep loading state on error - don't show empty state prematurely
+                // The loading indicator will keep spinning
                 return
             }
             
@@ -362,6 +363,9 @@ class HorizontalUserListView: UIView, SSEServiceDelegate {
                     // Update connections
                     self.connections = finalConnections
                     
+                    // Mark initial load as completed
+                    self.hasCompletedInitialLoad = true
+                    
                     // Stop loading and show the sorted connections
                     self.loadingIndicator.stopAnimating()
                     
@@ -379,15 +383,25 @@ class HorizontalUserListView: UIView, SSEServiceDelegate {
                     
                     self.connections = []
                     
+                    // Only mark initial load as completed if we allow empty state
+                    // This prevents showing empty state if this is a temporary/failed load
                     if allowEmptyState {
-                        // Show empty state - user truly has no connections
+                        self.hasCompletedInitialLoad = true
+                    }
+                    
+                    if allowEmptyState && self.hasCompletedInitialLoad {
+                        // Show empty state only after we've completed at least one load attempt
                         print("🔍 HorizontalUserListView: Showing empty state - no connections available")
                         self.loadingIndicator.stopAnimating()
                         self.collectionView.isHidden = true
                         self.emptyStateLabel.isHidden = false
                     } else {
-                        // Keep loading state - this might be temporary (e.g., active connections failed but fallback is coming)
-                        print("🔍 HorizontalUserListView: Keeping loading state - empty state not allowed")
+                        // Keep loading state - either initial load hasn't completed or empty state not allowed
+                        if !self.hasCompletedInitialLoad {
+                            print("🔍 HorizontalUserListView: Keeping loading state - initial load not completed")
+                        } else {
+                            print("🔍 HorizontalUserListView: Keeping loading state - empty state not allowed")
+                        }
                         // Keep the loading indicator running and views hidden
                     }
                 }

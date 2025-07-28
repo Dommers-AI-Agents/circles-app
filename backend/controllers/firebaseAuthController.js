@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const jwksClient = require('jwks-rsa');
 const { normalizeUserId, logNormalization } = require('../services/idService');
 const OnboardingService = require('../services/onboardingService');
+const { firebaseApiKey } = require('../config/config');
 
 const db = getFirestore();
 const auth = getAuth();
@@ -257,6 +258,16 @@ exports.firebaseAuth = async (req, res, next) => {
     if (email) {
       email = email.toLowerCase().trim();
       console.log(`📧 Social auth with normalized email: ${email}, provider: ${provider}`);
+      
+      // Block private relay emails - users must use real email
+      if (email.includes('@privaterelay.appleid.com')) {
+        console.log(`❌ Blocking private relay email: ${email}`);
+        return res.status(400).json({
+          success: false,
+          message: 'Private relay emails are not allowed. Please sign in with Apple again and choose to share your real email address.',
+          code: 'PRIVATE_RELAY_NOT_ALLOWED'
+        });
+      }
     }
 
     // Check if user exists by email first (for account merging)
@@ -265,15 +276,24 @@ exports.firebaseAuth = async (req, res, next) => {
     let existingUserId = null;
     
     if (email) {
-      // Query for existing user by email
+      // Query for existing user by email (primary or alternate)
       const usersWithEmail = await db.collection(COLLECTIONS.USERS)
         .where('email', '==', email)
         .limit(1)
         .get();
       
-      if (!usersWithEmail.empty) {
+      // Also check alternate emails
+      let usersWithAlternateEmail;
+      if (usersWithEmail.empty) {
+        usersWithAlternateEmail = await db.collection(COLLECTIONS.USERS)
+          .where('alternateEmails', 'array-contains', email)
+          .limit(1)
+          .get();
+      }
+      
+      if (!usersWithEmail.empty || (!usersWithAlternateEmail?.empty)) {
         // User with this email exists - use their account
-        const existingUserDoc = usersWithEmail.docs[0];
+        const existingUserDoc = !usersWithEmail.empty ? usersWithEmail.docs[0] : usersWithAlternateEmail.docs[0];
         existingUserId = existingUserDoc.id;
         userRef = existingUserDoc.ref;
         console.log(`Found existing user with email ${email}, merging accounts. Existing ID: ${existingUserId}, Provider ID: ${uid}`);
@@ -288,6 +308,28 @@ exports.firebaseAuth = async (req, res, next) => {
         const linkedProviders = existingUser.linkedProviders || {};
         linkedProviders[provider] = uid;
         updateData.linkedProviders = linkedProviders;
+        
+        // Handle alternate emails - especially for Apple Sign In with private relay
+        if (provider === 'apple' && email) {
+          const alternateEmails = existingUser.alternateEmails || [];
+          
+          // If current email is a private relay and we have the real email from request
+          if (email.includes('@privaterelay.appleid.com') && providedEmail && providedEmail !== email) {
+            // Store the real email as alternate
+            if (!alternateEmails.includes(providedEmail) && existingUser.email !== providedEmail) {
+              alternateEmails.push(providedEmail);
+              updateData.alternateEmails = alternateEmails;
+            }
+          }
+          // If current email is real and we're signing in with private relay, store private relay as alternate
+          else if (!email.includes('@privaterelay.appleid.com') && existingUser.email && existingUser.email.includes('@privaterelay.appleid.com')) {
+            if (!alternateEmails.includes(existingUser.email)) {
+              alternateEmails.push(existingUser.email);
+              updateData.alternateEmails = alternateEmails;
+              updateData.email = email; // Update primary to real email
+            }
+          }
+        }
         
         // Only update name if user doesn't have one set
         if (name && !existingUser.displayName) {
@@ -375,9 +417,27 @@ exports.firebaseAuth = async (req, res, next) => {
         } else {
           // Completely new user - create within transaction
           console.log(`🆕 Creating new user with ID: ${simpleUid}, provider: ${provider}`);
+          
+          // Handle alternate emails for new users (especially Apple Sign In)
+          let alternateEmails = [];
+          let primaryEmail = email;
+          
+          if (provider === 'apple' && email && providedEmail) {
+            // If we have both private relay and real email, decide which should be primary
+            if (email.includes('@privaterelay.appleid.com') && !providedEmail.includes('@privaterelay.appleid.com')) {
+              // Use real email as primary, store private relay as alternate
+              primaryEmail = providedEmail;
+              alternateEmails.push(email);
+            } else if (!email.includes('@privaterelay.appleid.com') && providedEmail !== email) {
+              // Store provided email as alternate if different
+              alternateEmails.push(providedEmail);
+            }
+          }
+          
           const userData = createUser({
             uid: simpleUid,
-            email,
+            email: primaryEmail,
+            alternateEmails,
             displayName: name,
             profilePicture: picture,
             linkedProviders: { [provider]: uid } // Store original complex UID in linkedProviders
@@ -433,6 +493,15 @@ exports.firebaseAuth = async (req, res, next) => {
       { expiresIn: process.env.JWT_EXPIRE }
     );
 
+    // Check for potential duplicate accounts and suggest merge
+    let duplicateSuggestion = null;
+    try {
+      duplicateSuggestion = await checkForDuplicateAccounts(user);
+    } catch (error) {
+      console.error('Error checking for duplicates:', error);
+      // Continue with login even if duplicate check fails
+    }
+
     // Always return normalized ID to iOS app
     const responseUserId = normalizedId;
     console.log(`📤 Returning normalized user ID: ${responseUserId}`)
@@ -456,7 +525,8 @@ exports.firebaseAuth = async (req, res, next) => {
         followersCount: user.followersCount || 0,
         followingCount: user.followingCount || 0,
         createdAt: user.createdAt || new Date().toISOString()
-      }
+      },
+      duplicateSuggestion: duplicateSuggestion // Include duplicate suggestion if found
     };
 
     console.log('📤 Sending auth response with normalized ID:', {
@@ -489,6 +559,16 @@ exports.register = async (req, res, next) => {
     // Normalize email to lowercase to prevent duplicates
     const normalizedEmail = email.toLowerCase().trim();
     console.log(`📧 Registering user with email: ${normalizedEmail} (original: ${email})`);
+    
+    // Block private relay emails - users must use real email
+    if (normalizedEmail.includes('@privaterelay.appleid.com')) {
+      console.log(`❌ Blocking private relay email in registration: ${normalizedEmail}`);
+      return res.status(400).json({
+        success: false,
+        message: 'Private relay emails are not allowed. Please use your real email address.',
+        code: 'PRIVATE_RELAY_NOT_ALLOWED'
+      });
+    }
 
     let result;
     try {
@@ -696,6 +776,16 @@ exports.login = async (req, res, next) => {
     // Normalize email to lowercase to prevent duplicates
     const normalizedEmail = email.toLowerCase().trim();
     console.log(`📧 Login attempt with email: ${normalizedEmail} (original: ${email})`);
+    
+    // Block private relay emails - users must use real email
+    if (normalizedEmail.includes('@privaterelay.appleid.com')) {
+      console.log(`❌ Blocking private relay email in login: ${normalizedEmail}`);
+      return res.status(400).json({
+        success: false,
+        message: 'Private relay emails are not allowed. Please use your real email address.',
+        code: 'PRIVATE_RELAY_NOT_ALLOWED'
+      });
+    }
 
     // Get user by email from Firebase Auth
     let userRecord;
@@ -711,11 +801,48 @@ exports.login = async (req, res, next) => {
       throw error;
     }
 
-    // IMPORTANT: Firebase Admin SDK cannot verify passwords directly
-    // This is a security limitation - in production you should either:
-    // 1. Use Firebase Client SDK on frontend and send ID token to backend
-    // 2. Implement a custom authentication endpoint using Firebase REST API
-    // For development, we're bypassing password verification which is NOT secure
+    // Verify password using Firebase REST API
+    if (!firebaseApiKey) {
+      console.error('❌ FIREBASE_API_KEY not configured');
+      return res.status(500).json({
+        success: false,
+        message: 'Server configuration error'
+      });
+    }
+
+    const firebaseAuthUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${firebaseApiKey}`;
+    
+    try {
+      const authResponse = await fetch(firebaseAuthUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          email: normalizedEmail,
+          password: password,
+          returnSecureToken: true
+        })
+      });
+
+      const authData = await authResponse.json();
+
+      if (!authResponse.ok) {
+        console.log('❌ Firebase authentication failed:', authData.error?.message);
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid credentials'
+        });
+      }
+
+      console.log('✅ Password verified successfully via Firebase REST API');
+    } catch (error) {
+      console.error('❌ Firebase REST API error:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Authentication service error'
+      });
+    }
 
     // Get user profile from Firestore - check by email first for account merging
     let userDoc;
@@ -1091,3 +1218,70 @@ exports.facebookDataDeletion = async (req, res, next) => {
     });
   }
 };
+
+// Helper function to check for potential duplicate accounts
+async function checkForDuplicateAccounts(user) {
+  try {
+    const duplicateAccounts = [];
+    
+    // Skip duplicate check for private relay emails (they're blocked anyway)
+    if (!user.email || user.email.includes('@privaterelay.appleid.com')) {
+      return null;
+    }
+    
+    // Find accounts with same display name but different email (potential Apple Sign In duplicates)
+    if (user.displayName) {
+      const nameQuery = await db.collection(COLLECTIONS.USERS)
+        .where('displayName', '==', user.displayName)
+        .get();
+      
+      nameQuery.docs.forEach(doc => {
+        const otherUser = serializeDoc(doc);
+        if (otherUser.id !== user.id && 
+            otherUser.email && 
+            otherUser.email !== user.email &&
+            otherUser.email.includes('@privaterelay.appleid.com')) {
+          duplicateAccounts.push({
+            id: otherUser.id,
+            email: otherUser.email,
+            displayName: otherUser.displayName,
+            matchType: 'privateRelay',
+            reason: 'Private relay account with same display name'
+          });
+        }
+      });
+    }
+    
+    // Find accounts where current user's email is in alternateEmails
+    const alternateEmailQuery = await db.collection(COLLECTIONS.USERS)
+      .where('alternateEmails', 'array-contains', user.email)
+      .get();
+    
+    alternateEmailQuery.docs.forEach(doc => {
+      const otherUser = serializeDoc(doc);
+      if (otherUser.id !== user.id && !duplicateAccounts.find(acc => acc.id === otherUser.id)) {
+        duplicateAccounts.push({
+          id: otherUser.id,
+          email: otherUser.email,
+          displayName: otherUser.displayName,
+          matchType: 'alternateEmail',
+          reason: 'Your email found in alternate emails'
+        });
+      }
+    });
+    
+    if (duplicateAccounts.length > 0) {
+      console.log(`🔍 Found ${duplicateAccounts.length} potential duplicate accounts for ${user.email}`);
+      return {
+        message: 'We found potential duplicate accounts that can be merged.',
+        duplicateAccounts: duplicateAccounts,
+        suggestedAction: 'merge_accounts'
+      };
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error checking for duplicate accounts:', error);
+    return null;
+  }
+}

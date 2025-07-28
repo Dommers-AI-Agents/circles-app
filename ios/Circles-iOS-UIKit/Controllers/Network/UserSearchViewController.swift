@@ -34,7 +34,7 @@ class UserSearchViewController: BaseViewController {
     private let searchController: UISearchController = {
         let controller = UISearchController(searchResultsController: nil)
         controller.obscuresBackgroundDuringPresentation = false
-        controller.searchBar.placeholder = "Search by name, email, or phone"
+        controller.searchBar.placeholder = "Search by name or username"
         return controller
     }()
     
@@ -277,7 +277,7 @@ class UserSearchViewController: BaseViewController {
     // MARK: - Empty States
     private func showEmptyState() {
         emptyImageView.image = UIImage(systemName: "magnifyingglass")
-        emptyLabel.text = "Search for users by name, email, or phone number"
+        emptyLabel.text = "Search for users by name or username"
         emptyStateView.isHidden = false
         tableView.isHidden = true
     }
@@ -391,7 +391,7 @@ class UserSearchCell: UITableViewCell {
         return label
     }()
     
-    private let emailLabel: UILabel = {
+    private let userInfoLabel: UILabel = {
         let label = UILabel()
         label.font = .systemFont(ofSize: 14)
         label.textColor = .secondaryLabel
@@ -421,7 +421,7 @@ class UserSearchCell: UITableViewCell {
     private func setupCell() {
         contentView.addSubview(profileImageView)
         contentView.addSubview(nameLabel)
-        contentView.addSubview(emailLabel)
+        contentView.addSubview(userInfoLabel)
         contentView.addSubview(connectionStatusLabel)
         
         NSLayoutConstraint.activate([
@@ -434,9 +434,9 @@ class UserSearchCell: UITableViewCell {
             nameLabel.leadingAnchor.constraint(equalTo: profileImageView.trailingAnchor, constant: 12),
             nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: connectionStatusLabel.leadingAnchor, constant: -8),
             
-            emailLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
-            emailLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
-            emailLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            userInfoLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
+            userInfoLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
+            userInfoLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
             
             connectionStatusLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             connectionStatusLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16)
@@ -455,20 +455,44 @@ class UserSearchCell: UITableViewCell {
         } else {
             nameLabel.text = user.displayName
         }
-        emailLabel.text = user.email
+        // Display bio instead of email for privacy
+        if let bio = user.bio, !bio.isEmpty {
+            userInfoLabel.text = bio
+        } else {
+            userInfoLabel.text = "Circles member"
+        }
         
         // Set profile image
         if let profilePicture = user.profilePicture {
-            ImageService.shared.loadImage(from: profilePicture) { [weak self] image in
-                guard let self = self else { return }
-                DispatchQueue.main.async {
-                    self.profileImageView.image = image
+            // Check if it's a default SF Symbol avatar
+            if profilePicture.starts(with: "sf-symbol:") {
+                let symbolName = String(profilePicture.dropFirst("sf-symbol:".count))
+                if let avatarCase = DefaultImages.AvatarDefault.allCases.first(where: { $0.rawValue == symbolName }) {
+                    profileImageView.image = avatarCase.image(size: 35)
+                    profileImageView.backgroundColor = avatarCase.backgroundColor
+                    profileImageView.tintColor = .white
+                    profileImageView.contentMode = .scaleAspectFit
+                } else {
+                    // Fallback to the symbol name directly
+                    profileImageView.image = UIImage(systemName: symbolName)
+                    profileImageView.tintColor = .systemGray3
+                    profileImageView.contentMode = .scaleAspectFit
+                }
+            } else {
+                // Regular image URL
+                ImageService.shared.loadImage(from: profilePicture) { [weak self] image in
+                    guard let self = self else { return }
+                    DispatchQueue.main.async {
+                        self.profileImageView.image = image
+                        self.profileImageView.contentMode = .scaleAspectFill
+                    }
                 }
             }
         } else {
             // Default profile image
             profileImageView.image = UIImage(systemName: "person.circle.fill")
             profileImageView.tintColor = .systemGray3
+            profileImageView.contentMode = .scaleAspectFit
         }
         
         // Set connection status if available

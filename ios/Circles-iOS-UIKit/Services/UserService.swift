@@ -468,6 +468,50 @@ class UserService {
         }
     }
     
+    // MARK: - Account Merge Methods
+    
+    static func findDuplicateAccounts(for user: User, completion: @escaping (Result<[User], Error>) -> Void) {
+        let body: [String: Any] = [
+            "email": user.email,
+            "displayName": user.displayName
+        ]
+        
+        APIService.shared.request(
+            endpoint: "users/find-duplicates",
+            method: .post,
+            body: body,
+            requiresAuth: true
+        ) { (result: Result<DuplicateAccountsResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.duplicateAccounts))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    static func mergeAccounts(primaryId: String, secondaryId: String, completion: @escaping (Result<User, Error>) -> Void) {
+        let body: [String: Any] = [
+            "primaryAccountId": primaryId,
+            "secondaryAccountId": secondaryId
+        ]
+        
+        APIService.shared.request(
+            endpoint: "users/merge-accounts",
+            method: .post,
+            body: body,
+            requiresAuth: true
+        ) { (result: Result<MergeAccountsResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.primaryAccount))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
     func changePassword(currentPassword: String, newPassword: String, completion: @escaping (Result<Void, Error>) -> Void) {
         let body: [String: Any] = [
             "currentPassword": currentPassword,

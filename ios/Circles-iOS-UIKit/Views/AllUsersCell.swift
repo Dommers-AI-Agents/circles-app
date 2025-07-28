@@ -44,7 +44,7 @@ class AllUsersCell: UITableViewCell {
         return label
     }()
     
-    private let emailLabel: UILabel = {
+    private let userInfoLabel: UILabel = {
         let label = UILabel()
         label.font = .systemFont(ofSize: 14)
         label.textColor = .secondaryLabel
@@ -109,7 +109,7 @@ class AllUsersCell: UITableViewCell {
         contentView.addSubview(highlightView)
         contentView.addSubview(profileImageView)
         contentView.addSubview(nameLabel)
-        contentView.addSubview(emailLabel)
+        contentView.addSubview(userInfoLabel)
         contentView.addSubview(actionButton)
         contentView.addSubview(followButton)
         contentView.addSubview(removeButton)
@@ -127,7 +127,7 @@ class AllUsersCell: UITableViewCell {
         
         // Create the trailing constraints for dynamic updates
         nameTrailingConstraint = nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: followButton.leadingAnchor, constant: -8)
-        emailTrailingConstraint = emailLabel.trailingAnchor.constraint(lessThanOrEqualTo: followButton.leadingAnchor, constant: -8)
+        emailTrailingConstraint = userInfoLabel.trailingAnchor.constraint(lessThanOrEqualTo: followButton.leadingAnchor, constant: -8)
         
         NSLayoutConstraint.activate([
             highlightView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
@@ -144,8 +144,8 @@ class AllUsersCell: UITableViewCell {
             nameLabel.leadingAnchor.constraint(equalTo: profileImageView.trailingAnchor, constant: 12),
             nameTrailingConstraint!,
             
-            emailLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
-            emailLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
+            userInfoLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
+            userInfoLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
             emailTrailingConstraint!,
             
             removeButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
@@ -198,10 +198,10 @@ class AllUsersCell: UITableViewCell {
         // Create and activate new constraints
         if constraintTarget == contentView {
             nameTrailingConstraint = nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -16)
-            emailTrailingConstraint = emailLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -16)
+            emailTrailingConstraint = userInfoLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -16)
         } else {
             nameTrailingConstraint = nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: constraintTarget.leadingAnchor, constant: -8)
-            emailTrailingConstraint = emailLabel.trailingAnchor.constraint(lessThanOrEqualTo: constraintTarget.leadingAnchor, constant: -8)
+            emailTrailingConstraint = userInfoLabel.trailingAnchor.constraint(lessThanOrEqualTo: constraintTarget.leadingAnchor, constant: -8)
         }
         
         nameTrailingConstraint?.isActive = true
@@ -211,7 +211,15 @@ class AllUsersCell: UITableViewCell {
     func configure(with user: User) {
         self.user = user
         nameLabel.text = user.displayName
-        emailLabel.text = user.email
+        // Display user info instead of email for privacy
+        if let bio = user.bio, !bio.isEmpty {
+            userInfoLabel.text = bio
+        } else if let location = user.location, !location.isEmpty {
+            // Use the location property if available
+            userInfoLabel.text = location
+        } else {
+            userInfoLabel.text = "Circles member"
+        }
         
         // Check if this is a newly accepted connection
         let newlyAcceptedId = UserDefaults.standard.string(forKey: "newlyAcceptedConnectionId")
@@ -220,14 +228,33 @@ class AllUsersCell: UITableViewCell {
         
         // Set profile image
         if let profilePicture = user.profilePicture {
-            ImageService.shared.loadImage(from: profilePicture) { [weak self] image in
-                DispatchQueue.main.async {
-                    self?.profileImageView.image = image
+            // Check if it's a default SF Symbol avatar
+            if profilePicture.starts(with: "sf-symbol:") {
+                let symbolName = String(profilePicture.dropFirst("sf-symbol:".count))
+                if let avatarCase = DefaultImages.AvatarDefault.allCases.first(where: { $0.rawValue == symbolName }) {
+                    profileImageView.image = avatarCase.image(size: 40)
+                    profileImageView.backgroundColor = avatarCase.backgroundColor
+                    profileImageView.tintColor = .white
+                    profileImageView.contentMode = .scaleAspectFit
+                } else {
+                    // Fallback to the symbol name directly
+                    profileImageView.image = UIImage(systemName: symbolName)
+                    profileImageView.tintColor = .systemGray3
+                    profileImageView.contentMode = .scaleAspectFit
+                }
+            } else {
+                // Regular image URL
+                ImageService.shared.loadImage(from: profilePicture) { [weak self] image in
+                    DispatchQueue.main.async {
+                        self?.profileImageView.image = image
+                        self?.profileImageView.contentMode = .scaleAspectFill
+                    }
                 }
             }
         } else {
             profileImageView.image = UIImage(systemName: "person.circle.fill")
             profileImageView.tintColor = .systemGray3
+            profileImageView.contentMode = .scaleAspectFit
         }
         
         // Configure buttons based on connection status

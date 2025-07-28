@@ -207,7 +207,7 @@ class ConnectionCell: UITableViewCell {
         return label
     }()
     
-    private let emailLabel: UILabel = {
+    private let connectionInfoLabel: UILabel = {
         let label = UILabel()
         label.font = .systemFont(ofSize: 14)
         label.textColor = .secondaryLabel
@@ -252,7 +252,7 @@ class ConnectionCell: UITableViewCell {
         
         contentView.addSubview(profileImageView)
         contentView.addSubview(nameLabel)
-        contentView.addSubview(emailLabel)
+        contentView.addSubview(connectionInfoLabel)
         contentView.addSubview(viewButton)
         contentView.addSubview(removeButton)
         
@@ -266,9 +266,9 @@ class ConnectionCell: UITableViewCell {
             nameLabel.leadingAnchor.constraint(equalTo: profileImageView.trailingAnchor, constant: 12),
             nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: viewButton.leadingAnchor, constant: -8),
             
-            emailLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
-            emailLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
-            emailLabel.trailingAnchor.constraint(lessThanOrEqualTo: viewButton.leadingAnchor, constant: -8),
+            connectionInfoLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
+            connectionInfoLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
+            connectionInfoLabel.trailingAnchor.constraint(lessThanOrEqualTo: viewButton.leadingAnchor, constant: -8),
             
             removeButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             removeButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
@@ -288,7 +288,15 @@ class ConnectionCell: UITableViewCell {
     func configure(with connection: Connection) {
         self.connection = connection
         nameLabel.text = connection.connectedUser?.displayName ?? "Unknown User"
-        emailLabel.text = connection.connectedUser?.email ?? ""
+        
+        // Display connection date instead of email for privacy
+        if let createdAt = connection.createdAt {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            connectionInfoLabel.text = "Connected \(formatter.string(from: createdAt))"
+        } else {
+            connectionInfoLabel.text = "Connected"
+        }
         
         // Set profile image
         if let profilePicture = connection.connectedUser?.profilePicture {

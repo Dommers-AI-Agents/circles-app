@@ -12,6 +12,7 @@ enum AuthError: Error, LocalizedError, Equatable {
     case emailAlreadyInUse
     case weakPassword
     case userNotFound
+    case privateRelayNotAllowed
     case unknown(String)
     
     var errorDescription: String? {
@@ -36,6 +37,8 @@ enum AuthError: Error, LocalizedError, Equatable {
             return "Password must be at least 6 characters"
         case .userNotFound:
             return "No account found with this email"
+        case .privateRelayNotAllowed:
+            return "Private relay emails are not allowed. Please sign in with Apple again and choose to share your real email address."
         case .unknown(let message):
             return message
         }
@@ -51,7 +54,8 @@ enum AuthError: Error, LocalizedError, Equatable {
              (.invalidEmail, .invalidEmail),
              (.emailAlreadyInUse, .emailAlreadyInUse),
              (.weakPassword, .weakPassword),
-             (.userNotFound, .userNotFound):
+             (.userNotFound, .userNotFound),
+             (.privateRelayNotAllowed, .privateRelayNotAllowed):
             return true
         case (.networkError(let lhsError), .networkError(let rhsError)):
             return (lhsError as NSError) == (rhsError as NSError)
@@ -609,6 +613,11 @@ class AuthService {
         case .httpError(let statusCode, let data):
             // Parse error message from response data if available
             if let data = data, let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
+                // Check for private relay error first
+                if let code = errorResponse.code, code == "PRIVATE_RELAY_NOT_ALLOWED" {
+                    return .privateRelayNotAllowed
+                }
+                
                 // Check for email verification error
                 if errorResponse.message.lowercased().contains("email") && errorResponse.message.lowercased().contains("verif") {
                     return .emailNotVerified
@@ -616,6 +625,10 @@ class AuthService {
                 
                 switch statusCode {
                 case 400:
+                    // Check for private relay error in message
+                    if errorResponse.message.lowercased().contains("private relay") {
+                        return .privateRelayNotAllowed
+                    }
                     // General validation error
                     return .unknown("Invalid request")
                 case 401:

@@ -276,7 +276,13 @@ class LoginViewController: BaseViewController {
                     print("🍎 Successfully logged in with Apple: \(user.displayName)")
                 case .failure(let error):
                     print("🍎 Apple Sign-In Failed with error: \(error.localizedDescription)")
-                    self?.showError("Apple Sign-In Failed: \(error.localizedDescription)")
+                    
+                    // Check if it's a private relay error
+                    if let authError = error as? AuthError, authError == .privateRelayNotAllowed {
+                        self?.showPrivateRelayGuidance()
+                    } else {
+                        self?.showError("Apple Sign-In Failed: \(error.localizedDescription)")
+                    }
                 }
             }
         }
@@ -324,5 +330,45 @@ class LoginViewController: BaseViewController {
     
     @objc private func dismissKeyboard() {
         view.endEditing(true)
+    }
+    
+    // MARK: - Private Relay Guidance
+    private func showPrivateRelayGuidance() {
+        let alert = UIAlertController(
+            title: "Private Relay Not Allowed",
+            message: "We found you have an existing account with a private relay email. Would you like to sign in with your Gmail account and merge them?",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "Use Email Instead", style: .default) { [weak self] _ in
+            // Navigate to email login/registration
+            let registerVC = RegisterViewController()
+            self?.navigationController?.pushViewController(registerVC, animated: true)
+        })
+        
+        alert.addAction(UIAlertAction(title: "Try Apple Again", style: .default) { [weak self] _ in
+            // Show guidance for sharing real email
+            self?.showAppleSignInGuidance()
+        })
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        
+        present(alert, animated: true)
+    }
+    
+    private func showAppleSignInGuidance() {
+        let alert = UIAlertController(
+            title: "Share Your Real Email",
+            message: "To use Circles, please sign in with Apple again and choose 'Share My Email' instead of 'Hide My Email'. This ensures you can access your account from all devices.",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "Try Again", style: .default) { [weak self] _ in
+            self?.appleSignInButtonTapped()
+        })
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        
+        present(alert, animated: true)
     }
 }

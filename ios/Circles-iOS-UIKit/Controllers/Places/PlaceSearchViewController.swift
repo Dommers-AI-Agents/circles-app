@@ -192,6 +192,16 @@ class PlaceSearchViewController: BaseViewController {
         // Add annotations for search results
         for result in searchResults {
             let searchRequest = MKLocalSearch.Request(completion: result)
+            
+            // Add region constraint to ensure we get the correct location
+            if let location = currentLocation {
+                searchRequest.region = MKCoordinateRegion(
+                    center: location.coordinate,
+                    latitudinalMeters: 50000,  // 50km radius
+                    longitudinalMeters: 50000
+                )
+            }
+            
             let search = MKLocalSearch(request: searchRequest)
             
             search.start { [weak self] response, error in
@@ -210,12 +220,24 @@ class PlaceSearchViewController: BaseViewController {
     
     private func selectPlace(at indexPath: IndexPath) {
         let selectedResult = searchResults[indexPath.row]
+        // Preserve the original address that the user saw and selected
+        let originalAddress = selectedResult.subtitle
         
         // Show loading indicator
         let loadingAlert = AlertPresenter.showLoading(message: "Getting place details...", from: self)
         
         // Perform detailed search
         let searchRequest = MKLocalSearch.Request(completion: selectedResult)
+        
+        // Add region constraint to ensure we get the correct location
+        if let location = currentLocation {
+            searchRequest.region = MKCoordinateRegion(
+                center: location.coordinate,
+                latitudinalMeters: 50000,  // 50km radius
+                longitudinalMeters: 50000
+            )
+        }
+        
         let search = MKLocalSearch(request: searchRequest)
         
         search.start { [weak self] response, error in
@@ -235,7 +257,7 @@ class PlaceSearchViewController: BaseViewController {
                 
                 // Try to get more detailed information
                 self.fetchAdditionalPlaceInfo(for: mapItem) { enrichedMapItem in
-                    self.handlePlaceSelection(enrichedMapItem)
+                    self.handlePlaceSelection(enrichedMapItem, originalAddress: originalAddress)
                 }
             }
         }
@@ -287,10 +309,12 @@ class PlaceSearchViewController: BaseViewController {
         }
     }
     
-    private func handlePlaceSelection(_ mapItem: MKMapItem) {
+    private func handlePlaceSelection(_ mapItem: MKMapItem, originalAddress: String? = nil) {
         let placemark = mapItem.placemark
         let name = mapItem.name ?? "Unknown Place"
-        let address = [
+        
+        // Use the original address that the user selected if available
+        let address = originalAddress ?? [
             placemark.subThoroughfare,
             placemark.thoroughfare,
             placemark.locality,

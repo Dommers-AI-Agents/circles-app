@@ -68,10 +68,10 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
     
     private let placesCountLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+        label.font = UIFont.systemFont(ofSize: 12, weight: .semibold)
         label.textColor = .white
-        label.backgroundColor = UIColor.black.withAlphaComponent(0.6)
-        label.layer.cornerRadius = 16
+        label.backgroundColor = Constants.Colors.primary
+        label.layer.cornerRadius = 20
         label.layer.masksToBounds = true
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -321,11 +321,11 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
             mapView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             mapView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             
-            // Places count label - top left
-            placesCountLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
-            placesCountLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            placesCountLabel.heightAnchor.constraint(equalToConstant: 32),
-            placesCountLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 180)
+            // Places count label - above zoom buttons on right side
+            placesCountLabel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -70),
+            placesCountLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            placesCountLabel.heightAnchor.constraint(equalToConstant: 40),
+            placesCountLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 40)
         ]
         
         // Add close button constraints only if presented modally
@@ -1162,11 +1162,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
             return
         }
         
-        if placesWithoutLocation > 0 {
-            placesCountLabel.text = "\(placesWithLocation) of \(totalPlaces) places on map"
-        } else {
-            placesCountLabel.text = "\(totalPlaces) places"
-        }
+        // Just show the count number in the circular badge
+        placesCountLabel.text = "\(totalPlaces)"
     }
 }
 

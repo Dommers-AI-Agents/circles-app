@@ -227,7 +227,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     private let filterContainer: UIView = {
         let view = UIView()
-        view.backgroundColor = Constants.Colors.background
+        view.backgroundColor = .clear
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -338,12 +338,26 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return button
     }()
     
+    private let mapPlaceCountLabel: UIButton = {
+        let button = UIButton(type: .custom)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 12, weight: .semibold)
+        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = Constants.Colors.primary
+        button.layer.cornerRadius = 20
+        button.layer.masksToBounds = true
+        button.isUserInteractionEnabled = false
+        button.contentEdgeInsets = UIEdgeInsets(top: 0, left: 10, bottom: 0, right: 10)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isHidden = true
+        return button
+    }()
+    
     private var mapViewController: FullScreenMapViewController?
     
     private let filterStackView: UIStackView = {
         let stack = UIStackView()
         stack.axis = .horizontal
-        stack.spacing = 8
+        stack.spacing = 6
         stack.distribution = .fillEqually
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.isHidden = false
@@ -355,12 +369,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         button.setTitle("My Places Only", for: .normal)
         button.setImage(UIImage(systemName: "chevron.down"), for: .normal)
         button.semanticContentAttribute = .forceRightToLeft
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
-        button.backgroundColor = Constants.Colors.secondaryBackground
-        button.layer.cornerRadius = 16
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 12, weight: .medium)
+        button.backgroundColor = Constants.Colors.secondaryBackground.withAlphaComponent(0.9)
+        button.layer.cornerRadius = 14
         button.layer.borderWidth = 1
         button.layer.borderColor = Constants.Colors.separator.cgColor
-        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
+        button.contentEdgeInsets = UIEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
@@ -419,12 +433,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         button.setTitle("All Categories", for: .normal)
         button.setImage(UIImage(systemName: "chevron.down"), for: .normal)
         button.semanticContentAttribute = .forceRightToLeft
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
-        button.backgroundColor = Constants.Colors.secondaryBackground
-        button.layer.cornerRadius = 16
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 12, weight: .medium)
+        button.backgroundColor = Constants.Colors.secondaryBackground.withAlphaComponent(0.9)
+        button.layer.cornerRadius = 14
         button.layer.borderWidth = 1
         button.layer.borderColor = Constants.Colors.separator.cgColor
-        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
+        button.contentEdgeInsets = UIEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
@@ -543,7 +557,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     private let activityHeaderLabel: UILabel = {
         let label = UILabel()
         label.text = "Recent Activity"
-        label.font = UIFont.systemFont(ofSize: 20, weight: .semibold)
+        label.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
         label.textColor = Constants.Colors.label
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -554,7 +568,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         tableView.backgroundColor = Constants.Colors.background
         tableView.separatorStyle = .none
         tableView.rowHeight = UITableView.automaticDimension
-        tableView.estimatedRowHeight = 80
+        tableView.estimatedRowHeight = 60
         tableView.isScrollEnabled = true // Enable scrolling for proper display
         tableView.showsVerticalScrollIndicator = true
         tableView.translatesAutoresizingMaskIntoConstraints = false
@@ -958,13 +972,14 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         workCard.addSubview(workButton)
         workCard.addSubview(workNavigateButton)
         contentView.addSubview(userListView)
+        contentView.addSubview(mapContainerView)
         contentView.addSubview(filterContainer)
         filterContainer.addSubview(filterStackView)
-        contentView.addSubview(mapContainerView)
         contentView.addSubview(mapLoadingView)
         mapLoadingView.addSubview(mapLoadingIndicator)
         mapLoadingView.addSubview(mapLoadingLabel)
         contentView.addSubview(mapExpandButton)
+        contentView.addSubview(mapPlaceCountLabel)
         
         // Add small loading indicator directly to map container for better UX
         mapContainerView.addSubview(mapLoadingIndicator)
@@ -995,7 +1010,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Add search results table view
         view.addSubview(searchResultsTableView)
         
-        // Bring elements to proper z-order
+        // Bring elements to proper z-order - filters and expand button above map
+        contentView.bringSubviewToFront(filterContainer)
         contentView.bringSubviewToFront(mapExpandButton)
         
         // Ensure loading view is on top
@@ -1087,19 +1103,20 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             userListView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
             userListView.heightAnchor.constraint(equalToConstant: 118),
             
-            // Filter container
-            filterContainer.topAnchor.constraint(equalTo: userListView.bottomAnchor, constant: Constants.Spacing.tiny),
-            filterContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            filterContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            filterContainer.heightAnchor.constraint(equalToConstant: 60),
+            // Filter container - positioned to overlay the map
+            filterContainer.topAnchor.constraint(equalTo: mapContainerView.topAnchor, constant: Constants.Spacing.small),
+            filterContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
+            filterContainer.trailingAnchor.constraint(lessThanOrEqualTo: mapExpandButton.leadingAnchor, constant: -Constants.Spacing.small),
+            filterContainer.heightAnchor.constraint(equalToConstant: 36),
             
-            // Filter stack - center in filter container
-            filterStackView.centerYAnchor.constraint(equalTo: filterContainer.centerYAnchor),
-            filterStackView.centerXAnchor.constraint(equalTo: filterContainer.centerXAnchor),
-            filterStackView.heightAnchor.constraint(equalToConstant: 36),
+            // Filter stack - compact layout in filter container
+            filterStackView.topAnchor.constraint(equalTo: filterContainer.topAnchor, constant: 2),
+            filterStackView.leadingAnchor.constraint(equalTo: filterContainer.leadingAnchor, constant: 6),
+            filterStackView.trailingAnchor.constraint(equalTo: filterContainer.trailingAnchor, constant: -6),
+            filterStackView.bottomAnchor.constraint(equalTo: filterContainer.bottomAnchor, constant: -2),
             
-            // Map container - fixed height in scroll view
-            mapContainerView.topAnchor.constraint(equalTo: filterContainer.bottomAnchor),
+            // Map container - directly after userListView
+            mapContainerView.topAnchor.constraint(equalTo: userListView.bottomAnchor),
             mapContainerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             mapContainerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             
@@ -1125,6 +1142,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             mapExpandButton.trailingAnchor.constraint(equalTo: mapContainerView.trailingAnchor, constant: -Constants.Spacing.small),
             mapExpandButton.widthAnchor.constraint(equalToConstant: 36),
             mapExpandButton.heightAnchor.constraint(equalToConstant: 36),
+            
+            // Map place count label - above zoom buttons on right side
+            mapPlaceCountLabel.bottomAnchor.constraint(equalTo: mapContainerView.bottomAnchor, constant: -70),
+            mapPlaceCountLabel.trailingAnchor.constraint(equalTo: mapContainerView.trailingAnchor, constant: -Constants.Spacing.small),
+            mapPlaceCountLabel.heightAnchor.constraint(equalToConstant: 40),
+            mapPlaceCountLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 40),
             
             emptyStateView.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             emptyStateView.centerYAnchor.constraint(equalTo: mapContainerView.centerYAnchor),
@@ -1196,18 +1219,18 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             locationStatusLabel.heightAnchor.constraint(equalToConstant: 28),
             
             // Activity feed section
-            activityFeedSection.topAnchor.constraint(equalTo: mapContainerView.bottomAnchor, constant: Constants.Spacing.large),
+            activityFeedSection.topAnchor.constraint(equalTo: mapContainerView.bottomAnchor, constant: Constants.Spacing.xsmall),
             activityFeedSection.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             activityFeedSection.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             activityFeedSection.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large),
             
             // Activity header
-            activityHeaderLabel.topAnchor.constraint(equalTo: activityFeedSection.topAnchor, constant: Constants.Spacing.medium),
+            activityHeaderLabel.topAnchor.constraint(equalTo: activityFeedSection.topAnchor, constant: Constants.Spacing.tiny),
             activityHeaderLabel.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor, constant: Constants.Spacing.medium),
             activityHeaderLabel.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor, constant: -Constants.Spacing.medium),
             
             // Activity table view
-            activityTableView.topAnchor.constraint(equalTo: activityHeaderLabel.bottomAnchor, constant: Constants.Spacing.medium),
+            activityTableView.topAnchor.constraint(equalTo: activityHeaderLabel.bottomAnchor, constant: Constants.Spacing.tiny),
             activityTableView.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor),
             activityTableView.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor),
             activityTableView.bottomAnchor.constraint(equalTo: activityFeedSection.bottomAnchor),
@@ -1224,7 +1247,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         ])
         
         // Create height constraints
-        mapHeightConstraint = mapContainerView.heightAnchor.constraint(equalToConstant: 300)
+        mapHeightConstraint = mapContainerView.heightAnchor.constraint(equalToConstant: 400)
         mapHeightConstraint?.isActive = true
         
         // Set a reasonable height for the activity table to allow scrolling
@@ -1296,6 +1319,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         mapVC.didMove(toParent: self)
         
         mapViewController = mapVC
+        
+        // Ensure filter container, expand button, and place count stay above the map
+        contentView.bringSubviewToFront(filterContainer)
+        contentView.bringSubviewToFront(mapExpandButton)
+        contentView.bringSubviewToFront(mapPlaceCountLabel)
     }
     
     private func setupDropdownViews() {
@@ -1634,6 +1662,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Hide place count labels until loaded
         mapViewController?.hidePlaceCount()
+        mapPlaceCountLabel.isHidden = true
     }
     
     private func hideMapLoadingState() {
@@ -2152,11 +2181,27 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Update the map
         self.mapViewController?.updatePlaces(placesToDisplay)
         
+        // Update place count label
+        updatePlaceCountLabel(count: placesToDisplay.count)
+        
         // Hide map loading state and show the map now that data is ready
         self.hideMapLoadingState()
         
         // Update empty state
         self.updateEmptyState()
+    }
+    
+    private func updatePlaceCountLabel(count: Int) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            if count > 0 {
+                self.mapPlaceCountLabel.setTitle("\(count)", for: .normal)
+                self.mapPlaceCountLabel.isHidden = false
+            } else {
+                self.mapPlaceCountLabel.isHidden = true
+            }
+        }
     }
     
     // MARK: - Notifications

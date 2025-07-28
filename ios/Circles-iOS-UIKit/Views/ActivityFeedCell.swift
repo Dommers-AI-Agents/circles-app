@@ -28,7 +28,7 @@ class ActivityFeedCell: UITableViewCell {
     private let avatarImageView: UIImageView = {
         let imageView = UIImageView()
         imageView.contentMode = .scaleAspectFill
-        imageView.layer.cornerRadius = 20
+        imageView.layer.cornerRadius = 16
         imageView.clipsToBounds = true
         imageView.backgroundColor = Constants.Colors.lightGray
         imageView.translatesAutoresizingMaskIntoConstraints = false
@@ -38,7 +38,7 @@ class ActivityFeedCell: UITableViewCell {
     
     private let activityLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 15)
+        label.font = UIFont.systemFont(ofSize: 13)
         label.textColor = Constants.Colors.label
         label.numberOfLines = 2
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -47,7 +47,7 @@ class ActivityFeedCell: UITableViewCell {
     
     private let timestampLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 13)
+        label.font = UIFont.systemFont(ofSize: 11)
         label.textColor = Constants.Colors.secondaryLabel
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -66,7 +66,7 @@ class ActivityFeedCell: UITableViewCell {
     
     private let commentLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 14)
+        label.font = UIFont.systemFont(ofSize: 12)
         label.textColor = Constants.Colors.secondaryLabel
         label.numberOfLines = 2
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -102,38 +102,38 @@ class ActivityFeedCell: UITableViewCell {
         
         NSLayoutConstraint.activate([
             // Container view
-            containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 6),
+            containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 3),
             containerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
             containerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
-            containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -6),
+            containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -3),
             
             // Avatar
-            avatarImageView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: Constants.Spacing.medium),
-            avatarImageView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: Constants.Spacing.medium),
-            avatarImageView.widthAnchor.constraint(equalToConstant: 40),
-            avatarImageView.heightAnchor.constraint(equalToConstant: 40),
+            avatarImageView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: Constants.Spacing.small),
+            avatarImageView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: Constants.Spacing.small),
+            avatarImageView.widthAnchor.constraint(equalToConstant: 32),
+            avatarImageView.heightAnchor.constraint(equalToConstant: 32),
             
             // Activity label
-            activityLabel.leadingAnchor.constraint(equalTo: avatarImageView.trailingAnchor, constant: Constants.Spacing.small),
+            activityLabel.leadingAnchor.constraint(equalTo: avatarImageView.trailingAnchor, constant: Constants.Spacing.xsmall),
             activityLabel.topAnchor.constraint(equalTo: avatarImageView.topAnchor),
             activityLabel.trailingAnchor.constraint(equalTo: placeImageView.leadingAnchor, constant: -Constants.Spacing.small),
             
             // Timestamp
             timestampLabel.leadingAnchor.constraint(equalTo: activityLabel.leadingAnchor),
-            timestampLabel.topAnchor.constraint(equalTo: activityLabel.bottomAnchor, constant: 4),
+            timestampLabel.topAnchor.constraint(equalTo: activityLabel.bottomAnchor, constant: 2),
             timestampLabel.trailingAnchor.constraint(equalTo: activityLabel.trailingAnchor),
             
             // Place image (optional)
-            placeImageView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Constants.Spacing.medium),
+            placeImageView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Constants.Spacing.small),
             placeImageView.centerYAnchor.constraint(equalTo: avatarImageView.centerYAnchor),
-            placeImageView.widthAnchor.constraint(equalToConstant: 60),
-            placeImageView.heightAnchor.constraint(equalToConstant: 60),
+            placeImageView.widthAnchor.constraint(equalToConstant: 48),
+            placeImageView.heightAnchor.constraint(equalToConstant: 48),
             
             // Comment label (optional)
             commentLabel.leadingAnchor.constraint(equalTo: activityLabel.leadingAnchor),
-            commentLabel.topAnchor.constraint(equalTo: timestampLabel.bottomAnchor, constant: Constants.Spacing.small),
+            commentLabel.topAnchor.constraint(equalTo: timestampLabel.bottomAnchor, constant: Constants.Spacing.tiny),
             commentLabel.trailingAnchor.constraint(equalTo: activityLabel.trailingAnchor),
-            commentLabel.bottomAnchor.constraint(lessThanOrEqualTo: containerView.bottomAnchor, constant: -Constants.Spacing.medium)
+            commentLabel.bottomAnchor.constraint(lessThanOrEqualTo: containerView.bottomAnchor, constant: -Constants.Spacing.small)
         ])
     }
     
@@ -162,7 +162,7 @@ class ActivityFeedCell: UITableViewCell {
         // Actor name in bold
         if let actorName = activity.actor?.displayName {
             let nameAttributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: 15, weight: .semibold),
+                .font: UIFont.systemFont(ofSize: 13, weight: .semibold),
                 .foregroundColor: Constants.Colors.label
             ]
             attributedString.append(NSAttributedString(string: actorName + " ", attributes: nameAttributes))
@@ -170,7 +170,7 @@ class ActivityFeedCell: UITableViewCell {
         
         // Activity description
         let descriptionAttributes: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(ofSize: 15),
+            .font: UIFont.systemFont(ofSize: 13),
             .foregroundColor: Constants.Colors.label
         ]
         attributedString.append(NSAttributedString(string: activity.formattedDescription, attributes: descriptionAttributes))

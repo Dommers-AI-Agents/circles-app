@@ -12,6 +12,7 @@ class CreateCircleViewController: UIViewController {
     private var keyboardHeight: CGFloat = 0
     private var selectedCategory: CategoryItem?
     private var selectedCategoryType: CircleCategory = .other
+    private var selectedDefaultImageName: String?
     
     // MARK: - Helper Methods
     /// Helper function to create a type-safe completion handler for API requests
@@ -56,6 +57,16 @@ class CreateCircleViewController: UIViewController {
         button.setTitle("Add Cover Photo", for: .normal)
         button.setTitleColor(.white, for: .normal)
         button.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.7)
+        button.layer.cornerRadius = 8
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let useDefaultImageButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Use Default Image", for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = Constants.Colors.secondary.withAlphaComponent(0.7)
         button.layer.cornerRadius = 8
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
@@ -199,16 +210,31 @@ class CreateCircleViewController: UIViewController {
     // MARK: - Properties
     private var selectedImage: UIImage? {
         didSet {
-            if let image = selectedImage {
-                coverImageView.image = image
-                coverImageView.contentMode = .scaleAspectFill
-                addCoverPhotoButton.setTitle("Change Photo", for: .normal)
-            } else {
-                coverImageView.image = Constants.Images.defaultCoverImage
+            updateCoverImage()
+        }
+    }
+    
+    private func updateCoverImage() {
+        if let image = selectedImage {
+            coverImageView.image = image
+            coverImageView.contentMode = .scaleAspectFill
+            addCoverPhotoButton.setTitle("Change Photo", for: .normal)
+            useDefaultImageButton.setTitle("Change Default", for: .normal)
+        } else if let defaultImageName = selectedDefaultImageName {
+            // Show the selected default image
+            if let defaultCase = DefaultImages.CircleDefault.allCases.first(where: { $0.rawValue == defaultImageName }) {
+                coverImageView.image = defaultCase.image(size: 100)
+                coverImageView.tintColor = defaultCase.color
                 coverImageView.contentMode = .scaleAspectFit
-                coverImageView.tintColor = Constants.Colors.primary
-                addCoverPhotoButton.setTitle("Add Cover Photo", for: .normal)
+                addCoverPhotoButton.setTitle("Change Photo", for: .normal)
+                useDefaultImageButton.setTitle("Change Default", for: .normal)
             }
+        } else {
+            coverImageView.image = Constants.Images.defaultCoverImage
+            coverImageView.contentMode = .scaleAspectFit
+            coverImageView.tintColor = Constants.Colors.primary
+            addCoverPhotoButton.setTitle("Add Cover Photo", for: .normal)
+            useDefaultImageButton.setTitle("Use Default Image", for: .normal)
         }
     }
     
@@ -266,6 +292,7 @@ class CreateCircleViewController: UIViewController {
         
         contentView.addSubview(coverImageView)
         contentView.addSubview(addCoverPhotoButton)
+        contentView.addSubview(useDefaultImageButton)
         contentView.addSubview(nameLabel)
         contentView.addSubview(nameTextField)
         contentView.addSubview(descriptionLabel)
@@ -305,9 +332,15 @@ class CreateCircleViewController: UIViewController {
             
             // Add cover photo button
             addCoverPhotoButton.centerXAnchor.constraint(equalTo: coverImageView.centerXAnchor),
-            addCoverPhotoButton.centerYAnchor.constraint(equalTo: coverImageView.centerYAnchor),
+            addCoverPhotoButton.centerYAnchor.constraint(equalTo: coverImageView.centerYAnchor, constant: -25),
             addCoverPhotoButton.widthAnchor.constraint(equalToConstant: 150),
             addCoverPhotoButton.heightAnchor.constraint(equalToConstant: 40),
+            
+            // Use default image button
+            useDefaultImageButton.centerXAnchor.constraint(equalTo: coverImageView.centerXAnchor),
+            useDefaultImageButton.topAnchor.constraint(equalTo: addCoverPhotoButton.bottomAnchor, constant: 10),
+            useDefaultImageButton.widthAnchor.constraint(equalToConstant: 150),
+            useDefaultImageButton.heightAnchor.constraint(equalToConstant: 40),
             
             // Create button - positioned right below the cover image
             createButton.topAnchor.constraint(equalTo: coverImageView.bottomAnchor, constant: Constants.Spacing.medium),
@@ -389,6 +422,7 @@ class CreateCircleViewController: UIViewController {
     
     private func setupActions() {
         addCoverPhotoButton.addTarget(self, action: #selector(addCoverPhotoButtonTapped), for: .touchUpInside)
+        useDefaultImageButton.addTarget(self, action: #selector(useDefaultImageButtonTapped), for: .touchUpInside)
         createButton.addTarget(self, action: #selector(createButtonTapped), for: .touchUpInside)
         categoryButton.addTarget(self, action: #selector(categoryButtonTapped), for: .touchUpInside)
         
@@ -458,6 +492,10 @@ class CreateCircleViewController: UIViewController {
         checkPhotoLibraryPermissions()
     }
     
+    @objc private func useDefaultImageButtonTapped() {
+        showDefaultImagePicker()
+    }
+    
     @objc private func createButtonTapped() {
         // Validate required fields
         guard let name = nameTextField.text, !name.isEmpty else {
@@ -511,6 +549,9 @@ class CreateCircleViewController: UIViewController {
                     }
                 }
             }
+        } else if let defaultImageName = selectedDefaultImageName {
+            // Use the selected default image symbol name
+            defaultImageUrl = "sf-symbol:\(defaultImageName)"
         } else if let location = location?.lowercased() {
             // Set default image based on location
             defaultImageUrl = getDefaultImageUrl(for: location)
@@ -570,6 +611,7 @@ class CreateCircleViewController: UIViewController {
                         self.shareCircleWithConnections(circle, connections: selectedConnections, email: emailText)
                         
                         self.delegate?.didCreateCircle(circle)
+                        self.dismiss(animated: true)
                     case .failure(let error):
                         self.presentAlert(
                             title: "Error",
@@ -605,6 +647,7 @@ class CreateCircleViewController: UIViewController {
                         self.shareCircleWithConnections(circle, connections: selectedConnections, email: emailText)
                         
                         self.delegate?.didCreateCircle(circle)
+                        self.dismiss(animated: true)
                         
                     case .failure(let error):
                         self.presentAlert(
@@ -696,6 +739,37 @@ class CreateCircleViewController: UIViewController {
         imagePicker.delegate = self
         imagePicker.allowsEditing = true
         present(imagePicker, animated: true)
+    }
+    
+    private func showDefaultImagePicker() {
+        let defaultImageView = DefaultImageSelectionView(type: .circle)
+        defaultImageView.onImageSelected = { [weak self] symbolName in
+            self?.selectedDefaultImageName = symbolName
+            self?.selectedImage = nil // Clear any selected photo
+            self?.dismiss(animated: true)
+        }
+        
+        let containerVC = UIViewController()
+        containerVC.view.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        containerVC.modalPresentationStyle = .overFullScreen
+        containerVC.modalTransitionStyle = .crossDissolve
+        
+        containerVC.view.addSubview(defaultImageView)
+        defaultImageView.translatesAutoresizingMaskIntoConstraints = false
+        
+        NSLayoutConstraint.activate([
+            defaultImageView.centerXAnchor.constraint(equalTo: containerVC.view.centerXAnchor),
+            defaultImageView.centerYAnchor.constraint(equalTo: containerVC.view.centerYAnchor),
+            defaultImageView.widthAnchor.constraint(equalTo: containerVC.view.widthAnchor, constant: -40),
+            defaultImageView.heightAnchor.constraint(lessThanOrEqualToConstant: 400)
+        ])
+        
+        // Add tap gesture to dismiss
+        let tapGesture = UITapGestureRecognizer(target: containerVC, action: #selector(UIViewController.dismiss))
+        tapGesture.delegate = self
+        containerVC.view.addGestureRecognizer(tapGesture)
+        
+        present(containerVC, animated: true)
     }
     
     private func presentPhotoLibraryPermissionAlert() {
@@ -843,8 +917,10 @@ extension CreateCircleViewController: UIImagePickerControllerDelegate, UINavigat
     func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
         if let editedImage = info[.editedImage] as? UIImage {
             selectedImage = editedImage
+            selectedDefaultImageName = nil // Clear default image if photo is selected
         } else if let originalImage = info[.originalImage] as? UIImage {
             selectedImage = originalImage
+            selectedDefaultImageName = nil // Clear default image if photo is selected
         }
         
         picker.dismiss(animated: true)
@@ -885,6 +961,17 @@ extension CreateCircleViewController: ConnectionPickerDelegate {
     func connectionPicker(_ picker: ConnectionPickerView, didDeselectConnection connection: User) {
         // Connection deselected - no additional action needed as the picker handles UI updates
         print("Deselected connection: \(connection.displayName)")
+    }
+}
+
+// MARK: - UIGestureRecognizerDelegate
+extension CreateCircleViewController: UIGestureRecognizerDelegate {
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        // Don't dismiss if tapping on the default image selection view
+        if let touchedView = touch.view, touchedView.isDescendant(of: gestureRecognizer.view!) {
+            return touchedView == gestureRecognizer.view
+        }
+        return true
     }
 }
 

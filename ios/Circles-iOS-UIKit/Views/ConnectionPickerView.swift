@@ -27,7 +27,7 @@ class ConnectionPickerView: UIView {
     
     private let searchTextField: UITextField = {
         let textField = UITextField()
-        textField.placeholder = "Search connections or enter email"
+        textField.placeholder = "Search connections by name"
         textField.borderStyle = .none
         textField.translatesAutoresizingMaskIntoConstraints = false
         return textField
@@ -308,7 +308,7 @@ extension ConnectionPickerView: UITextFieldDelegate {
 private class ConnectionPickerCell: UITableViewCell {
     private let profileImageView = UIImageView()
     private let nameLabel = UILabel()
-    private let emailLabel = UILabel()
+    private let userInfoLabel = UILabel()
     
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -330,13 +330,13 @@ private class ConnectionPickerCell: UITableViewCell {
         nameLabel.textColor = Constants.Colors.label
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         
-        emailLabel.font = UIFont.systemFont(ofSize: 14)
-        emailLabel.textColor = Constants.Colors.secondaryLabel
-        emailLabel.translatesAutoresizingMaskIntoConstraints = false
+        userInfoLabel.font = UIFont.systemFont(ofSize: 14)
+        userInfoLabel.textColor = Constants.Colors.secondaryLabel
+        userInfoLabel.translatesAutoresizingMaskIntoConstraints = false
         
         contentView.addSubview(profileImageView)
         contentView.addSubview(nameLabel)
-        contentView.addSubview(emailLabel)
+        contentView.addSubview(userInfoLabel)
         
         NSLayoutConstraint.activate([
             profileImageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 12),
@@ -348,15 +348,16 @@ private class ConnectionPickerCell: UITableViewCell {
             nameLabel.topAnchor.constraint(equalTo: profileImageView.topAnchor, constant: 2),
             nameLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -12),
             
-            emailLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
-            emailLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 2),
-            emailLabel.trailingAnchor.constraint(equalTo: nameLabel.trailingAnchor)
+            userInfoLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
+            userInfoLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 2),
+            userInfoLabel.trailingAnchor.constraint(equalTo: nameLabel.trailingAnchor)
         ])
     }
     
     func configure(with user: User) {
         nameLabel.text = user.displayName
-        emailLabel.text = user.email
+        // Display connection info instead of email for privacy
+        userInfoLabel.text = "Connected"
         
         if let profilePicture = user.profilePicture, let url = URL(string: profilePicture) {
             URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in

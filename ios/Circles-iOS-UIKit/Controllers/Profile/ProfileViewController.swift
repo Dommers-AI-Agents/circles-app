@@ -1002,8 +1002,15 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         isShowingMap.toggle()
         
         // Update toggle button title
-        if let toggleButton = navigationItem.rightBarButtonItems?[1] {
-            toggleButton.title = isShowingMap ? "List" : "Map"
+        // For current user profile, toggle button is at index 1 (after settings)
+        // For other user profile, toggle button is at index 0 (only button)
+        if let rightBarButtons = navigationItem.rightBarButtonItems {
+            let isCurrentUser = (self.user == nil) || (user?.id == AuthService.shared.getUserId())
+            let toggleButtonIndex = isCurrentUser ? 1 : 0
+            
+            if toggleButtonIndex < rightBarButtons.count {
+                rightBarButtons[toggleButtonIndex].title = isShowingMap ? "List" : "Map"
+            }
         }
         
         // Show/hide views
@@ -1371,9 +1378,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         
         // Check if this is an incoming request to accept
         if connectionStatus == .pending && user.connectionDirection == "incoming" {
-            // Find the connection to accept
-            let connections = NetworkManager.shared.connections
-            guard let connection = connections.first(where: { 
+            // Find the connection to accept (check both accepted and pending connections)
+            let allConnections = NetworkManager.shared.connections + NetworkManager.shared.pendingConnections
+            guard let connection = allConnections.first(where: { 
                 $0.otherUserId(currentUserId: AuthService.shared.getUserId() ?? "") == user.id 
             }) else {
                 showAlert(title: "Error", message: "Connection request not found")
@@ -1548,10 +1555,10 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         
         print("🔍 Checking connection and follow status for user: \(user.displayName)")
         
-        // Check if user is in current user's connections
-        let connections = NetworkManager.shared.connections
+        // Check if user is in current user's connections (both accepted and pending)
+        let allConnections = NetworkManager.shared.connections + NetworkManager.shared.pendingConnections
         let currentUserId = AuthService.shared.getUserId() ?? ""
-        let connection = connections.first { $0.otherUserId(currentUserId: currentUserId) == user.id }
+        let connection = allConnections.first { $0.otherUserId(currentUserId: currentUserId) == user.id }
         
         connectionStatus = connection?.status
         
@@ -1866,6 +1873,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         print("   - Bio: \(user.bio ?? "nil")")
         print("   - Location: \(user.location ?? "nil")")
         
+        
         // Update UI with user data
         if let profileImageUrl = user.profilePicture {
             // In a real app, load image from URL
@@ -1911,6 +1919,20 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         editProfileButton.isHidden = !isCurrentUser
         shareProfileButton.isHidden = !isCurrentUser
         suggestedButton.isHidden = !isCurrentUser
+        logoutButton.isHidden = !isCurrentUser
+        versionLabel.isHidden = !isCurrentUser
+        
+        // Update navigation bar items based on profile type
+        if isCurrentUser {
+            // Current user - show settings and toggle buttons
+            let settingsButton = UIBarButtonItem(image: UIImage(systemName: "gear"), style: .plain, target: self, action: #selector(settingsButtonTapped))
+            let toggleButton = UIBarButtonItem(title: "Map", style: .plain, target: self, action: #selector(toggleViewMode))
+            navigationItem.rightBarButtonItems = [settingsButton, toggleButton]
+        } else {
+            // Other user - only show toggle button  
+            let toggleButton = UIBarButtonItem(title: "Map", style: .plain, target: self, action: #selector(toggleViewMode))
+            navigationItem.rightBarButtonItems = [toggleButton]
+        }
         
         // For other users, check connection status and follow status
         if !isCurrentUser {

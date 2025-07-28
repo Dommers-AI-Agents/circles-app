@@ -32,14 +32,14 @@ class FindContactsViewController: BaseViewController {
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
-        setupNavigationBar()
+        configureNavigationBar()
         setupUI()
         setupTableView()
         loadContacts()
     }
     
     // MARK: - Setup
-    private func setupNavigationBar() {
+    private func configureNavigationBar() {
         title = "Find Friends"
         navigationItem.leftBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .cancel,

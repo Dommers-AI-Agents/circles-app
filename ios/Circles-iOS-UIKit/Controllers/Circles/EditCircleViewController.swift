@@ -6,13 +6,14 @@ protocol EditCircleDelegate: AnyObject {
     func didDeleteCircle(_ circleId: String)
 }
 
-class EditCircleViewController: UIViewController {
+class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
     
     // MARK: - Properties
     weak var delegate: EditCircleDelegate?
     private let circle: Circle
     private var selectedCategory: CategoryItem?
     private var selectedCategoryType: CircleCategory
+    private var selectedDefaultImageName: String?
     
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
@@ -42,6 +43,16 @@ class EditCircleViewController: UIViewController {
         button.setTitle("Change Cover Photo", for: .normal)
         button.setTitleColor(.white, for: .normal)
         button.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.7)
+        button.layer.cornerRadius = 8
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let useDefaultImageButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Use Default Image", for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = Constants.Colors.secondary.withAlphaComponent(0.7)
         button.layer.cornerRadius = 8
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
@@ -217,14 +228,29 @@ class EditCircleViewController: UIViewController {
     private var editors: [User] = []
     private var selectedImage: UIImage? {
         didSet {
-            if let image = selectedImage {
-                coverImageView.image = image
-                coverImageView.contentMode = .scaleAspectFill
+            updateCoverImage()
+        }
+    }
+    
+    private func updateCoverImage() {
+        if let image = selectedImage {
+            coverImageView.image = image
+            coverImageView.contentMode = .scaleAspectFill
+            addCoverPhotoButton.setTitle("Change Photo", for: .normal)
+            useDefaultImageButton.setTitle("Change Default", for: .normal)
+        } else if let defaultImageName = selectedDefaultImageName {
+            // Show the selected default image
+            if let defaultCase = DefaultImages.CircleDefault.allCases.first(where: { $0.rawValue == defaultImageName }) {
+                coverImageView.image = defaultCase.image(size: 100)
+                coverImageView.tintColor = defaultCase.color
+                coverImageView.contentMode = .scaleAspectFit
                 addCoverPhotoButton.setTitle("Change Photo", for: .normal)
-            } else {
-                loadCurrentCoverImage()
-                addCoverPhotoButton.setTitle("Change Cover Photo", for: .normal)
+                useDefaultImageButton.setTitle("Change Default", for: .normal)
             }
+        } else {
+            loadCurrentCoverImage()
+            addCoverPhotoButton.setTitle("Change Cover Photo", for: .normal)
+            useDefaultImageButton.setTitle("Use Default Image", for: .normal)
         }
     }
     
@@ -235,7 +261,8 @@ class EditCircleViewController: UIViewController {
                getCurrentPrivacy() != circle.privacy ||
                locationTextField.text != (circle.location ?? "") ||
                getCurrentTags() != (circle.tags ?? []) ||
-               selectedImage != nil
+               selectedImage != nil ||
+               selectedDefaultImageName != nil
     }
     
     // MARK: - Lifecycle
@@ -280,6 +307,7 @@ class EditCircleViewController: UIViewController {
         
         contentView.addSubview(coverImageView)
         contentView.addSubview(addCoverPhotoButton)
+        contentView.addSubview(useDefaultImageButton)
         contentView.addSubview(nameLabel)
         contentView.addSubview(nameTextField)
         contentView.addSubview(descriptionLabel)
@@ -322,9 +350,15 @@ class EditCircleViewController: UIViewController {
             
             // Add cover photo button
             addCoverPhotoButton.centerXAnchor.constraint(equalTo: coverImageView.centerXAnchor),
-            addCoverPhotoButton.centerYAnchor.constraint(equalTo: coverImageView.centerYAnchor),
+            addCoverPhotoButton.centerYAnchor.constraint(equalTo: coverImageView.centerYAnchor, constant: -25),
             addCoverPhotoButton.widthAnchor.constraint(equalToConstant: 180),
             addCoverPhotoButton.heightAnchor.constraint(equalToConstant: 40),
+            
+            // Use default image button
+            useDefaultImageButton.centerXAnchor.constraint(equalTo: coverImageView.centerXAnchor),
+            useDefaultImageButton.topAnchor.constraint(equalTo: addCoverPhotoButton.bottomAnchor, constant: 10),
+            useDefaultImageButton.widthAnchor.constraint(equalToConstant: 180),
+            useDefaultImageButton.heightAnchor.constraint(equalToConstant: 40),
             
             // Name label
             nameLabel.topAnchor.constraint(equalTo: coverImageView.bottomAnchor, constant: Constants.Spacing.large),
@@ -420,6 +454,7 @@ class EditCircleViewController: UIViewController {
     
     private func setupActions() {
         addCoverPhotoButton.addTarget(self, action: #selector(addCoverPhotoButtonTapped), for: .touchUpInside)
+        useDefaultImageButton.addTarget(self, action: #selector(useDefaultImageButtonTapped), for: .touchUpInside)
         categoryButton.addTarget(self, action: #selector(categoryButtonTapped), for: .touchUpInside)
         saveButton.addTarget(self, action: #selector(saveTapped), for: .touchUpInside)
         deleteButton.addTarget(self, action: #selector(deleteButtonTapped), for: .touchUpInside)
@@ -468,15 +503,31 @@ class EditCircleViewController: UIViewController {
     
     private func loadCurrentCoverImage() {
         if let coverImageUrl = circle.coverImage {
-            // Load image from URL
-            ImageService.shared.loadImage(from: coverImageUrl) { [weak self] image in
-                DispatchQueue.main.async {
-                    if let image = image {
-                        self?.coverImageView.image = image
-                        self?.coverImageView.contentMode = .scaleAspectFill
-                    } else {
-                        // If image failed to load, show default
-                        self?.setDefaultCategoryImage()
+            // Check if it's a default SF Symbol
+            if coverImageUrl.starts(with: "sf-symbol:") {
+                let symbolName = String(coverImageUrl.dropFirst("sf-symbol:".count))
+                selectedDefaultImageName = symbolName
+                if let defaultCase = DefaultImages.CircleDefault.allCases.first(where: { $0.rawValue == symbolName }) {
+                    coverImageView.image = defaultCase.image(size: 100)
+                    coverImageView.tintColor = defaultCase.color
+                    coverImageView.contentMode = .scaleAspectFit
+                } else {
+                    // Fallback to the symbol name directly
+                    coverImageView.image = UIImage(systemName: symbolName)
+                    coverImageView.tintColor = Constants.Colors.primary
+                    coverImageView.contentMode = .scaleAspectFit
+                }
+            } else {
+                // Regular image URL
+                ImageService.shared.loadImage(from: coverImageUrl) { [weak self] image in
+                    DispatchQueue.main.async {
+                        if let image = image {
+                            self?.coverImageView.image = image
+                            self?.coverImageView.contentMode = .scaleAspectFill
+                        } else {
+                            // If image failed to load, show default
+                            self?.setDefaultCategoryImage()
+                        }
                     }
                 }
             }
@@ -486,23 +537,9 @@ class EditCircleViewController: UIViewController {
     }
     
     private func setDefaultCategoryImage() {
-        switch circle.category {
-        case .travel:
-            coverImageView.image = UIImage(systemName: "airplane.departure")
-        case .food:
-            coverImageView.image = UIImage(systemName: "fork.knife.circle.fill")
-        case .services:
-            coverImageView.image = UIImage(systemName: "wrench.and.screwdriver.fill")
-        case .shopping:
-            coverImageView.image = UIImage(systemName: "bag.fill")
-        case .healthcare:
-            coverImageView.image = UIImage(systemName: "heart.text.square.fill")
-        case .entertainment:
-            coverImageView.image = UIImage(systemName: "music.note.tv.fill")
-        case .other:
-            coverImageView.image = UIImage(systemName: "square.stack.3d.up.fill")
-        }
-        coverImageView.tintColor = Constants.Colors.primary
+        let defaultImage = DefaultImages.circleImageForCategory(circle.category)
+        coverImageView.image = defaultImage.image(size: 100)
+        coverImageView.tintColor = defaultImage.color
         coverImageView.contentMode = .scaleAspectFit
     }
     
@@ -553,6 +590,8 @@ class EditCircleViewController: UIViewController {
         
         // Get cover image data - optimize for upload
         var coverImageData: Data? = nil
+        var defaultImageUrl: String? = nil
+        
         if let image = selectedImage {
             // Use optimized upload function to create small thumbnail image (100KB max)
             coverImageData = image.optimizedForUpload(maxDimension: 300, targetSizeKB: 100)
@@ -571,24 +610,77 @@ class EditCircleViewController: UIViewController {
                     }
                 }
             }
+        } else if let defaultImageName = selectedDefaultImageName {
+            // Use the selected default image symbol name
+            defaultImageUrl = "sf-symbol:\(defaultImageName)"
         }
         
         // Disable the save button and show loading
         saveButton.isEnabled = false
         saveButton.setTitle("Saving...", for: .normal)
         
-        // Update the circle using CircleService
-        CircleService.shared.updateCircle(
-            id: circle.id,
-            name: name,
-            description: description,
-            privacy: privacy,
-            category: category,
-            customCategoryId: selectedCategory?.customCategoryId,
-            location: location,
-            tags: tags,
-            coverImage: coverImageData
-        ) { [weak self] result in
+        // If we have a default image URL and no custom image, pass it directly
+        if defaultImageUrl != nil && coverImageData == nil {
+            // Create updated body with default image URL
+            var body: [String: Any] = [
+                "name": name,
+                "privacy": privacy.rawValue,
+                "category": category.rawValue
+            ]
+            
+            // Add custom category ID if selected
+            if let customCategoryId = selectedCategory?.customCategoryId {
+                body["customCategoryId"] = customCategoryId
+            }
+            
+            if let description = description {
+                body["description"] = description
+            }
+            if let location = location {
+                body["location"] = location
+            }
+            if let tags = tags {
+                body["tags"] = tags
+            }
+            if let coverImage = defaultImageUrl {
+                body["coverImage"] = coverImage
+            }
+            
+            APIService.shared.request(
+                endpoint: "circles/\(circle.id)",
+                method: .put,
+                body: body,
+                requiresAuth: true
+            ) { [weak self] (result: Result<CircleResponse, APIError>) in
+                guard let self = self else { return }
+                DispatchQueue.main.async {
+                    self.saveButton.isEnabled = true
+                    self.saveButton.setTitle("Save Changes", for: .normal)
+                    
+                    switch result {
+                    case .success(let response):
+                        self.presentAlert(title: "Success", message: "Circle updated successfully") { _ in
+                            self.delegate?.didUpdateCircle(response.circle)
+                            self.navigationController?.popViewController(animated: true)
+                        }
+                    case .failure(let error):
+                        self.presentAlert(title: "Error", message: "Failed to update circle: \(error.localizedDescription)")
+                    }
+                }
+            }
+        } else {
+            // Update the circle using CircleService with image upload
+            CircleService.shared.updateCircle(
+                id: circle.id,
+                name: name,
+                description: description,
+                privacy: privacy,
+                category: category,
+                customCategoryId: selectedCategory?.customCategoryId,
+                location: location,
+                tags: tags,
+                coverImage: coverImageData
+            ) { [weak self] result in
             DispatchQueue.main.async {
                 self?.saveButton.isEnabled = true
                 self?.saveButton.setTitle("Save Changes", for: .normal)
@@ -605,6 +697,7 @@ class EditCircleViewController: UIViewController {
                     )
                 }
             }
+            }
         }
     }
     
@@ -614,6 +707,10 @@ class EditCircleViewController: UIViewController {
     
     @objc private func addCoverPhotoButtonTapped() {
         checkPhotoLibraryPermissions()
+    }
+    
+    @objc private func useDefaultImageButtonTapped() {
+        showDefaultImagePicker()
     }
     
     @objc private func categoryButtonTapped() {
@@ -720,6 +817,37 @@ class EditCircleViewController: UIViewController {
         imagePicker.delegate = self
         imagePicker.allowsEditing = true
         present(imagePicker, animated: true)
+    }
+    
+    private func showDefaultImagePicker() {
+        let defaultImageView = DefaultImageSelectionView(type: .circle)
+        defaultImageView.onImageSelected = { [weak self] symbolName in
+            self?.selectedDefaultImageName = symbolName
+            self?.selectedImage = nil // Clear any selected photo
+            self?.dismiss(animated: true)
+        }
+        
+        let containerVC = UIViewController()
+        containerVC.view.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        containerVC.modalPresentationStyle = .overFullScreen
+        containerVC.modalTransitionStyle = .crossDissolve
+        
+        containerVC.view.addSubview(defaultImageView)
+        defaultImageView.translatesAutoresizingMaskIntoConstraints = false
+        
+        NSLayoutConstraint.activate([
+            defaultImageView.centerXAnchor.constraint(equalTo: containerVC.view.centerXAnchor),
+            defaultImageView.centerYAnchor.constraint(equalTo: containerVC.view.centerYAnchor),
+            defaultImageView.widthAnchor.constraint(equalTo: containerVC.view.widthAnchor, constant: -40),
+            defaultImageView.heightAnchor.constraint(lessThanOrEqualToConstant: 400)
+        ])
+        
+        // Add tap gesture to dismiss
+        let tapGesture = UITapGestureRecognizer(target: containerVC, action: #selector(UIViewController.dismiss))
+        tapGesture.delegate = self
+        containerVC.view.addGestureRecognizer(tapGesture)
+        
+        present(containerVC, animated: true)
     }
     
     private func presentPhotoLibraryPermissionAlert() {
@@ -904,13 +1032,33 @@ extension EditCircleViewController: CategoryPickerDelegate {
     }
 }
 
+// MARK: - UIGestureRecognizerDelegate
+extension EditCircleViewController {
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        // Don't dismiss if the tap is on the defaultImageView itself
+        if let touchView = touch.view {
+            // Check if the touch is on a subview of the defaultImageView
+            var currentView: UIView? = touchView
+            while currentView != nil {
+                if currentView is DefaultImageSelectionView {
+                    return false // Don't receive the tap, let the view handle it
+                }
+                currentView = currentView?.superview
+            }
+        }
+        return true // Dismiss for taps outside the defaultImageView
+    }
+}
+
 // MARK: - UIImagePickerControllerDelegate
 extension EditCircleViewController: UIImagePickerControllerDelegate, UINavigationControllerDelegate {
     func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
         if let editedImage = info[.editedImage] as? UIImage {
             selectedImage = editedImage
+            selectedDefaultImageName = nil // Clear default image if photo is selected
         } else if let originalImage = info[.originalImage] as? UIImage {
             selectedImage = originalImage
+            selectedDefaultImageName = nil // Clear default image if photo is selected
         }
         
         picker.dismiss(animated: true)

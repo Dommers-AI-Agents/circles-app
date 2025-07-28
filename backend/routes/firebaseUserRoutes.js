@@ -27,7 +27,8 @@ const {
   recalculateFollowerCounts,
   getTutorialStatus,
   completeTutorial,
-  retryOnboarding
+  retryOnboarding,
+  mergeUserAccounts
 } = require('../controllers/firebaseUserController');
 const { protect } = require('../middleware/firebaseAuth');
 
@@ -126,6 +127,10 @@ router.route('/me/complete-onboarding')
 // Recalculate follower counts
 router.route('/:id/recalculate-counts')
   .post(recalculateFollowerCounts);
+
+// Merge user accounts (admin or user who owns one of the accounts)
+router.route('/merge-accounts')
+  .post(mergeUserAccounts);
 
 // Import getUserCircles from circleSharingController
 const { getUserCircles } = require('../controllers/circleSharingController');

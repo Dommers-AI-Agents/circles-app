@@ -28,6 +28,7 @@ const createUser = (userData) => {
   const now = new Date().toISOString();
   return {
     email: userData.email || null,
+    alternateEmails: userData.alternateEmails || [],
     displayName: userData.displayName || userData.name,
     firstName: userData.firstName || null,
     lastName: userData.lastName || null,

@@ -189,7 +189,7 @@ class NetworkUserTableViewCell: UITableViewCell {
         return label
     }()
     
-    private let emailLabel: UILabel = {
+    private let userInfoLabel: UILabel = {
         let label = UILabel()
         label.font = .systemFont(ofSize: 14)
         label.textColor = .secondaryLabel
@@ -233,7 +233,7 @@ class NetworkUserTableViewCell: UITableViewCell {
         contentView.addSubview(containerView)
         containerView.addSubview(profileImageView)
         containerView.addSubview(nameLabel)
-        containerView.addSubview(emailLabel)
+        containerView.addSubview(userInfoLabel)
         containerView.addSubview(circleCountLabel)
         containerView.addSubview(chevronImageView)
         
@@ -252,9 +252,9 @@ class NetworkUserTableViewCell: UITableViewCell {
             nameLabel.leadingAnchor.constraint(equalTo: profileImageView.trailingAnchor, constant: 12),
             nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: circleCountLabel.leadingAnchor, constant: -8),
             
-            emailLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
-            emailLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
-            emailLabel.trailingAnchor.constraint(equalTo: nameLabel.trailingAnchor),
+            userInfoLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
+            userInfoLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
+            userInfoLabel.trailingAnchor.constraint(equalTo: nameLabel.trailingAnchor),
             
             circleCountLabel.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
             circleCountLabel.trailingAnchor.constraint(equalTo: chevronImageView.leadingAnchor, constant: -8),
@@ -269,7 +269,8 @@ class NetworkUserTableViewCell: UITableViewCell {
     // MARK: - Configuration
     func configure(with user: UserWithCircles) {
         nameLabel.text = user.displayName
-        emailLabel.text = user.email
+        // Display connection info instead of email for privacy
+        userInfoLabel.text = "Connected member"
         circleCountLabel.text = "\(user.circleCount) Circle\(user.circleCount == 1 ? "" : "s")"
         
         // Load profile image

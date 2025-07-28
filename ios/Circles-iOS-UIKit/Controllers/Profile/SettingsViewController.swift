@@ -29,11 +29,13 @@ class SettingsViewController: BaseTableViewController {
     private enum AccountRow: Int, CaseIterable {
         case email
         case changePassword
+        case manageAccounts
         
         var title: String {
             switch self {
             case .email: return "Email"
             case .changePassword: return "Change Password"
+            case .manageAccounts: return "Manage Accounts"
             }
         }
     }
@@ -151,6 +153,12 @@ class SettingsViewController: BaseTableViewController {
     private func showChangePassword() {
         let changePasswordVC = ChangePasswordViewController()
         navigationController?.pushViewController(changePasswordVC, animated: true)
+    }
+    
+    private func showAccountMerge() {
+        let accountMergeVC = AccountMergeViewController()
+        let navController = UINavigationController(rootViewController: accountMergeVC)
+        present(navController, animated: true)
     }
     
     private func showProfileVisibility() {
@@ -339,6 +347,9 @@ extension SettingsViewController {
                 case .changePassword:
                     cell.textLabel?.text = row.title
                     cell.accessoryType = .disclosureIndicator
+                case .manageAccounts:
+                    cell.textLabel?.text = row.title
+                    cell.accessoryType = .disclosureIndicator
                 }
             }
             
@@ -423,6 +434,8 @@ extension SettingsViewController {
                     break // Do nothing for email
                 case .changePassword:
                     showChangePassword()
+                case .manageAccounts:
+                    showAccountMerge()
                 }
             }
             

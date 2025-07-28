@@ -36,6 +36,14 @@ class EditProfileViewController: BaseViewController {
         return button
     }()
     
+    private let useAvatarButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Use Avatar", for: .normal)
+        button.setTitleColor(Constants.Colors.secondary, for: .normal)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
     private let displayNameLabel: UILabel = {
         let label = UILabel()
         label.text = "Display Name"
@@ -162,6 +170,7 @@ class EditProfileViewController: BaseViewController {
     
     // MARK: - Properties
     private var selectedImage: UIImage?
+    private var selectedAvatarName: String?
     private var currentUser: User?
     private var isLoading = false
     
@@ -194,6 +203,7 @@ class EditProfileViewController: BaseViewController {
         
         contentView.addSubview(profileImageView)
         contentView.addSubview(changePhotoButton)
+        contentView.addSubview(useAvatarButton)
         contentView.addSubview(displayNameLabel)
         contentView.addSubview(displayNameTextField)
         contentView.addSubview(firstNameLabel)
@@ -233,7 +243,10 @@ class EditProfileViewController: BaseViewController {
             
             // Change photo button
             changePhotoButton.topAnchor.constraint(equalTo: profileImageView.bottomAnchor, constant: Constants.Spacing.small),
-            changePhotoButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            changePhotoButton.trailingAnchor.constraint(equalTo: contentView.centerXAnchor, constant: -5),
+            
+            useAvatarButton.topAnchor.constraint(equalTo: profileImageView.bottomAnchor, constant: Constants.Spacing.small),
+            useAvatarButton.leadingAnchor.constraint(equalTo: contentView.centerXAnchor, constant: 5),
             
             // Display name label
             displayNameLabel.topAnchor.constraint(equalTo: changePhotoButton.bottomAnchor, constant: Constants.Spacing.large),
@@ -316,6 +329,7 @@ class EditProfileViewController: BaseViewController {
     
     private func setupActions() {
         changePhotoButton.addTarget(self, action: #selector(changePhotoButtonTapped), for: .touchUpInside)
+        useAvatarButton.addTarget(self, action: #selector(useAvatarButtonTapped), for: .touchUpInside)
         saveButton.addTarget(self, action: #selector(saveButtonTapped), for: .touchUpInside)
     }
     
@@ -342,20 +356,10 @@ class EditProfileViewController: BaseViewController {
     }
     
     private func displayUserProfile(_ user: User) {
+        currentUser = user
+        
         // Profile image
-        if let profileImageUrl = user.profilePicture {
-            ImageService.shared.loadImage(from: profileImageUrl) { [weak self] image in
-                DispatchQueue.main.async {
-                    self?.profileImageView.image = image ?? UIImage(systemName: "person.circle.fill")
-                    if image == nil {
-                        self?.profileImageView.tintColor = Constants.Colors.primary
-                    }
-                }
-            }
-        } else {
-            profileImageView.image = UIImage(systemName: "person.circle.fill")
-            profileImageView.tintColor = Constants.Colors.primary
-        }
+        updateProfileImage()
         
         // User info
         displayNameTextField.text = user.displayName
@@ -370,6 +374,10 @@ class EditProfileViewController: BaseViewController {
     // MARK: - Actions
     @objc private func changePhotoButtonTapped() {
         checkPhotoLibraryPermissions()
+    }
+    
+    @objc private func useAvatarButtonTapped() {
+        showAvatarPicker()
     }
     
     @objc private func saveButtonTapped() {
@@ -426,10 +434,15 @@ class EditProfileViewController: BaseViewController {
         print("   - Location: \(location ?? "nil")")
         print("   - Bio: \(bio ?? "nil")")
         
-        // Convert selected image to data if available
+        // Convert selected image to data or handle avatar
         var profileImageData: Data?
+        var profileImageUrl: String?
+        
         if let image = selectedImage {
             profileImageData = image.jpegData(compressionQuality: 0.8)
+        } else if let avatarName = selectedAvatarName {
+            // Use special URL format for avatar
+            profileImageUrl = "sf-symbol:\(avatarName)"
         }
         
         UserService.shared.updateUserProfile(
@@ -502,6 +515,66 @@ class EditProfileViewController: BaseViewController {
         present(imagePicker, animated: true)
     }
     
+    private func showAvatarPicker() {
+        let avatarView = DefaultImageSelectionView(type: .avatar)
+        avatarView.onImageSelected = { [weak self] symbolName in
+            self?.selectedAvatarName = symbolName
+            self?.selectedImage = nil // Clear any selected photo
+            self?.updateProfileImage()
+            self?.dismiss(animated: true)
+        }
+        
+        let containerVC = UIViewController()
+        containerVC.view.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        containerVC.modalPresentationStyle = .overFullScreen
+        containerVC.modalTransitionStyle = .crossDissolve
+        
+        containerVC.view.addSubview(avatarView)
+        avatarView.translatesAutoresizingMaskIntoConstraints = false
+        
+        NSLayoutConstraint.activate([
+            avatarView.centerXAnchor.constraint(equalTo: containerVC.view.centerXAnchor),
+            avatarView.centerYAnchor.constraint(equalTo: containerVC.view.centerYAnchor),
+            avatarView.widthAnchor.constraint(equalTo: containerVC.view.widthAnchor, constant: -40),
+            avatarView.heightAnchor.constraint(lessThanOrEqualToConstant: 400)
+        ])
+        
+        // Add tap gesture to dismiss
+        let tapGesture = UITapGestureRecognizer(target: containerVC, action: #selector(UIViewController.dismiss))
+        tapGesture.delegate = self
+        containerVC.view.addGestureRecognizer(tapGesture)
+        
+        present(containerVC, animated: true)
+    }
+    
+    private func updateProfileImage() {
+        if let image = selectedImage {
+            profileImageView.image = image
+            profileImageView.backgroundColor = Constants.Colors.lightGray
+            profileImageView.tintColor = nil
+        } else if let avatarName = selectedAvatarName {
+            // Show the selected avatar
+            if let avatarCase = DefaultImages.AvatarDefault.allCases.first(where: { $0.rawValue == avatarName }) {
+                profileImageView.image = avatarCase.image(size: 80)
+                profileImageView.backgroundColor = avatarCase.backgroundColor
+                profileImageView.tintColor = .white
+                profileImageView.contentMode = .scaleAspectFit
+            }
+        } else if let profilePicture = currentUser?.profilePicture {
+            // Show existing profile picture
+            ImageService.shared.loadImage(from: profilePicture) { [weak self] image in
+                DispatchQueue.main.async {
+                    self?.profileImageView.image = image
+                }
+            }
+        } else {
+            // Default state
+            profileImageView.image = UIImage(systemName: "person.circle.fill")
+            profileImageView.backgroundColor = Constants.Colors.lightGray
+            profileImageView.tintColor = Constants.Colors.primary
+        }
+    }
+    
     private func presentPhotoLibraryPermissionAlert() {
         AlertPresenter.showActionSheet(
             title: "Photo Library Access",
@@ -526,19 +599,29 @@ class EditProfileViewController: BaseViewController {
     }
 }
 
+// MARK: - UIGestureRecognizerDelegate
+extension EditProfileViewController: UIGestureRecognizerDelegate {
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        // Only dismiss if tapping outside the avatar picker view
+        if let view = touch.view, view.isDescendant(of: gestureRecognizer.view!) {
+            return touch.view == gestureRecognizer.view
+        }
+        return true
+    }
+}
+
 // MARK: - UIImagePickerControllerDelegate
 extension EditProfileViewController: UIImagePickerControllerDelegate, UINavigationControllerDelegate {
     func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
         if let editedImage = info[.editedImage] as? UIImage {
             selectedImage = editedImage
-            profileImageView.image = editedImage
-            profileImageView.contentMode = .scaleAspectFill
+            selectedAvatarName = nil // Clear avatar if photo is selected
         } else if let originalImage = info[.originalImage] as? UIImage {
             selectedImage = originalImage
-            profileImageView.image = originalImage
-            profileImageView.contentMode = .scaleAspectFill
+            selectedAvatarName = nil // Clear avatar if photo is selected
         }
         
+        updateProfileImage()
         picker.dismiss(animated: true)
     }
     
