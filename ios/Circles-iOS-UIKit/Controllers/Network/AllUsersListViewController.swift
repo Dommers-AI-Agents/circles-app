@@ -320,22 +320,22 @@ class AllUsersListViewController: UIViewController {
             
             filteredConnectedUsers = connectedUsers.filter { user in
                 user.displayName.lowercased().contains(query) ||
-                user.email.lowercased().contains(query)
+(user.email?.lowercased().contains(query) ?? false)
             }
             
             filteredPendingIncomingUsers = pendingIncomingUsers.filter { user in
                 user.displayName.lowercased().contains(query) ||
-                user.email.lowercased().contains(query)
+(user.email?.lowercased().contains(query) ?? false)
             }
             
             filteredPendingOutgoingUsers = pendingOutgoingUsers.filter { user in
                 user.displayName.lowercased().contains(query) ||
-                user.email.lowercased().contains(query)
+(user.email?.lowercased().contains(query) ?? false)
             }
             
             filteredNonConnectedUsers = nonConnectedUsers.filter { user in
                 user.displayName.lowercased().contains(query) ||
-                user.email.lowercased().contains(query)
+(user.email?.lowercased().contains(query) ?? false)
             }
         }
     }

@@ -4,11 +4,21 @@ protocol HorizontalUserListViewDelegate: AnyObject {
     func didSelectUser(_ user: User, connectionId: String)
 }
 
-class HorizontalUserListView: UIView, SSEServiceDelegate {
+class HorizontalUserListView: UIView {
     
     // MARK: - Properties
     weak var delegate: HorizontalUserListViewDelegate?
     private var connections: [Connection] = []
+    private var loadRetryCount = 0
+    private let maxRetries = 3
+    
+    // MARK: - Pagination Properties
+    private var currentPage = 0
+    private var pageSize = 10
+    private var isLoadingMore = false
+    private var hasMoreConnections = true
+    private var allLoadedConnections: [Connection] = []
+    private var maxPages = 50 // Safety limit to prevent infinite pagination
     
     // MARK: - UI Elements
     private let collectionView: UICollectionView = {
@@ -150,23 +160,55 @@ class HorizontalUserListView: UIView, SSEServiceDelegate {
         collectionView.delegate = self
         collectionView.dataSource = self
         collectionView.register(UserActivityCell.self, forCellWithReuseIdentifier: UserActivityCell.reuseIdentifier)
+        
+        // Add pull-to-refresh
+        let refreshControl = UIRefreshControl()
+        refreshControl.addTarget(self, action: #selector(handlePullToRefresh), for: .valueChanged)
+        collectionView.refreshControl = refreshControl
+    }
+    
+    @objc private func handlePullToRefresh() {
+        refresh()
+        // End refreshing after a delay to ensure smooth animation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.collectionView.refreshControl?.endRefreshing()
+        }
     }
     
     // MARK: - Data Loading
     private func loadActiveConnections() {
-        loadingIndicator.startAnimating()
-        collectionView.isHidden = true
-        emptyStateLabel.isHidden = true
+        if currentPage == 0 {
+            loadingIndicator.startAnimating()
+            collectionView.isHidden = true
+            emptyStateLabel.isHidden = true
+        }
         
-        // First, check if user has ANY connections at all
-        NetworkManager.shared.fetchConnections { [weak self] allConnections, error in
+        // First, check if user has ANY connections at all (only on first page)
+        if currentPage == 0 {
+            NetworkManager.shared.fetchConnections { [weak self] allConnections, error in
             guard let self = self else { return }
             
             if let error = error {
                 print("❌ HorizontalUserListView: Error checking connections: \(error)")
-                self.hasLoadedConnections = true
-                // Keep loading state on error - don't show empty state prematurely
-                // The loading indicator will keep spinning
+                
+                // Implement retry logic with exponential backoff
+                if self.loadRetryCount < self.maxRetries {
+                    self.loadRetryCount += 1
+                    let retryDelay = pow(2.0, Double(self.loadRetryCount - 1)) // 1s, 2s, 4s
+                    print("🔄 HorizontalUserListView: Retrying load attempt \(self.loadRetryCount) of \(self.maxRetries) after \(retryDelay)s delay")
+                    
+                    DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) { [weak self] in
+                        self?.loadActiveConnections()
+                    }
+                } else {
+                    // Max retries reached, stop loading and show empty state
+                    print("❌ HorizontalUserListView: Max retries reached, stopping load attempts")
+                    self.hasLoadedConnections = true
+                    self.loadingIndicator.stopAnimating()
+                    self.collectionView.isHidden = true
+                    self.emptyStateLabel.text = "Unable to load connections. Pull to refresh."
+                    self.emptyStateLabel.isHidden = false
+                }
                 return
             }
             
@@ -177,18 +219,36 @@ class HorizontalUserListView: UIView, SSEServiceDelegate {
                 // User truly has no connections - but still try active connections endpoint
                 print("🔍 HorizontalUserListView: No accepted connections found, checking active connections endpoint")
                 
-                NetworkManager.shared.fetchActiveConnections { [weak self] activeConnections, error in
+                let offset = self.currentPage * self.pageSize
+                NetworkManager.shared.fetchActiveConnections(limit: self.pageSize, offset: offset) { [weak self] activeConnections, error in
                     guard let self = self else { return }
+                    
+                    if let error = error {
+                        print("❌ HorizontalUserListView: Error loading active connections for user with no accepted connections: \(error)")
+                        
+                        // Apply same retry logic here
+                        if self.loadRetryCount < self.maxRetries {
+                            self.loadRetryCount += 1
+                            let retryDelay = pow(2.0, Double(self.loadRetryCount - 1))
+                            print("🔄 HorizontalUserListView: Retrying load attempt \(self.loadRetryCount) of \(self.maxRetries) after \(retryDelay)s delay")
+                            
+                            DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) { [weak self] in
+                                self?.loadActiveConnections()
+                            }
+                            return
+                        }
+                    }
                     
                     self.hasLoadedConnections = true
                     
-                    // If active connections also returns empty, then truly show empty state
+                    // If active connections also returns empty or errors, then truly show empty state
                     print("🔍 HorizontalUserListView: Active connections check complete - truly no connections")
                     self.displayConnections([], alreadySorted: false, allowEmptyState: true)
                 }
             } else {
                 // User has connections - try to get active ones, but fall back to all if needed
-                NetworkManager.shared.fetchActiveConnections { [weak self] activeConnections, error in
+                let offset = self.currentPage * self.pageSize
+                NetworkManager.shared.fetchActiveConnections(limit: self.pageSize, offset: offset) { [weak self] activeConnections, error in
                     guard let self = self else { return }
                     
                     self.hasLoadedConnections = true
@@ -196,6 +256,14 @@ class HorizontalUserListView: UIView, SSEServiceDelegate {
                     print("🔍 HorizontalUserListView: Received \(activeConnections?.count ?? 0) active connections")
                     if let error = error {
                         print("❌ HorizontalUserListView: Error loading active connections: \(error)")
+                        
+                        // If we fail to get active connections but we know the user has connections,
+                        // we should still use the accepted connections we already have
+                        if !acceptedConnections.isEmpty {
+                            print("🔄 HorizontalUserListView: Falling back to accepted connections after active connections error")
+                            self.displayConnections(acceptedConnections, alreadySorted: false, allowEmptyState: true)
+                            return
+                        }
                     }
                     
                     // Debug: Log all active connections received from backend
@@ -207,14 +275,6 @@ class HorizontalUserListView: UIView, SSEServiceDelegate {
                             let hasMessages = connection.lastMessageAt != nil ? "✓" : "✗"
                             let hasActivity = (connection.hasRecentPlace ?? false) ? "✓" : "✗"
                             print("   \(index + 1). \(name) | Score: \(score) | Messages: \(hasMessages) | Activity: \(hasActivity)")
-                            
-                            // Special attention to Dan Wickner
-                            if name.lowercased().contains("dan") || name.lowercased().contains("wickner") {
-                                print("      🎯 FOUND DAN WICKNER at position \(index + 1)")
-                                if let components = connection.scoreComponents {
-                                    print("      Score components: M:\(components.messages) E:\(components.engagement) C:\(components.content) R:\(components.recency)")
-                                }
-                            }
                         }
                     }
                     
@@ -231,18 +291,28 @@ class HorizontalUserListView: UIView, SSEServiceDelegate {
                     }
                 }
             }
-        }
-    }
-    
-    // MARK: - Public Methods
-    func refresh() {
-        loadActiveConnections()
-    }
-    
-    func setInitialConnections(_ connections: [Connection]) {
-        // Only set if we haven't loaded connections yet to prevent overriding fresh data
-        if !hasLoadedConnections {
-            useInitialConnections(connections)
+            } // End of fetchConnections closure
+        } else {
+            // For subsequent pages, directly load more connections
+            let offset = currentPage * pageSize
+            NetworkManager.shared.fetchActiveConnections(limit: pageSize, offset: offset) { [weak self] activeConnections, error in
+                guard let self = self else { return }
+                
+                if let error = error {
+                    print("❌ HorizontalUserListView: Error loading more connections: \(error)")
+                    self.isLoadingMore = false
+                    return
+                }
+                
+                if let activeConnections = activeConnections, !activeConnections.isEmpty {
+                    self.displayConnections(activeConnections, alreadySorted: true, allowEmptyState: true)
+                } else {
+                    // No more connections available
+                    print("🔍 HorizontalUserListView: No connections returned for page \(self.currentPage), stopping pagination")
+                    self.hasMoreConnections = false
+                    self.isLoadingMore = false
+                }
+            }
         }
     }
     
@@ -250,6 +320,45 @@ class HorizontalUserListView: UIView, SSEServiceDelegate {
     @objc private func handleConnectionsChanged() {
         print("🔄 HorizontalUserListView: Connections changed notification received, refreshing")
         refresh()
+    }
+    
+    // MARK: - Public Methods
+    func refresh() {
+        // Reset retry count and pagination on manual refresh
+        loadRetryCount = 0
+        resetPagination()
+        loadActiveConnections()
+    }
+    
+    func forceRefresh() {
+        print("🔄 HorizontalUserListView: Force refresh requested - clearing all cached data")
+        // Clear all cached connections
+        connections.removeAll()
+        allLoadedConnections.removeAll()
+        loadRetryCount = 0
+        resetPagination()
+        hasLoadedConnections = false
+        hasCompletedInitialLoad = false
+        
+        // Update UI immediately
+        collectionView.reloadData()
+        
+        // Reload from network
+        loadActiveConnections()
+    }
+    
+    private func resetPagination() {
+        currentPage = 0
+        hasMoreConnections = true
+        isLoadingMore = false
+        allLoadedConnections.removeAll()
+    }
+    
+    func setInitialConnections(_ connections: [Connection]) {
+        // Only set if we haven't loaded connections yet to prevent overriding fresh data
+        if !hasLoadedConnections {
+            useInitialConnections(connections)
+        }
     }
     
     // MARK: - Sorting Logic
@@ -329,14 +438,14 @@ class HorizontalUserListView: UIView, SSEServiceDelegate {
                 let finalConnections: [Connection]
                 
                 if alreadySorted {
-                    // Trust backend sorting - just filter for accepted and take top 10
+                    // Trust backend sorting - just filter for accepted connections
                     let acceptedConnections = connectionList.filter { $0.status == .accepted }
-                    finalConnections = Array(acceptedConnections.prefix(10))
+                    finalConnections = acceptedConnections
                     print("🔍 HorizontalUserListView: Using backend-sorted connections, filtered to \(finalConnections.count) accepted")
                 } else {
                     // Use client-side sorting for fallback data
                     let sortedConnections = HorizontalUserListView.sortConnections(connectionList)
-                    finalConnections = Array(sortedConnections.prefix(10))
+                    finalConnections = sortedConnections
                     print("🔍 HorizontalUserListView: Client-sorted to \(finalConnections.count) accepted connections")
                 }
                 print("🔍 HorizontalUserListView: Final connections to display: \(finalConnections.count)")
@@ -360,11 +469,84 @@ class HorizontalUserListView: UIView, SSEServiceDelegate {
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { return }
                     
-                    // Update connections
-                    self.connections = finalConnections
+                    // Handle pagination: append new connections or replace for first page
+                    if self.currentPage == 0 {
+                        // First page: filter out any duplicate users even on first load
+                        var seenUserIds = Set<String>()
+                        var uniqueConnections: [Connection] = []
+                        
+                        for connection in finalConnections {
+                            if let userId = connection.connectedUser?.id {
+                                if !seenUserIds.contains(userId) {
+                                    seenUserIds.insert(userId)
+                                    uniqueConnections.append(connection)
+                                } else {
+                                    print("⚠️ HorizontalUserListView: Filtering out duplicate user on first page: \(connection.connectedUser?.displayName ?? "Unknown") (ID: \(userId))")
+                                }
+                            } else {
+                                // Keep connections without user data (shouldn't happen)
+                                uniqueConnections.append(connection)
+                            }
+                        }
+                        
+                        self.allLoadedConnections = uniqueConnections
+                        self.connections = uniqueConnections
+                        
+                        // Update pagination state for first page
+                        self.hasMoreConnections = finalConnections.count == self.pageSize
+                        self.currentPage += 1
+                    } else {
+                        // Subsequent pages: append new connections and remove duplicates
+                        // Check both connection ID and user ID to prevent showing same user twice
+                        let existingUserIds = Set(self.allLoadedConnections.compactMap { $0.connectedUser?.id })
+                        
+                        let newConnections = finalConnections.filter { newConnection in
+                            // Check if connection ID already exists
+                            let isDuplicateConnection = self.allLoadedConnections.contains { existingConnection in
+                                existingConnection.id == newConnection.id
+                            }
+                            
+                            // Check if user already exists (handles cases like merged accounts)
+                            let isDuplicateUser = newConnection.connectedUser?.id != nil && 
+                                existingUserIds.contains(newConnection.connectedUser!.id)
+                            
+                            if isDuplicateUser && !isDuplicateConnection {
+                                print("⚠️ HorizontalUserListView: Filtering out duplicate user: \(newConnection.connectedUser?.displayName ?? "Unknown") (ID: \(newConnection.connectedUser?.id ?? "nil"))")
+                            }
+                            
+                            return !isDuplicateConnection && !isDuplicateUser
+                        }
+                        
+                        // Check if we got any new connections
+                        if newConnections.isEmpty && !finalConnections.isEmpty {
+                            // All connections were duplicates - we've reached the end
+                            print("🔍 HorizontalUserListView: Page \(self.currentPage) returned \(finalConnections.count) connections, but all were duplicates. Stopping pagination.")
+                            self.hasMoreConnections = false
+                        } else if !newConnections.isEmpty {
+                            // We got new connections, add them
+                            self.allLoadedConnections.append(contentsOf: newConnections)
+                            self.connections = self.allLoadedConnections
+                            print("🔍 HorizontalUserListView: Added \(newConnections.count) new connections (out of \(finalConnections.count) returned)")
+                            
+                            // Only increment page if we actually added new connections
+                            self.currentPage += 1
+                            
+                            // Continue pagination if we got a full page worth of data
+                            self.hasMoreConnections = finalConnections.count == self.pageSize
+                        } else {
+                            // Empty result - no more connections
+                            self.hasMoreConnections = false
+                        }
+                    }
+                    
+                    // Always reset loading state
+                    self.isLoadingMore = false
                     
                     // Mark initial load as completed
                     self.hasCompletedInitialLoad = true
+                    
+                    // Reset retry count on successful load
+                    self.loadRetryCount = 0
                     
                     // Stop loading and show the sorted connections
                     self.loadingIndicator.stopAnimating()
@@ -487,10 +669,42 @@ extension HorizontalUserListView: UICollectionViewDelegate {
             }
         }
     }
+    
+    // MARK: - Scroll Detection for Infinite Scrolling
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        let offsetX = scrollView.contentOffset.x
+        let contentWidth = scrollView.contentSize.width
+        let width = scrollView.frame.size.width
+        
+        // Check if user scrolled near the end (80% of the way)
+        let threshold = width * 0.8
+        
+        if offsetX > contentWidth - width - threshold {
+            loadMoreConnectionsIfNeeded()
+        }
+    }
+    
+    private func loadMoreConnectionsIfNeeded() {
+        guard !isLoadingMore && hasMoreConnections && hasCompletedInitialLoad else {
+            print("🔄 HorizontalUserListView: Skipping load more - isLoadingMore: \(isLoadingMore), hasMoreConnections: \(hasMoreConnections), hasCompletedInitialLoad: \(hasCompletedInitialLoad)")
+            return
+        }
+        
+        // Safety check to prevent infinite pagination
+        guard currentPage < maxPages else {
+            print("⚠️ HorizontalUserListView: Reached maximum page limit (\(maxPages)), stopping pagination")
+            hasMoreConnections = false
+            return
+        }
+        
+        print("🔄 HorizontalUserListView: Loading more connections - page \(currentPage)")
+        isLoadingMore = true
+        loadActiveConnections()
+    }
 }
 
 // MARK: - SSEServiceDelegate
-extension HorizontalUserListView {
+extension HorizontalUserListView: SSEServiceDelegate {
     func sseService(_ service: SSEService, didReceiveEvent event: SSEEvent) {
         switch event.type {
         case .placeAdded, .circleCreated, .connectionActivity:

@@ -80,8 +80,11 @@ const syncContacts = async (req, res) => {
             displayName: userData.displayName,
             profilePicture: userData.profilePicture,
             bio: userData.bio,
+            phoneNumber: userData.phoneNumber,
             placesCount: userData.placesCount || 0,
             circlesCount: userData.circlesCount || 0,
+            followersCount: userData.followersCount || 0,
+            followingCount: userData.followingCount || 0,
             isVerified: userData.isVerified || false
           });
         }
@@ -109,30 +112,65 @@ const syncContacts = async (req, res) => {
             displayName: userData.displayName,
             profilePicture: userData.profilePicture,
             bio: userData.bio,
+            phoneNumber: userData.phoneNumber,
             placesCount: userData.placesCount || 0,
             circlesCount: userData.circlesCount || 0,
+            followersCount: userData.followersCount || 0,
+            followingCount: userData.followingCount || 0,
             isVerified: userData.isVerified || false
           });
         }
       });
     }
 
-    // Get existing connections for the user
-    const connectionsQuery = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', userId)
-      .get();
+    // Get existing connections for the user (both directions)
+    const [outgoingConnectionsQuery, incomingConnectionsQuery] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', userId)
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', userId)
+        .get()
+    ]);
     
     const existingConnections = new Map();
-    connectionsQuery.forEach(doc => {
+    const connectionDirections = new Map();
+    
+    // Process outgoing connections
+    outgoingConnectionsQuery.forEach(doc => {
       const connection = doc.data();
       existingConnections.set(connection.connectedUserId, connection.status);
+      connectionDirections.set(connection.connectedUserId, 'outgoing');
+    });
+    
+    // Process incoming connections
+    incomingConnectionsQuery.forEach(doc => {
+      const connection = doc.data();
+      // If there's already an outgoing connection, keep that status
+      if (!existingConnections.has(connection.userId)) {
+        existingConnections.set(connection.userId, connection.status);
+        connectionDirections.set(connection.userId, 'incoming');
+      }
     });
 
-    // Add connection status to matched users
-    const usersWithConnectionStatus = matchedUsers.map(user => ({
-      ...user,
-      connectionStatus: existingConnections.get(user.id) || 'none'
-    }));
+    // Get current user's following list
+    const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+    const currentUserData = currentUserDoc.data();
+    const userFollowing = new Set(currentUserData.following || []);
+
+    // Add connection status and following info to matched users
+    const usersWithConnectionStatus = matchedUsers.map(user => {
+      const connectionStatus = existingConnections.get(user.id) || 'none';
+      const connectionDirection = connectionDirections.get(user.id) || 'none';
+      const isFollowing = userFollowing.has(user.id);
+      
+      return {
+        ...user,
+        connectionStatus,
+        connectionDirection,
+        isFollowing
+      };
+    });
 
     console.log(`✅ Found ${matchedUsers.length} Circles users from contacts`);
 

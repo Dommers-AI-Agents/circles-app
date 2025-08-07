@@ -112,7 +112,7 @@ async function verifyAppleToken(idToken) {
 // @access  Public
 exports.firebaseAuth = async (req, res, next) => {
   try {
-    const { idToken, name: providedName, email: providedEmail } = req.body;
+    const { idToken, name: providedName, email: providedEmail, picture: providedPicture } = req.body;
 
     if (!idToken) {
       return res.status(400).json({
@@ -123,6 +123,8 @@ exports.firebaseAuth = async (req, res, next) => {
 
     let uid, email, name, picture;
     let provider = 'unknown';
+    
+    console.log('🖼️ Profile data from client - providedPicture:', providedPicture ? 'provided' : 'not provided');
 
     // Try Firebase ID token first
     try {
@@ -254,6 +256,14 @@ exports.firebaseAuth = async (req, res, next) => {
       }
     }
 
+    // Prioritize client-provided picture over token-extracted picture
+    if (providedPicture) {
+      console.log('🖼️ Using client-provided picture over token picture');
+      picture = providedPicture;
+    }
+    
+    console.log('🖼️ Final picture URL:', picture ? 'set' : 'not set');
+
     // Normalize email to prevent duplicates
     if (email) {
       email = email.toLowerCase().trim();
@@ -336,9 +346,23 @@ exports.firebaseAuth = async (req, res, next) => {
           updateData.displayName = name;
         }
         
-        // Only update profile picture if user doesn't have one set
-        if (picture && !existingUser.profilePicture) {
-          updateData.profilePicture = picture;
+        // Update profile picture if we have a new one from provider
+        // BUT only if user doesn't have a custom uploaded one
+        if (picture) {
+          const hasCustomProfilePic = existingUser.hasCustomProfilePicture || 
+            (existingUser.profilePicture && 
+             (existingUser.profilePicture.includes('firebasestorage.googleapis.com') ||
+              (!existingUser.profilePicture.includes('googleusercontent.com') && 
+               !existingUser.profilePicture.includes('gstatic.com') &&
+               !existingUser.profilePicture.includes('facebook.com') &&
+               !existingUser.profilePicture.includes('apple.com'))));
+          
+          if (!hasCustomProfilePic) {
+            console.log('🖼️ Updating profile picture from provider (no custom image)');
+            updateData.profilePicture = picture;
+          } else {
+            console.log('🖼️ Keeping custom uploaded profile picture, ignoring provider image');
+          }
         }
         
         await userRef.update(updateData);
@@ -407,9 +431,24 @@ exports.firebaseAuth = async (req, res, next) => {
             updateData.displayName = name;
           }
           
-          // Only update profile picture if user doesn't have one set
-          if (picture && !existingUser.profilePicture) {
-            updateData.profilePicture = picture;
+          // Update profile picture if we have a new one from provider
+          // BUT only if user doesn't have a custom uploaded one
+          if (picture) {
+            // Check if user has a custom profile picture (uploaded, not from provider)
+            const hasCustomProfilePic = existingUser.hasCustomProfilePicture || 
+              (existingUser.profilePicture && 
+               (existingUser.profilePicture.includes('firebasestorage.googleapis.com') ||
+                (!existingUser.profilePicture.includes('googleusercontent.com') && 
+                 !existingUser.profilePicture.includes('gstatic.com') &&
+                 !existingUser.profilePicture.includes('facebook.com') &&
+                 !existingUser.profilePicture.includes('apple.com'))));
+            
+            if (!hasCustomProfilePic) {
+              console.log('🖼️ Updating profile picture from provider (no custom image)');
+              updateData.profilePicture = picture;
+            } else {
+              console.log('🖼️ Keeping custom uploaded profile picture, ignoring provider image');
+            }
           }
           
           transaction.update(userRef, updateData);
@@ -790,8 +829,11 @@ exports.login = async (req, res, next) => {
     // Get user by email from Firebase Auth
     let userRecord;
     try {
+      console.log(`🔍 Looking up user in Firebase Auth with email: ${normalizedEmail}`);
       userRecord = await auth.getUserByEmail(normalizedEmail);
+      console.log(`✅ Found user in Firebase Auth: ${userRecord.uid}, email: ${userRecord.email}`);
     } catch (error) {
+      console.log(`❌ Firebase Auth lookup error:`, error.code, error.message);
       if (error.code === 'auth/user-not-found') {
         return res.status(401).json({
           success: false,
@@ -804,6 +846,9 @@ exports.login = async (req, res, next) => {
     // Verify password using Firebase REST API
     if (!firebaseApiKey) {
       console.error('❌ FIREBASE_API_KEY not configured');
+      console.error('❌ Environment variables check:');
+      console.error('   - FIREBASE_API_KEY exists:', !!process.env.FIREBASE_API_KEY);
+      console.error('   - firebaseApiKey from config:', !!firebaseApiKey);
       return res.status(500).json({
         success: false,
         message: 'Server configuration error'
@@ -811,6 +856,9 @@ exports.login = async (req, res, next) => {
     }
 
     const firebaseAuthUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${firebaseApiKey}`;
+    
+    console.log(`🔐 Attempting to verify password for email: ${normalizedEmail}`);
+    console.log(`🔗 Firebase Auth URL: ${firebaseAuthUrl.substring(0, 80)}...`);
     
     try {
       const authResponse = await fetch(firebaseAuthUrl, {
@@ -826,9 +874,11 @@ exports.login = async (req, res, next) => {
       });
 
       const authData = await authResponse.json();
+      console.log(`📤 Firebase Auth Response Status: ${authResponse.status}`);
 
       if (!authResponse.ok) {
-        console.log('❌ Firebase authentication failed:', authData.error?.message);
+        console.log('❌ Firebase authentication failed:', authData.error?.message || 'Unknown error');
+        console.log('❌ Error details:', JSON.stringify(authData.error || {}));
         return res.status(401).json({
           success: false,
           message: 'Invalid credentials'
@@ -1013,7 +1063,14 @@ exports.updateProfile = async (req, res, next) => {
     if (phoneNumber !== undefined) updateData.phoneNumber = phoneNumber;
     if (bio !== undefined) updateData.bio = bio;
     if (location !== undefined) updateData.location = location;
-    if (profilePicture !== undefined) updateData.profilePicture = profilePicture;
+    if (profilePicture !== undefined) {
+      updateData.profilePicture = profilePicture;
+      // Mark that user has uploaded a custom profile picture
+      if (profilePicture && profilePicture.includes('firebasestorage.googleapis.com')) {
+        updateData.hasCustomProfilePicture = true;
+        console.log('🖼️ Setting hasCustomProfilePicture flag to true');
+      }
+    }
     
     // Debug logging of update data
     console.log('📝 updateProfile - Update data to be saved:', updateData);
@@ -1285,3 +1342,123 @@ async function checkForDuplicateAccounts(user) {
     return null;
   }
 }
+
+// @desc    Change user password
+// @route   POST /api/users/change-password
+// @access  Private
+exports.changePassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.user.uid;
+
+    // Validate input
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Current password and new password are required'
+      });
+    }
+
+    // Validate new password strength
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be at least 6 characters long'
+      });
+    }
+
+    // Get user email from Firestore
+    const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+    if (!userDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const userData = userDoc.data();
+    const userEmail = userData.email;
+
+    if (!userEmail) {
+      return res.status(400).json({
+        success: false,
+        message: 'User email not found'
+      });
+    }
+
+    // Verify current password using Firebase REST API
+    if (!firebaseApiKey) {
+      console.error('❌ FIREBASE_API_KEY not configured');
+      return res.status(500).json({
+        success: false,
+        message: 'Server configuration error'
+      });
+    }
+
+    const firebaseAuthUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${firebaseApiKey}`;
+    
+    try {
+      // First verify the current password
+      const authResponse = await fetch(firebaseAuthUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          email: userEmail,
+          password: currentPassword,
+          returnSecureToken: true
+        })
+      });
+
+      const authData = await authResponse.json();
+
+      if (!authResponse.ok) {
+        console.log('❌ Current password verification failed:', authData.error?.message);
+        return res.status(401).json({
+          success: false,
+          message: 'Current password is incorrect'
+        });
+      }
+
+      console.log('✅ Current password verified successfully');
+      
+      // Update password using Firebase Admin SDK
+      await auth.updateUser(userId, {
+        password: newPassword
+      });
+
+      console.log('✅ Password updated successfully for user:', userId);
+
+      // Update the user's updatedAt timestamp
+      await userDoc.ref.update({
+        updatedAt: new Date().toISOString()
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Password changed successfully'
+      });
+
+    } catch (error) {
+      console.error('❌ Error during password change:', error);
+      
+      // Check for specific Firebase errors
+      if (error.code === 'auth/weak-password') {
+        return res.status(400).json({
+          success: false,
+          message: 'Password is too weak. Please use a stronger password.'
+        });
+      }
+      
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to change password. Please try again.'
+      });
+    }
+
+  } catch (error) {
+    console.error('Change password error:', error);
+    next(error);
+  }
+};

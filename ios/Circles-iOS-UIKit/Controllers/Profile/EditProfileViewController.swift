@@ -380,6 +380,10 @@ class EditProfileViewController: BaseViewController {
         showAvatarPicker()
     }
     
+    @objc private func dismissAvatarPicker() {
+        dismiss(animated: true)
+    }
+    
     @objc private func saveButtonTapped() {
         // Validate required fields
         guard let displayName = displayNameTextField.text, !displayName.isEmpty else {
@@ -540,7 +544,7 @@ class EditProfileViewController: BaseViewController {
         ])
         
         // Add tap gesture to dismiss
-        let tapGesture = UITapGestureRecognizer(target: containerVC, action: #selector(UIViewController.dismiss))
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissAvatarPicker))
         tapGesture.delegate = self
         containerVC.view.addGestureRecognizer(tapGesture)
         

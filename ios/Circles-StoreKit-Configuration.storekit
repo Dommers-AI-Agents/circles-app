@@ -1,0 +1,87 @@
+{
+  "identifier" : "0E5E7B64",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_applicationInternalID" : "6450318599",
+    "_developerTeamID" : "YOUR_TEAM_ID",
+    "_lastSynchronizedDate" : 737853600.0
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "21512641",
+      "localizations" : [
+
+      ],
+      "name" : "Premium",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "2.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6737918293",
+          "introductoryOffer" : {
+            "internalID" : "6737918294",
+            "numberOfPeriods" : 2,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1M"
+          },
+          "localizations" : [
+            {
+              "description" : "Unlimited circles, places, and premium features",
+              "displayName" : "Circles Premium Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.favcircles.circles.premium.subscription.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "reviewNote" : "",
+          "subscriptionGroupID" : "21512641"
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "29.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "6737918295",
+          "introductoryOffer" : {
+            "internalID" : "6737918296",
+            "numberOfPeriods" : 2,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1M"
+          },
+          "localizations" : [
+            {
+              "description" : "Unlimited circles, places, and premium features. Save 17%!",
+              "displayName" : "Circles Premium Annual",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.favcircles.circles.premium.subscription.annual",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "reviewNote" : "",
+          "subscriptionGroupID" : "21512641"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

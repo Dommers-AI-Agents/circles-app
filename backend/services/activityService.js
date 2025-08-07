@@ -17,93 +17,130 @@ const trackCircleCreated = async (circleId, createdByUserId) => {
     // Get circle details
     const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(circleId).get();
     let circleName = 'Unknown Circle';
+    let circlePrivacy = 'private';
     
     if (circleDoc.exists) {
       const circleData = circleDoc.data();
       circleName = circleData.name || 'Unknown Circle';
+      circlePrivacy = circleData.privacy || 'private';
     }
     
-    // Create activity record in the activities collection
-    await createActivity(
-      'circle_created',
-      createdByUserId,
-      'circle',
-      circleId,
-      circleName,
-      {
-        circleId: circleId,
-        circleName: circleName
-      }
-    );
-
-    // Get all connections of the user who created the circle (both directions)
-    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', createdByUserId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', createdByUserId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
-
-    const batch = db.batch();
-    const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
-    
-    allConnections.forEach(doc => {
-      const connectionRef = doc.ref;
-      const activity = {
-        type: 'circle',
-        entityId: circleId,
-        entityName: circleName,
-        createdAt: new Date().toISOString(),
-        viewedBy: [createdByUserId] // Creator has already "viewed" their own activity
-      };
-      
-      // Update connection with new activity
-      batch.update(connectionRef, {
-        hasNewActivity: true,
-        recentActivity: admin.firestore.FieldValue.arrayUnion(activity),
-        updatedAt: new Date().toISOString()
-      });
-    });
-
-    await batch.commit();
-    // Circle creation activity tracked
-    
-    // Send real-time SSE events to all connections
-    allConnections.forEach(doc => {
-      const connectionData = doc.data();
-      // Determine which user should receive the notification
-      const notifyUserId = connectionData.userId === createdByUserId 
-        ? connectionData.connectedUserId 
-        : connectionData.userId;
-      
-      // Send circle creation event
-      SSEService.sendEvent(notifyUserId, {
-        type: 'circle_created',
-        data: {
+    // Only create activity for public and myNetwork circles
+    // Private circles should not generate activities
+    if (circlePrivacy !== 'private') {
+      // Create activity record in the activities collection
+      await createActivity(
+        'circle_created',
+        createdByUserId,
+        'circle',
+        circleId,
+        circleName,
+        {
           circleId: circleId,
-          circleName: circleName,
-          createdByUserId: createdByUserId,
-          connectionId: doc.id,
-          timestamp: new Date().toISOString()
+          circleName: circleName
         }
-      });
+      );
+    }
+
+    // Only create connection activities and notifications for non-private circles
+    if (circlePrivacy !== 'private') {
+      // Get all connections of the user who created the circle (both directions)
+      const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
+        db.collection(COLLECTIONS.CONNECTIONS)
+          .where('connectedUserId', '==', createdByUserId)
+          .where('status', '==', 'accepted')
+          .get(),
+        db.collection(COLLECTIONS.CONNECTIONS)
+          .where('userId', '==', createdByUserId)
+          .where('status', '==', 'accepted')
+          .get()
+      ]);
+
+      const batch = db.batch();
+      const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
       
-      // Also send connection activity event
-      SSEService.sendEvent(notifyUserId, {
-        type: 'connection_activity',
-        data: {
-          connectionId: doc.id,
-          activityType: 'circle',
-          entityId: circleId,
-          entityName: circleName,
-          timestamp: new Date().toISOString()
+      allConnections.forEach(doc => {
+        const connectionData = doc.data();
+        const connectionRef = doc.ref;
+        
+        // Determine the other user's ID in this connection
+        const otherUserId = connectionData.userId === createdByUserId 
+          ? connectionData.connectedUserId 
+          : connectionData.userId;
+        
+        // Check if this connection should see the activity based on circle privacy
+        let shouldShowActivity = false;
+        
+        if (circlePrivacy === 'public') {
+          // Public circles - all connections see the activity
+          shouldShowActivity = true;
+        } else if (circlePrivacy === 'myNetwork') {
+          // My Network circles - all connections see the activity
+          shouldShowActivity = true;
+        }
+        // Private circles already excluded above
+        
+        if (shouldShowActivity) {
+          const activity = {
+            type: 'circle',
+            entityId: circleId,
+            entityName: circleName,
+            createdAt: new Date().toISOString(),
+            viewedBy: [createdByUserId] // Creator has already "viewed" their own activity
+          };
+          
+          // Update connection with new activity
+          batch.update(connectionRef, {
+            hasNewActivity: true,
+            recentActivity: admin.firestore.FieldValue.arrayUnion(activity),
+            updatedAt: new Date().toISOString()
+          });
         }
       });
-    });
+
+      await batch.commit();
+      // Circle creation activity tracked
+      
+      // Send real-time SSE events to connections who should see this activity
+      allConnections.forEach(doc => {
+        const connectionData = doc.data();
+        const otherUserId = connectionData.userId === createdByUserId 
+          ? connectionData.connectedUserId 
+          : connectionData.userId;
+        
+        // Check if this connection should see the activity based on circle privacy
+        let shouldShowActivity = false;
+        if (circlePrivacy === 'public' || circlePrivacy === 'myNetwork') {
+          shouldShowActivity = true;
+        }
+        
+        if (shouldShowActivity) {
+          // Send circle creation event
+          SSEService.sendEvent(otherUserId, {
+            type: 'circle_created',
+            data: {
+              circleId: circleId,
+              circleName: circleName,
+              createdByUserId: createdByUserId,
+              connectionId: doc.id,
+              timestamp: new Date().toISOString()
+            }
+          });
+          
+          // Also send connection activity event
+          SSEService.sendEvent(otherUserId, {
+            type: 'connection_activity',
+            data: {
+              connectionId: doc.id,
+              activityType: 'circle',
+              entityId: circleId,
+              entityName: circleName,
+              timestamp: new Date().toISOString()
+            }
+          });
+        }
+      });
+    }
     
   } catch (error) {
     console.error('Error tracking circle creation:', error);
@@ -113,32 +150,7 @@ const trackCircleCreated = async (circleId, createdByUserId) => {
 // Track when a user adds a new place
 const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedByUserId) => {
   try {
-    // Create activity record in the activities collection
-    const placeDoc = await db.collection(COLLECTIONS.PLACES).doc(placeId).get();
-    let placePhoto = null;
-    let placeAddress = null;
-    
-    if (placeDoc.exists) {
-      const placeData = placeDoc.data();
-      placePhoto = placeData.photos && placeData.photos.length > 0 ? placeData.photos[0] : null;
-      placeAddress = placeData.address || null;
-    }
-    
-    await createActivity(
-      'place_added',
-      addedByUserId,
-      'place',
-      placeId,
-      placeName || 'Unknown Place',
-      {
-        circleId: circleId,
-        circleName: circleName || 'Unknown Circle',
-        placePhoto: placePhoto,
-        placeAddress: placeAddress
-      }
-    );
-
-    // Get the circle to check privacy settings and shared connections
+    // Get the circle to check privacy settings first
     const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(circleId).get();
     if (!circleDoc.exists) {
       console.log('Circle not found, skipping activity tracking');
@@ -148,6 +160,34 @@ const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedBy
     const circleData = circleDoc.data();
     const circlePrivacy = circleData.privacy || 'private';
     const sharedWith = circleData.sharedWith || [];
+    
+    // Only create activity record for non-private circles
+    if (circlePrivacy !== 'private') {
+      // Create activity record in the activities collection
+      const placeDoc = await db.collection(COLLECTIONS.PLACES).doc(placeId).get();
+      let placePhoto = null;
+      let placeAddress = null;
+      
+      if (placeDoc.exists) {
+        const placeData = placeDoc.data();
+        placePhoto = placeData.photos && placeData.photos.length > 0 ? placeData.photos[0] : null;
+        placeAddress = placeData.address || null;
+      }
+      
+      await createActivity(
+        'place_added',
+        addedByUserId,
+        'place',
+        placeId,
+        placeName || 'Unknown Place',
+        {
+          circleId: circleId,
+          circleName: circleName || 'Unknown Circle',
+          placePhoto: placePhoto,
+          placeAddress: placeAddress
+        }
+      );
+    }
     
     // Get all connections of the user who added the place (both directions)
     const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
@@ -183,10 +223,8 @@ const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedBy
       } else if (circlePrivacy === 'myNetwork') {
         // My Network circles - all connections see the activity
         shouldShowActivity = true;
-      } else if (circlePrivacy === 'private') {
-        // Private circles - only if explicitly shared with this connection
-        shouldShowActivity = sharedWith.includes(otherUserId);
       }
+      // Private circles NEVER generate activities, per user requirements
       
       // Only update connections who should see this activity
       if (shouldShowActivity) {
@@ -227,9 +265,8 @@ const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedBy
       let shouldShowActivity = false;
       if (circlePrivacy === 'public' || circlePrivacy === 'myNetwork') {
         shouldShowActivity = true;
-      } else if (circlePrivacy === 'private') {
-        shouldShowActivity = sharedWith.includes(otherUserId);
       }
+      // Private circles NEVER generate SSE events, per user requirements
       
       if (shouldShowActivity) {
         // Send place added event
@@ -660,41 +697,47 @@ const trackCircleLiked = async (circleId, likedByUserId, circleOwnerId) => {
       return;
     }
 
-    // Get circle details
+    // Get circle details and privacy settings
     const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(circleId).get();
     let circleName = 'Unknown Circle';
+    let circlePrivacy = 'private';
     
     if (circleDoc.exists) {
       const circleData = circleDoc.data();
       circleName = circleData.name || 'Unknown Circle';
+      circlePrivacy = circleData.privacy || 'private';
     }
 
-    // Create activity record
-    await createActivity(
-      'circle_liked',
-      likedByUserId,
-      'circle',
-      circleId,
-      circleName,
-      {
-        circleId: circleId,
-        circleName: circleName,
-        likedByUserId: likedByUserId
-      }
-    );
+    // Only track likes for public and myNetwork circles
+    // Private circles should never generate like activities
+    if (circlePrivacy !== 'private') {
+      // Create activity record
+      await createActivity(
+        'circle_liked',
+        likedByUserId,
+        'circle',
+        circleId,
+        circleName,
+        {
+          circleId: circleId,
+          circleName: circleName,
+          likedByUserId: likedByUserId
+        }
+      );
 
-    // Send real-time notification to circle owner
-    SSEService.sendEvent(circleOwnerId, {
-      type: 'circle_liked',
-      data: {
-        circleId: circleId,
-        circleName: circleName,
-        likedByUserId: likedByUserId,
-        timestamp: new Date().toISOString()
-      }
-    });
+      // Send real-time notification to circle owner
+      SSEService.sendEvent(circleOwnerId, {
+        type: 'circle_liked',
+        data: {
+          circleId: circleId,
+          circleName: circleName,
+          likedByUserId: likedByUserId,
+          timestamp: new Date().toISOString()
+        }
+      });
 
-    // Circle like activity tracked
+      // Circle like activity tracked
+    }
   } catch (error) {
     console.error('Error tracking circle like:', error);
   }
@@ -708,43 +751,49 @@ const trackCircleCommented = async (circleId, commentedByUserId, circleOwnerId, 
       return;
     }
 
-    // Get circle details
+    // Get circle details and privacy settings
     const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(circleId).get();
     let circleName = 'Unknown Circle';
+    let circlePrivacy = 'private';
     
     if (circleDoc.exists) {
       const circleData = circleDoc.data();
       circleName = circleData.name || 'Unknown Circle';
+      circlePrivacy = circleData.privacy || 'private';
     }
 
-    // Create activity record
-    await createActivity(
-      'circle_commented',
-      commentedByUserId,
-      'circle',
-      circleId,
-      circleName,
-      {
-        circleId: circleId,
-        circleName: circleName,
-        commentedByUserId: commentedByUserId,
-        commentText: commentText.substring(0, 100) // Truncate long comments
-      }
-    );
+    // Only track comments for public and myNetwork circles
+    // Private circles should never generate comment activities
+    if (circlePrivacy !== 'private') {
+      // Create activity record
+      await createActivity(
+        'circle_commented',
+        commentedByUserId,
+        'circle',
+        circleId,
+        circleName,
+        {
+          circleId: circleId,
+          circleName: circleName,
+          commentedByUserId: commentedByUserId,
+          commentText: commentText.substring(0, 100) // Truncate long comments
+        }
+      );
 
-    // Send real-time notification to circle owner
-    SSEService.sendEvent(circleOwnerId, {
-      type: 'circle_commented',
-      data: {
-        circleId: circleId,
-        circleName: circleName,
-        commentedByUserId: commentedByUserId,
-        commentText: commentText.substring(0, 100),
-        timestamp: new Date().toISOString()
-      }
-    });
+      // Send real-time notification to circle owner
+      SSEService.sendEvent(circleOwnerId, {
+        type: 'circle_commented',
+        data: {
+          circleId: circleId,
+          circleName: circleName,
+          commentedByUserId: commentedByUserId,
+          commentText: commentText.substring(0, 100),
+          timestamp: new Date().toISOString()
+        }
+      });
 
-    // Circle comment activity tracked
+      // Circle comment activity tracked
+    }
   } catch (error) {
     console.error('Error tracking circle comment:', error);
   }

@@ -242,6 +242,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     private lazy var shareProfileButton = UIButton.smallActionButton(title: "Share profile", style: .secondary)
     
+    private lazy var visitHistoryButton = UIButton.smallActionButton(title: "Visit History", style: .secondary)
+    
     private lazy var suggestedButton: UIButton = {
         let button = UIButton.iconButton(systemName: "person.badge.plus")
         button.backgroundColor = .clear
@@ -572,6 +574,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         profileImageView.layer.borderColor = UIColor.separator.cgColor
         editProfileButton.layer.borderColor = UIColor.separator.cgColor
         shareProfileButton.layer.borderColor = UIColor.separator.cgColor
+        visitHistoryButton.layer.borderColor = UIColor.separator.cgColor
         suggestedButton.layer.borderColor = UIColor.separator.cgColor
     }
     
@@ -619,6 +622,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         profileHeaderView.addSubview(buttonsContainer)
         buttonsContainer.addSubview(editProfileButton)
         buttonsContainer.addSubview(shareProfileButton)
+        buttonsContainer.addSubview(visitHistoryButton)
         buttonsContainer.addSubview(suggestedButton)
         buttonsContainer.addSubview(messageButton)
         buttonsContainer.addSubview(followButton)
@@ -734,13 +738,19 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             editProfileButton.leadingAnchor.constraint(equalTo: buttonsContainer.leadingAnchor),
             editProfileButton.topAnchor.constraint(equalTo: buttonsContainer.topAnchor),
             editProfileButton.bottomAnchor.constraint(equalTo: buttonsContainer.bottomAnchor),
-            editProfileButton.widthAnchor.constraint(equalTo: buttonsContainer.widthAnchor, multiplier: 0.44),
+            editProfileButton.widthAnchor.constraint(equalTo: buttonsContainer.widthAnchor, multiplier: 0.29),
             
             // Share profile button
             shareProfileButton.leadingAnchor.constraint(equalTo: editProfileButton.trailingAnchor, constant: 6),
             shareProfileButton.topAnchor.constraint(equalTo: buttonsContainer.topAnchor),
             shareProfileButton.bottomAnchor.constraint(equalTo: buttonsContainer.bottomAnchor),
-            shareProfileButton.widthAnchor.constraint(equalTo: buttonsContainer.widthAnchor, multiplier: 0.44),
+            shareProfileButton.widthAnchor.constraint(equalTo: buttonsContainer.widthAnchor, multiplier: 0.29),
+            
+            // Visit History button
+            visitHistoryButton.leadingAnchor.constraint(equalTo: shareProfileButton.trailingAnchor, constant: 6),
+            visitHistoryButton.topAnchor.constraint(equalTo: buttonsContainer.topAnchor),
+            visitHistoryButton.bottomAnchor.constraint(equalTo: buttonsContainer.bottomAnchor),
+            visitHistoryButton.widthAnchor.constraint(equalTo: buttonsContainer.widthAnchor, multiplier: 0.29),
             
             // Suggested button
             suggestedButton.trailingAnchor.constraint(equalTo: buttonsContainer.trailingAnchor),
@@ -873,10 +883,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         circlesCollectionView.dataSource = self
         circlesCollectionView.register(CircleCell.self, forCellWithReuseIdentifier: "CircleCell")
         
-        // Enable drag and drop for reordering
-        circlesCollectionView.dragDelegate = self
-        circlesCollectionView.dropDelegate = self
-        circlesCollectionView.dragInteractionEnabled = true
+        // Drag and drop will be configured conditionally in configureDragAndDrop()
         
         // Setup search bar
         searchBar.delegate = self
@@ -913,6 +920,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     private func setupActions() {
         editProfileButton.addTarget(self, action: #selector(editProfileButtonTapped), for: .touchUpInside)
         shareProfileButton.addTarget(self, action: #selector(shareProfileButtonTapped), for: .touchUpInside)
+        visitHistoryButton.addTarget(self, action: #selector(visitHistoryButtonTapped), for: .touchUpInside)
         suggestedButton.addTarget(self, action: #selector(suggestedButtonTapped), for: .touchUpInside)
         logoutButton.addTarget(self, action: #selector(logoutButtonTapped), for: .touchUpInside)
         addCircleButton.addTarget(self, action: #selector(addCircleButtonTapped), for: .touchUpInside)
@@ -946,6 +954,23 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         updateAppearance()
     }
     
+    private func configureDragAndDrop() {
+        // Only enable drag and drop for the current user's own profile
+        let isCurrentUser = user?.id == AuthService.shared.getUserId()
+        
+        if isCurrentUser {
+            // Enable drag and drop for reordering own circles
+            circlesCollectionView.dragDelegate = self
+            circlesCollectionView.dropDelegate = self
+            circlesCollectionView.dragInteractionEnabled = true
+        } else {
+            // Disable drag and drop when viewing other users' profiles
+            circlesCollectionView.dragDelegate = nil
+            circlesCollectionView.dropDelegate = nil
+            circlesCollectionView.dragInteractionEnabled = false
+        }
+    }
+    
     // MARK: - Actions
     @objc private func editProfileButtonTapped() {
         let editProfileVC = EditProfileViewController()
@@ -959,6 +984,11 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         shareProfileVC.modalPresentationStyle = .overFullScreen
         shareProfileVC.modalTransitionStyle = .crossDissolve
         present(shareProfileVC, animated: true)
+    }
+    
+    @objc private func visitHistoryButtonTapped() {
+        let visitHistoryVC = VisitHistoryViewController()
+        navigationController?.pushViewController(visitHistoryVC, animated: true)
     }
     
     @objc private func suggestedButtonTapped() {
@@ -1918,6 +1948,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         let isCurrentUser = user.id == AuthService.shared.getUserId()
         editProfileButton.isHidden = !isCurrentUser
         shareProfileButton.isHidden = !isCurrentUser
+        visitHistoryButton.isHidden = !isCurrentUser
         suggestedButton.isHidden = !isCurrentUser
         logoutButton.isHidden = !isCurrentUser
         versionLabel.isHidden = !isCurrentUser
@@ -1943,6 +1974,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             followButton.isHidden = true
             connectButton.isHidden = true
         }
+        
+        // Configure drag and drop based on whether this is the current user
+        configureDragAndDrop()
     }
     
     private func fetchUserStats(userId: String) {
@@ -2442,6 +2476,11 @@ extension ProfileViewController: EditCircleDelegate {
 // MARK: - UICollectionViewDragDelegate
 extension ProfileViewController: UICollectionViewDragDelegate {
     func collectionView(_ collectionView: UICollectionView, itemsForBeginning session: UIDragSession, at indexPath: IndexPath) -> [UIDragItem] {
+        // Safety check: only allow dragging for current user
+        guard user?.id == AuthService.shared.getUserId() else {
+            return []
+        }
+        
         let circle = circles[indexPath.item]
         let itemProvider = NSItemProvider(object: circle.id as NSString)
         let dragItem = UIDragItem(itemProvider: itemProvider)
@@ -2453,6 +2492,11 @@ extension ProfileViewController: UICollectionViewDragDelegate {
 // MARK: - UICollectionViewDropDelegate
 extension ProfileViewController: UICollectionViewDropDelegate {
     func collectionView(_ collectionView: UICollectionView, dropSessionDidUpdate session: UIDropSession, withDestinationIndexPath destinationIndexPath: IndexPath?) -> UICollectionViewDropProposal {
+        // Safety check: only allow dropping for current user
+        guard user?.id == AuthService.shared.getUserId() else {
+            return UICollectionViewDropProposal(operation: .forbidden)
+        }
+        
         if collectionView.hasActiveDrag {
             return UICollectionViewDropProposal(operation: .move, intent: .insertAtDestinationIndexPath)
         }
@@ -2460,6 +2504,11 @@ extension ProfileViewController: UICollectionViewDropDelegate {
     }
     
     func collectionView(_ collectionView: UICollectionView, performDropWith coordinator: UICollectionViewDropCoordinator) {
+        // Safety check: only allow dropping for current user
+        guard user?.id == AuthService.shared.getUserId() else {
+            return
+        }
+        
         var destinationIndexPath: IndexPath
         
         if let indexPath = coordinator.destinationIndexPath {
@@ -2496,6 +2545,12 @@ extension ProfileViewController: UICollectionViewDropDelegate {
     }
     
     private func saveCircleOrder() {
+        // Safety check: only allow saving for current user
+        guard user?.id == AuthService.shared.getUserId() else {
+            print("❌ ProfileViewController: Attempted to save circle order for non-current user")
+            return
+        }
+        
         // Extract the circle IDs in their new order
         let circleIds = circles.map { $0.id }
         

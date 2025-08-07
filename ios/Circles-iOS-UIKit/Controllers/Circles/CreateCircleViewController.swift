@@ -9,6 +9,7 @@ class CreateCircleViewController: UIViewController {
     
     // MARK: - Properties
     weak var delegate: CreateCircleDelegate?
+    var isSharedCircleMode: Bool = false
     private var keyboardHeight: CGFloat = 0
     private var selectedCategory: CategoryItem?
     private var selectedCategoryType: CircleCategory = .other
@@ -181,9 +182,9 @@ class CreateCircleViewController: UIViewController {
         return textField
     }()
     
-    private let inviteLabel: UILabel = {
+    private lazy var inviteLabel: UILabel = {
         let label = UILabel()
-        label.text = "Share with Connection(s) (optional)"
+        label.text = isSharedCircleMode ? "Share with Connection(s) (they will have edit access)" : "Share with Connection(s) (optional)"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .bold)
         label.textColor = Constants.Colors.darkGray
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -416,7 +417,9 @@ class CreateCircleViewController: UIViewController {
             connectionPickerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             connectionPickerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             connectionPickerView.heightAnchor.constraint(greaterThanOrEqualToConstant: 40),
-            connectionPickerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
+            
+            // Add extra padding at the bottom to account for dropdown
+            contentView.bottomAnchor.constraint(equalTo: connectionPickerView.bottomAnchor, constant: Constants.Spacing.xxlarge)
         ])
     }
     
@@ -442,6 +445,9 @@ class CreateCircleViewController: UIViewController {
     }
     
     private func setupNavigation() {
+        // Set title based on mode
+        title = isSharedCircleMode ? "Create Shared Circle" : "Create Circle"
+        
         // Add cancel button when presented modally
         if presentingViewController != nil {
             navigationItem.leftBarButtonItem = UIBarButtonItem(
@@ -479,11 +485,28 @@ class CreateCircleViewController: UIViewController {
             name: UIResponder.keyboardWillHideNotification,
             object: nil
         )
+        
+        // Observe connection picker dropdown events
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(connectionPickerDropdownShown),
+            name: NSNotification.Name("ConnectionPickerDropdownShown"),
+            object: nil
+        )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(connectionPickerDropdownHidden),
+            name: NSNotification.Name("ConnectionPickerDropdownHidden"),
+            object: nil
+        )
     }
     
     private func removeKeyboardObservers() {
         NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillShowNotification, object: nil)
         NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillHideNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: NSNotification.Name("ConnectionPickerDropdownShown"), object: nil)
+        NotificationCenter.default.removeObserver(self, name: NSNotification.Name("ConnectionPickerDropdownHidden"), object: nil)
     }
     
     // MARK: - Actions
@@ -664,6 +687,10 @@ class CreateCircleViewController: UIViewController {
         view.endEditing(true)
     }
     
+    @objc private func dismissDefaultImagePicker() {
+        dismiss(animated: true)
+    }
+    
     @objc private func keyboardWillShow(notification: NSNotification) {
         guard let userInfo = notification.userInfo,
               let keyboardFrame = userInfo[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
@@ -695,6 +722,38 @@ class CreateCircleViewController: UIViewController {
         UIView.animate(withDuration: duration) {
             self.scrollView.contentInset.bottom = 0
             self.scrollView.scrollIndicatorInsets.bottom = 0
+        }
+    }
+    
+    @objc private func connectionPickerDropdownShown(notification: NSNotification) {
+        guard let userInfo = notification.userInfo,
+              let height = userInfo["height"] as? CGFloat else {
+            return
+        }
+        
+        // Add extra bottom padding when dropdown is shown
+        UIView.animate(withDuration: 0.3) {
+            self.scrollView.contentInset.bottom = height + 20
+            self.scrollView.scrollIndicatorInsets.bottom = height + 20
+        }
+        
+        // Scroll to show the connection picker
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self = self else { return }
+            let pickerFrame = self.connectionPickerView.convert(self.connectionPickerView.bounds, to: self.scrollView)
+            let targetRect = CGRect(x: pickerFrame.minX, y: pickerFrame.minY, width: pickerFrame.width, height: pickerFrame.height + height + 20)
+            self.scrollView.scrollRectToVisible(targetRect, animated: true)
+        }
+    }
+    
+    @objc private func connectionPickerDropdownHidden(notification: NSNotification) {
+        // Reset bottom padding when dropdown is hidden
+        UIView.animate(withDuration: 0.3) {
+            // Only reset if keyboard is not shown
+            if self.keyboardHeight == 0 {
+                self.scrollView.contentInset.bottom = 0
+                self.scrollView.scrollIndicatorInsets.bottom = 0
+            }
         }
     }
     
@@ -765,7 +824,7 @@ class CreateCircleViewController: UIViewController {
         ])
         
         // Add tap gesture to dismiss
-        let tapGesture = UITapGestureRecognizer(target: containerVC, action: #selector(UIViewController.dismiss))
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissDefaultImagePicker))
         tapGesture.delegate = self
         containerVC.view.addGestureRecognizer(tapGesture)
         
@@ -855,16 +914,19 @@ class CreateCircleViewController: UIViewController {
     }
     
     private func shareCircleWithConnections(_ circle: Circle, connections: [User], email: String?) {
+        // Determine access level based on mode
+        let accessLevel: AccessLevel = isSharedCircleMode ? .canEdit : .viewOnly
+        
         // Share with each selected connection
         for user in connections {
             NetworkManager.shared.shareCircle(
                 circle.id,
                 with: user.id,
-                accessLevel: .viewOnly
+                accessLevel: accessLevel
             ) { result in
                 switch result {
                 case .success:
-                    print("✅ Shared circle with \(user.displayName)")
+                    print("✅ Shared circle with \(user.displayName) with \(accessLevel.displayName) access")
                 case .failure(let error):
                     print("❌ Failed to share circle with \(user.displayName): \(error)")
                 }
@@ -883,11 +945,11 @@ class CreateCircleViewController: UIViewController {
                         circle.id,
                         with: nil,
                         email: emailAddress,
-                        accessLevel: .viewOnly
+                        accessLevel: accessLevel
                     ) { result in
                         switch result {
                         case .success:
-                            print("✅ Sent circle invitation to \(emailAddress)")
+                            print("✅ Sent circle invitation to \(emailAddress) with \(accessLevel.displayName) access")
                         case .failure(let error):
                             print("❌ Failed to send invitation to \(emailAddress): \(error)")
                         }

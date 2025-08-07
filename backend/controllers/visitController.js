@@ -92,7 +92,41 @@ exports.getVisits = async (req, res) => {
     query = query.limit(parseInt(limit)).offset(parseInt(offset));
 
     const snapshot = await query.get();
-    const visits = serializeQuerySnapshot(snapshot);
+    let visits = serializeQuerySnapshot(snapshot);
+    
+    // Deduplicate consecutive visits to the same location
+    const deduplicatedVisits = [];
+    let lastLocation = null;
+    
+    for (const visit of visits) {
+      // Check if this visit is at the same location as the previous one
+      const currentLocation = {
+        lat: visit.location?.latitude || 0,
+        lng: visit.location?.longitude || 0,
+        name: visit.placeName
+      };
+      
+      const isSameLocation = lastLocation && 
+        Math.abs(currentLocation.lat - lastLocation.lat) < 0.0001 && // ~11 meters
+        Math.abs(currentLocation.lng - lastLocation.lng) < 0.0001 &&
+        currentLocation.name === lastLocation.name;
+      
+      if (!isSameLocation) {
+        deduplicatedVisits.push(visit);
+        lastLocation = currentLocation;
+      } else {
+        // If same location, update the duration of the previous visit
+        const lastVisit = deduplicatedVisits[deduplicatedVisits.length - 1];
+        if (lastVisit && visit.duration) {
+          lastVisit.duration = (lastVisit.duration || 0) + visit.duration;
+          // Update the end time to reflect the extended visit
+          lastVisit.extendedVisit = true;
+          lastVisit.consolidatedCount = (lastVisit.consolidatedCount || 1) + 1;
+        }
+      }
+    }
+    
+    visits = deduplicatedVisits;
 
     // Get total count for pagination
     const countQuery = db.collection(COLLECTIONS.PLACE_VISITS)

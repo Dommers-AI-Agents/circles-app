@@ -35,6 +35,14 @@ class EmailLoginViewController: BaseViewController {
         return textField
     }()
     
+    private lazy var togglePasswordButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "eye.slash.fill"), for: .normal)
+        button.tintColor = Constants.Colors.secondaryLabel
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
     private lazy var loginButton = UIButton.primaryButton(title: "Log in")
     
     private let rememberMeContainer: UIView = {
@@ -104,6 +112,10 @@ class EmailLoginViewController: BaseViewController {
         rememberMeContainer.addSubview(rememberMeCheckbox)
         rememberMeContainer.addSubview(rememberMeLabel)
         
+        // Setup password field right view
+        passwordTextField.rightView = togglePasswordButton
+        passwordTextField.rightViewMode = .always
+        
         // Add subviews
         view.addSubview(titleLabel)
         view.addSubview(emailTextField)
@@ -127,6 +139,8 @@ class EmailLoginViewController: BaseViewController {
             passwordTextField.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
             passwordTextField.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
             passwordTextField.heightAnchor.constraint(equalToConstant: 50),
+            
+            togglePasswordButton.widthAnchor.constraint(equalToConstant: 44),
             
             rememberMeContainer.topAnchor.constraint(equalTo: passwordTextField.bottomAnchor, constant: 16),
             rememberMeContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
@@ -160,6 +174,7 @@ class EmailLoginViewController: BaseViewController {
         loginButton.addTarget(self, action: #selector(loginButtonTapped), for: .touchUpInside)
         forgotPasswordButton.addTarget(self, action: #selector(forgotPasswordTapped), for: .touchUpInside)
         rememberMeCheckbox.addTarget(self, action: #selector(rememberMeToggled), for: .touchUpInside)
+        togglePasswordButton.addTarget(self, action: #selector(togglePasswordVisibility), for: .touchUpInside)
         
         // Add tap gesture to dismiss keyboard
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
@@ -220,6 +235,12 @@ class EmailLoginViewController: BaseViewController {
     
     @objc private func rememberMeToggled() {
         rememberMeCheckbox.isSelected = !rememberMeCheckbox.isSelected
+    }
+    
+    @objc private func togglePasswordVisibility() {
+        passwordTextField.isSecureTextEntry.toggle()
+        let imageName = passwordTextField.isSecureTextEntry ? "eye.slash.fill" : "eye.fill"
+        togglePasswordButton.setImage(UIImage(systemName: imageName), for: .normal)
     }
     
     // MARK: - Helper Methods

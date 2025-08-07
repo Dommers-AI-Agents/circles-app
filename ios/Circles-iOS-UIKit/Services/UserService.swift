@@ -472,7 +472,7 @@ class UserService {
     
     static func findDuplicateAccounts(for user: User, completion: @escaping (Result<[User], Error>) -> Void) {
         let body: [String: Any] = [
-            "email": user.email,
+            "email": user.email ?? "",
             "displayName": user.displayName
         ]
         

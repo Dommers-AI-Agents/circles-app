@@ -507,16 +507,7 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
             if coverImageUrl.starts(with: "sf-symbol:") {
                 let symbolName = String(coverImageUrl.dropFirst("sf-symbol:".count))
                 selectedDefaultImageName = symbolName
-                if let defaultCase = DefaultImages.CircleDefault.allCases.first(where: { $0.rawValue == symbolName }) {
-                    coverImageView.image = defaultCase.image(size: 100)
-                    coverImageView.tintColor = defaultCase.color
-                    coverImageView.contentMode = .scaleAspectFit
-                } else {
-                    // Fallback to the symbol name directly
-                    coverImageView.image = UIImage(systemName: symbolName)
-                    coverImageView.tintColor = Constants.Colors.primary
-                    coverImageView.contentMode = .scaleAspectFit
-                }
+                updateCoverImage() // Update button states when loading default image
             } else {
                 // Regular image URL
                 ImageService.shared.loadImage(from: coverImageUrl) { [weak self] image in
@@ -661,7 +652,11 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
                     case .success(let response):
                         self.presentAlert(title: "Success", message: "Circle updated successfully") { _ in
                             self.delegate?.didUpdateCircle(response.circle)
-                            self.navigationController?.popViewController(animated: true)
+                            if let navigationController = self.navigationController, navigationController.viewControllers.count > 1 {
+                                navigationController.popViewController(animated: true)
+                            } else {
+                                self.dismiss(animated: true, completion: nil)
+                            }
                         }
                     case .failure(let error):
                         self.presentAlert(title: "Error", message: "Failed to update circle: \(error.localizedDescription)")
@@ -687,8 +682,14 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
                 
                 switch result {
                 case .success(let updatedCircle):
-                    self?.delegate?.didUpdateCircle(updatedCircle)
-                    self?.dismiss(animated: true, completion: nil)
+                    self?.presentAlert(title: "Success", message: "Circle updated successfully") { _ in
+                        self?.delegate?.didUpdateCircle(updatedCircle)
+                        if let navigationController = self?.navigationController, navigationController.viewControllers.count > 1 {
+                            navigationController.popViewController(animated: true)
+                        } else {
+                            self?.dismiss(animated: true, completion: nil)
+                        }
+                    }
                     
                 case .failure(let error):
                     self?.presentAlert(
@@ -722,6 +723,10 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
     
     @objc private func dismissKeyboard() {
         view.endEditing(true)
+    }
+    
+    @objc private func dismissDefaultImagePicker() {
+        dismiss(animated: true)
     }
     
     // MARK: - Alert Methods
@@ -843,7 +848,7 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
         ])
         
         // Add tap gesture to dismiss
-        let tapGesture = UITapGestureRecognizer(target: containerVC, action: #selector(UIViewController.dismiss))
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissDefaultImagePicker))
         tapGesture.delegate = self
         containerVC.view.addGestureRecognizer(tapGesture)
         
@@ -877,12 +882,14 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
     
     private func loadEditors() {
         CircleService.shared.getEditors(circleId: circle.id) { [weak self] result in
-            switch result {
-            case .success(let editors):
-                self?.editors = editors
-                self?.updateEditorsDisplay()
-            case .failure(let error):
-                print("Failed to load editors: \(error)")
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let editors):
+                    self?.editors = editors
+                    self?.updateEditorsDisplay()
+                case .failure(let error):
+                    print("Failed to load editors: \(error)")
+                }
             }
         }
     }
@@ -965,15 +972,17 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
     
     private func removeEditor(userId: String) {
         CircleService.shared.removeEditor(circleId: circle.id, userId: userId) { [weak self] result in
-            switch result {
-            case .success:
-                self?.editors.removeAll { $0.id == userId }
-                self?.updateEditorsDisplay()
-            case .failure(let error):
-                self?.presentAlert(
-                    title: "Error",
-                    message: "Failed to remove editor: \(error.localizedDescription)"
-                )
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    self?.editors.removeAll { $0.id == userId }
+                    self?.updateEditorsDisplay()
+                case .failure(let error):
+                    self?.presentAlert(
+                        title: "Error",
+                        message: "Failed to remove editor: \(error.localizedDescription)"
+                    )
+                }
             }
         }
     }
@@ -986,15 +995,17 @@ extension EditCircleViewController: UserSearchViewControllerDelegate {
             guard let self = self else { return }
             
             CircleService.shared.addEditor(circleId: self.circle.id, userId: user.id) { result in
-                switch result {
-                case .success:
-                    self.editors.append(user)
-                    self.updateEditorsDisplay()
-                case .failure(let error):
-                    self.presentAlert(
-                        title: "Error",
-                        message: "Failed to add editor: \(error.localizedDescription)"
-                    )
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success:
+                        self.editors.append(user)
+                        self.updateEditorsDisplay()
+                    case .failure(let error):
+                        self.presentAlert(
+                            title: "Error",
+                            message: "Failed to add editor: \(error.localizedDescription)"
+                        )
+                    }
                 }
             }
         }

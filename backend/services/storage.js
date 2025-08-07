@@ -77,17 +77,22 @@ const uploadImage = async (base64Data, filename) => {
       
       stream.on('finish', async () => {
         try {
-          // Make the file public
-          await file.makePublic();
+          // Get file metadata to retrieve the download token
+          const [metadata] = await file.getMetadata();
+          const downloadToken = metadata.metadata?.firebaseStorageDownloadTokens;
           
-          // Get the public URL - use firebasestorage.googleapis.com for new format
-          const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(uniqueFilename)}?alt=media`;
+          // Construct the public URL with the download token
+          // This format works for both .firebasestorage.app and .appspot.com domains
+          const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(uniqueFilename)}?alt=media&token=${downloadToken}`;
+          
           console.log('File uploaded successfully:', publicUrl);
+          console.log('Storage bucket:', bucket.name);
+          console.log('File path:', uniqueFilename);
           
           resolve(publicUrl);
         } catch (error) {
-          console.error('Error making file public:', error);
-          console.error('makePublic error details:', {
+          console.error('Error getting file metadata:', error);
+          console.error('Error details:', {
             code: error.code,
             message: error.message,
             statusCode: error.statusCode,

@@ -1,5 +1,10 @@
 import UIKit
 
+// MARK: - MessageCellDelegate
+protocol MessageCellDelegate: AnyObject {
+    func didTapProfileImage(for userId: String)
+}
+
 class ChatViewController: BaseViewController {
     
     // MARK: - UI Elements
@@ -114,6 +119,11 @@ class ChatViewController: BaseViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         markMessagesAsRead()
+        
+        // Refresh navigation bar in case group settings were updated
+        if conversation?.type == .group {
+            setupNavigationBarWithTappableTitle()
+        }
     }
     
     override func viewWillDisappear(_ animated: Bool) {
@@ -131,8 +141,22 @@ class ChatViewController: BaseViewController {
     
     // MARK: - Setup
     private func setupView() {
-        setupNavigationBar(title: conversation?.displayName ?? "Chat")
-        addNavigationBarButton(image: "info.circle", position: .right, action: #selector(showConversationInfo))
+        // Debug logging
+        print("🔍 ChatViewController.setupView: conversation type = \(conversation?.type.rawValue ?? "nil")")
+        print("🔍 ChatViewController.setupView: conversation name = \(conversation?.displayName ?? "nil")")
+        print("🔍 ChatViewController.setupView: is group = \(conversation?.type == .group)")
+        
+        // For group conversations, make title tappable for settings
+        if conversation?.type == .group {
+            print("✅ ChatViewController: Setting up group conversation UI")
+            setupNavigationBarWithTappableTitle()
+            // Add settings gear icon for group conversations
+            addNavigationBarButton(image: "gearshape.fill", position: .right, action: #selector(openGroupSettings))
+        } else {
+            print("ℹ️ ChatViewController: Setting up direct conversation UI")
+            setupNavigationBar(title: conversation?.displayName ?? "Chat")
+            addNavigationBarButton(image: "info.circle", position: .right, action: #selector(showConversationInfo))
+        }
         
         view.addSubview(tableView)
         view.addSubview(messageInputContainer)
@@ -153,6 +177,80 @@ class ChatViewController: BaseViewController {
         
         // Show loading initially
         showLoading()
+    }
+    
+    private func setupNavigationBarWithTappableTitle() {
+        setupNavigationBar(title: conversation?.displayName ?? "Group Chat")
+        
+        // Create a button for better touch handling
+        let titleButton = UIButton(type: .system)
+        titleButton.frame = CGRect(x: 0, y: 0, width: 250, height: 44)
+        
+        // Create group avatar image view
+        let avatarImageView = UIImageView()
+        avatarImageView.contentMode = .scaleAspectFill
+        avatarImageView.clipsToBounds = true
+        avatarImageView.layer.cornerRadius = 16
+        avatarImageView.backgroundColor = Constants.Colors.tertiaryBackground
+        avatarImageView.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Load group avatar
+        if let groupAvatar = conversation?.avatar, !groupAvatar.isEmpty {
+            ImageService.shared.loadImage(from: groupAvatar) { image in
+                DispatchQueue.main.async {
+                    avatarImageView.image = image ?? UIImage(systemName: "person.3.fill")
+                }
+            }
+        } else {
+            avatarImageView.image = UIImage(systemName: "person.3.fill")
+            avatarImageView.tintColor = Constants.Colors.label
+        }
+        
+        // Create title label
+        let titleLabel = UILabel()
+        titleLabel.text = conversation?.displayName ?? "Group Chat"
+        titleLabel.font = UIFont.boldSystemFont(ofSize: 17)
+        titleLabel.textColor = .label
+        titleLabel.textAlignment = .center
+        
+        // Create chevron icon to indicate tappability
+        let chevronImageView = UIImageView(image: UIImage(systemName: "chevron.down.circle.fill"))
+        chevronImageView.tintColor = .systemGray
+        chevronImageView.contentMode = .scaleAspectFit
+        
+        // Stack view to arrange avatar, title and chevron
+        let stackView = UIStackView(arrangedSubviews: [avatarImageView, titleLabel, chevronImageView])
+        stackView.axis = .horizontal
+        stackView.spacing = 8
+        stackView.alignment = .center
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        stackView.isUserInteractionEnabled = false
+        
+        titleButton.addSubview(stackView)
+        
+        NSLayoutConstraint.activate([
+            // Avatar constraints
+            avatarImageView.widthAnchor.constraint(equalToConstant: 32),
+            avatarImageView.heightAnchor.constraint(equalToConstant: 32),
+            
+            stackView.centerXAnchor.constraint(equalTo: titleButton.centerXAnchor),
+            stackView.centerYAnchor.constraint(equalTo: titleButton.centerYAnchor),
+            stackView.leadingAnchor.constraint(greaterThanOrEqualTo: titleButton.leadingAnchor, constant: 8),
+            stackView.trailingAnchor.constraint(lessThanOrEqualTo: titleButton.trailingAnchor, constant: -8),
+            stackView.topAnchor.constraint(equalTo: titleButton.topAnchor),
+            stackView.bottomAnchor.constraint(equalTo: titleButton.bottomAnchor),
+            chevronImageView.widthAnchor.constraint(equalToConstant: 20),
+            chevronImageView.heightAnchor.constraint(equalToConstant: 20)
+        ])
+        
+        // Add action to button
+        titleButton.addTarget(self, action: #selector(titleTapped), for: .touchUpInside)
+        
+        // Add highlight effect
+        titleButton.showsMenuAsPrimaryAction = false
+        titleButton.adjustsImageWhenHighlighted = true
+        
+        navigationItem.titleView = titleButton
     }
     
     private func setupTableView() {
@@ -231,18 +329,28 @@ class ChatViewController: BaseViewController {
         )
         print("🔍 ChatViewController: Added observer for NewMessagesReceived")
         
+        // Listen for conversation updates (e.g., avatar changes)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleConversationUpdated(_:)),
+            name: Notification.Name("ConversationUpdated"),
+            object: nil
+        )
+        print("🔍 ChatViewController: Added observer for ConversationUpdated")
+        
         // Poll for message updates (as backup)
         messageUpdateTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             
-            print("🔍 ChatViewController: Timer fired - checking for messages in conversationId: \(conversationId)")
+            // Commented out repetitive timer logs - uncomment for debugging
+            // print("🔍 ChatViewController: Timer fired - checking for messages in conversationId: \(conversationId)")
             
             if let messages = self.messagingManager.activeMessages[conversationId] {
-                print("🔍 ChatViewController: Found \(messages.count) messages in activeMessages")
+                // print("🔍 ChatViewController: Found \(messages.count) messages in activeMessages")
                 
                 // Filter out connection request messages (handled in My Network tab)
                 let filteredMessages = messages.filter { $0.type != .connectionRequest }
-                print("🔍 ChatViewController: After filtering, have \(filteredMessages.count) messages")
+                // print("🔍 ChatViewController: After filtering, have \(filteredMessages.count) messages")
                 
                 // Hide loading on initial load only (not for subsequent timer refreshes)
                 if self.messages.isEmpty && !self.hasCompletedInitialLoad {
@@ -252,13 +360,19 @@ class ChatViewController: BaseViewController {
                 }
                 
                 if filteredMessages.count != self.messages.count {
-                    print("🔍 ChatViewController: Message count changed from \(self.messages.count) to \(filteredMessages.count)")
+                    // Only log significant changes, not every timer check
+                    if abs(filteredMessages.count - self.messages.count) > 0 {
+                        print("🔍 ChatViewController: Message count changed from \(self.messages.count) to \(filteredMessages.count)")
+                    }
                     self.messages = filteredMessages
                     self.tableView.reloadData()
                     self.scrollToBottom(animated: true)
                 }
             } else {
-                print("⚠️ ChatViewController: No messages found in activeMessages for conversationId: \(conversationId)")
+                // Only log this once, not every 2 seconds
+                if !self.hasCompletedInitialLoad {
+                    print("⚠️ ChatViewController: No messages found in activeMessages for conversationId: \(conversationId)")
+                }
                 
                 // Hide loading if this is the initial load and no messages are found
                 if self.messages.isEmpty && !self.hasCompletedInitialLoad {
@@ -269,7 +383,27 @@ class ChatViewController: BaseViewController {
             }
         }
         
-        print("🔍 ChatViewController: Message update timer scheduled")
+        // print("🔍 ChatViewController: Message update timer scheduled")
+    }
+    
+    @objc private func handleConversationUpdated(_ notification: Notification) {
+        print("🔍 ChatViewController: handleConversationUpdated notification received")
+        
+        guard let userInfo = notification.userInfo,
+              let updatedConversation = userInfo["conversation"] as? Conversation,
+              updatedConversation.id == conversation?.id else {
+            return
+        }
+        
+        // Update our conversation reference
+        self.conversation = updatedConversation
+        
+        // Refresh navigation bar to show updated avatar/name
+        if conversation?.type == .group {
+            DispatchQueue.main.async { [weak self] in
+                self?.setupNavigationBarWithTappableTitle()
+            }
+        }
     }
     
     @objc private func handleNewMessages(_ notification: Notification) {
@@ -417,7 +551,7 @@ class ChatViewController: BaseViewController {
     }
     
     @objc private func showAttachmentOptions() {
-        let actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = [
+        var actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = [
             (title: "Share Circle", style: .default, handler: { [weak self] in 
                 _ = self?.shareCircle()
             }),
@@ -429,6 +563,16 @@ class ChatViewController: BaseViewController {
             })
         ]
         
+        // Add group settings option for group conversations
+        if conversation?.type == .group {
+            actions.insert(
+                (title: "Group Settings", style: .default, handler: { [weak self] in
+                    self?.titleTapped()
+                }),
+                at: 0
+            )
+        }
+        
         AlertPresenter.showActionSheet(
             actions: actions,
             from: self,
@@ -439,6 +583,36 @@ class ChatViewController: BaseViewController {
     
     @objc private func showConversationInfo() {
         // TODO: Show conversation info/settings
+    }
+    
+    @objc private func openGroupSettings() {
+        titleTapped()
+    }
+    
+    @objc private func titleTapped() {
+        print("🔍 ChatViewController: Title tapped")
+        print("🔍 ChatViewController: Conversation type = \(conversation?.type.rawValue ?? "nil")")
+        print("🔍 ChatViewController: Is group = \(conversation?.type == .group)")
+        print("🔍 ChatViewController: Conversation ID = \(conversation?.id ?? "nil")")
+        
+        // Provide haptic feedback
+        let impact = UIImpactFeedbackGenerator(style: .light)
+        impact.impactOccurred()
+        
+        guard let conversation = conversation else {
+            print("❌ ChatViewController: No conversation available")
+            return
+        }
+        
+        guard conversation.type == .group else {
+            print("❌ ChatViewController: Not a group conversation, type = \(conversation.type.rawValue)")
+            return
+        }
+        
+        print("✅ ChatViewController: Opening group settings for conversation: \(conversation.displayName)")
+        let settingsVC = GroupConversationSettingsViewController(conversation: conversation)
+        let navController = UINavigationController(rootViewController: settingsVC)
+        present(navController, animated: true)
     }
     
     
@@ -459,6 +633,41 @@ class ChatViewController: BaseViewController {
     
     private func shareLocation() {
         // TODO: Implement location sharing
+    }
+    
+    @objc private func toggleNotifications() {
+        guard let conversationId = conversation?.id else { return }
+        
+        let currentEnabled = conversation?.notificationsEnabled ?? true
+        let newEnabled = !currentEnabled
+        
+        // Show loading indicator
+        let loadingAlert = AlertPresenter.showLoading(message: newEnabled ? "Enabling notifications..." : "Disabling notifications...", from: self)
+        
+        messagingManager.toggleNotifications(for: conversationId, enabled: newEnabled) { [weak self] result in
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    switch result {
+                    case .success:
+                        // Update the conversation object
+                        if let currentUserId = AuthService.shared.getUserId() {
+                            self?.conversation?.notificationSettings?[currentUserId] = newEnabled
+                        }
+                        
+                        // Update the navigation bar button
+                        let bellImage = newEnabled ? "bell.fill" : "bell.slash.fill"
+                        self?.navigationItem.rightBarButtonItem?.image = UIImage(systemName: bellImage)
+                        
+                        // Show confirmation
+                        let message = newEnabled ? "Notifications enabled for this group" : "Notifications disabled for this group"
+                        self?.showSuccess(message)
+                        
+                    case .failure(let error):
+                        self?.showError("Failed to update notification settings: \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
     }
     
     
@@ -496,7 +705,8 @@ extension ChatViewController: UITableViewDataSource {
         
         // All connection request messages are now filtered out, so only handle regular messages
         let cell = tableView.dequeueReusableCell(withIdentifier: cellIdentifier, for: indexPath) as! MessageCell
-        cell.configure(with: message)
+        cell.delegate = self
+        cell.configure(with: message, conversation: conversation)
         cell.transform = CGAffineTransform(scaleX: 1, y: -1) // Invert cell
         return cell
     }
@@ -639,6 +849,10 @@ extension ChatViewController: ConnectionRequestMessageCellDelegate {
 // MARK: - MessageCell
 class MessageCell: UITableViewCell {
     
+    // MARK: - Delegate
+    weak var delegate: MessageCellDelegate?
+    private var currentUserId: String?
+    
     private let bubbleView: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -670,8 +884,24 @@ class MessageCell: UITableViewCell {
         return label
     }()
     
+    private let avatarImageView: UIImageView = {
+        let imageView = UIImageView()
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.contentMode = .scaleAspectFill
+        imageView.clipsToBounds = true
+        imageView.layer.cornerRadius = 16
+        imageView.backgroundColor = Constants.Colors.tertiaryBackground
+        imageView.isUserInteractionEnabled = true
+        return imageView
+    }()
+    
     private var leadingConstraint: NSLayoutConstraint!
     private var trailingConstraint: NSLayoutConstraint!
+    private var bubbleLeadingToAvatarConstraint: NSLayoutConstraint!
+    private var bubbleLeadingToContentConstraint: NSLayoutConstraint!
+    private var bubbleTrailingToAvatarConstraint: NSLayoutConstraint!
+    private var avatarTrailingConstraint: NSLayoutConstraint!
+    private var avatarLeadingConstraint: NSLayoutConstraint!
     
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -686,15 +916,34 @@ class MessageCell: UITableViewCell {
         backgroundColor = .clear
         selectionStyle = .none
         
+        contentView.addSubview(avatarImageView)
         contentView.addSubview(bubbleView)
         bubbleView.addSubview(senderLabel)
         bubbleView.addSubview(messageLabel)
         bubbleView.addSubview(timeLabel)
         
+        // Add tap gesture to avatar
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(avatarTapped))
+        avatarImageView.addGestureRecognizer(tapGesture)
+        
         leadingConstraint = bubbleView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16)
         trailingConstraint = bubbleView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16)
         
+        // Constraints for bubble with avatar on left (received messages)
+        bubbleLeadingToAvatarConstraint = bubbleView.leadingAnchor.constraint(equalTo: avatarImageView.trailingAnchor, constant: 8)
+        bubbleLeadingToContentConstraint = bubbleView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16)
+        
+        // Constraints for bubble with avatar on right (sent messages in direct conversations)
+        bubbleTrailingToAvatarConstraint = bubbleView.trailingAnchor.constraint(equalTo: avatarImageView.leadingAnchor, constant: -8)
+        avatarTrailingConstraint = avatarImageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8)
+        avatarLeadingConstraint = avatarImageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 8)
+        
         NSLayoutConstraint.activate([
+            // Avatar constraints (position will be controlled dynamically)
+            avatarImageView.bottomAnchor.constraint(equalTo: bubbleView.bottomAnchor),
+            avatarImageView.widthAnchor.constraint(equalToConstant: 32),
+            avatarImageView.heightAnchor.constraint(equalToConstant: 32),
+            
             bubbleView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
             bubbleView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
             bubbleView.widthAnchor.constraint(lessThanOrEqualToConstant: 280),
@@ -714,9 +963,16 @@ class MessageCell: UITableViewCell {
         ])
     }
     
-    func configure(with message: Message) {
+    func configure(with message: Message, conversation: Conversation?) {
         messageLabel.text = message.displayContent
         timeLabel.text = message.formattedTime
+        
+        // Store user ID for tap handling (only for received messages)
+        if !message.isCurrentUserMessage {
+            self.currentUserId = message.senderId
+        } else {
+            self.currentUserId = nil
+        }
         
         if message.isCurrentUserMessage {
             // Sent message
@@ -724,9 +980,16 @@ class MessageCell: UITableViewCell {
             messageLabel.textColor = .white
             timeLabel.textColor = UIColor.white.withAlphaComponent(0.7)
             senderLabel.isHidden = true
+            avatarImageView.isHidden = true
             
             leadingConstraint.isActive = false
             trailingConstraint.isActive = true
+            bubbleLeadingToAvatarConstraint.isActive = false
+            bubbleLeadingToContentConstraint.isActive = false
+            bubbleTrailingToAvatarConstraint.isActive = false
+            avatarTrailingConstraint.isActive = false
+            avatarLeadingConstraint.isActive = false
+            
             bubbleView.layer.maskedCorners = [.layerMinXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMinYCorner]
         } else {
             // Received message
@@ -742,8 +1005,58 @@ class MessageCell: UITableViewCell {
                 senderLabel.isHidden = true
             }
             
+            // Show avatar for both group and direct conversations
+            avatarImageView.isHidden = false
+            
+            if conversation?.type == .group {
+                // Load sender avatar if available, otherwise use group avatar
+                if let senderAvatar = message.senderDetails?.profilePicture, !senderAvatar.isEmpty {
+                    ImageService.shared.loadImage(from: senderAvatar) { [weak avatarImageView] image in
+                        DispatchQueue.main.async {
+                            avatarImageView?.image = image ?? UIImage(systemName: "person.circle.fill")
+                        }
+                    }
+                } else if let groupAvatar = conversation?.avatar, !groupAvatar.isEmpty {
+                    ImageService.shared.loadImage(from: groupAvatar) { [weak avatarImageView] image in
+                        DispatchQueue.main.async {
+                            avatarImageView?.image = image ?? UIImage(systemName: "person.3.fill")
+                        }
+                    }
+                } else {
+                    // Show initials or default avatar
+                    if let senderName = message.senderDetails?.displayName {
+                        avatarImageView.image = createInitialsImage(for: senderName)
+                    } else {
+                        avatarImageView.image = UIImage(systemName: "person.3.fill")
+                    }
+                }
+            } else {
+                // Direct conversation - load sender's avatar
+                if let senderAvatar = message.senderDetails?.profilePicture, !senderAvatar.isEmpty {
+                    ImageService.shared.loadImage(from: senderAvatar) { [weak avatarImageView] image in
+                        DispatchQueue.main.async {
+                            avatarImageView?.image = image ?? UIImage(systemName: "person.circle.fill")
+                        }
+                    }
+                } else {
+                    // Show initials or default avatar
+                    if let senderName = message.senderDetails?.displayName {
+                        avatarImageView.image = createInitialsImage(for: senderName)
+                    } else {
+                        avatarImageView.image = UIImage(systemName: "person.circle.fill")
+                    }
+                }
+            }
+            
+            // Use constraints with avatar on the left
+            leadingConstraint.isActive = false
+            bubbleLeadingToContentConstraint.isActive = false
+            bubbleLeadingToAvatarConstraint.isActive = true
+            bubbleTrailingToAvatarConstraint.isActive = false
+            avatarTrailingConstraint.isActive = false
+            avatarLeadingConstraint.isActive = true
+            
             trailingConstraint.isActive = false
-            leadingConstraint.isActive = true
             bubbleView.layer.maskedCorners = [.layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
         }
         
@@ -751,5 +1064,69 @@ class MessageCell: UITableViewCell {
         if senderLabel.isHidden {
             messageLabel.topAnchor.constraint(equalTo: bubbleView.topAnchor, constant: 8).isActive = true
         }
+    }
+    
+    @objc private func avatarTapped() {
+        guard let userId = currentUserId else { return }
+        delegate?.didTapProfileImage(for: userId)
+    }
+    
+    private func createInitialsImage(for name: String) -> UIImage {
+        let initials = name.components(separatedBy: " ")
+            .compactMap { $0.first?.uppercased() }
+            .prefix(2)
+            .joined()
+        
+        let size = CGSize(width: 32, height: 32)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        
+        return renderer.image { context in
+            Constants.Colors.tertiaryBackground.setFill()
+            UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).fill()
+            
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 14, weight: .semibold),
+                .foregroundColor: Constants.Colors.label
+            ]
+            
+            let textSize = initials.size(withAttributes: attributes)
+            let textRect = CGRect(
+                x: (size.width - textSize.width) / 2,
+                y: (size.height - textSize.height) / 2,
+                width: textSize.width,
+                height: textSize.height
+            )
+            
+            initials.draw(in: textRect, withAttributes: attributes)
+        }
+    }
+}
+
+// MARK: - MessageCellDelegate
+extension ChatViewController: MessageCellDelegate {
+    func didTapProfileImage(for userId: String) {
+        print("🔍 Profile image tapped for userId: \(userId)")
+        
+        // Check if the user is connected to navigate to their profile
+        UserService.shared.fetchUserProfile(userId: userId) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                
+                switch result {
+                case .success(let user):
+                    print("✅ Found user: \(user.displayName)")
+                    self.navigateToUserProfile(user: user)
+                case .failure(let error):
+                    print("❌ Failed to fetch user profile: \(error)")
+                    self.showError("Could not load user profile")
+                }
+            }
+        }
+    }
+    
+    private func navigateToUserProfile(user: User) {
+        // Navigate to ProfileViewController just like in My Network tab
+        let profileVC = ProfileViewController(user: user)
+        navigationController?.pushViewController(profileVC, animated: true)
     }
 }

@@ -6,15 +6,15 @@ const db = getFirestore();
 
 class ScoringService {
   constructor() {
-    // Scoring weights configuration
+    // Scoring weights configuration - PRIORITIZING ACTIVITY OVER MESSAGES
     this.weights = {
-      // Message History (0-50 points) - Increased weight
+      // Message History (0-25 points) - REDUCED from 50 to deprioritize chat history
       messages: {
-        hasMessages: 20,
-        recentMessage: 10,      // within 7 days
-        veryRecentMessage: 20   // within 24 hours - DOUBLED
+        hasMessages: 10,        // Reduced from 20
+        recentMessage: 5,       // Reduced from 10 - within 7 days
+        veryRecentMessage: 10   // Reduced from 20 - within 24 hours
       },
-      // User Engagement (0-15 points) - Further reduced to prevent view count dominance
+      // User Engagement (0-15 points) - Unchanged, based on view counts
       engagement: {
         views: [
           { min: 1, max: 5, points: 2 },
@@ -23,33 +23,42 @@ class ScoringService {
           { min: 31, max: Infinity, points: 15 }
         ]
       },
-      // Content & Activity (0-35 points) - Increased to better reward active users
+      // Content & Activity (0-50 points) - INCREASED from 35 to reward content creators
       content: {
-        hasUnviewedActivity: 18,  // Increased from 15
+        hasUnviewedActivity: 25,  // Increased from 18 - major boost for new content
         placesBonus: [
-          { min: 5, max: 10, points: 3 },   // Increased from 2
-          { min: 11, max: 25, points: 5 },  // Increased from 3
-          { min: 26, max: Infinity, points: 7 }  // Increased from 5
+          { min: 5, max: 10, points: 5 },    // Increased from 3
+          { min: 11, max: 25, points: 8 },   // Increased from 5
+          { min: 26, max: Infinity, points: 10 }  // Increased from 7
         ],
         // Total activity bonus for highly active users (viewed + unviewed)
         totalActivityBonus: [
-          { min: 3, max: 5, points: 4 },   // Increased from 3
-          { min: 6, max: 10, points: 7 },  // Increased from 6
-          { min: 11, max: 20, points: 10 }, // Increased from 8
-          { min: 21, max: Infinity, points: 12 } // Increased from 10
+          { min: 3, max: 5, points: 5 },    // Increased from 4
+          { min: 6, max: 10, points: 8 },   // Increased from 7
+          { min: 11, max: 20, points: 12 }, // Increased from 10
+          { min: 21, max: Infinity, points: 15 } // Increased from 12
         ]
       },
-      // Recency Bonus (0-15 points) - Increased from 10
+      // Recency Bonus (0-20 points) - INCREASED from 15 to reward fresh content
       recency: {
-        within24Hours: 15,  // Increased from 10
-        within3Days: 10,    // Increased from 7
-        within7Days: 5
+        within24Hours: 20,  // Increased from 15
+        within3Days: 12,    // Increased from 10
+        within7Days: 7      // Increased from 5
       }
     };
   }
 
   /**
    * Calculate the weighted score for a connection
+   * 
+   * Scoring Philosophy (Updated August 2025):
+   * - Content & Activity: 0-50 points (HIGHEST - rewards content creators)
+   * - Messages: 0-25 points (REDUCED - de-emphasizes chat history)
+   * - Recency: 0-20 points (rewards fresh content)
+   * - Engagement: 0-15 points (based on view counts)
+   * 
+   * Total possible: 110 points before multipliers
+   * 
    * @param {Object} connection - The connection object with all stats
    * @param {string} currentUserId - The current user's ID
    * @returns {Object} - Score and breakdown
@@ -140,7 +149,7 @@ class ScoringService {
       scoreComponents.content + 
       scoreComponents.recency;
 
-    // Enhanced multiplier system to prioritize meaningful interactions
+    // Enhanced multiplier system to prioritize content creators over chatters
     let multiplier = 1.0;
     
     // Check if has recent messages (within 7 days)
@@ -151,52 +160,40 @@ class ScoringService {
     const hasRecentActivity = mostRecentActivity && 
       this.getAgeInDays(mostRecentActivity) <= 7;
     
-    // Check if has high content score (5+ points indicates active user)
-    const hasHighContent = scoreComponents.content >= 5;
+    // Check if has high content score (10+ points indicates very active user)
+    const hasHighContent = scoreComponents.content >= 10;
     
+    // Apply 2.5x multiplier for high-content users with recent activity (PRIORITIZE CONTENT CREATORS)
+    if (hasHighContent && hasRecentActivity) {
+      multiplier = 2.5;  // Increased from 1.6 - major boost for active content creators
+      console.log(`🌟 Applying 2.5x multiplier for high-content user with recent activity`);
+    }
     // Apply 2.0x multiplier if user has BOTH recent messages and activity
-    if (hasRecentMessages && hasRecentActivity) {
-      multiplier = 2.0;  // Increased from 1.5
+    else if (hasRecentMessages && hasRecentActivity) {
+      multiplier = 2.0;  // Unchanged - balanced users
       console.log(`🚀 Applying 2.0x multiplier for user with recent messages AND activity`);
     }
-    // Apply 1.6x multiplier for high-content users even without recent messages
-    else if (hasHighContent && hasRecentActivity) {
-      multiplier = 1.6;
-      console.log(`📈 Applying 1.6x multiplier for high-content user with recent activity`);
-    }
-    // Apply 1.3x multiplier for users with just recent messages
+    // Apply only 1.1x multiplier for users with just recent messages (REDUCED)
     else if (hasRecentMessages) {
-      multiplier = 1.3;
-      console.log(`💬 Applying 1.3x multiplier for user with recent messages only`);
+      multiplier = 1.1;  // Reduced from 1.3 - de-emphasize pure chatters
+      console.log(`💬 Applying 1.1x multiplier for user with recent messages only`);
+    }
+    // Apply 1.8x multiplier for users with just recent activity (NEW)
+    else if (hasRecentActivity) {
+      multiplier = 1.8;  // NEW - reward activity without messages
+      console.log(`📍 Applying 1.8x multiplier for user with recent activity only`);
     }
     
-    // Power user boost: Extra 1.2x multiplier for highly active users (20+ total activities AND 10+ places)
+    // Power user boost: Extra 1.3x multiplier for highly active users (20+ total activities AND 10+ places)
     const isPowerUser = totalActivityCount >= 20 && placesCount >= 10;
     if (isPowerUser) {
-      multiplier *= 1.2;
+      multiplier *= 1.3;  // Increased from 1.2 - bigger boost for power users
       console.log(`⭐ Power user boost applied: ${displayName} has ${totalActivityCount} activities and ${placesCount} places`);
     }
     
     // Debug multiplier calculation for all users
     const displayName = connection.connectedUser?.displayName || 'Unknown';
     console.log(`📊 ${displayName}: hasRecentMessages=${hasRecentMessages} hasRecentActivity=${hasRecentActivity} hasHighContent=${hasHighContent} totalActivity=${totalActivityCount} multiplier=${multiplier}x`);
-    
-    // Special logging for Dan Wickner and Joseph Sgroi for comparison
-    if (displayName.toLowerCase().includes('dan') || displayName.toLowerCase().includes('wickner') || 
-        displayName.toLowerCase().includes('joseph') && displayName.toLowerCase().includes('sgroi')) {
-      console.log(`🎯 ${displayName.toUpperCase()} SCORING BREAKDOWN:`);
-      console.log(`   Has Recent Messages: ${hasRecentMessages} (${connection.lastMessageAt})`);
-      console.log(`   Has Recent Activity: ${hasRecentActivity} (${mostRecentActivity})`);
-      console.log(`   Has High Content: ${hasHighContent} (content score: ${scoreComponents.content})`);
-      console.log(`   Total Activity Count: ${totalActivityCount}`);
-      console.log(`   Unviewed Activity Count: ${connection.unviewedActivityCount || 0}`);
-      console.log(`   Total Places: ${placesCount}`);
-      console.log(`   Is Power User: ${isPowerUser} (${totalActivityCount} activities, ${placesCount} places)`);
-      console.log(`   Multiplier Applied: ${multiplier}x`);
-      console.log(`   Score Components: Messages=${scoreComponents.messages} Engagement=${scoreComponents.engagement} Content=${scoreComponents.content} Recency=${scoreComponents.recency}`);
-      console.log(`   Base Score: ${scoreComponents.total}`);
-      console.log(`   Final Score: ${Math.round(scoreComponents.total * multiplier)}`);
-    }
     
     // Apply multiplier to final score
     let finalScore = Math.round(scoreComponents.total * multiplier);

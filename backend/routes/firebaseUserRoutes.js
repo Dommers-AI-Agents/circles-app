@@ -30,6 +30,7 @@ const {
   retryOnboarding,
   mergeUserAccounts
 } = require('../controllers/firebaseUserController');
+const { changePassword } = require('../controllers/firebaseAuthController');
 const { protect } = require('../middleware/firebaseAuth');
 
 const router = express.Router();
@@ -66,6 +67,9 @@ router.route('/device-token')
 
 router.route('/notification-preferences')
   .put(updateNotificationPreferences);
+
+router.route('/change-password')
+  .post(changePassword);
 
 router.route('/friend-request')
   .post(sendFriendRequest);

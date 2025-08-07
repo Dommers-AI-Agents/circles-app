@@ -1,5 +1,5 @@
 import UIKit
-import FBSDKCoreKit
+import FacebookCore
 import FirebaseMessaging
 
 // MARK: - Response Types
@@ -96,6 +96,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             Logger.debug("SceneDelegate auth state listener called with isLoggedIn: \(isLoggedIn)")
             self?.updateRootViewController(isLoggedIn: isLoggedIn)
         }
+        
+        // Setup promoted purchase notifications
+        setupPromotedPurchaseNotifications()
         
         window?.makeKeyAndVisible()
     }
@@ -339,6 +342,17 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 if !userId.isEmpty {
                     print("📱 SceneDelegate: Calling handleConnectionInvite with userId: \(userId)")
                     self.handleConnectionInvite(from: userId)
+                    return
+                }
+            }
+            
+            // Handle referral deep links (e.g., circles://referral?code=ABC123)
+            if url.host == "referral" {
+                print("📱 SceneDelegate: Detected 'referral' as host")
+                if let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
+                   let code = urlComponents.queryItems?.first(where: { $0.name == "code" })?.value {
+                    print("📱 SceneDelegate: Found referral code: \(code)")
+                    self.handleReferralCode(code)
                     return
                 }
             }
@@ -1006,5 +1020,123 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func sceneDidEnterBackground(_ scene: UIScene) {
         // Called as the scene transitions from the foreground to the background.
         // Save any necessary data
+    }
+    
+    // MARK: - Referral Code Handling
+    
+    private func handleReferralCode(_ code: String) {
+        print("📱 SceneDelegate: handleReferralCode called with code: \(code)")
+        
+        // If user is not logged in, save the code for later
+        guard AuthService.shared.isLoggedIn else {
+            print("📱 SceneDelegate: User not logged in, saving referral code for later")
+            ReferralService.shared.savePendingReferralCode(code)
+            
+            // Show alert prompting user to sign up
+            let alert = UIAlertController(
+                title: "Referral Code Saved",
+                message: "Sign up to get an extra month free with referral code: \(code)",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Sign Up", style: .default) { _ in
+                // The auth state listener will handle showing auth screen
+            })
+            alert.addAction(UIAlertAction(title: "Later", style: .cancel))
+            
+            if let topVC = window?.rootViewController {
+                topVC.present(alert, animated: true)
+            }
+            return
+        }
+        
+        // If user is logged in, check if they've already used a referral code
+        if ReferralService.shared.hasUsedReferralCode() {
+            print("📱 SceneDelegate: User has already used a referral code")
+            
+            let alert = UIAlertController(
+                title: "Referral Code",
+                message: "You have already used a referral code.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            
+            if let topVC = window?.rootViewController {
+                topVC.present(alert, animated: true)
+            }
+            return
+        }
+        
+        // Apply the referral code
+        let loading = UIAlertController(title: "Applying Code...", message: nil, preferredStyle: .alert)
+        if let topVC = window?.rootViewController {
+            topVC.present(loading, animated: true)
+        }
+        
+        ReferralService.shared.applyReferralCode(code) { [weak self] result in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: true) {
+                    switch result {
+                    case .success(let response):
+                        let alert = UIAlertController(
+                            title: "Success!",
+                            message: response.message,
+                            preferredStyle: .alert
+                        )
+                        alert.addAction(UIAlertAction(title: "Great!", style: .default))
+                        
+                        if let topVC = self?.window?.rootViewController {
+                            topVC.present(alert, animated: true)
+                        }
+                        
+                    case .failure(let error):
+                        let alert = UIAlertController(
+                            title: "Error",
+                            message: error.localizedDescription,
+                            preferredStyle: .alert
+                        )
+                        alert.addAction(UIAlertAction(title: "OK", style: .default))
+                        
+                        if let topVC = self?.window?.rootViewController {
+                            topVC.present(alert, animated: true)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Promoted Purchase Handling
+    
+    private func setupPromotedPurchaseNotifications() {
+        // Handle login required for promoted purchase
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleShowLoginForPromotedPurchase),
+            name: Notification.Name("ShowLoginForPromotedPurchase"),
+            object: nil
+        )
+    }
+    
+    @objc private func handleShowLoginForPromotedPurchase() {
+        print("💎 SceneDelegate: Showing login for promoted purchase")
+        
+        DispatchQueue.main.async { [weak self] in
+            // Show login screen
+            let loginVC = LoginViewController()
+            loginVC.modalPresentationStyle = .fullScreen
+            
+            // Find the top view controller
+            if let window = self?.window,
+               var topController = window.rootViewController {
+                while let presentedViewController = topController.presentedViewController {
+                    topController = presentedViewController
+                }
+                
+                // Present login
+                topController.present(loginVC, animated: true) {
+                    print("💎 Login screen presented for promoted purchase")
+                }
+            }
+        }
     }
 }

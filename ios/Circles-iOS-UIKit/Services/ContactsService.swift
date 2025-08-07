@@ -293,8 +293,13 @@ class ContactsService {
         
         for userId in userIds {
             group.enter()
-            NetworkManager.shared.sendConnectionRequest(to: userId) { error in
-                results[userId] = (error == nil)
+            NetworkManager.shared.sendConnectionRequest(to: userId) { result in
+                switch result {
+                case .success:
+                    results[userId] = true
+                case .failure:
+                    results[userId] = false
+                }
                 group.leave()
             }
         }

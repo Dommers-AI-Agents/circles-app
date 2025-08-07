@@ -20,7 +20,7 @@ class Logger {
     static let shared = Logger()
     
     #if DEBUG
-    private var currentLevel: LogLevel = .info
+    private var currentLevel: LogLevel = .debug  // Changed from .info to .debug for better visibility
     #else
     private var currentLevel: LogLevel = .error
     #endif

@@ -78,7 +78,7 @@ struct NotificationPreferences: Codable {
 
 struct User: Codable, Identifiable {
     let id: String
-    let email: String
+    let email: String?
     let displayName: String
     let firstName: String?
     let lastName: String?
@@ -122,13 +122,27 @@ struct User: Codable, Identifiable {
     // Notification preferences
     let notificationPreferences: NotificationPreferences?
     
+    // Subscription fields
+    let subscriptionStatus: String?
+    let subscriptionExpiryDate: Date?
+    let trialStartDate: Date?
+    let trialEndDate: Date?
+    
+    // Referral fields
+    let referralCode: String?
+    let referredBy: String?
+    let referralCount: Int
+    let referralRewards: [ReferralReward]?
+    
     enum CodingKeys: String, CodingKey {
         case id = "_id"
         case email, displayName, firstName, lastName, phoneNumber, profilePicture, bio, location, friends, friendRequests, circleOrder, preferences, createdAt, connectionStatus, connectionDirection, connectionId, followers, following, followersCount, followingCount, connectionsCount, placesCount, circlesCount, pinnedPlaces, isFollowing, isFakeProfile, notificationPreferences
+        case subscriptionStatus, subscriptionExpiryDate, trialStartDate, trialEndDate
+        case referralCode, referredBy, referralCount, referralRewards
     }
     
     // Convenience initializer for creating User objects directly
-    public init(id: String, email: String, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil, connectionDirection: String? = nil, connectionId: String? = nil, followers: [String]? = nil, following: [String]? = nil, followersCount: Int? = nil, followingCount: Int? = nil, connectionsCount: Int? = nil, placesCount: Int? = nil, circlesCount: Int? = nil, pinnedPlaces: [String]? = nil, isFollowing: Bool? = nil, isFakeProfile: Bool? = nil, notificationPreferences: NotificationPreferences? = nil) {
+    public init(id: String, email: String? = nil, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil, connectionDirection: String? = nil, connectionId: String? = nil, followers: [String]? = nil, following: [String]? = nil, followersCount: Int? = nil, followingCount: Int? = nil, connectionsCount: Int? = nil, placesCount: Int? = nil, circlesCount: Int? = nil, pinnedPlaces: [String]? = nil, isFollowing: Bool? = nil, isFakeProfile: Bool? = nil, notificationPreferences: NotificationPreferences? = nil, subscriptionStatus: String? = nil, subscriptionExpiryDate: Date? = nil, trialStartDate: Date? = nil, trialEndDate: Date? = nil, referralCode: String? = nil, referredBy: String? = nil, referralCount: Int = 0, referralRewards: [ReferralReward]? = nil) {
         self.id = id
         self.email = email
         self.displayName = displayName
@@ -157,6 +171,14 @@ struct User: Codable, Identifiable {
         self.isFollowing = isFollowing
         self.isFakeProfile = isFakeProfile
         self.notificationPreferences = notificationPreferences
+        self.subscriptionStatus = subscriptionStatus
+        self.subscriptionExpiryDate = subscriptionExpiryDate
+        self.trialStartDate = trialStartDate
+        self.trialEndDate = trialEndDate
+        self.referralCode = referralCode
+        self.referredBy = referredBy
+        self.referralCount = referralCount
+        self.referralRewards = referralRewards
     }
     
     // Custom decoder for JSON decoding
@@ -191,7 +213,7 @@ struct User: Codable, Identifiable {
             }
         }
         
-        email = try container.decode(String.self, forKey: .email)
+        email = try container.decodeIfPresent(String.self, forKey: .email)
         displayName = try container.decode(String.self, forKey: .displayName)
         firstName = try container.decodeIfPresent(String.self, forKey: .firstName)
         lastName = try container.decodeIfPresent(String.self, forKey: .lastName)
@@ -233,6 +255,34 @@ struct User: Codable, Identifiable {
         
         // Notification preferences
         notificationPreferences = try container.decodeIfPresent(NotificationPreferences.self, forKey: .notificationPreferences)
+        
+        // Subscription fields
+        subscriptionStatus = try container.decodeIfPresent(String.self, forKey: .subscriptionStatus)
+        
+        // Decode subscription dates
+        if let expiryDateString = try container.decodeIfPresent(String.self, forKey: .subscriptionExpiryDate) {
+            subscriptionExpiryDate = ISO8601DateFormatter().date(from: expiryDateString)
+        } else {
+            subscriptionExpiryDate = nil
+        }
+        
+        if let trialStartString = try container.decodeIfPresent(String.self, forKey: .trialStartDate) {
+            trialStartDate = ISO8601DateFormatter().date(from: trialStartString)
+        } else {
+            trialStartDate = nil
+        }
+        
+        if let trialEndString = try container.decodeIfPresent(String.self, forKey: .trialEndDate) {
+            trialEndDate = ISO8601DateFormatter().date(from: trialEndString)
+        } else {
+            trialEndDate = nil
+        }
+        
+        // Referral fields
+        referralCode = try container.decodeIfPresent(String.self, forKey: .referralCode)
+        referredBy = try container.decodeIfPresent(String.self, forKey: .referredBy)
+        referralCount = try container.decodeIfPresent(Int.self, forKey: .referralCount) ?? 0
+        referralRewards = try container.decodeIfPresent([ReferralReward].self, forKey: .referralRewards)
         
         // Custom date decoding with multiple format support
         if let dateString = try container.decodeIfPresent(String.self, forKey: .createdAt) {
@@ -281,9 +331,15 @@ struct User: Codable, Identifiable {
             followingCount: self.followingCount,
             connectionsCount: self.connectionsCount,
             placesCount: self.placesCount,
+            circlesCount: self.circlesCount,
             pinnedPlaces: self.pinnedPlaces,
             isFollowing: isFollowing, // Updated value
-            isFakeProfile: self.isFakeProfile
+            isFakeProfile: self.isFakeProfile,
+            notificationPreferences: self.notificationPreferences,
+            subscriptionStatus: self.subscriptionStatus,
+            subscriptionExpiryDate: self.subscriptionExpiryDate,
+            trialStartDate: self.trialStartDate,
+            trialEndDate: self.trialEndDate
         )
     }
     

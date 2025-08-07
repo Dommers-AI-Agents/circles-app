@@ -1042,9 +1042,10 @@ exports.getCircleComments = async (req, res, next) => {
       });
     }
     
-    // Get comments for this circle
+    // Get comments for this circle (only top-level comments, not replies)
     const commentsSnapshot = await db.collection(COLLECTIONS.CIRCLE_COMMENTS)
       .where('circleId', '==', circleId)
+      .where('parentCommentId', '==', null)
       .orderBy('createdAt', 'desc')
       .get();
     
@@ -1224,6 +1225,169 @@ exports.deleteCircleComment = async (req, res, next) => {
     
   } catch (error) {
     console.error('Error deleting circle comment:', error);
+    next(error);
+  }
+};
+
+// @desc    Add reply to a comment
+// @route   POST /api/circles/:id/comments/:commentId/replies
+// @access  Private
+exports.addCommentReply = async (req, res, next) => {
+  try {
+    const { id: circleId, commentId } = req.params;
+    const userId = req.user.uid;
+    const { text } = req.body;
+    
+    console.log('💬 addCommentReply called:', {
+      circleId,
+      commentId,
+      userId,
+      text: text?.substring(0, 50) + (text?.length > 50 ? '...' : ''),
+      timestamp: new Date().toISOString()
+    });
+    
+    if (!text || text.trim() === '') {
+      return res.status(400).json({
+        success: false,
+        message: 'Reply text is required'
+      });
+    }
+    
+    // Get the parent comment to validate it exists
+    const parentCommentRef = db.collection(COLLECTIONS.CIRCLE_COMMENTS).doc(commentId);
+    const parentCommentDoc = await parentCommentRef.get();
+    
+    if (!parentCommentDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Parent comment not found'
+      });
+    }
+    
+    const parentComment = serializeDoc(parentCommentDoc);
+    
+    // Ensure the parent comment belongs to the specified circle
+    if (parentComment.circleId !== circleId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Comment does not belong to this circle'
+      });
+    }
+    
+    // Create reply data
+    const replyData = createCircleComment({
+      circleId: circleId,
+      userId: userId,
+      text: text.trim(),
+      parentCommentId: commentId
+    });
+    
+    console.log('💾 Saving reply to circleComments collection');
+    const replyRef = await db.collection(COLLECTIONS.CIRCLE_COMMENTS).add(replyData);
+    const replyDoc = await replyRef.get();
+    const reply = serializeDoc(replyDoc);
+    console.log('✅ Reply saved successfully with ID:', reply.id);
+    
+    // Get user details for the reply
+    const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+    if (userDoc.exists) {
+      reply.user = serializeDoc(userDoc);
+    }
+    
+    // Update parent comment reply count
+    const currentReplyCount = parentComment.replyCount || 0;
+    await parentCommentRef.update({
+      replyCount: currentReplyCount + 1
+    });
+    
+    // Update circle comment count (replies count towards total comments)
+    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(circleId);
+    const circleDoc = await circleRef.get();
+    if (circleDoc.exists) {
+      const circle = serializeDoc(circleDoc);
+      const currentCommentsCount = circle.commentsCount || 0;
+      await circleRef.update({
+        commentsCount: currentCommentsCount + 1,
+        updatedAt: new Date().toISOString()
+      });
+    }
+    
+    console.log('✅ Parent comment reply count and circle comment count updated');
+    
+    res.status(201).json({
+      success: true,
+      data: reply
+    });
+    
+  } catch (error) {
+    console.error('Error adding comment reply:', error);
+    next(error);
+  }
+};
+
+// @desc    Get replies for a comment
+// @route   GET /api/circles/:id/comments/:commentId/replies
+// @access  Private
+exports.getCommentReplies = async (req, res, next) => {
+  try {
+    const { id: circleId, commentId } = req.params;
+    const userId = req.user.uid;
+    
+    console.log('🔍 getCommentReplies called:', {
+      circleId,
+      commentId,
+      userId,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Verify parent comment exists and belongs to the circle
+    const parentCommentRef = db.collection(COLLECTIONS.CIRCLE_COMMENTS).doc(commentId);
+    const parentCommentDoc = await parentCommentRef.get();
+    
+    if (!parentCommentDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Parent comment not found'
+      });
+    }
+    
+    const parentComment = serializeDoc(parentCommentDoc);
+    
+    if (parentComment.circleId !== circleId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Comment does not belong to this circle'
+      });
+    }
+    
+    // Get replies for this comment
+    const repliesSnapshot = await db.collection(COLLECTIONS.CIRCLE_COMMENTS)
+      .where('parentCommentId', '==', commentId)
+      .orderBy('createdAt', 'asc') // Replies should be chronological
+      .get();
+    
+    const replies = [];
+    for (const replyDoc of repliesSnapshot.docs) {
+      const reply = serializeDoc(replyDoc);
+      
+      // Get user details for each reply
+      const userDoc = await db.collection(COLLECTIONS.USERS).doc(reply.userId).get();
+      if (userDoc.exists) {
+        reply.user = serializeDoc(userDoc);
+      }
+      
+      replies.push(reply);
+    }
+    
+    console.log(`✅ Found ${replies.length} replies for comment ${commentId}`);
+    
+    res.status(200).json({
+      success: true,
+      data: replies
+    });
+    
+  } catch (error) {
+    console.error('Error getting comment replies:', error);
     next(error);
   }
 };

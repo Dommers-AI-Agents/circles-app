@@ -1241,8 +1241,8 @@ class PlaceService {
             completion: createAPICompletion { (result: Result<PlaceCommentResponse, Error>) in
                 switch result {
                 case .success(let response):
-                    print("✅ PlaceService: Comment added successfully with ID: \(response.comment.id)")
-                    completion(.success(response.comment))
+                    print("✅ PlaceService: Comment added successfully with ID: \(response.data.id)")
+                    completion(.success(response.data))
                 case .failure(let error):
                     completion(.failure(error))
                 }
@@ -1276,6 +1276,49 @@ class PlaceService {
                 case .success(let response):
                     completion(.success((liked: response.liked, likesCount: response.likesCount)))
                 case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
+        )
+    }
+    
+    func addPlaceCommentReply(placeId: String, commentId: String, text: String, completion: @escaping (Result<PlaceComment, Error>) -> Void) {
+        let requestBody = ["text": text]
+        
+        APIService.shared.request(
+            endpoint: "places/\(placeId)/comments/\(commentId)/replies",
+            method: .post,
+            body: requestBody,
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<PlaceCommentResponse, Error>) in
+                switch result {
+                case .success(let response):
+                    completion(.success(response.data))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
+        )
+    }
+    
+    func getPlaceCommentReplies(placeId: String, commentId: String, completion: @escaping (Result<[PlaceComment], Error>) -> Void) {
+        print("📡 PlaceService: Fetching replies for comment \(commentId) on place \(placeId)")
+        
+        APIService.shared.request(
+            endpoint: "places/\(placeId)/comments/\(commentId)/replies",
+            method: .get,
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<PlaceCommentsResponse, Error>) in
+                switch result {
+                case .success(let response):
+                    print("✅ PlaceService: Received PlaceCommentsResponse with \(response.comments.count) replies")
+                    print("   Response.success: \(response.success)")
+                    for (index, reply) in response.comments.enumerated() {
+                        print("   Reply \(index): id=\(reply.id), text=\(reply.text)")
+                    }
+                    completion(.success(response.comments))
+                case .failure(let error):
+                    print("❌ PlaceService: Failed to fetch replies: \(error)")
                     completion(.failure(error))
                 }
             }
@@ -1325,7 +1368,7 @@ struct PlaceCommentsResponse: Decodable {
 
 struct PlaceCommentResponse: Decodable {
     let success: Bool
-    let comment: PlaceComment
+    let data: PlaceComment
 }
 
 struct LikeCommentResponse: Decodable {
@@ -1349,12 +1392,14 @@ struct PlaceComment: Codable, Identifiable {
     let text: String
     let likes: [String]? // Array of user IDs who liked the comment
     let likesCount: Int? // Count for efficient display
+    let parentCommentId: String? // For replies
+    let replyCount: Int? // Number of replies to this comment
     let createdAt: Date
     let user: User? // Populated when fetching comments
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
-        case placeId, userId, text, likes, likesCount, createdAt, user
+        case placeId, userId, text, likes, likesCount, parentCommentId, replyCount, createdAt, user
     }
     
     // Helper properties
@@ -1366,5 +1411,41 @@ struct PlaceComment: Codable, Identifiable {
     
     var displayLikesCount: Int {
         return likesCount ?? likes?.count ?? 0
+    }
+    
+    var isReply: Bool {
+        return parentCommentId != nil
+    }
+    
+    var displayReplyCount: Int {
+        return replyCount ?? 0
+    }
+    
+    var hasReplies: Bool {
+        return displayReplyCount > 0
+    }
+    
+    var replyCountText: String {
+        let count = displayReplyCount
+        if count == 0 {
+            return ""
+        } else if count == 1 {
+            return "1 reply"
+        } else {
+            return "\(count) replies"
+        }
+    }
+    
+    var isMyComment: Bool {
+        return userId == AuthService.shared.getUserId()
+    }
+    
+    var displayAuthorName: String {
+        if isMyComment {
+            return "You"
+        } else if let user = user {
+            return user.displayName
+        }
+        return "Unknown"
     }
 }

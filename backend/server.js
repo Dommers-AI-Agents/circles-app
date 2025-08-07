@@ -48,6 +48,7 @@ const userCategoriesRoutes = require('./routes/userCategoriesRoutes');
 const emailTestRoutes = require('./routes/emailTestRoutes');
 const userContactsRoutes = require('./routes/userContactsRoutes');
 const taskRoutes = require('./routes/taskRoutes');
+const visitRoutes = require('./routes/visitRoutes');
 
 // Import Firebase Place controller for circle-specific routes
 const { getPlacesByCircleId, getPlacesByCircleIdPublic, reorderPlacesInCircle } = require('./controllers/firebasePlaceController');
@@ -110,6 +111,9 @@ app.use('/api/app', require('./routes/appRoutes'));
 app.use('/api/email', emailTestRoutes);
 app.use('/api/diagnostics', require('./routes/diagnosticRoutes'));
 app.use('/api/tasks', taskRoutes);
+app.use('/api/visits', visitRoutes);
+app.use('/api/users/subscription', require('./routes/subscriptionRoutes'));
+app.use('/api/users/referral', require('./routes/referralRoutes'));
 
 // LinkedIn OAuth callback route (outside /api prefix)
 const linkedinCallback = require('./routes/linkedinCallback');
@@ -174,7 +178,9 @@ app.listen(PORT, '0.0.0.0', () => {
   }, 24 * 60 * 60 * 1000); // Run every 24 hours
   
   // Initialize scheduled notifications
-  const scheduledNotifications = require('./services/scheduledNotifications');
-  scheduledNotifications.initialize();
-  console.log('🔔 Scheduled notifications initialized');
+  // DISABLED: Using Cloud Scheduler instead of node-cron in production
+  // This prevents double execution of scheduled tasks
+  // const scheduledNotifications = require('./services/scheduledNotifications');
+  // scheduledNotifications.initialize();
+  // console.log('🔔 Scheduled notifications initialized');
 });

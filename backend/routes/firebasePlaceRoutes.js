@@ -15,6 +15,8 @@ const {
   addPlaceComment,
   deletePlaceComment,
   likeComment,
+  addPlaceCommentReply,
+  getPlaceCommentReplies,
   addExistingPlaceToCircle,
   trackPlaceView,
   movePlace,
@@ -60,6 +62,11 @@ router.route('/:placeId/comments/:commentId')
 
 router.route('/:placeId/comments/:commentId/like')
   .post(likeComment);
+
+// Comment reply routes
+router.route('/:id/comments/:commentId/replies')
+  .get(getPlaceCommentReplies)
+  .post(addPlaceCommentReply);
 
 router.route('/:id/add-to-circle/:circleId')
   .post(addExistingPlaceToCircle);

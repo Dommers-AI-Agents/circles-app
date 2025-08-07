@@ -478,7 +478,7 @@ class CircleService {
     
     // MARK: - Editor Management
     
-    func addEditor(circleId: String, userId: String, completion: @escaping (Result<CircleShare, Error>) -> Void) {
+    func addEditor(circleId: String, userId: String, completion: @escaping (Result<Circle, Error>) -> Void) {
         let body: [String: Any] = ["userId": userId]
         
         APIService.shared.request(
@@ -486,7 +486,7 @@ class CircleService {
             method: .post,
             body: body,
             requiresAuth: true,
-            completion: { [weak self] (result: Result<ShareResponse, APIError>) in
+            completion: { [weak self] (result: Result<CircleDataResponse, APIError>) in
                 guard let self = self else { return }
                 
                 switch result {
@@ -499,12 +499,12 @@ class CircleService {
         )
     }
     
-    func removeEditor(circleId: String, userId: String, completion: @escaping (Result<CircleShare, Error>) -> Void) {
+    func removeEditor(circleId: String, userId: String, completion: @escaping (Result<Circle, Error>) -> Void) {
         APIService.shared.request(
             endpoint: "circles/\(circleId)/editors/\(userId)",
             method: .delete,
             requiresAuth: true,
-            completion: { [weak self] (result: Result<ShareResponse, APIError>) in
+            completion: { [weak self] (result: Result<CircleDataResponse, APIError>) in
                 guard let self = self else { return }
                 
                 switch result {
@@ -739,6 +739,41 @@ class CircleService {
                 switch result {
                 case .success(_):
                     completion(.success(()))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
+        )
+    }
+    
+    func addCommentReply(circleId: String, commentId: String, text: String, completion: @escaping (Result<CircleComment, Error>) -> Void) {
+        let requestBody = ["text": text]
+        
+        APIService.shared.request(
+            endpoint: "circles/\(circleId)/comments/\(commentId)/replies",
+            method: .post,
+            body: requestBody,
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<CircleCommentResponse, APIError>) in
+                switch result {
+                case .success(let response):
+                    completion(.success(response.data))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
+        )
+    }
+    
+    func getCommentReplies(circleId: String, commentId: String, completion: @escaping (Result<[CircleComment], Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "circles/\(circleId)/comments/\(commentId)/replies",
+            method: .get,
+            requiresAuth: true,
+            completion: { [weak self] (result: Result<CircleCommentsResponse, APIError>) in
+                switch result {
+                case .success(let response):
+                    completion(.success(response.data))
                 case .failure(let error):
                     completion(.failure(error))
                 }

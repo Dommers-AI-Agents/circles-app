@@ -11,6 +11,7 @@ struct Conversation: Codable, Identifiable {
     var lastMessageTime: String?
     var lastMessageSenderId: String?
     var unreadCounts: [String: Int]?
+    var notificationSettings: [String: Bool]?
     let createdAt: String
     let updatedAt: String
     let createdBy: String?
@@ -28,6 +29,7 @@ struct Conversation: Codable, Identifiable {
         case lastMessageTime
         case lastMessageSenderId
         case unreadCounts
+        case notificationSettings
         case createdAt
         case updatedAt
         case createdBy
@@ -86,6 +88,33 @@ struct Conversation: Codable, Identifiable {
         }
         
         return nil
+    }
+    
+    var notificationsEnabled: Bool {
+        guard let currentUserId = AuthService.shared.getUserId() else { return true }
+        // Default to true if not specified
+        return notificationSettings?[currentUserId] ?? true
+    }
+    
+    // Convenience initializer for creating updated conversations
+    init(id: String, type: ConversationType, participants: [String], name: String?, avatar: String?, 
+         lastMessage: String?, lastMessageTime: String?, lastMessageSenderId: String?, 
+         unreadCounts: [String: Int]?, notificationSettings: [String: Bool]?, 
+         createdAt: String, updatedAt: String, createdBy: String?, participantDetails: [User]? = nil) {
+        self.id = id
+        self.type = type
+        self.participants = participants
+        self.name = name
+        self.avatar = avatar
+        self.lastMessage = lastMessage
+        self.lastMessageTime = lastMessageTime
+        self.lastMessageSenderId = lastMessageSenderId
+        self.unreadCounts = unreadCounts
+        self.notificationSettings = notificationSettings
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.createdBy = createdBy
+        self.participantDetails = participantDetails
     }
 }
 

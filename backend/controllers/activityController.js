@@ -3,6 +3,29 @@ const { admin, getFirestore } = require('../config/firebase');
 const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../models/FirestoreModels');
 const db = getFirestore();
 
+// Helper function to check if a user can see a circle based on privacy settings
+const canUserSeeCircle = async (userId, circle, connectedUserIds) => {
+  if (!circle) return false;
+  
+  // Owner can always see their own circle
+  if (circle.owner === userId) return true;
+  
+  // Check privacy level
+  switch (circle.privacy) {
+    case 'public':
+      return true; // Public circles visible to all
+    case 'myNetwork':
+      // Network circles visible to connections only
+      return connectedUserIds.has(circle.owner);
+    case 'private':
+      // Private circles only visible if explicitly shared
+      const sharedWith = circle.sharedWith || [];
+      return sharedWith.includes(userId);
+    default:
+      return false;
+  }
+};
+
 // @desc    Get network activities for the current user
 // @route   GET /api/network/activities
 // @access  Private
@@ -119,14 +142,59 @@ exports.getNetworkActivities = async (req, res, next) => {
       
       return activity;
     }));
+
+    // Filter activities based on privacy settings
+    const filteredActivities = [];
     
-    // Check if there are more activities
+    for (const activity of enrichedActivities) {
+      let shouldInclude = false;
+      
+      try {
+        if (activity.targetType === 'circle') {
+          // For circle activities, check if user can see the circle
+          const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(activity.targetId).get();
+          if (circleDoc.exists) {
+            const circle = circleDoc.data();
+            shouldInclude = await canUserSeeCircle(userId, circle, connectedUserIds);
+          }
+        } else if (activity.targetType === 'place' && activity.circleId) {
+          // For place activities, check if user can see the parent circle
+          const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(activity.circleId).get();
+          if (circleDoc.exists) {
+            const circle = circleDoc.data();
+            shouldInclude = await canUserSeeCircle(userId, circle, connectedUserIds);
+          }
+        } else if (activity.targetType === 'comment') {
+          // For comment activities, we need to check the parent place's circle
+          if (activity.circleId) {
+            const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(activity.circleId).get();
+            if (circleDoc.exists) {
+              const circle = circleDoc.data();
+              shouldInclude = await canUserSeeCircle(userId, circle, connectedUserIds);
+            }
+          }
+        } else {
+          // For other activity types, include by default (but this shouldn't happen normally)
+          shouldInclude = true;
+        }
+      } catch (error) {
+        console.error('Error checking activity privacy:', error);
+        // On error, exclude the activity for safety
+        shouldInclude = false;
+      }
+      
+      if (shouldInclude) {
+        filteredActivities.push(activity);
+      }
+    }
+    
+    // Check if there are more activities (based on original fetch, not filtered)
     const hasMore = activities.length === parseInt(limit);
     
     res.status(200).json({
       success: true,
-      activities: enrichedActivities,
-      count: enrichedActivities.length,
+      activities: filteredActivities,
+      count: filteredActivities.length,
       hasMore: hasMore
     });
     

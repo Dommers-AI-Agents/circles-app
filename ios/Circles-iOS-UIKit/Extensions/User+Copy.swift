@@ -32,7 +32,15 @@ extension User {
         placesCount: Int? = nil,
         pinnedPlaces: [String]? = nil,
         isFollowing: Bool? = nil,
-        notificationPreferences: NotificationPreferences? = nil
+        notificationPreferences: NotificationPreferences? = nil,
+        subscriptionStatus: String? = nil,
+        subscriptionExpiryDate: Date? = nil,
+        trialStartDate: Date? = nil,
+        trialEndDate: Date? = nil,
+        referralCode: String? = nil,
+        referredBy: String? = nil,
+        referralCount: Int? = nil,
+        referralRewards: [ReferralReward]? = nil
     ) -> User {
         return User(
             id: id ?? self.id,
@@ -60,7 +68,15 @@ extension User {
             placesCount: placesCount ?? self.placesCount,
             pinnedPlaces: pinnedPlaces ?? self.pinnedPlaces,
             isFollowing: isFollowing ?? self.isFollowing,
-            notificationPreferences: notificationPreferences ?? self.notificationPreferences
+            notificationPreferences: notificationPreferences ?? self.notificationPreferences,
+            subscriptionStatus: subscriptionStatus ?? self.subscriptionStatus,
+            subscriptionExpiryDate: subscriptionExpiryDate ?? self.subscriptionExpiryDate,
+            trialStartDate: trialStartDate ?? self.trialStartDate,
+            trialEndDate: trialEndDate ?? self.trialEndDate,
+            referralCode: referralCode ?? self.referralCode,
+            referredBy: referredBy ?? self.referredBy,
+            referralCount: referralCount ?? self.referralCount,
+            referralRewards: referralRewards ?? self.referralRewards
         )
     }
     

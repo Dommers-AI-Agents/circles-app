@@ -210,12 +210,22 @@ exports.updateUser = async (req, res, next) => {
     if (phoneNumber !== undefined) updateData.phoneNumber = phoneNumber;
     if (bio !== undefined) updateData.bio = bio;
     if (location !== undefined) updateData.location = location;
-    if (profilePicture !== undefined) updateData.profilePicture = profilePicture;
+    if (profilePicture !== undefined) {
+      updateData.profilePicture = profilePicture;
+      // Mark that user has uploaded a custom profile picture
+      if (profilePicture && profilePicture.includes('firebasestorage.googleapis.com')) {
+        updateData.hasCustomProfilePicture = true;
+        console.log('🖼️ Setting hasCustomProfilePicture flag to true for custom uploaded image');
+      }
+    }
 
     console.log('🔄 Updating user profile:', {
       userId: req.user.uid,
       originalUid: req.user.originalUid,
-      updateData: updateData
+      userEmail: req.user.email,
+      updateFields: Object.keys(updateData),
+      hasProfilePicture: !!profilePicture,
+      profilePictureLength: profilePicture ? profilePicture.length : 0
     });
 
     // First check if the document exists with the normalized ID
@@ -254,6 +264,15 @@ exports.updateUser = async (req, res, next) => {
 
     await userRef.update(updateData);
     console.log(`✅ User profile updated successfully for doc ID: ${userDoc.id}`);
+    
+    // Log profile picture update specifically
+    if (updateData.profilePicture) {
+      console.log('📸 Profile picture updated:', {
+        userId: userDoc.id,
+        userEmail: req.user.email,
+        profilePictureUrl: updateData.profilePicture.substring(0, 100) + '...'
+      });
+    }
 
     // Get updated user
     const updatedUserDoc = await userRef.get();
@@ -277,7 +296,14 @@ exports.updateUser = async (req, res, next) => {
       }
     });
   } catch (error) {
-    console.error('Error updating user:', error);
+    console.error('❌ Error updating user profile:', error);
+    console.error('Error details:', {
+      errorMessage: error.message,
+      errorCode: error.code,
+      userId: req.user?.uid,
+      userEmail: req.user?.email,
+      updateFields: Object.keys(updateData || {})
+    });
     next(error);
   }
 };
@@ -681,6 +707,8 @@ exports.searchUsers = async (req, res, next) => {
           lastName: user.lastName,
           email: user.email,
           profilePicture: user.profilePicture,
+          bio: user.bio,
+          location: user.location,
           connectionStatus: connectionStatus,
           connectionDirection: connectionDirection,
           connectionId: connectionId,
@@ -786,6 +814,8 @@ exports.searchUsers = async (req, res, next) => {
           lastName: user.lastName,
           email: user.email,
           profilePicture: user.profilePicture,
+          bio: user.bio,
+          location: user.location,
           connectionStatus: connectionStatus,
           connectionDirection: connectionDirection,
           connectionId: connectionId,

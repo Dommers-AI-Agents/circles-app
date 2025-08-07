@@ -94,9 +94,10 @@ class NotificationService {
               alert: {
                 title: notification.title,
                 body: notification.body,
+                ...(notification.subtitle && { subtitle: notification.subtitle }),
                 sound: 'default'
               },
-              badge: notification.badge || 1,
+              badge: notification.badge !== undefined ? notification.badge : 1,
               sound: 'default',
               'content-available': 1,
               'mutable-content': 1, // Allows notification service extension to modify content

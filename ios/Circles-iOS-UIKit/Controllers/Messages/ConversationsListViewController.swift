@@ -25,6 +25,21 @@ class ConversationsListViewController: UIViewController {
         return button
     }()
     
+    private let groupMessageButton: UIButton = {
+        let button = UIButton(type: .system)
+        let config = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+        button.setImage(UIImage(systemName: "person.2.fill", withConfiguration: config), for: .normal)
+        button.setTitle("Group", for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        button.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.1)
+        button.tintColor = .systemBlue
+        button.layer.cornerRadius = 16
+        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 16)
+        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -4, bottom: 0, right: 4)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
     private let suggestionsBadge: UILabel = {
         let label = UILabel()
         label.backgroundColor = .systemRed
@@ -204,12 +219,14 @@ class ConversationsListViewController: UIViewController {
         view.addSubview(headerContainer)
         headerContainer.addSubview(suggestionsButton)
         headerContainer.addSubview(suggestionsBadge)
+        headerContainer.addSubview(groupMessageButton)
         view.addSubview(tableView)
         view.addSubview(emptyStateView)
         view.addSubview(newMessageButton)
         
-        // Add button target
+        // Add button targets
         suggestionsButton.addTarget(self, action: #selector(suggestionsButtonTapped), for: .touchUpInside)
+        groupMessageButton.addTarget(self, action: #selector(groupMessageButtonTapped), for: .touchUpInside)
         
         NSLayoutConstraint.activate([
             // Header container
@@ -228,6 +245,11 @@ class ConversationsListViewController: UIViewController {
             suggestionsBadge.heightAnchor.constraint(equalToConstant: 20),
             suggestionsBadge.leadingAnchor.constraint(equalTo: suggestionsButton.trailingAnchor, constant: -12),
             suggestionsBadge.bottomAnchor.constraint(equalTo: suggestionsButton.topAnchor, constant: 8),
+            
+            // Group message button
+            groupMessageButton.leadingAnchor.constraint(equalTo: suggestionsButton.trailingAnchor, constant: 8),
+            groupMessageButton.centerYAnchor.constraint(equalTo: suggestionsButton.centerYAnchor),
+            groupMessageButton.heightAnchor.constraint(equalToConstant: 36),
             
             // Table view
             tableView.topAnchor.constraint(equalTo: headerContainer.bottomAnchor),
@@ -301,6 +323,14 @@ class ConversationsListViewController: UIViewController {
             object: nil
         )
         
+        // Listen for conversation deleted notification
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleConversationDeleted),
+            name: Notification.Name("ConversationDeleted"),
+            object: nil
+        )
+        
         // Start polling timer only after initial data load
         // Using 5 second interval for better performance
         startPollingTimer()
@@ -346,6 +376,18 @@ class ConversationsListViewController: UIViewController {
             guard let self = self else { return }
             
             print("🔍 ConversationsListViewController: Conversations updated, reloading table")
+            self.tableView.reloadData()
+            self.updateEmptyState()
+        }
+    }
+    
+    @objc private func handleConversationDeleted(notification: Notification) {
+        print("🔍 ConversationsListViewController: Received ConversationDeleted notification")
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            // Force refresh conversations from messaging manager to ensure deleted conversation is removed
+            self.messagingManager.loadConversations(forceRefresh: true)
             self.tableView.reloadData()
             self.updateEmptyState()
         }
@@ -425,6 +467,13 @@ class ConversationsListViewController: UIViewController {
     @objc private func suggestionsButtonTapped() {
         let suggestionsVC = SuggestionsViewController()
         navigationController?.pushViewController(suggestionsVC, animated: true)
+    }
+    
+    @objc private func groupMessageButtonTapped() {
+        let groupSelectionVC = GroupConnectionSelectionViewController()
+        groupSelectionVC.delegate = self
+        let navController = UINavigationController(rootViewController: groupSelectionVC)
+        present(navController, animated: true)
     }
     
     private func checkForNewSuggestions() {
@@ -960,6 +1009,54 @@ extension ConversationsListViewController: SSEServiceDelegate {
                 banner.transform = CGAffineTransform(translationX: 0, y: -20)
             }) { _ in
                 banner.removeFromSuperview()
+            }
+        }
+    }
+}
+
+// MARK: - GroupConnectionSelectionViewControllerDelegate
+extension ConversationsListViewController: GroupConnectionSelectionViewControllerDelegate {
+    func didSelectConnections(_ connections: [Connection], groupName: String?) {
+        // Create loading indicator
+        let loadingAlert = UIAlertController(title: nil, message: "Creating group...", preferredStyle: .alert)
+        let loadingIndicator = UIActivityIndicatorView(style: .medium)
+        loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
+        loadingIndicator.startAnimating()
+        loadingAlert.view.addSubview(loadingIndicator)
+        NSLayoutConstraint.activate([
+            loadingIndicator.centerXAnchor.constraint(equalTo: loadingAlert.view.centerXAnchor),
+            loadingIndicator.bottomAnchor.constraint(equalTo: loadingAlert.view.bottomAnchor, constant: -20)
+        ])
+        
+        present(loadingAlert, animated: true)
+        
+        // Get participant IDs
+        let participantIds = connections.compactMap { connection in
+            IDNormalizer.getOtherUserId(from: connection, currentUserId: AuthService.shared.getUserId() ?? "")
+        }
+        
+        // Create group conversation
+        messagingManager.createGroupConversation(
+            participantIds: participantIds,
+            name: groupName
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    switch result {
+                    case .success(let conversation):
+                        // Reload conversations and navigate to the new group
+                        self?.messagingManager.loadConversations()
+                        self?.tableView.reloadData()
+                        self?.updateEmptyState()
+                        
+                        // Navigate to the conversation
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                            self?.showConversation(conversation)
+                        }
+                    case .failure(let error):
+                        self?.showError(error)
+                    }
+                }
             }
         }
     }

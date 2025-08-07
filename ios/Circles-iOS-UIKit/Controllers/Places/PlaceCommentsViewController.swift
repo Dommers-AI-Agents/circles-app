@@ -269,6 +269,17 @@ extension PlaceCommentsViewController: UITableViewDelegate, UITableViewDataSourc
         return UISwipeActionsConfiguration(actions: [deleteAction])
     }
     
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+        
+        let comment = comments[indexPath.row]
+        
+        // If comment has replies, show the replies
+        if comment.hasReplies {
+            showReplies(for: comment)
+        }
+    }
+    
     private func deleteComment(at indexPath: IndexPath, completionHandler: @escaping (Bool) -> Void) {
         let comment = comments[indexPath.row]
         
@@ -325,6 +336,24 @@ class CommentCell: UITableViewCell {
     
     // Like count label
     private let likeCountLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 12)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    // Reply button
+    private let replyButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "arrowshape.turn.up.left"), for: .normal)
+        button.tintColor = Constants.Colors.secondaryLabel
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    // Reply count label
+    private let replyCountLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: 12)
         label.textColor = Constants.Colors.secondaryLabel
@@ -401,9 +430,12 @@ class CommentCell: UITableViewCell {
         containerView.addSubview(moreButton)
         containerView.addSubview(likeButton)
         containerView.addSubview(likeCountLabel)
+        containerView.addSubview(replyButton)
+        containerView.addSubview(replyCountLabel)
         
         moreButton.addTarget(self, action: #selector(moreButtonTapped), for: .touchUpInside)
         likeButton.addTarget(self, action: #selector(likeButtonTapped), for: .touchUpInside)
+        replyButton.addTarget(self, action: #selector(replyButtonTapped), for: .touchUpInside)
         
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
@@ -440,7 +472,16 @@ class CommentCell: UITableViewCell {
             likeButton.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -12),
             
             likeCountLabel.centerYAnchor.constraint(equalTo: likeButton.centerYAnchor),
-            likeCountLabel.trailingAnchor.constraint(equalTo: likeButton.leadingAnchor, constant: -4)
+            likeCountLabel.trailingAnchor.constraint(equalTo: likeButton.leadingAnchor, constant: -4),
+            
+            // Reply button and count to the left of like button
+            replyButton.centerYAnchor.constraint(equalTo: likeButton.centerYAnchor),
+            replyButton.trailingAnchor.constraint(equalTo: likeCountLabel.leadingAnchor, constant: -16),
+            replyButton.widthAnchor.constraint(equalToConstant: 20),
+            replyButton.heightAnchor.constraint(equalToConstant: 20),
+            
+            replyCountLabel.centerYAnchor.constraint(equalTo: replyButton.centerYAnchor),
+            replyCountLabel.trailingAnchor.constraint(equalTo: replyButton.leadingAnchor, constant: -4)
         ])
     }
     
@@ -476,6 +517,10 @@ class CommentCell: UITableViewCell {
         // Configure like count
         let likesCount = comment.displayLikesCount
         likeCountLabel.text = likesCount > 0 ? "\(likesCount)" : ""
+        
+        // Configure reply count
+        let replyCount = comment.displayReplyCount
+        replyCountLabel.text = replyCount > 0 ? "\(replyCount)" : ""
     }
     
     @objc private func moreButtonTapped() {
@@ -487,12 +532,18 @@ class CommentCell: UITableViewCell {
         guard let comment = comment else { return }
         delegate?.commentCell(self, didTapLikeButton: comment)
     }
+    
+    @objc private func replyButtonTapped() {
+        guard let comment = comment else { return }
+        delegate?.commentCell(self, didTapReplyButton: comment)
+    }
 }
 
 // MARK: - CommentCellDelegate
 protocol CommentCellDelegate: AnyObject {
     func commentCell(_ cell: CommentCell, didTapMoreButton comment: PlaceComment)
     func commentCell(_ cell: CommentCell, didTapLikeButton comment: PlaceComment)
+    func commentCell(_ cell: CommentCell, didTapReplyButton comment: PlaceComment)
 }
 
 // MARK: - CommentCellDelegate
@@ -540,6 +591,56 @@ extension PlaceCommentsViewController: CommentCellDelegate {
                 }
             }
         }
+    }
+    
+    func commentCell(_ cell: CommentCell, didTapReplyButton comment: PlaceComment) {
+        // Present reply interface
+        presentReplyInterface(for: comment)
+    }
+    
+    private func presentReplyInterface(for comment: PlaceComment) {
+        let alert = UIAlertController(title: "Reply to \(comment.displayAuthorName)", message: nil, preferredStyle: .alert)
+        
+        alert.addTextField { textField in
+            textField.placeholder = "Write a reply..."
+            textField.autocapitalizationType = .sentences
+        }
+        
+        let sendAction = UIAlertAction(title: "Send", style: .default) { [weak self] _ in
+            guard let replyText = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !replyText.isEmpty else { return }
+            
+            self?.sendReply(text: replyText, to: comment)
+        }
+        
+        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel)
+        
+        alert.addAction(sendAction)
+        alert.addAction(cancelAction)
+        
+        present(alert, animated: true)
+    }
+    
+    private func sendReply(text: String, to comment: PlaceComment) {
+        PlaceService.shared.addPlaceCommentReply(placeId: place.id, commentId: comment.id, text: text) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let reply):
+                    self?.showSuccess("Reply sent successfully")
+                    // Reload data to show updated reply count
+                    self?.loadData(completion: nil)
+                case .failure(let error):
+                    print("Failed to send reply: \(error)")
+                    self?.showError("Failed to send reply. Please try again.")
+                }
+            }
+        }
+    }
+    
+    private func showReplies(for comment: PlaceComment) {
+        let repliesVC = PlaceCommentRepliesViewController(place: place, parentComment: comment)
+        let navController = UINavigationController(rootViewController: repliesVC)
+        present(navController, animated: true)
     }
     
     // Removed showAlert - using inherited showError from BaseViewController

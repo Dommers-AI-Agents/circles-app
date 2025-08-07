@@ -38,6 +38,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
     weak var delegate: FullScreenMapViewControllerDelegate?
     var viewMode: MapViewMode = .circle
     var isPresentedModally: Bool = false
+    var showFilters: Bool = true // Control whether to show category/connection filters
     
     // MARK: - UI Elements
     private let mapView: MKMapView = {
@@ -294,8 +295,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
         // Hide place count initially until places are loaded
         placesCountLabel.isHidden = true
         
-        // Add category filter button only if presented modally
-        if isPresentedModally {
+        // Add category filter button only if presented modally and filters are enabled
+        if isPresentedModally && showFilters {
             view.addSubview(categoryFilterButton)
             categoryFilterButton.addTarget(self, action: #selector(categoryFilterButtonTapped), for: .touchUpInside)
             
@@ -340,8 +341,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
         
         NSLayoutConstraint.activate(constraints)
         
-        // Add category filter constraints only if presented modally
-        if isPresentedModally {
+        // Add category filter constraints only if presented modally and filters are enabled
+        if isPresentedModally && showFilters {
             if viewMode == .allPlaces {
                 // When showing both filters, position them side by side
                 NSLayoutConstraint.activate([

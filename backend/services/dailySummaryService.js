@@ -49,25 +49,41 @@ class DailySummaryService {
       const userId = user.id;
       const stats = await this.gatherUserStats(userId);
       
-      // Skip if no activity
-      if (!this.hasActivity(stats)) {
+      // Check if user has already received today's summary
+      if (await this.hasReceivedTodaysSummary(userId)) {
+        console.log(`⏭️ User ${user.displayName || userId} already received today's summary`);
+        return;
+      }
+      
+      // Check if user should receive engagement prompt
+      const hasActivity = this.hasActivity(stats);
+      const shouldSendEngagementPrompt = await this.shouldSendEngagementPrompt(userId, stats);
+      
+      if (!hasActivity && !shouldSendEngagementPrompt) {
         console.log(`⏭️ Skipping summary for ${user.displayName || userId} - no activity`);
         return;
       }
 
-      // Build notification
-      const notification = this.buildSummaryNotification(stats, user);
+      // Build appropriate notification
+      let notification;
+      if (hasActivity) {
+        notification = this.buildSummaryNotification(stats, user);
+      } else {
+        notification = this.buildEngagementNotification(user, stats);
+      }
       
       // Send push notification
       await notificationService.sendToUser(userId, notification);
       
-      // Send email summary
-      await this.sendSummaryEmail(user, stats, notification);
+      // Send email summary (only if has activity)
+      if (hasActivity) {
+        await this.sendSummaryEmail(user, stats, notification);
+      }
       
       // Record that we sent today's summary
       await this.recordSummarySent(userId);
       
-      console.log(`✅ Sent daily summary to ${user.displayName || userId}`);
+      console.log(`✅ Sent ${hasActivity ? 'daily summary' : 'engagement prompt'} to ${user.displayName || userId}`);
     } catch (error) {
       console.error(`❌ Error sending summary to user ${user.id}:`, error);
     }
@@ -83,7 +99,9 @@ class DailySummaryService {
       circleUpdates: 0,
       placeComments: 0,
       placeLikes: 0,
-      topContributors: []
+      topContributors: [],
+      connectionCount: 0,
+      userPlaceCount: 0
     };
 
     const yesterday = new Date();
@@ -91,27 +109,66 @@ class DailySummaryService {
     yesterday.setHours(0, 0, 0, 0);
 
     try {
-      // Get user's connections
-      const connectionsSnapshot = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('participants', 'array-contains', userId)
-        .where('status', '==', 'accepted')
-        .get();
+      // Get user's connections (need to check both userId and connectedUserId fields)
+      const [connectionsAsUser, connectionsAsConnected] = await Promise.all([
+        db.collection(COLLECTIONS.CONNECTIONS)
+          .where('userId', '==', userId)
+          .where('status', '==', 'accepted')
+          .get(),
+        db.collection(COLLECTIONS.CONNECTIONS)
+          .where('connectedUserId', '==', userId)
+          .where('status', '==', 'accepted')
+          .get()
+      ]);
 
       const connectionIds = [];
-      connectionsSnapshot.forEach(doc => {
+      
+      // Process connections where user is the initiator
+      connectionsAsUser.forEach(doc => {
         const connection = doc.data();
-        const otherUserId = connection.participants.find(id => id !== userId);
-        if (otherUserId) connectionIds.push(otherUserId);
+        if (connection.connectedUserId) {
+          connectionIds.push(connection.connectedUserId);
+        }
       });
+      
+      // Process connections where user is the recipient
+      connectionsAsConnected.forEach(doc => {
+        const connection = doc.data();
+        if (connection.userId) {
+          connectionIds.push(connection.userId);
+        }
+      });
+      
+      // Remove duplicates
+      const uniqueConnectionIds = [...new Set(connectionIds)];
+      
+      // Store total connection count
+      stats.connectionCount = uniqueConnectionIds.length;
+      
+      // Replace connectionIds with unique ones
+      connectionIds.length = 0;
+      connectionIds.push(...uniqueConnectionIds);
 
       // Get new connections from yesterday
-      const newConnectionsSnapshot = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('participants', 'array-contains', userId)
-        .where('status', '==', 'accepted')
-        .where('acceptedAt', '>=', yesterday.toISOString())
-        .get();
-      
-      stats.newConnections = newConnectionsSnapshot.size;
+      try {
+        const [newConnectionsAsUser, newConnectionsAsConnected] = await Promise.all([
+          db.collection(COLLECTIONS.CONNECTIONS)
+            .where('userId', '==', userId)
+            .where('status', '==', 'accepted')
+            .where('acceptedAt', '>=', yesterday.toISOString())
+            .get(),
+          db.collection(COLLECTIONS.CONNECTIONS)
+            .where('connectedUserId', '==', userId)
+            .where('status', '==', 'accepted')
+            .where('acceptedAt', '>=', yesterday.toISOString())
+            .get()
+        ]);
+        
+        stats.newConnections = newConnectionsAsUser.size + newConnectionsAsConnected.size;
+      } catch (error) {
+        console.log('⚠️ Could not query new connections (index may be needed)');
+        stats.newConnections = 0;
+      }
 
       if (connectionIds.length > 0) {
         // Get new places from network (batch query due to Firestore limits)
@@ -179,6 +236,9 @@ class DailySummaryService {
         .get();
 
       const userPlaceIds = userPlacesSnapshot.docs.map(doc => doc.id);
+      
+      // Store user's total place count
+      stats.userPlaceCount = userPlaceIds.length;
 
       if (userPlaceIds.length > 0) {
         // Get recent comments on user's places
@@ -217,6 +277,7 @@ class DailySummaryService {
 
   // Check if user has any activity to report
   hasActivity(stats) {
+    // Include new places from connections as activity!
     return stats.newPlaces > 0 || 
            stats.newConnections > 0 || 
            stats.unreadMessages > 0 || 
@@ -227,26 +288,32 @@ class DailySummaryService {
   // Build the summary notification
   buildSummaryNotification(stats, user) {
     const parts = [];
+    const emojis = [];
     
     // New places from network
     if (stats.newPlaces > 0) {
-      parts.push(`${stats.newPlaces} new places`);
+      emojis.push('📍');
+      parts.push(`${stats.newPlaces} new place${stats.newPlaces > 1 ? 's' : ''}`);
       
       // Add top category if significant
       const topCategory = Object.entries(stats.newPlacesByCategory)
         .sort((a, b) => b[1] - a[1])[0];
-      if (topCategory && topCategory[1] > 3) {
-        parts.push(`(${topCategory[1]} ${topCategory[0]}s)`);
+      if (topCategory && topCategory[1] >= 2) {
+        // Include category name in parentheses for context
+        const categoryName = topCategory[0].charAt(0).toUpperCase() + topCategory[0].slice(1);
+        parts[parts.length - 1] += ` (${topCategory[1]} ${categoryName})`;
       }
     }
 
     // New connections
     if (stats.newConnections > 0) {
+      emojis.push('👥');
       parts.push(`${stats.newConnections} new connection${stats.newConnections > 1 ? 's' : ''}`);
     }
 
     // Unread messages
     if (stats.unreadMessages > 0) {
+      emojis.push('💬');
       parts.push(`${stats.unreadMessages} unread message${stats.unreadMessages > 1 ? 's' : ''}`);
     }
 
@@ -259,23 +326,52 @@ class DailySummaryService {
       activityParts.push(`${stats.placeLikes} like${stats.placeLikes > 1 ? 's' : ''}`);
     }
     if (activityParts.length > 0) {
-      parts.push(activityParts.join(' and ') + ' on your places');
+      emojis.push('❤️');
+      parts.push(activityParts.join(' & ') + ' on your places');
     }
 
-    // Build title and body
+    // Build title and body with more detail
     const greeting = this.getGreeting(user);
-    const title = `${greeting} Your Circles Update`;
-    const body = parts.length > 0 ? parts.join(', ') : 'Check out what\'s new in your network';
-
-    // Add top contributor mention if applicable
-    let contributorNote = '';
-    if (stats.topContributors.length > 0 && stats.topContributors[0].count >= 3) {
-      contributorNote = ` • ${stats.topContributors[0].name} added ${stats.topContributors[0].count} places`;
+    const title = `Your Daily Summary`;
+    
+    // Create a concise but informative body
+    let body = '';
+    if (parts.length === 0) {
+      body = 'Check out what\'s new in your network';
+    } else if (parts.length === 1) {
+      body = parts[0];
+    } else if (parts.length === 2) {
+      body = parts.join(' • ');
+    } else {
+      // For 3+ items, show first two with count of remaining
+      body = parts.slice(0, 2).join(' • ') + ` + ${parts.length - 2} more`;
     }
+
+    // Add emoji prefix to body for visual appeal
+    const emojiPrefix = emojis.slice(0, 3).join(' ');
+    if (emojiPrefix) {
+      body = emojiPrefix + ' ' + body;
+    }
+
+    // Add top contributor mention if significant
+    let contributorNote = '';
+    if (stats.topContributors.length > 0 && stats.topContributors[0].count >= 2) {
+      contributorNote = ` (${stats.topContributors[0].name} shared ${stats.topContributors[0].count})`;
+    }
+
+    // Format date for subtitle
+    const today = new Date();
+    const dateFormatter = new Intl.DateTimeFormat('en-US', { 
+      month: 'long', 
+      day: 'numeric',
+      year: 'numeric'
+    });
+    const subtitle = dateFormatter.format(today);
 
     return {
       type: 'daily_summary',
       title,
+      subtitle, // Add subtitle with formatted date
       body: body + contributorNote,
       // Daily summaries should not affect badge count - they're informational only
       badge: 0,
@@ -472,6 +568,86 @@ class DailySummaryService {
       </body>
       </html>
     `;
+  }
+
+  // Check if user should receive an engagement prompt
+  async shouldSendEngagementPrompt(userId, stats) {
+    try {
+      // Always send engagement prompt to users with no connections
+      // Check using the connection count we already calculated
+      if (stats.connectionCount === 0) {
+        console.log(`👥 User has no connections - sending engagement prompt`);
+        return true;
+      }
+
+      // Check last summary date
+      const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+      if (!userDoc.exists) return false;
+      
+      const userData = userDoc.data();
+      const lastSummary = userData.lastDailySummary;
+      
+      if (!lastSummary) {
+        // Never received a summary before
+        return true;
+      }
+
+      // Send engagement prompt if no summary in last 3 days
+      const lastSummaryDate = new Date(lastSummary);
+      const daysSinceLastSummary = Math.floor((new Date() - lastSummaryDate) / (1000 * 60 * 60 * 24));
+      
+      return daysSinceLastSummary >= 3;
+    } catch (error) {
+      console.error(`Error checking engagement prompt for ${userId}:`, error);
+      return false;
+    }
+  }
+
+  // Build engagement notification for users with no activity
+  buildEngagementNotification(user, stats) {
+    const greeting = this.getGreeting(user);
+    
+    // Different messages based on user situation
+    let title, body;
+    
+    if (stats.connectionCount === 0) {
+      // User has no connections
+      title = `${greeting} Start Building Your Network`;
+      body = 'Connect with friends to discover their favorite places';
+    } else if (stats.userPlaceCount === 0) {
+      // User has connections but no places
+      title = `${greeting} Share Your Favorites`;
+      body = 'Add your first place to share with your network';
+    } else {
+      // User has connections and places but no recent activity
+      title = `${greeting} Your Network Awaits`;
+      body = 'Check out what your connections have been up to';
+    }
+
+    // Format date for subtitle
+    const today = new Date();
+    const dateFormatter = new Intl.DateTimeFormat('en-US', { 
+      month: 'long', 
+      day: 'numeric',
+      year: 'numeric'
+    });
+    const subtitle = dateFormatter.format(today);
+
+    return {
+      type: 'daily_summary',
+      title,
+      subtitle, // Add subtitle with formatted date
+      body,
+      badge: 0,
+      data: {
+        type: 'daily_summary',
+        engagementPrompt: 'true',
+        summaryDate: new Date().toISOString().split('T')[0]
+      },
+      customData: {
+        type: 'daily_summary'
+      }
+    };
   }
 }
 

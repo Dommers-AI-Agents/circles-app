@@ -490,10 +490,50 @@ class MessagingManager {
                     // Remove messages for this conversation
                     self?.activeMessages.removeValue(forKey: conversationId)
                     
+                    // Update cache to reflect deletion
+                    self?.conversationsCache = self?.conversations
+                    self?.conversationsCacheTime = Date()
+                    
                     // Update unread count
                     self?.updateUnreadCount()
                     
+                    // Post notification that conversation was deleted
+                    NotificationCenter.default.post(
+                        name: Notification.Name("ConversationDeleted"),
+                        object: nil,
+                        userInfo: ["conversationId": conversationId]
+                    )
+                    
                     completion(.success(()))
+                    
+                case .failure(let error):
+                    self?.error = error.localizedDescription
+                    completion(.failure(error))
+                }
+            }
+        }
+    }
+    
+    func updateConversation(
+        conversationId: String,
+        name: String? = nil,
+        avatar: String? = nil,
+        completion: @escaping (Result<Conversation, Error>) -> Void
+    ) {
+        messagingService.updateConversation(
+            conversationId: conversationId,
+            name: name,
+            avatar: avatar
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let updatedConversation):
+                    // Update conversation in local array
+                    if let index = self?.conversations.firstIndex(where: { $0.id == conversationId }) {
+                        self?.conversations[index] = updatedConversation
+                    }
+                    
+                    completion(.success(updatedConversation))
                     
                 case .failure(let error):
                     self?.error = error.localizedDescription
@@ -532,6 +572,60 @@ class MessagingManager {
                     completion(.success(conversation))
                 case .failure(let error):
                     print("❌ MessagingManager: Failed to create/get conversation: \(error)")
+                    completion(.failure(error))
+                }
+            }
+        }
+    }
+    
+    func createGroupConversation(participantIds: [String], name: String?, completion: @escaping (Result<Conversation, Error>) -> Void) {
+        print("🔍 MessagingManager: createGroupConversation called with \(participantIds.count) participants")
+        
+        messagingService.createGroupConversation(participantIds: participantIds, name: name) { [weak self] result in
+            DispatchQueue.main.async {
+                print("🔍 MessagingManager: Received response from createGroupConversation")
+                
+                switch result {
+                case .success(let conversation):
+                    print("✅ MessagingManager: Successfully created group conversation: \(conversation.id)")
+                    
+                    // Add to conversations list at the top
+                    self?.conversations.insert(conversation, at: 0)
+                    
+                    // Update cache to include the new conversation
+                    self?.conversationsCache = self?.conversations
+                    self?.conversationsCacheTime = Date()
+                    
+                    completion(.success(conversation))
+                case .failure(let error):
+                    print("❌ MessagingManager: Failed to create group conversation: \(error)")
+                    completion(.failure(error))
+                }
+            }
+        }
+    }
+    
+    func toggleNotifications(for conversationId: String, enabled: Bool, completion: @escaping (Result<Void, Error>) -> Void) {
+        messagingService.toggleNotifications(conversationId: conversationId, enabled: enabled) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    // Update local conversation
+                    if let index = self?.conversations.firstIndex(where: { $0.id == conversationId }),
+                       let currentUserId = AuthService.shared.getUserId() {
+                        var conversation = self?.conversations[index]
+                        if conversation?.notificationSettings == nil {
+                            conversation?.notificationSettings = [:]
+                        }
+                        conversation?.notificationSettings?[currentUserId] = enabled
+                        
+                        if let updatedConversation = conversation {
+                            self?.conversations[index] = updatedConversation
+                            self?.conversationsCache = self?.conversations
+                        }
+                    }
+                    completion(.success(()))
+                case .failure(let error):
                     completion(.failure(error))
                 }
             }

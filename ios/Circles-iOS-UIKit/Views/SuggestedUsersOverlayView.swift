@@ -5,6 +5,8 @@ protocol SuggestedUsersOverlayViewDelegate: AnyObject {
     func didTapExploreNetwork()
     func didTapImportContacts()
     func didDismissOverlay()
+    func didTapNext(selectedUsers: [User])
+    func didTapSkip()
 }
 
 class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
@@ -14,6 +16,8 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
     private var suggestedUsers: [User] = []
     private var userButtons: [UIButton] = []
     private let maxVisibleUsers = 8
+    private var selectedUserIds: Set<String> = []
+    private var clickedUserIds: Set<String> = []
     
     // MARK: - UI Elements
     private let containerView: UIView = {
@@ -59,6 +63,16 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
         return label
     }()
     
+    private let counterLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Select at least 1 connection to continue"
+        label.font = UIFont.systemFont(ofSize: 12, weight: .regular)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
     private let circleContainerView: UIView = {
         let view = UIView()
         view.backgroundColor = .clear
@@ -98,6 +112,30 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
         return button
     }()
     
+    private let buttonContainer: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private lazy var nextButton: UIButton = {
+        let button = UIButton.primaryButton(title: "Next")
+        button.isEnabled = false
+        button.alpha = 0.5
+        button.addTarget(self, action: #selector(nextButtonTapped), for: .touchUpInside)
+        return button
+    }()
+    
+    private lazy var skipButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Skip", for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        button.setTitleColor(Constants.Colors.secondaryLabel, for: .normal)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(skipButtonTapped), for: .touchUpInside)
+        return button
+    }()
+    
     private let closeButton: UIButton = {
         let button = UIButton(type: .system)
         button.setImage(UIImage(systemName: "xmark"), for: .normal)
@@ -134,10 +172,14 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
         containerView.addSubview(titleLabel)
         containerView.addSubview(subtitleLabel)
         containerView.addSubview(instructionLabel)
+        containerView.addSubview(counterLabel)
         containerView.addSubview(circleContainerView)
         containerView.addSubview(closeButton)
         containerView.addSubview(loadingIndicator)
         containerView.addSubview(importContactsButton)
+        containerView.addSubview(buttonContainer)
+        buttonContainer.addSubview(nextButton)
+        buttonContainer.addSubview(skipButton)
         
         // Place explore button in center of circle
         circleContainerView.addSubview(exploreButton)
@@ -147,7 +189,7 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
             containerView.centerXAnchor.constraint(equalTo: centerXAnchor),
             containerView.centerYAnchor.constraint(equalTo: centerYAnchor),
             containerView.widthAnchor.constraint(equalTo: widthAnchor, multiplier: 0.9),
-            containerView.heightAnchor.constraint(equalToConstant: 560),
+            containerView.heightAnchor.constraint(equalToConstant: 620),
             
             // Close button
             closeButton.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 16),
@@ -170,8 +212,13 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
             instructionLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
             instructionLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
             
+            // Counter label
+            counterLabel.topAnchor.constraint(equalTo: instructionLabel.bottomAnchor, constant: 4),
+            counterLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
+            counterLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
+            
             // Circle container
-            circleContainerView.topAnchor.constraint(equalTo: instructionLabel.bottomAnchor, constant: 24),
+            circleContainerView.topAnchor.constraint(equalTo: counterLabel.bottomAnchor, constant: 20),
             circleContainerView.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
             circleContainerView.widthAnchor.constraint(equalToConstant: 300),
             circleContainerView.heightAnchor.constraint(equalToConstant: 300),
@@ -190,7 +237,23 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
             importContactsButton.topAnchor.constraint(equalTo: circleContainerView.bottomAnchor, constant: 24),
             importContactsButton.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
             importContactsButton.widthAnchor.constraint(equalToConstant: 180),
-            importContactsButton.heightAnchor.constraint(equalToConstant: 50)
+            importContactsButton.heightAnchor.constraint(equalToConstant: 50),
+            
+            // Button container
+            buttonContainer.topAnchor.constraint(equalTo: importContactsButton.bottomAnchor, constant: 16),
+            buttonContainer.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
+            buttonContainer.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
+            buttonContainer.heightAnchor.constraint(equalToConstant: 50),
+            
+            // Next button
+            nextButton.leadingAnchor.constraint(equalTo: buttonContainer.leadingAnchor),
+            nextButton.topAnchor.constraint(equalTo: buttonContainer.topAnchor),
+            nextButton.bottomAnchor.constraint(equalTo: buttonContainer.bottomAnchor),
+            nextButton.widthAnchor.constraint(equalTo: buttonContainer.widthAnchor, multiplier: 0.7),
+            
+            // Skip button
+            skipButton.trailingAnchor.constraint(equalTo: buttonContainer.trailingAnchor),
+            skipButton.centerYAnchor.constraint(equalTo: buttonContainer.centerYAnchor)
         ])
     }
     
@@ -409,6 +472,9 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
         guard sender.tag < suggestedUsers.count else { return }
         let user = suggestedUsers[sender.tag]
         
+        // Check if already clicked
+        guard !clickedUserIds.contains(user.id) else { return }
+        
         // Animate button press
         UIView.animate(withDuration: 0.1, animations: {
             sender.transform = CGAffineTransform(scaleX: 0.95, y: 0.95)
@@ -417,6 +483,17 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
                 sender.transform = .identity
             }
         }
+        
+        // Mark as clicked
+        clickedUserIds.insert(user.id)
+        selectedUserIds.insert(user.id)
+        
+        // Update UI
+        updateCounterLabel()
+        updateNextButtonState()
+        
+        // Show persistent checkmark
+        showPersistentCheckmark(for: sender)
         
         // Follow user and send connection request
         APIService.shared.request(
@@ -429,8 +506,7 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
                 // Send connection request
                 NetworkManager.shared.sendConnectionRequest(to: user.id) { error in
                     if error == nil {
-                        // Show success feedback
-                        self?.showSuccessFeedback(for: sender)
+                        // Connection request sent successfully
                     }
                 }
             case .failure:
@@ -449,6 +525,17 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
     
     @objc private func importContactsButtonTapped() {
         delegate?.didTapImportContacts()
+        dismiss()
+    }
+    
+    @objc private func nextButtonTapped() {
+        let selectedUsers = suggestedUsers.filter { selectedUserIds.contains($0.id) }
+        delegate?.didTapNext(selectedUsers: selectedUsers)
+        dismiss()
+    }
+    
+    @objc private func skipButtonTapped() {
+        delegate?.didTapSkip()
         dismiss()
     }
     
@@ -477,37 +564,57 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
         button.layer.add(pulseAnimation, forKey: "pulse")
     }
     
+    // MARK: - UI Updates
+    private func updateCounterLabel() {
+        let count = selectedUserIds.count
+        if count == 0 {
+            counterLabel.text = "Select at least 1 connection to continue"
+            counterLabel.textColor = Constants.Colors.secondaryLabel
+        } else {
+            counterLabel.text = "\(count) of \(suggestedUsers.count) selected"
+            counterLabel.textColor = Constants.Colors.primary
+        }
+    }
+    
+    private func updateNextButtonState() {
+        let hasSelection = !selectedUserIds.isEmpty
+        nextButton.isEnabled = hasSelection
+        UIView.animate(withDuration: 0.2) {
+            self.nextButton.alpha = hasSelection ? 1.0 : 0.5
+        }
+    }
+    
     // MARK: - Feedback
-    private func showSuccessFeedback(for button: UIButton) {
-        // Add checkmark overlay
+    private func showPersistentCheckmark(for button: UIButton) {
+        // Add persistent checkmark overlay
         let checkmarkView = UIImageView(image: UIImage(systemName: "checkmark.circle.fill"))
         checkmarkView.tintColor = Constants.Colors.success
         checkmarkView.backgroundColor = .white
         checkmarkView.layer.cornerRadius = 15
         checkmarkView.translatesAutoresizingMaskIntoConstraints = false
+        checkmarkView.tag = 999 // Tag to identify checkmark views
         button.addSubview(checkmarkView)
         
         NSLayoutConstraint.activate([
-            checkmarkView.centerXAnchor.constraint(equalTo: button.centerXAnchor),
-            checkmarkView.centerYAnchor.constraint(equalTo: button.topAnchor, constant: 30),
+            checkmarkView.topAnchor.constraint(equalTo: button.topAnchor, constant: -5),
+            checkmarkView.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: 5),
             checkmarkView.widthAnchor.constraint(equalToConstant: 30),
             checkmarkView.heightAnchor.constraint(equalToConstant: 30)
         ])
         
-        // Animate and remove
+        // Animate in
         checkmarkView.alpha = 0
         checkmarkView.transform = CGAffineTransform(scaleX: 0.5, y: 0.5)
         
-        UIView.animate(withDuration: 0.3, animations: {
+        UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 0.5, options: [], animations: {
             checkmarkView.alpha = 1
             checkmarkView.transform = .identity
-        }) { _ in
-            UIView.animate(withDuration: 0.3, delay: 0.5, options: [], animations: {
-                checkmarkView.alpha = 0
-            }) { _ in
-                checkmarkView.removeFromSuperview()
-            }
-        }
+        }, completion: nil)
+    }
+    
+    private func showSuccessFeedback(for button: UIButton) {
+        // This method is no longer used but kept for compatibility
+        // The persistent checkmark is shown instead
     }
 }
 

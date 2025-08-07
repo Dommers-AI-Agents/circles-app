@@ -8,11 +8,12 @@
 import UIKit
 import AuthenticationServices
 import GoogleSignIn
-import FBSDKCoreKit
+import FacebookCore
 import GooglePlaces
 import Firebase
 import FirebaseMessaging
 import UserNotifications
+import StoreKit
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate, MessagingDelegate {
@@ -25,7 +26,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
 
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        print("🚀 DAILY SUMMARY VERSION: App launched with enhanced notification handling - v2025.7.28")
+        print("🚀 DAILY SUMMARY VERSION: App launched with enhanced notification handling - v2025.8.1-fixed")
         // Override point for customization after application launch.
         
         // Suppress Google Maps SDK duplicate class warnings in debug builds
@@ -83,6 +84,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         // Start SSE service for real-time updates
         SSEService.shared.connect()
         
+        // Initialize Visit Detection Service
+        VisitDetectionService.shared.configure()
+        print("📍 Visit Detection Service initialized")
+        
         // Set up Apple ID credential state observer
         NotificationCenter.default.addObserver(
             self,
@@ -134,6 +139,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             print("❌ Failed to load Google Places API key")
         }
         
+        // Initialize Subscription Service
+        print("💎 Initializing Subscription Service")
+        Task {
+            await SubscriptionManager.shared.initialize()
+        }
+        
+        // Start observing for promoted purchases
+        print("💎 Starting StoreKit Observer for promoted purchases")
+        StoreKitObserver.shared.startObserving()
+        
         // Configure Push Notifications
         print("🔔 Configuring Push Notifications")
         UNUserNotificationCenter.current().delegate = self
@@ -149,6 +164,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         application.registerForRemoteNotifications()
         
         return true
+    }
+
+    func applicationWillTerminate(_ application: UIApplication) {
+        // Stop observing payment queue
+        StoreKitObserver.shared.stopObserving()
     }
 
     // MARK: UISceneSession Lifecycle
@@ -228,6 +248,18 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         AuthService.shared.logout { _ in
             // This will trigger the auth state listener in SceneDelegate
         }
+    }
+    
+    // MARK: - Background Tasks
+    
+    func application(_ application: UIApplication, performFetchWithCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        print("📍 Background fetch triggered")
+        
+        // Sync any pending visits
+        VisitDetectionService.shared.syncPendingVisits()
+        
+        // Complete with new data status
+        completionHandler(.newData)
     }
     
     // MARK: - Push Notification Methods
@@ -429,6 +461,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     
     private func presentDailySummary(with userInfo: [AnyHashable: Any]) {
         print("📊 Presenting daily summary modal")
+        print("📊 UserInfo keys: \(userInfo.keys)")
         
         // Function to actually present the modal
         let presentModal = {
@@ -441,7 +474,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
                 return
             }
             
-            // Convert userInfo to String dictionary for DailySummaryViewController
+            // Convert userInfo to String dictionary
             var notificationData: [String: Any] = [:]
             for (key, value) in userInfo {
                 if let stringKey = key as? String {
@@ -449,20 +482,32 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
                 }
             }
             
-            // Create and present daily summary
-            let summaryVC = DailySummaryViewController(notificationData: notificationData)
+            print("📊 AppDelegate: Presenting daily summary with data:")
+            print("📊 Keys: \(notificationData.keys.sorted())")
+            print("📊 Full data: \(notificationData)")
             
-            // Check if topViewController can present
-            if topViewController.presentedViewController != nil {
-                topViewController.dismiss(animated: false) {
+            // Check if DailySummaryViewController class exists
+            if NSClassFromString("Circles_iOS.DailySummaryViewController") != nil {
+                print("✅ DailySummaryViewController class found")
+                // Create and present daily summary
+                let summaryVC = DailySummaryViewController(notificationData: notificationData)
+                
+                // Check if topViewController can present
+                if topViewController.presentedViewController != nil {
+                    topViewController.dismiss(animated: false) {
+                        topViewController.present(summaryVC, animated: true) {
+                            print("✅ Daily summary modal presented")
+                        }
+                    }
+                } else {
                     topViewController.present(summaryVC, animated: true) {
                         print("✅ Daily summary modal presented")
                     }
                 }
             } else {
-                topViewController.present(summaryVC, animated: true) {
-                    print("✅ Daily summary modal presented")
-                }
+                print("⚠️ DailySummaryViewController class not found, showing detailed alert instead")
+                // Fallback: Show a detailed alert with the summary information
+                self.showDailySummaryAlert(data: notificationData, from: topViewController)
             }
         }
         
@@ -473,6 +518,97 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             DispatchQueue.main.async {
                 presentModal()
             }
+        }
+    }
+    
+    private func showDailySummaryAlert(data: [String: Any], from viewController: UIViewController) {
+        print("📊 Showing daily summary alert with data: \(data)")
+        
+        // Parse the notification data
+        let newPlaces = Int(data["newPlaces"] as? String ?? "0") ?? 0
+        let newConnections = Int(data["newConnections"] as? String ?? "0") ?? 0
+        let unreadMessages = Int(data["unreadMessages"] as? String ?? "0") ?? 0
+        let placeComments = Int(data["placeComments"] as? String ?? "0") ?? 0
+        let placeLikes = Int(data["placeLikes"] as? String ?? "0") ?? 0
+        
+        // Build the message
+        var messageComponents: [String] = []
+        
+        if newPlaces > 0 {
+            messageComponents.append("📍 \(newPlaces) new place\(newPlaces > 1 ? "s" : "") from your network")
+        }
+        
+        if newConnections > 0 {
+            messageComponents.append("👥 \(newConnections) new connection\(newConnections > 1 ? "s" : "")")
+        }
+        
+        if unreadMessages > 0 {
+            messageComponents.append("💬 \(unreadMessages) unread message\(unreadMessages > 1 ? "s" : "")")
+        }
+        
+        if placeComments > 0 || placeLikes > 0 {
+            var activities: [String] = []
+            if placeComments > 0 {
+                activities.append("\(placeComments) comment\(placeComments > 1 ? "s" : "")")
+            }
+            if placeLikes > 0 {
+                activities.append("\(placeLikes) like\(placeLikes > 1 ? "s" : "")")
+            }
+            messageComponents.append("❤️ \(activities.joined(separator: " and ")) on your places")
+        }
+        
+        // Parse and add top contributors if available
+        if let contributorsString = data["topContributors"] as? String,
+           let contributorsData = contributorsString.data(using: .utf8),
+           let contributors = try? JSONSerialization.jsonObject(with: contributorsData) as? [[String: Any]],
+           !contributors.isEmpty {
+            let topContributor = contributors.first
+            if let name = topContributor?["name"] as? String,
+               let count = topContributor?["count"] as? Int {
+                messageComponents.append("\n🌟 Top contributor: \(name) (\(count) place\(count > 1 ? "s" : ""))")
+            }
+        }
+        
+        let message = messageComponents.isEmpty ? "No new activity today" : messageComponents.joined(separator: "\n\n")
+        
+        // Format date for subtitle
+        let today = Date()
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .long
+        let dateString = dateFormatter.string(from: today)
+        
+        // Create alert
+        let alert = UIAlertController(
+            title: "Your Daily Summary",
+            message: "\(dateString)\n\n\(message)",
+            preferredStyle: .alert
+        )
+        
+        // Add actions based on what's available
+        if newPlaces > 0 {
+            alert.addAction(UIAlertAction(title: "View New Places", style: .default) { _ in
+                if let tabBar = UIApplication.shared.windows.first?.rootViewController as? UITabBarController {
+                    tabBar.selectedIndex = 0
+                }
+            })
+        }
+        
+        if unreadMessages > 0 {
+            alert.addAction(UIAlertAction(title: "View Messages", style: .default) { _ in
+                NotificationCenter.default.post(name: Notification.Name("NavigateToMessages"), object: nil)
+            })
+        }
+        
+        if newConnections > 0 {
+            alert.addAction(UIAlertAction(title: "View Network", style: .default) { _ in
+                NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
+            })
+        }
+        
+        alert.addAction(UIAlertAction(title: "Close", style: .cancel))
+        
+        viewController.present(alert, animated: true) {
+            print("✅ Daily summary alert presented")
         }
     }
     

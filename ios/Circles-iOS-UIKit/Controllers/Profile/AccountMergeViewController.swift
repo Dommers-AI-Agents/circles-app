@@ -132,7 +132,7 @@ class AccountMergeViewController: BaseViewController {
         
         let alert = UIAlertController(
             title: "Merge Accounts",
-            message: "This will merge \(duplicateAccount.email) into your current account. This action cannot be undone. Continue?",
+            message: "This will merge \(duplicateAccount.email ?? "this account") into your current account. This action cannot be undone. Continue?",
             preferredStyle: .alert
         )
         
@@ -296,10 +296,10 @@ class AccountMergeCell: UITableViewCell {
     
     func configure(with user: User, currentUser: User?) {
         self.user = user
-        emailLabel.text = user.email
+        emailLabel.text = user.email ?? "No email"
         
         // Determine provider
-        if user.email.contains("@privaterelay.appleid.com") {
+        if user.email?.contains("@privaterelay.appleid.com") == true {
             providerLabel.text = "Apple Sign In (Private Relay)"
             warningLabel.isHidden = false
         } else {

@@ -108,4 +108,28 @@ router.get('/check-config', protect, async (req, res) => {
   }
 });
 
+// Check authentication configuration (no auth required for diagnostics)
+router.get('/check-auth-config', async (req, res) => {
+  try {
+    const { firebaseApiKey } = require('../config/config');
+    
+    res.json({
+      success: true,
+      config: {
+        firebaseApiKeyExists: !!process.env.FIREBASE_API_KEY,
+        firebaseApiKeyLength: process.env.FIREBASE_API_KEY ? process.env.FIREBASE_API_KEY.length : 0,
+        firebaseApiKeyFromConfig: !!firebaseApiKey,
+        nodeEnv: process.env.NODE_ENV,
+        firebaseProjectId: !!process.env.FIREBASE_PROJECT_ID
+      },
+      message: 'Use this info to verify Firebase configuration'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;

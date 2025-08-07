@@ -261,6 +261,8 @@ class ConnectionDetailViewController: BaseViewController {
             userInfoLabel.text = "📞 \(phoneNumber)"
         } else if let bio = connection.connectedUser?.bio, !bio.isEmpty {
             userInfoLabel.text = bio
+        } else if let location = connection.connectedUser?.location, !location.isEmpty {
+            userInfoLabel.text = location
         } else {
             userInfoLabel.text = "Circles member"
         }

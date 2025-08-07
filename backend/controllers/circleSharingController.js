@@ -634,6 +634,7 @@ const getUsersWithCircles = async (req, res) => {
         displayName: userData.displayName,
         profilePicture: userData.profilePicture,
         email: userData.email,
+        location: userData.location,
         circleCount: circlesQuery.size
       });
     }

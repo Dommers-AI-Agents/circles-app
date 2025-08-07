@@ -61,9 +61,12 @@ extension UIButton {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.heightAnchor.constraint(equalToConstant: 50).isActive = true
         
-        // Add icon
+        // Add icon - try named asset first, fallback to system symbol
         if let image = UIImage(named: icon)?.withRenderingMode(.alwaysOriginal) {
             button.setImage(image, for: .normal)
+            button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 8)
+        } else if let systemImage = UIImage(systemName: icon) {
+            button.setImage(systemImage, for: .normal)
             button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 8)
         }
         
@@ -74,7 +77,7 @@ extension UIButton {
     static func googleSignInButton() -> UIButton {
         return socialButton(
             title: "Continue with Google",
-            icon: "google-icon",
+            icon: "globe", // Using globe system symbol for Google
             backgroundColor: UIColor(red: 0.259, green: 0.522, blue: 0.957, alpha: 1.0)
         )
     }
@@ -83,7 +86,7 @@ extension UIButton {
     static func facebookSignInButton() -> UIButton {
         return socialButton(
             title: "Continue with Facebook",
-            icon: "facebook-icon",
+            icon: "person.2.circle", // Using people system symbol for Facebook
             backgroundColor: UIColor(red: 0.231, green: 0.349, blue: 0.596, alpha: 1.0)
         )
     }
@@ -92,7 +95,7 @@ extension UIButton {
     static func appleSignInButton() -> UIButton {
         let button = socialButton(
             title: "Continue with Apple",
-            icon: "apple-icon",
+            icon: "applelogo", // Using Apple system symbol
             backgroundColor: .black
         )
         button.setTitleColor(.white, for: .normal)

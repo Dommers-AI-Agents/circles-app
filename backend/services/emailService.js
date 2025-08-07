@@ -368,19 +368,36 @@ This invitation was sent by ${inviterName} via Circles.
   // Generic email sending method
   async sendEmail({ to, subject, html, text }) {
     try {
+      // Check if transporter is configured
+      if (!this.transporter || !this.transporter.sendMail) {
+        console.error('❌ Email transporter not configured. Check EMAIL_SERVICE, GMAIL_USER, and GMAIL_APP_PASSWORD environment variables.');
+        throw new Error('Email service not configured');
+      }
+
       const mailOptions = {
         from: `"${this.fromName}" <${this.fromAddress}>`,
         to: to,
         subject: subject,
         html: html,
-        text: text
+        text: text || subject // Fallback text if not provided
       };
 
+      console.log(`📧 Attempting to send email to ${to} with subject: ${subject}`);
       const result = await this.transporter.sendMail(mailOptions);
-      console.log(`✅ Email sent to ${to}: ${subject}`);
+      console.log(`✅ Email sent successfully to ${to}: ${subject} (Message ID: ${result.messageId})`);
       return { success: true, messageId: result.messageId };
     } catch (error) {
-      console.error(`❌ Error sending email to ${to}:`, error);
+      console.error(`❌ Error sending email to ${to}:`, error.message);
+      console.error('Full error:', error);
+      
+      // Provide helpful error messages
+      if (error.message.includes('self signed certificate')) {
+        console.error('⚠️  TLS certificate issue. You may need to set NODE_TLS_REJECT_UNAUTHORIZED=0 for development.');
+      } else if (error.message.includes('Invalid login')) {
+        console.error('⚠️  Gmail authentication failed. Make sure you are using an App Password, not your regular password.');
+        console.error('⚠️  Create an App Password at: https://myaccount.google.com/apppasswords');
+      }
+      
       throw error;
     }
   }

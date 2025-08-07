@@ -54,6 +54,8 @@ class OnboardingManager {
     private let shouldShowTutorialKey = "shouldShowTutorial"
     private let hasShownContactsPermissionKey = "hasShownContactsPermission"
     private let shouldShowSuggestedUsersKey = "shouldShowSuggestedUsers"
+    private let hasShownVisitTrackingPermissionKey = "hasShownVisitTrackingPermission"
+    private let visitTrackingPermissionResponseKey = "visitTrackingPermissionResponse"
     
     // Current tutorial state
     private var completedSteps: Set<String> {
@@ -78,6 +80,8 @@ class OnboardingManager {
         UserDefaults.standard.removeObject(forKey: shouldShowTutorialKey)
         UserDefaults.standard.removeObject(forKey: hasShownContactsPermissionKey)
         UserDefaults.standard.removeObject(forKey: shouldShowSuggestedUsersKey)
+        UserDefaults.standard.removeObject(forKey: hasShownVisitTrackingPermissionKey)
+        UserDefaults.standard.removeObject(forKey: visitTrackingPermissionResponseKey)
         // Ensure the flag returns to default state (true)
         shouldShowSuggestedUsers = true
         Logger.info("Onboarding state reset for new user")
@@ -397,5 +401,51 @@ class OnboardingManager {
     /// Enable suggested users overlay (for testing or resetting)
     func enableSuggestedUsersOverlay() {
         shouldShowSuggestedUsers = true
+    }
+    
+    // MARK: - Visit Tracking Permission
+    
+    /// Check if visit tracking permission has been shown
+    var hasShownVisitTrackingPermission: Bool {
+        get {
+            return UserDefaults.standard.bool(forKey: hasShownVisitTrackingPermissionKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: hasShownVisitTrackingPermissionKey)
+        }
+    }
+    
+    /// Get the user's response to visit tracking permission
+    var visitTrackingPermissionResponse: Bool? {
+        get {
+            if UserDefaults.standard.object(forKey: visitTrackingPermissionResponseKey) != nil {
+                return UserDefaults.standard.bool(forKey: visitTrackingPermissionResponseKey)
+            }
+            return nil
+        }
+        set {
+            if let value = newValue {
+                UserDefaults.standard.set(value, forKey: visitTrackingPermissionResponseKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: visitTrackingPermissionResponseKey)
+            }
+        }
+    }
+    
+    /// Check if user should see visit tracking permission
+    func shouldShowVisitTrackingPermission() -> Bool {
+        // Show if not shown before and user has completed suggested users
+        return !hasShownVisitTrackingPermission && !hasCompletedOnboarding
+    }
+    
+    /// Mark visit tracking permission as shown
+    func markVisitTrackingPermissionShown() {
+        hasShownVisitTrackingPermission = true
+    }
+    
+    /// Set the user's visit tracking permission response
+    func setVisitTrackingPermissionResponse(enabled: Bool) {
+        visitTrackingPermissionResponse = enabled
+        markVisitTrackingPermissionShown()
     }
 }

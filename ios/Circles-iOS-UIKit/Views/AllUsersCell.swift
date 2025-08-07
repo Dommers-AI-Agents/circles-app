@@ -211,12 +211,12 @@ class AllUsersCell: UITableViewCell {
     func configure(with user: User) {
         self.user = user
         nameLabel.text = user.displayName
-        // Display user info instead of email for privacy
-        if let bio = user.bio, !bio.isEmpty {
-            userInfoLabel.text = bio
-        } else if let location = user.location, !location.isEmpty {
-            // Use the location property if available
+        // Display location first for consistency in My Network section
+        if let location = user.location, !location.isEmpty {
             userInfoLabel.text = location
+        } else if let bio = user.bio, !bio.isEmpty {
+            // Fall back to bio if no location available
+            userInfoLabel.text = bio
         } else {
             userInfoLabel.text = "Circles member"
         }
@@ -246,8 +246,11 @@ class AllUsersCell: UITableViewCell {
                 // Regular image URL
                 ImageService.shared.loadImage(from: profilePicture) { [weak self] image in
                     DispatchQueue.main.async {
-                        self?.profileImageView.image = image
-                        self?.profileImageView.contentMode = .scaleAspectFill
+                        self?.profileImageView.image = image ?? UIImage(systemName: "person.circle.fill")
+                        self?.profileImageView.contentMode = image != nil ? .scaleAspectFill : .scaleAspectFit
+                        if image == nil {
+                            self?.profileImageView.tintColor = .systemGray3
+                        }
                     }
                 }
             }

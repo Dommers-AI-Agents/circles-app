@@ -20,6 +20,8 @@ const {
   getCircleComments,
   addCircleComment,
   deleteCircleComment,
+  addCommentReply,
+  getCommentReplies,
   copyCircle
 } = require('../controllers/firebaseCircleController');
 const {
@@ -99,6 +101,11 @@ router.route('/:id/comments')
 
 router.route('/:circleId/comments/:commentId')
   .delete(deleteCircleComment);
+
+// Comment reply routes
+router.route('/:id/comments/:commentId/replies')
+  .get(getCommentReplies)
+  .post(addCommentReply);
 
 // Copy circle route
 router.route('/:id/copy')

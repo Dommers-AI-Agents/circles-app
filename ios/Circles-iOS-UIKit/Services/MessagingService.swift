@@ -273,6 +273,37 @@ class MessagingService {
         }
     }
     
+    func updateConversation(
+        conversationId: String,
+        name: String? = nil,
+        avatar: String? = nil,
+        completion: @escaping (Result<Conversation, Error>) -> Void
+    ) {
+        var body: [String: Any] = [:]
+        
+        if let name = name {
+            body["name"] = name
+        }
+        
+        if let avatar = avatar {
+            body["avatar"] = avatar
+        }
+        
+        apiService.request(
+            endpoint: "messages/conversations/\(conversationId)",
+            method: .put,
+            body: body,
+            requiresAuth: true
+        ) { (result: Result<ConversationResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.conversation))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
     // MARK: - Quick Reply
     
     func sendQuickReply(
@@ -332,6 +363,107 @@ class MessagingService {
                     }
                 }
                 
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    func createGroupConversation(
+        participantIds: [String],
+        name: String?,
+        completion: @escaping (Result<Conversation, Error>) -> Void
+    ) {
+        print("🔍 MessagingService: createGroupConversation called with \(participantIds.count) participants")
+        
+        // Provide default name if none given
+        let groupName = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalName = (groupName?.isEmpty == false) ? groupName : "Group Chat (\(participantIds.count + 1) members)"
+        
+        var body: [String: Any] = [
+            "type": "group",
+            "participants": participantIds,
+            "name": finalName ?? "Group Chat"
+        ]
+        
+        apiService.request(
+            endpoint: "messages/conversations",
+            method: .post,
+            body: body,
+            requiresAuth: true
+        ) { (result: Result<ConversationResponse, APIError>) in
+            print("🔍 MessagingService: Received response from API")
+            
+            switch result {
+            case .success(let response):
+                print("✅ MessagingService: Successfully created group conversation with ID: \(response.conversation.id)")
+                completion(.success(response.conversation))
+            case .failure(let error):
+                print("❌ MessagingService: Failed to create group conversation: \(error)")
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    func toggleNotifications(
+        conversationId: String,
+        enabled: Bool,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        let body: [String: Any] = ["enabled": enabled]
+        
+        apiService.request(
+            endpoint: "messages/conversations/\(conversationId)/notifications",
+            method: .put,
+            body: body,
+            requiresAuth: true
+        ) { (result: Result<EmptyResponse, APIError>) in
+            switch result {
+            case .success:
+                completion(.success(()))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    // MARK: - Participant Management
+    
+    func addParticipant(
+        conversationId: String,
+        userId: String,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        let body: [String: Any] = ["userId": userId]
+        
+        apiService.request(
+            endpoint: "messages/conversations/\(conversationId)/participants",
+            method: .post,
+            body: body,
+            requiresAuth: true
+        ) { (result: Result<EmptyResponse, APIError>) in
+            switch result {
+            case .success:
+                completion(.success(()))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    func removeParticipant(
+        conversationId: String,
+        userId: String,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        apiService.request(
+            endpoint: "messages/conversations/\(conversationId)/participants/\(userId)",
+            method: .delete,
+            requiresAuth: true
+        ) { (result: Result<EmptyResponse, APIError>) in
+            switch result {
+            case .success:
+                completion(.success(()))
+            case .failure(let error):
                 completion(.failure(error))
             }
         }

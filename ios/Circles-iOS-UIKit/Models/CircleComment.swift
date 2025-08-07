@@ -7,12 +7,14 @@ struct CircleComment: Codable, Identifiable {
     let text: String
     let likes: [String]?
     let likesCount: Int?
+    let parentCommentId: String? // For replies
+    let replyCount: Int? // Number of replies to this comment
     let user: User? // Populated when fetching comments
     let createdAt: Date
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
-        case circleId, userId, text, likes, likesCount, user, createdAt
+        case circleId, userId, text, likes, likesCount, parentCommentId, replyCount, user, createdAt
     }
     
     init(from decoder: Decoder) throws {
@@ -24,19 +26,24 @@ struct CircleComment: Codable, Identifiable {
         text = try container.decode(String.self, forKey: .text)
         likes = try container.decodeIfPresent([String].self, forKey: .likes)
         likesCount = try container.decodeIfPresent(Int.self, forKey: .likesCount)
+        parentCommentId = try container.decodeIfPresent(String.self, forKey: .parentCommentId)
+        replyCount = try container.decodeIfPresent(Int.self, forKey: .replyCount)
         user = try container.decodeIfPresent(User.self, forKey: .user)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
     }
     
     // Manual initializer for creating comments in code
     init(id: String, circleId: String, userId: String, text: String,
-         likes: [String]? = nil, likesCount: Int? = nil, user: User? = nil, createdAt: Date) {
+         likes: [String]? = nil, likesCount: Int? = nil, parentCommentId: String? = nil,
+         replyCount: Int? = nil, user: User? = nil, createdAt: Date) {
         self.id = id
         self.circleId = circleId
         self.userId = userId
         self.text = text
         self.likes = likes
         self.likesCount = likesCount
+        self.parentCommentId = parentCommentId
+        self.replyCount = replyCount
         self.user = user
         self.createdAt = createdAt
     }
@@ -62,5 +69,28 @@ struct CircleComment: Codable, Identifiable {
             return user.displayName
         }
         return "Unknown"
+    }
+    
+    var isReply: Bool {
+        return parentCommentId != nil
+    }
+    
+    var displayReplyCount: Int {
+        return replyCount ?? 0
+    }
+    
+    var hasReplies: Bool {
+        return displayReplyCount > 0
+    }
+    
+    var replyCountText: String {
+        let count = displayReplyCount
+        if count == 0 {
+            return ""
+        } else if count == 1 {
+            return "1 reply"
+        } else {
+            return "\(count) replies"
+        }
     }
 }

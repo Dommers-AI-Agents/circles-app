@@ -20,7 +20,9 @@ const COLLECTIONS = {
   CIRCLE_COMMENTS: 'circleComments',
   NOTIFICATIONS: 'notifications',
   ACTIVITIES: 'activities',
-  USER_CATEGORIES: 'userCategories'
+  USER_CATEGORIES: 'userCategories',
+  PLACE_VISITS: 'placeVisits',
+  VISIT_DRAFTS: 'visitDrafts'
 };
 
 // User model structure
@@ -49,6 +51,16 @@ const createUser = (userData) => {
     connectionsCount: userData.connectionsCount || 0,
     // Pinned places (max 6)
     pinnedPlaces: userData.pinnedPlaces || [],
+    // Subscription fields
+    subscriptionStatus: userData.subscriptionStatus || 'none',
+    subscriptionExpiryDate: userData.subscriptionExpiryDate || null,
+    trialStartDate: userData.trialStartDate || null,
+    trialEndDate: userData.trialEndDate || null,
+    // Referral fields
+    referralCode: userData.referralCode || null,
+    referredBy: userData.referredBy || null,
+    referralCount: userData.referralCount || 0,
+    referralRewards: userData.referralRewards || [],
     notificationPreferences: userData.notificationPreferences || {
       newMessages: true,
       newSuggestions: true,
@@ -73,7 +85,14 @@ const createUser = (userData) => {
       quietHoursEnd: '08:00'
     },
     preferences: userData.preferences || {
-      defaultHomeView: 'map' // 'list' or 'map'
+      defaultHomeView: 'map', // 'list' or 'map'
+      visitTracking: {
+        enabled: false,
+        minVisitDuration: 5, // minutes
+        excludeHomeWork: true,
+        trackingSchedule: null, // e.g., { start: '09:00', end: '18:00' }
+        autoSuggestCircles: true
+      }
     },
     // Onboarding status
     onboardingCompleted: userData.onboardingCompleted || false,
@@ -328,7 +347,7 @@ const serializeDoc = (doc) => {
   // Remove uid from data to avoid duplication
   const { uid, ...restData } = data;
   
-  // Convert any Firestore timestamps to ISO strings
+  // Convert any Firestore timestamps and GeoPoints to proper format
   const serializedData = {};
   for (const [key, value] of Object.entries(restData)) {
     if (value && value._seconds) {
@@ -340,6 +359,12 @@ const serializeDoc = (doc) => {
     } else if (value instanceof Date) {
       // JavaScript Date object
       serializedData[key] = value.toISOString();
+    } else if (value && typeof value === 'object' && '_latitude' in value && '_longitude' in value) {
+      // Firestore GeoPoint object
+      serializedData[key] = {
+        latitude: value._latitude,
+        longitude: value._longitude
+      };
     } else {
       serializedData[key] = value;
     }
@@ -408,18 +433,36 @@ const validateSuggestion = (suggestionData) => {
   return errors;
 };
 
+// Helper function to generate default group name
+const generateDefaultGroupName = (participants, createdBy) => {
+  // If we have participant count, create a generic name
+  if (participants && participants.length > 0) {
+    const participantCount = participants.length;
+    return `Group Chat (${participantCount} members)`;
+  }
+  return 'Group Chat';
+};
+
 // Conversation model structure
 const createConversation = (conversationData) => {
   const now = new Date().toISOString();
+  
+  // Auto-generate group name if not provided for group conversations
+  let conversationName = conversationData.name;
+  if (conversationData.type === 'group' && (!conversationName || conversationName.trim().length === 0)) {
+    conversationName = generateDefaultGroupName(conversationData.participants, conversationData.createdBy);
+  }
+  
   return {
     type: conversationData.type || 'direct', // direct or group
     participants: conversationData.participants || [], // Array of user IDs
-    name: conversationData.name || null, // For group chats
+    name: conversationName || null, // For group chats
     avatar: conversationData.avatar || null, // For group chats
     lastMessage: conversationData.lastMessage || null,
     lastMessageTime: conversationData.lastMessageTime || now, // Initialize with current time if not provided
     lastMessageSenderId: conversationData.lastMessageSenderId || null,
     unreadCounts: conversationData.unreadCounts || {}, // Map of userId to unread count
+    notificationSettings: conversationData.notificationSettings || {}, // Map of userId to boolean (true = notifications on)
     createdAt: now,
     updatedAt: now,
     createdBy: conversationData.createdBy || null
@@ -525,6 +568,23 @@ const createCircleComment = (commentData) => {
     text: commentData.text,
     likes: commentData.likes || [],
     likesCount: commentData.likesCount || 0,
+    parentCommentId: commentData.parentCommentId || null, // For replies
+    replyCount: commentData.replyCount || 0, // Number of replies to this comment
+    createdAt: now
+  };
+};
+
+// Create place comment object for Firestore
+const createPlaceComment = (commentData) => {
+  const now = new Date().toISOString();
+  return {
+    placeId: commentData.placeId,
+    userId: commentData.userId,
+    text: commentData.text,
+    likes: commentData.likes || [],
+    likesCount: commentData.likesCount || 0,
+    parentCommentId: commentData.parentCommentId || null, // For replies
+    replyCount: commentData.replyCount || 0, // Number of replies to this comment
     createdAt: now
   };
 };
@@ -562,6 +622,35 @@ const validateCircleComment = (commentData) => {
   
   if (!commentData.circleId) {
     errors.push('Circle ID is required');
+  }
+  
+  // If parentCommentId is provided, validate it's a valid string
+  if (commentData.parentCommentId && typeof commentData.parentCommentId !== 'string') {
+    errors.push('Parent comment ID must be a valid string');
+  }
+  
+  return errors;
+};
+
+// Validate place comment
+const validatePlaceComment = (commentData) => {
+  const errors = [];
+  
+  if (!commentData.text || commentData.text.trim().length === 0) {
+    errors.push('Comment text is required');
+  }
+  
+  if (commentData.text && commentData.text.length > 500) {
+    errors.push('Comment must be 500 characters or less');
+  }
+  
+  if (!commentData.placeId) {
+    errors.push('Place ID is required');
+  }
+  
+  // If parentCommentId is provided, validate it's a valid string
+  if (commentData.parentCommentId && typeof commentData.parentCommentId !== 'string') {
+    errors.push('Parent comment ID must be a valid string');
   }
   
   return errors;
@@ -604,6 +693,53 @@ const validateNotification = (notificationData) => {
   return errors;
 };
 
+// PlaceVisit model structure
+const createPlaceVisit = (visitData, userId) => {
+  const now = new Date().toISOString();
+  return {
+    userId: userId,
+    placeId: visitData.placeId || null,
+    placeName: visitData.placeName,
+    placeAddress: visitData.placeAddress,
+    location: visitData.location || null, // Firestore GeoPoint
+    category: visitData.category || null,
+    visitedAt: visitData.visitedAt || now,
+    duration: visitData.duration || 0, // minutes
+    autoDetected: visitData.autoDetected || false,
+    reviewed: visitData.reviewed || false,
+    dismissed: visitData.dismissed || false,
+    addedToCircles: visitData.addedToCircles || [], // circle IDs
+    placeData: visitData.placeData || {}, // Cached place details from API
+    notes: visitData.notes || null,
+    photos: visitData.photos || [],
+    createdAt: now,
+    updatedAt: now
+  };
+};
+
+// Validate place visit
+const validatePlaceVisit = (visitData) => {
+  const errors = [];
+  
+  if (!visitData.placeName || visitData.placeName.trim().length === 0) {
+    errors.push('Place name is required');
+  }
+  
+  if (!visitData.placeAddress || visitData.placeAddress.trim().length === 0) {
+    errors.push('Place address is required');
+  }
+  
+  if (visitData.duration && visitData.duration < 0) {
+    errors.push('Visit duration cannot be negative');
+  }
+  
+  if (visitData.notes && visitData.notes.length > 1000) {
+    errors.push('Notes must be 1000 characters or less');
+  }
+  
+  return errors;
+};
+
 module.exports = {
   COLLECTIONS,
   createUser,
@@ -615,10 +751,12 @@ module.exports = {
   createSuggestion,
   createComment,
   createCircleComment,
+  createPlaceComment,
   createConversation,
   createMessage,
   createMessageRead,
   createNotification,
+  createPlaceVisit,
   validateCircle,
   validatePlace,
   validateConnection,
@@ -626,9 +764,11 @@ module.exports = {
   validateSuggestion,
   validateComment,
   validateCircleComment,
+  validatePlaceComment,
   validateConversation,
   validateMessage,
   validateNotification,
+  validatePlaceVisit,
   serializeDoc,
   serializeQuerySnapshot
 };

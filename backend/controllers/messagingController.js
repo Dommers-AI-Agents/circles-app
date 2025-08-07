@@ -1012,6 +1012,347 @@ const deleteConversation = async (req, res) => {
   }
 };
 
+// @desc    Update conversation (name, avatar)
+// @route   PUT /api/messages/conversations/:conversationId
+// @access  Private (participants only)
+const updateConversation = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { name, avatar } = req.body;
+    const userId = req.user.uid;
+    
+    console.log(`📝 updateConversation called - conversationId: ${conversationId}, userId: ${userId}`);
+    console.log(`📝 Update data:`, { name, avatar: avatar ? 'URL provided' : 'null' });
+    
+    // Get conversation
+    const conversationDoc = await db.collection(COLLECTIONS.CONVERSATIONS).doc(conversationId).get();
+    if (!conversationDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Conversation not found'
+      });
+    }
+    
+    const conversation = conversationDoc.data();
+    
+    // Check if user is a participant
+    if (!conversation.participants.includes(userId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to update this conversation'
+      });
+    }
+    
+    // Only allow updating group conversations
+    if (conversation.type !== 'group') {
+      return res.status(400).json({
+        success: false,
+        message: 'Only group conversations can be updated'
+      });
+    }
+    
+    // Validate inputs
+    if (name !== undefined && (typeof name !== 'string' || name.trim().length === 0)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Group name must be a non-empty string'
+      });
+    }
+    
+    if (name && name.length > 50) {
+      return res.status(400).json({
+        success: false,
+        message: 'Group name must be 50 characters or less'
+      });
+    }
+    
+    if (avatar !== undefined && avatar !== null && typeof avatar !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'Avatar must be a valid URL string or null'
+      });
+    }
+    
+    // Build update object
+    const updateData = {
+      updatedAt: new Date().toISOString()
+    };
+    
+    if (name !== undefined) {
+      updateData.name = name.trim();
+    }
+    
+    if (avatar !== undefined) {
+      updateData.avatar = avatar;
+    }
+    
+    // Update conversation
+    await conversationDoc.ref.update(updateData);
+    
+    // Get updated conversation
+    const updatedDoc = await conversationDoc.ref.get();
+    const updatedConversation = serializeDoc(updatedDoc);
+    
+    console.log(`✅ Conversation ${conversationId} updated by user ${userId}`);
+    
+    res.status(200).json({
+      success: true,
+      conversation: updatedConversation
+    });
+    
+  } catch (error) {
+    console.error('Error updating conversation:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update conversation'
+    });
+  }
+};
+
+// @desc    Toggle notification settings for a conversation
+// @route   PUT /api/messages/conversations/:conversationId/notifications
+// @access  Private
+const toggleNotifications = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { enabled } = req.body;
+    const userId = req.user.uid;
+
+    console.log(`🔔 toggleNotifications called - conversationId: ${conversationId}, userId: ${userId}, enabled: ${enabled}`);
+
+    // Get the conversation
+    const conversationRef = db.collection(COLLECTIONS.CONVERSATIONS).doc(conversationId);
+    const conversationDoc = await conversationRef.get();
+
+    if (!conversationDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Conversation not found'
+      });
+    }
+
+    const conversation = conversationDoc.data();
+
+    // Check if user is a participant
+    if (!conversation.participants.includes(userId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not a participant in this conversation'
+      });
+    }
+
+    // Update notification settings
+    const notificationSettings = conversation.notificationSettings || {};
+    notificationSettings[userId] = enabled;
+
+    await conversationRef.update({
+      notificationSettings,
+      updatedAt: new Date().toISOString()
+    });
+
+    console.log(`✅ Notification settings updated for user ${userId} in conversation ${conversationId}`);
+
+    res.status(200).json({
+      success: true,
+      message: `Notifications ${enabled ? 'enabled' : 'disabled'} for this conversation`
+    });
+
+  } catch (error) {
+    console.error('Error toggling notifications:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Add participant to group conversation
+// @route   POST /api/messages/conversations/:conversationId/participants
+// @access  Private (participants only)
+const addParticipant = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { userId } = req.body;
+    const currentUserId = req.user.uid;
+    
+    console.log(`👥 addParticipant called - conversationId: ${conversationId}, userId: ${userId}, currentUserId: ${currentUserId}`);
+    
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID is required'
+      });
+    }
+    
+    // Get conversation
+    const conversationDoc = await db.collection(COLLECTIONS.CONVERSATIONS).doc(conversationId).get();
+    if (!conversationDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Conversation not found'
+      });
+    }
+    
+    const conversation = conversationDoc.data();
+    
+    // Check if current user is a participant
+    if (!conversation.participants.includes(currentUserId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to add participants'
+      });
+    }
+    
+    // Only allow adding to group conversations
+    if (conversation.type !== 'group') {
+      return res.status(400).json({
+        success: false,
+        message: 'Can only add participants to group conversations'
+      });
+    }
+    
+    // Check if user is already a participant
+    if (conversation.participants.includes(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'User is already a participant'
+      });
+    }
+    
+    // Verify target user exists
+    const targetUserDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+    if (!targetUserDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Target user not found'
+      });
+    }
+    
+    // Add user to participants array and initialize unread count
+    const updatedParticipants = [...conversation.participants, userId];
+    const updatedUnreadCounts = { ...conversation.unreadCounts };
+    updatedUnreadCounts[userId] = 0;
+    
+    await conversationDoc.ref.update({
+      participants: updatedParticipants,
+      unreadCounts: updatedUnreadCounts,
+      updatedAt: new Date().toISOString()
+    });
+    
+    console.log(`✅ Added participant ${userId} to conversation ${conversationId}`);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Participant added successfully'
+    });
+    
+  } catch (error) {
+    console.error('Error adding participant:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Remove participant from group conversation
+// @route   DELETE /api/messages/conversations/:conversationId/participants/:userId
+// @access  Private (participants only)
+const removeParticipant = async (req, res) => {
+  try {
+    const { conversationId, userId } = req.params;
+    const currentUserId = req.user.uid;
+    
+    console.log(`👥 removeParticipant called - conversationId: ${conversationId}, userId: ${userId}, currentUserId: ${currentUserId}`);
+    
+    // Get conversation
+    const conversationDoc = await db.collection(COLLECTIONS.CONVERSATIONS).doc(conversationId).get();
+    if (!conversationDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Conversation not found'
+      });
+    }
+    
+    const conversation = conversationDoc.data();
+    
+    // Check if current user is a participant
+    if (!conversation.participants.includes(currentUserId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to remove participants'
+      });
+    }
+    
+    // Only allow removing from group conversations
+    if (conversation.type !== 'group') {
+      return res.status(400).json({
+        success: false,
+        message: 'Can only remove participants from group conversations'
+      });
+    }
+    
+    // Check if user is a participant
+    if (!conversation.participants.includes(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'User is not a participant'
+      });
+    }
+    
+    // Allow users to remove themselves, or group creator to remove others
+    const canRemove = (userId === currentUserId) || (conversation.createdBy === currentUserId);
+    
+    if (!canRemove) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only remove yourself or you must be the group creator'
+      });
+    }
+    
+    // Don't allow removing the last participant
+    if (conversation.participants.length <= 2) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot remove participant - group must have at least 2 members'
+      });
+    }
+    
+    // Remove user from participants array and unread counts
+    const updatedParticipants = conversation.participants.filter(id => id !== userId);
+    const updatedUnreadCounts = { ...conversation.unreadCounts };
+    delete updatedUnreadCounts[userId];
+    
+    // Also remove from notification settings
+    const updatedNotificationSettings = { ...conversation.notificationSettings };
+    delete updatedNotificationSettings[userId];
+    
+    await conversationDoc.ref.update({
+      participants: updatedParticipants,
+      unreadCounts: updatedUnreadCounts,
+      notificationSettings: updatedNotificationSettings,
+      updatedAt: new Date().toISOString()
+    });
+    
+    console.log(`✅ Removed participant ${userId} from conversation ${conversationId}`);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Participant removed successfully'
+    });
+    
+  } catch (error) {
+    console.error('Error removing participant:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getConversations,
   getOrCreateDirectConversation,
@@ -1023,5 +1364,9 @@ module.exports = {
   markMessagesAsRead,
   getUnreadCount,
   deleteConversation,
-  debugGetConversations
+  debugGetConversations,
+  toggleNotifications,
+  updateConversation,
+  addParticipant,
+  removeParticipant
 };

@@ -180,8 +180,9 @@ class AuthService {
         }
     }
     
-    func loginWithSocialProvider(provider: String, token: String, name: String? = nil, email: String? = nil, completion: @escaping (Result<User, Error>) -> Void) {
+    func loginWithSocialProvider(provider: String, token: String, name: String? = nil, email: String? = nil, picture: String? = nil, completion: @escaping (Result<User, Error>) -> Void) {
         print("🔐 AuthService.loginWithSocialProvider called with provider: \(provider)")
+        print("🔐 Profile data - name: \(name ?? "nil"), email: \(email ?? "nil"), picture: \(picture ?? "nil")")
         
         // Use different endpoints for different providers
         let endpoint: String
@@ -198,6 +199,9 @@ class AuthService {
             if let email = email {
                 body["email"] = email
             }
+            if let picture = picture {
+                body["picture"] = picture
+            }
         default:
             // Other providers (Apple, Google, Facebook) use Firebase
             endpoint = "auth/firebase"
@@ -207,6 +211,9 @@ class AuthService {
             }
             if let email = email {
                 body["email"] = email
+            }
+            if let picture = picture {
+                body["picture"] = picture
             }
         }
         
@@ -487,6 +494,15 @@ class AuthService {
                 print("🔐 No saved FCM token found")
             }
             
+            // Check for deferred promoted purchase
+            Task { @MainActor in
+                if StoreKitObserver.shared.hasDeferredPurchase {
+                    print("💎 Resuming deferred promoted purchase after login")
+                    try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second delay
+                    StoreKitObserver.shared.resumeDeferredPurchase()
+                }
+            }
+            
             completion(.success(response.user))
         } else {
             print("🔐 Auth response not successful")
@@ -630,7 +646,7 @@ class AuthService {
                         return .privateRelayNotAllowed
                     }
                     // General validation error
-                    return .unknown("Invalid request")
+                    return .unknown(errorResponse.message)
                 case 401:
                     return .invalidCredentials
                 case 403:
@@ -646,6 +662,12 @@ class AuthService {
                     return .unknown("Conflict")
                 case 404:
                     return .accountNotFound
+                case 500:
+                    // Check if it's a server configuration error
+                    if errorResponse.message.lowercased().contains("server configuration") {
+                        return .unknown("Server configuration error. Please try again later.")
+                    }
+                    return .unknown("Server error: \(errorResponse.message)")
                 default:
                     return .unknown("HTTP error: \(statusCode)")
                 }

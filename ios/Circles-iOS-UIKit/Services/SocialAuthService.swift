@@ -6,7 +6,7 @@ import SafariServices
 // Import GoogleSignIn
 import GoogleSignIn
 // Import FBSDKLoginKit for Facebook
-import FBSDKLoginKit
+import FacebookLogin
 // Import for LinkedIn OAuth
 import WebKit
 
@@ -187,12 +187,20 @@ class SocialAuthService: NSObject {
             
             print("🔍 Successfully authenticated with Google, token: \(idToken)")
             print("🔍 Google User: \(user.profile?.name ?? "Unknown"), \(user.profile?.email ?? "No email")")
+            print("🔍 Google Profile Picture: \(user.profile?.imageURL(withDimension: 200)?.absoluteString ?? "No picture")")
             
             // Clean up the reference to prevent memory leaks
             self.presentingViewController = nil
             
-            // Send the token to our backend
-            AuthService.shared.loginWithSocialProvider(provider: "google", token: idToken) { result in
+            // Send the token to our backend with profile data
+            // Google profile picture will be extracted from the token on the backend
+            AuthService.shared.loginWithSocialProvider(
+                provider: "google", 
+                token: idToken, 
+                name: user.profile?.name, 
+                email: user.profile?.email,
+                picture: user.profile?.imageURL(withDimension: 200)?.absoluteString
+            ) { result in
                 completion(result)
             }
         }
@@ -222,8 +230,14 @@ class SocialAuthService: NSObject {
             
             print("🔍 Successfully restored Google session for: \(user.profile?.email ?? "Unknown")")
             
-            // Send the restored token to our backend
-            AuthService.shared.loginWithSocialProvider(provider: "google", token: idToken) { result in
+            // Send the restored token to our backend with profile data
+            AuthService.shared.loginWithSocialProvider(
+                provider: "google", 
+                token: idToken, 
+                name: user.profile?.name, 
+                email: user.profile?.email,
+                picture: user.profile?.imageURL(withDimension: 200)?.absoluteString
+            ) { result in
                 completion(result)
             }
         }
@@ -293,10 +307,10 @@ class SocialAuthService: NSObject {
                     picture = url
                 }
                 
-                print("📘 Facebook User: \(name ?? "Unknown"), \(email ?? "No email")")
+                print("📘 Facebook User: \(name ?? "Unknown"), \(email ?? "No email"), picture: \(picture ?? "No picture")")
                 
-                // Send the token to our backend
-                AuthService.shared.loginWithSocialProvider(provider: "facebook", token: token, name: name, email: email) { result in
+                // Send the token to our backend with profile picture
+                AuthService.shared.loginWithSocialProvider(provider: "facebook", token: token, name: name, email: email, picture: picture) { result in
                     completion(result)
                 }
             }
@@ -464,8 +478,9 @@ extension SocialAuthService: ASAuthorizationControllerDelegate {
             }
             
             // Send the token to our backend via the AuthService with name and email
+            // Note: Apple doesn't provide profile pictures, so picture will be nil
             print("🍎 Calling AuthService.loginWithSocialProvider with token, name: \(displayName ?? "nil"), email: \(email ?? "nil")")
-            AuthService.shared.loginWithSocialProvider(provider: "apple", token: tokenString, name: displayName, email: email) { [weak self] result in
+            AuthService.shared.loginWithSocialProvider(provider: "apple", token: tokenString, name: displayName, email: email, picture: nil) { [weak self] result in
                 print("🍎 AuthService.loginWithSocialProvider completed")
                 self?.completionHandler?(result)
             }
@@ -685,7 +700,8 @@ extension SocialAuthService {
             provider: "linkedin",
             token: authCode, // Send authorization code, not access token
             name: nil,
-            email: nil
+            email: nil,
+            picture: nil
         ) { [weak self] result in
             self?.completionHandler?(result)
             self?.presentingViewController = nil
@@ -752,7 +768,7 @@ extension SocialAuthService {
                     }
                 }
                 
-                AuthService.shared.loginWithSocialProvider(provider: "linkedin", token: accessToken, name: name.isEmpty ? nil : name, email: email) { result in
+                AuthService.shared.loginWithSocialProvider(provider: "linkedin", token: accessToken, name: name.isEmpty ? nil : name, email: email, picture: nil) { result in
                     self?.completionHandler?(result)
                 }
             }

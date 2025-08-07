@@ -1,5 +1,6 @@
 import UIKit
 import MessageUI
+import Contacts
 
 class FindContactsViewController: BaseViewController {
     
@@ -9,8 +10,19 @@ class FindContactsViewController: BaseViewController {
     private var nonMatchedContacts: [Contact] = []
     private var selectedContacts = Set<String>() // Contact IDs to invite
     private var selectedUsers = Set<String>() // User IDs to connect with
+    private var isLoadingOnCircles = true
+    private var isLoadingContacts = true
+    private var contactsPermissionStatus: CNAuthorizationStatus = .notDetermined
+    private var hasLoadedContactData = false
     
     // MARK: - UI Elements
+    private let loadingIndicator: UIActivityIndicatorView = {
+        let indicator = UIActivityIndicatorView(style: .large)
+        indicator.hidesWhenStopped = true
+        indicator.translatesAutoresizingMaskIntoConstraints = false
+        return indicator
+    }()
+    
     private let segmentedControl: UISegmentedControl = {
         let items = ["On Circles", "Invite to Circles"]
         let control = UISegmentedControl(items: items)
@@ -29,6 +41,31 @@ class FindContactsViewController: BaseViewController {
     
     private lazy var actionButton = UIButton.primaryButton(title: "Connect")
     
+    private let emptyStateLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 16)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.isHidden = true
+        return label
+    }()
+    
+    private lazy var grantAccessButton: UIButton = {
+        let button = UIButton.secondaryButton(title: "Grant Contact Access")
+        button.isHidden = true
+        button.addTarget(self, action: #selector(grantAccessTapped), for: .touchUpInside)
+        return button
+    }()
+    
+    private lazy var sendSingleInviteButton: UIButton = {
+        let button = UIButton.primaryButton(title: "Send Invite via SMS")
+        button.isHidden = true
+        button.addTarget(self, action: #selector(sendSingleInviteTapped), for: .touchUpInside)
+        return button
+    }()
+    
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -40,11 +77,19 @@ class FindContactsViewController: BaseViewController {
     
     // MARK: - Setup
     private func configureNavigationBar() {
-        title = "Find Friends"
+        title = "Add People you know"
         navigationItem.leftBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .cancel,
             target: self,
             action: #selector(cancelTapped)
+        )
+        
+        // Add SMS invite button to right side
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            image: UIImage(systemName: "message"),
+            style: .plain,
+            target: self,
+            action: #selector(sendSingleInviteTapped)
         )
     }
     
@@ -53,9 +98,20 @@ class FindContactsViewController: BaseViewController {
         
         view.addSubview(segmentedControl)
         view.addSubview(tableView)
+        view.addSubview(emptyStateLabel)
+        view.addSubview(grantAccessButton)
+        view.addSubview(sendSingleInviteButton)
         view.addSubview(actionButton)
+        view.addSubview(loadingIndicator)
+        
+        // Show UI chrome immediately, only hide table content
+        tableView.alpha = 0
+        loadingIndicator.startAnimating()
         
         NSLayoutConstraint.activate([
+            loadingIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            loadingIndicator.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            
             segmentedControl.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
             segmentedControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             segmentedControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
@@ -63,13 +119,32 @@ class FindContactsViewController: BaseViewController {
             tableView.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 16),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.bottomAnchor.constraint(equalTo: actionButton.topAnchor, constant: -16),
             
+            emptyStateLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            emptyStateLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            emptyStateLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
+            emptyStateLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
+            
+            grantAccessButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            grantAccessButton.topAnchor.constraint(equalTo: emptyStateLabel.bottomAnchor, constant: 20),
+            grantAccessButton.widthAnchor.constraint(equalToConstant: 200),
+            grantAccessButton.heightAnchor.constraint(equalToConstant: 44),
+            
+            sendSingleInviteButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            sendSingleInviteButton.topAnchor.constraint(equalTo: grantAccessButton.bottomAnchor, constant: 12),
+            sendSingleInviteButton.widthAnchor.constraint(equalToConstant: 200),
+            sendSingleInviteButton.heightAnchor.constraint(equalToConstant: 44)
+        ])
+        
+        // Setup bottom button constraints separately to handle dual button layout
+        var actionButtonConstraints = [
             actionButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             actionButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             actionButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
-            actionButton.heightAnchor.constraint(equalToConstant: 50)
-        ])
+            actionButton.heightAnchor.constraint(equalToConstant: 50),
+            tableView.bottomAnchor.constraint(equalTo: actionButton.topAnchor, constant: -16)
+        ]
+        NSLayoutConstraint.activate(actionButtonConstraints)
         
         segmentedControl.addTarget(self, action: #selector(segmentChanged), for: .valueChanged)
         actionButton.addTarget(self, action: #selector(actionButtonTapped), for: .touchUpInside)
@@ -91,21 +166,47 @@ class FindContactsViewController: BaseViewController {
     }
     
     private func loadContacts() {
-        showLoadingState()
+        // Check contacts permission first
+        contactsPermissionStatus = ContactsService.shared.checkContactsPermission()
+        
+        if contactsPermissionStatus != .authorized {
+            // Show permission UI
+            loadingIndicator.stopAnimating()
+            showContactPermissionUI()
+            return
+        }
         
         ContactsService.shared.syncContactsWithBackend { [weak self] result in
             guard let self = self else { return }
             
-            self.hideLoadingState()
+            self.hasLoadedContactData = true
+            self.loadingIndicator.stopAnimating()
             
             switch result {
             case .success(let response):
-                self.matchedUsers = response.matchedUsers
+                // Filter out already connected users from the "On Circles" tab
+                self.matchedUsers = response.matchedUsers.filter { user in
+                    // Keep users who are not connected or have a pending request
+                    return user.connectionStatus != "accepted"
+                }
                 self.processContacts(response)
                 self.tableView.reloadData()
                 
+                // Show content with animation
+                UIView.animate(withDuration: 0.3) {
+                    self.tableView.alpha = 1
+                }
+                
+                // Update empty states
+                self.updateEmptyState()
+                
             case .failure(let error):
                 self.showError(error)
+                // Still show the table even on error
+                UIView.animate(withDuration: 0.3) {
+                    self.tableView.alpha = 1
+                }
+                self.updateEmptyState()
             }
         }
     }
@@ -122,7 +223,9 @@ class FindContactsViewController: BaseViewController {
                 // Create a set of matched emails and phone numbers
                 var matchedIdentifiers = Set<String>()
                 for user in response.matchedUsers {
-                    matchedIdentifiers.insert(user.email.lowercased())
+                    if let email = user.email {
+                        matchedIdentifiers.insert(email.lowercased())
+                    }
                     if let phone = user.phoneNumber {
                         matchedIdentifiers.insert(ContactsService.normalizePhoneNumber(phone) ?? phone)
                     }
@@ -143,6 +246,7 @@ class FindContactsViewController: BaseViewController {
                 }
                 
                 self.tableView.reloadData()
+                self.updateEmptyState()
                 
             case .failure(let error):
                 Logger.error("Failed to fetch contacts: \(error)")
@@ -160,6 +264,7 @@ class FindContactsViewController: BaseViewController {
         selectedUsers.removeAll()
         tableView.reloadData()
         updateActionButton()
+        updateEmptyState()
     }
     
     @objc private func actionButtonTapped() {
@@ -175,7 +280,7 @@ class FindContactsViewController: BaseViewController {
     private func connectWithUsers() {
         guard !selectedUsers.isEmpty else { return }
         
-        showLoadingState()
+        let loading = AlertPresenter.showLoading(from: self)
         actionButton.isEnabled = false
         
         let userIds = Array(selectedUsers)
@@ -198,7 +303,7 @@ class FindContactsViewController: BaseViewController {
                 
                 // Also follow the users
                 ContactsService.shared.followMultipleUsers(userIds) { _ in
-                    self.hideLoadingState()
+                    loading.dismiss(animated: true)
                     self.actionButton.isEnabled = true
                     
                     if successCount > 0 {
@@ -211,15 +316,35 @@ class FindContactsViewController: BaseViewController {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                             self.dismiss(animated: true)
                         }
+                    } else if failureCount > 0 {
+                        self.showError("Some users are already connected or have pending requests")
                     } else {
                         self.showError("Failed to send connection requests")
                     }
                 }
                 
             case .failure(let error):
-                self.hideLoadingState()
+                loading.dismiss(animated: true)
                 self.actionButton.isEnabled = true
-                self.showError(error)
+                
+                // Check if it's an API error with specific message
+                if let apiError = error as? APIError,
+                   case .httpError(let statusCode, let data) = apiError,
+                   statusCode == 400,
+                   let data = data,
+                   let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
+                    
+                    // Show more user-friendly messages
+                    if errorResponse.message.contains("already") {
+                        self.showError("You are already following this user")
+                    } else if errorResponse.message.contains("pending") {
+                        self.showError("You have a pending connection request with this user")
+                    } else {
+                        self.showError(errorResponse.message)
+                    }
+                } else {
+                    self.showError("Failed to send connection requests")
+                }
             }
         }
     }
@@ -285,12 +410,12 @@ class FindContactsViewController: BaseViewController {
     }
     
     private func sendEmailInvites(_ invites: [InviteContactsRequest.Invite]) {
-        showLoadingState()
+        let loading = AlertPresenter.showLoading(from: self)
         
         ContactsService.shared.inviteContacts(invites) { [weak self] result in
             guard let self = self else { return }
             
-            self.hideLoadingState()
+            loading.dismiss(animated: true)
             
             switch result {
             case .success(let response):
@@ -318,6 +443,98 @@ class FindContactsViewController: BaseViewController {
             actionButton.setTitle(count > 0 ? "Invite \(count)" : "Invite", for: .normal)
         }
     }
+    
+    // MARK: - Empty State Management
+    
+    private func updateEmptyState() {
+        if segmentedControl.selectedSegmentIndex == 0 {
+            // On Circles tab
+            let isEmpty = matchedUsers.isEmpty
+            tableView.isHidden = isEmpty
+            
+            if isEmpty {
+                emptyStateLabel.text = "No contacts found on Circles yet.\nTry the Invite tab to bring your friends!"
+                emptyStateLabel.isHidden = false
+                grantAccessButton.isHidden = true
+                sendSingleInviteButton.isHidden = true
+            } else {
+                emptyStateLabel.isHidden = true
+                grantAccessButton.isHidden = true
+                sendSingleInviteButton.isHidden = true
+            }
+        } else {
+            // Invite to Circles tab
+            let isEmpty = nonMatchedContacts.isEmpty
+            tableView.isHidden = isEmpty
+            
+            if isEmpty && hasLoadedContactData {
+                if contactsPermissionStatus != .authorized {
+                    showContactPermissionUI()
+                } else {
+                    emptyStateLabel.text = "All your contacts are already on Circles!"
+                    emptyStateLabel.isHidden = false
+                    grantAccessButton.isHidden = true
+                    sendSingleInviteButton.isHidden = true
+                }
+            } else {
+                emptyStateLabel.isHidden = true
+                grantAccessButton.isHidden = true
+                sendSingleInviteButton.isHidden = true
+            }
+        }
+    }
+    
+    private func showContactPermissionUI() {
+        tableView.isHidden = true
+        emptyStateLabel.text = "Grant access to your contacts to find friends on Circles and send invites."
+        emptyStateLabel.isHidden = false
+        
+        if contactsPermissionStatus == .denied {
+            grantAccessButton.setTitle("Open Settings", for: .normal)
+        } else {
+            grantAccessButton.setTitle("Grant Contact Access", for: .normal)
+        }
+        
+        grantAccessButton.isHidden = false
+        sendSingleInviteButton.isHidden = false
+    }
+    
+    @objc private func grantAccessTapped() {
+        if contactsPermissionStatus == .denied {
+            // Open settings
+            if let settingsUrl = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(settingsUrl)
+            }
+        } else {
+            // Request permission
+            ContactsService.shared.requestContactsPermission { [weak self] granted in
+                if granted {
+                    self?.loadContacts()
+                } else {
+                    self?.showError("Contact access is required to find friends on Circles")
+                }
+            }
+        }
+    }
+    
+    @objc private func sendSingleInviteTapped() {
+        // Create a simple SMS invite
+        guard MFMessageComposeViewController.canSendText() else {
+            showError("SMS is not available on this device")
+            return
+        }
+        
+        let messageVC = MFMessageComposeViewController()
+        messageVC.messageComposeDelegate = self
+        
+        // Set message body with invite link
+        let userName = AuthService.shared.currentUser?.displayName ?? "A friend"
+        let userId = AuthService.shared.currentUser?.id ?? ""
+        let inviteLink = "https://circles-app.com/join?inviter=\(userId)"
+        messageVC.body = "\(userName) invited you to join Circles - the app for sharing your favorite places!\n\nJoin using this link and we'll automatically connect: \(inviteLink)"
+        
+        present(messageVC, animated: true)
+    }
 }
 
 // MARK: - UITableViewDataSource
@@ -337,14 +554,9 @@ extension FindContactsViewController: UITableViewDataSource {
             cell.configure(with: user)
             cell.showSelectionCheckmark = selectedUsers.contains(user.id)
             
-            // Disable if already connected
-            if user.connectionStatus == "accepted" || user.connectionStatus == "pending" {
-                cell.isUserInteractionEnabled = false
-                cell.alpha = 0.5
-            } else {
-                cell.isUserInteractionEnabled = true
-                cell.alpha = 1.0
-            }
+            // Since we're filtering out connected users, all should be selectable
+            cell.isUserInteractionEnabled = true
+            cell.alpha = 1.0
             
             return cell
         } else {

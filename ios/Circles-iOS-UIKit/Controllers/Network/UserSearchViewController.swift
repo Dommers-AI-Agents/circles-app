@@ -458,6 +458,8 @@ class UserSearchCell: UITableViewCell {
         // Display bio instead of email for privacy
         if let bio = user.bio, !bio.isEmpty {
             userInfoLabel.text = bio
+        } else if let location = user.location, !location.isEmpty {
+            userInfoLabel.text = location
         } else {
             userInfoLabel.text = "Circles member"
         }

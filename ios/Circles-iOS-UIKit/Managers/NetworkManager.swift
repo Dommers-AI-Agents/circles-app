@@ -694,11 +694,14 @@ class NetworkManager {
         )
     }
     
-    func fetchActiveConnections(limit: Int = 10, completion: @escaping ([Connection]?, Error?) -> Void) {
-        print("🔍 NetworkManager: fetchActiveConnections called with limit: \(limit)")
+    func fetchActiveConnections(limit: Int = 10, offset: Int = 0, completion: @escaping ([Connection]?, Error?) -> Void) {
+        print("🔍 NetworkManager: fetchActiveConnections called with limit: \(limit), offset: \(offset)")
         
         // Load active connections sorted by activity
-        let queryParams = ["limit": "\(limit)"]
+        var queryParams = ["limit": "\(limit)"]
+        if offset > 0 {
+            queryParams["offset"] = "\(offset)"
+        }
         
         apiService.request(
             endpoint: "connections/active",

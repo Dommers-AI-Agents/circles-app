@@ -45,8 +45,9 @@ class ConnectionPickerView: UIView {
     
     private let scrollView: UIScrollView = {
         let scrollView = UIScrollView()
-        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.showsHorizontalScrollIndicator = true
         scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.alwaysBounceHorizontal = true
         return scrollView
     }()
     
@@ -100,7 +101,7 @@ class ConnectionPickerView: UIView {
             scrollView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
             scrollView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 4),
             scrollView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -4),
-            scrollView.widthAnchor.constraint(lessThanOrEqualToConstant: 200),
+            scrollView.trailingAnchor.constraint(lessThanOrEqualTo: searchTextField.leadingAnchor, constant: -8),
             
             // Selected connections stack view
             selectedConnectionsView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
@@ -113,6 +114,7 @@ class ConnectionPickerView: UIView {
             searchTextField.leadingAnchor.constraint(equalTo: scrollView.trailingAnchor, constant: 8),
             searchTextField.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -8),
             searchTextField.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
+            searchTextField.widthAnchor.constraint(greaterThanOrEqualToConstant: 150),
             
             // Dropdown table view
             dropdownTableView.topAnchor.constraint(equalTo: containerView.bottomAnchor, constant: 4),
@@ -120,8 +122,8 @@ class ConnectionPickerView: UIView {
             dropdownTableView.trailingAnchor.constraint(equalTo: trailingAnchor),
             dropdownHeightConstraint!,
             
-            // Bottom constraint
-            bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
+            // Bottom constraint - allow dropdown to extend beyond container
+            bottomAnchor.constraint(equalTo: dropdownTableView.bottomAnchor)
         ])
         
         // Setup table view
@@ -170,7 +172,7 @@ class ConnectionPickerView: UIView {
         
         filteredConnections = connections.filter { user in
             let nameMatch = user.displayName.lowercased().contains(searchText)
-            let emailMatch = user.email.lowercased().contains(searchText)
+            let emailMatch = user.email?.lowercased().contains(searchText) ?? false
             return nameMatch || emailMatch
         }
         
@@ -188,6 +190,9 @@ class ConnectionPickerView: UIView {
         UIView.animate(withDuration: 0.3) {
             self.superview?.layoutIfNeeded()
         }
+        
+        // Notify parent view controller to adjust scroll view
+        NotificationCenter.default.post(name: NSNotification.Name("ConnectionPickerDropdownShown"), object: self, userInfo: ["height": height])
     }
     
     private func hideDropdown() {
@@ -201,6 +206,9 @@ class ConnectionPickerView: UIView {
         }) { _ in
             self.dropdownTableView.isHidden = true
         }
+        
+        // Notify parent view controller to reset scroll view
+        NotificationCenter.default.post(name: NSNotification.Name("ConnectionPickerDropdownHidden"), object: self)
     }
     
     private func addSelectedConnection(_ user: User) {
@@ -221,14 +229,12 @@ class ConnectionPickerView: UIView {
         searchTextField.text = ""
         filterConnections()
         
-        // Update scroll view width constraint if needed
-        scrollView.layoutIfNeeded()
-        let contentWidth = selectedConnectionsView.frame.width
-        if contentWidth > 200 {
-            scrollView.constraints.forEach { constraint in
-                if constraint.firstAttribute == .width {
-                    constraint.constant = min(contentWidth + 16, frame.width - 100)
-                }
+        // Scroll to show the new chip
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let scrollView = self?.scrollView else { return }
+            let contentWidth = scrollView.contentSize.width
+            if contentWidth > scrollView.frame.width {
+                scrollView.setContentOffset(CGPoint(x: contentWidth - scrollView.frame.width, y: 0), animated: true)
             }
         }
     }

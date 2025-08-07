@@ -54,28 +54,25 @@ class LoginViewController: BaseViewController {
     private let buttonsStackView: UIStackView = {
         let stackView = UIStackView()
         stackView.axis = .vertical
-        stackView.distribution = .fillEqually
+        stackView.distribution = .fill
         stackView.spacing = 16
         stackView.translatesAutoresizingMaskIntoConstraints = false
         return stackView
     }()
     
-    private let appleSignInContainer: UIView = {
-        let view = UIView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
-    
-    private let appleSignInButton: ASAuthorizationAppleIDButton = {
-        let button = ASAuthorizationAppleIDButton(authorizationButtonType: .signIn, authorizationButtonStyle: .black)
-        button.cornerRadius = 25
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.isUserInteractionEnabled = false
-        return button
+    private let orDividerLabel: UILabel = {
+        let label = UILabel()
+        label.text = "or"
+        label.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        label.textColor = .white
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }()
     
     private lazy var facebookSignInButton = UIButton.facebookSignInButton()
     private lazy var googleSignInButton = UIButton.googleSignInButton()
+    private lazy var appleSignInButton = UIButton.appleSignInButton()
     private lazy var emailSignUpButton = UIButton.primaryButton(title: "Create Account")
     
     private let loginLinkButton: UIButton = {
@@ -147,14 +144,15 @@ class LoginViewController: BaseViewController {
         backgroundView.addSubview(taglineLabel)
         backgroundView.addSubview(subtitleLabel)
         
-        // Configure Apple Sign In button
-        appleSignInContainer.addSubview(appleSignInButton)
-        
-        // Configure buttons stack
-        buttonsStackView.addArrangedSubview(appleSignInContainer)
-        buttonsStackView.addArrangedSubview(facebookSignInButton)
-        buttonsStackView.addArrangedSubview(googleSignInButton)
+        // Configure buttons stack - reordered: email first, then social
         buttonsStackView.addArrangedSubview(emailSignUpButton)
+        buttonsStackView.addArrangedSubview(orDividerLabel)
+        buttonsStackView.addArrangedSubview(googleSignInButton)
+        buttonsStackView.addArrangedSubview(facebookSignInButton)
+        buttonsStackView.addArrangedSubview(appleSignInButton)
+        
+        // Set height constraint for "or" divider to be smaller than buttons
+        orDividerLabel.heightAnchor.constraint(equalToConstant: 20).isActive = true
         
         backgroundView.addSubview(buttonsStackView)
         backgroundView.addSubview(loginLinkButton)
@@ -197,19 +195,7 @@ class LoginViewController: BaseViewController {
             buttonsStackView.leadingAnchor.constraint(equalTo: backgroundView.leadingAnchor, constant: 40),
             buttonsStackView.trailingAnchor.constraint(equalTo: backgroundView.trailingAnchor, constant: -40),
             buttonsStackView.bottomAnchor.constraint(equalTo: loginLinkButton.topAnchor, constant: -40),
-            buttonsStackView.heightAnchor.constraint(equalToConstant: 248),
-            
-            // Apple Sign In button
-            appleSignInButton.topAnchor.constraint(equalTo: appleSignInContainer.topAnchor),
-            appleSignInButton.leadingAnchor.constraint(greaterThanOrEqualTo: appleSignInContainer.leadingAnchor),
-            appleSignInButton.trailingAnchor.constraint(lessThanOrEqualTo: appleSignInContainer.trailingAnchor),
-            appleSignInButton.bottomAnchor.constraint(equalTo: appleSignInContainer.bottomAnchor),
-            appleSignInButton.centerXAnchor.constraint(equalTo: appleSignInContainer.centerXAnchor),
-            appleSignInButton.widthAnchor.constraint(lessThanOrEqualToConstant: 375),
-            appleSignInButton.widthAnchor.constraint(equalTo: appleSignInContainer.widthAnchor, multiplier: 1.0).withPriority(.defaultHigh),
-            
-            // Button heights
-            appleSignInContainer.heightAnchor.constraint(equalToConstant: 50),
+            buttonsStackView.heightAnchor.constraint(equalToConstant: 284), // Updated for 4 buttons + 1 label + spacing
             
             // Login link
             loginLinkButton.centerXAnchor.constraint(equalTo: backgroundView.centerXAnchor),
@@ -223,11 +209,8 @@ class LoginViewController: BaseViewController {
     }
     
     private func setupActions() {
-        // Apple Sign In
-        let appleTapGesture = UITapGestureRecognizer(target: self, action: #selector(appleSignInButtonTapped))
-        appleSignInContainer.addGestureRecognizer(appleTapGesture)
-        
         // Social login buttons
+        appleSignInButton.addTarget(self, action: #selector(appleSignInButtonTapped), for: .touchUpInside)
         googleSignInButton.addTarget(self, action: #selector(googleSignInButtonTapped), for: .touchUpInside)
         facebookSignInButton.addTarget(self, action: #selector(facebookSignInButtonTapped), for: .touchUpInside)
         

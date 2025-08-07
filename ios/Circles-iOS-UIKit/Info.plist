@@ -105,7 +105,9 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Circles needs your location to show nearby places and help you add them to your circles.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Circles needs your location to show nearby places and help you add them to your circles.</string>
+	<string>Circles can track places you visit to help you remember and save them to your circles later. You can review and manage your visits at any time. This feature is optional and can be disabled in settings.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Circles can track places you visit in the background to help you remember great spots. You control which places to save.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -150,6 +152,7 @@
 		<string>remote-notification</string>
 		<string>fetch</string>
 		<string>processing</string>
+		<string>location</string>
 	</array>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
@@ -161,5 +164,12 @@
 	<string>Main</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
+	<key>SKAdNetworkItems</key>
+	<array>
+		<dict>
+			<key>SKAdNetworkIdentifier</key>
+			<string>cstr6suwn9.skadnetwork</string>
+		</dict>
+	</array>
 </dict>
 </plist>

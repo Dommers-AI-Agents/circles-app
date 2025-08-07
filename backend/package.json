@@ -18,7 +18,7 @@
     "@google-cloud/storage": "^7.16.0",
     "@googlemaps/google-maps-services-js": "^3.4.1",
     "abort-controller": "^3.0.0",
-    "axios": "^1.10.0",
+    "axios": "^1.11.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",

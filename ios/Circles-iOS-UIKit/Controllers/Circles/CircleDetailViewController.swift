@@ -14,6 +14,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     private var userLocation: CLLocation?
     private var selectedCategory: PlaceCategory?
     private var isSharedViaLink: Bool = false
+    private var editors: [User] = []
     
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
@@ -104,6 +105,32 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         label.clipsToBounds = true
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
+    }()
+    
+    private let editorsContainerView: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isHidden = true // Hidden by default
+        return view
+    }()
+    
+    private let editorsLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Editors"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small, weight: .semibold)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let editorsStackView: UIStackView = {
+        let stackView = UIStackView()
+        stackView.axis = .horizontal
+        stackView.spacing = 12
+        stackView.alignment = .center
+        stackView.distribution = .fillProportionally
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        return stackView
     }()
     
     private let placesLabel: UILabel = {
@@ -298,6 +325,10 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         circleInfoView.addSubview(descriptionLabel)
         circleInfoView.addSubview(privacyView)
         circleInfoView.addSubview(categoryLabel)
+        circleInfoView.addSubview(editorsContainerView)
+        
+        editorsContainerView.addSubview(editorsLabel)
+        editorsContainerView.addSubview(editorsStackView)
         
         privacyView.addSubview(privacyImageView)
         privacyView.addSubview(privacyLabel)
@@ -365,7 +396,6 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             privacyView.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: Constants.Spacing.medium),
             privacyView.leadingAnchor.constraint(equalTo: circleInfoView.leadingAnchor, constant: Constants.Spacing.large),
             privacyView.heightAnchor.constraint(equalToConstant: 30),
-            privacyView.bottomAnchor.constraint(equalTo: circleInfoView.bottomAnchor, constant: -Constants.Spacing.large),
             
             // Privacy image view
             privacyImageView.leadingAnchor.constraint(equalTo: privacyView.leadingAnchor, constant: Constants.Spacing.small),
@@ -377,6 +407,23 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             privacyLabel.leadingAnchor.constraint(equalTo: privacyImageView.trailingAnchor, constant: Constants.Spacing.small),
             privacyLabel.trailingAnchor.constraint(equalTo: privacyView.trailingAnchor, constant: -Constants.Spacing.small),
             privacyLabel.centerYAnchor.constraint(equalTo: privacyView.centerYAnchor),
+            
+            // Editors container
+            editorsContainerView.topAnchor.constraint(equalTo: privacyView.bottomAnchor, constant: Constants.Spacing.medium),
+            editorsContainerView.leadingAnchor.constraint(equalTo: circleInfoView.leadingAnchor, constant: Constants.Spacing.large),
+            editorsContainerView.trailingAnchor.constraint(equalTo: circleInfoView.trailingAnchor, constant: -Constants.Spacing.large),
+            editorsContainerView.bottomAnchor.constraint(equalTo: circleInfoView.bottomAnchor, constant: -Constants.Spacing.large),
+            
+            // Editors label
+            editorsLabel.topAnchor.constraint(equalTo: editorsContainerView.topAnchor),
+            editorsLabel.leadingAnchor.constraint(equalTo: editorsContainerView.leadingAnchor),
+            
+            // Editors stack view
+            editorsStackView.topAnchor.constraint(equalTo: editorsLabel.bottomAnchor, constant: Constants.Spacing.small),
+            editorsStackView.leadingAnchor.constraint(equalTo: editorsContainerView.leadingAnchor),
+            editorsStackView.trailingAnchor.constraint(equalTo: editorsContainerView.trailingAnchor),
+            editorsStackView.bottomAnchor.constraint(equalTo: editorsContainerView.bottomAnchor),
+            editorsStackView.heightAnchor.constraint(greaterThanOrEqualToConstant: 60),
             
             // Places label
             placesLabel.topAnchor.constraint(equalTo: headerView.bottomAnchor, constant: Constants.Spacing.large),
@@ -521,31 +568,35 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         
         // Cover image
         if let coverImageUrl = circle.coverImage {
-            // Load image from URL
-            ImageService.shared.loadImage(from: coverImageUrl) { [weak self] image in
-                DispatchQueue.main.async {
-                    self?.coverImageView.image = image
+            // Check if it's a default SF Symbol
+            if coverImageUrl.starts(with: "sf-symbol:") {
+                let symbolName = String(coverImageUrl.dropFirst("sf-symbol:".count))
+                if let defaultCase = DefaultImages.CircleDefault.allCases.first(where: { $0.rawValue == symbolName }) {
+                    coverImageView.image = defaultCase.image(size: 100)
+                    coverImageView.tintColor = defaultCase.color
+                    coverImageView.contentMode = .scaleAspectFit
+                    coverImageView.backgroundColor = Constants.Colors.background
+                } else {
+                    // Fallback to the symbol name directly
+                    coverImageView.image = UIImage(systemName: symbolName)
+                    coverImageView.tintColor = Constants.Colors.primary
+                    coverImageView.contentMode = .scaleAspectFit
+                    coverImageView.backgroundColor = Constants.Colors.background
+                }
+            } else {
+                // Regular image URL
+                ImageService.shared.loadImage(from: coverImageUrl) { [weak self] image in
+                    DispatchQueue.main.async {
+                        self?.coverImageView.image = image
+                        self?.coverImageView.contentMode = .scaleAspectFill
+                    }
                 }
             }
         } else {
             // Default image based on category
-            switch circle.category {
-            case .travel:
-                coverImageView.image = UIImage(systemName: "airplane.departure")
-            case .food:
-                coverImageView.image = UIImage(systemName: "fork.knife")
-            case .services:
-                coverImageView.image = UIImage(systemName: "wrench.and.screwdriver")
-            case .shopping:
-                coverImageView.image = UIImage(systemName: "bag")
-            case .healthcare:
-                coverImageView.image = UIImage(systemName: "heart.text.square")
-            case .entertainment:
-                coverImageView.image = UIImage(systemName: "ticket")
-            case .other:
-                coverImageView.image = UIImage(systemName: "square.grid.2x2")
-            }
-            coverImageView.tintColor = Constants.Colors.primary
+            let defaultImage = DefaultImages.circleImageForCategory(circle.category)
+            coverImageView.image = defaultImage.image(size: 100)
+            coverImageView.tintColor = defaultImage.color
             coverImageView.contentMode = .scaleAspectFit
             coverImageView.backgroundColor = Constants.Colors.background
         }
@@ -603,6 +654,128 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         case .other:
             categoryLabel.backgroundColor = UIColor(hex: "#718096") // Gray
         }
+        
+        // Configure editors if any
+        configureEditors()
+    }
+    
+    private func configureEditors() {
+        // Check if circle has editors
+        guard let editorIds = circle.editors, !editorIds.isEmpty else {
+            editorsContainerView.isHidden = true
+            return
+        }
+        
+        // If editorsDetails is already populated, use it
+        if let editorsDetails = circle.editorsDetails, !editorsDetails.isEmpty {
+            self.editors = editorsDetails
+            displayEditors()
+        } else {
+            // Fetch editor details
+            loadEditors()
+        }
+    }
+    
+    private func loadEditors() {
+        CircleService.shared.getEditors(circleId: circle.id) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let editors):
+                    self?.editors = editors
+                    self?.displayEditors()
+                case .failure(let error):
+                    print("Failed to load editors: \(error)")
+                    // Still show the container but maybe show user IDs instead
+                    self?.editorsContainerView.isHidden = true
+                }
+            }
+        }
+    }
+    
+    private func displayEditors() {
+        // Clear existing views
+        editorsStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        
+        // Show the container
+        editorsContainerView.isHidden = false
+        
+        // Add editor views (max 5 visible, then show +X more)
+        let maxVisible = 5
+        let editorsToShow = Array(editors.prefix(maxVisible))
+        
+        for editor in editorsToShow {
+            let editorView = createEditorView(for: editor)
+            editorsStackView.addArrangedSubview(editorView)
+        }
+        
+        // Add "+X more" label if needed
+        if editors.count > maxVisible {
+            let moreLabel = UILabel()
+            moreLabel.text = "+\(editors.count - maxVisible) more"
+            moreLabel.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
+            moreLabel.textColor = Constants.Colors.secondaryLabel
+            editorsStackView.addArrangedSubview(moreLabel)
+        }
+    }
+    
+    private func createEditorView(for user: User) -> UIView {
+        let containerView = UIView()
+        containerView.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Create vertical stack for avatar and name
+        let stackView = UIStackView()
+        stackView.axis = .vertical
+        stackView.alignment = .center
+        stackView.spacing = 4
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Avatar image view
+        let avatarImageView = UIImageView()
+        avatarImageView.contentMode = .scaleAspectFill
+        avatarImageView.clipsToBounds = true
+        avatarImageView.layer.cornerRadius = 20
+        avatarImageView.backgroundColor = Constants.Colors.tertiaryBackground
+        avatarImageView.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Load avatar image
+        if let avatarUrl = user.profilePicture {
+            ImageService.shared.loadImage(from: avatarUrl) { image in
+                DispatchQueue.main.async {
+                    avatarImageView.image = image
+                }
+            }
+        } else {
+            // Default avatar
+            avatarImageView.image = UIImage(systemName: "person.circle.fill")
+            avatarImageView.tintColor = Constants.Colors.secondaryLabel
+        }
+        
+        // Name label
+        let nameLabel = UILabel()
+        nameLabel.text = user.displayName
+        nameLabel.font = UIFont.systemFont(ofSize: Constants.FontSize.xsmall)
+        nameLabel.textColor = Constants.Colors.label
+        nameLabel.textAlignment = .center
+        nameLabel.lineBreakMode = .byTruncatingTail
+        
+        stackView.addArrangedSubview(avatarImageView)
+        stackView.addArrangedSubview(nameLabel)
+        
+        containerView.addSubview(stackView)
+        
+        NSLayoutConstraint.activate([
+            avatarImageView.widthAnchor.constraint(equalToConstant: 40),
+            avatarImageView.heightAnchor.constraint(equalToConstant: 40),
+            
+            stackView.topAnchor.constraint(equalTo: containerView.topAnchor),
+            stackView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            stackView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            stackView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+            
+            containerView.widthAnchor.constraint(equalToConstant: 60)
+        ])
+        
+        return containerView
     }
     
     private func setupLocationManager() {
@@ -1439,6 +1612,13 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     }
     
     @objc private func addPlaceButtonTapped() {
+        // Check subscription limit
+        let currentPlaceCount = places.count
+        
+        if !SubscriptionManager.shared.checkPlaceLimit(currentCount: currentPlaceCount, from: self) {
+            return
+        }
+        
         // Directly open the AddPlaceViewController with map and search functionality
         let addPlaceVC = AddPlaceViewController(circleId: circle.id)
         navigationController?.pushViewController(addPlaceVC, animated: true)

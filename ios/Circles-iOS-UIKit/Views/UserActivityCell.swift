@@ -104,10 +104,18 @@ class UserActivityCell: UICollectionViewCell {
         
         // Set user info
         if let user = connection.connectedUser {
-            nameLabel.text = user.firstName ?? user.displayName
+            // Add safety check for empty displayName
+            let displayName = user.displayName.isEmpty ? ((user.email ?? "").components(separatedBy: "@").first ?? "User") : user.displayName
+            nameLabel.text = displayName
+            
+            // Debug logging for Dan Wickner issue
+            if user.displayName.isEmpty || user.displayName == "Dan Wickner" {
+                print("DEBUG UserActivityCell: User \(user.id) has displayName: '\(user.displayName)' (length: \(user.displayName.count))")
+                print("DEBUG UserActivityCell: Using display text: '\(displayName)'")
+            }
             
             // Set placeholder first
-            profileImageView.image = createInitialsImage(for: user.displayName)
+            profileImageView.image = createInitialsImage(for: displayName)
             
             // Load profile image using ImageService with caching
             if let profilePicture = user.profilePicture {

@@ -162,11 +162,38 @@ const getMessaging = () => {
   return admin.messaging();
 };
 
+// Function to get Firebase classes (lazy loading to ensure Firebase is initialized)
+const getFieldValue = () => {
+  if (global.mockFirebase) {
+    return {
+      arrayUnion: (...args) => ({ _mockArrayUnion: args }),
+      arrayRemove: (...args) => ({ _mockArrayRemove: args }),
+      increment: (n) => ({ _mockIncrement: n }),
+      serverTimestamp: () => ({ _mockServerTimestamp: true })
+    };
+  }
+  return admin.firestore.FieldValue;
+};
+
+const getGeoPoint = () => {
+  if (global.mockFirebase) {
+    return class MockGeoPoint {
+      constructor(latitude, longitude) {
+        this.latitude = latitude;
+        this.longitude = longitude;
+      }
+    };
+  }
+  return admin.firestore.GeoPoint;
+};
+
 module.exports = {
   initializeFirebase,
   getFirestore,
   getStorage,
   getAuth,
   getMessaging,
-  admin: global.mockFirebase ? null : admin
+  admin: global.mockFirebase ? null : admin,
+  get FieldValue() { return getFieldValue(); },
+  get GeoPoint() { return getGeoPoint(); }
 };

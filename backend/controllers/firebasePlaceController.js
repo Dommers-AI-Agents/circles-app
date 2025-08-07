@@ -1635,8 +1635,8 @@ exports.getPlaceComments = async (req, res, next) => {
       });
     }
     
-    // Get comments
-    console.log('📋 Fetching comments from placeComments collection for place:', placeId);
+    // Get comments (only top-level comments, not replies)
+    console.log('📋 Fetching top-level comments from placeComments collection for place:', placeId);
     const commentsSnapshot = await db.collection('placeComments')
       .where('placeId', '==', placeId)
       .orderBy('createdAt', 'desc')
@@ -1648,13 +1648,21 @@ exports.getPlaceComments = async (req, res, next) => {
     for (const doc of commentsSnapshot.docs) {
       const comment = serializeDoc(doc);
       
-      // Get user details
-      const userDoc = await db.collection(COLLECTIONS.USERS).doc(comment.userId).get();
-      if (userDoc.exists) {
-        comment.user = serializeDoc(userDoc);
+      // Only include top-level comments (no parentCommentId or parentCommentId is null/undefined)
+      if (!comment.parentCommentId) {
+        // Get user details
+        const userDoc = await db.collection(COLLECTIONS.USERS).doc(comment.userId).get();
+        if (userDoc.exists) {
+          comment.user = serializeDoc(userDoc);
+        }
+        
+        // Ensure replyCount is included (default to 0 if not present)
+        if (comment.replyCount === undefined || comment.replyCount === null) {
+          comment.replyCount = 0;
+        }
+        
+        comments.push(comment);
       }
-      
-      comments.push(comment);
     }
     
     console.log(`📤 Returning ${comments.length} comments with user details`);
@@ -1738,15 +1746,13 @@ exports.addPlaceComment = async (req, res, next) => {
       });
     }
     
-    // Create comment
-    const commentData = {
+    // Create comment using the model function
+    const { createPlaceComment } = require('../models/FirestoreModels');
+    const commentData = createPlaceComment({
       placeId: placeId,
       userId: userId,
-      text: text.trim(),
-      likes: [], // Array of user IDs who liked the comment
-      likesCount: 0, // Count for efficient display
-      createdAt: new Date().toISOString()
-    };
+      text: text.trim()
+    });
     
     console.log('💾 Saving comment to placeComments collection');
     const commentRef = await db.collection('placeComments').add(commentData);
@@ -1773,7 +1779,7 @@ exports.addPlaceComment = async (req, res, next) => {
     
     res.status(201).json({
       success: true,
-      comment: comment
+      data: comment
     });
     
     // Track comment activity
@@ -2223,6 +2229,277 @@ exports.likeComment = async (req, res, next) => {
     
   } catch (error) {
     console.error('Error liking/unliking comment:', error);
+    next(error);
+  }
+};
+
+// @desc    Add reply to a place comment
+// @route   POST /api/places/:id/comments/:commentId/replies
+// @access  Private
+exports.addPlaceCommentReply = async (req, res, next) => {
+  try {
+    const { id: placeId, commentId } = req.params;
+    const userId = req.user.uid;
+    const { text } = req.body;
+    
+    console.log('💬 addPlaceCommentReply called:', {
+      placeId,
+      commentId,
+      userId,
+      text: text?.substring(0, 50) + (text?.length > 50 ? '...' : ''),
+      timestamp: new Date().toISOString()
+    });
+    
+    if (!text || text.trim() === '') {
+      return res.status(400).json({
+        success: false,
+        message: 'Reply text is required'
+      });
+    }
+    
+    // Get the parent comment to validate it exists
+    const parentCommentRef = db.collection('placeComments').doc(commentId);
+    const parentCommentDoc = await parentCommentRef.get();
+    
+    if (!parentCommentDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Parent comment not found'
+      });
+    }
+    
+    const parentComment = serializeDoc(parentCommentDoc);
+    
+    // Ensure the parent comment belongs to the specified place
+    if (parentComment.placeId !== placeId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Comment does not belong to this place'
+      });
+    }
+    
+    // Get the place to check permissions
+    const placeRef = db.collection(COLLECTIONS.PLACES).doc(placeId);
+    const placeDoc = await placeRef.get();
+    
+    if (!placeDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Place not found'
+      });
+    }
+    
+    const place = serializeDoc(placeDoc);
+    
+    // Check if user can reply to comments on this place (same permissions as commenting)
+    // Get the circle to check permissions
+    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(place.circleId);
+    const circleDoc = await circleRef.get();
+    
+    if (!circleDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Circle not found'
+      });
+    }
+    
+    const circle = serializeDoc(circleDoc);
+    
+    // Check permissions
+    const isOwner = circle.owner === userId;
+    const isSharedWith = circle.sharedWith && circle.sharedWith.includes(userId);
+    const isPublic = circle.privacy === 'public';
+    
+    // Check if users are connected for myNetwork privacy
+    let isConnected = false;
+    if (circle.privacy === 'myNetwork' && !isOwner) {
+      const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', userId)
+        .where('connectedUserId', '==', circle.owner)
+        .where('status', '==', 'accepted')
+        .get();
+        
+      const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', circle.owner)
+        .where('connectedUserId', '==', userId)
+        .where('status', '==', 'accepted')
+        .get();
+        
+      isConnected = !connection1.empty || !connection2.empty;
+    }
+    
+    if (!isOwner && !isSharedWith && !isPublic && !(circle.privacy === 'myNetwork' && isConnected)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to reply to comments on this place'
+      });
+    }
+    
+    // Create reply data using the new model function
+    const { createPlaceComment } = require('../models/FirestoreModels');
+    const replyData = createPlaceComment({
+      placeId: placeId,
+      userId: userId,
+      text: text.trim(),
+      parentCommentId: commentId
+    });
+    
+    console.log('💾 Saving reply to placeComments collection');
+    const replyRef = await db.collection('placeComments').add(replyData);
+    const replyDoc = await replyRef.get();
+    const reply = serializeDoc(replyDoc);
+    console.log('✅ Reply saved successfully with ID:', reply.id);
+    
+    // Get user details for the reply
+    const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+    if (userDoc.exists) {
+      reply.user = serializeDoc(userDoc);
+    }
+    
+    // Update parent comment reply count
+    const currentReplyCount = parentComment.replyCount || 0;
+    await parentCommentRef.update({
+      replyCount: currentReplyCount + 1
+    });
+    
+    console.log('✅ Parent comment reply count updated');
+    
+    res.status(201).json({
+      success: true,
+      data: reply
+    });
+    
+  } catch (error) {
+    console.error('Error adding place comment reply:', error);
+    next(error);
+  }
+};
+
+// @desc    Get replies for a place comment
+// @route   GET /api/places/:id/comments/:commentId/replies
+// @access  Private
+exports.getPlaceCommentReplies = async (req, res, next) => {
+  try {
+    const { id: placeId, commentId } = req.params;
+    const userId = req.user.uid;
+    
+    console.log('🔍 getPlaceCommentReplies called:', {
+      placeId,
+      commentId,
+      userId,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Verify parent comment exists and belongs to the place
+    const parentCommentRef = db.collection('placeComments').doc(commentId);
+    const parentCommentDoc = await parentCommentRef.get();
+    
+    if (!parentCommentDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Parent comment not found'
+      });
+    }
+    
+    const parentComment = serializeDoc(parentCommentDoc);
+    
+    if (parentComment.placeId !== placeId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Comment does not belong to this place'
+      });
+    }
+    
+    // Get the place to check permissions
+    const placeRef = db.collection(COLLECTIONS.PLACES).doc(placeId);
+    const placeDoc = await placeRef.get();
+    
+    if (!placeDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Place not found'
+      });
+    }
+    
+    const place = serializeDoc(placeDoc);
+    
+    // Check if user can view replies (same permissions as viewing comments)
+    // Get the circle to check permissions
+    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(place.circleId);
+    const circleDoc = await circleRef.get();
+    
+    if (!circleDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Circle not found'
+      });
+    }
+    
+    const circle = serializeDoc(circleDoc);
+    
+    // Check permissions
+    const isOwner = circle.owner === userId;
+    const isSharedWith = circle.sharedWith && circle.sharedWith.includes(userId);
+    const isPublic = circle.privacy === 'public';
+    
+    // Check if users are connected for myNetwork privacy
+    let isConnected = false;
+    if (circle.privacy === 'myNetwork' && !isOwner) {
+      const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', userId)
+        .where('connectedUserId', '==', circle.owner)
+        .where('status', '==', 'accepted')
+        .get();
+        
+      const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', circle.owner)
+        .where('connectedUserId', '==', userId)
+        .where('status', '==', 'accepted')
+        .get();
+        
+      isConnected = !connection1.empty || !connection2.empty;
+    }
+    
+    if (!isOwner && !isSharedWith && !isPublic && !(circle.privacy === 'myNetwork' && isConnected)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to view replies on this place'
+      });
+    }
+    
+    // Get replies for this comment
+    const repliesSnapshot = await db.collection('placeComments')
+      .where('parentCommentId', '==', commentId)
+      .orderBy('createdAt', 'asc') // Replies should be chronological
+      .get();
+    
+    const replies = [];
+    for (const replyDoc of repliesSnapshot.docs) {
+      const reply = serializeDoc(replyDoc);
+      
+      // Get user details for each reply
+      const userDoc = await db.collection(COLLECTIONS.USERS).doc(reply.userId).get();
+      if (userDoc.exists) {
+        reply.user = serializeDoc(userDoc);
+      }
+      
+      replies.push(reply);
+    }
+    
+    console.log(`✅ Found ${replies.length} replies for comment ${commentId}`);
+    
+    // Log details of replies for debugging
+    replies.forEach((reply, index) => {
+      console.log(`  Reply ${index + 1}: id=${reply.id}, userId=${reply.userId}, text="${reply.text?.substring(0, 50)}..."`);
+    });
+    
+    res.status(200).json({
+      success: true,
+      comments: replies
+    });
+    
+  } catch (error) {
+    console.error('Error getting place comment replies:', error);
     next(error);
   }
 };

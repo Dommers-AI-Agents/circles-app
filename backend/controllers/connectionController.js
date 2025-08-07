@@ -904,8 +904,9 @@ const getActiveConnections = async (req, res) => {
   try {
     const userId = req.user.firebaseDocId || req.user.uid;
     const limit = parseInt(req.query.limit) || 10;
+    const offset = parseInt(req.query.offset) || 0;
     
-    console.log(`🔍 Getting active connections for user ${userId} with limit ${limit}`);
+    console.log(`🔍 Getting active connections for user ${userId} with limit ${limit}, offset ${offset}`);
     
     // Get all accepted connections
     const connectionsQuery1 = db.collection(COLLECTIONS.CONNECTIONS)
@@ -1048,34 +1049,29 @@ const getActiveConnections = async (req, res) => {
       if (components) {
         console.log(`      Components: M:${components.messages} E:${components.engagement} C:${components.content} R:${components.recency} = ${components.total}`);
       }
-      
-      // Special attention to Dan Wickner
-      if (name.toLowerCase().includes('dan') || name.toLowerCase().includes('wickner')) {
-        console.log(`      🎯 DAN WICKNER FOUND at position ${index + 1}!`);
-        console.log(`      🔍 Last message: ${conn.lastMessageAt || 'NONE'}`);
-        console.log(`      🔍 Recent activity: ${JSON.stringify(conn.recentActivity || [])}`);
-        console.log(`      🔍 Has unviewed activity: ${conn.hasRecentPlace}`);
-        console.log(`      🔍 Total places: ${conn.totalPlaces}`);
-        console.log(`      🔍 View count: ${conn.viewCount}`);
-        console.log(`      🔍 Total activity count: ${conn.totalActivityCount || 0}`);
-        console.log(`      🔍 Unviewed activity count: ${conn.unviewedActivityCount || 0}`);
-      }
     });
 
-    const finalConnections = validConnections.slice(0, limit);
+    // Apply pagination with offset
+    const finalConnections = validConnections.slice(offset, offset + limit);
     
     // Log final order
-    console.log(`🔍 DEBUG: Final ${limit} connections being returned:`);
+    console.log(`🔍 DEBUG: Returning connections ${offset + 1}-${offset + finalConnections.length} out of ${validConnections.length} total:`);
     finalConnections.forEach((conn, index) => {
       const name = conn.connectedUser?.displayName || 'Unknown';
-      console.log(`   ${index + 1}. ${name} (Score: ${conn.connectionScore})`);
+      console.log(`   ${offset + index + 1}. ${name} (Score: ${conn.connectionScore})`);
     });
 
     // Returning connections sorted by score
     
     res.status(200).json({
       success: true,
-      connections: finalConnections
+      connections: finalConnections,
+      pagination: {
+        offset: offset,
+        limit: limit,
+        total: validConnections.length,
+        hasMore: offset + limit < validConnections.length
+      }
     });
   } catch (error) {
     console.error('Error fetching active connections:', error);

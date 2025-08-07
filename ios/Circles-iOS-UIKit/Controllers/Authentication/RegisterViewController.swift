@@ -64,9 +64,46 @@ class RegisterViewController: BaseViewController {
         textField.placeholder = "Confirm Password"
         textField.borderStyle = .roundedRect
         textField.isSecureTextEntry = true
+        textField.returnKeyType = .next
+        textField.translatesAutoresizingMaskIntoConstraints = false
+        return textField
+    }()
+    
+    private let referralCodeTextField: UITextField = {
+        let textField = UITextField()
+        textField.placeholder = "Referral Code (Optional)"
+        textField.borderStyle = .roundedRect
+        textField.autocapitalizationType = .allCharacters
+        textField.autocorrectionType = .no
         textField.returnKeyType = .done
         textField.translatesAutoresizingMaskIntoConstraints = false
         return textField
+    }()
+    
+    private let referralCodeLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Have a referral code? Get 1 month free!"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
+        label.textColor = Constants.Colors.primary
+        label.numberOfLines = 0
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private lazy var togglePasswordButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "eye.slash.fill"), for: .normal)
+        button.tintColor = Constants.Colors.secondaryLabel
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private lazy var toggleConfirmPasswordButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "eye.slash.fill"), for: .normal)
+        button.tintColor = Constants.Colors.secondaryLabel
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
     }()
     
     private let passwordRequirementLabel: UILabel = {
@@ -116,7 +153,7 @@ class RegisterViewController: BaseViewController {
             let buttons = [registerButton, appleSignInButton, googleSignInButton, facebookSignInButton]
             buttons.forEach { $0.isEnabled = !isRegistering }
             
-            let textFields = [emailTextField, passwordTextField, confirmPasswordTextField]
+            let textFields = [emailTextField, passwordTextField, confirmPasswordTextField, referralCodeTextField]
             textFields.forEach { $0.isEnabled = !isRegistering }
             
             if isRegistering {
@@ -142,6 +179,13 @@ class RegisterViewController: BaseViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         setupNavigationBar(title: "Register", largeTitleMode: .automatic)
+        
+        // Check if we have a pending referral code from deep link
+        if let pendingCode = ReferralService.shared.getPendingReferralCode() {
+            referralCodeTextField.text = pendingCode
+            referralCodeLabel.text = "✅ Referral code applied! You'll get 1 month free."
+            referralCodeLabel.textColor = Constants.Colors.success
+        }
     }
     
     // MARK: - UI Setup
@@ -151,13 +195,19 @@ class RegisterViewController: BaseViewController {
         socialStackView.addArrangedSubview(googleSignInButton)
         socialStackView.addArrangedSubview(facebookSignInButton)
         
+        // Setup password field right views
+        passwordTextField.rightView = togglePasswordButton
+        passwordTextField.rightViewMode = .always
+        confirmPasswordTextField.rightView = toggleConfirmPasswordButton
+        confirmPasswordTextField.rightViewMode = .always
+        
         // Add subviews
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
         
         let subviews = [titleLabel, subtitleLabel, emailTextField, passwordTextField, 
-                       confirmPasswordTextField, passwordRequirementLabel, registerButton, 
-                       orLabel, socialStackView]
+                       confirmPasswordTextField, passwordRequirementLabel, referralCodeTextField,
+                       referralCodeLabel, registerButton, orLabel, socialStackView]
         subviews.forEach { contentView.addSubview($0) }
         
         setupConstraints()
@@ -201,19 +251,36 @@ class RegisterViewController: BaseViewController {
             passwordTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             passwordTextField.heightAnchor.constraint(equalToConstant: 50),
             
+            // Toggle password button
+            togglePasswordButton.widthAnchor.constraint(equalToConstant: 44),
+            
             // Confirm password field
             confirmPasswordTextField.topAnchor.constraint(equalTo: passwordTextField.bottomAnchor, constant: Constants.Spacing.medium),
             confirmPasswordTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             confirmPasswordTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             confirmPasswordTextField.heightAnchor.constraint(equalToConstant: 50),
             
+            // Toggle confirm password button
+            toggleConfirmPasswordButton.widthAnchor.constraint(equalToConstant: 44),
+            
             // Password requirement
             passwordRequirementLabel.topAnchor.constraint(equalTo: confirmPasswordTextField.bottomAnchor, constant: Constants.Spacing.small),
             passwordRequirementLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             passwordRequirementLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             
+            // Referral code field
+            referralCodeTextField.topAnchor.constraint(equalTo: passwordRequirementLabel.bottomAnchor, constant: Constants.Spacing.medium),
+            referralCodeTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            referralCodeTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            referralCodeTextField.heightAnchor.constraint(equalToConstant: 50),
+            
+            // Referral code label
+            referralCodeLabel.topAnchor.constraint(equalTo: referralCodeTextField.bottomAnchor, constant: Constants.Spacing.small),
+            referralCodeLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            referralCodeLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            
             // Register button
-            registerButton.topAnchor.constraint(equalTo: passwordRequirementLabel.bottomAnchor, constant: Constants.Spacing.large),
+            registerButton.topAnchor.constraint(equalTo: referralCodeLabel.bottomAnchor, constant: Constants.Spacing.large),
             registerButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             registerButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             
@@ -231,7 +298,7 @@ class RegisterViewController: BaseViewController {
     }
     
     private func setupTextFieldDelegates() {
-        [emailTextField, passwordTextField, confirmPasswordTextField].forEach {
+        [emailTextField, passwordTextField, confirmPasswordTextField, referralCodeTextField].forEach {
             $0.delegate = self
         }
     }
@@ -241,6 +308,8 @@ class RegisterViewController: BaseViewController {
         appleSignInButton.addTarget(self, action: #selector(appleSignInButtonTapped), for: .touchUpInside)
         googleSignInButton.addTarget(self, action: #selector(googleSignInButtonTapped), for: .touchUpInside)
         facebookSignInButton.addTarget(self, action: #selector(facebookSignInButtonTapped), for: .touchUpInside)
+        togglePasswordButton.addTarget(self, action: #selector(togglePasswordVisibility), for: .touchUpInside)
+        toggleConfirmPasswordButton.addTarget(self, action: #selector(toggleConfirmPasswordVisibility), for: .touchUpInside)
         
         // Keyboard handling
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
@@ -267,6 +336,14 @@ class RegisterViewController: BaseViewController {
             return
         }
         
+        // Get referral code if provided
+        let referralCode = referralCodeTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Save referral code if provided (to apply after registration)
+        if let code = referralCode, !code.isEmpty {
+            ReferralService.shared.savePendingReferralCode(code)
+        }
+        
         // Start registration
         isRegistering = true
         
@@ -281,6 +358,16 @@ class RegisterViewController: BaseViewController {
                 switch result {
                 case .success(let user):
                     print("Successfully registered user: \(user.displayName)")
+                    
+                    // Apply referral code if we have one
+                    if let _ = referralCode, !referralCode!.isEmpty {
+                        ReferralService.shared.applyPendingReferralCodeIfNeeded { success in
+                            if success {
+                                print("Successfully applied referral code")
+                            }
+                        }
+                    }
+                    
                     self?.showEmailVerificationMessage(email: email)
                     
                 case .failure(let error):
@@ -310,6 +397,18 @@ class RegisterViewController: BaseViewController {
     
     @objc private func dismissKeyboard() {
         view.endEditing(true)
+    }
+    
+    @objc private func togglePasswordVisibility() {
+        passwordTextField.isSecureTextEntry.toggle()
+        let imageName = passwordTextField.isSecureTextEntry ? "eye.slash.fill" : "eye.fill"
+        togglePasswordButton.setImage(UIImage(systemName: imageName), for: .normal)
+    }
+    
+    @objc private func toggleConfirmPasswordVisibility() {
+        confirmPasswordTextField.isSecureTextEntry.toggle()
+        let imageName = confirmPasswordTextField.isSecureTextEntry ? "eye.slash.fill" : "eye.fill"
+        toggleConfirmPasswordButton.setImage(UIImage(systemName: imageName), for: .normal)
     }
     
     // MARK: - Helper Methods
@@ -363,7 +462,7 @@ class RegisterViewController: BaseViewController {
     }
     
     private func findFirstResponder() -> UIView? {
-        let responders: [UIView] = [emailTextField, passwordTextField, confirmPasswordTextField]
+        let responders: [UIView] = [emailTextField, passwordTextField, confirmPasswordTextField, referralCodeTextField]
         return responders.first { $0.isFirstResponder }
     }
     
@@ -426,6 +525,8 @@ extension RegisterViewController: UITextFieldDelegate {
         case passwordTextField:
             confirmPasswordTextField.becomeFirstResponder()
         case confirmPasswordTextField:
+            referralCodeTextField.becomeFirstResponder()
+        case referralCodeTextField:
             textField.resignFirstResponder()
             registerButtonTapped()
         default:

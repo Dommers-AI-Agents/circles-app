@@ -7,6 +7,7 @@ class SettingsViewController: BaseTableViewController {
     private var notificationPermissionStatus: String = "Checking..."
     
     private enum Section: Int, CaseIterable {
+        case subscription
         case account
         case privacy
         case notifications
@@ -16,12 +17,25 @@ class SettingsViewController: BaseTableViewController {
         
         var title: String {
             switch self {
+            case .subscription: return "Subscription"
             case .account: return "Account"
             case .privacy: return "Privacy"
             case .notifications: return "Notifications"
             case .about: return "About"
             case .tutorial: return "Tutorial"
             case .danger: return "Danger Zone"
+            }
+        }
+    }
+    
+    private enum SubscriptionRow: Int, CaseIterable {
+        case status
+        case manage
+        
+        var title: String {
+            switch self {
+            case .status: return "Premium Status"
+            case .manage: return "Manage Subscription"
             }
         }
     }
@@ -318,6 +332,7 @@ extension SettingsViewController {
         guard let sectionType = Section(rawValue: section) else { return 0 }
         
         switch sectionType {
+        case .subscription: return SubscriptionRow.allCases.count
         case .account: return AccountRow.allCases.count
         case .privacy: return PrivacyRow.allCases.count
         case .notifications: return NotificationRow.allCases.count
@@ -337,6 +352,21 @@ extension SettingsViewController {
         guard let section = Section(rawValue: indexPath.section) else { return cell }
         
         switch section {
+        case .subscription:
+            if let row = SubscriptionRow(rawValue: indexPath.row) {
+                switch row {
+                case .status:
+                    cell.textLabel?.text = row.title
+                    let status = SubscriptionManager.shared.subscriptionStatus
+                    cell.detailTextLabel?.text = status.displayName
+                    cell.detailTextLabel?.textColor = status.badgeColor
+                    cell.accessoryType = .disclosureIndicator
+                case .manage:
+                    cell.textLabel?.text = row.title
+                    cell.accessoryType = .disclosureIndicator
+                }
+            }
+            
         case .account:
             if let row = AccountRow(rawValue: indexPath.row) {
                 switch row {
@@ -427,6 +457,16 @@ extension SettingsViewController {
         guard let section = Section(rawValue: indexPath.section) else { return }
         
         switch section {
+        case .subscription:
+            if let row = SubscriptionRow(rawValue: indexPath.row) {
+                switch row {
+                case .status:
+                    showSubscriptionDetails()
+                case .manage:
+                    openAppStoreSubscriptionManagement()
+                }
+            }
+            
         case .account:
             if let row = AccountRow(rawValue: indexPath.row) {
                 switch row {
@@ -484,6 +524,19 @@ extension SettingsViewController {
                     showDeleteAccountConfirmation()
                 }
             }
+        }
+    }
+    
+    // MARK: - Subscription Methods
+    
+    private func showSubscriptionDetails() {
+        let subscriptionVC = SubscriptionViewController()
+        navigationController?.pushViewController(subscriptionVC, animated: true)
+    }
+    
+    private func openAppStoreSubscriptionManagement() {
+        if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+            UIApplication.shared.open(url)
         }
     }
 }

@@ -14,7 +14,11 @@ const {
   markMessagesAsRead,
   getUnreadCount,
   deleteConversation,
-  debugGetConversations
+  debugGetConversations,
+  toggleNotifications,
+  updateConversation,
+  addParticipant,
+  removeParticipant
 } = require('../controllers/messagingController');
 
 // Apply authentication middleware to all routes
@@ -30,6 +34,9 @@ router.route('/conversations')
 
 // Get or create direct conversation with specific user
 router.post('/conversations/direct/:userId', getOrCreateDirectConversation);
+
+// Update conversation (name, avatar)
+router.put('/conversations/:conversationId', updateConversation);
 
 // Message routes for a specific conversation
 router.route('/conversations/:conversationId/messages')
@@ -49,5 +56,12 @@ router.get('/unread-count', getUnreadCount);
 
 // Delete a conversation
 router.delete('/conversations/:conversationId', deleteConversation);
+
+// Toggle notifications for a conversation
+router.put('/conversations/:conversationId/notifications', toggleNotifications);
+
+// Participant management routes
+router.post('/conversations/:conversationId/participants', addParticipant);
+router.delete('/conversations/:conversationId/participants/:userId', removeParticipant);
 
 module.exports = router;

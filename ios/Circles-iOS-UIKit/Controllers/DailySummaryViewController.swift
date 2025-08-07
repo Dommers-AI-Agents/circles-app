@@ -30,40 +30,74 @@ class DailySummaryViewController: UIViewController {
         let topContributors: [(name: String, count: Int)]
         
         init(from notification: [String: Any]) {
+            // Debug logging
+            print("📊 DailySummaryData: Parsing notification data")
+            print("📊 Available keys: \(notification.keys.sorted())")
+            
             self.date = Date()
+            
+            // FCM places data fields at the root level, not in a nested 'data' object
             self.newPlaces = Int(notification["newPlaces"] as? String ?? "0") ?? 0
             self.newConnections = Int(notification["newConnections"] as? String ?? "0") ?? 0
             self.unreadMessages = Int(notification["unreadMessages"] as? String ?? "0") ?? 0
             self.placeComments = Int(notification["placeComments"] as? String ?? "0") ?? 0
             self.placeLikes = Int(notification["placeLikes"] as? String ?? "0") ?? 0
             
+            // Log parsed values
+            print("📊 Parsed values:")
+            print("  - newPlaces: \(self.newPlaces)")
+            print("  - newConnections: \(self.newConnections)")
+            print("  - unreadMessages: \(self.unreadMessages)")
+            print("  - placeComments: \(self.placeComments)")
+            print("  - placeLikes: \(self.placeLikes)")
+            
             // Parse categories if available
-            if let categoriesString = notification["placeCategories"] as? String,
-               let data = categoriesString.data(using: .utf8),
-               let categories = try? JSONSerialization.jsonObject(with: data) as? [String: Int] {
-                self.newPlacesByCategory = categories
+            if let categoriesString = notification["placeCategories"] as? String {
+                print("📊 Found placeCategories: \(categoriesString)")
+                if let data = categoriesString.data(using: .utf8),
+                   let categories = try? JSONSerialization.jsonObject(with: data) as? [String: Int] {
+                    self.newPlacesByCategory = categories
+                    print("📊 Parsed categories: \(categories)")
+                } else {
+                    self.newPlacesByCategory = [:]
+                    print("📊 Failed to parse categories")
+                }
             } else {
                 self.newPlacesByCategory = [:]
+                print("📊 No placeCategories found")
             }
             
             // Parse contributors if available
-            if let contributorsString = notification["topContributors"] as? String,
-               let data = contributorsString.data(using: .utf8),
-               let contributors = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
-                self.topContributors = contributors.compactMap { dict in
-                    guard let name = dict["name"] as? String,
-                          let count = dict["count"] as? Int else { return nil }
-                    return (name, count)
+            if let contributorsString = notification["topContributors"] as? String {
+                print("📊 Found topContributors: \(contributorsString)")
+                if let data = contributorsString.data(using: .utf8),
+                   let contributors = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                    self.topContributors = contributors.compactMap { dict in
+                        guard let name = dict["name"] as? String,
+                              let count = dict["count"] as? Int else { return nil }
+                        return (name, count)
+                    }
+                    print("📊 Parsed contributors: \(self.topContributors)")
+                } else {
+                    self.topContributors = []
+                    print("📊 Failed to parse contributors")
                 }
             } else {
                 self.topContributors = []
+                print("📊 No topContributors found")
             }
+            
+            print("📊 DailySummaryData initialization complete")
         }
     }
     
     // MARK: - Initialization
     init(notificationData: [String: Any]) {
         super.init(nibName: nil, bundle: nil)
+        
+        print("📊 DailySummaryViewController: Initializing with notification data")
+        print("📊 Raw notification data: \(notificationData)")
+        
         self.summaryData = DailySummaryData(from: notificationData)
         
         // Present as modal
@@ -190,7 +224,26 @@ class DailySummaryViewController: UIViewController {
     
     // MARK: - Display Summary
     private func displaySummary() {
-        guard let data = summaryData else { return }
+        guard let data = summaryData else { 
+            print("📊 No summary data available")
+            // Show a fallback message
+            let noDataCard = createSummaryCard(
+                emoji: "📊",
+                title: "Your Daily Summary",
+                subtitle: "Check out what's happening in your network",
+                color: Constants.Colors.primary,
+                action: #selector(dismissTapped)
+            )
+            stackView.addArrangedSubview(noDataCard)
+            return
+        }
+        
+        print("📊 Displaying summary with data:")
+        print("  - newPlaces: \(data.newPlaces)")
+        print("  - newConnections: \(data.newConnections)")
+        print("  - unreadMessages: \(data.unreadMessages)")
+        print("  - placeComments: \(data.placeComments)")
+        print("  - placeLikes: \(data.placeLikes)")
         
         // Format date
         let formatter = DateFormatter()
@@ -255,6 +308,20 @@ class DailySummaryViewController: UIViewController {
         if !data.topContributors.isEmpty {
             let contributorsView = createContributorsView(data.topContributors)
             stackView.addArrangedSubview(contributorsView)
+        }
+        
+        // If no activity at all, show a message
+        if data.newPlaces == 0 && data.newConnections == 0 && data.unreadMessages == 0 && 
+           data.placeComments == 0 && data.placeLikes == 0 {
+            print("📊 No activity to display")
+            let noActivityCard = createSummaryCard(
+                emoji: "😴",
+                title: "No New Activity",
+                subtitle: "Check back tomorrow for updates from your network",
+                color: .systemGray,
+                action: #selector(dismissTapped)
+            )
+            stackView.addArrangedSubview(noActivityCard)
         }
     }
     

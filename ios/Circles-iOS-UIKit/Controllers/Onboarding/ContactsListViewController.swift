@@ -161,7 +161,7 @@ class ContactsListViewController: BaseViewController {
             switch result {
             case .success(let contacts):
                 // Filter out contacts that are already matched users
-                let matchedEmails = Set(self?.matchedUsers.map { $0.email.lowercased() } ?? [])
+                let matchedEmails = Set(self?.matchedUsers.compactMap { $0.email?.lowercased() } ?? [])
                 
                 self?.invitableContacts = contacts.filter { contact in
                     // Check if any email matches
@@ -462,7 +462,7 @@ class ContactUserCell: UITableViewCell {
         } else if user.connectionStatus == "accepted" {
             detailLabel.text = "Already connected"
         } else {
-            detailLabel.text = user.email
+            detailLabel.text = user.email ?? "No email"
         }
         
         // Load profile image

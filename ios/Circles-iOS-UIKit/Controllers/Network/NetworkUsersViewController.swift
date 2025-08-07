@@ -149,6 +149,7 @@ struct UserWithCircles: Codable {
     let displayName: String
     let profilePicture: String?
     let email: String
+    let location: String?
     let circleCount: Int
 }
 
@@ -269,8 +270,12 @@ class NetworkUserTableViewCell: UITableViewCell {
     // MARK: - Configuration
     func configure(with user: UserWithCircles) {
         nameLabel.text = user.displayName
-        // Display connection info instead of email for privacy
-        userInfoLabel.text = "Connected member"
+        // Display location if available
+        if let location = user.location, !location.isEmpty {
+            userInfoLabel.text = location
+        } else {
+            userInfoLabel.text = "Connected member"
+        }
         circleCountLabel.text = "\(user.circleCount) Circle\(user.circleCount == 1 ? "" : "s")"
         
         // Load profile image

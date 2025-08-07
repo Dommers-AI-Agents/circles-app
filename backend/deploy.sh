@@ -45,6 +45,11 @@ fi
 # Add Firebase API Key
 ENV_VARS="$ENV_VARS,FIREBASE_API_KEY=AIzaSyDMWyL8jI_MZSuASgxc_aSpyqJpxUSARYI"
 
+# Add Apple Shared Secret for subscription receipt validation
+if [ ! -z "$APPLE_SHARED_SECRET" ]; then
+    ENV_VARS="$ENV_VARS,APPLE_SHARED_SECRET=$APPLE_SHARED_SECRET"
+fi
+
 # Deploy to Cloud Run
 echo -e "\n${YELLOW}Deploying to Cloud Run...${NC}"
 
