@@ -20,6 +20,13 @@ exports.verifySubscription = async (req, res) => {
         const { receipt, transactionId, productId, originalTransactionId, purchaseDate, expirationDate } = req.body;
         const userId = req.userId;
 
+        if (!userId) {
+            return res.status(401).json({
+                success: false,
+                error: 'User ID not found in request'
+            });
+        }
+
         if (!receipt) {
             return res.status(400).json({
                 success: false,
@@ -72,7 +79,8 @@ exports.verifySubscription = async (req, res) => {
         const updateData = {
             subscriptionStatus,
             subscriptionExpiryDate: new Date(expiresDateMs).toISOString(),
-            lastReceiptVerification: new Date().toISOString()
+            lastReceiptVerification: new Date().toISOString(),
+            appleOriginalTransactionId: latestReceiptInfo.original_transaction_id
         };
 
         // If it's a trial, record trial dates
@@ -117,6 +125,13 @@ exports.verifySubscription = async (req, res) => {
 exports.getSubscriptionStatus = async (req, res) => {
     try {
         const userId = req.userId;
+        
+        if (!userId) {
+            return res.status(401).json({
+                success: false,
+                error: 'User ID not found in request'
+            });
+        }
         
         const userDoc = await admin.firestore().collection('users').doc(userId).get();
         
@@ -166,21 +181,133 @@ exports.getSubscriptionStatus = async (req, res) => {
 // @access  Public (with verification)
 exports.handleSubscriptionWebhook = async (req, res) => {
     try {
-        // This would handle App Store Server Notifications
-        // For now, we'll acknowledge receipt
+        // Acknowledge receipt immediately (Apple requires 200 response)
         res.status(200).send();
         
-        // TODO: Implement App Store Server Notification handling
-        // - Verify the notification is from Apple
-        // - Parse the notification type
-        // - Update user subscription status accordingly
+        const { signedPayload } = req.body;
+        
+        if (!signedPayload) {
+            console.error('No signed payload in webhook');
+            return;
+        }
+
+        // Decode the JWT payload
+        // In production, you should verify the JWT signature with Apple's public key
+        const parts = signedPayload.split('.');
+        if (parts.length !== 3) {
+            console.error('Invalid JWT format');
+            return;
+        }
+
+        // Decode payload (base64)
+        const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+        
+        const { notificationType, subtype, data } = payload;
+        const { transactionInfo, renewalInfo } = data;
+        
+        console.log(`Processing Apple webhook: ${notificationType} ${subtype || ''}`);
+
+        // Decode transaction info
+        const transaction = transactionInfo ? 
+            JSON.parse(Buffer.from(transactionInfo, 'base64').toString()) : null;
+        
+        if (!transaction) {
+            console.error('No transaction info in webhook');
+            return;
+        }
+
+        const { originalTransactionId, expiresDate, productId } = transaction;
+        
+        // Find user by original transaction ID
+        const usersSnapshot = await admin.firestore()
+            .collection('users')
+            .where('appleOriginalTransactionId', '==', originalTransactionId)
+            .limit(1)
+            .get();
+        
+        if (usersSnapshot.empty) {
+            console.log('No user found for transaction:', originalTransactionId);
+            // Store the transaction ID for later matching when user verifies receipt
+            await admin.firestore().collection('pendingSubscriptions').doc(originalTransactionId).set({
+                notificationType,
+                productId,
+                expiresDate,
+                processedAt: new Date().toISOString()
+            });
+            return;
+        }
+
+        const userDoc = usersSnapshot.docs[0];
+        const userId = userDoc.id;
+        
+        // Process based on notification type
+        let updateData = {};
+        
+        switch (notificationType) {
+            case 'SUBSCRIBED':
+            case 'DID_RENEW':
+                updateData = {
+                    subscriptionStatus: 'active',
+                    subscriptionExpiryDate: new Date(expiresDate).toISOString(),
+                    lastWebhookReceived: new Date().toISOString()
+                };
+                break;
+                
+            case 'DID_FAIL_TO_RENEW':
+                // Check if in grace period
+                if (renewalInfo) {
+                    const renewal = JSON.parse(Buffer.from(renewalInfo, 'base64').toString());
+                    if (renewal.gracePeriodExpiresDate) {
+                        updateData = {
+                            subscriptionStatus: 'grace_period',
+                            gracePeriodExpiryDate: new Date(renewal.gracePeriodExpiresDate).toISOString(),
+                            lastWebhookReceived: new Date().toISOString()
+                        };
+                        break;
+                    }
+                }
+                updateData = {
+                    subscriptionStatus: 'expired',
+                    lastWebhookReceived: new Date().toISOString()
+                };
+                break;
+                
+            case 'EXPIRED':
+                updateData = {
+                    subscriptionStatus: 'expired',
+                    subscriptionExpiryDate: new Date(expiresDate).toISOString(),
+                    lastWebhookReceived: new Date().toISOString()
+                };
+                break;
+                
+            case 'GRACE_PERIOD_EXPIRED':
+                updateData = {
+                    subscriptionStatus: 'expired',
+                    gracePeriodExpiryDate: null,
+                    lastWebhookReceived: new Date().toISOString()
+                };
+                break;
+                
+            case 'REFUND':
+            case 'REVOKE':
+                updateData = {
+                    subscriptionStatus: 'cancelled',
+                    lastWebhookReceived: new Date().toISOString()
+                };
+                break;
+                
+            default:
+                console.log('Unhandled notification type:', notificationType);
+        }
+        
+        if (Object.keys(updateData).length > 0) {
+            await admin.firestore().collection('users').doc(userId).update(updateData);
+            console.log(`Updated user ${userId} subscription status via webhook`);
+        }
         
     } catch (error) {
-        console.error('Webhook error:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Webhook processing failed'
-        });
+        console.error('Webhook processing error:', error);
+        // Still return 200 to prevent Apple from retrying
     }
 };
 

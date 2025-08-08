@@ -361,6 +361,14 @@ extension SettingsViewController {
                     cell.detailTextLabel?.text = status.displayName
                     cell.detailTextLabel?.textColor = status.badgeColor
                     cell.accessoryType = .disclosureIndicator
+                    
+                    // Make it more prominent for free users
+                    if status == .none {
+                        cell.textLabel?.text = "🎯 " + row.title
+                        cell.detailTextLabel?.text = "Upgrade to Premium"
+                        cell.detailTextLabel?.textColor = Constants.Colors.primary
+                        cell.detailTextLabel?.font = UIFont.systemFont(ofSize: 15, weight: .medium)
+                    }
                 case .manage:
                     cell.textLabel?.text = row.title
                     cell.accessoryType = .disclosureIndicator

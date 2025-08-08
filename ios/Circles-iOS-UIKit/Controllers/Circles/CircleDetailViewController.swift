@@ -270,6 +270,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         setupLocationManager()
         fetchPlaces()
         setupNotificationObservers()
+        updateAddPlaceButtonTitle()
         
         // Configure scroll view to avoid bottom overlap with Add Place button if shown
         let bottomInset: CGFloat = circle.canAddPlaces ? 80 : 20
@@ -552,6 +553,17 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         let shareButton = UIBarButtonItem(barButtonSystemItem: .action, target: self, action: #selector(shareButtonTapped))
         rightBarButtons.append(shareButton)
         
+        // Show export button for circle owner
+        if circle.isOwner {
+            let exportButton = UIBarButtonItem(
+                image: UIImage(systemName: "square.and.arrow.down"),
+                style: .plain,
+                target: self,
+                action: #selector(exportButtonTapped)
+            )
+            rightBarButtons.append(exportButton)
+        }
+        
         // Show copy button for non-owner users viewing public or shared circles
         if !circle.isOwner {
             let copyButton = UIBarButtonItem(title: "Copy", style: .plain, target: self, action: #selector(copyCircleButtonTapped))
@@ -818,11 +830,13 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                         // Places are already ordered by the backend based on the circle's places array
                         self?.places = places
                         self?.applyFilter()
+                        self?.updateAddPlaceButtonTitle()
                     case .failure(let error):
                         Logger.error("Failed to fetch places for public circle: \(error.localizedDescription)")
                         // Don't use sample places - show empty state instead
                         self?.places = []
                         self?.filteredPlaces = []
+                        self?.updateAddPlaceButtonTitle()
                     }
                     
                     self?.tableView.reloadData()
@@ -850,11 +864,13 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                         // Places are already ordered by the backend based on the circle's places array
                         self?.places = places
                         self?.applyFilter()
+                        self?.updateAddPlaceButtonTitle()
                     case .failure(let error):
                         Logger.error("Failed to fetch places: \(error.localizedDescription)")
                         // Don't use sample places - show empty state instead
                         self?.places = []
                         self?.filteredPlaces = []
+                        self?.updateAddPlaceButtonTitle()
                     }
                     
                     self?.tableView.reloadData()
@@ -1624,8 +1640,67 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         navigationController?.pushViewController(addPlaceVC, animated: true)
     }
     
+    private func updateAddPlaceButtonTitle() {
+        let placeCount = places.count
+        let isSubscribed = SubscriptionManager.shared.isSubscribed
+        
+        if !isSubscribed && placeCount >= PremiumFeatures.maxFreePlacesPerCircle - 2 {
+            // Show count when near limit for free users
+            addPlaceButton.setTitle("Add Place (\(placeCount)/\(PremiumFeatures.maxFreePlacesPerCircle))", for: .normal)
+            
+            // Change color when at limit
+            if placeCount >= PremiumFeatures.maxFreePlacesPerCircle {
+                addPlaceButton.backgroundColor = Constants.Colors.secondaryLabel
+            } else if placeCount == PremiumFeatures.maxFreePlacesPerCircle - 1 {
+                // Warning color when one away from limit
+                addPlaceButton.backgroundColor = UIColor.systemOrange
+            } else {
+                addPlaceButton.backgroundColor = Constants.Colors.primary
+            }
+        } else {
+            // Default for premium users or when far from limit
+            addPlaceButton.setTitle("Add Place", for: .normal)
+            addPlaceButton.backgroundColor = Constants.Colors.primary
+        }
+    }
+    
     @objc private func expandMapButtonTapped() {
         presentFullScreenMap()
+    }
+    
+    @objc private func exportButtonTapped() {
+        // Check premium status
+        if !SubscriptionManager.shared.checkExportAccess(from: self) {
+            return
+        }
+        
+        // Show export options
+        let alertController = UIAlertController(
+            title: "Export Circle",
+            message: "Choose export format",
+            preferredStyle: .actionSheet
+        )
+        
+        alertController.addAction(UIAlertAction(title: "Export as PDF", style: .default) { [weak self] _ in
+            self?.exportAsPDF()
+        })
+        
+        alertController.addAction(UIAlertAction(title: "Export as CSV", style: .default) { [weak self] _ in
+            self?.exportAsCSV()
+        })
+        
+        alertController.addAction(UIAlertAction(title: "Export as Text", style: .default) { [weak self] _ in
+            self?.exportAsText()
+        })
+        
+        alertController.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        
+        // For iPad
+        if let popover = alertController.popoverPresentationController {
+            popover.barButtonItem = navigationItem.rightBarButtonItems?.first { $0.action == #selector(exportButtonTapped) }
+        }
+        
+        present(alertController, animated: true)
     }
     
     @objc private func zoomToMeButtonTapped() {
@@ -2239,6 +2314,141 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
             
             // Update the order in the backend
             updatePlaceOrder()
+        }
+    }
+    
+    // MARK: - Export Methods
+    
+    private func exportAsPDF() {
+        // Create PDF data
+        let pdfMetaData = [
+            kCGPDFContextCreator: "Circles App",
+            kCGPDFContextTitle: circle.name
+        ]
+        let format = UIGraphicsPDFRendererFormat()
+        format.documentInfo = pdfMetaData as [String: Any]
+        
+        let pageWidth = 8.5 * 72.0
+        let pageHeight = 11 * 72.0
+        let pageRect = CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
+        
+        let renderer = UIGraphicsPDFRenderer(bounds: pageRect, format: format)
+        
+        let data = renderer.pdfData { (context) in
+            context.beginPage()
+            
+            // Title
+            let titleAttributes = [
+                NSAttributedString.Key.font: UIFont.boldSystemFont(ofSize: 24)
+            ]
+            let title = circle.name
+            title.draw(at: CGPoint(x: 20, y: 20), withAttributes: titleAttributes)
+            
+            // Places
+            var yPosition: CGFloat = 80
+            let placeAttributes = [
+                NSAttributedString.Key.font: UIFont.systemFont(ofSize: 14)
+            ]
+            
+            for (index, place) in places.enumerated() {
+                let placeText = "\(index + 1). \(place.name)"
+                placeText.draw(at: CGPoint(x: 20, y: yPosition), withAttributes: placeAttributes)
+                
+                if !place.address.isEmpty {
+                    let addressText = "   \(place.address)"
+                    let addressAttributes = [
+                        NSAttributedString.Key.font: UIFont.systemFont(ofSize: 12),
+                        NSAttributedString.Key.foregroundColor: UIColor.gray
+                    ]
+                    addressText.draw(at: CGPoint(x: 20, y: yPosition + 20), withAttributes: addressAttributes)
+                    yPosition += 40
+                } else {
+                    yPosition += 25
+                }
+                
+                // Start new page if needed
+                if yPosition > pageHeight - 100 {
+                    context.beginPage()
+                    yPosition = 20
+                }
+            }
+        }
+        
+        shareExportedFile(data: data, filename: "\(circle.name).pdf", mimeType: "application/pdf")
+    }
+    
+    private func exportAsCSV() {
+        var csvText = "Name,Category,Address,Phone,Website,Notes\n"
+        
+        for place in places {
+            let name = place.name.replacingOccurrences(of: ",", with: ";")
+            let category = place.category.rawValue
+            let address = (place.address ?? "").replacingOccurrences(of: ",", with: ";")
+            let phone = (place.phone ?? "").replacingOccurrences(of: ",", with: ";")
+            let website = (place.website ?? "").replacingOccurrences(of: ",", with: ";")
+            let notes = (place.notes ?? "").replacingOccurrences(of: ",", with: ";").replacingOccurrences(of: "\n", with: " ")
+            
+            csvText += "\(name),\(category),\(address),\(phone),\(website),\(notes)\n"
+        }
+        
+        if let data = csvText.data(using: .utf8) {
+            shareExportedFile(data: data, filename: "\(circle.name).csv", mimeType: "text/csv")
+        }
+    }
+    
+    private func exportAsText() {
+        var textContent = "\(circle.name)\n"
+        textContent += String(repeating: "=", count: circle.name.count) + "\n\n"
+        
+        for (index, place) in places.enumerated() {
+            textContent += "\(index + 1). \(place.name)\n"
+            if !place.address.isEmpty {
+                textContent += "   Address: \(place.address)\n"
+            }
+            if let phone = place.phone {
+                textContent += "   Phone: \(phone)\n"
+            }
+            if let website = place.website {
+                textContent += "   Website: \(website)\n"
+            }
+            if let notes = place.notes, !notes.isEmpty {
+                textContent += "   Notes: \(notes)\n"
+            }
+            textContent += "\n"
+        }
+        
+        if let data = textContent.data(using: .utf8) {
+            shareExportedFile(data: data, filename: "\(circle.name).txt", mimeType: "text/plain")
+        }
+    }
+    
+    private func shareExportedFile(data: Data, filename: String, mimeType: String) {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        
+        do {
+            try data.write(to: tempURL)
+            
+            let activityViewController = UIActivityViewController(
+                activityItems: [tempURL],
+                applicationActivities: nil
+            )
+            
+            // Exclude some activities
+            activityViewController.excludedActivityTypes = [
+                .assignToContact,
+                .addToReadingList,
+                .openInIBooks
+            ]
+            
+            // For iPad
+            if let popover = activityViewController.popoverPresentationController {
+                popover.barButtonItem = navigationItem.rightBarButtonItems?.first { $0.action == #selector(exportButtonTapped) }
+            }
+            
+            present(activityViewController, animated: true)
+            
+        } catch {
+            showError("Failed to export file: \(error.localizedDescription)")
         }
     }
     

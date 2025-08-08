@@ -770,6 +770,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Update notification badge
         updateNotificationBadge()
         
+        // Update navigation bar for subscription status
+        updateNavigationBarForSubscription()
+        
         // If returning from full screen map, skip updates
         if isReturningFromFullScreenMap {
             isReturningFromFullScreenMap = false
@@ -1024,8 +1027,25 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Create custom view for notification button with badge
         setupNotificationBadge()
         
-        // Set both buttons as right bar button items
-        navigationItem.rightBarButtonItems = [addButton, notificationButton]
+        // Create upgrade button for free users
+        var rightBarButtons = [addButton, notificationButton]
+        
+        // Check if user is not subscribed
+        Task { @MainActor in
+            if !SubscriptionManager.shared.isSubscribed {
+                let upgradeButton = UIBarButtonItem(
+                    image: UIImage(systemName: "crown.fill"),
+                    style: .plain,
+                    target: self,
+                    action: #selector(upgradeButtonTapped)
+                )
+                upgradeButton.tintColor = Constants.Colors.primary
+                rightBarButtons.insert(upgradeButton, at: 0) // Add as first button
+                navigationItem.rightBarButtonItems = rightBarButtons
+            } else {
+                navigationItem.rightBarButtonItems = rightBarButtons
+            }
+        }
         
         // Setup empty state view
         emptyStateView.addSubview(emptyStateImageView)
@@ -2510,6 +2530,33 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         let navController = UINavigationController(rootViewController: createCircleVC)
         navController.modalPresentationStyle = .pageSheet
         present(navController, animated: true)
+    }
+    
+    @objc private func upgradeButtonTapped() {
+        SubscriptionManager.shared.showPaywall(from: self, reason: .generalUpgrade)
+    }
+    
+    private func updateNavigationBarForSubscription() {
+        Task { @MainActor in
+            let addButton = UIBarButtonItem(image: UIImage(systemName: "plus.circle"), style: .plain, target: self, action: #selector(addButtonTapped))
+            let notificationButton = self.notificationBarButton ?? UIBarButtonItem(image: UIImage(systemName: "bell"), style: .plain, target: self, action: #selector(notificationButtonTapped))
+            
+            var rightBarButtons = [addButton, notificationButton]
+            
+            // Check if user is not subscribed
+            if !SubscriptionManager.shared.isSubscribed {
+                let upgradeButton = UIBarButtonItem(
+                    image: UIImage(systemName: "crown.fill"),
+                    style: .plain,
+                    target: self,
+                    action: #selector(upgradeButtonTapped)
+                )
+                upgradeButton.tintColor = Constants.Colors.primary
+                rightBarButtons.insert(upgradeButton, at: 0) // Add as first button
+            }
+            
+            navigationItem.rightBarButtonItems = rightBarButtons
+        }
     }
     
     

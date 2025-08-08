@@ -167,6 +167,45 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         return label
     }()
     
+    // Premium badge
+    private let premiumBadgeView: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.primary
+        view.layer.cornerRadius = 12
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isHidden = true
+        
+        let crownIcon = UIImageView()
+        crownIcon.image = UIImage(systemName: "crown.fill")
+        crownIcon.tintColor = .white
+        crownIcon.contentMode = .scaleAspectFit
+        crownIcon.translatesAutoresizingMaskIntoConstraints = false
+        
+        let label = UILabel()
+        label.text = "PREMIUM"
+        label.font = UIFont.systemFont(ofSize: 10, weight: .bold)
+        label.textColor = .white
+        label.translatesAutoresizingMaskIntoConstraints = false
+        
+        view.addSubview(crownIcon)
+        view.addSubview(label)
+        
+        NSLayoutConstraint.activate([
+            crownIcon.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 6),
+            crownIcon.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            crownIcon.widthAnchor.constraint(equalToConstant: 12),
+            crownIcon.heightAnchor.constraint(equalToConstant: 12),
+            
+            label.leadingAnchor.constraint(equalTo: crownIcon.trailingAnchor, constant: 4),
+            label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            label.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),
+            
+            view.heightAnchor.constraint(equalToConstant: 24)
+        ])
+        
+        return view
+    }()
+    
     // Stats containers
     private let topStatsContainer: UIView = {
         let view = UIView()
@@ -610,6 +649,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         
         contentView.addSubview(profileHeaderView)
         profileHeaderView.addSubview(usernameLabel)
+        profileHeaderView.addSubview(premiumBadgeView)
         profileHeaderView.addSubview(profileImageView)
         profileHeaderView.addSubview(topStatsContainer)
         profileHeaderView.addSubview(bottomStatsContainer)
@@ -675,7 +715,10 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             // Username at top
             usernameLabel.topAnchor.constraint(equalTo: profileHeaderView.topAnchor, constant: Constants.Spacing.medium),
             usernameLabel.leadingAnchor.constraint(equalTo: profileHeaderView.leadingAnchor, constant: Constants.Spacing.medium),
-            usernameLabel.trailingAnchor.constraint(equalTo: profileHeaderView.trailingAnchor, constant: -Constants.Spacing.medium),
+            
+            // Premium badge
+            premiumBadgeView.leadingAnchor.constraint(equalTo: usernameLabel.trailingAnchor, constant: 8),
+            premiumBadgeView.centerYAnchor.constraint(equalTo: usernameLabel.centerYAnchor),
             
             // Profile image view (Instagram style - smaller, on the left)
             profileImageView.topAnchor.constraint(equalTo: usernameLabel.bottomAnchor, constant: Constants.Spacing.medium),
@@ -1924,6 +1967,19 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         // Display username at the top
         usernameLabel.text = user.displayName
         
+        // Check if this is the current user
+        let isCurrentUser = user.id == AuthService.shared.getUserId()
+        
+        // Show premium badge for current user if subscribed
+        if isCurrentUser {
+            Task { @MainActor in
+                premiumBadgeView.isHidden = !SubscriptionManager.shared.isSubscribed
+            }
+        } else {
+            // Hide for other users (we don't track their subscription status)
+            premiumBadgeView.isHidden = true
+        }
+        
         // Combine full name and bio like Instagram
         var bioText = ""
         if let firstName = user.firstName, !firstName.isEmpty, let lastName = user.lastName, !lastName.isEmpty {
@@ -1945,7 +2001,6 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         bioLabel.text = bioText.isEmpty ? nil : bioText
         
         // Show/hide buttons based on whether this is the current user
-        let isCurrentUser = user.id == AuthService.shared.getUserId()
         editProfileButton.isHidden = !isCurrentUser
         shareProfileButton.isHidden = !isCurrentUser
         visitHistoryButton.isHidden = !isCurrentUser

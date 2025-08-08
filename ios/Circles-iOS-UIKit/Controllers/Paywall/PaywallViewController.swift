@@ -312,6 +312,42 @@ class PaywallViewController: BaseViewController {
     private func setupSubscriptionOptions() {
         optionsStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
         
+        if products.isEmpty {
+            // Show message when no products are available
+            let messageLabel = UILabel()
+            messageLabel.text = "Subscription plans are being set up.\nPlease check back later."
+            messageLabel.textAlignment = .center
+            messageLabel.numberOfLines = 0
+            messageLabel.font = UIFont.systemFont(ofSize: 16)
+            messageLabel.textColor = Constants.Colors.secondaryLabel
+            messageLabel.translatesAutoresizingMaskIntoConstraints = false
+            
+            let container = UIView()
+            container.backgroundColor = Constants.Colors.secondaryBackground
+            container.layer.cornerRadius = 12
+            container.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(messageLabel)
+            
+            NSLayoutConstraint.activate([
+                messageLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: 24),
+                messageLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+                messageLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+                messageLabel.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -24),
+                container.heightAnchor.constraint(greaterThanOrEqualToConstant: 88)
+            ])
+            
+            optionsStackView.addArrangedSubview(container)
+            
+            // Disable purchase button
+            purchaseButton.isEnabled = false
+            purchaseButton.alpha = 0.5
+            return
+        }
+        
+        // Enable purchase button when products are available
+        purchaseButton.isEnabled = true
+        purchaseButton.alpha = 1.0
+        
         for product in products.sorted(by: { $0.price > $1.price }) {
             let optionView = createSubscriptionOptionView(product)
             optionsStackView.addArrangedSubview(optionView)
@@ -471,7 +507,24 @@ class PaywallViewController: BaseViewController {
     }
     
     @objc private func purchaseTapped() {
-        guard let product = selectedProduct else { return }
+        // Check if products are available
+        if products.isEmpty {
+            AlertPresenter.showError(
+                title: "Subscription Unavailable",
+                message: "Premium subscriptions are not available yet. Please check back later or contact support.",
+                from: self
+            )
+            return
+        }
+        
+        guard let product = selectedProduct else {
+            AlertPresenter.showError(
+                title: "No Product Selected",
+                message: "Please select a subscription plan.",
+                from: self
+            )
+            return
+        }
         
         showLoadingState()
         purchaseButton.isEnabled = false
