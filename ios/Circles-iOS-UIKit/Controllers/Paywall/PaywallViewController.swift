@@ -303,37 +303,92 @@ class PaywallViewController: BaseViewController {
             } catch {
                 DispatchQueue.main.async { [weak self] in
                     self?.hideLoadingState()
-                    self?.showError(error)
+                    self?.products = [] // Ensure we show the retry UI
+                    self?.setupSubscriptionOptions()
+                    
+                    // Log the error for debugging
+                    print("❌ Failed to load subscription products: \(error)")
+                    print("❌ Error details: \(error.localizedDescription)")
+                    if let nsError = error as NSError? {
+                        print("❌ Error domain: \(nsError.domain)")
+                        print("❌ Error code: \(nsError.code)")
+                        print("❌ Error userInfo: \(nsError.userInfo)")
+                    }
                 }
             }
         }
+    }
+    
+    @objc private func retryLoadingProducts() {
+        print("🔄 Retrying to load subscription products...")
+        loadProducts()
     }
     
     private func setupSubscriptionOptions() {
         optionsStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
         
         if products.isEmpty {
-            // Show message when no products are available
-            let messageLabel = UILabel()
-            messageLabel.text = "Subscription plans are being set up.\nPlease check back later."
-            messageLabel.textAlignment = .center
-            messageLabel.numberOfLines = 0
-            messageLabel.font = UIFont.systemFont(ofSize: 16)
-            messageLabel.textColor = Constants.Colors.secondaryLabel
-            messageLabel.translatesAutoresizingMaskIntoConstraints = false
-            
+            // Show error state with retry option
             let container = UIView()
             container.backgroundColor = Constants.Colors.secondaryBackground
             container.layer.cornerRadius = 12
             container.translatesAutoresizingMaskIntoConstraints = false
-            container.addSubview(messageLabel)
+            
+            let stackView = UIStackView()
+            stackView.axis = .vertical
+            stackView.spacing = 16
+            stackView.alignment = .center
+            stackView.translatesAutoresizingMaskIntoConstraints = false
+            
+            // Error icon
+            let iconView = UIImageView(image: UIImage(systemName: "exclamationmark.circle"))
+            iconView.tintColor = Constants.Colors.secondaryLabel
+            iconView.contentMode = .scaleAspectFit
+            iconView.translatesAutoresizingMaskIntoConstraints = false
+            
+            // Error message
+            let messageLabel = UILabel()
+            messageLabel.text = "Unable to load subscription plans"
+            messageLabel.textAlignment = .center
+            messageLabel.numberOfLines = 0
+            messageLabel.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+            messageLabel.textColor = Constants.Colors.label
+            
+            // Detailed message
+            let detailLabel = UILabel()
+            detailLabel.text = "Please check your internet connection and try again."
+            detailLabel.textAlignment = .center
+            detailLabel.numberOfLines = 0
+            detailLabel.font = UIFont.systemFont(ofSize: 14)
+            detailLabel.textColor = Constants.Colors.secondaryLabel
+            
+            // Retry button
+            let retryButton = UIButton(type: .system)
+            retryButton.setTitle("Retry", for: .normal)
+            retryButton.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+            retryButton.backgroundColor = Constants.Colors.primary
+            retryButton.setTitleColor(.white, for: .normal)
+            retryButton.layer.cornerRadius = 8
+            retryButton.contentEdgeInsets = UIEdgeInsets(top: 12, left: 24, bottom: 12, right: 24)
+            retryButton.addTarget(self, action: #selector(retryLoadingProducts), for: .touchUpInside)
+            
+            stackView.addArrangedSubview(iconView)
+            stackView.addArrangedSubview(messageLabel)
+            stackView.addArrangedSubview(detailLabel)
+            stackView.addArrangedSubview(retryButton)
+            
+            container.addSubview(stackView)
             
             NSLayoutConstraint.activate([
-                messageLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: 24),
-                messageLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
-                messageLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
-                messageLabel.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -24),
-                container.heightAnchor.constraint(greaterThanOrEqualToConstant: 88)
+                iconView.widthAnchor.constraint(equalToConstant: 48),
+                iconView.heightAnchor.constraint(equalToConstant: 48),
+                
+                stackView.topAnchor.constraint(equalTo: container.topAnchor, constant: 24),
+                stackView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+                stackView.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+                stackView.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -24),
+                
+                container.heightAnchor.constraint(greaterThanOrEqualToConstant: 200)
             ])
             
             optionsStackView.addArrangedSubview(container)
@@ -509,11 +564,8 @@ class PaywallViewController: BaseViewController {
     @objc private func purchaseTapped() {
         // Check if products are available
         if products.isEmpty {
-            AlertPresenter.showError(
-                title: "Subscription Unavailable",
-                message: "Premium subscriptions are not available yet. Please check back later or contact support.",
-                from: self
-            )
+            print("⚠️ No products available for purchase")
+            // The UI already shows retry option, don't show another alert
             return
         }
         
@@ -537,17 +589,51 @@ class PaywallViewController: BaseViewController {
                     self?.hideLoadingState()
                     
                     if transaction != nil {
-                        AlertPresenter.showSuccess("Welcome to Circles Premium! 🎉", from: self!)
+                        print("✅ Subscription purchase successful!")
+                        AlertPresenter.showSuccess(
+                            title: "Welcome to Circles Premium! 🎉",
+                            message: "Enjoy unlimited access to all features.",
+                            from: self!
+                        )
                         self?.dismiss(animated: true)
                     } else {
+                        // User cancelled
+                        print("ℹ️ User cancelled subscription purchase")
                         self?.purchaseButton.isEnabled = true
                     }
                 }
             } catch {
                 DispatchQueue.main.async { [weak self] in
-                    self?.hideLoadingState()
-                    self?.purchaseButton.isEnabled = true
-                    self?.showError(error)
+                    guard let self = self else { return }
+                    
+                    self.hideLoadingState()
+                    self.purchaseButton.isEnabled = true
+                    
+                    // Log the error
+                    print("❌ Subscription purchase failed: \(error)")
+                    
+                    // Show user-friendly error message
+                    if let skError = error as? StoreKitError {
+                        switch skError {
+                        case .networkError:
+                            AlertPresenter.showError(
+                                title: "Network Error",
+                                message: "Please check your internet connection and try again.",
+                                from: self
+                            )
+                        case .userCancelled:
+                            // Already handled above
+                            break
+                        default:
+                            AlertPresenter.showError(
+                                title: "Purchase Failed",
+                                message: "Unable to complete your purchase. Please try again.",
+                                from: self
+                            )
+                        }
+                    } else {
+                        self.showError(error)
+                    }
                 }
             }
         }

@@ -545,19 +545,43 @@ const getMyNetworkCircles = async (req, res) => {
     
     console.log('🔵 Found circles from connections:', circlesQuery.size);
 
-    // Build response with circle data
-    const circles = [];
-    for (const doc of circlesQuery.docs) {
-      const circle = serializeDoc(doc);
-      
-      // Get owner details
-      const ownerDoc = await db.collection(COLLECTIONS.USERS).doc(circle.owner).get();
-      if (ownerDoc.exists) {
-        circle.ownerDetails = serializeDoc(ownerDoc);
-      }
-      
-      circles.push(circle);
+    // Serialize all circles first
+    const circles = circlesQuery.docs.map(doc => serializeDoc(doc));
+    
+    // OPTIMIZATION: Batch fetch all unique owner IDs
+    const uniqueOwnerIds = [...new Set(circles.map(circle => circle.owner))];
+    console.log('🚀 Batch fetching', uniqueOwnerIds.length, 'unique owners');
+    
+    let ownersMap = new Map();
+    
+    // Firestore 'in' operator has a limit of 10 items, so we need to batch the requests
+    const ownerBatches = [];
+    for (let i = 0; i < uniqueOwnerIds.length; i += 10) {
+      ownerBatches.push(uniqueOwnerIds.slice(i, i + 10));
     }
+    
+    // Fetch all owner details in parallel batches
+    const ownerResults = await Promise.all(
+      ownerBatches.map(batch => 
+        db.collection(COLLECTIONS.USERS)
+          .where('__name__', 'in', batch)
+          .get()
+      )
+    );
+    
+    // Combine all results into the map
+    ownerResults.forEach(snapshot => {
+      snapshot.docs.forEach(doc => {
+        ownersMap.set(doc.id, serializeDoc(doc));
+      });
+    });
+    
+    // Enrich circles with owner details from map
+    circles.forEach(circle => {
+      circle.ownerDetails = ownersMap.get(circle.owner) || null;
+    });
+
+    console.log('✅ Returning', circles.length, 'circles with batch-loaded owner details');
 
     res.status(200).json({
       success: true,

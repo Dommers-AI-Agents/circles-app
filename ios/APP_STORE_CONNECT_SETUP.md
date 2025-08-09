@@ -86,11 +86,11 @@ For Monthly Subscription:
 2. Click **App Store Server Notifications**
 3. **Production Server URL:**
    ```
-   https://circles-backend-196924649787.us-central1.run.app/api/users/subscription/webhook
+   https://circles-backend-kcyohp6zra-uc.a.run.app/api/users/subscription/webhook
    ```
 4. **Sandbox Server URL:** (same as production)
    ```
-   https://circles-backend-196924649787.us-central1.run.app/api/users/subscription/webhook
+   https://circles-backend-kcyohp6zra-uc.a.run.app/api/users/subscription/webhook
    ```
 5. **Version:** Version 2
 6. Click **Save**

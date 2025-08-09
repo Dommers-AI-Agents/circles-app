@@ -114,6 +114,7 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/visits', visitRoutes);
 app.use('/api/users/subscription', require('./routes/subscriptionRoutes'));
 app.use('/api/users/referral', require('./routes/referralRoutes'));
+app.use('/api/home', require('./routes/dashboardRoutes'));
 
 // LinkedIn OAuth callback route (outside /api prefix)
 const linkedinCallback = require('./routes/linkedinCallback');

@@ -1,42 +1,12 @@
-// backend/controllers/activityController.js
-const { admin, getFirestore } = require('../config/firebase');
-const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../models/FirestoreModels');
-const db = getFirestore();
-
-// Helper function to check if a user can see a circle based on privacy settings
-const canUserSeeCircle = async (userId, circle, connectedUserIds) => {
-  if (!circle) return false;
-  
-  // Owner can always see their own circle
-  if (circle.owner === userId) return true;
-  
-  // Check privacy level
-  switch (circle.privacy) {
-    case 'public':
-      return true; // Public circles visible to all
-    case 'myNetwork':
-      // Network circles visible to connections only
-      return connectedUserIds.has(circle.owner);
-    case 'private':
-      // Private circles only visible if explicitly shared
-      const sharedWith = circle.sharedWith || [];
-      return sharedWith.includes(userId);
-    default:
-      return false;
-  }
-};
-
-// @desc    Get network activities for the current user
-// @route   GET /api/network/activities
-// @access  Private
-exports.getNetworkActivities = async (req, res, next) => {
+// Optimized version of getNetworkActivities with batch operations
+const getNetworkActivitiesOptimized = async (req, res, next) => {
   try {
     const userId = req.user.uid;
     const { limit = 20, offset = 0, since } = req.query;
     
-    // Fetching network activities for user
+    console.log('🚀 [Optimized] Fetching network activities for user:', userId);
     
-    // Get user's connections AND followed users
+    // Parallel fetch connections and current user
     const [connections1, connections2, currentUserDoc] = await Promise.all([
       db.collection(COLLECTIONS.CONNECTIONS)
         .where('userId', '==', userId)
@@ -49,37 +19,30 @@ exports.getNetworkActivities = async (req, res, next) => {
       db.collection(COLLECTIONS.USERS).doc(userId).get()
     ]);
     
-    // Extract connected user IDs
+    // Build connected users set
     const connectedUserIds = new Set();
     
     connections1.docs.forEach(doc => {
-      const data = doc.data();
-      connectedUserIds.add(data.connectedUserId);
+      connectedUserIds.add(doc.data().connectedUserId);
     });
     
     connections2.docs.forEach(doc => {
-      const data = doc.data();
-      connectedUserIds.add(data.userId);
+      connectedUserIds.add(doc.data().userId);
     });
     
-    // Add followed users to the activity feed (LinkedIn-style)
+    // Add followed users
     if (currentUserDoc.exists) {
       const userData = currentUserDoc.data();
       const following = userData.following || [];
       following.forEach(followedUserId => {
         connectedUserIds.add(followedUserId);
       });
-      // User following count tracked
     }
     
-    // Add the current user to see their own activities too
+    // Add self
     connectedUserIds.add(userId);
     
-    // Found connections for activity feed
-    // Activity feed includes connections and followed users
-    
     if (connectedUserIds.size === 1) { // Only self
-      // No connections found, returning empty activities
       return res.status(200).json({
         success: true,
         activities: [],
@@ -88,22 +51,17 @@ exports.getNetworkActivities = async (req, res, next) => {
       });
     }
     
-    // Convert Set to Array for Firebase query
-    const userIds = Array.from(connectedUserIds);
-    
     // Build query
     let activitiesQuery = db.collection(COLLECTIONS.ACTIVITIES)
-      .where('actorId', 'in', userIds)
+      .where('actorId', 'in', Array.from(connectedUserIds))
       .orderBy('timestamp', 'desc')
       .limit(parseInt(limit));
     
-    // Add date filter if provided
     if (since) {
       const sinceDate = new Date(since);
       activitiesQuery = activitiesQuery.where('timestamp', '>=', sinceDate);
     }
     
-    // Add offset if provided
     if (offset > 0) {
       activitiesQuery = activitiesQuery.offset(parseInt(offset));
     }
@@ -111,16 +69,8 @@ exports.getNetworkActivities = async (req, res, next) => {
     const activitiesSnapshot = await activitiesQuery.get();
     const activities = serializeQuerySnapshot(activitiesSnapshot);
     
-    // Found activities
-    
-    // Activities collection verified
-    
-    // Activities fetched and ready for processing
-    
     // OPTIMIZATION 1: Batch fetch all actor user details
     const actorIds = [...new Set(activities.map(a => a.actorId))];
-    console.log('🚀 Batch fetching', actorIds.length, 'unique actors');
-    
     const actorBatches = [];
     for (let i = 0; i < actorIds.length; i += 10) {
       actorBatches.push(actorIds.slice(i, i + 10));
@@ -145,8 +95,6 @@ exports.getNetworkActivities = async (req, res, next) => {
     const circleIds = [...new Set(activities
       .map(a => a.targetType === 'circle' ? a.targetId : a.circleId)
       .filter(Boolean))];
-    
-    console.log('🚀 Batch fetching', circleIds.length, 'unique circles for privacy checks');
     
     const circleBatches = [];
     for (let i = 0; i < circleIds.length; i += 10) {
@@ -204,15 +152,27 @@ exports.getNetworkActivities = async (req, res, next) => {
         const circle = circlesMap.get(circleId);
         if (!circle) return false; // Exclude if circle not found
         
-        // Check privacy using helper function (synchronous now)
-        return canUserSeeCircle(userId, circle, connectedUserIds);
+        // Check privacy
+        if (circle.owner === userId) return true;
+        
+        switch (circle.privacy) {
+          case 'public':
+            return true;
+          case 'myNetwork':
+            return connectedUserIds.has(circle.owner);
+          case 'private':
+            return (circle.sharedWith || []).includes(userId);
+          default:
+            return false;
+        }
       } catch (error) {
         console.error('Error checking activity privacy:', error);
         return false;
       }
     });
     
-    // Check if there are more activities (based on original fetch, not filtered)
+    console.log(`🚀 [Optimized] Returning ${filteredActivities.length} activities (batch loaded)`);
+    
     const hasMore = activities.length === parseInt(limit);
     
     res.status(200).json({
@@ -225,84 +185,5 @@ exports.getNetworkActivities = async (req, res, next) => {
   } catch (error) {
     console.error('Error fetching network activities:', error);
     next(error);
-  }
-};
-
-// @desc    Mark activities as read
-// @route   PUT /api/network/activities/mark-read
-// @access  Private
-exports.markActivitiesAsRead = async (req, res, next) => {
-  try {
-    const userId = req.user.uid;
-    const { activityIds } = req.body;
-    
-    if (!activityIds || !Array.isArray(activityIds) || activityIds.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide activity IDs to mark as read'
-      });
-    }
-    
-    const batch = db.batch();
-    
-    for (const activityId of activityIds) {
-      const activityRef = db.collection(COLLECTIONS.ACTIVITIES).doc(activityId);
-      batch.update(activityRef, {
-        viewers: admin.firestore.FieldValue.arrayUnion(userId)
-      });
-    }
-    
-    await batch.commit();
-    
-    res.status(200).json({
-      success: true,
-      message: 'Activities marked as read'
-    });
-    
-  } catch (error) {
-    console.error('Error marking activities as read:', error);
-    next(error);
-  }
-};
-
-// Helper function to create activity (called by other controllers)
-exports.createActivity = async (type, actorId, targetType, targetId, targetName, metadata = {}) => {
-  try {
-    // Creating activity
-    
-    // Ensure the actorId is a string
-    const actorIdStr = String(actorId);
-    
-    const activityData = {
-      type,
-      actorId: actorIdStr,
-      targetType,
-      targetId,
-      targetName,
-      circleId: metadata.circleId || null,
-      circleName: metadata.circleName || null,
-      metadata: {
-        comment: metadata.comment || null,
-        placePhoto: metadata.placePhoto || null,
-        placeAddress: metadata.placeAddress || null
-      },
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
-      viewers: [] // Track who has seen this activity
-    };
-    
-    // Activity data prepared
-    
-    try {
-      const activityRef = await db.collection(COLLECTIONS.ACTIVITIES).add(activityData);
-      return activityRef.id;
-    } catch (firestoreError) {
-      console.error('❌ Firestore error creating activity:', firestoreError.code);
-      throw firestoreError;
-    }
-  } catch (error) {
-    console.error('❌ Error creating activity:', error);
-    console.error('❌ Error details:', error.message);
-    console.error('❌ Error stack:', error.stack);
-    // Don't throw - we don't want activity tracking to break the main flow
   }
 };

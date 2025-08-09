@@ -1839,7 +1839,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     private func performInitialDataLoad() {
         
         // Unified method to load both circles and places
-        print("🔄 Starting initial data load")
+        print("🚀 Starting OPTIMIZED initial data load")
+        let startTime = CFAbsoluteTimeGetCurrent()
         
         // Ensure connections are loaded in NetworkManager
         NetworkManager.shared.loadConnections()
@@ -1854,25 +1855,156 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Load all data in parallel for better performance
         let group = DispatchGroup()
         
-        // Load circles
+        var myCirclesResult: [Circle] = []
+        var networkCirclesResult: [Circle] = []
+        var activitiesResult: [Activity] = []
+        var allFetchedPlaces: [Place] = []
+        
+        // 1. Load my circles
         group.enter()
-        fetchCircles {
+        CircleService.shared.fetchUserCircles { [weak self] result in
+            switch result {
+            case .success(let circles):
+                myCirclesResult = circles
+                print("✅ Fetched \(circles.count) user circles")
+            case .failure(let error):
+                print("❌ Failed to fetch user circles: \(error)")
+            }
             group.leave()
         }
         
-        // Load activities in parallel
+        // 2. Load network circles (parallel)
         group.enter()
-        fetchActivities { _ in
+        APIService.shared.request(
+            endpoint: "network/my-network-circles",
+            method: .get,
+            requiresAuth: true
+        ) { (result: Result<CirclesDataResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                networkCirclesResult = response.data
+                print("✅ Fetched \(response.data.count) network circles")
+            case .failure(let error):
+                print("❌ Failed to fetch network circles: \(error)")
+            }
             group.leave()
         }
         
-        // Handle completion
+        // 3. Load activities (parallel)
+        group.enter()
+        ActivityService.shared.getNetworkActivities(limit: 20, offset: 0) { result in
+            switch result {
+            case .success(let response):
+                activitiesResult = response.activities
+                print("✅ Fetched \(response.activities.count) activities")
+            case .failure(let error):
+                print("❌ Failed to fetch activities: \(error)")
+            }
+            group.leave()
+        }
+        
+        // First phase completion - process circles and activities
         group.notify(queue: .main) { [weak self] in
-            print("🔄 Initial data load completed")
-            self?.hideLoadingState()
+            guard let self = self else { return }
             
-            // Refresh user list after all data is loaded to ensure correct order
-            self?.userListView.refresh()
+            // Update circles
+            self.circles = myCirclesResult
+            self.networkCircles = networkCirclesResult
+            self.activities = activitiesResult
+            
+            let circleLoadTime = CFAbsoluteTimeGetCurrent() - startTime
+            print("⏱️ Phase 1 completed in \(String(format: "%.2f", circleLoadTime)) seconds")
+            
+            // Update UI
+            self.updateEmptyState()
+            self.updateActivityFeed()
+            
+            // Now fetch places from all circles in parallel
+            let allCircles = myCirclesResult + networkCirclesResult
+            guard !allCircles.isEmpty else {
+                self.isMapDataReady = true
+                self.updateMapWhenReady()
+                self.isLoadingPlaces = false
+                self.isPerformingInitialLoad = false
+                self.hideLoadingState()
+                self.userListView.refresh()
+                
+                let totalTime = CFAbsoluteTimeGetCurrent() - startTime
+                print("✅ OPTIMIZED load completed in \(String(format: "%.2f", totalTime)) seconds (no circles)")
+                return
+            }
+            
+            // Phase 2: Fetch places in parallel with concurrency limit
+            let placeGroup = DispatchGroup()
+            let placeSemaphore = DispatchSemaphore(value: 5) // Max 5 concurrent requests
+            var placesArray = [[Place]]()
+            let placesLock = NSLock()
+            
+            for circle in allCircles {
+                placeGroup.enter()
+                
+                DispatchQueue.global(qos: .userInitiated).async {
+                    placeSemaphore.wait()
+                    
+                    PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
+                        switch result {
+                        case .success(let places):
+                            placesLock.lock()
+                            placesArray.append(places)
+                            placesLock.unlock()
+                        case .failure(let error):
+                            print("❌ Failed to fetch places for circle '\(circle.name)': \(error)")
+                        }
+                        
+                        placeSemaphore.signal()
+                        placeGroup.leave()
+                    }
+                }
+            }
+            
+            placeGroup.notify(queue: .main) { [weak self] in
+                guard let self = self else { return }
+                
+                // Flatten and deduplicate places
+                let allPlaces = placesArray.flatMap { $0 }
+                var uniquePlaces: [Place] = []
+                var seenIds = Set<String>()
+                
+                for place in allPlaces {
+                    if !seenIds.contains(place.id) {
+                        seenIds.insert(place.id)
+                        uniquePlaces.append(place)
+                    }
+                }
+                
+                self.allPlaces = uniquePlaces
+                
+                // Extract user's own places
+                let userCircleIds = Set(myCirclesResult.map { $0.id })
+                self.userOwnPlaces = uniquePlaces.filter { userCircleIds.contains($0.circleId) }
+                
+                // Cache the places
+                self.cachedPlaces = uniquePlaces
+                self.placesCacheExpiry = Date().addingTimeInterval(5 * 60) // 5 minutes
+                
+                // Update map
+                self.isMapDataReady = true
+                self.updateMapWhenReady()
+                
+                // Final cleanup
+                self.isLoadingPlaces = false
+                self.isPerformingInitialLoad = false
+                self.hideLoadingState()
+                self.userListView.refresh()
+                CirclesHomeViewController.hasLoadedInitialData = true
+                
+                let totalTime = CFAbsoluteTimeGetCurrent() - startTime
+                print("✅ OPTIMIZED load completed in \(String(format: "%.2f", totalTime)) seconds")
+                print("   - My circles: \(myCirclesResult.count)")
+                print("   - Network circles: \(networkCirclesResult.count)")
+                print("   - Total places: \(uniquePlaces.count)")
+                print("   - Activities: \(activitiesResult.count)")
+            }
         }
     }
     
@@ -3178,16 +3310,54 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Invalidate cache when user manually refreshes
         invalidateCache()
         
-        // Refresh the horizontal user list
+        print("🚀 Starting OPTIMIZED refresh")
+        let startTime = CFAbsoluteTimeGetCurrent()
+        
+        // Use parallel loading for refresh too
+        let refreshGroup = DispatchGroup()
+        
+        // 1. Refresh user list
         userListView.refresh()
         
-        // Refresh the activity feed
-        fetchActivities()
+        // 2. Refresh activities (parallel)
+        refreshGroup.enter()
+        fetchActivities { _ in
+            refreshGroup.leave()
+        }
         
+        // 3. Refresh circles based on current view (parallel)
+        refreshGroup.enter()
         if isShowingNetworkCircles {
-            fetchNetworkCircles()
+            APIService.shared.request(
+                endpoint: "network/my-network-circles",
+                method: .get,
+                requiresAuth: true
+            ) { [weak self] (result: Result<CirclesDataResponse, APIError>) in
+                switch result {
+                case .success(let response):
+                    self?.networkCircles = response.data
+                    self?.fetchAllPlacesFromCircles()
+                case .failure(let error):
+                    print("❌ Failed to refresh network circles: \(error)")
+                }
+                refreshGroup.leave()
+            }
         } else {
-            fetchCircles()
+            CircleService.shared.fetchUserCircles { [weak self] result in
+                switch result {
+                case .success(let circles):
+                    self?.circles = circles
+                    self?.fetchAllPlacesFromCircles()
+                case .failure(let error):
+                    print("❌ Failed to refresh user circles: \(error)")
+                }
+                refreshGroup.leave()
+            }
+        }
+        
+        refreshGroup.notify(queue: .main) { [weak self] in
+            let totalTime = CFAbsoluteTimeGetCurrent() - startTime
+            print("✅ OPTIMIZED refresh completed in \(String(format: "%.2f", totalTime)) seconds")
         }
     }
     

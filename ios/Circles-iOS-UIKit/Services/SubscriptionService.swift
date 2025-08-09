@@ -28,16 +28,67 @@ class SubscriptionService: ObservableObject {
     // MARK: - Load Products
     
     func loadProducts() async throws {
+        print("🔍 [SubscriptionService] Starting to load products...")
+        print("🔍 Product IDs to request: \(productIds)")
+        print("🔍 Bundle ID: \(Bundle.main.bundleIdentifier ?? "Unknown")")
+        
         do {
+            print("📱 Requesting products from StoreKit...")
             let storeProducts = try await Product.products(for: productIds)
+            
+            print("📦 Received \(storeProducts.count) products from StoreKit")
+            
+            for product in storeProducts {
+                print("  ✅ Product loaded:")
+                print("     - ID: \(product.id)")
+                print("     - Display Name: \(product.displayName)")
+                print("     - Display Price: \(product.displayPrice)")
+                print("     - Type: \(product.type.rawValue)")
+                if let subscription = product.subscription {
+                    print("     - Period: \(subscription.subscriptionPeriod)")
+                    print("     - Period Unit: \(subscription.subscriptionPeriod.unit)")
+                    print("     - Period Value: \(subscription.subscriptionPeriod.value)")
+                }
+            }
             
             products = storeProducts
                 .map { SubscriptionProduct(product: $0) }
                 .sorted { $0.price < $1.price }
             
-            print("✅ Loaded \(products.count) subscription products")
+            print("✅ Successfully loaded and sorted \(products.count) subscription products")
+            
+            if products.isEmpty {
+                print("⚠️ WARNING: No products loaded. Possible reasons:")
+                print("   1. Products not configured in App Store Connect")
+                print("   2. Bundle ID mismatch")
+                print("   3. Products still processing (can take up to 24 hours)")
+                print("   4. Not signed in with sandbox account (for testing)")
+                print("   5. Paid Applications agreement not active")
+            }
         } catch {
-            print("❌ Failed to load products: \(error)")
+            print("❌ Failed to load products from StoreKit")
+            print("❌ Error type: \(type(of: error))")
+            print("❌ Error description: \(error.localizedDescription)")
+            
+            if let skError = error as? StoreKitError {
+                print("❌ StoreKit Error: \(skError)")
+                switch skError {
+                case .networkError(let urlError):
+                    print("   - Network error: \(urlError)")
+                case .systemError(let nsError):
+                    print("   - System error: \(nsError)")
+                case .userCancelled:
+                    print("   - User cancelled")
+                default:
+                    print("   - Other StoreKit error")
+                }
+            } else if let nsError = error as NSError? {
+                print("❌ NSError details:")
+                print("   - Domain: \(nsError.domain)")
+                print("   - Code: \(nsError.code)")
+                print("   - User Info: \(nsError.userInfo)")
+            }
+            
             throw error
         }
     }
