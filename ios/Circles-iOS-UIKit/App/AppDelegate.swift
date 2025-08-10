@@ -342,7 +342,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             identifier: "CONNECTION_REQUEST",
             actions: [acceptAction, declineAction],
             intentIdentifiers: [],
-            options: []
+            options: [.customDismissAction, .hiddenPreviewsShowTitle]
         )
         
         // Message actions
@@ -362,7 +362,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             identifier: "NEW_MESSAGE",
             actions: [replyAction, viewAction],
             intentIdentifiers: [],
-            options: []
+            options: [.customDismissAction, .hiddenPreviewsShowTitle]
         )
         
         // Place suggestion actions
@@ -380,7 +380,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             identifier: "PLACE_SUGGESTION",
             actions: [viewPlaceAction, saveAction],
             intentIdentifiers: [],
-            options: []
+            options: [.customDismissAction, .hiddenPreviewsShowTitle]
         )
         
         // Activity update category
@@ -393,7 +393,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             identifier: "ACTIVITY_UPDATE",
             actions: [viewActivityAction],
             intentIdentifiers: [],
-            options: []
+            options: [.customDismissAction, .hiddenPreviewsShowTitle]
         )
         
         // Set categories
@@ -443,8 +443,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             }
         }
         
-        // For other notifications, show normally
-        completionHandler([.alert, .badge, .sound])
+        // For other notifications, show normally with list option for persistence
+        completionHandler([.alert, .badge, .sound, .list])
     }
     
     private func getTopViewController() -> UIViewController? {
@@ -462,6 +462,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     private func presentDailySummary(with userInfo: [AnyHashable: Any]) {
         print("📊 Presenting daily summary modal")
         print("📊 UserInfo keys: \(userInfo.keys)")
+        print("📊 Raw userInfo: \(userInfo)")
         
         // Function to actually present the modal
         let presentModal = {
@@ -474,40 +475,67 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
                 return
             }
             
-            // Convert userInfo to String dictionary
+            // Convert userInfo to String dictionary and extract all possible data locations
             var notificationData: [String: Any] = [:]
+            
+            // First, add all root level string keys
             for (key, value) in userInfo {
                 if let stringKey = key as? String {
                     notificationData[stringKey] = value
                 }
             }
             
-            print("📊 AppDelegate: Presenting daily summary with data:")
-            print("📊 Keys: \(notificationData.keys.sorted())")
-            print("📊 Full data: \(notificationData)")
+            // Check if data is nested in "gcm.notification.data" (common FCM pattern)
+            if let gcmData = userInfo["gcm.notification.data"] as? String,
+               let data = gcmData.data(using: .utf8),
+               let jsonData = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                print("📊 Found data in gcm.notification.data")
+                // Merge the nested data
+                for (key, value) in jsonData {
+                    notificationData[key] = value
+                }
+            }
             
-            // Check if DailySummaryViewController class exists
-            if NSClassFromString("Circles_iOS.DailySummaryViewController") != nil {
-                print("✅ DailySummaryViewController class found")
-                // Create and present daily summary
-                let summaryVC = DailySummaryViewController(notificationData: notificationData)
-                
-                // Check if topViewController can present
-                if topViewController.presentedViewController != nil {
-                    topViewController.dismiss(animated: false) {
-                        topViewController.present(summaryVC, animated: true) {
-                            print("✅ Daily summary modal presented")
-                        }
-                    }
-                } else {
+            // Check if data is in a "data" field
+            if let dataField = userInfo["data"] as? [String: Any] {
+                print("📊 Found data in 'data' field")
+                // Merge the nested data
+                for (key, value) in dataField {
+                    notificationData[key] = value
+                }
+            }
+            
+            // Check for individual fields at root level (FCM sometimes flattens custom data)
+            let dailySummaryFields = ["newPlaces", "newConnections", "unreadMessages", 
+                                     "placeComments", "placeLikes", "placeCategories", 
+                                     "topContributors", "summaryDate", "type"]
+            
+            for field in dailySummaryFields {
+                // Check with "gcm.notification." prefix (another FCM pattern)
+                if let value = userInfo["gcm.notification.\(field)"] as? String {
+                    print("📊 Found \(field) at gcm.notification.\(field): \(value)")
+                    notificationData[field] = value
+                }
+            }
+            
+            print("📊 AppDelegate: Presenting daily summary with processed data:")
+            print("📊 Keys: \(notificationData.keys.sorted())")
+            print("📊 Full processed data: \(notificationData)")
+            
+            // Create and present daily summary
+            let summaryVC = DailySummaryViewController(notificationData: notificationData)
+            
+            // Check if topViewController can present
+            if topViewController.presentedViewController != nil {
+                topViewController.dismiss(animated: false) {
                     topViewController.present(summaryVC, animated: true) {
                         print("✅ Daily summary modal presented")
                     }
                 }
             } else {
-                print("⚠️ DailySummaryViewController class not found, showing detailed alert instead")
-                // Fallback: Show a detailed alert with the summary information
-                self.showDailySummaryAlert(data: notificationData, from: topViewController)
+                topViewController.present(summaryVC, animated: true) {
+                    print("✅ Daily summary modal presented")
+                }
             }
         }
         

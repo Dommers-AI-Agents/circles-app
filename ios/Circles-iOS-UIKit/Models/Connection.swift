@@ -88,13 +88,14 @@ struct CircleAccess: Codable {
 // User activity tracking
 struct UserActivity: Codable {
     let type: ActivityType
-    let entityId: String
+    let entityId: String? // Made optional for check-in activities
     let circleId: String?
     let createdAt: Date?
     
     enum ActivityType: String, Codable {
         case circle = "circle"
         case place = "place"
+        case checkIn = "check_in"
     }
 }
 

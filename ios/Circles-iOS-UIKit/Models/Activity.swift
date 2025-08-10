@@ -7,6 +7,7 @@ enum ActivityType: String, Codable {
     case placeCommented = "place_commented"
     case circleCreated = "circle_created"
     case commentLiked = "comment_liked"
+    case checkIn = "check_in"
 }
 
 // MARK: - Activity Model
@@ -23,6 +24,10 @@ struct Activity: Codable {
     let metadata: ActivityMetadata?
     let timestamp: Date
     let isRead: Bool
+    let reactionCount: Int?
+    let commentCount: Int?
+    let userReaction: String? // Current user's reaction emoji
+    let reactionSummary: [ReactionSummary]? // Top reactions with counts
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -37,6 +42,21 @@ struct Activity: Codable {
         case metadata
         case timestamp
         case isRead
+        case reactionCount
+        case commentCount
+        case userReaction
+        case reactionSummary
+    }
+    
+    // Check if user has reacted
+    var hasUserReacted: Bool {
+        return userReaction != nil
+    }
+    
+    // Get user's reaction style
+    var userReactionStyle: ReactionStyle? {
+        guard let emoji = userReaction else { return nil }
+        return ReactionStyle(emoji: emoji)
     }
 }
 
@@ -45,6 +65,9 @@ struct ActivityMetadata: Codable {
     let comment: String?
     let placePhoto: String?
     let placeAddress: String?
+    let placeId: String?
+    let message: String?  // For check-in messages
+    let endTime: String?  // For check-in end time
 }
 
 // MARK: - Activity Helper Methods
@@ -61,6 +84,8 @@ extension Activity {
             return "created a new circle \(targetName)"
         case .commentLiked:
             return "liked a comment on \(targetName)"
+        case .checkIn:
+            return "checked in at \(targetName)"
         }
     }
     

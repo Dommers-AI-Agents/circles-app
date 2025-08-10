@@ -1,5 +1,19 @@
 import Foundation
 
+// MARK: - Helper for decoding metadata
+private struct DynamicCodingKeys: CodingKey {
+    var stringValue: String
+    var intValue: Int?
+    
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+    }
+    
+    init?(intValue: Int) {
+        return nil
+    }
+}
+
 // MARK: - Message Model
 struct Message: Codable, Identifiable {
     let id: String
@@ -9,7 +23,7 @@ struct Message: Codable, Identifiable {
     var content: String?
     let mediaUrl: String?
     let metadata: [String: Any]?
-    let readBy: [String]
+    let readBy: [String]?
     let deliveredTo: [String]?
     var editedAt: String?
     var deletedAt: String?
@@ -44,17 +58,38 @@ struct Message: Codable, Identifiable {
         type = try container.decode(MessageType.self, forKey: .type)
         content = try container.decodeIfPresent(String.self, forKey: .content)
         mediaUrl = try container.decodeIfPresent(String.self, forKey: .mediaUrl)
-        readBy = try container.decode([String].self, forKey: .readBy)
+        readBy = try container.decodeIfPresent([String].self, forKey: .readBy)
         deliveredTo = try container.decodeIfPresent([String].self, forKey: .deliveredTo)
         editedAt = try container.decodeIfPresent(String.self, forKey: .editedAt)
         deletedAt = try container.decodeIfPresent(String.self, forKey: .deletedAt)
         createdAt = try container.decode(String.self, forKey: .createdAt)
         senderDetails = try container.decodeIfPresent(User.self, forKey: .senderDetails)
         
-        // Decode metadata as dictionary
-        if let metadataData = try? container.decode(Data.self, forKey: .metadata),
-           let metadataDict = try? JSONSerialization.jsonObject(with: metadataData) as? [String: Any] {
-            metadata = metadataDict
+        // Decode metadata - handle both direct JSON object and Data formats
+        if container.contains(.metadata) {
+            // Try to decode as a nested container (direct JSON object from backend)
+            if let metadataContainer = try? container.nestedContainer(keyedBy: DynamicCodingKeys.self, forKey: .metadata) {
+                var dict = [String: Any]()
+                for key in metadataContainer.allKeys {
+                    if let value = try? metadataContainer.decode(String.self, forKey: key) {
+                        dict[key.stringValue] = value
+                    } else if let value = try? metadataContainer.decode(Int.self, forKey: key) {
+                        dict[key.stringValue] = value
+                    } else if let value = try? metadataContainer.decode(Double.self, forKey: key) {
+                        dict[key.stringValue] = value
+                    } else if let value = try? metadataContainer.decode(Bool.self, forKey: key) {
+                        dict[key.stringValue] = value
+                    }
+                }
+                metadata = dict.isEmpty ? nil : dict
+            }
+            // Fallback to decoding as Data (for backward compatibility)
+            else if let metadataData = try? container.decode(Data.self, forKey: .metadata),
+                    let metadataDict = try? JSONSerialization.jsonObject(with: metadataData) as? [String: Any] {
+                metadata = metadataDict
+            } else {
+                metadata = nil
+            }
         } else {
             metadata = nil
         }
@@ -69,7 +104,7 @@ struct Message: Codable, Identifiable {
         try container.encode(type, forKey: .type)
         try container.encodeIfPresent(content, forKey: .content)
         try container.encodeIfPresent(mediaUrl, forKey: .mediaUrl)
-        try container.encode(readBy, forKey: .readBy)
+        try container.encodeIfPresent(readBy, forKey: .readBy)
         try container.encodeIfPresent(deliveredTo, forKey: .deliveredTo)
         try container.encodeIfPresent(editedAt, forKey: .editedAt)
         try container.encodeIfPresent(deletedAt, forKey: .deletedAt)
@@ -90,7 +125,7 @@ struct Message: Codable, Identifiable {
     
     var isRead: Bool {
         guard let currentUserId = AuthService.shared.getUserId() else { return false }
-        return readBy.contains(currentUserId) || isCurrentUserMessage
+        return (readBy ?? []).contains(currentUserId) || isCurrentUserMessage
     }
     
     var isEdited: Bool {
@@ -119,6 +154,8 @@ struct Message: Codable, Identifiable {
             return "📍 Shared a place"
         case .connectionRequest:
             return "🤝 Connection request"
+        case .checkIn:
+            return content ?? "📍 Checked in"
         }
     }
     
@@ -142,6 +179,7 @@ enum MessageType: String, Codable {
     case circleShare = "circle_share"
     case placeShare = "place_share"
     case connectionRequest = "connection_request"
+    case checkIn = "check_in"
 }
 
 // MARK: - Date Formatter Extension

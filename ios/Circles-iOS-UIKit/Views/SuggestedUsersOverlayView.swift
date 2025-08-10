@@ -44,7 +44,7 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
     
     private let subtitleLabel: UILabel = {
         let label = UILabel()
-        label.text = "Follow users with the best recommendations"
+        label.text = "Connect with our most active curators"
         label.font = UIFont.systemFont(ofSize: 16, weight: .regular)
         label.textColor = Constants.Colors.secondaryLabel
         label.textAlignment = .center
@@ -55,10 +55,11 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
     
     private let instructionLabel: UILabel = {
         let label = UILabel()
-        label.text = "Tap on profiles to follow and connect"
+        label.text = "Follow users with the best recommendations (shown by places saved)"
         label.font = UIFont.systemFont(ofSize: 14, weight: .medium)
         label.textColor = Constants.Colors.primary
         label.textAlignment = .center
+        label.numberOfLines = 2
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -82,14 +83,31 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
     
     private lazy var exploreButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "person.2.fill"), for: .normal)
-        button.setTitle("Explore Network", for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-        button.backgroundColor = Constants.Colors.primary
-        button.tintColor = .white
-        button.setTitleColor(.white, for: .normal)
-        button.layer.cornerRadius = 25
-        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 8)
+        
+        // Configure for vertical layout (icon on top, text below)
+        var config = UIButton.Configuration.filled()
+        config.image = UIImage(systemName: "person.2.fill")
+        config.title = "Explore\nNetwork"
+        config.titleAlignment = .center
+        config.imagePlacement = .top
+        config.imagePadding = 8
+        config.baseBackgroundColor = Constants.Colors.primary
+        config.baseForegroundColor = .white
+        
+        // Configure title attributes for multiline
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        paragraphStyle.lineSpacing = 2
+        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+            var outgoing = incoming
+            outgoing.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+            outgoing.paragraphStyle = paragraphStyle
+            return outgoing
+        }
+        
+        button.configuration = config
+        button.layer.cornerRadius = 70 // Half of width/height for perfect circle
+        button.clipsToBounds = true
         button.translatesAutoresizingMaskIntoConstraints = false
         button.addTarget(self, action: #selector(exploreButtonTapped), for: .touchUpInside)
         return button
@@ -226,8 +244,8 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
             // Explore button (center of circle)
             exploreButton.centerXAnchor.constraint(equalTo: circleContainerView.centerXAnchor),
             exploreButton.centerYAnchor.constraint(equalTo: circleContainerView.centerYAnchor),
-            exploreButton.widthAnchor.constraint(equalToConstant: 180),
-            exploreButton.heightAnchor.constraint(equalToConstant: 50),
+            exploreButton.widthAnchor.constraint(equalToConstant: 140),
+            exploreButton.heightAnchor.constraint(equalToConstant: 140),
             
             // Loading indicator
             loadingIndicator.centerXAnchor.constraint(equalTo: circleContainerView.centerXAnchor),
@@ -336,10 +354,13 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
             return
         }
         
-        let radius: CGFloat = 120 // Distance from center
-        let angleStep = (2 * CGFloat.pi) / CGFloat(min(suggestedUsers.count, maxVisibleUsers))
+        // Sort users by places count (highest first)
+        let sortedUsers = suggestedUsers.sorted { ($0.placesCount ?? 0) > ($1.placesCount ?? 0) }
         
-        for (index, user) in suggestedUsers.prefix(maxVisibleUsers).enumerated() {
+        let radius: CGFloat = 120 // Distance from center
+        let angleStep = (2 * CGFloat.pi) / CGFloat(min(sortedUsers.count, maxVisibleUsers))
+        
+        for (index, user) in sortedUsers.prefix(maxVisibleUsers).enumerated() {
             let button = createUserButton(for: user)
             userButtons.append(button)
             circleContainerView.addSubview(button)
@@ -422,12 +443,16 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
             let badgeView = UIView()
             badgeView.backgroundColor = Constants.Colors.primary
             badgeView.layer.cornerRadius = 10
+            badgeView.layer.shadowColor = UIColor.black.cgColor
+            badgeView.layer.shadowOffset = CGSize(width: 0, height: 1)
+            badgeView.layer.shadowOpacity = 0.3
+            badgeView.layer.shadowRadius = 2
             badgeView.translatesAutoresizingMaskIntoConstraints = false
             containerView.addSubview(badgeView)
             
             let badgeLabel = UILabel()
             badgeLabel.text = "\(placesCount)"
-            badgeLabel.font = UIFont.systemFont(ofSize: 10, weight: .bold)
+            badgeLabel.font = UIFont.systemFont(ofSize: 9, weight: .bold)
             badgeLabel.textColor = .white
             badgeLabel.translatesAutoresizingMaskIntoConstraints = false
             badgeView.addSubview(badgeLabel)

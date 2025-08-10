@@ -124,6 +124,8 @@ class VisitDetailViewController: UIViewController {
         super.viewDidLoad()
         setupView()
         configureView()
+        // Setup keyboard handling for notes text view
+        setupKeyboardHandling(scrollView: scrollView, dismissOnTap: true)
     }
     
     override func viewDidAppear(_ animated: Bool) {
@@ -150,6 +152,12 @@ class VisitDetailViewController: UIViewController {
                 self.markAsReviewed()
             }
         }
+    }
+    
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        removeKeyboardHandling()
+        locationManager.stopUpdatingLocation()
     }
     
     // MARK: - Setup

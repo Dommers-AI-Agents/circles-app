@@ -462,6 +462,68 @@ class PlaceDetailViewController: BaseViewController {
         return button
     }()
     
+    // MARK: - Photos Section UI Elements
+    private let photosTitleLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Photos"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .bold)
+        label.textColor = Constants.Colors.darkGray
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let photosButtonsStackView: UIStackView = {
+        let stackView = UIStackView()
+        stackView.axis = .horizontal
+        stackView.spacing = Constants.Spacing.small
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        return stackView
+    }()
+    
+    private let photosEditButton: UIButton = {
+        let button = UIButton(type: .system)
+        
+        // Create configuration for button with icon
+        var config = UIButton.Configuration.plain()
+        config.image = UIImage(systemName: "pencil.circle")
+        config.title = "Change Photo"
+        config.imagePadding = 4
+        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+        
+        button.configuration = config
+        button.configurationUpdateHandler = { button in
+            var config = button.configuration
+            config?.baseForegroundColor = Constants.Colors.primary
+            button.configuration = config
+        }
+        
+        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let addPhotoButton: UIButton = {
+        let button = UIButton(type: .system)
+        
+        // Create configuration for button with icon
+        var config = UIButton.Configuration.plain()
+        config.image = UIImage(systemName: "camera.fill")
+        config.title = "Add Photo"
+        config.imagePadding = 4
+        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+        
+        button.configuration = config
+        button.configurationUpdateHandler = { button in
+            var config = button.configuration
+            config?.baseForegroundColor = Constants.Colors.primary
+            button.configuration = config
+        }
+        
+        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
     private let tagsTitleLabel: UILabel = {
         let label = UILabel()
         label.text = "Tags"
@@ -709,6 +771,15 @@ class PlaceDetailViewController: BaseViewController {
         notesButtonsStackView.addArrangedSubview(addNotesButton)
         infoContainerView.addSubview(notesLabel)
         
+        // Add photos section if user can edit
+        let canEdit = place.isAddedByCurrentUser || isHomeOrWorkPlace
+        if canEdit {
+            infoContainerView.addSubview(photosTitleLabel)
+            infoContainerView.addSubview(photosButtonsStackView)
+            photosButtonsStackView.addArrangedSubview(photosEditButton)
+            photosButtonsStackView.addArrangedSubview(addPhotoButton)
+        }
+        
         if let tags = place.tags, !tags.isEmpty {
             infoContainerView.addSubview(tagsTitleLabel)
             infoContainerView.addSubview(tagsStackView)
@@ -777,6 +848,10 @@ class PlaceDetailViewController: BaseViewController {
         
         // Add target for add notes button
         addNotesButton.addTarget(self, action: #selector(addNotesButtonTapped), for: .touchUpInside)
+        
+        // Add target for photo buttons
+        photosEditButton.addTarget(self, action: #selector(editImageButtonTapped), for: .touchUpInside)
+        addPhotoButton.addTarget(self, action: #selector(editImageButtonTapped), for: .touchUpInside)
         
         ratingView.addSubview(ratingImageView)
         ratingView.addSubview(ratingLabel)
@@ -984,6 +1059,19 @@ class PlaceDetailViewController: BaseViewController {
         
         lastAnchor = notesLabel.bottomAnchor
         
+        // Add photos section constraints if user can edit
+        if canEdit {
+            NSLayoutConstraint.activate([
+                photosTitleLabel.topAnchor.constraint(equalTo: lastAnchor, constant: additionalSpacing),
+                photosTitleLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
+                
+                photosButtonsStackView.centerYAnchor.constraint(equalTo: photosTitleLabel.centerYAnchor),
+                photosButtonsStackView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium)
+            ])
+            
+            lastAnchor = photosTitleLabel.bottomAnchor
+        }
+        
         // Add tags if available
         if let tags = place.tags, !tags.isEmpty {
             NSLayoutConstraint.activate([
@@ -1106,6 +1194,25 @@ class PlaceDetailViewController: BaseViewController {
         let canEdit = place.isAddedByCurrentUser || isHomeOrWorkPlace
         editImageButton.isHidden = !canEdit
         categoryEditButton.isHidden = !canEdit
+        
+        // Update photo section buttons visibility
+        if canEdit {
+            // Check if place has custom photos
+            let hasCustomPhoto = (place.photos?.count ?? 0) > 0 || customImage != nil
+            
+            if hasCustomPhoto {
+                addPhotoButton.isHidden = true
+                photosEditButton.isHidden = false
+            } else {
+                addPhotoButton.isHidden = false
+                photosEditButton.isHidden = true
+            }
+            
+            photosTitleLabel.isHidden = false
+        } else {
+            photosTitleLabel.isHidden = true
+            photosButtonsStackView.isHidden = true
+        }
         
         
         // Show update info button for places showing default category image that can be enriched with Google data
@@ -2256,6 +2363,10 @@ class PlaceDetailViewController: BaseViewController {
         saveImage(nil)
         configureDefaultImage()
         editImageButton.setTitle("Add Photo", for: .normal)
+        
+        // Update photo section buttons
+        addPhotoButton.isHidden = false
+        photosEditButton.isHidden = true
     }
     
     private func useStreetViewAsCustomImage() {
@@ -2265,6 +2376,10 @@ class PlaceDetailViewController: BaseViewController {
         editImageButton.setTitle("Change Photo", for: .normal)
         saveImage(streetViewImage)
         updateImageView()
+        
+        // Update photo section buttons
+        addPhotoButton.isHidden = true
+        photosEditButton.isHidden = false
         
         // Show success message
         showSuccess("Street view image set as the place photo.")
@@ -2331,6 +2446,12 @@ class PlaceDetailViewController: BaseViewController {
                     self.imageView.image = firstPhoto
                     self.imageView.contentMode = .scaleAspectFill
                     self.editImageButton.setTitle("Change Photo", for: .normal)
+                    
+                    // Update photo section buttons
+                    if self.place.isAddedByCurrentUser || self.isHomeOrWorkPlace {
+                        self.addPhotoButton.isHidden = true
+                        self.photosEditButton.isHidden = false
+                    }
                 } else {
                     print("⚠️ PlaceDetailViewController: No photos were successfully loaded")
                 }
@@ -2344,6 +2465,9 @@ class PlaceDetailViewController: BaseViewController {
             // Update button title if image exists
             if customImage != nil {
                 editImageButton.setTitle("Change Photo", for: .normal)
+                // Update photo section buttons
+                addPhotoButton.isHidden = true
+                photosEditButton.isHidden = false
             }
             updateToggleButtonVisibility()
         } else {
@@ -2421,22 +2545,31 @@ class PlaceDetailViewController: BaseViewController {
                     
                     switch result {
                     case .success(let updatedPlace):
-                        // Update the image view with the uploaded photo
-                        if let photos = updatedPlace.photos, !photos.isEmpty, let firstPhotoUrl = photos.first, let url = URL(string: firstPhotoUrl) {
-                            // Load the uploaded photo
-                            URLSession.shared.dataTask(with: url) { data, response, error in
-                                if let data = data, let image = UIImage(data: data) {
-                                    DispatchQueue.main.async {
-                                        self?.customImage = image
-                                        self?.imageView.image = image
-                                        self?.imageView.contentMode = .scaleAspectFill
-                                        // Update button title
-                                        self?.editImageButton.setTitle("Change Photo", for: .normal)
-                                    }
-                                }
-                            }.resume()
-                        }
+                        // Update the local place object with the server response
+                        self?.place = updatedPlace
+                        
+                        // The image we just uploaded is already in memory as 'image'
+                        // No need to re-download it
+                        self?.customImage = image
+                        self?.imageView.image = image
+                        self?.imageView.contentMode = .scaleAspectFill
+                        
+                        // Update button titles
+                        self?.editImageButton.setTitle("Change Photo", for: .normal)
+                        
+                        // Update photo section buttons
+                        self?.addPhotoButton.isHidden = true
+                        self?.photosEditButton.isHidden = false
+                        
+                        // Show success message
                         self?.showAlert(title: "Success", message: "Photo uploaded successfully")
+                        
+                        // Clear any existing photos array to force reload if view is refreshed
+                        self?.placePhotos.removeAll()
+                        if let photos = updatedPlace.photos, !photos.isEmpty {
+                            self?.placePhotos.append(image)
+                        }
+                        
                     case .failure(let error):
                         self?.showAlert(title: "Error", message: "Failed to upload photo: \(error.localizedDescription)")
                     }
@@ -2702,12 +2835,20 @@ extension PlaceDetailViewController: UIImagePickerControllerDelegate, UINavigati
             imageView.contentMode = .scaleAspectFill
             editImageButton.setTitle("Change Photo", for: .normal)
             saveImage(editedImage)
+            
+            // Update photo section buttons
+            addPhotoButton.isHidden = true
+            photosEditButton.isHidden = false
         } else if let originalImage = info[.originalImage] as? UIImage {
             customImage = originalImage
             imageView.image = originalImage
             imageView.contentMode = .scaleAspectFill
             editImageButton.setTitle("Change Photo", for: .normal)
             saveImage(originalImage)
+            
+            // Update photo section buttons
+            addPhotoButton.isHidden = true
+            photosEditButton.isHidden = false
         }
     }
     
@@ -2731,6 +2872,10 @@ extension PlaceDetailViewController: PHPickerViewControllerDelegate {
                     self?.imageView.contentMode = .scaleAspectFill
                     self?.editImageButton.setTitle("Change Photo", for: .normal)
                     self?.saveImage(image)
+                    
+                    // Update photo section buttons
+                    self?.addPhotoButton.isHidden = true
+                    self?.photosEditButton.isHidden = false
                 }
             }
         }

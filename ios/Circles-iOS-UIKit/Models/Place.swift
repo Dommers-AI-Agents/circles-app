@@ -34,12 +34,13 @@ struct Place: Codable, Identifiable {
     let createdAt: Date
     let updatedAt: Date
     var isNew: Bool? // Indicates if this is new activity
+    var circleName: String? // Added by backend for check-in place selection
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
         case name, description, address, location, website, phone, googlePlaceId
         case photos, category, customCategoryId, subcategory, rating, userRatingsTotal, notes, privateNotes, publicNotes, tags, reviews, openingHours
-        case priceLevel, likes, likesCount, commentsCount, circleId, addedBy, addedByUser, privacy, createdAt, updatedAt, isNew
+        case priceLevel, likes, likesCount, commentsCount, circleId, addedBy, addedByUser, privacy, createdAt, updatedAt, isNew, circleName
     }
     
     init(from decoder: Decoder) throws {

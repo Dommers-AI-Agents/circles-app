@@ -2801,3 +2801,84 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Get all places from user's circles for check-in
+// @route   GET /api/places/my-places
+// @access  Private
+exports.getMyPlacesForCheckIn = async (req, res, next) => {
+  try {
+    const userId = req.user.uid;
+    
+    console.log('🏠 Fetching places for check-in - User:', userId);
+    
+    // Get all user's circles
+    const circlesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
+      .where('owner', '==', userId)
+      .orderBy('updatedAt', 'desc')
+      .get();
+    
+    if (circlesSnapshot.empty) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+        message: 'No circles found'
+      });
+    }
+    
+    // Collect all places from user's circles
+    const placesPromises = [];
+    const circleMap = new Map(); // Store circle info for each place
+    
+    circlesSnapshot.forEach(circleDoc => {
+      const circle = serializeDoc(circleDoc);
+      circleMap.set(circle.id, circle);
+      
+      // Get places from this circle
+      const placesPromise = db.collection(COLLECTIONS.PLACES)
+        .where('circleId', '==', circle.id)
+        .orderBy('createdAt', 'desc')
+        .get();
+      
+      placesPromises.push(placesPromise);
+    });
+    
+    // Wait for all place queries
+    const placesSnapshots = await Promise.all(placesPromises);
+    
+    // Combine and format all places
+    const allPlaces = [];
+    placesSnapshots.forEach(snapshot => {
+      snapshot.forEach(placeDoc => {
+        const place = serializeDoc(placeDoc);
+        const circle = circleMap.get(place.circleId);
+        
+        // Add circle info to place
+        allPlaces.push({
+          ...place,
+          circleName: circle?.name || 'Unknown Circle',
+          circleCategory: circle?.category || 'other'
+        });
+      });
+    });
+    
+    // Sort by most recently added/updated
+    allPlaces.sort((a, b) => {
+      const dateA = new Date(a.updatedAt || a.createdAt);
+      const dateB = new Date(b.updatedAt || b.createdAt);
+      return dateB - dateA;
+    });
+    
+    console.log(`✅ Found ${allPlaces.length} places from ${circlesSnapshot.size} circles for check-in`);
+    
+    res.status(200).json({
+      success: true,
+      data: allPlaces,
+      circleCount: circlesSnapshot.size,
+      placeCount: allPlaces.length
+    });
+    
+  } catch (error) {
+    console.error('Error fetching places for check-in:', error);
+    next(error);
+  }
+};

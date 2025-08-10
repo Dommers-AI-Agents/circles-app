@@ -118,21 +118,42 @@ class RegisterViewController: BaseViewController {
     
     private lazy var registerButton = UIButton.primaryButton(title: "Create Account")
     
+    private let orContainerView: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
     private let orLabel: UILabel = {
         let label = UILabel()
         label.text = "OR"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small, weight: .medium)
         label.textColor = Constants.Colors.secondaryLabel
         label.textAlignment = .center
+        label.backgroundColor = Constants.Colors.background
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
     
+    private let leftDivider: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.separator
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let rightDivider: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.separator
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
     private let socialStackView: UIStackView = {
         let stackView = UIStackView()
-        stackView.axis = .horizontal
-        stackView.distribution = .fillEqually
-        stackView.spacing = Constants.Spacing.medium
+        stackView.axis = .vertical
+        stackView.distribution = .fill
+        stackView.spacing = Constants.Spacing.small
         stackView.translatesAutoresizingMaskIntoConstraints = false
         return stackView
     }()
@@ -144,8 +165,17 @@ class RegisterViewController: BaseViewController {
         return button
     }()
     
-    private lazy var googleSignInButton = UIButton.googleSignInButton()
-    private lazy var facebookSignInButton = UIButton.facebookSignInButton()
+    private lazy var googleSignInButton: UIButton = {
+        let button = UIButton.googleSignInButton()
+        button.setTitle("Google", for: .normal)
+        return button
+    }()
+    
+    private lazy var facebookSignInButton: UIButton = {
+        let button = UIButton.facebookSignInButton()
+        button.setTitle("Facebook", for: .normal)
+        return button
+    }()
     
     // MARK: - Properties
     private var isRegistering = false {
@@ -205,9 +235,14 @@ class RegisterViewController: BaseViewController {
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
         
+        // Add dividers to OR container
+        orContainerView.addSubview(leftDivider)
+        orContainerView.addSubview(orLabel)
+        orContainerView.addSubview(rightDivider)
+        
         let subviews = [titleLabel, subtitleLabel, emailTextField, passwordTextField, 
                        confirmPasswordTextField, passwordRequirementLabel, referralCodeTextField,
-                       referralCodeLabel, registerButton, orLabel, socialStackView]
+                       referralCodeLabel, registerButton, orContainerView, socialStackView]
         subviews.forEach { contentView.addSubview($0) }
         
         setupConstraints()
@@ -284,15 +319,33 @@ class RegisterViewController: BaseViewController {
             registerButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             registerButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             
-            // Or label
-            orLabel.topAnchor.constraint(equalTo: registerButton.bottomAnchor, constant: Constants.Spacing.medium),
-            orLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            // OR container with dividers
+            orContainerView.topAnchor.constraint(equalTo: registerButton.bottomAnchor, constant: Constants.Spacing.large),
+            orContainerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            orContainerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            orContainerView.heightAnchor.constraint(equalToConstant: 20),
             
-            // Social stack view
-            socialStackView.topAnchor.constraint(equalTo: orLabel.bottomAnchor, constant: Constants.Spacing.medium),
+            // Left divider
+            leftDivider.leadingAnchor.constraint(equalTo: orContainerView.leadingAnchor),
+            leftDivider.centerYAnchor.constraint(equalTo: orContainerView.centerYAnchor),
+            leftDivider.heightAnchor.constraint(equalToConstant: 1),
+            leftDivider.trailingAnchor.constraint(equalTo: orLabel.leadingAnchor, constant: -Constants.Spacing.medium),
+            
+            // OR label
+            orLabel.centerXAnchor.constraint(equalTo: orContainerView.centerXAnchor),
+            orLabel.centerYAnchor.constraint(equalTo: orContainerView.centerYAnchor),
+            orLabel.widthAnchor.constraint(equalToConstant: 40),
+            
+            // Right divider
+            rightDivider.leadingAnchor.constraint(equalTo: orLabel.trailingAnchor, constant: Constants.Spacing.medium),
+            rightDivider.centerYAnchor.constraint(equalTo: orContainerView.centerYAnchor),
+            rightDivider.heightAnchor.constraint(equalToConstant: 1),
+            rightDivider.trailingAnchor.constraint(equalTo: orContainerView.trailingAnchor),
+            
+            // Social stack view (vertical now, so remove height constraint)
+            socialStackView.topAnchor.constraint(equalTo: orContainerView.bottomAnchor, constant: Constants.Spacing.large),
             socialStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             socialStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            socialStackView.heightAnchor.constraint(equalToConstant: 50),
             socialStackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
         ])
     }

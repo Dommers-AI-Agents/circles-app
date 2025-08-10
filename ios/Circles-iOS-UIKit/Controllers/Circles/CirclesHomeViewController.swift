@@ -88,6 +88,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     private var suggestedUsersOverlay: SuggestedUsersOverlayView?
     private var visitTrackingPermissionOverlay: VisitTrackingPermissionView?
     
+    // Reaction picker tracking
+    private var currentReactionActivity: Activity?
+    
     override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
         super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
     }
@@ -1020,6 +1023,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Setup navigation bar
         let addButton = UIBarButtonItem(image: UIImage(systemName: "plus.circle"), style: .plain, target: self, action: #selector(addButtonTapped))
         
+        // Create check-in button
+        let checkInButton = UIBarButtonItem(image: UIImage(systemName: "checkmark.circle"), style: .plain, target: self, action: #selector(checkInButtonTapped))
+        
         // Create notification button with bell icon
         let notificationButton = UIBarButtonItem(image: UIImage(systemName: "bell"), style: .plain, target: self, action: #selector(notificationButtonTapped))
         self.notificationBarButton = notificationButton
@@ -1028,7 +1034,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         setupNotificationBadge()
         
         // Create upgrade button for free users
-        var rightBarButtons = [addButton, notificationButton]
+        var rightBarButtons = [addButton, checkInButton, notificationButton]
         
         // Check if user is not subscribed
         Task { @MainActor in
@@ -1490,6 +1496,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         activityTableView.delegate = self
         activityTableView.dataSource = self
         activityTableView.register(ActivityFeedCell.self, forCellReuseIdentifier: ActivityFeedCell.identifier)
+        
+        // Enable automatic row height calculation
+        activityTableView.rowHeight = UITableView.automaticDimension
+        activityTableView.estimatedRowHeight = 120
         
         // Set scroll view delegate for pagination
         scrollView.delegate = self
@@ -2671,9 +2681,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     private func updateNavigationBarForSubscription() {
         Task { @MainActor in
             let addButton = UIBarButtonItem(image: UIImage(systemName: "plus.circle"), style: .plain, target: self, action: #selector(addButtonTapped))
+            let checkInButton = UIBarButtonItem(image: UIImage(systemName: "checkmark.circle"), style: .plain, target: self, action: #selector(checkInButtonTapped))
             let notificationButton = self.notificationBarButton ?? UIBarButtonItem(image: UIImage(systemName: "bell"), style: .plain, target: self, action: #selector(notificationButtonTapped))
             
-            var rightBarButtons = [addButton, notificationButton]
+            var rightBarButtons = [addButton, checkInButton, notificationButton]
             
             // Check if user is not subscribed
             if !SubscriptionManager.shared.isSubscribed {
@@ -3383,6 +3394,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     @objc private func quickAccessNavigateButtonTapped() {
         navigateToQuickAccessPlaces()
+    }
+    
+    @objc private func checkInButtonTapped() {
+        let checkInVC = CheckInViewController()
+        let navController = UINavigationController(rootViewController: checkInVC)
+        navController.modalPresentationStyle = .fullScreen
+        present(navController, animated: true)
     }
     
     @objc private func notificationButtonTapped() {
@@ -4169,6 +4187,9 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             case .circleCreated:
                 // Navigate to the circle
                 navigateToCircle(withId: activity.targetId)
+            case .checkIn:
+                // Navigate to the place where check-in occurred
+                navigateToPlace(withId: activity.targetId)
             }
         }
     }
@@ -4407,6 +4428,108 @@ extension CirclesHomeViewController: ActivityFeedCellDelegate {
         let profileVC = ProfileViewController()
         profileVC.configureWith(user: user)
         navigationController?.pushViewController(profileVC, animated: true)
+    }
+    
+    func didTapPlaceImage(activity: Activity) {
+        // Navigate to place detail if we have a placeId
+        guard let placeId = activity.metadata?.placeId else { return }
+        
+        // Try to find the place in an existing circle
+        PlaceService.shared.fetchPlaceById(id: placeId) { [weak self] (result: Result<Place, Error>) in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let place):
+                    let detailVC = PlaceDetailViewController(place: place)
+                    self?.navigationController?.pushViewController(detailVC, animated: true)
+                case .failure(let error):
+                    self?.showError("Unable to load place details: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    
+    func didTapReactions(activity: Activity) {
+        // Show unified engagement view (LinkedIn-style)
+        let engagementVC = ActivityEngagementViewController(activity: activity)
+        let navController = UINavigationController(rootViewController: engagementVC)
+        present(navController, animated: true)
+    }
+    
+    func didTapComments(activity: Activity) {
+        // Show comments view
+        let commentsVC = ActivityCommentsViewController(activity: activity)
+        commentsVC.onCommentsUpdated = { [weak self] commentCount in
+            // Since Activity is a struct with let properties, we need to refresh the data
+            // to get the updated comment count from the server
+            self?.refreshActivityFeed()
+        }
+        let navController = UINavigationController(rootViewController: commentsVC)
+        present(navController, animated: true)
+    }
+    
+    func didTapReactionButton(activity: Activity, emoji: String) {
+        // Toggle reaction - if user already has this reaction, remove it, otherwise add it
+        let endpoint = activity.userReaction == emoji ? 
+            "activities/\(activity.id)/reactions/remove" : 
+            "activities/\(activity.id)/reactions"
+        
+        APIService.shared.request(
+            endpoint: endpoint,
+            method: .post,
+            body: ["emoji": emoji]
+        ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    // Reload activity feed to show updated reaction count
+                    self?.fetchActivities()
+                case .failure(let error):
+                    self?.showError("Failed to update reaction: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    
+    func didLongPressReactionButton(activity: Activity, sourceView: UIView) {
+        // Create and show reaction picker
+        let reactionPicker = ReactionPickerView()
+        reactionPicker.delegate = self
+        reactionPicker.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Add to view hierarchy
+        view.addSubview(reactionPicker)
+        
+        // Constrain to fill the view
+        NSLayoutConstraint.activate([
+            reactionPicker.topAnchor.constraint(equalTo: view.topAnchor),
+            reactionPicker.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            reactionPicker.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            reactionPicker.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+        
+        // Store activity for later use
+        currentReactionActivity = activity
+        
+        // Show picker near the source view
+        reactionPicker.show(from: sourceView)
+    }
+}
+
+// MARK: - ReactionPickerDelegate
+extension CirclesHomeViewController: ReactionPickerDelegate {
+    func reactionPicker(_ picker: ReactionPickerView, didSelectReaction reaction: ReactionStyle) {
+        guard let activity = currentReactionActivity else { return }
+        
+        // Send reaction to server
+        didTapReactionButton(activity: activity, emoji: reaction.rawValue)
+        
+        // Clear stored activity
+        currentReactionActivity = nil
+    }
+    
+    func reactionPickerDidDismiss(_ picker: ReactionPickerView) {
+        // Clear stored activity
+        currentReactionActivity = nil
     }
 }
 

@@ -3,6 +3,11 @@ import UIKit
 // MARK: - ActivityFeedCellDelegate
 protocol ActivityFeedCellDelegate: AnyObject {
     func didTapUserProfile(user: User)
+    func didTapPlaceImage(activity: Activity)
+    func didTapReactions(activity: Activity)
+    func didTapComments(activity: Activity)
+    func didTapReactionButton(activity: Activity, emoji: String)
+    func didLongPressReactionButton(activity: Activity, sourceView: UIView)
 }
 
 class ActivityFeedCell: UITableViewCell {
@@ -74,6 +79,60 @@ class ActivityFeedCell: UITableViewCell {
         return label
     }()
     
+    // Interaction buttons - positioned in top row
+    private let interactionButtonsContainer: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let reactionButton: UIButton = {
+        let button = UIButton(type: .system)
+        let config = UIImage.SymbolConfiguration(pointSize: 16, weight: .regular)
+        button.setImage(UIImage(systemName: "heart", withConfiguration: config), for: .normal)
+        button.tintColor = Constants.Colors.secondaryLabel
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let commentButton: UIButton = {
+        let button = UIButton(type: .system)
+        let config = UIImage.SymbolConfiguration(pointSize: 16, weight: .regular)
+        button.setImage(UIImage(systemName: "bubble.right", withConfiguration: config), for: .normal)
+        button.tintColor = Constants.Colors.secondaryLabel
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
+    private let commentCountLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 11)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.isHidden = true
+        return label
+    }()
+    
+    private let reactionsLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 11)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.isHidden = true
+        return label
+    }()
+    
+    // Container for reaction pills
+    private let reactionPillsContainer: UIStackView = {
+        let stack = UIStackView()
+        stack.axis = .horizontal
+        stack.spacing = 4
+        stack.alignment = .center
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.isHidden = true
+        return stack
+    }()
+    
     // MARK: - Initialization
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -90,8 +149,13 @@ class ActivityFeedCell: UITableViewCell {
         selectionStyle = .none
         
         // Add tap gesture to avatar
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(avatarTapped))
-        avatarImageView.addGestureRecognizer(tapGesture)
+        let avatarTapGesture = UITapGestureRecognizer(target: self, action: #selector(avatarTapped))
+        avatarImageView.addGestureRecognizer(avatarTapGesture)
+        
+        // Add tap gesture to place image
+        let placeTapGesture = UITapGestureRecognizer(target: self, action: #selector(placeImageTapped))
+        placeImageView.addGestureRecognizer(placeTapGesture)
+        placeImageView.isUserInteractionEnabled = true
         
         contentView.addSubview(containerView)
         containerView.addSubview(avatarImageView)
@@ -99,7 +163,28 @@ class ActivityFeedCell: UITableViewCell {
         containerView.addSubview(timestampLabel)
         containerView.addSubview(placeImageView)
         containerView.addSubview(commentLabel)
+        containerView.addSubview(reactionsLabel)
+        containerView.addSubview(reactionPillsContainer)
+        containerView.addSubview(interactionButtonsContainer)
         
+        // Add interaction buttons to their container
+        interactionButtonsContainer.addSubview(reactionButton)
+        interactionButtonsContainer.addSubview(commentButton)
+        interactionButtonsContainer.addSubview(commentCountLabel)
+        
+        // Add button actions
+        reactionButton.addTarget(self, action: #selector(reactionButtonTapped), for: .touchUpInside)
+        commentButton.addTarget(self, action: #selector(commentButtonTapped), for: .touchUpInside)
+        
+        // Add long press gesture to reaction button
+        let longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(reactionButtonLongPressed(_:)))
+        longPressGesture.minimumPressDuration = 0.5
+        reactionButton.addGestureRecognizer(longPressGesture)
+        
+        setupConstraints()
+    }
+    
+    private func setupConstraints() {
         NSLayoutConstraint.activate([
             // Container view
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 3),
@@ -113,27 +198,59 @@ class ActivityFeedCell: UITableViewCell {
             avatarImageView.widthAnchor.constraint(equalToConstant: 32),
             avatarImageView.heightAnchor.constraint(equalToConstant: 32),
             
-            // Activity label
+            // Activity label - now ends at interaction buttons
             activityLabel.leadingAnchor.constraint(equalTo: avatarImageView.trailingAnchor, constant: Constants.Spacing.xsmall),
             activityLabel.topAnchor.constraint(equalTo: avatarImageView.topAnchor),
-            activityLabel.trailingAnchor.constraint(equalTo: placeImageView.leadingAnchor, constant: -Constants.Spacing.small),
+            activityLabel.trailingAnchor.constraint(equalTo: interactionButtonsContainer.leadingAnchor, constant: -Constants.Spacing.xsmall),
+            
+            // Interaction buttons container - positioned between text and thumbnail
+            interactionButtonsContainer.trailingAnchor.constraint(equalTo: placeImageView.leadingAnchor, constant: -Constants.Spacing.small),
+            interactionButtonsContainer.centerYAnchor.constraint(equalTo: avatarImageView.centerYAnchor),
+            interactionButtonsContainer.widthAnchor.constraint(equalToConstant: 60),
+            interactionButtonsContainer.heightAnchor.constraint(equalToConstant: 20),
+            
+            // Reaction button
+            reactionButton.leadingAnchor.constraint(equalTo: interactionButtonsContainer.leadingAnchor),
+            reactionButton.centerYAnchor.constraint(equalTo: interactionButtonsContainer.centerYAnchor),
+            reactionButton.widthAnchor.constraint(equalToConstant: 20),
+            reactionButton.heightAnchor.constraint(equalToConstant: 20),
+            
+            // Comment button
+            commentButton.leadingAnchor.constraint(equalTo: reactionButton.trailingAnchor, constant: 8),
+            commentButton.centerYAnchor.constraint(equalTo: interactionButtonsContainer.centerYAnchor),
+            commentButton.widthAnchor.constraint(equalToConstant: 20),
+            commentButton.heightAnchor.constraint(equalToConstant: 20),
+            
+            // Comment count label
+            commentCountLabel.leadingAnchor.constraint(equalTo: commentButton.trailingAnchor, constant: 2),
+            commentCountLabel.centerYAnchor.constraint(equalTo: commentButton.centerYAnchor),
+            
+            // Place image (optional) - positioned at top right
+            placeImageView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Constants.Spacing.small),
+            placeImageView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: Constants.Spacing.small),
+            placeImageView.widthAnchor.constraint(equalToConstant: 48),
+            placeImageView.heightAnchor.constraint(equalToConstant: 48),
             
             // Timestamp
             timestampLabel.leadingAnchor.constraint(equalTo: activityLabel.leadingAnchor),
             timestampLabel.topAnchor.constraint(equalTo: activityLabel.bottomAnchor, constant: 2),
             timestampLabel.trailingAnchor.constraint(equalTo: activityLabel.trailingAnchor),
             
-            // Place image (optional)
-            placeImageView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Constants.Spacing.small),
-            placeImageView.centerYAnchor.constraint(equalTo: avatarImageView.centerYAnchor),
-            placeImageView.widthAnchor.constraint(equalToConstant: 48),
-            placeImageView.heightAnchor.constraint(equalToConstant: 48),
-            
             // Comment label (optional)
             commentLabel.leadingAnchor.constraint(equalTo: activityLabel.leadingAnchor),
             commentLabel.topAnchor.constraint(equalTo: timestampLabel.bottomAnchor, constant: Constants.Spacing.tiny),
-            commentLabel.trailingAnchor.constraint(equalTo: activityLabel.trailingAnchor),
-            commentLabel.bottomAnchor.constraint(lessThanOrEqualTo: containerView.bottomAnchor, constant: -Constants.Spacing.small)
+            commentLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Constants.Spacing.small),
+            
+            // Reactions label (optional)
+            reactionsLabel.leadingAnchor.constraint(equalTo: activityLabel.leadingAnchor),
+            reactionsLabel.topAnchor.constraint(equalTo: commentLabel.bottomAnchor, constant: Constants.Spacing.tiny),
+            reactionsLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Constants.Spacing.small),
+            
+            // Reaction pills container
+            reactionPillsContainer.leadingAnchor.constraint(equalTo: activityLabel.leadingAnchor),
+            reactionPillsContainer.topAnchor.constraint(equalTo: reactionsLabel.bottomAnchor, constant: Constants.Spacing.tiny),
+            reactionPillsContainer.heightAnchor.constraint(equalToConstant: 24),
+            reactionPillsContainer.bottomAnchor.constraint(lessThanOrEqualTo: containerView.bottomAnchor, constant: -Constants.Spacing.small)
         ])
     }
     
@@ -180,8 +297,13 @@ class ActivityFeedCell: UITableViewCell {
         // Configure timestamp
         timestampLabel.text = activity.timeAgo
         
-        // Configure optional elements
-        placeImageView.isHidden = activity.metadata?.placePhoto == nil
+        // Configure optional elements - show place image for check-ins and places
+        let shouldShowPlaceImage = (activity.type == .checkIn || 
+                                   activity.type == .placeAdded || 
+                                   activity.type == .placeLiked) && 
+                                   activity.metadata?.placePhoto != nil
+        
+        placeImageView.isHidden = !shouldShowPlaceImage
         if let placePhoto = activity.metadata?.placePhoto {
             ImageService.shared.loadImage(from: placePhoto) { [weak self] image in
                 DispatchQueue.main.async {
@@ -196,6 +318,32 @@ class ActivityFeedCell: UITableViewCell {
             commentLabel.text = "\"" + comment + "\""
         } else if activity.type == .commentLiked, let comment = activity.metadata?.comment {
             commentLabel.text = "\"" + comment + "\""
+        } else if activity.type == .checkIn, let message = activity.metadata?.message, !message.isEmpty {
+            commentLabel.isHidden = false
+            commentLabel.text = "\"" + message + "\""
+        }
+        
+        // Update reaction pills and counts
+        configureReactions(for: activity)
+        
+        // Update reaction button state based on user's reaction
+        if let userReaction = activity.userReaction {
+            // User has reacted - show their emoji or filled heart
+            if let style = ReactionStyle(emoji: userReaction) {
+                reactionButton.setImage(UIImage(systemName: "heart.fill"), for: .normal)
+                reactionButton.tintColor = style.backgroundColor
+            }
+        } else {
+            // User hasn't reacted - show empty heart
+            reactionButton.setImage(UIImage(systemName: "heart"), for: .normal)
+            reactionButton.tintColor = Constants.Colors.secondaryLabel
+        }
+        
+        if let commentCount = activity.commentCount, commentCount > 0 {
+            commentCountLabel.text = "\(commentCount)"
+            commentCountLabel.isHidden = false
+        } else {
+            commentCountLabel.isHidden = true
         }
     }
     
@@ -207,6 +355,88 @@ class ActivityFeedCell: UITableViewCell {
         delegate?.didTapUserProfile(user: actor)
     }
     
+    @objc private func placeImageTapped() {
+        guard let activity = currentActivity else { return }
+        delegate?.didTapPlaceImage(activity: activity)
+    }
+    
+    @objc private func reactionButtonTapped() {
+        guard let activity = currentActivity else { return }
+        
+        // Use thumbs up as default reaction (LinkedIn-style "like")
+        delegate?.didTapReactionButton(activity: activity, emoji: "👍")
+        
+        // Provide haptic feedback
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
+    }
+    
+    @objc private func commentButtonTapped() {
+        guard let activity = currentActivity else { return }
+        delegate?.didTapComments(activity: activity)
+    }
+    
+    // MARK: - Reaction Configuration
+    private func configureReactions(for activity: Activity) {
+        // Clear existing reaction pills
+        reactionPillsContainer.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        reactionPillsContainer.isHidden = true
+        
+        // Check if there are reactions to display
+        guard let reactionSummary = activity.reactionSummary,
+              !reactionSummary.isEmpty else {
+            return
+        }
+        
+        // Show reaction pills container
+        reactionPillsContainer.isHidden = false
+        
+        // Add reaction pills (max 3 to keep it compact)
+        let topReactions = reactionSummary.prefix(3)
+        for reaction in topReactions {
+            let config = ReactionPillConfiguration(
+                emoji: reaction.emoji,
+                count: reaction.count,
+                isUserReaction: reaction.emoji == activity.userReaction
+            )
+            let pillView = ReactionPillView(configuration: config)
+            pillView.translatesAutoresizingMaskIntoConstraints = false
+            reactionPillsContainer.addArrangedSubview(pillView)
+        }
+        
+        // Add "and X more" label if there are more reactions
+        let totalReactionCount = activity.reactionCount ?? 0
+        let displayedCount = topReactions.reduce(0) { $0 + $1.count }
+        if totalReactionCount > displayedCount {
+            let moreLabel = UILabel()
+            moreLabel.text = "+\(totalReactionCount - displayedCount)"
+            moreLabel.font = UIFont.systemFont(ofSize: 11)
+            moreLabel.textColor = Constants.Colors.secondaryLabel
+            reactionPillsContainer.addArrangedSubview(moreLabel)
+        }
+        
+        // Add tap gesture to reaction pills
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(reactionPillsTapped))
+        reactionPillsContainer.addGestureRecognizer(tapGesture)
+    }
+    
+    @objc private func reactionPillsTapped() {
+        guard let activity = currentActivity else { return }
+        delegate?.didTapReactions(activity: activity)
+    }
+    
+    @objc private func reactionButtonLongPressed(_ gesture: UILongPressGestureRecognizer) {
+        guard gesture.state == .began,
+              let activity = currentActivity else { return }
+        
+        // Notify delegate to show reaction picker
+        delegate?.didLongPressReactionButton(activity: activity, sourceView: reactionButton)
+        
+        // Provide haptic feedback
+        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+        impactFeedback.impactOccurred()
+    }
+    
     // MARK: - Reuse
     override func prepareForReuse() {
         super.prepareForReuse()
@@ -215,6 +445,12 @@ class ActivityFeedCell: UITableViewCell {
         placeImageView.isHidden = true
         commentLabel.isHidden = true
         commentLabel.text = nil
+        reactionsLabel.isHidden = true
+        reactionsLabel.text = nil
+        commentCountLabel.isHidden = true
+        commentCountLabel.text = nil
+        reactionPillsContainer.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        reactionPillsContainer.isHidden = true
         currentActivity = nil
         delegate = nil
     }

@@ -75,30 +75,66 @@ extension UIButton {
     
     /// Creates a Google Sign In button
     static func googleSignInButton() -> UIButton {
-        return socialButton(
-            title: "Continue with Google",
-            icon: "globe", // Using globe system symbol for Google
-            backgroundColor: UIColor(red: 0.259, green: 0.522, blue: 0.957, alpha: 1.0)
-        )
+        let button = UIButton(type: .system)
+        button.setTitle("Sign in with Google", for: .normal)
+        button.setTitleColor(.black, for: .normal)
+        button.backgroundColor = .white
+        button.layer.cornerRadius = 8
+        button.layer.borderWidth = 1
+        button.layer.borderColor = UIColor.systemGray4.cgColor
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.heightAnchor.constraint(equalToConstant: 50).isActive = true
+        
+        // Add Google icon
+        if let systemImage = UIImage(systemName: "globe") {
+            button.setImage(systemImage, for: .normal)
+            button.tintColor = .black
+            button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 8)
+        }
+        
+        return button
     }
     
     /// Creates a Facebook Sign In button  
     static func facebookSignInButton() -> UIButton {
-        return socialButton(
-            title: "Continue with Facebook",
-            icon: "person.2.circle", // Using people system symbol for Facebook
-            backgroundColor: UIColor(red: 0.231, green: 0.349, blue: 0.596, alpha: 1.0)
-        )
+        let button = UIButton(type: .system)
+        button.setTitle("Sign in with Facebook", for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = UIColor(red: 0.231, green: 0.349, blue: 0.596, alpha: 1.0)
+        button.layer.cornerRadius = 8
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.heightAnchor.constraint(equalToConstant: 50).isActive = true
+        
+        // Add Facebook icon
+        if let systemImage = UIImage(systemName: "person.2.circle") {
+            button.setImage(systemImage, for: .normal)
+            button.tintColor = .white
+            button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 8)
+        }
+        
+        return button
     }
     
     /// Creates an Apple Sign In button
     static func appleSignInButton() -> UIButton {
-        let button = socialButton(
-            title: "Continue with Apple",
-            icon: "applelogo", // Using Apple system symbol
-            backgroundColor: .black
-        )
+        let button = UIButton(type: .system)
+        button.setTitle("Sign in with Apple", for: .normal)
         button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = .black
+        button.layer.cornerRadius = 8
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.heightAnchor.constraint(equalToConstant: 50).isActive = true
+        
+        // Add Apple icon
+        if let systemImage = UIImage(systemName: "applelogo") {
+            button.setImage(systemImage, for: .normal)
+            button.tintColor = .white
+            button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 8)
+        }
+        
         return button
     }
     

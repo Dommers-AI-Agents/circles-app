@@ -199,11 +199,22 @@ const getSuggestedUsers = async (req, res) => {
 
     console.log(`🌟 Getting suggested users for user ${userId}, limit: ${limit}`);
 
-    // Get all users first (since placesCount field might not exist)
-    // We'll calculate actual places from their circles
-    const usersQuery = await db.collection(COLLECTIONS.USERS)
-      .limit(100) // Get more users to filter from
-      .get();
+    // Try to get users ordered by placesCount first
+    // If that doesn't work, we'll fall back to calculating from circles
+    let usersQuery;
+    try {
+      usersQuery = await db.collection(COLLECTIONS.USERS)
+        .orderBy('placesCount', 'desc')
+        .limit(50) // Get more users to filter from
+        .get();
+      console.log(`📊 Found ${usersQuery.size} users ordered by placesCount`);
+    } catch (error) {
+      console.log(`⚠️ placesCount field not indexed, falling back to regular query`);
+      // Fallback to regular query if placesCount is not indexed
+      usersQuery = await db.collection(COLLECTIONS.USERS)
+        .limit(50) // Reduced from 100 for better performance
+        .get();
+    }
     
     console.log(`📊 Found ${usersQuery.size} total users in database`);
     

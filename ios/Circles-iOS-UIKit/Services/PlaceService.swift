@@ -171,6 +171,21 @@ class PlaceService {
         )
     }
     
+    func getMyPlacesForCheckIn(completion: @escaping (Result<[Place], Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "places/my-places",
+            method: .get,
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<MyPlacesResponse, Error>) in
+                if case .success(let response) = result {
+                    completion(.success(response.data))
+                } else if case .failure(let error) = result {
+                    completion(.failure(error))
+                }
+            }
+        )
+    }
+    
     // MARK: - Create, Update, Delete
     
     func createPlaceFromGoogleData(_ googleData: [String: Any], completion: @escaping (Result<Place, Error>) -> Void) {
@@ -1359,6 +1374,11 @@ struct PlacesResponse: Decodable {
 struct PlaceResponse: Decodable {
     let success: Bool
     let place: Place
+}
+
+struct MyPlacesResponse: Decodable {
+    let success: Bool
+    let data: [Place]
 }
 
 struct PlaceCommentsResponse: Decodable {

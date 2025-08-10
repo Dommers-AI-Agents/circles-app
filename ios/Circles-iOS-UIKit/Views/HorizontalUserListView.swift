@@ -43,15 +43,30 @@ class HorizontalUserListView: UIView {
         return indicator
     }()
     
+    private let emptyStateView: UIView = {
+        let view = UIView()
+        view.isHidden = true
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
     private let emptyStateLabel: UILabel = {
         let label = UILabel()
-        label.text = "No connections yet"
-        label.font = UIFont.systemFont(ofSize: 14)
-        label.textColor = Constants.Colors.secondaryLabel
+        label.text = "Make connections"
+        label.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        label.textColor = Constants.Colors.label
         label.textAlignment = .center
-        label.isHidden = true
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
+    }()
+    
+    private let goToNetworkButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Go to My Network →", for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 14)
+        button.tintColor = Constants.Colors.primary
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
     }()
     
     private var hasLoadedConnections = false
@@ -136,7 +151,14 @@ class HorizontalUserListView: UIView {
         
         addSubview(collectionView)
         addSubview(loadingIndicator)
-        addSubview(emptyStateLabel)
+        addSubview(emptyStateView)
+        
+        // Add empty state subviews
+        emptyStateView.addSubview(emptyStateLabel)
+        emptyStateView.addSubview(goToNetworkButton)
+        
+        // Add button target
+        goToNetworkButton.addTarget(self, action: #selector(goToNetworkTapped), for: .touchUpInside)
         
         NSLayoutConstraint.activate([
             // Collection view
@@ -150,9 +172,21 @@ class HorizontalUserListView: UIView {
             loadingIndicator.centerXAnchor.constraint(equalTo: centerXAnchor),
             loadingIndicator.centerYAnchor.constraint(equalTo: collectionView.centerYAnchor),
             
-            // Empty state
-            emptyStateLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
-            emptyStateLabel.centerYAnchor.constraint(equalTo: collectionView.centerYAnchor)
+            // Empty state container
+            emptyStateView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            emptyStateView.centerYAnchor.constraint(equalTo: collectionView.centerYAnchor),
+            emptyStateView.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 20),
+            emptyStateView.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -20),
+            
+            // Empty state label
+            emptyStateLabel.topAnchor.constraint(equalTo: emptyStateView.topAnchor),
+            emptyStateLabel.leadingAnchor.constraint(equalTo: emptyStateView.leadingAnchor),
+            emptyStateLabel.trailingAnchor.constraint(equalTo: emptyStateView.trailingAnchor),
+            
+            // Go to network button
+            goToNetworkButton.topAnchor.constraint(equalTo: emptyStateLabel.bottomAnchor, constant: 8),
+            goToNetworkButton.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
+            goToNetworkButton.bottomAnchor.constraint(equalTo: emptyStateView.bottomAnchor)
         ])
     }
     
@@ -175,12 +209,25 @@ class HorizontalUserListView: UIView {
         }
     }
     
+    @objc private func goToNetworkTapped() {
+        // Check button title to determine action
+        if goToNetworkButton.currentTitle == "Try again" {
+            // Reset and retry loading
+            loadRetryCount = 0
+            emptyStateView.isHidden = true
+            loadActiveConnections()
+        } else {
+            // Post notification to navigate to My Network tab
+            NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
+        }
+    }
+    
     // MARK: - Data Loading
     private func loadActiveConnections() {
         if currentPage == 0 {
             loadingIndicator.startAnimating()
             collectionView.isHidden = true
-            emptyStateLabel.isHidden = true
+            emptyStateView.isHidden = true
         }
         
         // First, check if user has ANY connections at all (only on first page)
@@ -206,8 +253,9 @@ class HorizontalUserListView: UIView {
                     self.hasLoadedConnections = true
                     self.loadingIndicator.stopAnimating()
                     self.collectionView.isHidden = true
-                    self.emptyStateLabel.text = "Unable to load connections. Pull to refresh."
-                    self.emptyStateLabel.isHidden = false
+                    self.emptyStateLabel.text = "Unable to load connections"
+                    self.goToNetworkButton.setTitle("Try again", for: .normal)
+                    self.emptyStateView.isHidden = false
                 }
                 return
             }
@@ -428,7 +476,7 @@ class HorizontalUserListView: UIView {
         // Keep loading state visible while we process and sort connections
         loadingIndicator.startAnimating()
         collectionView.isHidden = true
-        emptyStateLabel.isHidden = true
+        emptyStateView.isHidden = true
         
         // Process connections on a background queue to prevent UI blocking
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -555,7 +603,7 @@ class HorizontalUserListView: UIView {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
                         self?.collectionView.reloadData()
                         self?.collectionView.isHidden = false
-                        self?.emptyStateLabel.isHidden = true
+                        self?.emptyStateView.isHidden = true
                     }
                 }
             } else {
@@ -576,7 +624,10 @@ class HorizontalUserListView: UIView {
                         print("🔍 HorizontalUserListView: Showing empty state - no connections available")
                         self.loadingIndicator.stopAnimating()
                         self.collectionView.isHidden = true
-                        self.emptyStateLabel.isHidden = false
+                        // Reset to default text when showing empty state due to no connections
+                        self.emptyStateLabel.text = "Make connections"
+                        self.goToNetworkButton.setTitle("Go to My Network →", for: .normal)
+                        self.emptyStateView.isHidden = false
                     } else {
                         // Keep loading state - either initial load hasn't completed or empty state not allowed
                         if !self.hasCompletedInitialLoad {

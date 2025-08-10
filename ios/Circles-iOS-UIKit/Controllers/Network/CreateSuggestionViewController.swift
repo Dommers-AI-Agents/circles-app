@@ -74,12 +74,18 @@ class CreateSuggestionViewController: BaseViewController {
         super.viewDidLoad()
         setupView()
         setupNavigationBar()
-        setupKeyboardObservers()
+        // Use standard keyboard handling with tap-to-dismiss
+        setupKeyboardHandling(scrollView: scrollView, dismissOnTap: true)
     }
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         messageTextView.becomeFirstResponder()
+    }
+    
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        removeKeyboardHandling()
     }
     
     // MARK: - Setup
@@ -149,21 +155,6 @@ class CreateSuggestionViewController: BaseViewController {
         updateShareButtonState()
     }
     
-    private func setupKeyboardObservers() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(keyboardWillShow),
-            name: UIResponder.keyboardWillShowNotification,
-            object: nil
-        )
-        
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(keyboardWillHide),
-            name: UIResponder.keyboardWillHideNotification,
-            object: nil
-        )
-    }
     
     // MARK: - Actions
     @objc private func cancelTapped() {
@@ -241,16 +232,6 @@ class CreateSuggestionViewController: BaseViewController {
         updateShareButtonState()
     }
     
-    @objc private func keyboardWillShow(notification: NSNotification) {
-        guard let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
-        scrollView.contentInset.bottom = keyboardFrame.height
-        scrollView.scrollIndicatorInsets.bottom = keyboardFrame.height
-    }
-    
-    @objc private func keyboardWillHide(notification: NSNotification) {
-        scrollView.contentInset.bottom = 0
-        scrollView.scrollIndicatorInsets.bottom = 0
-    }
     
     // MARK: - Helpers
     private func updateShareButtonState() {

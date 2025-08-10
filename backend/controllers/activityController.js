@@ -168,8 +168,71 @@ exports.getNetworkActivities = async (req, res, next) => {
       });
     });
     
+    // OPTIMIZATION 3: Batch fetch reactions for all activities
+    const activityIds = activities.map(a => a._id || a.id).filter(Boolean);
+    console.log('🚀 Batch fetching reactions for', activityIds.length, 'activities');
+    
+    // Fetch user's reactions for these activities (batch by 10 for Firebase limit)
+    const userReactionsMap = new Map();
+    
+    for (let i = 0; i < activityIds.length; i += 10) {
+      const batch = activityIds.slice(i, i + 10);
+      if (batch.length > 0) {
+        const userReactionsQuery = await db.collection(COLLECTIONS.ACTIVITY_REACTIONS)
+          .where('activityId', 'in', batch)
+          .where('userId', '==', userId)
+          .get();
+        
+        userReactionsQuery.docs.forEach(doc => {
+          const reaction = doc.data();
+          userReactionsMap.set(reaction.activityId, reaction.emoji);
+        });
+      }
+    }
+    
+    // Fetch reaction summaries for all activities
+    const reactionSummariesMap = new Map();
+    
+    // We need to fetch all reactions for these activities to get counts
+    for (let i = 0; i < activityIds.length; i += 10) {
+      const batch = activityIds.slice(i, i + 10);
+      const reactionsQuery = await db.collection(COLLECTIONS.ACTIVITY_REACTIONS)
+        .where('activityId', 'in', batch)
+        .get();
+      
+      reactionsQuery.docs.forEach(doc => {
+        const reaction = doc.data();
+        const activityId = reaction.activityId;
+        
+        if (!reactionSummariesMap.has(activityId)) {
+          reactionSummariesMap.set(activityId, new Map());
+        }
+        
+        const activityReactions = reactionSummariesMap.get(activityId);
+        if (!activityReactions.has(reaction.emoji)) {
+          activityReactions.set(reaction.emoji, {
+            emoji: reaction.emoji,
+            count: 0,
+            users: []
+          });
+        }
+        
+        const reactionSummary = activityReactions.get(reaction.emoji);
+        reactionSummary.count++;
+        if (reactionSummary.users.length < 3) { // Only keep first 3 users for display
+          reactionSummary.users.push({
+            id: reaction.userId,
+            displayName: reaction.userName,
+            profilePicture: reaction.userPhoto
+          });
+        }
+      });
+    }
+    
     // Process activities with cached data
     const enrichedActivities = activities.map(activity => {
+      const activityId = activity._id || activity.id;
+      
       // Convert timestamp
       if (activity.timestamp && activity.timestamp._seconds) {
         activity.timestamp = new Date(activity.timestamp._seconds * 1000).toISOString();
@@ -184,6 +247,19 @@ exports.getNetworkActivities = async (req, res, next) => {
       
       // Mark as read
       activity.isRead = activity.viewers?.includes(userId) || false;
+      
+      // Add user's reaction
+      activity.userReaction = userReactionsMap.get(activityId) || null;
+      
+      // Add reaction summary (top reactions)
+      const activityReactions = reactionSummariesMap.get(activityId);
+      if (activityReactions && activityReactions.size > 0) {
+        activity.reactionSummary = Array.from(activityReactions.values())
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 3); // Top 3 reaction types
+      } else {
+        activity.reactionSummary = [];
+      }
       
       return activity;
     });
@@ -284,10 +360,15 @@ exports.createActivity = async (type, actorId, targetType, targetId, targetName,
       metadata: {
         comment: metadata.comment || null,
         placePhoto: metadata.placePhoto || null,
-        placeAddress: metadata.placeAddress || null
+        placeAddress: metadata.placeAddress || null,
+        placeId: metadata.placeId || null,
+        message: metadata.message || null,
+        endTime: metadata.endTime || null
       },
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
-      viewers: [] // Track who has seen this activity
+      viewers: [], // Track who has seen this activity
+      reactionCount: 0,
+      commentCount: 0
     };
     
     // Activity data prepared

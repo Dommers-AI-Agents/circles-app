@@ -284,6 +284,17 @@ class APIService {
         Logger.debug("APIService: Cleared all pending requests and timers")
     }
     
+    func clearPendingRequestsForEndpoint(_ endpoint: String) {
+        // Clear pending requests that match the endpoint pattern
+        let keysToRemove = pendingGETRequests.filter { $0.contains(endpoint) }
+        for key in keysToRemove {
+            pendingGETRequests.remove(key)
+            pendingRequestTimers[key]?.invalidate()
+            pendingRequestTimers.removeValue(forKey: key)
+        }
+        Logger.debug("APIService: Cleared \(keysToRemove.count) pending requests for endpoint: \(endpoint)")
+    }
+    
     // MARK: - Logging Configuration
     func setLogLevel(_ level: APILogLevel) {
         self.logLevel = level
@@ -910,6 +921,100 @@ class APIService {
         } catch {
             if let string = String(data: data, encoding: .utf8) {
                 Logger.debug("\(prefix)\(string)")
+            }
+        }
+    }
+    
+    // MARK: - Check-In API
+    
+    func createCheckIn(_ checkInData: [String: Any], completion: @escaping (Result<CheckIn, APIError>) -> Void) {
+        request(
+            endpoint: "check-ins",
+            method: .post,
+            body: checkInData,
+            requiresAuth: true
+        ) { (result: Result<APIResponse<CheckIn>, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    func getActiveCheckIns(completion: @escaping (Result<[CheckIn], APIError>) -> Void) {
+        request(
+            endpoint: "check-ins/active",
+            method: .get,
+            requiresAuth: true
+        ) { (result: Result<APIResponse<[CheckIn]>, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    func getMyActiveCheckIns(completion: @escaping (Result<[CheckIn], APIError>) -> Void) {
+        request(
+            endpoint: "check-ins/my-active",
+            method: .get,
+            requiresAuth: true
+        ) { (result: Result<APIResponse<[CheckIn]>, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    func respondToCheckIn(checkInId: String, status: String, completion: @escaping (Result<CheckIn, APIError>) -> Void) {
+        request(
+            endpoint: "check-ins/\(checkInId)/respond",
+            method: .put,
+            body: ["status": status],
+            requiresAuth: true
+        ) { (result: Result<APIResponse<CheckIn>, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    func endCheckIn(checkInId: String, completion: @escaping (Result<Void, APIError>) -> Void) {
+        request(
+            endpoint: "check-ins/\(checkInId)",
+            method: .delete,
+            requiresAuth: true
+        ) { (result: Result<SimpleAPIResponse, APIError>) in
+            switch result {
+            case .success:
+                completion(.success(()))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    func getCheckInsAtPlace(placeId: String, completion: @escaping (Result<[CheckIn], APIError>) -> Void) {
+        request(
+            endpoint: "check-ins/at-place/\(placeId)",
+            method: .get,
+            requiresAuth: true
+        ) { (result: Result<APIResponse<[CheckIn]>, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data))
+            case .failure(let error):
+                completion(.failure(error))
             }
         }
     }

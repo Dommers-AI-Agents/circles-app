@@ -12,36 +12,9 @@ const activityService = require('../services/activityService');
 const notificationService = require('../services/notificationService');
 const sseService = require('../services/sseService');
 const scoringService = require('../services/scoringService');
+const { normalizeUserId, isSameUser } = require('../services/idService');
 
 const db = getFirestore();
-
-// Helper function to normalize user IDs for comparison
-// Handles both simple format (e.g., "9b5eeac93282416c9bc6dcecbc49b40f") 
-// and complex format (e.g., "000454.9b5eeac93282416c9bc6dcecbc49b40f.2127")
-const normalizeUserId = (userId) => {
-  if (!userId) return userId;
-  
-  // If it's a complex format, extract the middle part
-  if (userId.includes('.')) {
-    const parts = userId.split('.');
-    if (parts.length >= 2) {
-      return parts[1]; // Return the simple ID
-    }
-  }
-  
-  // Otherwise return as-is (already simple format)
-  return userId;
-};
-
-// Helper function to check if two user IDs are the same (accounting for format differences)
-const isSameUser = (userId1, userId2) => {
-  if (!userId1 || !userId2) return false;
-  
-  const normalized1 = normalizeUserId(userId1);
-  const normalized2 = normalizeUserId(userId2);
-  
-  return normalized1 === normalized2;
-};
 
 // @desc    Get specific connection by ID
 // @route   GET /api/connections/:connectionId
@@ -119,11 +92,13 @@ const getConnections = async (req, res) => {
         const connection = serializeDoc(doc);
         
         // Determine which user is the "other" user
-        const otherUserId = connection.userId === userId ? connection.connectedUserId : connection.userId;
+        const otherUserIdRaw = connection.userId === userId ? connection.connectedUserId : connection.userId;
+        // Normalize the ID before looking up the user
+        const otherUserId = normalizeUserId(otherUserIdRaw);
         
         // Fetch the other user's data
         try {
-          console.log(`🔍 Fetching connected user data for ID: ${otherUserId}`);
+          console.log(`🔍 Fetching connected user data for ID: ${otherUserId} (original: ${otherUserIdRaw})`);
           const userDoc = await db.collection(COLLECTIONS.USERS).doc(otherUserId).get();
           if (userDoc.exists) {
             connection.connectedUser = serializeDoc(userDoc);
@@ -239,17 +214,12 @@ const sendConnectionRequest = async (req, res) => {
       });
     }
 
-    // Parse target user ID if it's in complex format
-    let actualTargetUserId = targetUserId;
-    if (targetUserId.includes('.')) {
-      const parts = targetUserId.split('.');
-      if (parts.length >= 2) {
-        actualTargetUserId = parts[1]; // Use the middle part as Firebase UID
-        console.log(`🔄 Parsed complex target user ID from ${targetUserId} to ${actualTargetUserId}`);
-      }
+    // Normalize target user ID using centralized function
+    const actualTargetUserId = normalizeUserId(targetUserId);
+    if (actualTargetUserId !== targetUserId) {
+      console.log(`🔄 Normalized target user ID from ${targetUserId} to ${actualTargetUserId}`);
     } else {
-      // Simple format - use as is
-      console.log(`✅ Using simple target user ID as-is: ${actualTargetUserId}`);
+      console.log(`✅ Using target user ID as-is: ${actualTargetUserId}`);
     }
 
     // Check for self-connection with more robust comparison
@@ -934,7 +904,9 @@ const getActiveConnections = async (req, res) => {
         const connection = serializeDoc(doc);
         
         // Get the connected user
-        const otherUserId = connection.userId === userId ? connection.connectedUserId : connection.userId;
+        const otherUserIdRaw = connection.userId === userId ? connection.connectedUserId : connection.userId;
+        // Normalize the ID before looking up the user
+        const otherUserId = normalizeUserId(otherUserIdRaw);
         
         try {
           const userDoc = await db.collection(COLLECTIONS.USERS).doc(otherUserId).get();

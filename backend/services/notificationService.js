@@ -102,6 +102,8 @@ class NotificationService {
               'content-available': 1,
               'mutable-content': 1, // Allows notification service extension to modify content
               'interruption-level': 'active', // iOS 15+ for prominent notifications
+              'relevance-score': 1.0, // Ensures notifications persist in Notification Center
+              'thread-id': notification.type || 'default', // Groups related notifications
               ...(category && { category }) // Add category if defined
             }
           },

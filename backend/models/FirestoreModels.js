@@ -22,7 +22,10 @@ const COLLECTIONS = {
   ACTIVITIES: 'activities',
   USER_CATEGORIES: 'userCategories',
   PLACE_VISITS: 'placeVisits',
-  VISIT_DRAFTS: 'visitDrafts'
+  VISIT_DRAFTS: 'visitDrafts',
+  CHECK_INS: 'checkIns',
+  ACTIVITY_REACTIONS: 'activityReactions',
+  ACTIVITY_COMMENTS: 'activityComments'
 };
 
 // User model structure
@@ -740,6 +743,155 @@ const validatePlaceVisit = (visitData) => {
   return errors;
 };
 
+// Check-in model
+const createCheckIn = (checkInData, userId, userData) => {
+  const now = new Date().toISOString();
+  const startTime = checkInData.startTime || now;
+  
+  // Calculate end time based on duration
+  let endTime;
+  if (checkInData.duration === 'until_leave') {
+    // Max 6 hours for "until I leave" option
+    endTime = new Date(new Date(startTime).getTime() + 6 * 60 * 60 * 1000).toISOString();
+  } else {
+    const durationMinutes = parseInt(checkInData.duration) || 60;
+    endTime = new Date(new Date(startTime).getTime() + durationMinutes * 60 * 1000).toISOString();
+  }
+  
+  return {
+    userId: userId,
+    userName: userData.displayName || userData.firstName || 'User',
+    userPhoto: userData.profilePicture || null,
+    placeId: checkInData.placeId || null,
+    placeName: checkInData.placeName,
+    placeAddress: checkInData.placeAddress,
+    location: checkInData.location || null, // GeoPoint will be created in controller
+    placeCategory: checkInData.placeCategory || 'other',
+    circleId: checkInData.circleId || null, // if place is from user's circle
+    message: checkInData.message || '',
+    startTime: startTime,
+    endTime: endTime,
+    duration: checkInData.duration, // '30', '60', '120', 'until_leave'
+    
+    // Notification settings
+    notifiedGroups: checkInData.notifiedGroups || [], // conversation IDs
+    notifiedUsers: checkInData.notifiedUsers || [], // individual user IDs
+    
+    // Activity feed visibility
+    showInActivityFeed: checkInData.showInActivityFeed !== false, // default true
+    
+    // Responses
+    responses: [],
+    
+    active: true,
+    createdAt: now,
+    updatedAt: now
+  };
+};
+
+// Validate check-in
+const validateCheckIn = (checkInData) => {
+  const errors = [];
+  
+  if (!checkInData.placeName || checkInData.placeName.trim().length === 0) {
+    errors.push('Place name is required');
+  }
+  
+  if (!checkInData.placeAddress || checkInData.placeAddress.trim().length === 0) {
+    errors.push('Place address is required');
+  }
+  
+  // Must notify at least one group or user
+  const hasNotifications = 
+    (checkInData.notifiedGroups && checkInData.notifiedGroups.length > 0) ||
+    (checkInData.notifiedUsers && checkInData.notifiedUsers.length > 0);
+    
+  if (!hasNotifications) {
+    errors.push('Must select at least one group or person to notify');
+  }
+  
+  if (checkInData.message && checkInData.message.length > 200) {
+    errors.push('Message must be 200 characters or less');
+  }
+  
+  const validDurations = ['30', '60', '120', 'until_leave'];
+  if (checkInData.duration && !validDurations.includes(checkInData.duration)) {
+    errors.push('Invalid duration');
+  }
+  
+  return errors;
+};
+
+// Create activity reaction object for Firestore
+const createActivityReaction = (reactionData) => {
+  const now = new Date().toISOString();
+  return {
+    activityId: reactionData.activityId,
+    userId: reactionData.userId,
+    userName: reactionData.userName || 'User',
+    userPhoto: reactionData.userPhoto || null,
+    emoji: reactionData.emoji, // '❤️', '😍', '😂', '😮', '👍', etc.
+    createdAt: now
+  };
+};
+
+// Create activity comment object for Firestore
+const createActivityComment = (commentData) => {
+  const now = new Date().toISOString();
+  return {
+    activityId: commentData.activityId,
+    userId: commentData.userId,
+    userName: commentData.userName || 'User',
+    userPhoto: commentData.userPhoto || null,
+    text: commentData.text,
+    likes: [],
+    likesCount: 0,
+    parentCommentId: commentData.parentCommentId || null, // For replies
+    replyCount: 0,
+    createdAt: now
+  };
+};
+
+// Validate activity reaction
+const validateActivityReaction = (reactionData) => {
+  const errors = [];
+  
+  if (!reactionData.activityId || reactionData.activityId.trim().length === 0) {
+    errors.push('Activity ID is required');
+  }
+  
+  if (!reactionData.emoji || reactionData.emoji.trim().length === 0) {
+    errors.push('Reaction emoji is required');
+  }
+  
+  // Validate emoji is one of the allowed ones (LinkedIn-style reactions)
+  const allowedEmojis = ['👍', '❤️', '🎉', '💪', '💡', '😆'];
+  if (!allowedEmojis.includes(reactionData.emoji)) {
+    errors.push('Invalid reaction emoji');
+  }
+  
+  return errors;
+};
+
+// Validate activity comment
+const validateActivityComment = (commentData) => {
+  const errors = [];
+  
+  if (!commentData.activityId || commentData.activityId.trim().length === 0) {
+    errors.push('Activity ID is required');
+  }
+  
+  if (!commentData.text || commentData.text.trim().length === 0) {
+    errors.push('Comment text is required');
+  }
+  
+  if (commentData.text && commentData.text.length > 500) {
+    errors.push('Comment must be 500 characters or less');
+  }
+  
+  return errors;
+};
+
 module.exports = {
   COLLECTIONS,
   createUser,
@@ -757,6 +909,9 @@ module.exports = {
   createMessageRead,
   createNotification,
   createPlaceVisit,
+  createCheckIn,
+  createActivityReaction,
+  createActivityComment,
   validateCircle,
   validatePlace,
   validateConnection,
@@ -769,6 +924,9 @@ module.exports = {
   validateMessage,
   validateNotification,
   validatePlaceVisit,
+  validateCheckIn,
+  validateActivityReaction,
+  validateActivityComment,
   serializeDoc,
   serializeQuerySnapshot
 };

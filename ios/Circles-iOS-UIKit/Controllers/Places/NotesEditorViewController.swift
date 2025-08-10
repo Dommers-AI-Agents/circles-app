@@ -81,11 +81,18 @@ class NotesEditorViewController: BaseViewController {
         super.viewDidLoad()
         setupUI()
         configureTextViews()
+        // Setup keyboard handling for text views
+        setupKeyboardHandling(dismissOnTap: true)
     }
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         publicTextView.becomeFirstResponder()
+    }
+    
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        removeKeyboardHandling()
     }
     
     // MARK: - UI Setup

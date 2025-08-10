@@ -919,6 +919,74 @@ const markPlaceAsViewed = async (userId, placeId, circleId) => {
   }
 };
 
+// General activity logging for various types
+const logActivity = async (activityData) => {
+  try {
+    const { type, actorId, visibility = 'connections', ...metadata } = activityData;
+    
+    const activityDoc = {
+      type,
+      actorId,
+      visibility,
+      metadata,
+      createdAt: new Date().toISOString()
+    };
+    
+    // Save to activities collection
+    await db.collection(COLLECTIONS.ACTIVITIES).add(activityDoc);
+    
+    // If visibility is connections, update connection documents
+    if (visibility === 'connections') {
+      // Get all connections of the actor
+      const [connections1, connections2] = await Promise.all([
+        db.collection(COLLECTIONS.CONNECTIONS)
+          .where('userId', '==', actorId)
+          .where('status', '==', 'accepted')
+          .get(),
+        db.collection(COLLECTIONS.CONNECTIONS)
+          .where('connectedUserId', '==', actorId)
+          .where('status', '==', 'accepted')
+          .get()
+      ]);
+      
+      const batch = db.batch();
+      const allConnections = [...connections1.docs, ...connections2.docs];
+      
+      allConnections.forEach(doc => {
+        const connectionData = doc.data();
+        const connectionRef = doc.ref;
+        
+        // Determine the other user's ID
+        const otherUserId = connectionData.userId === actorId 
+          ? connectionData.connectedUserId 
+          : connectionData.userId;
+        
+        const activity = {
+          type,
+          ...metadata,
+          actorId,
+          createdAt: new Date().toISOString(),
+          viewedBy: [actorId]
+        };
+        
+        // Update connection with new activity
+        batch.update(connectionRef, {
+          hasNewActivity: true,
+          recentActivity: admin.firestore.FieldValue.arrayUnion(activity),
+          updatedAt: new Date().toISOString()
+        });
+      });
+      
+      await batch.commit();
+    }
+    
+    console.log(`✅ Logged ${type} activity for user ${actorId}`);
+  } catch (error) {
+    console.error('Error logging activity:', error);
+    throw error;
+  }
+};
+
 module.exports = {
   trackCircleCreated,
   trackPlaceAdded,
@@ -931,5 +999,6 @@ module.exports = {
   getConnectionsWithStats,
   cleanupOldActivity,
   markCircleActivitiesAsViewed,
-  markPlaceAsViewed
+  markPlaceAsViewed,
+  logActivity
 };
