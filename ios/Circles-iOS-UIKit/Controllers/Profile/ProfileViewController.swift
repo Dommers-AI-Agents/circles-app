@@ -89,6 +89,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     private var selectedCity: String?
     var isSearching = false
     var searchResultsHeightConstraint: NSLayoutConstraint?
+    private var videos: [PlaceVideo] = []
     
     // MARK: - BaseViewController Configuration
     override var showsLoadingIndicator: Bool { true }
@@ -332,6 +333,21 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         return view
     }()
     
+    // Content type segmented control
+    private let contentTypeSegmentedControl: UISegmentedControl = {
+        let control = UISegmentedControl(items: ["Circles", "Videos"])
+        control.selectedSegmentIndex = 0
+        control.translatesAutoresizingMaskIntoConstraints = false
+        return control
+    }()
+    
+    // Search bar container
+    private let searchBarContainer: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
     // Search bar
     let searchBar: UISearchBar = {
         let searchBar = UISearchBar()
@@ -340,6 +356,18 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         searchBar.backgroundColor = Constants.Colors.background
         searchBar.translatesAutoresizingMaskIntoConstraints = false
         return searchBar
+    }()
+    
+    // Map toggle button (now next to search bar)
+    private lazy var mapToggleButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Map", for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        button.backgroundColor = Constants.Colors.secondaryBackground
+        button.layer.cornerRadius = 8
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(toggleViewMode), for: .touchUpInside)
+        return button
     }()
     
     // Search results table view
@@ -377,17 +405,6 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         return label
     }()
     
-    private lazy var addCircleButton: UIButton = {
-        let button = UIButton.iconButton(systemName: "plus")
-        button.tintColor = .white
-        button.backgroundColor = Constants.Colors.primary
-        button.layer.cornerRadius = 25
-        button.layer.shadowColor = UIColor.black.cgColor
-        button.layer.shadowOffset = CGSize(width: 0, height: 2)
-        button.layer.shadowRadius = 4
-        button.layer.shadowOpacity = 0.3
-        return button
-    }()
     
     private let circlesCollectionView: UICollectionView = {
         let layout = UICollectionViewFlowLayout()
@@ -405,8 +422,39 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }()
     
     private var circlesCollectionHeightConstraint: NSLayoutConstraint?
+    
+    // Videos collection view
+    private let videosCollectionView: UICollectionView = {
+        let layout = UICollectionViewFlowLayout()
+        layout.scrollDirection = .vertical
+        layout.minimumInteritemSpacing = 1
+        layout.minimumLineSpacing = 1
+        layout.sectionInset = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+        
+        let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        collectionView.backgroundColor = Constants.Colors.background
+        collectionView.translatesAutoresizingMaskIntoConstraints = false
+        collectionView.showsVerticalScrollIndicator = false
+        collectionView.isScrollEnabled = false
+        collectionView.isHidden = true
+        return collectionView
+    }()
+    
+    private var videosCollectionHeightConstraint: NSLayoutConstraint?
+    
+    private let videosEmptyLabel: UILabel = {
+        let label = UILabel()
+        label.text = "No videos yet"
+        label.font = UIFont.systemFont(ofSize: 16)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.isHidden = true
+        return label
+    }()
     private var logoutButtonTopToCollectionConstraint: NSLayoutConstraint?
     private var logoutButtonTopToMapConstraint: NSLayoutConstraint?
+    private var logoutButtonTopToVideosConstraint: NSLayoutConstraint?
     
     // Map view elements
     private lazy var mapContainerView: UIView = {
@@ -531,13 +579,14 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         displayAppVersion()
         setupNotificationObservers()
         
+        // Setup segmented control
+        contentTypeSegmentedControl.addTarget(self, action: #selector(contentTypeChanged), for: .valueChanged)
+        
         // Always start in list view
         isShowingMap = false
         circlesCollectionView.isHidden = false
         mapContainerView.isHidden = true
-        if let toggleButton = navigationItem.rightBarButtonItems?[1] {
-            toggleButton.title = "Map"
-        }
+        mapToggleButton.setTitle("Map", for: .normal)
         
         // Clear any old saved view mode preference
         UserDefaults.standard.removeObject(forKey: "profileViewMode")
@@ -554,9 +603,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             isShowingMap = false
             
             // Update toggle button title
-            if let toggleButton = navigationItem.rightBarButtonItems?[1] {
-                toggleButton.title = "Map"
-            }
+            mapToggleButton.setTitle("Map", for: .normal)
             
             // Show/hide views
             circlesCollectionView.isHidden = false
@@ -617,6 +664,20 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         suggestedButton.layer.borderColor = UIColor.separator.cgColor
     }
     
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        
+        // Update collection view height after layout is complete
+        // This ensures the collection view has the correct width for calculations
+        if !circles.isEmpty && contentTypeSegmentedControl.selectedSegmentIndex == 0 && !circlesCollectionView.isHidden {
+            updateCollectionViewHeight()
+        }
+        
+        if !videos.isEmpty && contentTypeSegmentedControl.selectedSegmentIndex == 1 && !videosCollectionView.isHidden {
+            updateVideosCollectionHeight()
+        }
+    }
+    
     // MARK: - BaseViewController Data Loading
     override func loadData(completion: (() -> Void)? = nil) {
         print("🚀 ProfileViewController: loadData called")
@@ -640,8 +701,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         
         // Add right bar button items
         let settingsButton = UIBarButtonItem(image: UIImage(systemName: "gear"), style: .plain, target: self, action: #selector(settingsButtonTapped))
-        let toggleButton = UIBarButtonItem(title: "Map", style: .plain, target: self, action: #selector(toggleViewMode))
-        navigationItem.rightBarButtonItems = [settingsButton, toggleButton]
+        let videoButton = UIBarButtonItem(image: UIImage(systemName: "video.fill"), style: .plain, target: self, action: #selector(videoButtonTapped))
+        let checkInButton = UIBarButtonItem(image: UIImage(systemName: "checkmark.circle"), style: .plain, target: self, action: #selector(checkInButtonTapped))
+        navigationItem.rightBarButtonItems = [settingsButton, videoButton, checkInButton]
         
         // Add subviews
         view.addSubview(scrollView)
@@ -669,10 +731,15 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         buttonsContainer.addSubview(connectButton)
         
         contentView.addSubview(separatorLine)
-        contentView.addSubview(searchBar)
+        contentView.addSubview(contentTypeSegmentedControl)
+        contentView.addSubview(searchBarContainer)
+        searchBarContainer.addSubview(searchBar)
+        searchBarContainer.addSubview(mapToggleButton)
         contentView.addSubview(circlesHeaderView)
         circlesHeaderView.addSubview(circlesHeaderLabel)
         contentView.addSubview(circlesCollectionView)
+        contentView.addSubview(videosCollectionView)
+        contentView.addSubview(videosEmptyLabel)
         
         // Add map container (initially hidden)
         contentView.addSubview(mapContainerView)
@@ -687,7 +754,6 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         contentView.addSubview(versionLabel)
         
         // Add floating add button last so it's on top
-        view.addSubview(addCircleButton)
         
         // Add search results table view on top of everything
         view.addSubview(searchResultsTableView)
@@ -824,14 +890,32 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             separatorLine.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             separatorLine.heightAnchor.constraint(equalToConstant: 0.5),
             
+            // Content type segmented control
+            contentTypeSegmentedControl.topAnchor.constraint(equalTo: separatorLine.bottomAnchor, constant: Constants.Spacing.medium),
+            contentTypeSegmentedControl.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            contentTypeSegmentedControl.widthAnchor.constraint(equalToConstant: 200),
+            contentTypeSegmentedControl.heightAnchor.constraint(equalToConstant: 32),
+            
+            // Search bar container
+            searchBarContainer.topAnchor.constraint(equalTo: contentTypeSegmentedControl.bottomAnchor, constant: Constants.Spacing.medium),
+            searchBarContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
+            searchBarContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+            searchBarContainer.heightAnchor.constraint(equalToConstant: 44),
+            
             // Search bar
-            searchBar.topAnchor.constraint(equalTo: separatorLine.bottomAnchor, constant: Constants.Spacing.small),
-            searchBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
-            searchBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
-            searchBar.heightAnchor.constraint(equalToConstant: 44),
+            searchBar.topAnchor.constraint(equalTo: searchBarContainer.topAnchor),
+            searchBar.leadingAnchor.constraint(equalTo: searchBarContainer.leadingAnchor),
+            searchBar.bottomAnchor.constraint(equalTo: searchBarContainer.bottomAnchor),
+            searchBar.trailingAnchor.constraint(equalTo: mapToggleButton.leadingAnchor, constant: -8),
+            
+            // Map toggle button
+            mapToggleButton.centerYAnchor.constraint(equalTo: searchBarContainer.centerYAnchor),
+            mapToggleButton.trailingAnchor.constraint(equalTo: searchBarContainer.trailingAnchor),
+            mapToggleButton.widthAnchor.constraint(equalToConstant: 60),
+            mapToggleButton.heightAnchor.constraint(equalToConstant: 36),
             
             // Circles header
-            circlesHeaderView.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: Constants.Spacing.small),
+            circlesHeaderView.topAnchor.constraint(equalTo: searchBarContainer.bottomAnchor, constant: Constants.Spacing.small),
             circlesHeaderView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             circlesHeaderView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             circlesHeaderView.heightAnchor.constraint(equalToConstant: 0), // Hide header for Instagram style
@@ -839,16 +923,22 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             circlesHeaderLabel.centerYAnchor.constraint(equalTo: circlesHeaderView.centerYAnchor),
             circlesHeaderLabel.leadingAnchor.constraint(equalTo: circlesHeaderView.leadingAnchor, constant: Constants.Spacing.medium),
             
-            // Floating add button
-            addCircleButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -100),
-            addCircleButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.medium),
-            addCircleButton.widthAnchor.constraint(equalToConstant: 50),
-            addCircleButton.heightAnchor.constraint(equalToConstant: 50),
             
             // Circles collection view
             circlesCollectionView.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor),
             circlesCollectionView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             circlesCollectionView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            
+            // Videos collection view
+            videosCollectionView.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor),
+            videosCollectionView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            videosCollectionView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            
+            // Videos empty label
+            videosEmptyLabel.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor, constant: 100),
+            videosEmptyLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            videosEmptyLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
+            videosEmptyLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
             
             // Map container (same position as circles collection)
             mapContainerView.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor),
@@ -905,26 +995,35 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             versionLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
         ])
         
-        // Create height constraint for collection view
-        circlesCollectionHeightConstraint = circlesCollectionView.heightAnchor.constraint(equalToConstant: 200)
+        // Create height constraints for collection views
+        circlesCollectionHeightConstraint = circlesCollectionView.heightAnchor.constraint(equalToConstant: 400)
         circlesCollectionHeightConstraint?.isActive = true
+        
+        videosCollectionHeightConstraint = videosCollectionView.heightAnchor.constraint(equalToConstant: 200)
+        videosCollectionHeightConstraint?.isActive = true
         
         // Create switchable constraints for logout button
         logoutButtonTopToCollectionConstraint = logoutButton.topAnchor.constraint(equalTo: circlesCollectionView.bottomAnchor, constant: Constants.Spacing.xlarge)
         logoutButtonTopToMapConstraint = logoutButton.topAnchor.constraint(equalTo: mapContainerView.bottomAnchor, constant: Constants.Spacing.xlarge)
+        logoutButtonTopToVideosConstraint = logoutButton.topAnchor.constraint(equalTo: videosCollectionView.bottomAnchor, constant: Constants.Spacing.xlarge)
         
         // Initially show collection view
         logoutButtonTopToCollectionConstraint?.isActive = true
         logoutButtonTopToMapConstraint?.isActive = false
+        logoutButtonTopToVideosConstraint?.isActive = false
         
         // Setup filter menus
         setupCategoryFilterMenu()
         setupCityFilterMenu()
         
-        // Setup collection view
+        // Setup collection views
         circlesCollectionView.delegate = self
         circlesCollectionView.dataSource = self
         circlesCollectionView.register(CircleCell.self, forCellWithReuseIdentifier: "CircleCell")
+        
+        videosCollectionView.delegate = self
+        videosCollectionView.dataSource = self
+        videosCollectionView.register(VideoThumbnailCell.self, forCellWithReuseIdentifier: "VideoThumbnailCell")
         
         // Drag and drop will be configured conditionally in configureDragAndDrop()
         
@@ -966,7 +1065,6 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         visitHistoryButton.addTarget(self, action: #selector(visitHistoryButtonTapped), for: .touchUpInside)
         suggestedButton.addTarget(self, action: #selector(suggestedButtonTapped), for: .touchUpInside)
         logoutButton.addTarget(self, action: #selector(logoutButtonTapped), for: .touchUpInside)
-        addCircleButton.addTarget(self, action: #selector(addCircleButtonTapped), for: .touchUpInside)
         mapExpandButton.addTarget(self, action: #selector(expandMapButtonTapped), for: .touchUpInside)
         
         // Connection-related buttons for viewing other users
@@ -1071,20 +1169,84 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         navigationController?.pushViewController(settingsVC, animated: true)
     }
     
+    @objc private func videoButtonTapped() {
+        let linkInputVC = VideoLinkInputViewController()
+        linkInputVC.delegate = self
+        let navController = UINavigationController(rootViewController: linkInputVC)
+        navController.modalPresentationStyle = .fullScreen
+        present(navController, animated: true)
+    }
+    
+    @objc private func checkInButtonTapped() {
+        let checkInVC = CheckInViewController()
+        let navController = UINavigationController(rootViewController: checkInVC)
+        navController.modalPresentationStyle = .fullScreen
+        present(navController, animated: true)
+    }
+    
+    @objc private func contentTypeChanged() {
+        if contentTypeSegmentedControl.selectedSegmentIndex == 0 {
+            // Show circles
+            circlesCollectionView.isHidden = isShowingMap
+            videosCollectionView.isHidden = true
+            videosEmptyLabel.isHidden = true
+            searchBar.placeholder = "Search places..."
+            mapToggleButton.isHidden = false
+            
+            // Ensure map container visibility matches current state
+            mapContainerView.isHidden = !isShowingMap
+            
+            // Update circles collection height
+            updateCollectionViewHeight()
+            
+            // Update logout button constraint
+            logoutButtonTopToCollectionConstraint?.isActive = !isShowingMap
+            logoutButtonTopToMapConstraint?.isActive = isShowingMap
+            logoutButtonTopToVideosConstraint?.isActive = false
+            
+            // Force layout update
+            view.setNeedsLayout()
+            view.layoutIfNeeded()
+            
+            // Reload collection view to ensure proper display
+            circlesCollectionView.reloadData()
+            
+            // Ensure scroll view adjusts to content
+            scrollView.setNeedsLayout()
+            scrollView.layoutIfNeeded()
+            
+            // Recalculate height after reload
+            DispatchQueue.main.async { [weak self] in
+                self?.updateCollectionViewHeight()
+            }
+        } else {
+            // Show videos
+            circlesCollectionView.isHidden = true
+            videosCollectionView.isHidden = false
+            mapContainerView.isHidden = true
+            searchBar.placeholder = "Search videos..."
+            mapToggleButton.isHidden = true
+            
+            // Fetch videos if not loaded yet
+            if videos.isEmpty {
+                fetchUserVideos()
+            }
+            
+            // Update logout button constraint to videos collection
+            logoutButtonTopToCollectionConstraint?.isActive = false
+            logoutButtonTopToMapConstraint?.isActive = false
+            logoutButtonTopToVideosConstraint?.isActive = true
+            
+            // Load user's videos
+            loadUserVideos()
+        }
+    }
+    
     @objc private func toggleViewMode() {
         isShowingMap.toggle()
         
         // Update toggle button title
-        // For current user profile, toggle button is at index 1 (after settings)
-        // For other user profile, toggle button is at index 0 (only button)
-        if let rightBarButtons = navigationItem.rightBarButtonItems {
-            let isCurrentUser = (self.user == nil) || (user?.id == AuthService.shared.getUserId())
-            let toggleButtonIndex = isCurrentUser ? 1 : 0
-            
-            if toggleButtonIndex < rightBarButtons.count {
-                rightBarButtons[toggleButtonIndex].title = isShowingMap ? "List" : "Map"
-            }
-        }
+        mapToggleButton.setTitle(isShowingMap ? "List" : "Map", for: .normal)
         
         // Show/hide views
         circlesCollectionView.isHidden = isShowingMap
@@ -1271,12 +1433,6 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         cityFilterButton.menu = UIMenu(title: "", children: menuActions)
     }
     
-    @objc private func addCircleButtonTapped() {
-        let createCircleVC = CreateCircleViewController()
-        createCircleVC.delegate = self
-        let navController = UINavigationController(rootViewController: createCircleVC)
-        present(navController, animated: true)
-    }
     
     @objc private func followersStatTapped() {
         guard let user = user,
@@ -1936,6 +2092,46 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         }
     }
     
+    private func fetchUserVideos() {
+        guard let userId = user?.id ?? AuthService.shared.getUserId() else {
+            print("⚠️ ProfileViewController: No user ID available for fetching videos")
+            return
+        }
+        
+        let endpoint = "videos/user/\(userId)"
+        APIService.shared.request(
+            endpoint: endpoint,
+            method: .get
+        ) { [weak self] (result: Result<VideosResponse, APIError>) in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                
+                switch result {
+                case .success(let response):
+                    self.videos = response.data
+                    print("✅ ProfileViewController: Fetched \(response.data.count) videos")
+                    
+                    // Update videos collection view
+                    if self.contentTypeSegmentedControl.selectedSegmentIndex == 1 {
+                        self.videosCollectionView.reloadData()
+                        self.updateVideosCollectionHeight()
+                        
+                        // Show/hide empty state
+                        self.videosEmptyLabel.isHidden = !self.videos.isEmpty
+                    }
+                    
+                case .failure(let error):
+                    print("❌ ProfileViewController: Failed to fetch videos: \(error)")
+                    // Don't show error to user, just leave videos empty
+                    self.videos = []
+                    if self.contentTypeSegmentedControl.selectedSegmentIndex == 1 {
+                        self.videosEmptyLabel.isHidden = false
+                    }
+                }
+            }
+        }
+    }
+    
     private func displayUser(_ user: User) {
         // Debug logging
         print("🔍 ProfileViewController - Displaying user data:")
@@ -2007,17 +2203,18 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         suggestedButton.isHidden = !isCurrentUser
         logoutButton.isHidden = !isCurrentUser
         versionLabel.isHidden = !isCurrentUser
+        contentTypeSegmentedControl.isHidden = !isCurrentUser
         
         // Update navigation bar items based on profile type
         if isCurrentUser {
-            // Current user - show settings and toggle buttons
+            // Current user - show settings and video buttons
             let settingsButton = UIBarButtonItem(image: UIImage(systemName: "gear"), style: .plain, target: self, action: #selector(settingsButtonTapped))
-            let toggleButton = UIBarButtonItem(title: "Map", style: .plain, target: self, action: #selector(toggleViewMode))
-            navigationItem.rightBarButtonItems = [settingsButton, toggleButton]
+            let videoButton = UIBarButtonItem(image: UIImage(systemName: "video.fill"), style: .plain, target: self, action: #selector(videoButtonTapped))
+            let checkInButton = UIBarButtonItem(image: UIImage(systemName: "checkmark.circle"), style: .plain, target: self, action: #selector(checkInButtonTapped))
+            navigationItem.rightBarButtonItems = [settingsButton, videoButton, checkInButton]
         } else {
-            // Other user - only show toggle button  
-            let toggleButton = UIBarButtonItem(title: "Map", style: .plain, target: self, action: #selector(toggleViewMode))
-            navigationItem.rightBarButtonItems = [toggleButton]
+            // Other user - no navigation bar buttons
+            navigationItem.rightBarButtonItems = []
         }
         
         // For other users, check connection status and follow status
@@ -2068,6 +2265,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                         self.circlesCollectionView.reloadData()
                         self.updateCollectionViewHeight()
                         
+                        // Also fetch videos
+                        self.fetchUserVideos()
+                        
                         // Load all places for search functionality
                         self.loadAllPlacesFromCircles(circles)
                     case .failure(let error):
@@ -2076,6 +2276,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                         self.placesStatView.configure(number: "0", title: "Places")
                         self.circlesCollectionView.reloadData()
                         self.updateCollectionViewHeight()
+                        
+                        // Also fetch videos
+                        self.fetchUserVideos()
                         self.showErrorWithRetry(error) {
                             self.loadUserProfile(completion: nil)
                         }
@@ -2327,14 +2530,75 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         let itemsPerRow: CGFloat = 3
         let interitemSpacing: CGFloat = 12 // Match the actual spacing from flow layout delegate
         let lineSpacing: CGFloat = 16 // Match the actual line spacing from flow layout delegate
+        
+        // Use collection view's actual width for accurate calculation
+        let collectionWidth = circlesCollectionView.bounds.width > 0 ? circlesCollectionView.bounds.width : UIScreen.main.bounds.width
         let totalHorizontalSpacing = interitemSpacing * (itemsPerRow - 1)
-        let itemWidth = (view.bounds.width - totalHorizontalSpacing) / itemsPerRow
+        let itemWidth = (collectionWidth - totalHorizontalSpacing) / itemsPerRow
         let itemHeight = itemWidth + 50 // Square cells + 50 for labels (matching flow layout delegate)
         
         let rows = ceil(CGFloat(circles.count) / itemsPerRow)
         let totalHeight = (rows * itemHeight) + ((rows - 1) * lineSpacing)
         
-        circlesCollectionHeightConstraint?.constant = max(totalHeight, 100) // Minimum height
+        // Ensure minimum height of 400 to prevent cutoff
+        let finalHeight = max(totalHeight, 400)
+        
+        print("🔍 ProfileViewController - Updating circles collection height:")
+        print("   - Circles count: \(circles.count)")
+        print("   - Rows needed: \(rows)")
+        print("   - Collection width: \(collectionWidth)")
+        print("   - Item dimensions: \(itemWidth) x \(itemHeight)")
+        print("   - Total calculated height: \(totalHeight)")
+        print("   - Final height: \(finalHeight)")
+        
+        circlesCollectionHeightConstraint?.constant = finalHeight
+        
+        // Force layout update for both collection view and scroll view
+        UIView.animate(withDuration: 0.3) {
+            self.circlesCollectionView.layoutIfNeeded()
+            self.scrollView.layoutIfNeeded()
+            self.view.layoutIfNeeded()
+        }
+    }
+    
+    // MARK: - Video Methods
+    
+    private func loadUserVideos() {
+        guard let userId = user?.id else { return }
+        
+        let endpoint = "videos/user/\(userId)"
+        let completion = createAPICompletion { (result: Result<VideosResponse, Error>) in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let response):
+                    self.videos = response.data
+                    self.videosEmptyLabel.isHidden = !self.videos.isEmpty
+                    self.videosCollectionView.reloadData()
+                    self.updateVideosCollectionHeight()
+                    
+                case .failure(let error):
+                    print("Failed to load videos: \(error)")
+                    self.videosEmptyLabel.isHidden = false
+                }
+            }
+        }
+        
+        APIService.shared.request(endpoint: endpoint, method: .get, completion: completion)
+    }
+    
+    private func updateVideosCollectionHeight() {
+        // Calculate required height based on number of videos (3-column grid)
+        let itemsPerRow: CGFloat = 3
+        let interitemSpacing: CGFloat = 1
+        let lineSpacing: CGFloat = 1
+        let totalHorizontalSpacing = interitemSpacing * (itemsPerRow - 1)
+        let itemWidth = (view.bounds.width - totalHorizontalSpacing) / itemsPerRow
+        let itemHeight = itemWidth * 1.5 // 3:2 aspect ratio for video thumbnails
+        
+        let rows = ceil(CGFloat(videos.count) / itemsPerRow)
+        let totalHeight = (rows * itemHeight) + ((rows - 1) * lineSpacing)
+        
+        videosCollectionHeightConstraint?.constant = max(totalHeight, 100) // Minimum height
         
         UIView.animate(withDuration: 0.3) {
             self.view.layoutIfNeeded()
@@ -2346,10 +2610,19 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
 // MARK: - UICollectionViewDataSource
 extension ProfileViewController: UICollectionViewDataSource {
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+        if collectionView == videosCollectionView {
+            return videos.count
+        }
         return circles.count
     }
     
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
+        if collectionView == videosCollectionView {
+            let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "VideoThumbnailCell", for: indexPath) as! VideoThumbnailCell
+            let video = videos[indexPath.item]
+            cell.configure(with: video)
+            return cell
+        }
         guard let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "CircleCell", for: indexPath) as? CircleCell else {
             return UICollectionViewCell()
         }
@@ -2363,9 +2636,15 @@ extension ProfileViewController: UICollectionViewDataSource {
 // MARK: - UICollectionViewDelegate
 extension ProfileViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-        let circle = circles[indexPath.item]
-        let detailVC = CircleDetailViewController(circle: circle)
-        navigationController?.pushViewController(detailVC, animated: true)
+        if collectionView == videosCollectionView {
+            let video = videos[indexPath.item]
+            // TODO: Navigate to video player
+            print("Selected video: \(video.title)")
+        } else {
+            let circle = circles[indexPath.item]
+            let detailVC = CircleDetailViewController(circle: circle)
+            navigationController?.pushViewController(detailVC, animated: true)
+        }
     }
     
     func collectionView(_ collectionView: UICollectionView, contextMenuConfigurationForItemAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
@@ -2477,21 +2756,31 @@ extension ProfileViewController: UICollectionViewDelegate {
 // MARK: - UICollectionViewDelegateFlowLayout
 extension ProfileViewController: UICollectionViewDelegateFlowLayout {
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
-        // Circular grid with 3 columns
-        let spacing: CGFloat = 12
-        let numberOfColumns: CGFloat = 3
-        let totalSpacing = spacing * (numberOfColumns - 1)
-        let itemWidth = (collectionView.bounds.width - totalSpacing) / numberOfColumns
-        let itemHeight = itemWidth + 50 // Extra height for labels below circles
-        return CGSize(width: itemWidth, height: itemHeight)
+        if collectionView == videosCollectionView {
+            // Video thumbnails with 3 columns and 3:2 aspect ratio
+            let spacing: CGFloat = 1
+            let numberOfColumns: CGFloat = 3
+            let totalSpacing = spacing * (numberOfColumns - 1)
+            let itemWidth = (collectionView.bounds.width - totalSpacing) / numberOfColumns
+            let itemHeight = itemWidth * 1.5 // 3:2 aspect ratio
+            return CGSize(width: itemWidth, height: itemHeight)
+        } else {
+            // Circular grid with 3 columns
+            let spacing: CGFloat = 12
+            let numberOfColumns: CGFloat = 3
+            let totalSpacing = spacing * (numberOfColumns - 1)
+            let itemWidth = (collectionView.bounds.width - totalSpacing) / numberOfColumns
+            let itemHeight = itemWidth + 50 // Extra height for labels below circles
+            return CGSize(width: itemWidth, height: itemHeight)
+        }
     }
     
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumLineSpacingForSectionAt section: Int) -> CGFloat {
-        return 16
+        return collectionView == videosCollectionView ? 1 : 16
     }
     
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumInteritemSpacingForSectionAt section: Int) -> CGFloat {
-        return 12
+        return collectionView == videosCollectionView ? 1 : 12
     }
 }
 
@@ -2902,6 +3191,32 @@ extension ProfileViewController {
             let placeDetailVC = PlaceDetailViewController(place: place)
             self.navigationController?.pushViewController(placeDetailVC, animated: true)
         }
+    }
+}
+
+// MARK: - VideoLinkInputDelegate
+extension ProfileViewController: VideoLinkInputDelegate {
+    func videoLinkInputDidFinish(with video: PlaceVideo) {
+        showSuccess("Video added successfully!")
+        
+        // Add to videos array and refresh if on Videos tab
+        videos.insert(video, at: 0)
+        if contentTypeSegmentedControl.selectedSegmentIndex == 1 {
+            videosCollectionView.reloadData()
+            updateVideosCollectionHeight()
+            videosEmptyLabel.isHidden = true
+        }
+        
+        // Track activity
+        NotificationCenter.default.post(
+            name: Notification.Name("VideoUploaded"),
+            object: nil,
+            userInfo: ["video": video]
+        )
+    }
+    
+    func videoLinkInputDidCancel() {
+        // User cancelled - nothing to do
     }
 }
 

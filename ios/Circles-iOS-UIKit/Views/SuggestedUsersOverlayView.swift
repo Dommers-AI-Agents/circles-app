@@ -22,11 +22,11 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
     // MARK: - UI Elements
     private let containerView: UIView = {
         let view = UIView()
-        view.backgroundColor = .white
+        view.backgroundColor = .systemBackground // Adapts to light/dark mode
         view.layer.cornerRadius = 20
-        view.layer.shadowColor = UIColor.black.cgColor
+        view.layer.shadowColor = UIColor.label.cgColor // Adapts shadow color
         view.layer.shadowOffset = CGSize(width: 0, height: 4)
-        view.layer.shadowOpacity = 0.1
+        view.layer.shadowOpacity = 0.15
         view.layer.shadowRadius = 12
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
@@ -36,7 +36,7 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
         let label = UILabel()
         label.text = "Discover Great Places"
         label.font = UIFont.systemFont(ofSize: 24, weight: .bold)
-        label.textColor = Constants.Colors.label
+        label.textColor = .label // System label color adapts to dark mode
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -44,9 +44,9 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
     
     private let subtitleLabel: UILabel = {
         let label = UILabel()
-        label.text = "Connect with our most active curators"
+        label.text = "Connect with people you know! (follow others)"
         label.font = UIFont.systemFont(ofSize: 16, weight: .regular)
-        label.textColor = Constants.Colors.secondaryLabel
+        label.textColor = .secondaryLabel // System secondary label adapts to dark mode
         label.textAlignment = .center
         label.numberOfLines = 2
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -55,9 +55,9 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
     
     private let instructionLabel: UILabel = {
         let label = UILabel()
-        label.text = "Follow users with the best recommendations (shown by places saved)"
+        label.text = "Select people to follow and see their favorite places"
         label.font = UIFont.systemFont(ofSize: 14, weight: .medium)
-        label.textColor = Constants.Colors.primary
+        label.textColor = .systemBlue // System blue works well in both modes
         label.textAlignment = .center
         label.numberOfLines = 2
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -68,7 +68,7 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
         let label = UILabel()
         label.text = "Select at least 1 connection to continue"
         label.font = UIFont.systemFont(ofSize: 12, weight: .regular)
-        label.textColor = Constants.Colors.secondaryLabel
+        label.textColor = .tertiaryLabel // Lighter secondary text
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -91,7 +91,7 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
         config.titleAlignment = .center
         config.imagePlacement = .top
         config.imagePadding = 8
-        config.baseBackgroundColor = Constants.Colors.primary
+        config.baseBackgroundColor = .systemBlue // Adapts to dark mode
         config.baseForegroundColor = .white
         
         // Configure title attributes for multiline
@@ -106,7 +106,7 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
         }
         
         button.configuration = config
-        button.layer.cornerRadius = 70 // Half of width/height for perfect circle
+        button.layer.cornerRadius = 50 // Half of width/height for perfect circle (now 100x100)
         button.clipsToBounds = true
         button.translatesAutoresizingMaskIntoConstraints = false
         button.addTarget(self, action: #selector(exploreButtonTapped), for: .touchUpInside)
@@ -118,11 +118,11 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
         button.setImage(UIImage(systemName: "person.crop.circle.badge.plus"), for: .normal)
         button.setTitle("Import Contacts", for: .normal)
         button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-        button.backgroundColor = .clear
-        button.tintColor = Constants.Colors.primary
-        button.setTitleColor(Constants.Colors.primary, for: .normal)
-        button.layer.borderWidth = 2
-        button.layer.borderColor = Constants.Colors.primary.cgColor
+        button.backgroundColor = .secondarySystemBackground // Subtle background for dark mode
+        button.tintColor = .systemBlue
+        button.setTitleColor(.systemBlue, for: .normal)
+        button.layer.borderWidth = 1.5
+        button.layer.borderColor = UIColor.systemBlue.cgColor
         button.layer.cornerRadius = 25
         button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 8)
         button.translatesAutoresizingMaskIntoConstraints = false
@@ -148,7 +148,7 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
         let button = UIButton(type: .system)
         button.setTitle("Skip", for: .normal)
         button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
-        button.setTitleColor(Constants.Colors.secondaryLabel, for: .normal)
+        button.setTitleColor(.secondaryLabel, for: .normal)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.addTarget(self, action: #selector(skipButtonTapped), for: .touchUpInside)
         return button
@@ -157,14 +157,14 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
     private let closeButton: UIButton = {
         let button = UIButton(type: .system)
         button.setImage(UIImage(systemName: "xmark"), for: .normal)
-        button.tintColor = Constants.Colors.secondaryLabel
+        button.tintColor = .secondaryLabel
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
     
     private let loadingIndicator: UIActivityIndicatorView = {
         let indicator = UIActivityIndicatorView(style: .large)
-        indicator.color = Constants.Colors.primary
+        indicator.color = .systemBlue
         indicator.hidesWhenStopped = true
         indicator.translatesAutoresizingMaskIntoConstraints = false
         return indicator
@@ -189,8 +189,7 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
         addSubview(containerView)
         containerView.addSubview(titleLabel)
         containerView.addSubview(subtitleLabel)
-        containerView.addSubview(instructionLabel)
-        containerView.addSubview(counterLabel)
+        // Removed instructionLabel and counterLabel for cleaner UI
         containerView.addSubview(circleContainerView)
         containerView.addSubview(closeButton)
         containerView.addSubview(loadingIndicator)
@@ -225,34 +224,24 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
             subtitleLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
             subtitleLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
             
-            // Instruction label
-            instructionLabel.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 12),
-            instructionLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
-            instructionLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
-            
-            // Counter label
-            counterLabel.topAnchor.constraint(equalTo: instructionLabel.bottomAnchor, constant: 4),
-            counterLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
-            counterLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
-            
-            // Circle container
-            circleContainerView.topAnchor.constraint(equalTo: counterLabel.bottomAnchor, constant: 20),
+            // Circle container - now directly after subtitle with more spacing
+            circleContainerView.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 50),
             circleContainerView.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
             circleContainerView.widthAnchor.constraint(equalToConstant: 300),
             circleContainerView.heightAnchor.constraint(equalToConstant: 300),
             
-            // Explore button (center of circle)
+            // Explore button (center of circle) - made smaller
             exploreButton.centerXAnchor.constraint(equalTo: circleContainerView.centerXAnchor),
             exploreButton.centerYAnchor.constraint(equalTo: circleContainerView.centerYAnchor),
-            exploreButton.widthAnchor.constraint(equalToConstant: 140),
-            exploreButton.heightAnchor.constraint(equalToConstant: 140),
+            exploreButton.widthAnchor.constraint(equalToConstant: 100),
+            exploreButton.heightAnchor.constraint(equalToConstant: 100),
             
             // Loading indicator
             loadingIndicator.centerXAnchor.constraint(equalTo: circleContainerView.centerXAnchor),
             loadingIndicator.centerYAnchor.constraint(equalTo: circleContainerView.centerYAnchor),
             
-            // Import contacts button
-            importContactsButton.topAnchor.constraint(equalTo: circleContainerView.bottomAnchor, constant: 24),
+            // Import contacts button - increased spacing from circle
+            importContactsButton.topAnchor.constraint(equalTo: circleContainerView.bottomAnchor, constant: 45),
             importContactsButton.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
             importContactsButton.widthAnchor.constraint(equalToConstant: 180),
             importContactsButton.heightAnchor.constraint(equalToConstant: 50),
@@ -263,14 +252,14 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
             buttonContainer.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
             buttonContainer.heightAnchor.constraint(equalToConstant: 50),
             
-            // Next button
-            nextButton.leadingAnchor.constraint(equalTo: buttonContainer.leadingAnchor),
+            // Next button - centered
+            nextButton.centerXAnchor.constraint(equalTo: buttonContainer.centerXAnchor),
             nextButton.topAnchor.constraint(equalTo: buttonContainer.topAnchor),
             nextButton.bottomAnchor.constraint(equalTo: buttonContainer.bottomAnchor),
-            nextButton.widthAnchor.constraint(equalTo: buttonContainer.widthAnchor, multiplier: 0.7),
+            nextButton.widthAnchor.constraint(equalTo: buttonContainer.widthAnchor, multiplier: 0.6),
             
-            // Skip button
-            skipButton.trailingAnchor.constraint(equalTo: buttonContainer.trailingAnchor),
+            // Skip button - positioned to the right of Next button
+            skipButton.leadingAnchor.constraint(equalTo: nextButton.trailingAnchor, constant: 10),
             skipButton.centerYAnchor.constraint(equalTo: buttonContainer.centerYAnchor)
         ])
     }
@@ -357,15 +346,18 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
         // Sort users by places count (highest first)
         let sortedUsers = suggestedUsers.sorted { ($0.placesCount ?? 0) > ($1.placesCount ?? 0) }
         
-        let radius: CGFloat = 120 // Distance from center
-        let angleStep = (2 * CGFloat.pi) / CGFloat(min(sortedUsers.count, maxVisibleUsers))
+        let radius: CGFloat = 135 // Increased distance from center to prevent overlap
+        
+        // Calculate positions for users - distribute evenly around the circle
+        let usersToShow = min(sortedUsers.count, maxVisibleUsers)
+        let angleStep = (2 * CGFloat.pi) / CGFloat(usersToShow)
         
         for (index, user) in sortedUsers.prefix(maxVisibleUsers).enumerated() {
             let button = createUserButton(for: user)
             userButtons.append(button)
             circleContainerView.addSubview(button)
             
-            // Position in circle
+            // Position in circle, starting from top and going clockwise
             let angle = angleStep * CGFloat(index) - CGFloat.pi / 2 // Start from top
             let x = cos(angle) * radius
             let y = sin(angle) * radius
@@ -407,9 +399,9 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
         imageView.contentMode = .scaleAspectFill
         imageView.layer.cornerRadius = 30
         imageView.clipsToBounds = true
-        imageView.backgroundColor = Constants.Colors.lightGray
+        imageView.backgroundColor = .systemGray5 // Adapts to dark mode
         imageView.layer.borderWidth = 2
-        imageView.layer.borderColor = Constants.Colors.primary.withAlphaComponent(0.3).cgColor
+        imageView.layer.borderColor = UIColor.systemBlue.withAlphaComponent(0.3).cgColor
         imageView.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(imageView)
         
@@ -419,20 +411,21 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
                 DispatchQueue.main.async {
                     imageView.image = image ?? UIImage(systemName: "person.circle.fill")
                     if image == nil {
-                        imageView.tintColor = Constants.Colors.secondaryLabel
+                        imageView.tintColor = .secondaryLabel
                     }
                 }
             }
         } else {
             imageView.image = UIImage(systemName: "person.circle.fill")
-            imageView.tintColor = Constants.Colors.secondaryLabel
+            imageView.tintColor = .secondaryLabel
         }
         
-        // Name label
+        // Name label - show first name only
         let nameLabel = UILabel()
-        nameLabel.text = user.displayName
-        nameLabel.font = UIFont.systemFont(ofSize: 12, weight: .medium)
-        nameLabel.textColor = Constants.Colors.label
+        let firstName = user.displayName.components(separatedBy: " ").first ?? user.displayName
+        nameLabel.text = firstName
+        nameLabel.font = UIFont.systemFont(ofSize: 11, weight: .medium) // Reduced font size
+        nameLabel.textColor = .label // Adapts to dark mode
         nameLabel.textAlignment = .center
         nameLabel.lineBreakMode = .byTruncatingTail
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -441,7 +434,7 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
         // Places count badge
         if let placesCount = user.placesCount, placesCount > 0 {
             let badgeView = UIView()
-            badgeView.backgroundColor = Constants.Colors.primary
+            badgeView.backgroundColor = .systemBlue
             badgeView.layer.cornerRadius = 10
             badgeView.layer.shadowColor = UIColor.black.cgColor
             badgeView.layer.shadowOffset = CGSize(width: 0, height: 1)
@@ -458,8 +451,8 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
             badgeView.addSubview(badgeLabel)
             
             NSLayoutConstraint.activate([
-                badgeView.topAnchor.constraint(equalTo: imageView.topAnchor, constant: -5),
-                badgeView.trailingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 5),
+                badgeView.topAnchor.constraint(equalTo: imageView.topAnchor, constant: -3),
+                badgeView.trailingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 3),
                 badgeView.widthAnchor.constraint(greaterThanOrEqualToConstant: 20),
                 badgeView.heightAnchor.constraint(equalToConstant: 20),
                 
@@ -591,14 +584,10 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
     
     // MARK: - UI Updates
     private func updateCounterLabel() {
+        // Counter label removed from UI, but keeping count logic for Next button state
         let count = selectedUserIds.count
-        if count == 0 {
-            counterLabel.text = "Select at least 1 connection to continue"
-            counterLabel.textColor = Constants.Colors.secondaryLabel
-        } else {
-            counterLabel.text = "\(count) of \(suggestedUsers.count) selected"
-            counterLabel.textColor = Constants.Colors.primary
-        }
+        // This method now only exists to be called from userButtonTapped
+        // The actual display is removed for cleaner UI
     }
     
     private func updateNextButtonState() {
@@ -613,8 +602,8 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
     private func showPersistentCheckmark(for button: UIButton) {
         // Add persistent checkmark overlay
         let checkmarkView = UIImageView(image: UIImage(systemName: "checkmark.circle.fill"))
-        checkmarkView.tintColor = Constants.Colors.success
-        checkmarkView.backgroundColor = .white
+        checkmarkView.tintColor = .systemGreen
+        checkmarkView.backgroundColor = .systemBackground // Adapts to dark mode
         checkmarkView.layer.cornerRadius = 15
         checkmarkView.translatesAutoresizingMaskIntoConstraints = false
         checkmarkView.tag = 999 // Tag to identify checkmark views

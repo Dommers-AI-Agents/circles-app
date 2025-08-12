@@ -438,6 +438,7 @@ class VisitDetailViewController: UIViewController {
             phone: nil,
             googlePlaceId: nil,
             photos: visit.photos.isEmpty ? nil : visit.photos,
+            videos: nil,
             category: category,
             customCategoryId: nil,
             subcategory: nil,
@@ -485,7 +486,7 @@ class VisitDetailViewController: UIViewController {
         fullScreenMapVC.showFilters = false // Hide filters for place selection
         
         let navigationController = UINavigationController(rootViewController: fullScreenMapVC)
-        navigationController.modalPresentationStyle = .fullScreen
+        navigationController.modalPresentationStyle = UIModalPresentationStyle.fullScreen
         present(navigationController, animated: true)
     }
     

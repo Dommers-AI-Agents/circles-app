@@ -8,6 +8,7 @@ enum ActivityType: String, Codable {
     case circleCreated = "circle_created"
     case commentLiked = "comment_liked"
     case checkIn = "check_in"
+    case videoUploaded = "video_uploaded"
 }
 
 // MARK: - Activity Model
@@ -68,6 +69,14 @@ struct ActivityMetadata: Codable {
     let placeId: String?
     let message: String?  // For check-in messages
     let endTime: String?  // For check-in end time
+    let latitude: Double?  // For check-in place location
+    let longitude: Double?  // For check-in place location
+    let placeCategory: String?  // For check-in place category
+    let circleId: String?  // For check-in circle reference
+    let circleName: String?  // For check-in circle name
+    let videoTitle: String?  // For video uploads
+    let videoThumbnail: String?  // For video uploads
+    let videoDuration: Double?  // For video uploads
 }
 
 // MARK: - Activity Helper Methods
@@ -86,6 +95,8 @@ extension Activity {
             return "liked a comment on \(targetName)"
         case .checkIn:
             return "checked in at \(targetName)"
+        case .videoUploaded:
+            return "uploaded a video at \(targetName)"
         }
     }
     

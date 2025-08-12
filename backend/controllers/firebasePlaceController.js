@@ -447,28 +447,47 @@ exports.getPlace = async (req, res, next) => {
       });
     }
 
-    // Check if user has access to the circle this place belongs to
-    const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(place.circleId).get();
-    
-    if (!circleDoc.exists) {
-      return res.status(404).json({
-        success: false,
-        message: 'Circle not found'
-      });
-    }
+    // Check permissions based on whether place belongs to a circle
+    if (place.circleId) {
+      // Place belongs to a circle - check circle permissions
+      const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(place.circleId).get();
+      
+      if (!circleDoc.exists) {
+        return res.status(404).json({
+          success: false,
+          message: 'Circle not found'
+        });
+      }
 
-    const circle = serializeDoc(circleDoc);
-    
-    // Check permissions
-    const isOwner = circle.owner === req.user.uid;
-    const isSharedWith = circle.sharedWith.includes(req.user.uid);
-    const isPublic = circle.privacy === 'public';
-    
-    if (!isOwner && !isSharedWith && !isPublic) {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to access this place'
-      });
+      const circle = serializeDoc(circleDoc);
+      
+      // Check permissions
+      const isOwner = circle.owner === req.user.uid;
+      const isSharedWith = circle.sharedWith.includes(req.user.uid);
+      const isPublic = circle.privacy === 'public';
+      
+      if (!isOwner && !isSharedWith && !isPublic) {
+        return res.status(403).json({
+          success: false,
+          message: 'Not authorized to access this place'
+        });
+      }
+    } else {
+      // Floating place (no circle) - created from check-in
+      // Allow access if user created the place or if it's from a check-in
+      const isCreator = place.addedBy === req.user.uid;
+      const isFromCheckIn = place.addedViaCheckIn === true;
+      
+      if (!isCreator && !isFromCheckIn) {
+        return res.status(403).json({
+          success: false,
+          message: 'Not authorized to access this place'
+        });
+      }
+      
+      // For floating places from check-ins, anyone can view them
+      // This allows users to see places where their connections checked in
+      console.log(`✅ Allowing access to floating place: ${place.name} (check-in place)`);
     }
 
     // Get comment count for this place

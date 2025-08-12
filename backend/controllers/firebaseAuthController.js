@@ -10,6 +10,57 @@ const { firebaseApiKey } = require('../config/config');
 const db = getFirestore();
 const auth = getAuth();
 
+// Helper function to geocode zipcode
+async function geocodeZipcode(zipcode) {
+  try {
+    // Use Google Maps Geocoding API (requires API key)
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.PLACES_API_KEY;
+    if (!apiKey) {
+      console.log('No Google Maps API key available for geocoding');
+      return {};
+    }
+
+    const response = await fetch(
+      `https://maps.googleapis.com/maps/api/geocode/json?address=${zipcode}&key=${apiKey}`
+    );
+    
+    const data = await response.json();
+    
+    if (data.status === 'OK' && data.results && data.results.length > 0) {
+      const result = data.results[0];
+      const components = result.address_components;
+      
+      let city = null;
+      let state = null;
+      
+      // Extract city and state from address components
+      components.forEach(component => {
+        if (component.types.includes('locality')) {
+          city = component.long_name;
+        }
+        if (component.types.includes('administrative_area_level_1')) {
+          state = component.short_name;
+        }
+      });
+      
+      return {
+        city,
+        state,
+        coordinates: {
+          latitude: result.geometry.location.lat,
+          longitude: result.geometry.location.lng,
+          timestamp: new Date().toISOString()
+        }
+      };
+    }
+    
+    return {};
+  } catch (error) {
+    console.error('Error geocoding zipcode:', error);
+    return {};
+  }
+}
+
 // Apple's JWKS client for verifying tokens
 const appleClient = jwksClient({
   jwksUri: 'https://appleid.apple.com/auth/keys',
@@ -586,7 +637,7 @@ exports.firebaseAuth = async (req, res, next) => {
 // @access  Public
 exports.register = async (req, res, next) => {
   try {
-    const { email, password, displayName } = req.body;
+    const { email, password, displayName, zipcode } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({
@@ -686,6 +737,18 @@ exports.register = async (req, res, next) => {
           updateData.displayName = displayName;
         }
         
+        // Update zipcode if provided and geocode it
+        if (zipcode && !existingUser.zipcode) {
+          updateData.zipcode = zipcode;
+          const locationData = await geocodeZipcode(zipcode);
+          if (locationData.city && locationData.state) {
+            updateData.location = `${locationData.city}, ${locationData.state}`;
+          }
+          if (locationData.coordinates) {
+            updateData.lastKnownLocation = locationData.coordinates;
+          }
+        }
+        
         transaction.update(userRef, updateData);
         return { userRef, isNew: false };
       } else {
@@ -713,13 +776,22 @@ exports.register = async (req, res, next) => {
           }
         }
 
+        // Geocode zipcode if provided to get city/state
+        let locationData = {};
+        if (zipcode) {
+          locationData = await geocodeZipcode(zipcode);
+        }
+
         // Create user profile in Firestore within transaction
         const userData = createUser({
           uid: userRecord.uid,
           email: userRecord.email,
           displayName: displayName || userRecord.displayName || normalizedEmail.split('@')[0],
           profilePicture: null,
-          linkedProviders: { manual: userRecord.uid }
+          linkedProviders: { manual: userRecord.uid },
+          zipcode: zipcode || null,
+          location: locationData.city && locationData.state ? `${locationData.city}, ${locationData.state}` : null,
+          lastKnownLocation: locationData.coordinates || null
         });
 
         const userRef = db.collection(COLLECTIONS.USERS).doc(userRecord.uid);

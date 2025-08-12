@@ -211,10 +211,9 @@ class OnboardingManager {
         // Handle navigation to next tutorial step if needed
         switch step {
         case .welcome:
-            // After welcome, highlight the create circle button
-            if let homeVC = viewController as? CirclesHomeViewController {
-                homeVC.highlightCreateCircleButton()
-            }
+            // After welcome, the user can use the Add Place button
+            // No specific action needed here
+            break
             
         case .createCircle:
             // After creating circle, guide user to add places

@@ -7,6 +7,11 @@ const {
   getSuggestedUsers,
   inviteContacts
 } = require('../controllers/userContactsController');
+const {
+  getDiscoverUsers,
+  searchUsersAdvanced,
+  updateUserLocation
+} = require('../controllers/userDiscoveryController');
 
 // Apply authentication middleware to all routes
 router.use(protect);
@@ -19,5 +24,10 @@ router.get('/suggested', getSuggestedUsers);
 
 // Send invitations to non-users
 router.post('/invite-contacts', inviteContacts);
+
+// User discovery endpoints
+router.get('/discover', getDiscoverUsers);
+router.get('/search', searchUsersAdvanced);
+router.post('/update-location', updateUserLocation);
 
 module.exports = router;

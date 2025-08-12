@@ -3,6 +3,7 @@ const { getFirestore, FieldValue, GeoPoint } = require('../config/firebase');
 const { 
   COLLECTIONS, 
   createCheckIn, 
+  createPlace,
   validateCheckIn,
   serializeDoc,
   serializeQuerySnapshot 
@@ -85,24 +86,34 @@ exports.createCheckIn = async (req, res) => {
     }
     
     // Send notifications to individual users
+    console.log(`📍 Sending check-in notifications to ${checkIn.notifiedUsers.length} users`);
     for (const notifiedUserId of checkIn.notifiedUsers) {
-      await notificationService.sendToUser(notifiedUserId, {
-        type: 'check_in',
-        title: 'Check-in Notification',
-        body: `${userData.displayName} is at ${checkIn.placeName}${checkIn.message ? ': ' + checkIn.message : ''}`,
-        data: {
-          checkInId: checkInId,
-          placeName: checkIn.placeName,
-          userId: userId
-        }
-      });
+      console.log(`📍 Sending check-in notification to user: ${notifiedUserId}`);
+      try {
+        const result = await notificationService.sendToUser(notifiedUserId, {
+          type: 'check_in',
+          title: 'Check-in Notification',
+          body: `${userData.displayName} is at ${checkIn.placeName}${checkIn.message ? ': ' + checkIn.message : ''}`,
+          data: {
+            checkInId: checkInId,
+            placeName: checkIn.placeName,
+            userId: userId
+          }
+        });
+        console.log(`📍 Check-in notification result for ${notifiedUserId}:`, result);
+      } catch (error) {
+        console.error(`📍 Failed to send check-in notification to ${notifiedUserId}:`, error);
+      }
     }
     
     // Add to activity feed if enabled
     if (checkIn.showInActivityFeed) {
-      // Fetch place photo if this is from a circle place
+      // Ensure place exists in database for all check-ins
+      let finalPlaceId = checkIn.placeId;
       let placePhoto = null;
+      
       if (checkIn.placeId) {
+        // Check if place exists in database
         try {
           const placeDoc = await db.collection(COLLECTIONS.PLACES).doc(checkIn.placeId).get();
           if (placeDoc.exists) {
@@ -110,9 +121,59 @@ exports.createCheckIn = async (req, res) => {
             if (placeData.photos && placeData.photos.length > 0) {
               placePhoto = placeData.photos[0];
             }
+          } else {
+            // Place ID provided but doesn't exist - clear it to create new
+            finalPlaceId = null;
           }
         } catch (error) {
-          console.error('Error fetching place photo for activity:', error);
+          console.error('Error fetching existing place for activity:', error);
+          finalPlaceId = null;
+        }
+      }
+      
+      // If no valid place ID, create a new place from check-in data
+      if (!finalPlaceId) {
+        try {
+          // First check if a place with same name and address already exists
+          const existingPlacesQuery = await db.collection(COLLECTIONS.PLACES)
+            .where('name', '==', checkIn.placeName)
+            .where('address', '==', checkIn.placeAddress)
+            .where('deletedAt', '==', null) // Only active places
+            .limit(1)
+            .get();
+          
+          if (!existingPlacesQuery.empty) {
+            // Use existing place
+            finalPlaceId = existingPlacesQuery.docs[0].id;
+            const existingPlace = existingPlacesQuery.docs[0].data();
+            if (existingPlace.photos && existingPlace.photos.length > 0) {
+              placePhoto = existingPlace.photos[0];
+            }
+            console.log(`✅ Using existing place for check-in: ${checkIn.placeName} (ID: ${finalPlaceId})`);
+          } else {
+            // Create new place from check-in information
+            const placeData = {
+              name: checkIn.placeName,
+              address: checkIn.placeAddress,
+              location: checkIn.location ? {
+                coordinates: [checkIn.location.longitude, checkIn.location.latitude]
+              } : null,
+              category: checkIn.placeCategory || 'other',
+              // Mark this place as created from check-in
+              addedViaCheckIn: true,
+              photos: [] // Could add photos from check-in if available
+            };
+            
+            // Create the place document
+            const place = createPlace(placeData, null, userId); // circleId = null for floating places
+            const placeRef = await db.collection(COLLECTIONS.PLACES).add(place);
+            finalPlaceId = placeRef.id;
+            
+            console.log(`✅ Created new place from check-in: ${checkIn.placeName} (ID: ${finalPlaceId})`);
+          }
+        } catch (error) {
+          console.error('Error creating place from check-in:', error);
+          // Continue without place ID if creation fails
         }
       }
       
@@ -129,7 +190,10 @@ exports.createCheckIn = async (req, res) => {
           circleId: checkIn.circleId,
           circleName: null, // Could fetch circle name if needed
           placePhoto: placePhoto,
-          placeId: checkIn.placeId || null
+          placeId: finalPlaceId, // Use the guaranteed place ID
+          latitude: checkIn.location ? checkIn.location.latitude : null,
+          longitude: checkIn.location ? checkIn.location.longitude : null,
+          placeCategory: checkIn.placeCategory || 'other'
         }
       );
     }

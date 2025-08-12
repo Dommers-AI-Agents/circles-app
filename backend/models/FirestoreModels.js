@@ -25,7 +25,11 @@ const COLLECTIONS = {
   VISIT_DRAFTS: 'visitDrafts',
   CHECK_INS: 'checkIns',
   ACTIVITY_REACTIONS: 'activityReactions',
-  ACTIVITY_COMMENTS: 'activityComments'
+  ACTIVITY_COMMENTS: 'activityComments',
+  PLACE_VIDEOS: 'placeVideos',
+  USER_VIDEO_QUOTAS: 'userVideoQuotas',
+  VIDEO_LIKES: 'videoLikes',
+  VIDEO_VIEWS: 'videoViews'
 };
 
 // User model structure
@@ -41,6 +45,7 @@ const createUser = (userData) => {
     profilePicture: userData.profilePicture || userData.picture || null,
     bio: userData.bio || null,
     location: userData.location || null,
+    zipcode: userData.zipcode || null,
     friends: userData.friends || [],
     friendRequests: userData.friendRequests || [],
     linkedProviders: userData.linkedProviders || {},
@@ -175,6 +180,7 @@ const createPlace = (placeData, circleId, addedBy) => {
     phone: placeData.phone || null,
     googlePlaceId: placeData.googlePlaceId || null,
     photos: placeData.photos || [],
+    videos: placeData.videos || [],
     category: placeData.category, // restaurant, cafe, bar, hotel, retail, service, attraction, entertainment, healthcare, fitness, education, outdoor, transport, finance, other
     customCategoryId: placeData.customCategoryId || null, // Reference to user's custom category
     subcategory: placeData.subcategory || null,
@@ -192,6 +198,7 @@ const createPlace = (placeData, circleId, addedBy) => {
     circleId: circleId,
     addedBy: addedBy,
     privacy: placeData.privacy || 'followCircle', // followCircle, public, myNetwork, private
+    addedViaCheckIn: placeData.addedViaCheckIn || false, // Track places created from check-ins
     deletedAt: null, // Soft delete timestamp
     createdAt: now,
     updatedAt: now
@@ -337,6 +344,92 @@ const validatePlace = (placeData) => {
   }
   
   return errors;
+};
+
+// PlaceVideo model structure
+const createPlaceVideo = (videoData, userId) => {
+  const now = new Date().toISOString();
+  return {
+    userId: userId,
+    placeId: videoData.placeId,
+    placeName: videoData.placeName,
+    videoUrl: videoData.videoUrl || null,
+    previewUrl: videoData.previewUrl || null,
+    thumbnailUrl: videoData.thumbnailUrl || null,
+    title: videoData.title || '',
+    description: videoData.description || '',
+    duration: videoData.duration || 0, // seconds, max 30
+    fileSize: videoData.fileSize || 0, // bytes after compression
+    originalSize: videoData.originalSize || 0, // bytes before compression
+    compressionRatio: videoData.compressionRatio || 0,
+    visibility: videoData.visibility || 'public', // public, network, private
+    viewCount: 0,
+    lastViewedAt: null,
+    likeCount: 0,
+    commentCount: 0,
+    tags: videoData.tags || [],
+    uploadProgress: 0,
+    uploadStatus: 'uploading', // uploading, processing, ready, failed
+    storageClass: 'standard', // standard, archive
+    createdAt: now,
+    updatedAt: now,
+    deletedAt: null
+  };
+};
+
+// Validate place video
+const validatePlaceVideo = (videoData) => {
+  const errors = [];
+  
+  if (!videoData.placeId || videoData.placeId.trim().length === 0) {
+    errors.push('Place ID is required');
+  }
+  
+  if (!videoData.placeName || videoData.placeName.trim().length === 0) {
+    errors.push('Place name is required');
+  }
+  
+  if (videoData.duration && videoData.duration > 15) {
+    errors.push('Video duration cannot exceed 15 seconds for Reels');
+  }
+  
+  if (videoData.fileSize && videoData.fileSize > 52428800) { // 50MB
+    errors.push('Video file size cannot exceed 50MB');
+  }
+  
+  if (videoData.title && videoData.title.length > 100) {
+    errors.push('Title must be 100 characters or less');
+  }
+  
+  if (videoData.description && videoData.description.length > 500) {
+    errors.push('Description must be 500 characters or less');
+  }
+  
+  const validVisibility = ['public', 'network', 'private'];
+  if (videoData.visibility && !validVisibility.includes(videoData.visibility)) {
+    errors.push('Invalid visibility setting');
+  }
+  
+  return errors;
+};
+
+// UserVideoQuota model structure
+const createUserVideoQuota = (userId, tier = 'free') => {
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  
+  return {
+    userId: userId,
+    currentMonth: currentMonth,
+    videosUploaded: 0,
+    totalSize: 0, // Total bytes this month
+    subscriptionTier: tier, // free or premium
+    quotaLimit: tier === 'free' ? 5 : 50, // Videos per month
+    sizeLimit: tier === 'free' ? 262144000 : 2147483648, // 250MB for free, 2GB for premium
+    lastResetDate: now.toISOString(),
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString()
+  };
 };
 
 // Helper function to serialize document for API response
@@ -912,6 +1005,8 @@ module.exports = {
   createCheckIn,
   createActivityReaction,
   createActivityComment,
+  createPlaceVideo,
+  createUserVideoQuota,
   validateCircle,
   validatePlace,
   validateConnection,
@@ -927,6 +1022,7 @@ module.exports = {
   validateCheckIn,
   validateActivityReaction,
   validateActivityComment,
+  validatePlaceVideo,
   serializeDoc,
   serializeQuerySnapshot
 };

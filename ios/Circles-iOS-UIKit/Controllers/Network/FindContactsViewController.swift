@@ -84,13 +84,22 @@ class FindContactsViewController: BaseViewController {
             action: #selector(cancelTapped)
         )
         
-        // Add SMS invite button to right side
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
+        // Add discover button to right side
+        let discoverButton = UIBarButtonItem(
+            image: UIImage(systemName: "magnifyingglass.circle"),
+            style: .plain,
+            target: self,
+            action: #selector(discoverTapped)
+        )
+        
+        let smsButton = UIBarButtonItem(
             image: UIImage(systemName: "message"),
             style: .plain,
             target: self,
             action: #selector(sendSingleInviteTapped)
         )
+        
+        navigationItem.rightBarButtonItems = [discoverButton, smsButton]
     }
     
     private func setupUI() {
@@ -179,34 +188,36 @@ class FindContactsViewController: BaseViewController {
         ContactsService.shared.syncContactsWithBackend { [weak self] result in
             guard let self = self else { return }
             
-            self.hasLoadedContactData = true
-            self.loadingIndicator.stopAnimating()
-            
-            switch result {
-            case .success(let response):
-                // Filter out already connected users from the "On Circles" tab
-                self.matchedUsers = response.matchedUsers.filter { user in
-                    // Keep users who are not connected or have a pending request
-                    return user.connectionStatus != "accepted"
-                }
-                self.processContacts(response)
-                self.tableView.reloadData()
+            DispatchQueue.main.async {
+                self.hasLoadedContactData = true
+                self.loadingIndicator.stopAnimating()
                 
-                // Show content with animation
-                UIView.animate(withDuration: 0.3) {
-                    self.tableView.alpha = 1
+                switch result {
+                case .success(let response):
+                    // Filter out already connected users from the "On Circles" tab
+                    self.matchedUsers = response.matchedUsers.filter { user in
+                        // Keep users who are not connected or have a pending request
+                        return user.connectionStatus != "accepted"
+                    }
+                    self.processContacts(response)
+                    self.tableView.reloadData()
+                    
+                    // Show content with animation
+                    UIView.animate(withDuration: 0.3) {
+                        self.tableView.alpha = 1
+                    }
+                    
+                    // Update empty states
+                    self.updateEmptyState()
+                    
+                case .failure(let error):
+                    self.showError(error)
+                    // Still show the table even on error
+                    UIView.animate(withDuration: 0.3) {
+                        self.tableView.alpha = 1
+                    }
+                    self.updateEmptyState()
                 }
-                
-                // Update empty states
-                self.updateEmptyState()
-                
-            case .failure(let error):
-                self.showError(error)
-                // Still show the table even on error
-                UIView.animate(withDuration: 0.3) {
-                    self.tableView.alpha = 1
-                }
-                self.updateEmptyState()
             }
         }
     }
@@ -245,8 +256,10 @@ class FindContactsViewController: BaseViewController {
                     return !hasMatchedEmail && !hasMatchedPhone
                 }
                 
-                self.tableView.reloadData()
-                self.updateEmptyState()
+                DispatchQueue.main.async {
+                    self.tableView.reloadData()
+                    self.updateEmptyState()
+                }
                 
             case .failure(let error):
                 Logger.error("Failed to fetch contacts: \(error)")
@@ -515,6 +528,13 @@ class FindContactsViewController: BaseViewController {
                 }
             }
         }
+    }
+    
+    @objc private func discoverTapped() {
+        let discoverVC = DiscoverUsersViewController()
+        let navController = UINavigationController(rootViewController: discoverVC)
+        navController.modalPresentationStyle = .fullScreen
+        present(navController, animated: true)
     }
     
     @objc private func sendSingleInviteTapped() {

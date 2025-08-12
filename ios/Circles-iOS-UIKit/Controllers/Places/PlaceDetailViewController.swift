@@ -1,6 +1,7 @@
 import UIKit
 import MapKit
 import PhotosUI
+import AVKit
 
 class PlaceDetailViewController: BaseViewController {
     
@@ -25,14 +26,11 @@ class PlaceDetailViewController: BaseViewController {
         return view
     }()
     
-    private let imageView: UIImageView = {
-        let imageView = UIImageView()
-        imageView.contentMode = .scaleAspectFill
-        imageView.clipsToBounds = true
-        imageView.backgroundColor = Constants.Colors.lightGray
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        imageView.layer.masksToBounds = true
-        return imageView
+    private let mediaCarouselView: MediaCarouselView = {
+        let view = MediaCarouselView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.clipsToBounds = true
+        return view
     }()
     
     private var streetViewImage: UIImage?
@@ -45,6 +43,40 @@ class PlaceDetailViewController: BaseViewController {
     private var isLoadingPhoto = false
     private var placePhotos: [UIImage] = []
     private var currentPhotoIndex = 0
+    
+    private func updateMediaCarousel() {
+        var mediaItems: [MediaItem] = []
+        
+        // Add photos
+        if !placePhotos.isEmpty {
+            // Use loaded UIImages
+            for photo in placePhotos {
+                mediaItems.append(.photoImage(image: photo))
+            }
+        } else if let photos = place.photos, !photos.isEmpty {
+            // Use photo URLs directly
+            for photoUrl in photos {
+                mediaItems.append(.photo(url: photoUrl))
+            }
+        }
+        
+        // Add videos
+        if let videos = place.videos, !videos.isEmpty {
+            for videoUrl in videos {
+                // For now, use video URL as both thumbnail and video
+                // In production, you'd have separate thumbnail URLs
+                mediaItems.append(.video(thumbnailUrl: videoUrl, videoUrl: videoUrl))
+            }
+        }
+        
+        // If no media, add a placeholder
+        if mediaItems.isEmpty {
+            mediaItems.append(.photo(url: nil))
+        }
+        
+        // Configure carousel
+        mediaCarouselView.configure(with: mediaItems)
+    }
     
     private let streetViewToggleButton: UIButton = {
         let button = UIButton(type: .system)
@@ -68,7 +100,7 @@ class PlaceDetailViewController: BaseViewController {
     
     private let editImageButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setTitle("Change Photo", for: .normal)
+        button.setTitle("Add Photo or Video", for: .normal)
         button.setImage(UIImage(systemName: "camera.fill"), for: .normal)
         button.backgroundColor = UIColor.black.withAlphaComponent(0.8)
         button.setTitleColor(.white, for: .normal)
@@ -486,7 +518,7 @@ class PlaceDetailViewController: BaseViewController {
         // Create configuration for button with icon
         var config = UIButton.Configuration.plain()
         config.image = UIImage(systemName: "pencil.circle")
-        config.title = "Change Photo"
+        config.title = "Add Photo or Video"
         config.imagePadding = 4
         config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
         
@@ -632,6 +664,10 @@ class PlaceDetailViewController: BaseViewController {
         configureUI()
         setupMap()
         
+        // Set up media carousel
+        updateMediaCarousel()
+        mediaCarouselView.delegate = self
+        
         // Check street view availability and auto-load if no photos
         checkStreetViewAvailability()
         autoLoadStreetView()
@@ -728,14 +764,14 @@ class PlaceDetailViewController: BaseViewController {
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
         
-        // Add image view first
-        contentView.addSubview(imageView)
+        // Add media carousel view first
+        contentView.addSubview(mediaCarouselView)
         
         // Add photo control buttons on top of image view
-        imageView.addSubview(streetViewToggleButton)
-        imageView.addSubview(editImageButton)
-        imageView.addSubview(updateInfoButton)
-        imageView.isUserInteractionEnabled = true
+        mediaCarouselView.addSubview(streetViewToggleButton)
+        mediaCarouselView.addSubview(editImageButton)
+        mediaCarouselView.addSubview(updateInfoButton)
+        mediaCarouselView.isUserInteractionEnabled = true
         
         // Add info container after image view
         contentView.addSubview(infoContainerView)
@@ -787,12 +823,12 @@ class PlaceDetailViewController: BaseViewController {
         
         // Add contact buttons directly to imageView if available  
         if place.website != nil {
-            imageView.addSubview(websiteButton)
+            mediaCarouselView.addSubview(websiteButton)
             websiteButton.addTarget(self, action: #selector(websiteButtonTapped), for: .touchUpInside)
         }
         
         if place.phone != nil {
-            imageView.addSubview(phoneButton)
+            mediaCarouselView.addSubview(phoneButton)
             phoneButton.addTarget(self, action: #selector(phoneButtonTapped), for: .touchUpInside)
         }
         
@@ -883,32 +919,32 @@ class PlaceDetailViewController: BaseViewController {
             contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
             
             // Image view
-            imageView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            imageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            imageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            imageView.heightAnchor.constraint(equalToConstant: 300),
+            mediaCarouselView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            mediaCarouselView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            mediaCarouselView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            mediaCarouselView.heightAnchor.constraint(equalToConstant: 300),
             
             // Street View toggle button - positioned within imageView
-            streetViewToggleButton.topAnchor.constraint(equalTo: imageView.topAnchor, constant: 20),
-            streetViewToggleButton.trailingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: -16),
+            streetViewToggleButton.topAnchor.constraint(equalTo: mediaCarouselView.topAnchor, constant: 20),
+            streetViewToggleButton.trailingAnchor.constraint(equalTo: mediaCarouselView.trailingAnchor, constant: -16),
             streetViewToggleButton.heightAnchor.constraint(equalToConstant: 32),
             streetViewToggleButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 100),
             
             // Edit Image button - positioned within imageView
-            editImageButton.bottomAnchor.constraint(equalTo: imageView.bottomAnchor, constant: -16),
-            editImageButton.trailingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: -16),
+            editImageButton.bottomAnchor.constraint(equalTo: mediaCarouselView.bottomAnchor, constant: -16),
+            editImageButton.trailingAnchor.constraint(equalTo: mediaCarouselView.trailingAnchor, constant: -16),
             editImageButton.heightAnchor.constraint(equalToConstant: 32),
             editImageButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 100),
             
             // Update Info button - positioned to the left of Edit Image button
-            updateInfoButton.bottomAnchor.constraint(equalTo: imageView.bottomAnchor, constant: -16),
+            updateInfoButton.bottomAnchor.constraint(equalTo: mediaCarouselView.bottomAnchor, constant: -16),
             updateInfoButton.trailingAnchor.constraint(equalTo: editImageButton.leadingAnchor, constant: -8),
             updateInfoButton.heightAnchor.constraint(equalToConstant: 32),
             updateInfoButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 100),
             
             
             // Info container view - positioned below the image with padding
-            infoContainerView.topAnchor.constraint(equalTo: imageView.bottomAnchor, constant: Constants.Spacing.medium),
+            infoContainerView.topAnchor.constraint(equalTo: mediaCarouselView.bottomAnchor, constant: Constants.Spacing.medium),
             infoContainerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             infoContainerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             infoContainerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
@@ -1090,26 +1126,26 @@ class PlaceDetailViewController: BaseViewController {
         if place.website != nil && place.phone != nil {
             // Both buttons - position side by side
             NSLayoutConstraint.activate([
-                websiteButton.leadingAnchor.constraint(equalTo: imageView.leadingAnchor, constant: 16),
-                websiteButton.bottomAnchor.constraint(equalTo: imageView.bottomAnchor, constant: -16),
+                websiteButton.leadingAnchor.constraint(equalTo: mediaCarouselView.leadingAnchor, constant: 16),
+                websiteButton.bottomAnchor.constraint(equalTo: mediaCarouselView.bottomAnchor, constant: -16),
                 websiteButton.heightAnchor.constraint(equalToConstant: 36),
                 
                 phoneButton.leadingAnchor.constraint(equalTo: websiteButton.trailingAnchor, constant: 8),
-                phoneButton.bottomAnchor.constraint(equalTo: imageView.bottomAnchor, constant: -16),
+                phoneButton.bottomAnchor.constraint(equalTo: mediaCarouselView.bottomAnchor, constant: -16),
                 phoneButton.heightAnchor.constraint(equalToConstant: 36)
             ])
         } else if place.website != nil {
             // Only website button
             NSLayoutConstraint.activate([
-                websiteButton.leadingAnchor.constraint(equalTo: imageView.leadingAnchor, constant: 16),
-                websiteButton.bottomAnchor.constraint(equalTo: imageView.bottomAnchor, constant: -16),
+                websiteButton.leadingAnchor.constraint(equalTo: mediaCarouselView.leadingAnchor, constant: 16),
+                websiteButton.bottomAnchor.constraint(equalTo: mediaCarouselView.bottomAnchor, constant: -16),
                 websiteButton.heightAnchor.constraint(equalToConstant: 36)
             ])
         } else if place.phone != nil {
             // Only phone button
             NSLayoutConstraint.activate([
-                phoneButton.leadingAnchor.constraint(equalTo: imageView.leadingAnchor, constant: 16),
-                phoneButton.bottomAnchor.constraint(equalTo: imageView.bottomAnchor, constant: -16),
+                phoneButton.leadingAnchor.constraint(equalTo: mediaCarouselView.leadingAnchor, constant: 16),
+                phoneButton.bottomAnchor.constraint(equalTo: mediaCarouselView.bottomAnchor, constant: -16),
                 phoneButton.heightAnchor.constraint(equalToConstant: 36)
             ])
         }
@@ -1158,14 +1194,14 @@ class PlaceDetailViewController: BaseViewController {
         
         // Ensure all buttons on imageView are interactive
         if place.website != nil {
-            imageView.bringSubviewToFront(websiteButton)
+            mediaCarouselView.bringSubviewToFront(websiteButton)
         }
         if place.phone != nil {
-            imageView.bringSubviewToFront(phoneButton)
+            mediaCarouselView.bringSubviewToFront(phoneButton)
         }
-        imageView.bringSubviewToFront(streetViewToggleButton)
-        imageView.bringSubviewToFront(editImageButton)
-        imageView.bringSubviewToFront(updateInfoButton)
+        mediaCarouselView.bringSubviewToFront(streetViewToggleButton)
+        mediaCarouselView.bringSubviewToFront(editImageButton)
+        mediaCarouselView.bringSubviewToFront(updateInfoButton)
         
         // Set up button actions
         categoryEditButton.addTarget(self, action: #selector(editButtonTapped), for: .touchUpInside)
@@ -1902,63 +1938,24 @@ class PlaceDetailViewController: BaseViewController {
         print("  - placePhotos.count: \(placePhotos.count)")
         print("  - currentPhotoIndex: \(currentPhotoIndex)")
         
-        // Cycle through available images
-        if placePhotos.count > 1 {
-            // Multiple photos - cycle through them and optionally street view
+        // Toggle street view state
+        if isStreetViewAvailable {
+            showingStreetView.toggle()
+            
             if showingStreetView {
-                // Currently showing street view, go back to first photo
-                showingStreetView = false
-                currentPhotoIndex = 0
-                imageView.image = placePhotos[0]
-                imageView.contentMode = .scaleAspectFill
-                streetViewToggleButton.setTitle("Next Photo", for: .normal)
-                streetViewToggleButton.setImage(UIImage(systemName: "photo.on.rectangle"), for: .normal)
-            } else {
-                // Currently showing a photo
-                currentPhotoIndex = (currentPhotoIndex + 1) % placePhotos.count
-                imageView.image = placePhotos[currentPhotoIndex]
-                imageView.contentMode = .scaleAspectFill
-                
-                // Update button for next action
-                if currentPhotoIndex < placePhotos.count - 1 {
-                    streetViewToggleButton.setTitle("Next Photo", for: .normal)
-                    streetViewToggleButton.setImage(UIImage(systemName: "photo.on.rectangle"), for: .normal)
-                } else if isStreetViewAvailable {
-                    // Last photo, next tap will show street view
-                    streetViewToggleButton.setTitle("Look Around", for: .normal)
-                    streetViewToggleButton.setImage(UIImage(systemName: "eye.circle"), for: .normal)
-                } else {
-                    // Last photo, next tap will go back to first
-                    streetViewToggleButton.setTitle("First Photo", for: .normal)
-                    streetViewToggleButton.setImage(UIImage(systemName: "photo"), for: .normal)
-                }
-            }
-        } else if placePhotos.count == 1 && isStreetViewAvailable {
-            // Single photo and street view available - toggle between them
-            if showingStreetView {
-                // Show the photo
-                showingStreetView = false
-                imageView.image = placePhotos[0]
-                imageView.contentMode = .scaleAspectFill
-                streetViewToggleButton.setTitle("Look Around", for: .normal)
-                streetViewToggleButton.setImage(UIImage(systemName: "eye.circle"), for: .normal)
-            } else {
-                // Show street view
-                showingStreetView = true
+                // Load street view if needed
                 if streetViewImage == nil {
                     loadStreetViewImage()
-                } else {
-                    updateImageView()
                 }
+                streetViewToggleButton.setTitle("Photos", for: .normal)
+                streetViewToggleButton.setImage(UIImage(systemName: "photo"), for: .normal)
+            } else {
+                streetViewToggleButton.setTitle("Look Around", for: .normal)
+                streetViewToggleButton.setImage(UIImage(systemName: "eye.circle"), for: .normal)
             }
-        } else if placePhotos.isEmpty && isStreetViewAvailable {
-            // No photos but street view is available - just toggle street view
-            showingStreetView.toggle()
-            updateImageView()
             
-            if showingStreetView && streetViewImage == nil {
-                loadStreetViewImage()
-            }
+            // Update the media carousel
+            updateMediaCarousel()
         }
     }
     
@@ -2056,8 +2053,8 @@ class PlaceDetailViewController: BaseViewController {
     
     private func updateImageView() {
         if showingStreetView, let streetViewImage = streetViewImage {
-            imageView.image = streetViewImage
-            imageView.contentMode = .scaleAspectFill
+            // Update media carousel with street view
+            updateMediaCarousel()
             
             // Update button based on whether we have photos to go back to
             if !placePhotos.isEmpty || customImage != nil {
@@ -2071,11 +2068,11 @@ class PlaceDetailViewController: BaseViewController {
         } else {
             // Reset to original photo or icon
             if !placePhotos.isEmpty && currentPhotoIndex < placePhotos.count {
-                imageView.image = placePhotos[currentPhotoIndex]
-                imageView.contentMode = .scaleAspectFill
+                // Update media carousel
+                updateMediaCarousel()
             } else if customImage != nil {
-                imageView.image = customImage
-                imageView.contentMode = .scaleAspectFill
+                // Update media carousel
+                updateMediaCarousel()
             } else {
                 // No photos available, show default icon
                 configureDefaultImage()
@@ -2091,8 +2088,8 @@ class PlaceDetailViewController: BaseViewController {
     private func configureDefaultImage() {
         // Check if we have a custom image (for Home/Work places or user-uploaded)
         if customImage != nil {
-            imageView.image = customImage
-            imageView.contentMode = .scaleAspectFill
+            // Update media carousel
+            updateMediaCarousel()
             return
         }
         
@@ -2105,19 +2102,16 @@ class PlaceDetailViewController: BaseViewController {
         
         // If we have street view available and no photos, show it
         if streetViewImage != nil {
-            imageView.image = streetViewImage
-            imageView.contentMode = .scaleAspectFill
+            // Update media carousel with street view
+            updateMediaCarousel()
             showingStreetView = true
             streetViewToggleButton.isHidden = true // Hide toggle when street view is the only option
             return
         }
         
         // If no photos or street view, use category icon from centralized property
-        imageView.image = UIImage(systemName: place.category.systemIconName)
-        
-        imageView.tintColor = Constants.Colors.primary
-        imageView.contentMode = .scaleAspectFit
-        imageView.backgroundColor = Constants.Colors.background
+        // Update media carousel with default icon
+        updateMediaCarousel()
     }
     
     // MARK: - Notes Handling
@@ -2276,35 +2270,28 @@ class PlaceDetailViewController: BaseViewController {
     // All place data including photos should be stored when the place is created
     
     private func loadPhotoFromURL(_ urlString: String) {
-        ImageService.shared.loadImage(from: urlString) { [weak self] image in
-            guard let self = self else { return }
-            
-            if let image = image {
-                self.imageView.image = image
-                self.imageView.contentMode = .scaleAspectFill
-            } else {
-                self.setDefaultCategoryIcon()
-            }
-        }
+        // Media carousel now handles photo loading
+        updateMediaCarousel()
     }
     
     private func setDefaultCategoryIcon() {
-        // Use centralized category icon property
-        imageView.image = UIImage(systemName: place.category.systemIconName)
-        imageView.tintColor = Constants.Colors.primary
-        imageView.contentMode = .scaleAspectFit
-        imageView.backgroundColor = Constants.Colors.background
+        // Media carousel now handles default icons
+        updateMediaCarousel()
     }
     
     // MARK: - Image Handling for Home/Work
     
     @objc private func editImageButtonTapped() {
-        let title = isHomeOrWorkPlace ? "Choose Photo" : "Upload Photo for \(place.name)"
-        let message = isHomeOrWorkPlace ? nil : "The photo will be uploaded and visible to others who can see this place"
+        let title = isHomeOrWorkPlace ? "Choose Photo or Video" : "Add Photo or Video for \(place.name)"
+        let message = isHomeOrWorkPlace ? nil : "The media will be uploaded and visible to others who can see this place"
         let actionSheet = UIAlertController(title: title, message: message, preferredStyle: .actionSheet)
         
-        actionSheet.addAction(UIAlertAction(title: "Camera", style: .default) { [weak self] _ in
+        actionSheet.addAction(UIAlertAction(title: "Take Photo", style: .default) { [weak self] _ in
             self?.presentCamera()
+        })
+        
+        actionSheet.addAction(UIAlertAction(title: "Record Video", style: .default) { [weak self] _ in
+            self?.presentVideoRecorder()
         })
         
         actionSheet.addAction(UIAlertAction(title: "Photo Library", style: .default) { [weak self] _ in
@@ -2358,6 +2345,28 @@ class PlaceDetailViewController: BaseViewController {
         present(picker, animated: true)
     }
     
+    private func presentVideoRecorder() {
+        // Check camera permission
+        AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+            guard granted else {
+                DispatchQueue.main.async {
+                    self?.showError("Camera access is required to record videos")
+                }
+                return
+            }
+            
+            DispatchQueue.main.async {
+                let imagePicker = UIImagePickerController()
+                imagePicker.sourceType = .camera
+                imagePicker.mediaTypes = ["public.movie"]
+                imagePicker.videoMaximumDuration = 30 // 30 seconds max
+                imagePicker.videoQuality = .typeHigh
+                imagePicker.delegate = self
+                self?.present(imagePicker, animated: true)
+            }
+        }
+    }
+    
     private func removeCustomImage() {
         customImage = nil
         saveImage(nil)
@@ -2373,7 +2382,7 @@ class PlaceDetailViewController: BaseViewController {
         guard let streetViewImage = streetViewImage else { return }
         customImage = streetViewImage
         showingStreetView = false
-        editImageButton.setTitle("Change Photo", for: .normal)
+        editImageButton.setTitle("Add Photo or Video", for: .normal)
         saveImage(streetViewImage)
         updateImageView()
         
@@ -2390,8 +2399,7 @@ class PlaceDetailViewController: BaseViewController {
         if let imageData = UserDefaults.standard.data(forKey: imageKey),
            let image = UIImage(data: imageData) {
             customImage = image
-            imageView.image = image
-            imageView.contentMode = .scaleAspectFill
+            updateMediaCarousel()
         }
     }
     
@@ -2440,12 +2448,13 @@ class PlaceDetailViewController: BaseViewController {
                 
                 print("🏁 PlaceDetailViewController: Finished loading photos. Total loaded: \(self.placePhotos.count)")
                 
+                // Update media carousel
+                self.updateMediaCarousel()
+                
                 // Show first photo if available
                 if let firstPhoto = self.placePhotos.first {
                     self.customImage = firstPhoto
-                    self.imageView.image = firstPhoto
-                    self.imageView.contentMode = .scaleAspectFill
-                    self.editImageButton.setTitle("Change Photo", for: .normal)
+                    self.editImageButton.setTitle("Add Photo or Video", for: .normal)
                     
                     // Update photo section buttons
                     if self.place.isAddedByCurrentUser || self.isHomeOrWorkPlace {
@@ -2464,7 +2473,7 @@ class PlaceDetailViewController: BaseViewController {
             loadSavedImage()
             // Update button title if image exists
             if customImage != nil {
-                editImageButton.setTitle("Change Photo", for: .normal)
+                editImageButton.setTitle("Add Photo or Video", for: .normal)
                 // Update photo section buttons
                 addPhotoButton.isHidden = true
                 photosEditButton.isHidden = false
@@ -2551,8 +2560,7 @@ class PlaceDetailViewController: BaseViewController {
                         // The image we just uploaded is already in memory as 'image'
                         // No need to re-download it
                         self?.customImage = image
-                        self?.imageView.image = image
-                        self?.imageView.contentMode = .scaleAspectFill
+                        self?.updateMediaCarousel()
                         
                         // Update button titles
                         self?.editImageButton.setTitle("Change Photo", for: .normal)
@@ -2829,11 +2837,14 @@ extension PlaceDetailViewController: UIImagePickerControllerDelegate, UINavigati
     func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
         picker.dismiss(animated: true)
         
-        if let editedImage = info[.editedImage] as? UIImage {
+        if let videoURL = info[.mediaURL] as? URL {
+            // Handle video
+            handleVideoSelection(at: videoURL)
+        } else if let editedImage = info[.editedImage] as? UIImage {
             customImage = editedImage
-            imageView.image = editedImage
-            imageView.contentMode = .scaleAspectFill
-            editImageButton.setTitle("Change Photo", for: .normal)
+            placePhotos.append(editedImage)
+            updateMediaCarousel()
+            editImageButton.setTitle("Add Photo or Video", for: .normal)
             saveImage(editedImage)
             
             // Update photo section buttons
@@ -2841,14 +2852,42 @@ extension PlaceDetailViewController: UIImagePickerControllerDelegate, UINavigati
             photosEditButton.isHidden = false
         } else if let originalImage = info[.originalImage] as? UIImage {
             customImage = originalImage
-            imageView.image = originalImage
-            imageView.contentMode = .scaleAspectFill
-            editImageButton.setTitle("Change Photo", for: .normal)
+            placePhotos.append(originalImage)
+            updateMediaCarousel()
+            editImageButton.setTitle("Add Photo or Video", for: .normal)
             saveImage(originalImage)
             
             // Update photo section buttons
             addPhotoButton.isHidden = true
             photosEditButton.isHidden = false
+        }
+    }
+    
+    private func handleVideoSelection(at url: URL) {
+        // Show loading indicator
+        showLoading()
+        
+        // Compress video
+        VideoCompressionService.shared.compressVideoForUpload(
+            inputURL: url,
+            progress: { progress in
+                print("Video compression progress: \(progress * 100)%")
+            }
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                // Loading indicator is automatically hidden by AlertPresenter
+                
+                switch result {
+                case .success(let compressedVideos):
+                    // TODO: Upload compressed video to Firebase Storage
+                    // For now, just show success
+                    self?.showSuccess("Video ready to upload")
+                    self?.updateMediaCarousel()
+                    
+                case .failure(let error):
+                    self?.showError("Failed to compress video: \(error.localizedDescription)")
+                }
+            }
         }
     }
     
@@ -2868,9 +2907,9 @@ extension PlaceDetailViewController: PHPickerViewControllerDelegate {
             if let image = object as? UIImage {
                 DispatchQueue.main.async {
                     self?.customImage = image
-                    self?.imageView.image = image
-                    self?.imageView.contentMode = .scaleAspectFill
-                    self?.editImageButton.setTitle("Change Photo", for: .normal)
+                    self?.placePhotos.append(image)
+                    self?.updateMediaCarousel()
+                    self?.editImageButton.setTitle("Add Photo or Video", for: .normal)
                     self?.saveImage(image)
                     
                     // Update photo section buttons
@@ -2878,6 +2917,22 @@ extension PlaceDetailViewController: PHPickerViewControllerDelegate {
                     self?.photosEditButton.isHidden = false
                 }
             }
+        }
+    }
+}
+
+// MARK: - MediaCarouselViewDelegate
+extension PlaceDetailViewController: MediaCarouselViewDelegate {
+    func mediaCarouselView(_ carouselView: MediaCarouselView, didTapVideoAt index: Int, url: String) {
+        // Play video when tapped
+        guard let videoURL = URL(string: url) else { return }
+        
+        let player = AVPlayer(url: videoURL)
+        let playerViewController = AVPlayerViewController()
+        playerViewController.player = player
+        
+        present(playerViewController, animated: true) {
+            player.play()
         }
     }
 }

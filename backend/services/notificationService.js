@@ -16,35 +16,36 @@ class NotificationService {
   // Send notification to a specific user
   async sendToUser(userId, notification) {
     try {
-      // Sending notification to user
+      console.log(`🔔 sendToUser called for ${userId} with notification type: ${notification.type}`);
       
       // Get user document
       const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
       if (!userDoc.exists) {
         console.log(`🔔 User ${userId} not found in Firestore`);
-        return;
+        return { success: false, error: 'User not found' };
       }
 
       const userData = userDoc.data();
       
       const { deviceTokens = [], notificationPreferences = {} } = userData;
       
-      if (deviceTokens.length > 0) {
-        // Device tokens retrieved
-      }
+      console.log(`🔔 User ${userId} has ${deviceTokens.length} device tokens`);
 
       if (deviceTokens.length === 0) {
+        console.log(`🔔 No device tokens for user ${userId}`);
         return { success: false, error: 'No device tokens' };
       }
 
       // Check if this notification type is enabled
       if (!this.isNotificationEnabled(notification.type, notificationPreferences)) {
-        return;
+        console.log(`🔔 Notification type ${notification.type} is disabled for user ${userId}`);
+        return { success: false, error: 'Notification type disabled' };
       }
 
       // Check quiet hours
       if (this.isInQuietHours(notificationPreferences)) {
-        return;
+        console.log(`🔔 User ${userId} is in quiet hours, skipping notification`);
+        return { success: false, error: 'Quiet hours' };
       }
 
       // Determine category based on notification type
@@ -78,6 +79,9 @@ class NotificationService {
           break;
         case 'milestone':
           category = 'MILESTONE';
+          break;
+        case 'check_in':
+          category = 'CHECK_IN';
           break;
       }
 
@@ -116,12 +120,14 @@ class NotificationService {
 
       // Send to all device tokens
       const tokens = deviceTokens.map(dt => dt.token);
+      console.log(`🔔 Sending ${notification.type} notification to ${tokens.length} tokens for user ${userId}`);
+      
       const response = await this.messaging.sendEachForMulticast({
         ...message,
         tokens: tokens
       });
 
-      // Notification sent successfully
+      console.log(`🔔 Notification send result - Success: ${response.successCount}, Failures: ${response.failureCount}`)
       
       // Handle failed tokens
       if (response.failureCount > 0) {
@@ -136,7 +142,13 @@ class NotificationService {
         await this.removeInvalidTokens(userId, failedTokens);
       }
 
-      return response;
+      return { 
+        success: true, 
+        successCount: response.successCount, 
+        failureCount: response.failureCount,
+        userId: userId,
+        type: notification.type
+      };
     } catch (error) {
       console.error('🔔 Error sending notification:', error);
       throw error;
@@ -164,7 +176,8 @@ class NotificationService {
       newSuggestions: true,
       newPlaces: true,
       connectionRequests: true,
-      circleInvites: true
+      circleInvites: true,
+      checkIns: true
     };
 
     const typeMap = {
@@ -173,6 +186,7 @@ class NotificationService {
       'new_place': 'newPlaces',
       'connection_request': 'connectionRequests',
       'circle_invite': 'circleInvites',
+      'check_in': 'checkIns',
       'daily_summary': 'dailySummary',
       'discovery_prompt': 'discoveryPrompts',
       'weekend_recommendations': 'weekendRecommendations',

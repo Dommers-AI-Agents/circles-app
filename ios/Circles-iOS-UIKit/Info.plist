@@ -144,7 +144,9 @@
 	<key>GMSApiKey</key>
 	<string>AIzaSyAwcmtCmYmq5dbsBsYA1T3Fx949VeK0Cv8</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Circles needs access to your camera to take photos for your places.</string>
+	<string>Circles needs access to your camera to take photos and record videos for your places.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Circles needs access to your microphone to record audio in videos.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Circles needs access to your photo library to select photos for your places.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

@@ -12,6 +12,7 @@ struct Place: Codable, Identifiable {
     let phone: String?
     let googlePlaceId: String?
     let photos: [String]?
+    let videos: [String]?
     let category: PlaceCategory
     let customCategoryId: String? // Reference to user's custom category
     let subcategory: String?
@@ -39,7 +40,7 @@ struct Place: Codable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id = "_id"
         case name, description, address, location, website, phone, googlePlaceId
-        case photos, category, customCategoryId, subcategory, rating, userRatingsTotal, notes, privateNotes, publicNotes, tags, reviews, openingHours
+        case photos, videos, category, customCategoryId, subcategory, rating, userRatingsTotal, notes, privateNotes, publicNotes, tags, reviews, openingHours
         case priceLevel, likes, likesCount, commentsCount, circleId, addedBy, addedByUser, privacy, createdAt, updatedAt, isNew, circleName
     }
     
@@ -56,6 +57,7 @@ struct Place: Codable, Identifiable {
         self.phone = try container.decodeIfPresent(String.self, forKey: .phone)
         self.googlePlaceId = try container.decodeIfPresent(String.self, forKey: .googlePlaceId)
         self.photos = try container.decodeIfPresent([String].self, forKey: .photos)
+        self.videos = try container.decodeIfPresent([String].self, forKey: .videos)
         self.category = try container.decode(PlaceCategory.self, forKey: .category)
         self.customCategoryId = try container.decodeIfPresent(String.self, forKey: .customCategoryId)
         
@@ -106,7 +108,7 @@ struct Place: Codable, Identifiable {
     // Manual initializer for creating Place instances in code
     init(id: String, name: String, description: String?, address: String,
          location: GeoLocation?, website: String?, phone: String?,
-         googlePlaceId: String?, photos: [String]?, category: PlaceCategory,
+         googlePlaceId: String?, photos: [String]?, videos: [String]?, category: PlaceCategory,
          customCategoryId: String?, subcategory: String?, rating: Double?, userRatingsTotal: Int?, notes: String?,
          privateNotes: String?, publicNotes: String?, tags: [String]?,
          reviews: [PlaceReview]?, openingHours: [OpeningHour]?,
@@ -121,6 +123,7 @@ struct Place: Codable, Identifiable {
         self.phone = phone
         self.googlePlaceId = googlePlaceId
         self.photos = photos
+        self.videos = videos
         self.category = category
         self.customCategoryId = customCategoryId
         self.subcategory = subcategory

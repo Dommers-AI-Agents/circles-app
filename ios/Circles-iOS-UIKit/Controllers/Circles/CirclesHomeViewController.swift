@@ -300,16 +300,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return label
     }()
     
-    private let createCircleButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Create a Circle", for: .normal)
-        button.setTitleColor(Constants.Colors.white, for: .normal)
-        button.backgroundColor = Constants.Colors.primary
-        button.layer.cornerRadius = 8
-        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
     
     private let quickAddPlaceButton: UIButton = {
         let button = UIButton(type: .system)
@@ -572,6 +562,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     private var isLoadingActivities = false
     private var activityTableHeightConstraint: NSLayoutConstraint?
     
+    // Reels Properties
+    private var reels: [PlaceVideo] = []
+    private var isLoadingReels = false
+    private var reelsOffset = 0
+    private var hasMoreReels = true
+    private var isLoadingMoreReels = false
+    
     // Suggested Users Overlay
     private var hasCheckedForSuggestedUsers = false
     private var hasCheckedTutorialAndOverlay = false
@@ -598,6 +595,15 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return label
     }()
     
+    // Segmented control for Activity/Reels tabs
+    private let contentSegmentedControl: UISegmentedControl = {
+        let items = ["Activity", "Reels"]
+        let control = UISegmentedControl(items: items)
+        control.selectedSegmentIndex = 0
+        control.translatesAutoresizingMaskIntoConstraints = false
+        return control
+    }()
+    
     private let activityTableView: UITableView = {
         let tableView = UITableView()
         tableView.backgroundColor = Constants.Colors.background
@@ -608,6 +614,19 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         tableView.showsVerticalScrollIndicator = true
         tableView.translatesAutoresizingMaskIntoConstraints = false
         return tableView
+    }()
+    
+    // Reels collection view for video grid
+    private let reelsCollectionView: UICollectionView = {
+        let layout = UICollectionViewFlowLayout()
+        layout.scrollDirection = .vertical
+        layout.minimumInteritemSpacing = 2
+        layout.minimumLineSpacing = 2
+        let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        collectionView.backgroundColor = Constants.Colors.background
+        collectionView.translatesAutoresizingMaskIntoConstraints = false
+        collectionView.isHidden = true // Hidden by default
+        return collectionView
     }()
     
     private let activityEmptyStateLabel: UILabel = {
@@ -655,6 +674,22 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Get the indicator from the container using the tag
         return activityLoadingContainer.subviews.first(where: { $0 is UIActivityIndicatorView }) as? UIActivityIndicatorView ?? UIActivityIndicatorView()
     }
+    
+    // Floating record button for Reels tab
+    private let floatingRecordButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.backgroundColor = Constants.Colors.primary
+        button.tintColor = .white
+        button.setImage(UIImage(systemName: "video.fill"), for: .normal)
+        button.layer.cornerRadius = 28
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOpacity = 0.3
+        button.layer.shadowOffset = CGSize(width: 0, height: 4)
+        button.layer.shadowRadius = 8
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isHidden = true // Hidden by default, shown only on Reels tab
+        return button
+    }()
     
     private let loadMoreIndicatorView: UIView = {
         let view = UIView()
@@ -775,6 +810,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Update navigation bar for subscription status
         updateNavigationBarForSubscription()
+        
+        // Ensure Activity tab is selected when returning to home
+        if contentSegmentedControl.selectedSegmentIndex != 0 {
+            contentSegmentedControl.selectedSegmentIndex = 0
+            contentSegmentChanged()
+        }
         
         // If returning from full screen map, skip updates
         if isReturningFromFullScreenMap {
@@ -925,9 +966,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                         OnboardingManager.shared.showTutorialStep(
                             .welcome,
-                            targetView: self.createCircleButton,
+                            targetView: self.quickAddPlaceButton,
                             in: self,
-                            arrowDirection: .top
+                            arrowDirection: .bottom
                         )
                     }
                 }
@@ -1021,8 +1062,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Removed redundant title - tab bar already shows "My Circles"
         
         // Setup navigation bar
-        let addButton = UIBarButtonItem(image: UIImage(systemName: "plus.circle"), style: .plain, target: self, action: #selector(addButtonTapped))
-        
         // Create check-in button
         let checkInButton = UIBarButtonItem(image: UIImage(systemName: "checkmark.circle"), style: .plain, target: self, action: #selector(checkInButtonTapped))
         
@@ -1034,7 +1073,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         setupNotificationBadge()
         
         // Create upgrade button for free users
-        var rightBarButtons = [addButton, checkInButton, notificationButton]
+        var rightBarButtons = [checkInButton, notificationButton]
         
         // Check if user is not subscribed
         Task { @MainActor in
@@ -1056,7 +1095,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Setup empty state view
         emptyStateView.addSubview(emptyStateImageView)
         emptyStateView.addSubview(emptyStateLabel)
-        emptyStateView.addSubview(createCircleButton)
         
         // Setup quick access buttons
         setupQuickAccessButtons()
@@ -1105,7 +1143,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Add activity feed section
         contentView.addSubview(activityFeedSection)
         activityFeedSection.addSubview(activityHeaderLabel)
+        activityFeedSection.addSubview(contentSegmentedControl)
         activityFeedSection.addSubview(activityTableView)
+        activityFeedSection.addSubview(reelsCollectionView)
         activityFeedSection.addSubview(activityEmptyStateLabel)
         activityFeedSection.addSubview(activityLoadingContainer)
         
@@ -1126,6 +1166,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Add search results table view
         view.addSubview(searchResultsTableView)
+        
+        // Add floating record button (for Reels tab)
+        view.addSubview(floatingRecordButton)
+        floatingRecordButton.addTarget(self, action: #selector(recordReelTapped), for: .touchUpInside)
         
         // Bring elements to proper z-order - filters and expand button above map
         contentView.bringSubviewToFront(filterContainer)
@@ -1297,12 +1341,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             emptyStateLabel.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
             emptyStateLabel.leadingAnchor.constraint(equalTo: emptyStateView.leadingAnchor),
             emptyStateLabel.trailingAnchor.constraint(equalTo: emptyStateView.trailingAnchor),
-            
-            createCircleButton.topAnchor.constraint(equalTo: emptyStateLabel.bottomAnchor, constant: Constants.Spacing.large),
-            createCircleButton.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
-            createCircleButton.widthAnchor.constraint(equalTo: emptyStateView.widthAnchor, multiplier: 0.8),
-            createCircleButton.heightAnchor.constraint(equalToConstant: 44),
-            createCircleButton.bottomAnchor.constraint(equalTo: emptyStateView.bottomAnchor),
+            emptyStateLabel.bottomAnchor.constraint(equalTo: emptyStateView.bottomAnchor),
             
             // Loading container constraints - full screen overlay
             loadingContainerView.topAnchor.constraint(equalTo: view.topAnchor),
@@ -1364,11 +1403,22 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             activityHeaderLabel.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor, constant: Constants.Spacing.medium),
             activityHeaderLabel.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor, constant: -Constants.Spacing.medium),
             
+            // Segmented control
+            contentSegmentedControl.topAnchor.constraint(equalTo: activityHeaderLabel.bottomAnchor, constant: Constants.Spacing.small),
+            contentSegmentedControl.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor, constant: Constants.Spacing.medium),
+            contentSegmentedControl.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor, constant: -Constants.Spacing.medium),
+            
             // Activity table view
-            activityTableView.topAnchor.constraint(equalTo: activityHeaderLabel.bottomAnchor, constant: Constants.Spacing.tiny),
+            activityTableView.topAnchor.constraint(equalTo: contentSegmentedControl.bottomAnchor, constant: Constants.Spacing.small),
             activityTableView.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor),
             activityTableView.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor),
             activityTableView.bottomAnchor.constraint(equalTo: activityFeedSection.bottomAnchor),
+            
+            // Reels collection view (same position as activity table)
+            reelsCollectionView.topAnchor.constraint(equalTo: contentSegmentedControl.bottomAnchor, constant: Constants.Spacing.small),
+            reelsCollectionView.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor),
+            reelsCollectionView.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor),
+            reelsCollectionView.bottomAnchor.constraint(equalTo: activityFeedSection.bottomAnchor),
             
             // Activity empty state
             activityEmptyStateLabel.centerXAnchor.constraint(equalTo: activityFeedSection.centerXAnchor),
@@ -1380,7 +1430,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             activityLoadingContainer.centerXAnchor.constraint(equalTo: activityFeedSection.centerXAnchor),
             activityLoadingContainer.centerYAnchor.constraint(equalTo: activityTableView.centerYAnchor),
             activityLoadingContainer.widthAnchor.constraint(equalToConstant: 80),
-            activityLoadingContainer.heightAnchor.constraint(equalToConstant: 80)
+            activityLoadingContainer.heightAnchor.constraint(equalToConstant: 80),
+            
+            // Floating record button
+            floatingRecordButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
+            floatingRecordButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -80),
+            floatingRecordButton.widthAnchor.constraint(equalToConstant: 56),
+            floatingRecordButton.heightAnchor.constraint(equalToConstant: 56)
         ])
         
         // Create height constraints - reduced for iPhone 16 Pro to show more activity content
@@ -1428,7 +1484,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         searchResultsTableView.rowHeight = UITableView.automaticDimension
         searchResultsTableView.estimatedRowHeight = 60
         
-        createCircleButton.addTarget(self, action: #selector(createCircleButtonTapped), for: .touchUpInside)
         quickAddPlaceButton.addTarget(self, action: #selector(quickAddPlaceButtonTapped), for: .touchUpInside)
         mapExpandButton.addTarget(self, action: #selector(expandMapButtonTapped), for: .touchUpInside)
         categoryFilterButton.addTarget(self, action: #selector(categoryFilterButtonTapped), for: .touchUpInside)
@@ -1500,6 +1555,14 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Enable automatic row height calculation
         activityTableView.rowHeight = UITableView.automaticDimension
         activityTableView.estimatedRowHeight = 120
+        
+        // Setup reels collection view
+        reelsCollectionView.delegate = self
+        reelsCollectionView.dataSource = self
+        reelsCollectionView.register(VideoThumbnailCell.self, forCellWithReuseIdentifier: "VideoThumbnailCell")
+        
+        // Setup segmented control
+        contentSegmentedControl.addTarget(self, action: #selector(contentSegmentChanged), for: .valueChanged)
         
         // Set scroll view delegate for pagination
         scrollView.delegate = self
@@ -1715,14 +1778,46 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Refresh the horizontal user list
         userListView.refresh()
         
-        // Refresh activity feed
-        fetchActivities()
+        // Refresh content based on selected tab
+        if contentSegmentedControl.selectedSegmentIndex == 0 {
+            fetchActivities()
+        } else {
+            fetchReels()
+        }
         
         // Also refresh circles data for consistency
         if isShowingNetworkCircles {
             fetchNetworkCircles()
         } else {
             fetchCircles()
+        }
+    }
+    
+    @objc private func contentSegmentChanged() {
+        let selectedIndex = contentSegmentedControl.selectedSegmentIndex
+        
+        if selectedIndex == 0 {
+            // Show Activity feed
+            activityTableView.isHidden = false
+            reelsCollectionView.isHidden = true
+            floatingRecordButton.isHidden = true
+            activityHeaderLabel.text = "Recent Activity"
+            
+            // Load activities if needed
+            if activities.isEmpty {
+                fetchActivities()
+            }
+        } else {
+            // Show Reels feed
+            activityTableView.isHidden = true
+            reelsCollectionView.isHidden = false
+            floatingRecordButton.isHidden = false
+            activityHeaderLabel.text = "Reels"
+            
+            // Load reels if needed
+            if reels.isEmpty {
+                fetchReels()
+            }
         }
     }
     
@@ -1842,6 +1937,94 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         activityTableView.reloadData()
         
         // Table view now handles its own scrolling with fixed height
+        view.layoutIfNeeded()
+    }
+    
+    // MARK: - Reels Methods
+    private func fetchReels(loadMore: Bool = false, completion: ((Bool) -> Void)? = nil) {
+        guard !isLoadingReels && !isLoadingMoreReels else {
+            completion?(false)
+            return
+        }
+        
+        if loadMore && !hasMoreReels {
+            completion?(false)
+            return
+        }
+        
+        if loadMore {
+            isLoadingMoreReels = true
+        } else {
+            isLoadingReels = true
+            activityLoadingContainer.isHidden = false
+            activityLoadingIndicator.startAnimating()
+            activityEmptyStateLabel.isHidden = true
+            reelsOffset = 0
+            hasMoreReels = true
+        }
+        
+        let offset = loadMore ? reelsOffset : 0
+        let endpoint = "videos/reels/feed?limit=20&offset=\(offset)"
+        
+        APIService.shared.request(
+            endpoint: endpoint,
+            method: .get
+        ) { [weak self] (result: Result<VideosResponse, APIError>) in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                if loadMore {
+                    self.isLoadingMoreReels = false
+                } else {
+                    self.isLoadingReels = false
+                    self.activityLoadingIndicator.stopAnimating()
+                    self.activityLoadingContainer.isHidden = true
+                }
+                
+                switch result {
+                case .success(let response):
+                    if loadMore {
+                        self.reels.append(contentsOf: response.data)
+                    } else {
+                        self.reels = response.data
+                    }
+                    
+                    self.reelsOffset = self.reels.count
+                    self.hasMoreReels = response.hasMore
+                    self.updateReelsFeed()
+                    
+                case .failure(let error):
+                    print("❌ Error fetching reels: \(error)")
+                    if !loadMore {
+                        self.reels = []
+                        self.updateReelsFeed()
+                    }
+                }
+                
+                self.scrollView.refreshControl?.endRefreshing()
+                completion?(true)
+            }
+        }
+    }
+    
+    private func updateReelsFeed() {
+        isLoadingReels = false
+        activityLoadingIndicator.stopAnimating()
+        activityLoadingContainer.isHidden = true
+        
+        // Show collection view
+        reelsCollectionView.isHidden = false
+        
+        // Update empty state
+        if reels.isEmpty {
+            activityEmptyStateLabel.text = "No reels yet. Be the first to share a video!"
+            activityEmptyStateLabel.isHidden = false
+        } else {
+            activityEmptyStateLabel.isHidden = true
+        }
+        
+        // Reload collection
+        reelsCollectionView.reloadData()
         view.layoutIfNeeded()
     }
     
@@ -2680,11 +2863,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     private func updateNavigationBarForSubscription() {
         Task { @MainActor in
-            let addButton = UIBarButtonItem(image: UIImage(systemName: "plus.circle"), style: .plain, target: self, action: #selector(addButtonTapped))
             let checkInButton = UIBarButtonItem(image: UIImage(systemName: "checkmark.circle"), style: .plain, target: self, action: #selector(checkInButtonTapped))
             let notificationButton = self.notificationBarButton ?? UIBarButtonItem(image: UIImage(systemName: "bell"), style: .plain, target: self, action: #selector(notificationButtonTapped))
             
-            var rightBarButtons = [addButton, checkInButton, notificationButton]
+            var rightBarButtons = [checkInButton, notificationButton]
             
             // Check if user is not subscribed
             if !SubscriptionManager.shared.isSubscribed {
@@ -2703,54 +2885,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     
-    @objc private func createCircleButtonTapped() {
-        Task { @MainActor in
-            // Check subscription limit
-            let currentCircleCount = isShowingNetworkCircles ? networkCircles.count : circles.count
-            
-            if !SubscriptionManager.shared.checkCircleLimit(currentCount: currentCircleCount, from: self) {
-                return
-            }
-            
-            let createCircleVC = CreateCircleViewController()
-            createCircleVC.delegate = self
-            
-            // Present modally wrapped in navigation controller for cancel button
-            let navController = UINavigationController(rootViewController: createCircleVC)
-            navController.modalPresentationStyle = .pageSheet
-            present(navController, animated: true)
-        }
-    }
-    
-    // MARK: - Tutorial Support
-    func highlightCreateCircleButton() {
-        // Ensure empty state is visible
-        showEmptyState()
-        
-        // Scroll to make sure the button is visible
-        scrollView.scrollRectToVisible(createCircleButton.frame, animated: true)
-        
-        // Add a pulse animation to draw attention
-        UIView.animate(withDuration: 0.6, delay: 0.2, options: [.repeat, .autoreverse, .allowUserInteraction], animations: {
-            self.createCircleButton.transform = CGAffineTransform(scaleX: 1.05, y: 1.05)
-        }) { _ in
-            self.createCircleButton.transform = .identity
-        }
-        
-        // Add a glow effect
-        createCircleButton.layer.shadowColor = Constants.Colors.primary.cgColor
-        createCircleButton.layer.shadowRadius = 20
-        createCircleButton.layer.shadowOpacity = 0.8
-        createCircleButton.layer.shadowOffset = .zero
-        
-        // Remove the effect after a delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-            UIView.animate(withDuration: 0.3) {
-                self.createCircleButton.layer.shadowOpacity = 0
-                self.createCircleButton.layer.removeAllAnimations()
-            }
-        }
-    }
     
     @objc private func expandMapButtonTapped() {
         // Set flag to prevent map updates when returning
@@ -2825,7 +2959,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 preferredStyle: .alert
             )
             alert.addAction(UIAlertAction(title: "Create Circle", style: .default) { [weak self] _ in
-                self?.createCircleButtonTapped()
+                guard let self = self else { return }
+                let createCircleVC = CreateCircleViewController()
+                createCircleVC.delegate = self
+                let navController = UINavigationController(rootViewController: createCircleVC)
+                navController.modalPresentationStyle = .pageSheet
+                self.present(navController, animated: true)
             })
             alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
             present(alert, animated: true)
@@ -2849,7 +2988,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             self?.navigationController?.pushViewController(addPlaceVC, animated: true)
         }
         circlePickerVC.onCreateNewCircle = { [weak self] in
-            self?.createCircleButtonTapped()
+            guard let self = self else { return }
+            let createCircleVC = CreateCircleViewController()
+            createCircleVC.delegate = self
+            let navController = UINavigationController(rootViewController: createCircleVC)
+            navController.modalPresentationStyle = .pageSheet
+            self.present(navController, animated: true)
         }
         
         let navController = UINavigationController(rootViewController: circlePickerVC)
@@ -3315,6 +3459,14 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         } else {
             hideSearchScopeDropdown()
         }
+    }
+    
+    @objc private func recordReelTapped() {
+        let contentUploadVC = ContentUploadViewController()
+        contentUploadVC.delegate = self
+        let navController = UINavigationController(rootViewController: contentUploadVC)
+        navController.modalPresentationStyle = .fullScreen
+        present(navController, animated: true)
     }
     
     @objc override func refreshData() {
@@ -4189,6 +4341,15 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 navigateToCircle(withId: activity.targetId)
             case .checkIn:
                 // Navigate to the place where check-in occurred
+                // For check-ins, the place ID is in the metadata, not targetId
+                if let placeId = activity.metadata?.placeId {
+                    navigateToPlace(withId: placeId)
+                } else {
+                    // If no place ID in metadata, show error
+                    showError("Unable to load place details for this check-in")
+                }
+            case .videoUploaded:
+                // Navigate to the place where video was uploaded
                 navigateToPlace(withId: activity.targetId)
             }
         }
@@ -4432,7 +4593,8 @@ extension CirclesHomeViewController: ActivityFeedCellDelegate {
     
     func didTapPlaceImage(activity: Activity) {
         // Navigate to place detail if we have a placeId
-        guard let placeId = activity.metadata?.placeId else { return }
+        guard let placeId = activity.metadata?.placeId,
+              let metadata = activity.metadata else { return }
         
         // Try to find the place in an existing circle
         PlaceService.shared.fetchPlaceById(id: placeId) { [weak self] (result: Result<Place, Error>) in
@@ -4441,8 +4603,26 @@ extension CirclesHomeViewController: ActivityFeedCellDelegate {
                 case .success(let place):
                     let detailVC = PlaceDetailViewController(place: place)
                     self?.navigationController?.pushViewController(detailVC, animated: true)
-                case .failure(let error):
-                    self?.showError("Unable to load place details: \(error.localizedDescription)")
+                case .failure:
+                    // If we can't fetch the place (likely because it's not in a user's circle),
+                    // create a temporary place object from the activity metadata for check-ins
+                    if activity.type == .checkIn {
+                        let placeName = activity.targetName
+                        
+                        // Show a simple place view with limited functionality
+                        let tempPlaceVC = TempPlaceDetailViewController()
+                        tempPlaceVC.configure(
+                            placeId: placeId,
+                            name: placeName,
+                            address: metadata.placeAddress ?? "",
+                            latitude: metadata.latitude,
+                            longitude: metadata.longitude,
+                            photo: metadata.placePhoto
+                        )
+                        self?.navigationController?.pushViewController(tempPlaceVC, animated: true)
+                    } else {
+                        self?.showError("Unable to load place details")
+                    }
                 }
             }
         }
@@ -4660,6 +4840,18 @@ extension CirclesHomeViewController: UIScrollViewDelegate {
                 }
             }
         }
+        // Handle pagination for reels collection view
+        else if scrollView == reelsCollectionView {
+            let contentHeight = scrollView.contentSize.height
+            let scrollOffset = scrollView.contentOffset.y
+            let frameHeight = scrollView.frame.size.height
+            
+            if scrollOffset > contentHeight - frameHeight * 1.5 {
+                if !isLoadingMoreReels && hasMoreReels {
+                    fetchReels(loadMore: true)
+                }
+            }
+        }
     }
 }
 
@@ -4734,10 +4926,11 @@ extension CirclesHomeViewController: SuggestedUsersOverlayViewDelegate {
     }
     
     func didTapExploreNetwork() {
-        // Navigate to My Network tab
-        if let tabBarController = self.tabBarController as? CirclesTabBarController {
-            tabBarController.selectedIndex = 1 // My Network tab
-        }
+        // Navigate directly to DiscoverUsersViewController for new users
+        let discoverVC = DiscoverUsersViewController()
+        let navController = UINavigationController(rootViewController: discoverVC)
+        navController.modalPresentationStyle = .fullScreen
+        present(navController, animated: true)
     }
     
     func didTapImportContacts() {
@@ -4833,6 +5026,89 @@ extension CirclesHomeViewController: QuickAccessPlacesDelegate {
         }
         
         saveQuickAccessPlaces(placesData)
+    }
+}
+
+// MARK: - UICollectionViewDataSource
+
+extension CirclesHomeViewController: UICollectionViewDataSource {
+    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+        if collectionView == reelsCollectionView {
+            return reels.count
+        }
+        return 0
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
+        if collectionView == reelsCollectionView {
+            let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "VideoThumbnailCell", for: indexPath) as! VideoThumbnailCell
+            let reel = reels[indexPath.item]
+            cell.configure(with: reel)
+            return cell
+        }
+        return UICollectionViewCell()
+    }
+}
+
+// MARK: - UICollectionViewDelegate
+
+extension CirclesHomeViewController: UICollectionViewDelegate {
+    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        if collectionView == reelsCollectionView {
+            let reel = reels[indexPath.item]
+            // Open full-screen reels player
+            let reelsVC = VideoReelsViewController(reels: reels, startIndex: indexPath.item)
+            reelsVC.modalPresentationStyle = .fullScreen
+            present(reelsVC, animated: true)
+        }
+    }
+}
+
+// MARK: - UICollectionViewDelegateFlowLayout
+
+extension CirclesHomeViewController: UICollectionViewDelegateFlowLayout {
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
+        if collectionView == reelsCollectionView {
+            // 3 columns grid
+            let width = (collectionView.frame.width - 4) / 3
+            let height = width * 16 / 9 // 16:9 aspect ratio
+            return CGSize(width: width, height: height)
+        }
+        return CGSize.zero
+    }
+}
+
+// MARK: - VideoLinkInputDelegate
+
+extension CirclesHomeViewController: ContentUploadDelegate {
+    func contentUploadDidFinish(with moment: PlaceMoment) {
+        // Content was successfully added, refresh the reels feed
+        showSuccess("Content added successfully!")
+        fetchReels() // Refresh the reels feed
+        
+        // Track activity
+        NotificationCenter.default.post(
+            name: Notification.Name("MomentUploaded"),
+            object: nil,
+            userInfo: ["moment": moment]
+        )
+    }
+    
+    func contentUploadDidCancel() {
+        // User cancelled - nothing to do
+    }
+}
+
+// Keep the old delegate for backward compatibility if needed
+extension CirclesHomeViewController: VideoLinkInputDelegate {
+    func videoLinkInputDidFinish(with video: PlaceVideo) {
+        // Convert to moment and handle
+        let moment = PlaceMoment(from: video)
+        contentUploadDidFinish(with: moment)
+    }
+    
+    func videoLinkInputDidCancel() {
+        // User cancelled - nothing to do
     }
 }
 

@@ -57,6 +57,14 @@ class AllUsersListViewController: UIViewController {
         return indicator
     }()
     
+    private lazy var discoverUsersButton: UIButton = {
+        let button = UIButton.primaryButton(title: "Discover Users")
+        button.addTarget(self, action: #selector(discoverUsersTapped), for: .touchUpInside)
+        button.isHidden = true
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    
     // MARK: - Properties
     private var allUsers: [User] = []
     private var connectedUsers: [User] = []
@@ -178,6 +186,7 @@ class AllUsersListViewController: UIViewController {
         emptyStateView.addSubview(emptyImageView)
         emptyStateView.addSubview(emptyTitleLabel)
         emptyStateView.addSubview(emptySubtitleLabel)
+        emptyStateView.addSubview(discoverUsersButton)
         
         NSLayoutConstraint.activate([
             emptyImageView.topAnchor.constraint(equalTo: emptyStateView.topAnchor),
@@ -192,7 +201,12 @@ class AllUsersListViewController: UIViewController {
             emptySubtitleLabel.topAnchor.constraint(equalTo: emptyTitleLabel.bottomAnchor, constant: 8),
             emptySubtitleLabel.leadingAnchor.constraint(equalTo: emptyStateView.leadingAnchor),
             emptySubtitleLabel.trailingAnchor.constraint(equalTo: emptyStateView.trailingAnchor),
-            emptySubtitleLabel.bottomAnchor.constraint(equalTo: emptyStateView.bottomAnchor)
+            
+            discoverUsersButton.topAnchor.constraint(equalTo: emptySubtitleLabel.bottomAnchor, constant: 24),
+            discoverUsersButton.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
+            discoverUsersButton.widthAnchor.constraint(equalToConstant: 200),
+            discoverUsersButton.heightAnchor.constraint(equalToConstant: 44),
+            discoverUsersButton.bottomAnchor.constraint(equalTo: emptyStateView.bottomAnchor)
         ])
     }
     
@@ -350,6 +364,11 @@ class AllUsersListViewController: UIViewController {
         loadAllUsers()
     }
     
+    @objc private func discoverUsersTapped() {
+        // No longer needed - discovery is integrated into MyNetworkViewController
+        // This button can be removed from the UI
+    }
+    
     // MARK: - Empty State
     private func showEmptyState() {
         // Never show empty state while loading
@@ -371,13 +390,15 @@ class AllUsersListViewController: UIViewController {
         tableView.isHidden = true
         emptyImageView.image = UIImage(systemName: "person.2.badge.gearshape")
         emptyTitleLabel.text = "No Connections Yet"
-        emptySubtitleLabel.text = "Start building your network by inviting people to connect with you."
+        emptySubtitleLabel.text = "Start building your network by discovering and connecting with people."
         emptySubtitleLabel.isHidden = false
+        discoverUsersButton.isHidden = true  // Discovery is now integrated in parent view
     }
     
     private func hideEmptyState() {
         emptyStateView.isHidden = true
         tableView.isHidden = false
+        discoverUsersButton.isHidden = true
     }
     
     private func showLoadingState() {

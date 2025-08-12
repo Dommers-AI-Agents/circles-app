@@ -86,6 +86,7 @@ struct User: Codable, Identifiable {
     let profilePicture: String?
     let bio: String?
     let location: String?
+    let zipcode: String?
     let friends: [String]?
     let friendRequests: [String]?
     let circleOrder: [String]?
@@ -134,15 +135,25 @@ struct User: Codable, Identifiable {
     let referralCount: Int
     let referralRewards: [ReferralReward]?
     
+    // Discovery fields
+    let isVerified: Bool?
+    let username: String?
+    let discoveryType: String? // "popular", "nearby", "friendsOfFriends"
+    let distance: Double? // Distance in km for nearby users
+    let mutualConnectionsCount: Int?
+    let mutualConnectionNames: [String]?
+    let matchType: String? // "name", "email", "username" for search results
+    
     enum CodingKeys: String, CodingKey {
         case id = "_id"
-        case email, displayName, firstName, lastName, phoneNumber, profilePicture, bio, location, friends, friendRequests, circleOrder, preferences, createdAt, connectionStatus, connectionDirection, connectionId, followers, following, followersCount, followingCount, connectionsCount, placesCount, circlesCount, pinnedPlaces, isFollowing, isFakeProfile, notificationPreferences
+        case email, displayName, firstName, lastName, phoneNumber, profilePicture, bio, location, zipcode, friends, friendRequests, circleOrder, preferences, createdAt, connectionStatus, connectionDirection, connectionId, followers, following, followersCount, followingCount, connectionsCount, placesCount, circlesCount, pinnedPlaces, isFollowing, isFakeProfile, notificationPreferences
         case subscriptionStatus, subscriptionExpiryDate, trialStartDate, trialEndDate
         case referralCode, referredBy, referralCount, referralRewards
+        case isVerified, username, discoveryType, distance, mutualConnectionsCount, mutualConnectionNames, matchType
     }
     
     // Convenience initializer for creating User objects directly
-    public init(id: String, email: String? = nil, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil, connectionDirection: String? = nil, connectionId: String? = nil, followers: [String]? = nil, following: [String]? = nil, followersCount: Int? = nil, followingCount: Int? = nil, connectionsCount: Int? = nil, placesCount: Int? = nil, circlesCount: Int? = nil, pinnedPlaces: [String]? = nil, isFollowing: Bool? = nil, isFakeProfile: Bool? = nil, notificationPreferences: NotificationPreferences? = nil, subscriptionStatus: String? = nil, subscriptionExpiryDate: Date? = nil, trialStartDate: Date? = nil, trialEndDate: Date? = nil, referralCode: String? = nil, referredBy: String? = nil, referralCount: Int = 0, referralRewards: [ReferralReward]? = nil) {
+    public init(id: String, email: String? = nil, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, zipcode: String? = nil, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil, connectionDirection: String? = nil, connectionId: String? = nil, followers: [String]? = nil, following: [String]? = nil, followersCount: Int? = nil, followingCount: Int? = nil, connectionsCount: Int? = nil, placesCount: Int? = nil, circlesCount: Int? = nil, pinnedPlaces: [String]? = nil, isFollowing: Bool? = nil, isFakeProfile: Bool? = nil, notificationPreferences: NotificationPreferences? = nil, subscriptionStatus: String? = nil, subscriptionExpiryDate: Date? = nil, trialStartDate: Date? = nil, trialEndDate: Date? = nil, referralCode: String? = nil, referredBy: String? = nil, referralCount: Int = 0, referralRewards: [ReferralReward]? = nil, isVerified: Bool? = nil, username: String? = nil, discoveryType: String? = nil, distance: Double? = nil, mutualConnectionsCount: Int? = nil, mutualConnectionNames: [String]? = nil, matchType: String? = nil) {
         self.id = id
         self.email = email
         self.displayName = displayName
@@ -152,6 +163,7 @@ struct User: Codable, Identifiable {
         self.profilePicture = profilePicture
         self.bio = bio
         self.location = location
+        self.zipcode = zipcode
         self.friends = friends
         self.friendRequests = friendRequests
         self.circleOrder = circleOrder
@@ -179,6 +191,13 @@ struct User: Codable, Identifiable {
         self.referredBy = referredBy
         self.referralCount = referralCount
         self.referralRewards = referralRewards
+        self.isVerified = isVerified
+        self.username = username
+        self.discoveryType = discoveryType
+        self.distance = distance
+        self.mutualConnectionsCount = mutualConnectionsCount
+        self.mutualConnectionNames = mutualConnectionNames
+        self.matchType = matchType
     }
     
     // Custom decoder for JSON decoding
@@ -221,6 +240,7 @@ struct User: Codable, Identifiable {
         profilePicture = try container.decodeIfPresent(String.self, forKey: .profilePicture)
         bio = try container.decodeIfPresent(String.self, forKey: .bio)
         location = try container.decodeIfPresent(String.self, forKey: .location)
+        zipcode = try container.decodeIfPresent(String.self, forKey: .zipcode)
         friends = try container.decodeIfPresent([String].self, forKey: .friends)
         friendRequests = try container.decodeIfPresent([String].self, forKey: .friendRequests)
         circleOrder = try container.decodeIfPresent([String].self, forKey: .circleOrder)
@@ -284,6 +304,15 @@ struct User: Codable, Identifiable {
         referralCount = try container.decodeIfPresent(Int.self, forKey: .referralCount) ?? 0
         referralRewards = try container.decodeIfPresent([ReferralReward].self, forKey: .referralRewards)
         
+        // Discovery fields
+        isVerified = try container.decodeIfPresent(Bool.self, forKey: .isVerified)
+        username = try container.decodeIfPresent(String.self, forKey: .username)
+        discoveryType = try container.decodeIfPresent(String.self, forKey: .discoveryType)
+        distance = try container.decodeIfPresent(Double.self, forKey: .distance)
+        mutualConnectionsCount = try container.decodeIfPresent(Int.self, forKey: .mutualConnectionsCount)
+        mutualConnectionNames = try container.decodeIfPresent([String].self, forKey: .mutualConnectionNames)
+        matchType = try container.decodeIfPresent(String.self, forKey: .matchType)
+        
         // Custom date decoding with multiple format support
         if let dateString = try container.decodeIfPresent(String.self, forKey: .createdAt) {
             let formatter = ISO8601DateFormatter()
@@ -317,6 +346,7 @@ struct User: Codable, Identifiable {
             profilePicture: self.profilePicture,
             bio: self.bio,
             location: self.location,
+            zipcode: self.zipcode,
             friends: self.friends,
             friendRequests: self.friendRequests,
             circleOrder: self.circleOrder,

@@ -69,6 +69,26 @@ class RegisterViewController: BaseViewController {
         return textField
     }()
     
+    private let zipcodeTextField: UITextField = {
+        let textField = UITextField()
+        textField.placeholder = "Zipcode"
+        textField.borderStyle = .roundedRect
+        textField.keyboardType = .numberPad
+        textField.returnKeyType = .next
+        textField.translatesAutoresizingMaskIntoConstraints = false
+        return textField
+    }()
+    
+    private let zipcodeLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Your zipcode helps us show you great places nearby and connect you with local members"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.numberOfLines = 0
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
     private let referralCodeTextField: UITextField = {
         let textField = UITextField()
         textField.placeholder = "Referral Code (Optional)"
@@ -241,8 +261,9 @@ class RegisterViewController: BaseViewController {
         orContainerView.addSubview(rightDivider)
         
         let subviews = [titleLabel, subtitleLabel, emailTextField, passwordTextField, 
-                       confirmPasswordTextField, passwordRequirementLabel, referralCodeTextField,
-                       referralCodeLabel, registerButton, orContainerView, socialStackView]
+                       confirmPasswordTextField, passwordRequirementLabel, zipcodeTextField,
+                       zipcodeLabel, referralCodeTextField, referralCodeLabel, registerButton, 
+                       orContainerView, socialStackView]
         subviews.forEach { contentView.addSubview($0) }
         
         setupConstraints()
@@ -303,8 +324,19 @@ class RegisterViewController: BaseViewController {
             passwordRequirementLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             passwordRequirementLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             
+            // Zipcode field
+            zipcodeTextField.topAnchor.constraint(equalTo: passwordRequirementLabel.bottomAnchor, constant: Constants.Spacing.medium),
+            zipcodeTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            zipcodeTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            zipcodeTextField.heightAnchor.constraint(equalToConstant: 50),
+            
+            // Zipcode label
+            zipcodeLabel.topAnchor.constraint(equalTo: zipcodeTextField.bottomAnchor, constant: Constants.Spacing.small),
+            zipcodeLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            zipcodeLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            
             // Referral code field
-            referralCodeTextField.topAnchor.constraint(equalTo: passwordRequirementLabel.bottomAnchor, constant: Constants.Spacing.medium),
+            referralCodeTextField.topAnchor.constraint(equalTo: zipcodeLabel.bottomAnchor, constant: Constants.Spacing.medium),
             referralCodeTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             referralCodeTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             referralCodeTextField.heightAnchor.constraint(equalToConstant: 50),
@@ -351,7 +383,7 @@ class RegisterViewController: BaseViewController {
     }
     
     private func setupTextFieldDelegates() {
-        [emailTextField, passwordTextField, confirmPasswordTextField, referralCodeTextField].forEach {
+        [emailTextField, passwordTextField, confirmPasswordTextField, zipcodeTextField, referralCodeTextField].forEach {
             $0.delegate = self
         }
     }
@@ -389,6 +421,11 @@ class RegisterViewController: BaseViewController {
             return
         }
         
+        guard let zipcode = zipcodeTextField.text, !zipcode.isEmpty, isValidZipcode(zipcode) else {
+            showError("Please enter a valid 5-digit zipcode")
+            return
+        }
+        
         // Get referral code if provided
         let referralCode = referralCodeTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines)
         
@@ -403,8 +440,8 @@ class RegisterViewController: BaseViewController {
         // Create a default display name from email
         let displayName = email.components(separatedBy: "@").first ?? "User"
         
-        // Attempt registration
-        AuthService.shared.register(email: email, password: password, displayName: displayName) { [weak self] result in
+        // Attempt registration with zipcode
+        AuthService.shared.register(email: email, password: password, displayName: displayName, zipcode: zipcode) { [weak self] result in
             DispatchQueue.main.async {
                 self?.isRegistering = false
                 
@@ -421,7 +458,10 @@ class RegisterViewController: BaseViewController {
                         }
                     }
                     
-                    self?.showEmailVerificationMessage(email: email)
+                    // Don't show email verification popup - let auth state change take effect
+                    // This allows the user to be logged in and see the onboarding with suggested users
+                    // Email verification can be handled later in the app
+                    // self?.showEmailVerificationMessage(email: email)
                     
                 case .failure(let error):
                     self?.showError(error.localizedDescription)
@@ -514,8 +554,14 @@ class RegisterViewController: BaseViewController {
         return emailPredicate.evaluate(with: email)
     }
     
+    private func isValidZipcode(_ zipcode: String) -> Bool {
+        let zipcodeRegex = "^[0-9]{5}$"
+        let zipcodePredicate = NSPredicate(format: "SELF MATCHES %@", zipcodeRegex)
+        return zipcodePredicate.evaluate(with: zipcode)
+    }
+    
     private func findFirstResponder() -> UIView? {
-        let responders: [UIView] = [emailTextField, passwordTextField, confirmPasswordTextField, referralCodeTextField]
+        let responders: [UIView] = [emailTextField, passwordTextField, confirmPasswordTextField, zipcodeTextField, referralCodeTextField]
         return responders.first { $0.isFirstResponder }
     }
     
@@ -578,12 +624,33 @@ extension RegisterViewController: UITextFieldDelegate {
         case passwordTextField:
             confirmPasswordTextField.becomeFirstResponder()
         case confirmPasswordTextField:
+            zipcodeTextField.becomeFirstResponder()
+        case zipcodeTextField:
             referralCodeTextField.becomeFirstResponder()
         case referralCodeTextField:
             textField.resignFirstResponder()
             registerButtonTapped()
         default:
             textField.resignFirstResponder()
+        }
+        return true
+    }
+    
+    func textField(_ textField: UITextField, shouldChangeCharactersIn range: NSRange, replacementString string: String) -> Bool {
+        // Limit zipcode to 5 digits
+        if textField == zipcodeTextField {
+            let currentText = textField.text ?? ""
+            let newText = (currentText as NSString).replacingCharacters(in: range, with: string)
+            
+            // Only allow numbers
+            let allowedCharacters = CharacterSet.decimalDigits
+            let characterSet = CharacterSet(charactersIn: string)
+            if !allowedCharacters.isSuperset(of: characterSet) && !string.isEmpty {
+                return false
+            }
+            
+            // Limit to 5 characters
+            return newText.count <= 5
         }
         return true
     }

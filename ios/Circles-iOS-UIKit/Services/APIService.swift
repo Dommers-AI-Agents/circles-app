@@ -655,6 +655,8 @@ class APIService {
                             }
                             // Clear tokens on refresh failure
                             self.clearTokens()
+                            // Notify AuthService that tokens expired
+                            AuthService.shared.handleTokenExpired()
                             completion(.failure(.unauthorized))
                         }
                     }
@@ -665,6 +667,8 @@ class APIService {
                     }
                     // Authenticated request without refresh capability
                     self.clearTokens()
+                    // Notify AuthService that tokens expired
+                    AuthService.shared.handleTokenExpired()
                     completion(.failure(.unauthorized))
                     return
                 } else {

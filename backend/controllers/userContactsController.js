@@ -81,7 +81,7 @@ const syncContacts = async (req, res) => {
             profilePicture: userData.profilePicture,
             bio: userData.bio,
             phoneNumber: userData.phoneNumber,
-            placesCount: userData.placesCount || 0,
+            placesCount: 0, // Will be calculated later
             circlesCount: userData.circlesCount || 0,
             followersCount: userData.followersCount || 0,
             followingCount: userData.followingCount || 0,
@@ -113,7 +113,7 @@ const syncContacts = async (req, res) => {
             profilePicture: userData.profilePicture,
             bio: userData.bio,
             phoneNumber: userData.phoneNumber,
-            placesCount: userData.placesCount || 0,
+            placesCount: 0, // Will be calculated later
             circlesCount: userData.circlesCount || 0,
             followersCount: userData.followersCount || 0,
             followingCount: userData.followingCount || 0,
@@ -158,6 +158,25 @@ const syncContacts = async (req, res) => {
     const currentUserData = currentUserDoc.data();
     const userFollowing = new Set(currentUserData.following || []);
 
+    // Calculate actual places count for each matched user from their circles
+    for (let user of matchedUsers) {
+      const circlesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
+        .where('owner', '==', user.id)
+        .get();
+      
+      let totalPlaces = 0;
+      let circlesCount = circlesSnapshot.size;
+      
+      circlesSnapshot.forEach(circleDoc => {
+        const circle = circleDoc.data();
+        totalPlaces += (circle.placesCount || 0);
+      });
+      
+      // Update the user object with actual counts
+      user.placesCount = totalPlaces;
+      user.circlesCount = circlesCount;
+    }
+
     // Add connection status and following info to matched users
     const usersWithConnectionStatus = matchedUsers.map(user => {
       const connectionStatus = existingConnections.get(user.id) || 'none';
@@ -199,22 +218,10 @@ const getSuggestedUsers = async (req, res) => {
 
     console.log(`🌟 Getting suggested users for user ${userId}, limit: ${limit}`);
 
-    // Try to get users ordered by placesCount first
-    // If that doesn't work, we'll fall back to calculating from circles
-    let usersQuery;
-    try {
-      usersQuery = await db.collection(COLLECTIONS.USERS)
-        .orderBy('placesCount', 'desc')
-        .limit(50) // Get more users to filter from
-        .get();
-      console.log(`📊 Found ${usersQuery.size} users ordered by placesCount`);
-    } catch (error) {
-      console.log(`⚠️ placesCount field not indexed, falling back to regular query`);
-      // Fallback to regular query if placesCount is not indexed
-      usersQuery = await db.collection(COLLECTIONS.USERS)
-        .limit(50) // Reduced from 100 for better performance
-        .get();
-    }
+    // Get users from database - we'll calculate and sort by place count later
+    const usersQuery = await db.collection(COLLECTIONS.USERS)
+      .limit(50) // Get more users to filter from
+      .get();
     
     console.log(`📊 Found ${usersQuery.size} total users in database`);
     

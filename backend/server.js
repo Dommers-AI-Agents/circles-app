@@ -50,6 +50,7 @@ const userContactsRoutes = require('./routes/userContactsRoutes');
 const taskRoutes = require('./routes/taskRoutes');
 const visitRoutes = require('./routes/visitRoutes');
 const checkInRoutes = require('./routes/checkInRoutes');
+const videoRoutes = require('./routes/videoRoutes');
 
 // Import Firebase Place controller for circle-specific routes
 const { getPlacesByCircleId, getPlacesByCircleIdPublic, reorderPlacesInCircle } = require('./controllers/firebasePlaceController');
@@ -114,6 +115,7 @@ app.use('/api/diagnostics', require('./routes/diagnosticRoutes'));
 app.use('/api/tasks', taskRoutes);
 app.use('/api/visits', visitRoutes);
 app.use('/api/check-ins', checkInRoutes);
+app.use('/api/videos', videoRoutes);
 app.use('/api/users/subscription', require('./routes/subscriptionRoutes'));
 app.use('/api/users/referral', require('./routes/referralRoutes'));
 app.use('/api/home', require('./routes/dashboardRoutes'));

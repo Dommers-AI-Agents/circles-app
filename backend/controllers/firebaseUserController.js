@@ -204,7 +204,11 @@ exports.updateUser = async (req, res, next) => {
       updatedAt: new Date().toISOString()
     };
 
-    if (displayName !== undefined) updateData.displayName = displayName;
+    if (displayName !== undefined) {
+      updateData.displayName = displayName;
+      // Add lowercase version for search
+      updateData.displayNameLowercase = displayName.toLowerCase();
+    }
     if (firstName !== undefined) updateData.firstName = firstName;
     if (lastName !== undefined) updateData.lastName = lastName;
     if (phoneNumber !== undefined) updateData.phoneNumber = phoneNumber;

@@ -133,12 +133,16 @@ class AuthService {
     
     // MARK: - Authentication Methods
     
-    func register(email: String, password: String, displayName: String, completion: @escaping (Result<User, Error>) -> Void) {
-        let body: [String: Any] = [
+    func register(email: String, password: String, displayName: String, zipcode: String? = nil, completion: @escaping (Result<User, Error>) -> Void) {
+        var body: [String: Any] = [
             "email": email,
             "password": password,
             "displayName": displayName
         ]
+        
+        if let zipcode = zipcode {
+            body["zipcode"] = zipcode
+        }
         
         APIService.shared.request(
             endpoint: "auth/register",
@@ -517,6 +521,13 @@ class AuthService {
         clearAuthProvider()
         _currentUser = nil
         APIService.shared.clearTokens()
+    }
+    
+    // Public method to handle token expiration from APIService
+    func handleTokenExpired() {
+        print("🔐 AuthService: Handling token expiration - logging out user")
+        clearLocalAuth()
+        notifyAuthStateChange(isLoggedIn: false)
     }
     
     // MARK: - Auth State Listener

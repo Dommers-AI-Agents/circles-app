@@ -16,6 +16,7 @@ extension User {
         profilePicture: String? = nil,
         bio: String? = nil,
         location: String? = nil,
+        zipcode: String? = nil,
         friends: [String]? = nil,
         friendRequests: [String]? = nil,
         circleOrder: [String]? = nil,
@@ -40,7 +41,14 @@ extension User {
         referralCode: String? = nil,
         referredBy: String? = nil,
         referralCount: Int? = nil,
-        referralRewards: [ReferralReward]? = nil
+        referralRewards: [ReferralReward]? = nil,
+        isVerified: Bool? = nil,
+        username: String? = nil,
+        discoveryType: String? = nil,
+        distance: Double? = nil,
+        mutualConnectionsCount: Int? = nil,
+        mutualConnectionNames: [String]? = nil,
+        matchType: String? = nil
     ) -> User {
         return User(
             id: id ?? self.id,
@@ -52,6 +60,7 @@ extension User {
             profilePicture: profilePicture ?? self.profilePicture,
             bio: bio ?? self.bio,
             location: location ?? self.location,
+            zipcode: zipcode ?? self.zipcode,
             friends: friends ?? self.friends,
             friendRequests: friendRequests ?? self.friendRequests,
             circleOrder: circleOrder ?? self.circleOrder,
@@ -76,7 +85,14 @@ extension User {
             referralCode: referralCode ?? self.referralCode,
             referredBy: referredBy ?? self.referredBy,
             referralCount: referralCount ?? self.referralCount,
-            referralRewards: referralRewards ?? self.referralRewards
+            referralRewards: referralRewards ?? self.referralRewards,
+            isVerified: isVerified ?? self.isVerified,
+            username: username ?? self.username,
+            discoveryType: discoveryType ?? self.discoveryType,
+            distance: distance ?? self.distance,
+            mutualConnectionsCount: mutualConnectionsCount ?? self.mutualConnectionsCount,
+            mutualConnectionNames: mutualConnectionNames ?? self.mutualConnectionNames,
+            matchType: matchType ?? self.matchType
         )
     }
     

@@ -2,8 +2,30 @@ import UIKit
 
 class MyNetworkViewController: BaseViewController {
     
+    // MARK: - Tab Types
+    enum NetworkTab: String, CaseIterable {
+        case myNetwork = "My Network"
+        case discover = "Discover"
+        case popular = "Popular"
+        case nearby = "Nearby"
+        case mutual = "Mutual"
+        case sharedCircles = "Circles"
+        
+        var icon: UIImage? {
+            switch self {
+            case .myNetwork: return UIImage(systemName: "person.2.fill")
+            case .discover: return UIImage(systemName: "person.3.fill")
+            case .popular: return UIImage(systemName: "star.fill")
+            case .nearby: return UIImage(systemName: "location.fill")
+            case .mutual: return UIImage(systemName: "person.2.badge.plus")
+            case .sharedCircles: return UIImage(systemName: "circle.hexagongrid.fill")
+            }
+        }
+    }
+    
     // MARK: - SSE Integration
     private var sseConnected = false
+    private var selectedTab: NetworkTab = .myNetwork
     
     // MARK: - UI Elements
     private let searchBar: UISearchBar = {
@@ -15,13 +37,24 @@ class MyNetworkViewController: BaseViewController {
         return searchBar
     }()
     
-    private let segmentedControl: UISegmentedControl = {
-        let items = ["Connections", "Shared Circles"]
-        let control = UISegmentedControl(items: items)
-        control.selectedSegmentIndex = 0
-        control.translatesAutoresizingMaskIntoConstraints = false
-        return control
+    private let tabScrollView: UIScrollView = {
+        let scrollView = UIScrollView()
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        return scrollView
     }()
+    
+    private let tabStackView: UIStackView = {
+        let stackView = UIStackView()
+        stackView.axis = .horizontal
+        stackView.distribution = .fillProportionally
+        stackView.spacing = 8
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        return stackView
+    }()
+    
+    private var tabButtons: [UIButton] = []
     
     private let findContactsBar: UIView = {
         let view = UIView()
@@ -69,6 +102,7 @@ class MyNetworkViewController: BaseViewController {
     
     // Child View Controllers
     private var allUsersListVC: AllUsersListViewController?
+    private var discoveryListVC: DiscoveryListViewController?
     private var sharedCirclesListVC: SharedCirclesListViewController?
     private var currentViewController: UIViewController?
     
@@ -81,7 +115,7 @@ class MyNetworkViewController: BaseViewController {
         setupView()
         setupNavigationBar()
         setupChildViewControllers()
-        showConnectionsList()
+        selectTab(.myNetwork)  // Start with My Network tab
         setupSSE()
         
         // Check if user needs notification prompt for connections
@@ -150,12 +184,26 @@ class MyNetworkViewController: BaseViewController {
     // MARK: - Setup
     private func setupView() {
         setupNavigationBar(title: "My Network", largeTitleMode: .never)
-        addNavigationBarButton(image: "person.badge.plus", position: .right, action: #selector(showConnectionMenu))
+        
+        // Add connection button to navigation bar
+        let addConnectionButton = UIBarButtonItem(
+            image: UIImage(systemName: "person.badge.plus"),
+            style: .plain,
+            target: self,
+            action: #selector(showConnectionMenu)
+        )
+        addConnectionButton.accessibilityLabel = "Add Connection"
+        
+        navigationItem.rightBarButtonItem = addConnectionButton
         
         view.addSubview(searchBar)
-        view.addSubview(segmentedControl)
+        view.addSubview(tabScrollView)
+        tabScrollView.addSubview(tabStackView)
         view.addSubview(findContactsBar)
         view.addSubview(containerView)
+        
+        // Create tab buttons
+        setupTabButtons()
         
         // Add subviews to findContactsBar
         findContactsBar.addSubview(findContactsIcon)
@@ -168,11 +216,18 @@ class MyNetworkViewController: BaseViewController {
             searchBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             searchBar.heightAnchor.constraint(equalToConstant: 44),
             
-            segmentedControl.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 16),
-            segmentedControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            segmentedControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            tabScrollView.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 16),
+            tabScrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            tabScrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            tabScrollView.heightAnchor.constraint(equalToConstant: 44),
             
-            findContactsBar.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 16),
+            tabStackView.topAnchor.constraint(equalTo: tabScrollView.topAnchor),
+            tabStackView.leadingAnchor.constraint(equalTo: tabScrollView.leadingAnchor, constant: 16),
+            tabStackView.trailingAnchor.constraint(equalTo: tabScrollView.trailingAnchor, constant: -16),
+            tabStackView.bottomAnchor.constraint(equalTo: tabScrollView.bottomAnchor),
+            tabStackView.heightAnchor.constraint(equalTo: tabScrollView.heightAnchor),
+            
+            findContactsBar.topAnchor.constraint(equalTo: tabScrollView.bottomAnchor, constant: 16),
             findContactsBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             findContactsBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             findContactsBar.heightAnchor.constraint(equalToConstant: 56),
@@ -198,7 +253,6 @@ class MyNetworkViewController: BaseViewController {
         ])
         
         searchBar.delegate = self
-        segmentedControl.addTarget(self, action: #selector(segmentChanged), for: .valueChanged)
         
         // Add tap gesture to Find Contacts bar
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(findContactsTapped))
@@ -206,22 +260,61 @@ class MyNetworkViewController: BaseViewController {
         findContactsBar.isUserInteractionEnabled = true
     }
     
+    private func setupTabButtons() {
+        // Create a button for each tab
+        for (index, tab) in NetworkTab.allCases.enumerated() {
+            let button = UIButton(type: .system)
+            button.setTitle(tab.rawValue, for: .normal)
+            button.titleLabel?.font = .systemFont(ofSize: 14, weight: .medium)
+            button.tag = index
+            button.addTarget(self, action: #selector(tabButtonTapped(_:)), for: .touchUpInside)
+            
+            // Style the button
+            button.backgroundColor = index == 0 ? Constants.Colors.primary : Constants.Colors.secondaryBackground
+            button.setTitleColor(index == 0 ? .white : Constants.Colors.secondaryLabel, for: .normal)
+            button.layer.cornerRadius = 18
+            button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
+            
+            tabButtons.append(button)
+            tabStackView.addArrangedSubview(button)
+        }
+    }
+    
     private func setupChildViewControllers() {
         // Create child view controllers
         allUsersListVC = AllUsersListViewController()
+        discoveryListVC = DiscoveryListViewController()
         sharedCirclesListVC = SharedCirclesListViewController()
     }
     
     // MARK: - Actions
-    @objc private func segmentChanged() {
-        switch segmentedControl.selectedSegmentIndex {
-        case 0:
-            showConnectionsList()
-        case 1:
-            showSharedCirclesList()
-        default:
-            break
+    @objc private func tabButtonTapped(_ sender: UIButton) {
+        let tab = NetworkTab.allCases[sender.tag]
+        selectTab(tab)
+    }
+    
+    private func selectTab(_ tab: NetworkTab) {
+        selectedTab = tab
+        
+        // Update button styles
+        for (index, button) in tabButtons.enumerated() {
+            let isSelected = NetworkTab.allCases[index] == tab
+            button.backgroundColor = isSelected ? Constants.Colors.primary : Constants.Colors.secondaryBackground
+            button.setTitleColor(isSelected ? .white : Constants.Colors.secondaryLabel, for: .normal)
         }
+        
+        // Show appropriate view controller
+        switch tab {
+        case .myNetwork:
+            showConnectionsList()
+        case .discover, .popular, .nearby, .mutual:
+            showDiscoveryList(type: tab)
+        case .sharedCircles:
+            showSharedCirclesList()
+        }
+        
+        // Update Find Contacts bar visibility
+        findContactsBar.isHidden = (tab == .sharedCircles)
     }
     
     @objc private func showConnectionMenu() {
@@ -292,9 +385,16 @@ class MyNetworkViewController: BaseViewController {
     }
     
     private func filterUsers(with query: String) {
-        // Filter the all users list if it's showing
-        if segmentedControl.selectedSegmentIndex == 0 {
+        // Filter based on selected tab
+        switch selectedTab {
+        case .myNetwork:
             allUsersListVC?.updateSearchQuery(query)
+        case .discover, .popular, .nearby, .mutual:
+            // Discovery tabs handle search differently - would need to implement search in DiscoveryListViewController
+            break
+        case .sharedCircles:
+            // Shared circles might have its own search logic
+            break
         }
     }
     
@@ -334,6 +434,31 @@ class MyNetworkViewController: BaseViewController {
         
         allUsersListVC.didMove(toParent: self)
         currentViewController = allUsersListVC
+    }
+    
+    private func showDiscoveryList(type: NetworkTab) {
+        guard let discoveryListVC = discoveryListVC else { return }
+        
+        if currentViewController != nil {
+            removeCurrentViewController()
+        }
+        
+        // Configure discovery list for the selected type
+        discoveryListVC.setDiscoveryType(type)
+        
+        addChild(discoveryListVC)
+        containerView.addSubview(discoveryListVC.view)
+        discoveryListVC.view.translatesAutoresizingMaskIntoConstraints = false
+        
+        NSLayoutConstraint.activate([
+            discoveryListVC.view.topAnchor.constraint(equalTo: containerView.topAnchor),
+            discoveryListVC.view.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            discoveryListVC.view.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            discoveryListVC.view.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
+        ])
+        
+        discoveryListVC.didMove(toParent: self)
+        currentViewController = discoveryListVC
     }
     
     private func showSharedCirclesList() {
@@ -440,7 +565,7 @@ extension MyNetworkViewController: SSEServiceDelegate {
             NetworkManager.shared.loadConnections()
             
             // If showing all users list, refresh it
-            if self?.segmentedControl.selectedSegmentIndex == 0 {
+            if self?.selectedTab == .myNetwork {
                 self?.allUsersListVC?.loadAllUsers()
             }
             
@@ -455,7 +580,7 @@ extension MyNetworkViewController: SSEServiceDelegate {
             NetworkManager.shared.loadConnections()
             
             // Refresh the current view
-            if self?.segmentedControl.selectedSegmentIndex == 0 {
+            if self?.selectedTab == .myNetwork {
                 self?.allUsersListVC?.loadAllUsers()
             }
         }
@@ -467,7 +592,7 @@ extension MyNetworkViewController: SSEServiceDelegate {
             NetworkManager.shared.loadConnections()
             
             // Refresh the current view
-            if self?.segmentedControl.selectedSegmentIndex == 0 {
+            if self?.selectedTab == .myNetwork {
                 self?.allUsersListVC?.loadAllUsers()
             }
         }

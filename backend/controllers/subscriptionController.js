@@ -18,7 +18,7 @@ const APPLE_SHARED_SECRET = process.env.APPLE_SHARED_SECRET || '';
 exports.verifySubscription = async (req, res) => {
     try {
         const { receipt, transactionId, productId, originalTransactionId, purchaseDate, expirationDate } = req.body;
-        const userId = req.userId;
+        const userId = req.user?.uid || req.userId; // Check both req.user.uid and req.userId
 
         if (!userId) {
             return res.status(401).json({
@@ -124,7 +124,7 @@ exports.verifySubscription = async (req, res) => {
 // @access  Private
 exports.getSubscriptionStatus = async (req, res) => {
     try {
-        const userId = req.userId;
+        const userId = req.user?.uid || req.userId; // Check both req.user.uid and req.userId
         
         if (!userId) {
             return res.status(401).json({
@@ -316,7 +316,7 @@ exports.handleSubscriptionWebhook = async (req, res) => {
 // @access  Private
 exports.startFreeTrial = async (req, res) => {
     try {
-        const userId = req.userId;
+        const userId = req.user?.uid || req.userId; // Check both req.user.uid and req.userId
         
         // Check if user already had a trial
         const userDoc = await admin.firestore().collection('users').doc(userId).get();
@@ -349,7 +349,7 @@ exports.startFreeTrial = async (req, res) => {
                 trialStartDate: trialStartDate.toISOString(),
                 trialEndDate: trialEndDate.toISOString(),
                 autoRenewEnabled: false,
-                productId: latestReceiptInfo.product_id || 'com.favcircles.circles.premium.subscription.monthly'
+                productId: 'com.favcircles.circles.premium.subscription.monthly'
             }
         });
 
