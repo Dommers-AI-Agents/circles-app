@@ -343,8 +343,8 @@ Switching back to auto-generated Info.plist would be more robust:
 
 #### **Deployment Script**
 ```bash
-# Use deploy-skip-apis.sh for deployment
-./deploy-skip-apis.sh
+# Use deploy.sh for deployment
+./deploy.sh
 
 # Key deployment parameters:
 --port=8080              # Explicitly set port for Cloud Run
@@ -413,11 +413,11 @@ Available test routes at `/api/email/*`:
 - **Root Cause**: Incorrect function name
 - **Solution**: Changed all instances to `nodemailer.createTransport()`
 
-### **Deployment Script Updates**
-Updated `deploy-skip-apis.sh` to include:
-- Explicit port configuration
-- Better error handling
-- Deployment status verification
+### **Deployment Script**
+The `deploy.sh` script includes:
+- Automatic environment variable loading from .env
+- Cloud Run deployment with proper configuration
+- Post-deployment health check verification
 
 ## Known Issues & Solutions
 
@@ -439,7 +439,70 @@ Updated `deploy-skip-apis.sh` to include:
 - **Cause**: Legacy storage URLs in database
 - **Solution**: Update to use Firebase Storage URLs
 
-[... rest of the existing content remains the same ...]
+## Moments Feature Implementation
+
+### **Overview**
+Moments (formerly called "Reels") is a multimedia content sharing feature that allows users to share short videos, photos, or social media links associated with specific places. This feature enhances place discovery by allowing users to share their experiences visually.
+
+### **Key Components**
+
+#### **1. Content Types**
+- **Video Recording**: 15-second maximum, auto-compressed videos recorded in-app
+- **Photo Capture**: Single photos taken directly or selected from library
+- **Social Media Links**: TikTok, Instagram, YouTube videos embedded from URLs
+
+#### **2. User Flow**
+1. **Creating a Moment**:
+   - Access via floating "+" button on home page Moments tab
+   - Access via video button in user profile
+   - Both entry points use `ContentUploadViewController` with "Share a Moment" UI
+   - Select content type (record, photo, link, library)
+   - Choose or search for associated place
+   - Upload with automatic compression and optimization
+
+2. **Viewing Moments**:
+   - Home page "Moments" tab shows network-wide moments feed
+   - Profile "Moments" tab shows user's created moments
+   - Tap moment to view in `VideoDetailsViewController`
+   - Support for likes, comments, and sharing
+
+#### **3. Technical Implementation**
+
+**iOS Controllers**:
+- `ContentUploadViewController`: Main moment creation interface
+- `VideoRecordingViewController`: In-app video recording (15 sec limit)
+- `VideoLinkInputViewController`: Social media URL input
+- `PlaceSearchViewController`: Place selection during creation
+- `VideoDetailsViewController`: Full-screen moment viewing
+
+**Backend Endpoints**:
+- `POST /api/videos/upload/initiate`: Start upload process
+- `POST /api/videos/:videoId/upload/complete`: Finalize upload
+- `GET /api/videos/user/:userId`: Get user's moments
+- `GET /api/videos/reels/feed`: Get moments feed
+- `POST /api/videos/embed`: Add embedded social media video
+
+**Data Models**:
+- `PlaceVideo`: Core video/moment data structure
+- `PlaceMoment`: Frontend wrapper with UI-specific properties
+- Stored in Firestore `placeVideos` collection
+
+#### **4. Compression & Optimization**
+- Videos: 720p, 500kbps bitrate, 15 sec max
+- Photos: 1080px max dimension, 0.7 JPEG quality
+- Automatic thumbnail generation
+- Progressive loading with preview images
+
+#### **5. Privacy & Permissions**
+- Moments inherit place privacy settings
+- Camera and photo library permissions required
+- Location permissions for place association
+
+### **Recent Updates (January 2025)**
+- Renamed "Reels" to "Moments" throughout the app
+- Unified content creation flow between home and profile
+- Improved compression for faster uploads
+- Added support for photo moments alongside videos
 
 ## AI Interaction Memory
 

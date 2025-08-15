@@ -147,9 +147,18 @@ class MediaCarouselView: UIView {
         contentStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
         
         // Add media views
+        var mediaViews: [UIView] = []
         for (index, item) in mediaItems.enumerated() {
             let mediaView = createMediaView(for: item, at: index)
             contentStackView.addArrangedSubview(mediaView)
+            mediaViews.append(mediaView)
+        }
+        
+        // Now that views are in the hierarchy, add width constraints
+        for mediaView in mediaViews {
+            NSLayoutConstraint.activate([
+                mediaView.widthAnchor.constraint(equalTo: widthAnchor)
+            ])
         }
         
         // Update page control
@@ -248,11 +257,6 @@ class MediaCarouselView: UIView {
                 playButton.heightAnchor.constraint(equalToConstant: 80)
             ])
         }
-        
-        // Set width constraint
-        NSLayoutConstraint.activate([
-            containerView.widthAnchor.constraint(equalTo: widthAnchor)
-        ])
         
         return containerView
     }
@@ -356,8 +360,13 @@ extension MediaCarouselView: UIScrollViewDelegate {
 
 extension MediaCarouselView: UIGestureRecognizerDelegate {
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        // Ensure touch.view is valid and is a UIView
+        guard let touchView = touch.view as? UIView else {
+            return false
+        }
+        
         // Don't handle tap on buttons
-        if touch.view is UIButton {
+        if touchView is UIButton {
             return false
         }
         return true

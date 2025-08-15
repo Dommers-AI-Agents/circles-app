@@ -35,19 +35,43 @@ exports.verifySubscription = async (req, res) => {
         }
 
         // Verify receipt with Apple
-        const verificationResponse = await axios.post(APPLE_VERIFY_RECEIPT_URL, {
+        let verificationResponse = await axios.post(APPLE_VERIFY_RECEIPT_URL, {
             'receipt-data': receipt,
             'password': APPLE_SHARED_SECRET,
             'exclude-old-transactions': true
         });
 
-        const verificationData = verificationResponse.data;
+        let verificationData = verificationResponse.data;
+
+        // If status is 21007, it means sandbox receipt was sent to production
+        // Retry with sandbox URL
+        if (verificationData.status === 21007) {
+            console.log('Sandbox receipt detected, retrying with sandbox URL...');
+            verificationResponse = await axios.post('https://sandbox.itunes.apple.com/verifyReceipt', {
+                'receipt-data': receipt,
+                'password': APPLE_SHARED_SECRET,
+                'exclude-old-transactions': true
+            });
+            verificationData = verificationResponse.data;
+        }
 
         if (verificationData.status !== 0) {
             console.error('Receipt verification failed:', verificationData.status);
+            // Provide more specific error messages
+            let errorMessage = 'Invalid receipt';
+            switch (verificationData.status) {
+                case 21000: errorMessage = 'The request to the App Store was not made using the HTTP POST request method.'; break;
+                case 21001: errorMessage = 'This receipt is from the test environment.'; break;
+                case 21002: errorMessage = 'The receipt data is malformed.'; break;
+                case 21003: errorMessage = 'The receipt could not be authenticated.'; break;
+                case 21004: errorMessage = 'The shared secret does not match the shared secret on file for your account.'; break;
+                case 21005: errorMessage = 'The receipt server is not currently available.'; break;
+                case 21006: errorMessage = 'This receipt is valid but the subscription has expired.'; break;
+                case 21008: errorMessage = 'This receipt is from the production environment, but it was sent to the test environment.'; break;
+            }
             return res.status(400).json({
                 success: false,
-                error: 'Invalid receipt'
+                error: errorMessage
             });
         }
 

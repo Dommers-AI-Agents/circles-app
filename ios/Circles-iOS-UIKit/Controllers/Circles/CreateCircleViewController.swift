@@ -1029,8 +1029,13 @@ extension CreateCircleViewController: ConnectionPickerDelegate {
 // MARK: - UIGestureRecognizerDelegate
 extension CreateCircleViewController: UIGestureRecognizerDelegate {
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        // Ensure touch.view is valid and is a UIView
+        guard let touchedView = touch.view as? UIView else {
+            return false
+        }
+        
         // Don't dismiss if tapping on the default image selection view
-        if let touchedView = touch.view, touchedView.isDescendant(of: gestureRecognizer.view!) {
+        if touchedView.isDescendant(of: gestureRecognizer.view!) {
             return touchedView == gestureRecognizer.view
         }
         return true

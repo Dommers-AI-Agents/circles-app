@@ -6,6 +6,16 @@ import PhotosUI
 
 protocol PlaceSearchDelegate: AnyObject {
     func didSelectPlace(name: String, address: String, coordinate: CLLocationCoordinate2D, phone: String?, website: String?, category: String?, description: String?)
+    // Optional method for selecting user's saved places
+    func didSelectExistingPlace(_ place: Place)
+}
+
+// Provide default implementation to make it effectively optional
+extension PlaceSearchDelegate {
+    func didSelectExistingPlace(_ place: Place) {
+        // Default implementation does nothing
+        // Classes that don't need this functionality don't have to implement it
+    }
 }
 
 // Custom annotation class for place search
@@ -506,6 +516,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     private var mapRegionTimer: Timer?
     private var hasSearchedCategory = false
     private var hasPerformedInitialSearch = false
+    private var isFillingForm = false
     
     // MARK: - Lifecycle
     
@@ -2113,6 +2124,9 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         print("📝 fillFormWithMapItem called with: \(mapItem.name ?? "Unknown")")
         print("📝 Category search active: \(hasSearchedCategory)")
         
+        // Set flag to prevent auto-search while filling form
+        isFillingForm = true
+        
         selectedMapItem = mapItem
         selectedGooglePlaceDetails = nil // Clear Google details
         
@@ -2122,6 +2136,51 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         // Capture street view image for the location
         captureStreetViewImage(for: mapItem.placemark.coordinate)
         
+        // Enrich with Google Photos using PlaceDetailsService
+        PlaceDetailsService.shared.getEnrichedPlaceDetails(for: mapItem) { [weak self] result in
+            guard let self = self else { return }
+            
+            switch result {
+            case .success(let enrichedDetails):
+                print("✅ Got enriched details - Google Place ID: \(enrichedDetails.googlePlaceId ?? "none"), Photos: \(enrichedDetails.googlePhotos.count)")
+                
+                // Load the first Google photo if available
+                if let firstPhotoMetadata = enrichedDetails.googlePhotos.first {
+                    print("📸 Loading Google photo for place...")
+                    PlaceDetailsService.shared.loadPhoto(from: firstPhotoMetadata, maxSize: CGSize(width: 800, height: 800)) { [weak self] photoResult in
+                        switch photoResult {
+                        case .success(let image):
+                            print("📸 Successfully loaded Google photo")
+                            DispatchQueue.main.async {
+                                self?.downloadedGoogleImage = image
+                                self?.selectedImage = image
+                                self?.photoImageView.image = image
+                                self?.photoImageView.isHidden = false
+                                self?.removePhotoButton.isHidden = false
+                                self?.addPhotoButton.isHidden = true
+                                
+                                // Pre-upload the photo
+                                if let imageData = image.jpegData(compressionQuality: 0.8) {
+                                    print("📸 Pre-uploading Google photo...")
+                                    self?.uploadImageData(imageData) { uploadedUrl in
+                                        if let url = uploadedUrl {
+                                            self?.uploadedPhotoUrls.append(url)
+                                            print("✅ Google photo pre-uploaded: \(url)")
+                                        }
+                                    }
+                                }
+                            }
+                        case .failure(let error):
+                            print("❌ Failed to load Google photo: \(error)")
+                        }
+                    }
+                }
+                
+            case .failure(let error):
+                print("⚠️ Failed to get enriched details: \(error)")
+            }
+        }
+        
         // Add a small delay to ensure the form is visible before populating
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
@@ -2129,8 +2188,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             print("📝 Form container state - alpha: \(self.formContainer.alpha), enabled: \(self.formContainer.isUserInteractionEnabled)")
             
             // Check if this is likely a residential address (no business name)
-            let isResidentialAddress = mapItem.name == nil || mapItem.name?.isEmpty == true || 
-                                     mapItem.pointOfInterestCategory == nil
+            let isResidentialAddress = mapItem.name == nil || mapItem.name?.isEmpty == true
             
             if isResidentialAddress {
                 // For addresses, clear the name field so user must enter their own
@@ -2365,6 +2423,19 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                         print("❌ Failed to search Google Places: \(error)")
                     }
                 }
+            }
+            
+            // Update map to show the selected place
+            self.showBothUserAndPlace(placeCoordinate: mapItem.placemark.coordinate)
+            
+            // Add pin for the selected place using the existing method
+            self.addSelectedLocationPin(at: mapItem.placemark.coordinate)
+            
+            // Scroll to show form after a delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                self.scrollToFormTop()
+                // Reset the flag after form is filled and scrolled
+                self.isFillingForm = false
             }
         }
     }
@@ -3491,8 +3562,8 @@ extension AddPlaceViewController: MKMapViewDelegate {
         // Cancel previous timer
         mapRegionTimer?.invalidate()
         
-        // Don't auto-search if user has searched for a category or is searching
-        guard !hasSearchedCategory && searchResultsTableView.isHidden else { return }
+        // Don't auto-search if user has searched for a category, is searching, or is filling form
+        guard !hasSearchedCategory && searchResultsTableView.isHidden && !isFillingForm else { return }
         
         // Start new timer to search after user stops moving the map
         mapRegionTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
@@ -4343,6 +4414,139 @@ extension AddPlaceViewController {
                     // Fallback to just popping the view controller
                     self.navigationController?.popViewController(animated: true)
                 }
+            }
+        }
+    }
+}
+
+// MARK: - Public Methods for Prefilling from Check-ins
+extension AddPlaceViewController {
+    /// Prefills the form with data from an existing place (e.g., from check-in)
+    func prefillWithPlace(_ place: Place) {
+        // Wait for view to load if needed
+        guard isViewLoaded else {
+            DispatchQueue.main.async { [weak self] in
+                self?.prefillWithPlace(place)
+            }
+            return
+        }
+        
+        // Set search text
+        searchBar.text = place.name
+        
+        // Pre-fill notes if available
+        if let notes = place.notes, !notes.isEmpty {
+            publicNotesTextView.text = notes
+            publicNotesTextView.textColor = .label
+        }
+        
+        // Set category
+        selectedCategory = place.category
+        categoryButton.setTitle(selectedCategory.displayName, for: .normal)
+        
+        // If we have location data, perform search with coordinates
+        if let location = place.location?.clLocation {
+            let coordinate = location.coordinate
+            
+            // Store the coordinate
+            self.selectedLocation = coordinate
+            
+            // Center map on the location
+            let region = MKCoordinateRegion(
+                center: coordinate,
+                latitudinalMeters: 500,
+                longitudinalMeters: 500
+            )
+            mapView.setRegion(region, animated: true)
+            
+            // Perform search with name and location
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                guard let self = self else { return }
+                
+                // Create a search request for the specific place
+                let request = MKLocalSearch.Request()
+                request.naturalLanguageQuery = place.name
+                request.region = MKCoordinateRegion(
+                    center: coordinate,
+                    latitudinalMeters: 500, // Wider search radius
+                    longitudinalMeters: 500
+                )
+                
+                let search = MKLocalSearch(request: request)
+                search.start { [weak self] response, error in
+                    guard let self = self else { return }
+                    
+                    if let error = error {
+                        print("❌ Place search error: \(error.localizedDescription)")
+                        // Still enable form for manual entry with existing data
+                        DispatchQueue.main.async {
+                            self.enableManualEntry()
+                            self.nameTextField.text = place.name
+                            self.addressTextView.text = place.address
+                        }
+                        return
+                    }
+                    
+                    // Find the best match
+                    if let mapItems = response?.mapItems, !mapItems.isEmpty {
+                        // Look for exact name match first
+                        let exactMatch = mapItems.first { item in
+                            item.name?.lowercased() == place.name.lowercased()
+                        }
+                        
+                        // Or find closest by distance
+                        let targetLocation = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+                        let closestItem = exactMatch ?? mapItems.min(by: { item1, item2 in
+                            let dist1 = targetLocation.distance(from: CLLocation(
+                                latitude: item1.placemark.coordinate.latitude,
+                                longitude: item1.placemark.coordinate.longitude
+                            ))
+                            let dist2 = targetLocation.distance(from: CLLocation(
+                                latitude: item2.placemark.coordinate.latitude,
+                                longitude: item2.placemark.coordinate.longitude
+                            ))
+                            return dist1 < dist2
+                        })
+                        
+                        if let mapItem = closestItem {
+                            print("✅ Found place match: \(mapItem.name ?? place.name)")
+                            
+                            DispatchQueue.main.async {
+                                // Fill form with MapKit data (which will trigger Google Photos search)
+                                self.fillFormWithMapItem(mapItem)
+                                
+                                // Scroll to form after a delay
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                    self.scrollToFormTop()
+                                }
+                            }
+                        } else {
+                            // No match found, fill manually
+                            DispatchQueue.main.async {
+                                self.enableManualEntry()
+                                self.nameTextField.text = place.name
+                                self.addressTextView.text = place.address
+                            }
+                        }
+                    } else {
+                        // No results, fill manually
+                        DispatchQueue.main.async {
+                            self.enableManualEntry()
+                            self.nameTextField.text = place.name
+                            self.addressTextView.text = place.address
+                        }
+                    }
+                }
+            }
+        } else {
+            // No location data, just search by name
+            performAppleMapsSearch(place.name)
+            
+            // Enable form for manual entry
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.enableManualEntry()
+                self.nameTextField.text = place.name
+                self.addressTextView.text = place.address
             }
         }
     }

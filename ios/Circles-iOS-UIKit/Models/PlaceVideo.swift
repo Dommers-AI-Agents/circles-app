@@ -18,8 +18,8 @@ struct PlaceVideo: Codable {
     let visibility: VideoVisibility
     let viewCount: Int
     let lastViewedAt: Date?
-    let likeCount: Int
-    let commentCount: Int
+    var likeCount: Int
+    var commentCount: Int
     let tags: [String]
     let uploadProgress: Double? // optional for embedded videos
     let uploadStatus: VideoUploadStatus
@@ -28,7 +28,8 @@ struct PlaceVideo: Codable {
     let updatedAt: Date
     let deletedAt: Date?
     
-    // Embedded video fields
+    // Content type and embed fields
+    let contentType: String? // "photo" or "video"
     let videoType: String? // "uploaded" or "embedded"
     let embedUrl: String?
     let embedPlatform: String? // "tiktok", "instagram", "youtube", "twitter"
@@ -37,6 +38,13 @@ struct PlaceVideo: Codable {
     
     // Additional properties from API
     var user: User?
+    var likedByCurrentUser: Bool?
+    
+    // Activity-related properties
+    var activityId: String?
+    var activityReactionCount: Int?
+    var activityCommentCount: Int?
+    var userActivityReaction: String? // Emoji if user has reacted
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -65,11 +73,17 @@ struct PlaceVideo: Codable {
         case updatedAt
         case deletedAt
         case user
+        case contentType
         case videoType
         case embedUrl
         case embedPlatform
         case embedHtml
         case embedMetadata
+        case likedByCurrentUser
+        case activityId
+        case activityReactionCount
+        case activityCommentCount
+        case userActivityReaction
     }
     
     // Helper to check if video is embedded
@@ -112,12 +126,29 @@ enum VideoQuality {
     case preview // 480p, 0.5 Mbps (optimized for Reels)
     case full    // 720p, 1.0 Mbps (optimized for Reels)
     
-    var resolution: CGSize {
+    // Dynamic resolution based on orientation
+    func resolution(for orientation: VideoOrientation) -> CGSize {
         switch self {
         case .preview:
-            return CGSize(width: 854, height: 480)
+            switch orientation {
+            case .portrait:
+                // Use 9:16 aspect ratio for portrait (TikTok style)
+                return CGSize(width: 720, height: 1280)
+            case .landscape:
+                return CGSize(width: 1280, height: 720)
+            case .square:
+                return CGSize(width: 720, height: 720)
+            }
         case .full:
-            return CGSize(width: 1280, height: 720)
+            switch orientation {
+            case .portrait:
+                // Full HD portrait
+                return CGSize(width: 1080, height: 1920)
+            case .landscape:
+                return CGSize(width: 1920, height: 1080)
+            case .square:
+                return CGSize(width: 1080, height: 1080)
+            }
         }
     }
     
@@ -127,6 +158,23 @@ enum VideoQuality {
             return 500_000 // 0.5 Mbps - optimized for quick loading
         case .full:
             return 1_000_000 // 1.0 Mbps - balanced quality/size for 15s videos
+        }
+    }
+}
+
+enum VideoOrientation {
+    case portrait
+    case landscape
+    case square
+    
+    static func from(size: CGSize) -> VideoOrientation {
+        let aspectRatio = abs(size.width / size.height)
+        if aspectRatio < 0.9 {
+            return .portrait
+        } else if aspectRatio > 1.1 {
+            return .landscape
+        } else {
+            return .square
         }
     }
 }

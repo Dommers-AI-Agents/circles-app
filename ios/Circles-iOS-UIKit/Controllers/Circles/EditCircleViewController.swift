@@ -1046,16 +1046,19 @@ extension EditCircleViewController: CategoryPickerDelegate {
 // MARK: - UIGestureRecognizerDelegate
 extension EditCircleViewController {
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        // Ensure touch.view is valid and is a UIView
+        guard let touchView = touch.view as? UIView else {
+            return false
+        }
+        
         // Don't dismiss if the tap is on the defaultImageView itself
-        if let touchView = touch.view {
-            // Check if the touch is on a subview of the defaultImageView
-            var currentView: UIView? = touchView
-            while currentView != nil {
-                if currentView is DefaultImageSelectionView {
-                    return false // Don't receive the tap, let the view handle it
-                }
-                currentView = currentView?.superview
+        // Check if the touch is on a subview of the defaultImageView
+        var currentView: UIView? = touchView
+        while currentView != nil {
+            if currentView is DefaultImageSelectionView {
+                return false // Don't receive the tap, let the view handle it
             }
+            currentView = currentView?.superview
         }
         return true // Dismiss for taps outside the defaultImageView
     }

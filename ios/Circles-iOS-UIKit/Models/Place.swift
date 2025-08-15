@@ -28,7 +28,7 @@ struct Place: Codable, Identifiable {
     let likes: [String]?
     let likesCount: Int?
     let commentsCount: Int?
-    let circleId: String
+    let circleId: String?
     let addedBy: String
     let addedByUser: User? // Populated when fetching places in shared circles
     let privacy: PlacePrivacy
@@ -96,7 +96,7 @@ struct Place: Codable, Identifiable {
         self.likes = try container.decodeIfPresent([String].self, forKey: .likes)
         self.likesCount = try container.decodeIfPresent(Int.self, forKey: .likesCount)
         self.commentsCount = try container.decodeIfPresent(Int.self, forKey: .commentsCount)
-        self.circleId = try container.decode(String.self, forKey: .circleId)
+        self.circleId = try container.decodeIfPresent(String.self, forKey: .circleId)
         self.addedBy = try container.decode(String.self, forKey: .addedBy)
         self.addedByUser = try container.decodeIfPresent(User.self, forKey: .addedByUser)
         self.privacy = try container.decode(PlacePrivacy.self, forKey: .privacy)
@@ -112,7 +112,7 @@ struct Place: Codable, Identifiable {
          customCategoryId: String?, subcategory: String?, rating: Double?, userRatingsTotal: Int?, notes: String?,
          privateNotes: String?, publicNotes: String?, tags: [String]?,
          reviews: [PlaceReview]?, openingHours: [OpeningHour]?,
-         priceLevel: PriceLevel?, likes: [String]?, likesCount: Int?, commentsCount: Int?, circleId: String, addedBy: String,
+         priceLevel: PriceLevel?, likes: [String]?, likesCount: Int?, commentsCount: Int?, circleId: String?, addedBy: String,
          addedByUser: User?, privacy: PlacePrivacy, createdAt: Date, updatedAt: Date, isNew: Bool? = nil) {
         self.id = id
         self.name = name

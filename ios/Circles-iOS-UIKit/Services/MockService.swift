@@ -636,7 +636,7 @@ class MockService {
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
             if let place = self.places.first(where: { $0.id == placeId }) {
                 // Check if user has access to the circle containing this place
-                if let circle = self.circles.first(where: { $0.id == place.circleId }) {
+                if let circleId = place.circleId, let circle = self.circles.first(where: { $0.id == circleId }) {
                     if circle.owner == self.currentUserId || 
                        circle.privacy == .public || 
                        (circle.sharedWith?.contains(self.currentUserId) ?? false) {

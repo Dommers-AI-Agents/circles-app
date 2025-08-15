@@ -38,6 +38,20 @@ router.post('/reels/:videoId/like', protect, require('../controllers/videoContro
 router.delete('/reels/:videoId/like', protect, require('../controllers/videoController').unlikeReel);
 router.post('/reels/:videoId/view', protect, require('../controllers/videoController').trackReelView);
 
+// Video likes endpoint
+router.get('/:videoId/likes', protect, require('../controllers/videoController').getVideoLikes);
+
+// Activity endpoint for videos
+router.get('/:videoId/activity', protect, require('../controllers/videoController').getVideoActivity);
+
+// Comments endpoints for videos
+router.get('/:videoId/comments', protect, require('../controllers/videoController').getVideoComments);
+router.post('/:videoId/comments', protect, require('../controllers/videoController').createVideoComment);
+router.delete('/:videoId/comments/:commentId', protect, require('../controllers/videoController').deleteVideoComment);
+router.post('/:videoId/comments/:commentId/like', protect, require('../controllers/videoController').likeVideoComment);
+router.post('/:videoId/comments/:commentId/replies', protect, require('../controllers/videoController').createVideoCommentReply);
+router.get('/:videoId/comments/:commentId/replies', protect, require('../controllers/videoController').getVideoCommentReplies);
+
 router.get('/:videoId', getVideoDetails);
 
 // Video management

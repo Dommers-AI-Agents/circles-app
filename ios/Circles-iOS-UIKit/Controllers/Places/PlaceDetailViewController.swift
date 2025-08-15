@@ -9,6 +9,7 @@ class PlaceDetailViewController: BaseViewController {
     private var place: Place
     private var circle: Circle?
     private var creatorUser: User? // Store the creator user for navigation
+    private var userCircles: [Circle] = [] // Store user's circles for check-in detection
     
     // MARK: - Configuration
     override var loadsDataOnViewDidLoad: Bool { false }
@@ -38,7 +39,7 @@ class PlaceDetailViewController: BaseViewController {
     private var showingStreetView = false
     private var customImage: UIImage?
     private var isHomeOrWorkPlace: Bool {
-        return place.circleId.isEmpty && (place.id == "home-place" || place.id == "work-place")
+        return (place.circleId == nil || place.circleId?.isEmpty == true) && (place.id == "home-place" || place.id == "work-place")
     }
     private var isLoadingPhoto = false
     private var placePhotos: [UIImage] = []
@@ -656,9 +657,12 @@ class PlaceDetailViewController: BaseViewController {
         scrollView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 20, right: 0)
         
         // If circle is not provided and circleId is not empty, fetch it
-        if circle == nil && !place.circleId.isEmpty {
+        if circle == nil && place.circleId != nil && !place.circleId!.isEmpty {
             fetchCircle()
         }
+        
+        // Load user's circles for check-in detection
+        loadUserCircles()
         
         setupUI()
         configureUI()
@@ -716,8 +720,9 @@ class PlaceDetailViewController: BaseViewController {
     }
     
     private func fetchCircle() {
+        guard let circleId = place.circleId, !circleId.isEmpty else { return }
         // In a real app, we would fetch circle details from the API using the circle ID
-        CircleService.shared.fetchCircleById(id: place.circleId) { [weak self] result in
+        CircleService.shared.fetchCircleById(id: circleId) { [weak self] result in
             switch result {
             case .success(let circle):
                 self?.circle = circle
@@ -732,7 +737,13 @@ class PlaceDetailViewController: BaseViewController {
     
     private func markPlaceAsViewed() {
         // Mark this place as viewed to clear the red dot
-        NetworkManager.shared.markPlaceAsViewed(placeId: place.id, circleId: place.circleId) { error in
+        // Only mark if place belongs to a circle
+        guard let circleId = place.circleId, !circleId.isEmpty else {
+            print("Place has no circleId, skipping mark as viewed")
+            return
+        }
+        
+        NetworkManager.shared.markPlaceAsViewed(placeId: place.id, circleId: circleId) { error in
             if let error = error {
                 print("Error marking place as viewed: \(error)")
             } else {
@@ -1172,7 +1183,7 @@ class PlaceDetailViewController: BaseViewController {
         lastAnchor = commentsSection.bottomAnchor
         
         // Add circle info only if we have a circle or circleId
-        if circle != nil || !place.circleId.isEmpty {
+        if circle != nil || (place.circleId != nil && !place.circleId!.isEmpty) {
             NSLayoutConstraint.activate([
                 circleInfoView.topAnchor.constraint(equalTo: lastAnchor, constant: Constants.Spacing.large),
                 circleInfoView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
@@ -1402,7 +1413,7 @@ class PlaceDetailViewController: BaseViewController {
     private func updateCircleInfo() {
         if let circle = self.circle {
             circleNameLabel.text = "In: \(circle.name)"
-        } else if !place.circleId.isEmpty {
+        } else if place.circleId != nil && !place.circleId!.isEmpty {
             circleNameLabel.text = "Loading circle..."
         } else {
             // Hide circle info view for places without circles (e.g., Home/Work)
@@ -1659,6 +1670,19 @@ class PlaceDetailViewController: BaseViewController {
         // The constraint is set in setupUI to always anchor to addToCircleButton
     }
     
+    private func loadUserCircles() {
+        CircleService.shared.fetchUserCircles { [weak self] result in
+            switch result {
+            case .success(let circles):
+                self?.userCircles = circles
+            case .failure(let error):
+                print("Failed to load user circles: \(error)")
+                // Continue without user circles - will treat as check-in
+                self?.userCircles = []
+            }
+        }
+    }
+    
     // MARK: - Actions
     
     @objc private func addToCircleButtonTapped() {
@@ -1859,7 +1883,7 @@ class PlaceDetailViewController: BaseViewController {
     
     @objc private func moveToCircleButtonTapped() {
         let circleSelectionVC = CircleSelectionViewController(
-            excludedCircleId: place.circleId,
+            excludedCircleId: place.circleId ?? "",
             customTitle: "Select Circle to Move Place To"
         )
         circleSelectionVC.delegate = self
@@ -2940,48 +2964,84 @@ extension PlaceDetailViewController: MediaCarouselViewDelegate {
 // MARK: - Add Place to Circle
 extension PlaceDetailViewController {
     private func addPlaceToCircle(_ circle: Circle) {
-        // Show loading indicator
-        let loadingAlert = AlertPresenter.showLoading(message: "Adding Place...", from: self)
+        // Check if this is from a check-in (place not in any of user's circles)
+        let currentUserId = AuthService.shared.getUserId() ?? ""
+        let isFromCheckIn = place.circleId == nil || place.circleId!.isEmpty || // Check-in places might have empty circleId
+                           (!userCircles.contains { $0.id == place.circleId } && // Not in user's circles
+                            place.addedBy != currentUserId) // And not added by current user
         
-        // Add the place to the selected circle
-        PlaceService.shared.addExistingPlaceToCircle(placeId: place.id, circleId: circle.id) { [weak self] result in
-            DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true) {
-                    switch result {
-                    case .success:
-                        // Hide the add button
-                        self?.addToCircleButton.isHidden = true
-                        self?.updateAddressTitleConstraint()
-                        
-                        // Show success message
-                        let alert = UIAlertController(
-                            title: "Success",
-                            message: "Place added to \(circle.name)",
-                            preferredStyle: .alert
-                        )
-                        alert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self?.present(alert, animated: true)
-                        
-                        // Post notification to refresh circles if needed
-                        NotificationCenter.default.post(name: NSNotification.Name("RefreshCircles"), object: nil)
-                        
-                    case .failure(let error):
-                        // Provide more specific error messages
-                        var errorMessage = "Failed to add place"
-                        
-                        if let placeError = error as? PlaceError {
-                            errorMessage = placeError.errorDescription ?? errorMessage
-                        } else if (error as NSError).code == 401 {
-                            errorMessage = "You don't have permission to add places to this circle"
-                        } else if (error as NSError).code == 404 {
-                            errorMessage = "The place or circle was not found"
-                        } else if (error as NSError).code == 400 {
-                            errorMessage = "This place is already in the selected circle. If you just deleted it, please wait a moment and try again."
-                        } else {
-                            errorMessage = "Failed to add place: \(error.localizedDescription)"
+        if isFromCheckIn {
+            // New flow: Open AddPlaceViewController with pre-filled data
+            let addPlaceVC = AddPlaceViewController(circleId: circle.id)
+            let navController = UINavigationController(rootViewController: addPlaceVC)
+            navController.modalPresentationStyle = .fullScreen
+            
+            present(navController, animated: true) {
+                // Pre-fill with place data after presentation
+                addPlaceVC.prefillWithPlace(self.place)
+            }
+        } else {
+            // Existing flow: Copy place between user's circles
+            // Show loading indicator
+            let loadingAlert = AlertPresenter.showLoading(message: "Adding Place...", from: self)
+            
+            // Add the place to the selected circle
+            PlaceService.shared.addExistingPlaceToCircle(placeId: place.id, circleId: circle.id) { [weak self] result in
+                DispatchQueue.main.async {
+                    loadingAlert.dismiss(animated: true) {
+                        switch result {
+                        case .success(let newPlace):
+                            // Update to the new place copy that was created in the user's circle
+                            self?.place = newPlace
+                            
+                            // Reload the UI with the new place
+                            self?.configureUI()
+                            
+                            // Update the navigation title to show it's now in user's circle
+                            self?.navigationItem.title = newPlace.name
+                            
+                            // Hide the add button since this place is now in user's circle
+                            self?.addToCircleButton.isHidden = true
+                            self?.updateAddressTitleConstraint()
+                            
+                            // Show update info button if the place needs photos
+                            let hasAPIPhotos = (newPlace.photos?.count ?? 0) > 0
+                            let hasCustomImage = self?.customImage != nil
+                            let showingStreetView = self?.showingStreetView ?? false
+                            let isShowingDefaultIcon = !hasCustomImage && !hasAPIPhotos && !showingStreetView
+                            let canSearchGooglePlaces = newPlace.googlePlaceId != nil || newPlace.location != nil
+                            self?.updateInfoButton.isHidden = !isShowingDefaultIcon || !canSearchGooglePlaces
+                            
+                            // Show success message
+                            let alert = UIAlertController(
+                                title: "Success",
+                                message: "Place added to \(circle.name)",
+                                preferredStyle: .alert
+                            )
+                            alert.addAction(UIAlertAction(title: "OK", style: .default))
+                            self?.present(alert, animated: true)
+                            
+                            // Post notification to refresh circles if needed
+                            NotificationCenter.default.post(name: NSNotification.Name("RefreshCircles"), object: nil)
+                            
+                        case .failure(let error):
+                            // Provide more specific error messages
+                            var errorMessage = "Failed to add place"
+                            
+                            if let placeError = error as? PlaceError {
+                                errorMessage = placeError.errorDescription ?? errorMessage
+                            } else if (error as NSError).code == 401 {
+                                errorMessage = "You don't have permission to add places to this circle"
+                            } else if (error as NSError).code == 404 {
+                                errorMessage = "The place or circle was not found"
+                            } else if (error as NSError).code == 400 {
+                                errorMessage = "This place is already in the selected circle. If you just deleted it, please wait a moment and try again."
+                            } else {
+                                errorMessage = "Failed to add place: \(error.localizedDescription)"
+                            }
+                            
+                            AlertPresenter.showError(message: errorMessage, from: self!)
                         }
-                        
-                        AlertPresenter.showError(message: errorMessage, from: self!)
                     }
                 }
             }

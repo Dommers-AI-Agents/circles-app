@@ -547,7 +547,9 @@ class CheckInViewController: BaseViewController {
             checkInData["placeName"] = place.name
             checkInData["placeAddress"] = place.address
             checkInData["placeCategory"] = place.category.rawValue
-            checkInData["circleId"] = place.circleId
+            if let circleId = place.circleId {
+                checkInData["circleId"] = circleId
+            }
             
             if let location = place.location?.clLocation {
                 checkInData["latitude"] = location.coordinate.latitude
@@ -617,12 +619,28 @@ class CheckInViewController: BaseViewController {
                 self.selectedCompletion = result
                 self.selectedPlace = nil
                 
+                let placeName = mapItem.name ?? result.title
+                let placeAddress = mapItem.placemark.title ?? result.subtitle
+                
                 // Store the map item data for later use
-                self.tempCheckInData["placeName"] = mapItem.name ?? result.title
-                self.tempCheckInData["placeAddress"] = mapItem.placemark.title ?? result.subtitle
+                self.tempCheckInData["placeName"] = placeName
+                self.tempCheckInData["placeAddress"] = placeAddress
                 self.tempCheckInData["latitude"] = mapItem.placemark.coordinate.latitude
                 self.tempCheckInData["longitude"] = mapItem.placemark.coordinate.longitude
                 self.tempCheckInData["placeCategory"] = "other"
+                
+                // Check if this place already exists in our loaded places
+                // This would help match places like "Crunch Fitness"
+                if let existingPlace = self.myPlaces.first(where: { place in
+                    place.name.lowercased() == placeName.lowercased() &&
+                    place.address.lowercased().contains(placeAddress.lowercased().prefix(20))
+                }) {
+                    // Found a matching place! Use it instead
+                    self.selectedPlace = existingPlace
+                    self.selectedCompletion = nil
+                    self.tempCheckInData.removeAll()
+                    print("✅ Found existing place match: \(existingPlace.name) with ID: \(existingPlace.id)")
+                }
                 
                 // Enable next button
                 self.nextButton.isEnabled = true

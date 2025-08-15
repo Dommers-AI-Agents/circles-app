@@ -2,6 +2,7 @@ import UIKit
 import CoreLocation
 import UniformTypeIdentifiers
 import MapKit
+import AVFoundation
 
 // MARK: - Response Types
 struct CirclesDataResponse: Codable {
@@ -595,9 +596,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return label
     }()
     
-    // Segmented control for Activity/Reels tabs
+    // Segmented control for Activity/Moments tabs
     private let contentSegmentedControl: UISegmentedControl = {
-        let items = ["Activity", "Reels"]
+        let items = ["Activity", "Moments"]
         let control = UISegmentedControl(items: items)
         control.selectedSegmentIndex = 0
         control.translatesAutoresizingMaskIntoConstraints = false
@@ -616,18 +617,25 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return tableView
     }()
     
-    // Reels collection view for video grid
+    // Reels collection view for vertical video feed
     private let reelsCollectionView: UICollectionView = {
         let layout = UICollectionViewFlowLayout()
         layout.scrollDirection = .vertical
-        layout.minimumInteritemSpacing = 2
-        layout.minimumLineSpacing = 2
+        layout.minimumInteritemSpacing = 0
+        layout.minimumLineSpacing = 0
         let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
-        collectionView.backgroundColor = Constants.Colors.background
+        collectionView.backgroundColor = .black
+        collectionView.isPagingEnabled = true
+        collectionView.showsVerticalScrollIndicator = false
+        collectionView.contentInsetAdjustmentBehavior = .never // Use .never for full-screen video display like VideoReelsViewController
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         collectionView.isHidden = true // Hidden by default
         return collectionView
     }()
+    
+    // Track current video index for auto-play
+    private var currentReelIndex = 0
+    private var reelPlayers: [Int: AVPlayer] = [:]
     
     private let activityEmptyStateLabel: UILabel = {
         let label = UILabel()
@@ -729,6 +737,15 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Setup SSE delegate
         SSEService.shared.addDelegate(self)
         
+        // Configure reels collection view layout
+        if let flowLayout = reelsCollectionView.collectionViewLayout as? UICollectionViewFlowLayout {
+            flowLayout.scrollDirection = .vertical
+            flowLayout.minimumInteritemSpacing = 0
+            flowLayout.minimumLineSpacing = 0
+            flowLayout.sectionInset = .zero
+            // Don't set item size here - let the delegate method handle it
+        }
+        
         // Keep map container visible but show loading overlay
         // This prevents the black screen issue
         mapContainerView.isHidden = false
@@ -780,6 +797,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         
+        // Invalidate reels collection view layout to ensure proper sizing
+        if reelsCollectionView.bounds.width > 0 {
+            reelsCollectionView.collectionViewLayout.invalidateLayout()
+        }
+        
         // Apply gradients to cards with Google Maps blue
         let googleMapsBlue = UIColor(red: 66/255.0, green: 133/255.0, blue: 244/255.0, alpha: 1.0)
         
@@ -792,6 +814,15 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             googleMapsBlue,
             googleMapsBlue.withAlphaComponent(0.85)
         ])
+    }
+    
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        
+        // Invalidate collection view layout on rotation
+        coordinator.animate(alongsideTransition: { _ in
+            self.reelsCollectionView.collectionViewLayout.invalidateLayout()
+        }, completion: nil)
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -1178,8 +1209,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Ensure loading view is on top
         view.bringSubviewToFront(loadingContainerView)
         
-        // Add tap gesture to dismiss dropdowns when clicking outside
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissDropdowns))
+        // Add tap gesture to dismiss dropdowns and keyboard when clicking outside
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissDropdowns(_:)))
         tapGesture.cancelsTouchesInView = false
         tapGesture.delegate = self
         view.addGestureRecognizer(tapGesture)
@@ -1414,7 +1445,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             activityTableView.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor),
             activityTableView.bottomAnchor.constraint(equalTo: activityFeedSection.bottomAnchor),
             
-            // Reels collection view (same position as activity table)
+            // Reels collection view (full width for video experience)
             reelsCollectionView.topAnchor.constraint(equalTo: contentSegmentedControl.bottomAnchor, constant: Constants.Spacing.small),
             reelsCollectionView.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor),
             reelsCollectionView.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor),
@@ -1432,9 +1463,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             activityLoadingContainer.widthAnchor.constraint(equalToConstant: 80),
             activityLoadingContainer.heightAnchor.constraint(equalToConstant: 80),
             
-            // Floating record button
-            floatingRecordButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
-            floatingRecordButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -80),
+            // Floating record button - positioned at top left
+            floatingRecordButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            floatingRecordButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 60),
             floatingRecordButton.widthAnchor.constraint(equalToConstant: 56),
             floatingRecordButton.heightAnchor.constraint(equalToConstant: 56)
         ])
@@ -1559,7 +1590,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Setup reels collection view
         reelsCollectionView.delegate = self
         reelsCollectionView.dataSource = self
-        reelsCollectionView.register(VideoThumbnailCell.self, forCellWithReuseIdentifier: "VideoThumbnailCell")
+        reelsCollectionView.register(VideoReelCell.self, forCellWithReuseIdentifier: "VideoReelCell")
         
         // Setup segmented control
         contentSegmentedControl.addTarget(self, action: #selector(contentSegmentChanged), for: .valueChanged)
@@ -1576,11 +1607,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     private func setupSearchBar() {
         searchBar.delegate = self
         
-        // Add tap gesture to dismiss keyboard when tapping outside search bar
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
-        tapGesture.cancelsTouchesInView = false
-        view.addGestureRecognizer(tapGesture)
-        
         // Add toolbar with Done button to search bar
         let toolbar = UIToolbar()
         toolbar.sizeToFit()
@@ -1592,20 +1618,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         searchBar.inputAccessoryView = toolbar
     }
     
-    @objc private func dismissKeyboard(_ gesture: UITapGestureRecognizer? = nil) {
-        // If called from tap gesture, check if tap is outside search bar
-        if let gesture = gesture {
-            let location = gesture.location(in: view)
-            let searchBarFrame = searchBar.convert(searchBar.bounds, to: view)
-            
-            // Only dismiss if tap is outside search bar
-            if !searchBarFrame.contains(location) {
-                searchBar.resignFirstResponder()
-            }
-        } else {
-            // Called from Done button, always dismiss
-            searchBar.resignFirstResponder()
-        }
+    @objc private func dismissKeyboard() {
+        // Called from Done button, always dismiss
+        searchBar.resignFirstResponder()
     }
     
     private func setupQuickAccessButtons() {
@@ -1803,6 +1818,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             floatingRecordButton.isHidden = true
             activityHeaderLabel.text = "Recent Activity"
             
+            // Pause any playing videos
+            pauseAllVideos()
+            
             // Load activities if needed
             if activities.isEmpty {
                 fetchActivities()
@@ -1811,12 +1829,34 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             // Show Reels feed
             activityTableView.isHidden = true
             reelsCollectionView.isHidden = false
+            
+            // Reset to first video
+            currentReelIndex = 0
+            
+            // Force layout update before showing collection view
+            view.layoutIfNeeded()
+            
+            // Invalidate layout to ensure proper sizing
+            reelsCollectionView.collectionViewLayout.invalidateLayout()
+            
+            // Reset collection view to top to fix Y offset issue
+            reelsCollectionView.setContentOffset(.zero, animated: false)
+            
+            // Scroll to first item explicitly
+            if !reels.isEmpty {
+                let firstIndexPath = IndexPath(item: 0, section: 0)
+                reelsCollectionView.scrollToItem(at: firstIndexPath, at: .top, animated: false)
+            }
+            
             floatingRecordButton.isHidden = false
-            activityHeaderLabel.text = "Reels"
+            activityHeaderLabel.text = "Moments"
             
             // Load reels if needed
             if reels.isEmpty {
                 fetchReels()
+            } else {
+                // Start playing the current video if we already have reels
+                playVideo(at: currentReelIndex)
             }
         }
     }
@@ -1983,10 +2023,16 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 
                 switch result {
                 case .success(let response):
+                    // Filter out failed uploads and videos without URLs
+                    let validReels = response.data.filter { video in
+                        let hasValidUrl = video.contentType == "photo" ? video.thumbnailUrl != nil : video.videoUrl != nil
+                        return video.uploadStatus == .ready && hasValidUrl
+                    }
+                    
                     if loadMore {
-                        self.reels.append(contentsOf: response.data)
+                        self.reels.append(contentsOf: validReels)
                     } else {
-                        self.reels = response.data
+                        self.reels = validReels
                     }
                     
                     self.reelsOffset = self.reels.count
@@ -2017,15 +2063,46 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Update empty state
         if reels.isEmpty {
-            activityEmptyStateLabel.text = "No reels yet. Be the first to share a video!"
+            activityEmptyStateLabel.text = "No moments yet. Be the first to share a moment!"
             activityEmptyStateLabel.isHidden = false
         } else {
             activityEmptyStateLabel.isHidden = true
         }
         
+        // Reset to first video when loading new data
+        currentReelIndex = 0
+        
+        // Force layout update
+        view.layoutIfNeeded()
+        
+        // Invalidate layout to ensure proper sizing
+        reelsCollectionView.collectionViewLayout.invalidateLayout()
+        
         // Reload collection
         reelsCollectionView.reloadData()
+        
+        // Reset scroll position to top after loading new data
+        reelsCollectionView.setContentOffset(.zero, animated: false)
+        
+        // Ensure we're at the first item
+        if !reels.isEmpty {
+            let firstIndexPath = IndexPath(item: 0, section: 0)
+            reelsCollectionView.scrollToItem(at: firstIndexPath, at: .top, animated: false)
+            
+            // Start playing the first video after a short delay to ensure layout is complete
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.playVideo(at: 0)
+            }
+        }
+        
         view.layoutIfNeeded()
+        
+        // Start playing the first video if this is the visible tab
+        if contentSegmentedControl.selectedSegmentIndex == 1 && !reels.isEmpty {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                self?.playVideo(at: 0)
+            }
+        }
     }
     
     // MARK: - Data Fetching
@@ -2174,7 +2251,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 
                 // Extract user's own places
                 let userCircleIds = Set(myCirclesResult.map { $0.id })
-                self.userOwnPlaces = uniquePlaces.filter { userCircleIds.contains($0.circleId) }
+                self.userOwnPlaces = uniquePlaces.filter { place in
+                    if let circleId = place.circleId {
+                        return userCircleIds.contains(circleId)
+                    }
+                    return false
+                }
                 
                 // Cache the places
                 self.cachedPlaces = uniquePlaces
@@ -2640,7 +2722,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             // Also check by owner ID in case circle IDs don't match
             let userPlacesBeforeDedup = allFetchedPlaces.filter { place in
                 // First check if circleId is in user's circles
-                if userCircleIds.contains(place.circleId) {
+                if let circleId = place.circleId, userCircleIds.contains(circleId) {
                     return true
                 }
                 // Also check if the circle this place belongs to is owned by the current user
@@ -2651,8 +2733,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 return false
             }
             let networkPlacesBeforeDedup = allFetchedPlaces.filter { place in
-                !userCircleIds.contains(place.circleId) && 
-                !self.networkCircles.contains(where: { $0.id == place.circleId && IDNormalizer.isSameUser($0.owner, currentUserId) })
+                guard let circleId = place.circleId else { return false }
+                return !userCircleIds.contains(circleId) && 
+                !self.networkCircles.contains(where: { $0.id == circleId && IDNormalizer.isSameUser($0.owner, currentUserId) })
             }
             
             print("📍 BEFORE DEDUPLICATION:")
@@ -2665,17 +2748,18 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             
             // Count after deduplication using same logic as filter
             let userPlacesAfterDedup = deduplicatedPlaces.filter { place in
-                if userCircleIds.contains(place.circleId) {
+                if let circleId = place.circleId, userCircleIds.contains(circleId) {
                     return true
                 }
-                if let circle = self.networkCircles.first(where: { $0.id == place.circleId }) {
+                if let circleId = place.circleId, let circle = self.networkCircles.first(where: { $0.id == circleId }) {
                     return IDNormalizer.isSameUser(circle.owner, currentUserId)
                 }
                 return false
             }
             let networkPlacesAfterDedup = deduplicatedPlaces.filter { place in
-                !userCircleIds.contains(place.circleId) && 
-                !self.networkCircles.contains(where: { $0.id == place.circleId && IDNormalizer.isSameUser($0.owner, currentUserId) })
+                guard let circleId = place.circleId else { return false }
+                return !userCircleIds.contains(circleId) && 
+                       !self.networkCircles.contains(where: { $0.id == circleId && IDNormalizer.isSameUser($0.owner, currentUserId) })
             }
             
             print("📍 AFTER DEDUPLICATION:")
@@ -2910,9 +2994,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         for place in allPlaces {
             // Check if this is a user's place
-            if userCircleIds.contains(place.circleId) {
+            if let circleId = place.circleId, userCircleIds.contains(circleId) {
                 userPlaces.append(place)
-            } else if let circle = networkCircles.first(where: { $0.id == place.circleId }) {
+            } else if let circleId = place.circleId, let circle = networkCircles.first(where: { $0.id == circleId }) {
                 // Check if the circle owner is the current user (handles user circles in networkCircles)
                 if IDNormalizer.isSameUser(circle.owner, currentUserId) {
                     userPlaces.append(place)
@@ -3110,7 +3194,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             
             // Filter cached places to get only user's own places
             let userPlacesFromCache = self.cachedPlaces.filter { place in
-                if userCircleIds.contains(place.circleId) {
+                if let circleId = place.circleId, userCircleIds.contains(circleId) {
                     return true
                 }
                 if let circle = self.networkCircles.first(where: { $0.id == place.circleId }) {
@@ -3175,7 +3259,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                         var isUserPlace = false
                         
                         // First check if circleId is in user's circles
-                        if userCircleIds.contains(place.circleId) {
+                        if let circleId = place.circleId, userCircleIds.contains(circleId) {
                             isUserPlace = true
                         } else {
                             // Check if this place's circle is owned by the current user
@@ -3426,8 +3510,21 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    @objc private func dismissDropdowns() {
-        // Check if tapped outside of dropdowns
+    @objc private func dismissDropdowns(_ gesture: UITapGestureRecognizer? = nil) {
+        // Handle keyboard dismissal first
+        if searchBar.isFirstResponder {
+            if let gesture = gesture {
+                let location = gesture.location(in: view)
+                let searchBarFrame = searchBar.convert(searchBar.bounds, to: view)
+                
+                // Only dismiss keyboard if tap is outside search bar
+                if !searchBarFrame.contains(location) {
+                    searchBar.resignFirstResponder()
+                }
+            }
+        }
+        
+        // Then handle dropdown dismissal
         if isCategoryDropdownOpen {
             isCategoryDropdownOpen = false
             hideCategoryDropdown()
@@ -4111,7 +4208,12 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 cell.textLabel?.textColor = selectedCategory == nil ? Constants.Colors.primary : Constants.Colors.label
                 cell.accessoryType = selectedCategory == nil ? .checkmark : .none
             } else {
-                let category = availableCategories[indexPath.row - 1]
+                // Add bounds check
+                let categoryIndex = indexPath.row - 1
+                guard categoryIndex < availableCategories.count else {
+                    return cell
+                }
+                let category = availableCategories[categoryIndex]
                 cell.textLabel?.text = category.displayName
                 cell.textLabel?.textColor = selectedCategory == category ? Constants.Colors.primary : Constants.Colors.label
                 cell.accessoryType = selectedCategory == category ? .checkmark : .none
@@ -4139,7 +4241,12 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 cell.textLabel?.textColor = selectedConnectionId == "my_places_only" ? Constants.Colors.primary : Constants.Colors.label
                 cell.accessoryType = selectedConnectionId == "my_places_only" ? .checkmark : .none
             } else {
-                let connection = NetworkManager.shared.connections[indexPath.row - 2]
+                // Add bounds check
+                let connectionIndex = indexPath.row - 2
+                guard connectionIndex < NetworkManager.shared.connections.count else {
+                    return cell
+                }
+                let connection = NetworkManager.shared.connections[connectionIndex]
                 let userName = connection.connectedUser?.displayName ?? "Unknown"
                 cell.textLabel?.text = userName
                 // Compare with the other user's ID
@@ -4162,6 +4269,11 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             selectedView.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.1)
             cell.selectedBackgroundView = selectedView
             
+            // Add bounds check
+            guard indexPath.row < SearchScope.allCases.count else {
+                return cell
+            }
+            
             let scope = SearchScope.allCases[indexPath.row]
             cell.textLabel?.text = scope.title
             cell.textLabel?.textColor = currentSearchScope == scope ? Constants.Colors.primary : Constants.Colors.label
@@ -4170,6 +4282,12 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             return cell
         } else if tableView == searchResultsTableView {
             let cell = tableView.dequeueReusableCell(withIdentifier: "SearchResultCell", for: indexPath)
+            
+            // Add bounds check
+            guard indexPath.row < filteredPlaces.count else {
+                return cell
+            }
+            
             let place = filteredPlaces[indexPath.row]
             
             var content = cell.defaultContentConfiguration()
@@ -4188,7 +4306,7 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 
                 // Look through network circles to find the owner
                 for networkCircle in networkCircles {
-                    if networkCircle.id == place.circleId {
+                    if let circleId = place.circleId, networkCircle.id == circleId {
                         // Found the circle, get the owner's name
                         if let ownerDetails = networkCircle.ownerDetails {
                             connectionName = ownerDetails.displayName
@@ -4248,6 +4366,12 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             return cell
         } else if tableView == activityTableView {
             let cell = tableView.dequeueReusableCell(withIdentifier: ActivityFeedCell.identifier, for: indexPath) as! ActivityFeedCell
+            
+            // Add bounds check
+            guard indexPath.row < activities.count else {
+                return cell
+            }
+            
             let activity = activities[indexPath.row]
             cell.delegate = self
             cell.configure(with: activity)
@@ -4272,7 +4396,9 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 categoryFilterButton.setTitle("All Categories", for: .normal)
             } else {
                 // Specific category selected
-                selectedCategory = availableCategories[indexPath.row - 1]
+                let categoryIndex = indexPath.row - 1
+                guard categoryIndex < availableCategories.count else { return }
+                selectedCategory = availableCategories[categoryIndex]
                 categoryFilterButton.setTitle(selectedCategory?.displayName ?? "All Categories", for: .normal)
             }
             
@@ -4293,7 +4419,9 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 connectionFilterButton.setTitle("My Places Only", for: .normal)
             } else {
                 // Specific connection selected
-                let connection = NetworkManager.shared.connections[indexPath.row - 2]
+                let connectionIndex = indexPath.row - 2
+                guard connectionIndex < NetworkManager.shared.connections.count else { return }
+                let connection = NetworkManager.shared.connections[connectionIndex]
                 // Use the other user's ID (not the current user's ID)
                 let currentUserId = AuthService.shared.getUserId() ?? ""
                 selectedConnectionId = connection.otherUserId(currentUserId: currentUserId)
@@ -4307,6 +4435,9 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             hideConnectionDropdown()
             isConnectionDropdownOpen = false
         } else if tableView == searchScopeTableView {
+            // Add bounds check
+            guard indexPath.row < SearchScope.allCases.count else { return }
+            
             let selectedScope = SearchScope.allCases[indexPath.row]
             currentSearchScope = selectedScope
             
@@ -4327,8 +4458,12 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             hideSearchScopeDropdown()
             isSearchScopeDropdownOpen = false
         } else if tableView == searchResultsTableView {
+            // Add bounds check
+            guard indexPath.row < filteredPlaces.count else { return }
             handleSearchResultSelection(at: indexPath)
         } else if tableView == activityTableView {
+            // Add bounds check
+            guard indexPath.row < activities.count else { return }
             let activity = activities[indexPath.row]
             
             // Navigate based on activity type
@@ -4340,17 +4475,11 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 // Navigate to the circle
                 navigateToCircle(withId: activity.targetId)
             case .checkIn:
-                // Navigate to the place where check-in occurred
-                // For check-ins, the place ID is in the metadata, not targetId
-                if let placeId = activity.metadata?.placeId {
-                    navigateToPlace(withId: placeId)
-                } else {
-                    // If no place ID in metadata, show error
-                    showError("Unable to load place details for this check-in")
-                }
+                // Navigate to the check-in place
+                navigateToCheckInPlace(activity: activity)
             case .videoUploaded:
-                // Navigate to the place where video was uploaded
-                navigateToPlace(withId: activity.targetId)
+                // Navigate to the video (targetId is the video ID for video activities)
+                navigateToVideo(withId: activity.targetId)
             }
         }
     }
@@ -4433,6 +4562,13 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         // Call the protocol's default implementation
         (self as PlaceSearchable).searchBar(searchBar, textDidChange: searchText)
         // Update empty state after search
+        updateEmptyState()
+    }
+    
+    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+        // Dismiss the keyboard when "Done" is tapped
+        searchBar.resignFirstResponder()
+        // Update empty state if needed
         updateEmptyState()
     }
     
@@ -4553,13 +4689,15 @@ extension CirclesHomeViewController {
         var targetCircle: Circle?
         
         // Check user's circles first
-        if let circle = circles.first(where: { $0.id == place.circleId }) {
+        if let circleId = place.circleId, let circle = circles.first(where: { $0.id == circleId }) {
             targetCircle = circle
         }
         
         // Check network circles if not found
         if targetCircle == nil {
-            targetCircle = networkCircles.first(where: { $0.id == place.circleId })
+            if let circleId = place.circleId {
+                targetCircle = networkCircles.first(where: { $0.id == circleId })
+            }
         }
         
         guard let circle = targetCircle else {
@@ -4778,6 +4916,149 @@ extension CirclesHomeViewController {
         }
     }
     
+    private func navigateToVideo(withId videoId: String) {
+        // Show loading indicator
+        let loadingAlert = AlertPresenter.showLoading(message: "Loading video...", from: self)
+        
+        // Fetch video details
+        APIService.shared.request(
+            endpoint: "videos/\(videoId)",
+            method: .get
+        ) { [weak self] (result: Result<VideoResponse, APIError>) in
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    guard let self = self else { return }
+                    
+                    switch result {
+                    case .success(let response):
+                        // Create array with just this video
+                        let reels = [response.data]
+                        
+                        // Open VideoReelsViewController
+                        let reelsVC = VideoReelsViewController(reels: reels, startIndex: 0)
+                        
+                        // Set the place navigation handler
+                        reelsVC.placeNavigationHandler = { [weak self] placeId in
+                            // Navigate to place after video is dismissed
+                            self?.navigateToPlace(withId: placeId)
+                        }
+                        
+                        reelsVC.modalPresentationStyle = .fullScreen
+                        self.present(reelsVC, animated: true)
+                        
+                    case .failure(let error):
+                        self.showError("Unable to load video: \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
+    }
+    
+    private func navigateToCheckInPlace(activity: Activity) {
+        // First check if we have the place ID and can find it in our loaded data
+        if let placeId = activity.metadata?.placeId,
+           let place = allPlaces.first(where: { $0.id == placeId }) {
+            // Found the place in our data, navigate normally
+            if let circle = circles.first(where: { $0.places?.contains(placeId) == true }) {
+                let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
+                navigationController?.pushViewController(placeDetailVC, animated: true)
+            } else if let networkCircle = networkCircles.first(where: { $0.places?.contains(placeId) == true }) {
+                let placeDetailVC = PlaceDetailViewController(place: place, circle: networkCircle)
+                navigationController?.pushViewController(placeDetailVC, animated: true)
+            } else {
+                // Place exists but not in a circle (floating place), still show it
+                let placeDetailVC = PlaceDetailViewController(place: place, circle: nil)
+                navigationController?.pushViewController(placeDetailVC, animated: true)
+            }
+        } else if let placeId = activity.metadata?.placeId {
+            // Have a place ID but not in our data, try to load it
+            // But if it fails, fall back to creating from metadata
+            PlaceService.shared.fetchPlaceById(id: placeId) { [weak self] result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(let place):
+                        // Successfully loaded the place
+                        let placeDetailVC = PlaceDetailViewController(place: place, circle: nil)
+                        self?.navigationController?.pushViewController(placeDetailVC, animated: true)
+                    case .failure:
+                        // Failed to load, create from metadata
+                        self?.navigateToCheckInPlaceFromMetadata(activity: activity)
+                    }
+                }
+            }
+        } else {
+            // No place ID, create from metadata
+            navigateToCheckInPlaceFromMetadata(activity: activity)
+        }
+    }
+    
+    private func navigateToCheckInPlaceFromMetadata(activity: Activity) {
+        // Create a temporary place from check-in metadata
+        guard let metadata = activity.metadata else {
+            showError("Unable to load place details for this check-in")
+            return
+        }
+        
+        // Determine place category
+        let categoryString = metadata.placeCategory ?? "other"
+        let category = PlaceCategory(rawValue: categoryString) ?? .other
+        
+        // Create coordinate if we have location data
+        var coordinate: CLLocationCoordinate2D?
+        if let lat = metadata.latitude, let lng = metadata.longitude {
+            coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lng)
+        }
+        
+        // Create GeoLocation from coordinate
+        var geoLocation: GeoLocation? = nil
+        if let coord = coordinate {
+            geoLocation = GeoLocation(
+                type: "Point",
+                coordinates: [coord.longitude, coord.latitude]
+            )
+        }
+        
+        // Create a temporary place object
+        let tempPlace = Place(
+            id: activity.metadata?.placeId ?? UUID().uuidString,
+            name: activity.targetName,
+            description: nil,
+            address: metadata.placeAddress ?? "",
+            location: geoLocation,
+            website: nil,
+            phone: nil,
+            googlePlaceId: nil,
+            photos: metadata.placePhoto != nil ? [metadata.placePhoto!] : nil,
+            videos: nil,
+            category: category,
+            customCategoryId: nil,
+            subcategory: nil,
+            rating: nil,
+            userRatingsTotal: nil,
+            notes: metadata.message,
+            privateNotes: nil,
+            publicNotes: nil,
+            tags: nil,
+            reviews: nil,
+            openingHours: nil,
+            priceLevel: nil,
+            likes: nil,
+            likesCount: nil,
+            commentsCount: 0,
+            circleId: metadata.circleId ?? "",
+            addedBy: activity.actorId,
+            addedByUser: nil,
+            privacy: .public,
+            createdAt: Date(),
+            updatedAt: Date(),
+            isNew: true
+        )
+        
+        // Navigate to place detail with the temporary place
+        let placeDetailVC = PlaceDetailViewController(place: tempPlace, circle: nil)
+        navigationController?.pushViewController(placeDetailVC, animated: true)
+    }
+    
     private func loadPlaceAndNavigate(placeId: String) {
         // Show loading
         let loadingAlert = UIAlertController(title: "Loading", message: "Loading place...", preferredStyle: .alert)
@@ -4790,7 +5071,17 @@ extension CirclesHomeViewController {
                     switch result {
                     case .success(let place):
                         // We need to find the circle
-                        CircleService.shared.fetchCircleById(id: place.circleId) { circleResult in
+                        guard let circleId = place.circleId else {
+                            let alert = UIAlertController(
+                                title: "Error",
+                                message: "Place has no associated circle",
+                                preferredStyle: .alert
+                            )
+                            alert.addAction(UIAlertAction(title: "OK", style: .default))
+                            self.present(alert, animated: true)
+                            return
+                        }
+                        CircleService.shared.fetchCircleById(id: circleId) { circleResult in
                             DispatchQueue.main.async {
                                 switch circleResult {
                                 case .success(let circle):
@@ -4817,6 +5108,118 @@ extension CirclesHomeViewController {
                         alert.addAction(UIAlertAction(title: "OK", style: .default))
                         self.present(alert, animated: true)
                     }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Swipe Actions for Activity Table
+    func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        // Only handle swipe actions for activity table
+        guard tableView == activityTableView else { return nil }
+        
+        // Add bounds check
+        guard indexPath.row < activities.count else { return nil }
+        
+        let activity = activities[indexPath.row]
+        let currentUserId = AuthService.shared.getUserId() ?? ""
+        
+        // Only allow deletion of user's own activities
+        guard activity.actorId == currentUserId else { return nil }
+        
+        // Create delete action
+        let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, completion in
+            self?.confirmDeleteActivity(at: indexPath, completion: completion)
+        }
+        
+        deleteAction.backgroundColor = .systemRed
+        deleteAction.image = UIImage(systemName: "trash")
+        
+        let configuration = UISwipeActionsConfiguration(actions: [deleteAction])
+        configuration.performsFirstActionWithFullSwipe = false // Require confirmation
+        
+        return configuration
+    }
+    
+    // Helper method to confirm and delete activity
+    private func confirmDeleteActivity(at indexPath: IndexPath, completion: @escaping (Bool) -> Void) {
+        guard indexPath.row < activities.count else {
+            completion(false)
+            return
+        }
+        
+        let activity = activities[indexPath.row]
+        
+        // Show confirmation alert
+        let alert = UIAlertController(
+            title: "Delete Activity",
+            message: "Are you sure you want to delete this activity? This action cannot be undone.",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in
+            completion(false)
+        })
+        
+        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+            self?.deleteActivity(activity, at: indexPath, completion: completion)
+        })
+        
+        present(alert, animated: true)
+    }
+    
+    // Method to delete activity from backend and update UI
+    private func deleteActivity(_ activity: Activity, at indexPath: IndexPath, completion: @escaping (Bool) -> Void) {
+        // Call API to delete activity
+        let endpoint = "activities/\(activity.id)"
+        
+        APIService.shared.request(
+            endpoint: endpoint,
+            method: .delete
+        ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
+            DispatchQueue.main.async {
+                guard let self = self else {
+                    completion(false)
+                    return
+                }
+                
+                switch result {
+                case .success:
+                    // Remove activity from array
+                    self.activities.remove(at: indexPath.row)
+                    
+                    // Update table view
+                    self.activityTableView.deleteRows(at: [indexPath], with: .automatic)
+                    
+                    // Update empty state if needed
+                    self.activityEmptyStateLabel.isHidden = !self.activities.isEmpty
+                    
+                    // Show success feedback
+                    let successAlert = UIAlertController(
+                        title: nil,
+                        message: "Activity deleted successfully",
+                        preferredStyle: .alert
+                    )
+                    self.present(successAlert, animated: true)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        successAlert.dismiss(animated: true)
+                    }
+                    
+                    completion(true)
+                    
+                case .failure(let error):
+                    print("Failed to delete activity: \(error)")
+                    
+                    // Show error alert
+                    let errorAlert = UIAlertController(
+                        title: "Error",
+                        message: "Failed to delete activity. Please try again.",
+                        preferredStyle: .alert
+                    )
+                    errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                    self.present(errorAlert, animated: true)
+                    
+                    completion(false)
                 }
             }
         }
@@ -4853,19 +5256,44 @@ extension CirclesHomeViewController: UIScrollViewDelegate {
             }
         }
     }
+    
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        if scrollView == reelsCollectionView {
+            updateCurrentReelIndex()
+        }
+    }
+    
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        if !decelerate && scrollView == reelsCollectionView {
+            updateCurrentReelIndex()
+        }
+    }
 }
 
 // MARK: - UIGestureRecognizerDelegate
 extension CirclesHomeViewController: UIGestureRecognizerDelegate {
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        // Ensure touch.view is valid and is a UIView
+        guard let touchView = touch.view as? UIView else {
+            return false
+        }
+        
+        // Don't intercept touches on the search bar or keyboard
+        if touchView.isDescendant(of: searchBar) {
+            return false
+        }
+        
+        // Don't intercept touches if keyboard is showing (this prevents issues with keyboard buttons)
+        if searchBar.isFirstResponder {
+            return false
+        }
+        
         // Don't intercept touches on the dropdown table views
-        if let touchView = touch.view {
-            if touchView.isDescendant(of: categoryDropdownTableView) ||
-               touchView.isDescendant(of: connectionDropdownTableView) ||
-               touchView.isDescendant(of: searchScopeTableView) ||
-               touchView.isDescendant(of: searchResultsTableView) {
-                return false
-            }
+        if touchView.isDescendant(of: categoryDropdownTableView) ||
+           touchView.isDescendant(of: connectionDropdownTableView) ||
+           touchView.isDescendant(of: searchScopeTableView) ||
+           touchView.isDescendant(of: searchResultsTableView) {
+            return false
         }
         
         // Don't intercept touches on the dropdown containers themselves
@@ -5041,9 +5469,18 @@ extension CirclesHomeViewController: UICollectionViewDataSource {
     
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         if collectionView == reelsCollectionView {
-            let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "VideoThumbnailCell", for: indexPath) as! VideoThumbnailCell
+            let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "VideoReelCell", for: indexPath) as! VideoReelCell
             let reel = reels[indexPath.item]
-            cell.configure(with: reel)
+            
+            // Get or create player for this video
+            if reel.contentType != "photo" && reelPlayers[indexPath.item] == nil {
+                loadReelVideo(at: indexPath.item)
+            }
+            
+            let player = reel.contentType == "photo" ? nil : reelPlayers[indexPath.item]
+            cell.configure(with: reel, player: player)
+            cell.delegate = self
+            
             return cell
         }
         return UICollectionViewCell()
@@ -5055,11 +5492,12 @@ extension CirclesHomeViewController: UICollectionViewDataSource {
 extension CirclesHomeViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         if collectionView == reelsCollectionView {
-            let reel = reels[indexPath.item]
-            // Open full-screen reels player
-            let reelsVC = VideoReelsViewController(reels: reels, startIndex: indexPath.item)
-            reelsVC.modalPresentationStyle = .fullScreen
-            present(reelsVC, animated: true)
+            // Videos are played inline, no need to open full screen
+            // Just ensure the video at this index is playing
+            if indexPath.item != currentReelIndex {
+                let offsetY = CGFloat(indexPath.item) * collectionView.frame.size.height
+                collectionView.setContentOffset(CGPoint(x: 0, y: offsetY), animated: true)
+            }
         }
     }
 }
@@ -5069,12 +5507,24 @@ extension CirclesHomeViewController: UICollectionViewDelegate {
 extension CirclesHomeViewController: UICollectionViewDelegateFlowLayout {
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
         if collectionView == reelsCollectionView {
-            // 3 columns grid
-            let width = (collectionView.frame.width - 4) / 3
-            let height = width * 16 / 9 // 16:9 aspect ratio
-            return CGSize(width: width, height: height)
+            // Simply return the collection view's size - no need for complex calculations
+            return collectionView.frame.size
         }
         return CGSize.zero
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumLineSpacingForSectionAt section: Int) -> CGFloat {
+        if collectionView == reelsCollectionView {
+            return 0
+        }
+        return 0
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumInteritemSpacingForSectionAt section: Int) -> CGFloat {
+        if collectionView == reelsCollectionView {
+            return 0
+        }
+        return 0
     }
 }
 
@@ -5109,6 +5559,264 @@ extension CirclesHomeViewController: VideoLinkInputDelegate {
     
     func videoLinkInputDidCancel() {
         // User cancelled - nothing to do
+    }
+}
+
+// MARK: - Video Management
+
+extension CirclesHomeViewController {
+    private func loadReelVideo(at index: Int) {
+        guard index >= 0 && index < reels.count else { return }
+        
+        let reel = reels[index]
+        
+        // Skip loading video player for photos
+        if reel.contentType == "photo" {
+            return
+        }
+        
+        guard let urlString = reel.videoUrl ?? reel.previewUrl,
+              let url = URL(string: urlString) else { 
+            print("❌ CirclesHome: Invalid video URL for reel \(reel.id)")
+            print("   - videoUrl: \(reel.videoUrl ?? "nil")")
+            print("   - previewUrl: \(reel.previewUrl ?? "nil")")
+            print("   - title: \(reel.title)")
+            print("   - uploadStatus: \(reel.uploadStatus.rawValue)")
+            return 
+        }
+        
+        // Create player
+        let player = AVPlayer(url: url)
+        player.actionAtItemEnd = .none // Loop video
+        
+        // Enable audio playback
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            print("❌ CirclesHome: Failed to setup audio session: \(error)")
+        }
+        
+        reelPlayers[index] = player
+        print("✅ CirclesHome: Loaded video for index \(index), URL: \(url)")
+        
+        // Force collection view to reload this cell to update with the player
+        DispatchQueue.main.async { [weak self] in
+            if let cell = self?.reelsCollectionView.cellForItem(at: IndexPath(item: index, section: 0)) as? VideoReelCell {
+                cell.configure(with: reel, player: player)
+                print("📹 CirclesHome: Reconfigured cell with player for index \(index)")
+            }
+        }
+    }
+    
+    private func updateCurrentReelIndex() {
+        let center = CGPoint(x: reelsCollectionView.frame.size.width / 2 + reelsCollectionView.contentOffset.x,
+                            y: reelsCollectionView.frame.size.height / 2 + reelsCollectionView.contentOffset.y)
+        
+        if let indexPath = reelsCollectionView.indexPathForItem(at: center), indexPath.item != currentReelIndex {
+            // Pause previous video
+            pauseVideo(at: currentReelIndex)
+            
+            // Update current index
+            currentReelIndex = indexPath.item
+            
+            // Play new video
+            playVideo(at: currentReelIndex)
+            
+            // Preload adjacent videos
+            preloadAdjacentVideos()
+        }
+    }
+    
+    private func playVideo(at index: Int) {
+        guard index >= 0 && index < reels.count else { return }
+        
+        // Check if it's a photo
+        if reels[index].contentType == "photo" {
+            return
+        }
+        
+        // Play video if available
+        if let player = reelPlayers[index] {
+            // Restart from beginning when returning to video
+            player.seek(to: .zero) { _ in
+                player.play()
+                print("▶️ CirclesHome: Playing video at index \(index) from beginning")
+            }
+        } else {
+            // Load and play
+            loadReelVideo(at: index)
+            // Player will auto-play when ready if we add KVO like in VideoReelsViewController
+        }
+    }
+    
+    private func pauseVideo(at index: Int) {
+        if let player = reelPlayers[index] {
+            player.pause()
+            print("⏸ CirclesHome: Paused video at index \(index)")
+        }
+    }
+    
+    private func pauseAllVideos() {
+        for player in reelPlayers.values {
+            player.pause()
+        }
+    }
+    
+    private func preloadAdjacentVideos() {
+        // Preload videos around current index
+        let preloadRange = max(0, currentReelIndex - 1)...min(reels.count - 1, currentReelIndex + 1)
+        
+        for index in preloadRange {
+            if reelPlayers[index] == nil && reels[index].contentType != "photo" {
+                loadReelVideo(at: index)
+            }
+        }
+        
+        // Clean up distant videos to save memory
+        releaseDistantVideos()
+    }
+    
+    private func releaseDistantVideos() {
+        // Release videos that are more than 2 positions away
+        for (index, player) in reelPlayers {
+            if abs(index - currentReelIndex) > 2 {
+                player.pause()
+                reelPlayers.removeValue(forKey: index)
+                print("🗑 CirclesHome: Released video at index \(index)")
+            }
+        }
+    }
+}
+
+// MARK: - VideoReelCellDelegate
+
+extension CirclesHomeViewController: VideoReelCellDelegate {
+    func videoReelCellDidTapLike(_ cell: VideoReelCell) {
+        guard let indexPath = reelsCollectionView.indexPath(for: cell) else { return }
+        var reel = reels[indexPath.item]
+        
+        // Toggle like state optimistically
+        let wasLiked = reel.likedByCurrentUser ?? false
+        reel.likedByCurrentUser = !wasLiked
+        reel.likeCount = wasLiked ? max(0, reel.likeCount - 1) : reel.likeCount + 1
+        reels[indexPath.item] = reel
+        
+        // Update cell
+        cell.configure(with: reel, player: reelPlayers[indexPath.item])
+        
+        // Call API
+        let endpoint = wasLiked 
+            ? "videos/reels/\(reel.id)/like"
+            : "videos/reels/\(reel.id)/like"
+        let method: RequestMethod = wasLiked ? .delete : .post
+        
+        APIService.shared.request(
+            endpoint: endpoint,
+            method: method,
+            requiresAuth: true
+        ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
+            if case .failure(let error) = result {
+                // Revert on failure
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    reel.likedByCurrentUser = wasLiked
+                    reel.likeCount = wasLiked ? reel.likeCount + 1 : max(0, reel.likeCount - 1)
+                    self.reels[indexPath.item] = reel
+                    
+                    if let cell = self.reelsCollectionView.cellForItem(at: indexPath) as? VideoReelCell {
+                        cell.configure(with: reel, player: self.reelPlayers[indexPath.item])
+                    }
+                    
+                    print("Failed to update like: \(error)")
+                }
+            }
+        }
+    }
+    
+    func videoReelCellDidTapComment(_ cell: VideoReelCell) {
+        // Not opening full screen - just show comments in a sheet
+        guard let indexPath = reelsCollectionView.indexPath(for: cell) else { return }
+        let reel = reels[indexPath.item]
+        
+        let commentsVC = VideoCommentsViewController(video: reel)
+        let nav = UINavigationController(rootViewController: commentsVC)
+        nav.modalPresentationStyle = .pageSheet
+        
+        if let sheet = nav.sheetPresentationController {
+            sheet.detents = [.medium(), .large()]
+            sheet.prefersGrabberVisible = true
+        }
+        
+        present(nav, animated: true)
+    }
+    
+    func videoReelCellDidTapShare(_ cell: VideoReelCell) {
+        guard let indexPath = reelsCollectionView.indexPath(for: cell) else { return }
+        let reel = reels[indexPath.item]
+        
+        let shareText = "Check out this place: \(reel.placeName)"
+        let shareItems: [Any] = [shareText]
+        
+        let activityVC = UIActivityViewController(activityItems: shareItems, applicationActivities: nil)
+        
+        // For iPad
+        if let popover = activityVC.popoverPresentationController {
+            popover.sourceView = cell
+            popover.sourceRect = cell.bounds
+        }
+        
+        present(activityVC, animated: true)
+    }
+    
+    func videoReelCellDidTapProfile(_ cell: VideoReelCell) {
+        guard let indexPath = reelsCollectionView.indexPath(for: cell),
+              let user = reels[indexPath.item].user else { return }
+        
+        let profileVC = ProfileViewController()
+        profileVC.configureWith(user: user)
+        navigationController?.pushViewController(profileVC, animated: true)
+    }
+    
+    func videoReelCellDidTapPlace(_ cell: VideoReelCell) {
+        guard let indexPath = reelsCollectionView.indexPath(for: cell) else { return }
+        let reel = reels[indexPath.item]
+        
+        // Navigate to place detail
+        showLoadingState()
+        
+        APIService.shared.request(
+            endpoint: "places/\(reel.placeId)",
+            method: .get
+        ) { [weak self] (result: Result<PlaceResponse, APIError>) in
+            DispatchQueue.main.async {
+                self?.hideLoadingState()
+                
+                switch result {
+                case .success(let response):
+                    if response.success {
+                        let placeDetailVC = PlaceDetailViewController(place: response.place, circle: nil)
+                        self?.navigationController?.pushViewController(placeDetailVC, animated: true)
+                    }
+                case .failure(let error):
+                    self?.showError("Unable to load place details")
+                    print("❌ CirclesHome: Failed to fetch place details: \(error)")
+                }
+            }
+        }
+    }
+    
+    func videoReelCellDidTapReaction(_ cell: VideoReelCell) {
+        // Not implementing reactions in the home feed
+    }
+    
+    func videoReelCellDidTapActivityEngagement(_ cell: VideoReelCell) {
+        // Not implementing activity engagement in the home feed
+    }
+    
+    func videoReelCellDidTapLikeCount(_ cell: VideoReelCell) {
+        // Not implementing like count view in the home feed
+        // In a full implementation, we could show a modal with users who liked
     }
 }
 

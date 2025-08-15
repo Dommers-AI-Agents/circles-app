@@ -341,6 +341,76 @@ exports.markActivitiesAsRead = async (req, res, next) => {
   }
 };
 
+// @desc    Delete an activity
+// @route   DELETE /api/activities/:activityId
+// @access  Private
+exports.deleteActivity = async (req, res, next) => {
+  try {
+    const userId = req.user.uid;
+    const { activityId } = req.params;
+    
+    console.log(`🗑️ Deleting activity ${activityId} for user ${userId}`);
+    
+    // Get the activity to verify ownership
+    const activityDoc = await db.collection(COLLECTIONS.ACTIVITIES).doc(activityId).get();
+    
+    if (!activityDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Activity not found'
+      });
+    }
+    
+    const activity = activityDoc.data();
+    
+    // Only allow the activity owner to delete it
+    if (activity.actorId !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only delete your own activities'
+      });
+    }
+    
+    // Start a batch operation to delete related data
+    const batch = db.batch();
+    
+    // Delete the activity itself
+    batch.delete(activityDoc.ref);
+    
+    // Delete all reactions for this activity
+    const reactionsSnapshot = await db.collection(COLLECTIONS.ACTIVITY_REACTIONS)
+      .where('activityId', '==', activityId)
+      .get();
+    
+    reactionsSnapshot.docs.forEach(doc => {
+      batch.delete(doc.ref);
+    });
+    
+    // Delete all comments for this activity
+    const commentsSnapshot = await db.collection(COLLECTIONS.ACTIVITY_COMMENTS)
+      .where('activityId', '==', activityId)
+      .get();
+    
+    commentsSnapshot.docs.forEach(doc => {
+      batch.delete(doc.ref);
+    });
+    
+    // Commit the batch
+    await batch.commit();
+    
+    console.log(`✅ Successfully deleted activity ${activityId} and related data`);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Activity deleted successfully'
+    });
+    
+  } catch (error) {
+    console.error('Error deleting activity:', error);
+    next(error);
+  }
+};
+
 // Helper function to create activity (called by other controllers)
 exports.createActivity = async (type, actorId, targetType, targetId, targetName, metadata = {}) => {
   try {

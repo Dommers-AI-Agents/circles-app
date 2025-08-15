@@ -32,13 +32,37 @@ class PlaceSearchViewController: BaseViewController {
     private var searchResults: [MKLocalSearchCompletion] = []
     private var currentLocation: CLLocation?
     
+    // User's saved places
+    private var myPlaces: [Place] = []
+    private var filteredPlaces: [Place] = []
+    private var isSearching = false
+    
+    // Table view sections
+    private enum Section: Int, CaseIterable {
+        case myPlaces = 0
+        case searchResults = 1
+        
+        var title: String {
+            switch self {
+            case .myPlaces:
+                return "My Places"
+            case .searchResults:
+                return "Search Results"
+            }
+        }
+    }
+    
     // MARK: - Configuration
-    override var loadsDataOnViewDidLoad: Bool { false }
+    override var loadsDataOnViewDidLoad: Bool { true }
+    override var enablesPullToRefresh: Bool { true }
+    override var emptyStateMessage: String? { 
+        isSearching ? "No places found" : "No saved places yet. Search to add new places."
+    }
     
     // MARK: - UI Elements
     private let searchBar: UISearchBar = {
         let searchBar = UISearchBar()
-        searchBar.placeholder = "Search for a place"
+        searchBar.placeholder = "Search my places or find new ones"
         searchBar.searchBarStyle = .minimal
         searchBar.translatesAutoresizingMaskIntoConstraints = false
         return searchBar
@@ -76,7 +100,55 @@ class PlaceSearchViewController: BaseViewController {
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        searchBar.addDoneButtonOnKeyboard()
         searchBar.becomeFirstResponder()
+    }
+    
+    // MARK: - Data Loading
+    override func loadData(completion: (() -> Void)? = nil) {
+        PlaceService.shared.getMyPlacesForCheckIn { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                
+                switch result {
+                case .success(let places):
+                    self.myPlaces = places
+                    self.filteredPlaces = places
+                    self.updateTableView()
+                    
+                case .failure(let error):
+                    print("Failed to load user places: \(error)")
+                    self.myPlaces = []
+                    self.filteredPlaces = []
+                    self.updateTableView()
+                }
+                
+                completion?()
+            }
+        }
+    }
+    
+    private func updateTableView() {
+        tableView.reloadData()
+        
+        // Update empty state
+        if !isSearching && myPlaces.isEmpty && searchResults.isEmpty {
+            tableView.backgroundView = createEmptyStateView()
+        } else if isSearching && filteredPlaces.isEmpty && searchResults.isEmpty {
+            tableView.backgroundView = createEmptyStateView()
+        } else {
+            tableView.backgroundView = nil
+        }
+    }
+    
+    private func createEmptyStateView() -> UIView {
+        let label = UILabel()
+        label.text = emptyStateMessage
+        label.textColor = Constants.Colors.secondaryLabel
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.font = UIFont.systemFont(ofSize: 16)
+        return label
     }
     
     // MARK: - UI Setup
@@ -97,6 +169,7 @@ class PlaceSearchViewController: BaseViewController {
         tableView.delegate = self
         tableView.dataSource = self
         tableView.register(PlaceSearchCell.self, forCellReuseIdentifier: "PlaceCell")
+        // MyPlaceCell will be created with subtitle style in cellForRowAt
         tableView.keyboardDismissMode = .onDrag
         tableView.rowHeight = UITableView.automaticDimension
         tableView.estimatedRowHeight = 60
@@ -127,6 +200,10 @@ class PlaceSearchViewController: BaseViewController {
             mapView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             mapView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
+    }
+    
+    override func setupRefreshControl() {
+        tableView.refreshControl = refreshControl
     }
     
     private func setupSearchCompleter() {
@@ -419,18 +496,76 @@ class PlaceSearchViewController: BaseViewController {
 // MARK: - UITableViewDataSource
 
 extension PlaceSearchViewController: UITableViewDataSource {
+    func numberOfSections(in tableView: UITableView) -> Int {
+        var sections = 0
+        if !filteredPlaces.isEmpty {
+            sections += 1
+        }
+        if !searchResults.isEmpty {
+            sections += 1
+        }
+        return sections == 0 ? 1 : sections // At least one section for empty state
+    }
+    
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return searchResults.count
+        // If we have filtered places, they're always in section 0
+        if !filteredPlaces.isEmpty && section == 0 {
+            return filteredPlaces.count
+        }
+        
+        // Search results are in the next available section
+        if !searchResults.isEmpty {
+            let searchResultsSection = filteredPlaces.isEmpty ? 0 : 1
+            if section == searchResultsSection {
+                return searchResults.count
+            }
+        }
+        
+        return 0
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "PlaceCell", for: indexPath)
-        let result = searchResults[indexPath.row]
-        
-        cell.textLabel?.text = result.title
-        cell.detailTextLabel?.text = result.subtitle
-        
-        return cell
+        // Determine which type of data we're showing
+        if !filteredPlaces.isEmpty && indexPath.section == 0 {
+            // My Places section
+            var cell = tableView.dequeueReusableCell(withIdentifier: "MyPlaceCell")
+            if cell == nil {
+                cell = UITableViewCell(style: .subtitle, reuseIdentifier: "MyPlaceCell")
+            }
+            
+            let place = filteredPlaces[indexPath.row]
+            
+            cell?.textLabel?.text = place.name
+            cell?.detailTextLabel?.text = place.address
+            cell?.textLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+            cell?.detailTextLabel?.font = UIFont.systemFont(ofSize: 14)
+            cell?.detailTextLabel?.textColor = .systemGray
+            cell?.detailTextLabel?.numberOfLines = 2
+            
+            return cell!
+        } else {
+            // Search Results section
+            let cell = tableView.dequeueReusableCell(withIdentifier: "PlaceCell", for: indexPath)
+            let result = searchResults[indexPath.row]
+            
+            cell.textLabel?.text = result.title
+            cell.detailTextLabel?.text = result.subtitle
+            
+            return cell
+        }
+    }
+    
+    func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
+        // Determine section title based on what data we have
+        if !filteredPlaces.isEmpty && section == 0 {
+            return Section.myPlaces.title
+        } else if !searchResults.isEmpty {
+            let searchResultsSection = filteredPlaces.isEmpty ? 0 : 1
+            if section == searchResultsSection {
+                return Section.searchResults.title
+            }
+        }
+        return nil
     }
 }
 
@@ -439,7 +574,19 @@ extension PlaceSearchViewController: UITableViewDataSource {
 extension PlaceSearchViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        selectPlace(at: indexPath)
+        
+        // Check if this is a user's saved place
+        if !filteredPlaces.isEmpty && indexPath.section == 0 {
+            let place = filteredPlaces[indexPath.row]
+            
+            // Call the delegate method - it will use the default implementation if not overridden
+            delegate?.didSelectExistingPlace(place)
+            
+            dismiss(animated: true)
+        } else {
+            // This is a search result from MapKit
+            selectPlace(at: indexPath)
+        }
     }
 }
 
@@ -447,11 +594,41 @@ extension PlaceSearchViewController: UITableViewDelegate {
 
 extension PlaceSearchViewController: UISearchBarDelegate {
     func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
-        searchCompleter.queryFragment = searchText
+        let trimmedText = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        if trimmedText.isEmpty {
+            // Show all user places when search is empty
+            isSearching = false
+            filteredPlaces = myPlaces
+            searchResults = []
+            searchCompleter.queryFragment = ""
+        } else {
+            // Filter user places
+            isSearching = true
+            filteredPlaces = myPlaces.filter { place in
+                place.name.localizedCaseInsensitiveContains(trimmedText) ||
+                place.address.localizedCaseInsensitiveContains(trimmedText) ||
+                (place.notes?.localizedCaseInsensitiveContains(trimmedText) ?? false)
+            }
+            
+            // Also search MapKit for new places
+            searchCompleter.queryFragment = trimmedText
+        }
+        
+        updateTableView()
     }
     
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
         searchBar.resignFirstResponder()
+    }
+    
+    func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
+        searchBar.text = ""
+        searchBar.resignFirstResponder()
+        isSearching = false
+        filteredPlaces = myPlaces
+        searchResults = []
+        updateTableView()
     }
 }
 
@@ -460,7 +637,7 @@ extension PlaceSearchViewController: UISearchBarDelegate {
 extension PlaceSearchViewController: MKLocalSearchCompleterDelegate {
     func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
         searchResults = completer.results
-        tableView.reloadData()
+        updateTableView()
         
         if segmentedControl.selectedSegmentIndex == 1 {
             showSearchResultsOnMap()

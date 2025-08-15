@@ -75,6 +75,19 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         
         // Note: AuthManager removed - using AuthService directly
         
+        // Initialize media cache and cleanup expired content
+        DispatchQueue.global(qos: .background).async {
+            print("🧹 Starting media cache cleanup...")
+            MediaCacheService.shared.cleanupExpiredCache()
+            
+            let stats = MediaCacheService.shared.getCacheStatistics()
+            print("📊 Media Cache Statistics:")
+            print("   - Total items: \(stats.itemCount)")
+            print("   - Total size: \(stats.totalSize / 1024 / 1024)MB")
+            print("   - User content: \(stats.userContentSize / 1024 / 1024)MB")
+            print("   - Network content: \(stats.networkContentSize / 1024 / 1024)MB")
+        }
+        
         // Configure NetworkManager after Firebase is initialized
         NetworkManager.shared.configure()
         

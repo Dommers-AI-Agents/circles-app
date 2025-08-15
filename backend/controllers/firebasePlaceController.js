@@ -1126,8 +1126,8 @@ exports.refreshPlaceFromGoogle = async (req, res, next) => {
         updateData.userRatingsTotal = googlePlace.user_ratings_total;
       }
       
-      // Update photos if available and place doesn't have custom uploaded photos
-      if (googlePlace.photos && googlePlace.photos.length > 0 && (!place.photos || place.photos.length === 0)) {
+      // Update photos if available (always refresh to get latest photos)
+      if (googlePlace.photos && googlePlace.photos.length > 0) {
         // Get photo URLs (limit to 3 photos to avoid excessive API calls)
         const photoUrls = [];
         const photosToFetch = Math.min(3, googlePlace.photos.length);
@@ -1621,37 +1621,41 @@ exports.getPlaceComments = async (req, res, next) => {
     
     const place = serializeDoc(placeDoc);
     
-    // Check permissions (same as likePlace)
-    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(place.circleId);
-    const circleDoc = await circleRef.get();
-    const circle = serializeDoc(circleDoc);
-    
-    const isOwner = circle.owner === userId;
-    const isSharedWith = circle.sharedWith && circle.sharedWith.includes(userId);
-    const isPublic = circle.privacy === 'public';
-    
-    let isConnected = false;
-    if (circle.privacy === 'myNetwork' && !isOwner) {
-      const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', userId)
-        .where('connectedUserId', '==', circle.owner)
-        .where('status', '==', 'accepted')
-        .get();
-        
-      const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', circle.owner)
-        .where('connectedUserId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get();
-        
-      isConnected = !connection1.empty || !connection2.empty;
-    }
-    
-    if (!isOwner && !isSharedWith && !isPublic && !(circle.privacy === 'myNetwork' && isConnected)) {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to view comments for this place'
-      });
+    // Skip circle permission checks for places without circleId
+    // (these are check-in places that already passed security checks to be displayed)
+    if (place.circleId) {
+      // Check permissions (same as likePlace)
+      const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(place.circleId);
+      const circleDoc = await circleRef.get();
+      const circle = serializeDoc(circleDoc);
+      
+      const isOwner = circle.owner === userId;
+      const isSharedWith = circle.sharedWith && circle.sharedWith.includes(userId);
+      const isPublic = circle.privacy === 'public';
+      
+      let isConnected = false;
+      if (circle.privacy === 'myNetwork' && !isOwner) {
+        const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
+          .where('userId', '==', userId)
+          .where('connectedUserId', '==', circle.owner)
+          .where('status', '==', 'accepted')
+          .get();
+          
+        const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
+          .where('userId', '==', circle.owner)
+          .where('connectedUserId', '==', userId)
+          .where('status', '==', 'accepted')
+          .get();
+          
+        isConnected = !connection1.empty || !connection2.empty;
+      }
+      
+      if (!isOwner && !isSharedWith && !isPublic && !(circle.privacy === 'myNetwork' && isConnected)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Not authorized to view comments for this place'
+        });
+      }
     }
     
     // Get comments (only top-level comments, not replies)
@@ -2829,14 +2833,24 @@ exports.getMyPlacesForCheckIn = async (req, res, next) => {
     const userId = req.user.uid;
     
     console.log('🏠 Fetching places for check-in - User:', userId);
+    console.log('📍 This endpoint now includes places from both owned and shared circles');
     
-    // Get all user's circles
-    const circlesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
+    // Get all user's own circles
+    const ownCirclesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
       .where('owner', '==', userId)
       .orderBy('updatedAt', 'desc')
       .get();
     
-    if (circlesSnapshot.empty) {
+    // Get circles shared with the user
+    const sharedCirclesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
+      .where('sharedWith', 'array-contains', userId)
+      .orderBy('updatedAt', 'desc')
+      .get();
+    
+    // Combine both snapshots
+    const allCircles = [...ownCirclesSnapshot.docs, ...sharedCirclesSnapshot.docs];
+    
+    if (allCircles.length === 0) {
       return res.status(200).json({
         success: true,
         data: [],
@@ -2848,7 +2862,7 @@ exports.getMyPlacesForCheckIn = async (req, res, next) => {
     const placesPromises = [];
     const circleMap = new Map(); // Store circle info for each place
     
-    circlesSnapshot.forEach(circleDoc => {
+    allCircles.forEach(circleDoc => {
       const circle = serializeDoc(circleDoc);
       circleMap.set(circle.id, circle);
       
@@ -2887,12 +2901,12 @@ exports.getMyPlacesForCheckIn = async (req, res, next) => {
       return dateB - dateA;
     });
     
-    console.log(`✅ Found ${allPlaces.length} places from ${circlesSnapshot.size} circles for check-in`);
+    console.log(`✅ Found ${allPlaces.length} places from ${allCircles.length} circles for check-in`);
     
     res.status(200).json({
       success: true,
       data: allPlaces,
-      circleCount: circlesSnapshot.size,
+      circleCount: allCircles.length,
       placeCount: allPlaces.length
     });
     

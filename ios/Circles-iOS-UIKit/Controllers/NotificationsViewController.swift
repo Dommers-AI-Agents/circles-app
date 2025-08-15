@@ -3,12 +3,50 @@ import UIKit
 class NotificationsViewController: BaseViewController {
     
     // MARK: - Properties
-    private var notifications: [AppNotification] = []
-    private var hasMore = true
-    private var currentOffset = 0
+    private var activeNotifications: [AppNotification] = []
+    private var archivedNotifications: [AppNotification] = []
+    private var hasMoreActive = true
+    private var hasMoreArchived = true
+    private var currentOffsetActive = 0
+    private var currentOffsetArchived = 0
     private let pageSize = 50
+    private var currentTab: NotificationTab = .active
+    
+    enum NotificationTab: Int {
+        case active = 0
+        case archived = 1
+    }
+    
+    // Computed property for current data source
+    private var notifications: [AppNotification] {
+        return currentTab == .active ? activeNotifications : archivedNotifications
+    }
+    
+    private var hasMore: Bool {
+        return currentTab == .active ? hasMoreActive : hasMoreArchived
+    }
+    
+    private var currentOffset: Int {
+        get {
+            return currentTab == .active ? currentOffsetActive : currentOffsetArchived
+        }
+        set {
+            if currentTab == .active {
+                currentOffsetActive = newValue
+            } else {
+                currentOffsetArchived = newValue
+            }
+        }
+    }
     
     // MARK: - UI Elements
+    private let segmentedControl: UISegmentedControl = {
+        let control = UISegmentedControl(items: ["Active", "Archived"])
+        control.selectedSegmentIndex = 0
+        control.translatesAutoresizingMaskIntoConstraints = false
+        return control
+    }()
+    
     private let tableView: UITableView = {
         let tableView = UITableView()
         tableView.translatesAutoresizingMaskIntoConstraints = false
@@ -19,7 +57,9 @@ class NotificationsViewController: BaseViewController {
     
     
     // MARK: - BaseViewController Overrides
-    override var emptyStateMessage: String? { "No notifications yet" }
+    override var emptyStateMessage: String? {
+        return currentTab == .active ? "No notifications yet" : "No archived notifications"
+    }
     override var enablesPullToRefresh: Bool { true }
     
     override func viewDidLoad() {
@@ -38,15 +78,65 @@ class NotificationsViewController: BaseViewController {
     private func setupUI() {
         view.backgroundColor = .systemGroupedBackground
         setupNavigationBar(title: "Notifications")
+        setupNavigationBarButtons()
         
+        view.addSubview(segmentedControl)
         view.addSubview(tableView)
         
+        // Configure segmented control
+        segmentedControl.addTarget(self, action: #selector(segmentChanged(_:)), for: .valueChanged)
+        
         NSLayoutConstraint.activate([
-            tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            segmentedControl.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+            segmentedControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            segmentedControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            
+            tableView.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 16),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
+    }
+    
+    private func setupNavigationBarButtons() {
+        // Clear All button for active notifications
+        let clearAllButton = UIBarButtonItem(
+            title: "Clear All",
+            style: .plain,
+            target: self,
+            action: #selector(clearAllTapped)
+        )
+        
+        // Delete Permanently button for archived notifications
+        let deleteButton = UIBarButtonItem(
+            title: "Delete All",
+            style: .plain,
+            target: self,
+            action: #selector(deletePermanentlyTapped)
+        )
+        deleteButton.tintColor = .systemRed
+        
+        updateNavigationBarButton()
+    }
+    
+    private func updateNavigationBarButton() {
+        if currentTab == .active {
+            navigationItem.rightBarButtonItem = activeNotifications.isEmpty ? nil : UIBarButtonItem(
+                title: "Clear All",
+                style: .plain,
+                target: self,
+                action: #selector(clearAllTapped)
+            )
+        } else {
+            let deleteButton = UIBarButtonItem(
+                title: "Delete All",
+                style: .plain,
+                target: self,
+                action: #selector(deletePermanentlyTapped)
+            )
+            deleteButton.tintColor = .systemRed
+            navigationItem.rightBarButtonItem = archivedNotifications.isEmpty ? nil : deleteButton
+        }
     }
     
     override func setupRefreshControl() {
@@ -70,19 +160,23 @@ class NotificationsViewController: BaseViewController {
     private func loadNotifications(refresh: Bool = false, completion: (() -> Void)? = nil) {
         print("🚀 NotificationsViewController: loadNotifications called")
         print("🚀 NotificationsViewController: refresh: \(refresh), isLoadingData: \(isLoadingData)")
+        print("🚀 NotificationsViewController: currentTab: \(currentTab)")
         
-        // Don't check isLoadingData here since BaseViewController manages it
-        // and we need to ensure the completion handler is called
+        let isArchived = currentTab == .archived
         
         if refresh {
             currentOffset = 0
-            hasMore = true
+            if currentTab == .active {
+                hasMoreActive = true
+            } else {
+                hasMoreArchived = true
+            }
         }
         
         print("🚀 NotificationsViewController: Calling NotificationService.getNotifications")
-        print("🚀 NotificationsViewController: limit: \(pageSize), offset: \(currentOffset)")
+        print("🚀 NotificationsViewController: limit: \(pageSize), offset: \(currentOffset), archived: \(isArchived)")
         
-        NotificationService.shared.getNotifications(limit: pageSize, offset: currentOffset) { [weak self] result in
+        NotificationService.shared.getNotifications(limit: pageSize, offset: currentOffset, archived: isArchived) { [weak self] result in
             print("📡 NotificationsViewController: getNotifications callback received")
             
             DispatchQueue.main.async {
@@ -98,17 +192,29 @@ class NotificationsViewController: BaseViewController {
                     print("✅ NotificationsViewController: hasMore: \(response.hasMore)")
                     
                     if refresh {
-                        self.notifications = response.notifications
+                        if self.currentTab == .active {
+                            self.activeNotifications = response.notifications
+                            self.hasMoreActive = response.hasMore
+                        } else {
+                            self.archivedNotifications = response.notifications
+                            self.hasMoreArchived = response.hasMore
+                        }
                     } else {
-                        self.notifications.append(contentsOf: response.notifications)
+                        if self.currentTab == .active {
+                            self.activeNotifications.append(contentsOf: response.notifications)
+                            self.hasMoreActive = response.hasMore
+                        } else {
+                            self.archivedNotifications.append(contentsOf: response.notifications)
+                            self.hasMoreArchived = response.hasMore
+                        }
                     }
                     
-                    self.hasMore = response.hasMore
                     self.currentOffset += response.notifications.count
                     
                     print("✅ NotificationsViewController: Total notifications now: \(self.notifications.count)")
                     
                     self.updateUI()
+                    self.updateNavigationBarButton()
                     self.tableView.reloadData()
                     
                 case .failure(let error):
@@ -134,6 +240,108 @@ class NotificationsViewController: BaseViewController {
     private func markAllNotificationsAsRead() {
         NotificationService.shared.markAllNotificationsAsRead { _ in
             // Silent update - we don't need to handle the response
+        }
+    }
+    
+    // MARK: - Actions
+    @objc private func segmentChanged(_ sender: UISegmentedControl) {
+        let newTab = NotificationTab(rawValue: sender.selectedSegmentIndex) ?? .active
+        
+        if newTab != currentTab {
+            currentTab = newTab
+            
+            // Load data for the new tab if not loaded yet
+            let notifications = self.notifications
+            if notifications.isEmpty {
+                loadNotifications(refresh: true)
+            } else {
+                updateUI()
+                updateNavigationBarButton()
+                tableView.reloadData()
+            }
+        }
+    }
+    
+    @objc private func clearAllTapped() {
+        guard currentTab == .active && !activeNotifications.isEmpty else { return }
+        
+        showConfirmation(
+            title: "Clear All Notifications",
+            message: "This will move all active notifications to the archived tab. You can delete them permanently from there."
+        ) { [weak self] in
+            self?.performClearAll()
+        }
+    }
+    
+    @objc private func deletePermanentlyTapped() {
+        guard currentTab == .archived && !archivedNotifications.isEmpty else { return }
+        
+        showConfirmation(
+            title: "Delete All Archived",
+            message: "This will permanently delete all archived notifications. This cannot be undone."
+        ) { [weak self] in
+            self?.performDeletePermanently()
+        }
+    }
+    
+    private func performClearAll() {
+        showLoadingState()
+        
+        NotificationService.shared.archiveAllNotifications { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                
+                self.hideLoadingState()
+                
+                switch result {
+                case .success(let message):
+                    self.showSuccess(message)
+                    // Clear active notifications and reload
+                    self.activeNotifications.removeAll()
+                    self.hasMoreActive = true
+                    self.currentOffsetActive = 0
+                    
+                    // Clear archived cache to force reload when switching tabs
+                    self.archivedNotifications.removeAll()
+                    self.hasMoreArchived = true
+                    self.currentOffsetArchived = 0
+                    
+                    self.updateUI()
+                    self.updateNavigationBarButton()
+                    self.tableView.reloadData()
+                    
+                case .failure(let error):
+                    self.showError(error)
+                }
+            }
+        }
+    }
+    
+    private func performDeletePermanently() {
+        showLoadingState()
+        
+        NotificationService.shared.clearArchivedNotifications { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                
+                self.hideLoadingState()
+                
+                switch result {
+                case .success(let message):
+                    self.showSuccess(message)
+                    // Clear archived notifications and reload
+                    self.archivedNotifications.removeAll()
+                    self.hasMoreArchived = true
+                    self.currentOffsetArchived = 0
+                    
+                    self.updateUI()
+                    self.updateNavigationBarButton()
+                    self.tableView.reloadData()
+                    
+                case .failure(let error):
+                    self.showError(error)
+                }
+            }
         }
     }
     
@@ -204,6 +412,52 @@ extension NotificationsViewController: UITableViewDelegate {
         // Load more when reaching the end
         if indexPath.row == notifications.count - 5 && hasMore && !isLoadingData {
             loadNotifications()
+        }
+    }
+    
+    // Swipe-to-delete for archived notifications
+    func tableView(_ tableView: UITableView, canEditRowAt indexPath: IndexPath) -> Bool {
+        return currentTab == .archived
+    }
+    
+    func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
+        if editingStyle == .delete && currentTab == .archived {
+            let notification = archivedNotifications[indexPath.row]
+            deleteNotification(notification, at: indexPath)
+        }
+    }
+    
+    func tableView(_ tableView: UITableView, titleForDeleteConfirmationButtonForRowAt indexPath: IndexPath) -> String? {
+        return "Delete"
+    }
+    
+    private func deleteNotification(_ notification: AppNotification, at indexPath: IndexPath) {
+        showConfirmation(
+            title: "Delete Notification",
+            message: "This notification will be permanently deleted. This cannot be undone."
+        ) { [weak self] in
+            self?.performDeleteNotification(notification, at: indexPath)
+        }
+    }
+    
+    private func performDeleteNotification(_ notification: AppNotification, at indexPath: IndexPath) {
+        NotificationService.shared.deleteNotification(notificationId: notification.id) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                
+                switch result {
+                case .success:
+                    // Remove from data source and update UI
+                    self.archivedNotifications.remove(at: indexPath.row)
+                    self.tableView.deleteRows(at: [indexPath], with: .automatic)
+                    self.updateUI()
+                    self.updateNavigationBarButton()
+                    self.showSuccess("Notification deleted")
+                    
+                case .failure(let error):
+                    self.showError(error)
+                }
+            }
         }
     }
 }
@@ -408,11 +662,12 @@ struct AppNotification: Codable {
     let body: String
     let data: NotificationData?
     let read: Bool
+    let archived: Bool?
     let createdAt: String
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
-        case userId, type, title, body, data, read, createdAt
+        case userId, type, title, body, data, read, archived, createdAt
     }
 }
 

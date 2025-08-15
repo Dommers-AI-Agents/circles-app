@@ -4,6 +4,7 @@ class ImageService {
     static let shared = ImageService()
     
     private let cache = NSCache<NSString, UIImage>()
+    private let mediaCacheService = MediaCacheService.shared
     
     // Alias for loadImage to maintain compatibility
     func loadImage(from urlString: String, completion: @escaping (UIImage?) -> Void) {
@@ -13,12 +14,30 @@ class ImageService {
     func downloadImage(from urlString: String, completion: @escaping (UIImage?) -> Void) {
         let cacheKey = NSString(string: urlString)
         
-        // Check if image is in cache
+        // Check if image is in memory cache
         if let cachedImage = cache.object(forKey: cacheKey) {
-            Logger.debug("ImageService: Found image in cache for \(urlString)")
+            Logger.debug("ImageService: Found image in memory cache for \(urlString)")
             completion(cachedImage)
             return
         }
+        
+        // Check if image is in disk cache
+        mediaCacheService.retrieveImage(for: urlString) { [weak self] image in
+            if let image = image {
+                Logger.debug("ImageService: Found image in disk cache for \(urlString)")
+                // Add to memory cache
+                self?.cache.setObject(image, forKey: cacheKey)
+                completion(image)
+                return
+            }
+            
+            // If not in any cache, download from network
+            self?.downloadFromNetwork(urlString: urlString, completion: completion)
+        }
+    }
+    
+    private func downloadFromNetwork(urlString: String, completion: @escaping (UIImage?) -> Void) {
+        let cacheKey = NSString(string: urlString)
         
         // Check if URL needs base URL prepended (for relative URLs)
         var finalURLString = urlString
@@ -91,8 +110,13 @@ class ImageService {
             
             Logger.debug("ImageService: Successfully downloaded image")
             
-            // Cache the image
+            // Cache the image in memory
             self.cache.setObject(image, forKey: cacheKey)
+            
+            // Cache the image to disk
+            // Determine if this is user's own content based on URL patterns
+            let isUserContent = self.isUserOwnContent(urlString: finalURLString)
+            self.mediaCacheService.cacheImage(image, for: urlString, userId: AuthService.shared.getUserId(), isPermanent: isUserContent)
             
             DispatchQueue.main.async {
                 completion(image)
@@ -100,9 +124,18 @@ class ImageService {
         }.resume()
     }
     
+    // Helper to determine if content belongs to current user
+    private func isUserOwnContent(urlString: String) -> Bool {
+        // Check if URL contains user's ID or is from user's upload
+        guard let userId = AuthService.shared.getUserId() else { return false }
+        return urlString.contains(userId) || urlString.contains("/user/\(userId)/")
+    }
+    
     // Clear cache on logout
     func clearCache() {
         cache.removeAllObjects()
+        // Clear network cache but keep user's own content
+        MediaCacheService.shared.clearNetworkCache()
         Logger.debug("ImageService: Cleared image cache")
     }
 }

@@ -335,7 +335,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     // Content type segmented control
     private let contentTypeSegmentedControl: UISegmentedControl = {
-        let control = UISegmentedControl(items: ["Circles", "Videos"])
+        let control = UISegmentedControl(items: ["Circles", "Moments"])
         control.selectedSegmentIndex = 0
         control.translatesAutoresizingMaskIntoConstraints = false
         return control
@@ -444,7 +444,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     private let videosEmptyLabel: UILabel = {
         let label = UILabel()
-        label.text = "No videos yet"
+        label.text = "No moments yet"
         label.font = UIFont.systemFont(ofSize: 16)
         label.textColor = Constants.Colors.secondaryLabel
         label.textAlignment = .center
@@ -452,6 +452,15 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         label.isHidden = true
         return label
     }()
+    
+    private let videosLoadingIndicator: UIActivityIndicatorView = {
+        let indicator = UIActivityIndicatorView(style: .medium)
+        indicator.hidesWhenStopped = true
+        indicator.translatesAutoresizingMaskIntoConstraints = false
+        return indicator
+    }()
+    
+    private var isLoadingVideos = false
     private var logoutButtonTopToCollectionConstraint: NSLayoutConstraint?
     private var logoutButtonTopToMapConstraint: NSLayoutConstraint?
     private var logoutButtonTopToVideosConstraint: NSLayoutConstraint?
@@ -740,6 +749,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         contentView.addSubview(circlesCollectionView)
         contentView.addSubview(videosCollectionView)
         contentView.addSubview(videosEmptyLabel)
+        contentView.addSubview(videosLoadingIndicator)
         
         // Add map container (initially hidden)
         contentView.addSubview(mapContainerView)
@@ -939,6 +949,10 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             videosEmptyLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             videosEmptyLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
             videosEmptyLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+            
+            // Videos loading indicator
+            videosLoadingIndicator.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            videosLoadingIndicator.centerYAnchor.constraint(equalTo: videosEmptyLabel.centerYAnchor),
             
             // Map container (same position as circles collection)
             mapContainerView.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor),
@@ -1170,9 +1184,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
     
     @objc private func videoButtonTapped() {
-        let linkInputVC = VideoLinkInputViewController()
-        linkInputVC.delegate = self
-        let navController = UINavigationController(rootViewController: linkInputVC)
+        let contentUploadVC = ContentUploadViewController()
+        contentUploadVC.delegate = self
+        let navController = UINavigationController(rootViewController: contentUploadVC)
         navController.modalPresentationStyle = .fullScreen
         present(navController, animated: true)
     }
@@ -1227,18 +1241,29 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             searchBar.placeholder = "Search videos..."
             mapToggleButton.isHidden = true
             
-            // Fetch videos if not loaded yet
-            if videos.isEmpty {
+            // Check cache first before fetching
+            if videos.isEmpty && !isLoadingVideos {
+                // Show loading state
+                videosEmptyLabel.isHidden = true
+                videosLoadingIndicator.startAnimating()
+                
+                // Try to load from cache first
+                loadCachedVideos()
+                
+                // Fetch from network
                 fetchUserVideos()
+            } else if !videos.isEmpty {
+                // Update UI if we have videos
+                videosCollectionView.reloadData()
+                updateVideosCollectionHeight()
+                videosEmptyLabel.isHidden = true
+                videosLoadingIndicator.stopAnimating()
             }
             
             // Update logout button constraint to videos collection
             logoutButtonTopToCollectionConstraint?.isActive = false
             logoutButtonTopToMapConstraint?.isActive = false
             logoutButtonTopToVideosConstraint?.isActive = true
-            
-            // Load user's videos
-            loadUserVideos()
         }
     }
     
@@ -2092,39 +2117,93 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         }
     }
     
+    private func loadCachedVideos() {
+        guard let userId = user?.id ?? AuthService.shared.getUserId() else { return }
+        let isCurrentUser = userId == AuthService.shared.getUserId()
+        
+        // Only load cached videos for current user
+        if isCurrentUser {
+            print("💾 ProfileViewController: Checking for cached videos...")
+            // For now, we'll just rely on network fetch
+            // TODO: Implement actual cache retrieval from VideoStorageService
+        }
+    }
+    
     private func fetchUserVideos() {
         guard let userId = user?.id ?? AuthService.shared.getUserId() else {
             print("⚠️ ProfileViewController: No user ID available for fetching videos")
+            isLoadingVideos = false
+            videosLoadingIndicator.stopAnimating()
             return
         }
         
-        let endpoint = "videos/user/\(userId)"
-        APIService.shared.request(
-            endpoint: endpoint,
-            method: .get
-        ) { [weak self] (result: Result<VideosResponse, APIError>) in
+        // Prevent multiple simultaneous fetches
+        guard !isLoadingVideos else { return }
+        
+        isLoadingVideos = true
+        
+        let isCurrentUser = userId == AuthService.shared.getUserId()
+        
+        print("📹 ProfileViewController: Starting to fetch videos for user: \(userId)")
+        print("   - Is current user: \(isCurrentUser)")
+        print("   - Email: \(user?.email ?? "unknown")")
+        
+        APIService.shared.getUserVideos(userId: userId) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 
                 switch result {
                 case .success(let response):
-                    self.videos = response.data
-                    print("✅ ProfileViewController: Fetched \(response.data.count) videos")
+                    self.isLoadingVideos = false
+                    // Filter out failed uploads and videos without URLs
+                    self.videos = response.data.filter { video in
+                        let hasValidUrl = video.contentType == "photo" ? video.thumbnailUrl != nil : video.videoUrl != nil
+                        return video.uploadStatus == .ready && hasValidUrl
+                    }
+                    print("✅ ProfileViewController: Fetched \(response.data.count) videos, showing \(self.videos.count) valid ones for user \(userId)")
+                    
+                    // Log video details
+                    for (index, video) in response.data.enumerated() {
+                        print("   Video \(index + 1):")
+                        print("     - Title: \(video.title)")
+                        print("     - ID: \(video.id)")
+                        print("     - Has video URL: \(video.videoUrl != nil)")
+                        print("     - Has preview URL: \(video.previewUrl != nil)")
+                        print("     - Has thumbnail URL: \(video.thumbnailUrl != nil)")
+                        print("     - Upload status: \(video.uploadStatus.rawValue)")
+                        print("     - Content type: \(video.contentType ?? "video")")
+                        print("     - Video type: \(video.videoType ?? "uploaded")")
+                    }
+                    
+                    // Cache user's own videos for permanent storage
+                    if isCurrentUser && !response.data.isEmpty {
+                        print("💾 ProfileViewController: Caching \(response.data.count) user videos for offline access")
+                        VideoStorageService.shared.cacheUserVideos(response.data)
+                    }
                     
                     // Update videos collection view
                     if self.contentTypeSegmentedControl.selectedSegmentIndex == 1 {
+                        self.videosLoadingIndicator.stopAnimating()
                         self.videosCollectionView.reloadData()
                         self.updateVideosCollectionHeight()
                         
                         // Show/hide empty state
                         self.videosEmptyLabel.isHidden = !self.videos.isEmpty
+                        
+                        if self.videos.isEmpty {
+                            print("📭 ProfileViewController: No videos to display - showing empty state")
+                        }
                     }
                     
                 case .failure(let error):
+                    self.isLoadingVideos = false
                     print("❌ ProfileViewController: Failed to fetch videos: \(error)")
+                    print("   - Error details: \(error.localizedDescription)")
+                    
                     // Don't show error to user, just leave videos empty
                     self.videos = []
                     if self.contentTypeSegmentedControl.selectedSegmentIndex == 1 {
+                        self.videosLoadingIndicator.stopAnimating()
                         self.videosEmptyLabel.isHidden = false
                     }
                 }
@@ -2563,29 +2642,6 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     // MARK: - Video Methods
     
-    private func loadUserVideos() {
-        guard let userId = user?.id else { return }
-        
-        let endpoint = "videos/user/\(userId)"
-        let completion = createAPICompletion { (result: Result<VideosResponse, Error>) in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let response):
-                    self.videos = response.data
-                    self.videosEmptyLabel.isHidden = !self.videos.isEmpty
-                    self.videosCollectionView.reloadData()
-                    self.updateVideosCollectionHeight()
-                    
-                case .failure(let error):
-                    print("Failed to load videos: \(error)")
-                    self.videosEmptyLabel.isHidden = false
-                }
-            }
-        }
-        
-        APIService.shared.request(endpoint: endpoint, method: .get, completion: completion)
-    }
-    
     private func updateVideosCollectionHeight() {
         // Calculate required height based on number of videos (3-column grid)
         let itemsPerRow: CGFloat = 3
@@ -2602,6 +2658,53 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         
         UIView.animate(withDuration: 0.3) {
             self.view.layoutIfNeeded()
+        }
+    }
+    
+    private func confirmDeleteVideo(_ video: PlaceVideo, at indexPath: IndexPath) {
+        let alert = UIAlertController(
+            title: "Delete Content",
+            message: "Are you sure you want to delete this \(video.contentType == "photo" ? "photo" : "video")? This action cannot be undone.",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+            self?.deleteVideo(video, at: indexPath)
+        })
+        
+        present(alert, animated: true)
+    }
+    
+    private func deleteVideo(_ video: PlaceVideo, at indexPath: IndexPath) {
+        // Show loading
+        let loadingAlert = AlertPresenter.showLoading(message: "Deleting...", from: self)
+        
+        APIService.shared.deleteVideo(videoId: video.id) { [weak self] result in
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    guard let self = self else { return }
+                    
+                    switch result {
+                    case .success:
+                        // Remove from array
+                        self.videos.remove(at: indexPath.item)
+                        
+                        // Update collection view
+                        self.videosCollectionView.deleteItems(at: [indexPath])
+                        self.updateVideosCollectionHeight()
+                        
+                        // Update empty state
+                        self.videosEmptyLabel.isHidden = !self.videos.isEmpty
+                        
+                        // Show success
+                        self.showSuccess("Content deleted successfully")
+                        
+                    case .failure(let error):
+                        self.showError(error)
+                    }
+                }
+            }
         }
     }
     
@@ -2637,9 +2740,10 @@ extension ProfileViewController: UICollectionViewDataSource {
 extension ProfileViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         if collectionView == videosCollectionView {
-            let video = videos[indexPath.item]
-            // TODO: Navigate to video player
-            print("Selected video: \(video.title)")
+            // Open full-screen reels viewer
+            let reelsVC = VideoReelsViewController(reels: videos, startIndex: indexPath.item)
+            reelsVC.modalPresentationStyle = .fullScreen
+            present(reelsVC, animated: true)
         } else {
             let circle = circles[indexPath.item]
             let detailVC = CircleDetailViewController(circle: circle)
@@ -2648,6 +2752,29 @@ extension ProfileViewController: UICollectionViewDelegate {
     }
     
     func collectionView(_ collectionView: UICollectionView, contextMenuConfigurationForItemAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
+        // Handle context menu for videos
+        if collectionView == videosCollectionView {
+            let video = videos[indexPath.item]
+            
+            // Only show delete for user's own videos
+            guard video.userId == AuthService.shared.getUserId() else { return nil }
+            
+            return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
+                guard let self = self else { return UIMenu(title: "", children: []) }
+                
+                let deleteAction = UIAction(
+                    title: "Delete",
+                    image: UIImage(systemName: "trash"),
+                    attributes: .destructive
+                ) { _ in
+                    self.confirmDeleteVideo(video, at: indexPath)
+                }
+                
+                return UIMenu(title: "", children: [deleteAction])
+            }
+        }
+        
+        // Handle context menu for circles
         let circle = circles[indexPath.item]
         
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
@@ -3194,28 +3321,25 @@ extension ProfileViewController {
     }
 }
 
-// MARK: - VideoLinkInputDelegate
-extension ProfileViewController: VideoLinkInputDelegate {
-    func videoLinkInputDidFinish(with video: PlaceVideo) {
-        showSuccess("Video added successfully!")
+// MARK: - ContentUploadDelegate
+extension ProfileViewController: ContentUploadDelegate {
+    func contentUploadDidFinish(with moment: PlaceMoment) {
+        showSuccess("Moment shared successfully!")
         
-        // Add to videos array and refresh if on Videos tab
-        videos.insert(video, at: 0)
+        // Refresh videos/moments if on Moments tab
         if contentTypeSegmentedControl.selectedSegmentIndex == 1 {
-            videosCollectionView.reloadData()
-            updateVideosCollectionHeight()
-            videosEmptyLabel.isHidden = true
+            fetchUserVideos() // This will reload the moments collection
         }
         
         // Track activity
         NotificationCenter.default.post(
-            name: Notification.Name("VideoUploaded"),
+            name: Notification.Name("MomentUploaded"),
             object: nil,
-            userInfo: ["video": video]
+            userInfo: ["moment": moment]
         )
     }
     
-    func videoLinkInputDidCancel() {
+    func contentUploadDidCancel() {
         // User cancelled - nothing to do
     }
 }

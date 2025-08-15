@@ -104,10 +104,19 @@ class VideoThumbnailCell: UICollectionViewCell {
     // MARK: - Configuration
     
     func configure(with video: PlaceVideo) {
-        // Set duration
-        durationLabel.text = " \(video.formattedDuration) "
+        // Check if this is a photo or video
+        let isPhoto = video.contentType == "photo"
         
-        // Set view count
+        // Hide play icon and duration for photos
+        playIconView.isHidden = isPhoto || video.uploadStatus != .ready
+        durationLabel.isHidden = isPhoto
+        
+        // Set duration (only for videos)
+        if !isPhoto {
+            durationLabel.text = " \(video.formattedDuration) "
+        }
+        
+        // Set view count (for both photos and videos)
         let viewCountText = video.viewCount == 1 ? "1 view" : "\(video.viewCount) views"
         viewCountLabel.text = " \(viewCountText) "
         
@@ -121,9 +130,6 @@ class VideoThumbnailCell: UICollectionViewCell {
         } else {
             thumbnailImageView.image = nil
         }
-        
-        // Show/hide play icon based on upload status
-        playIconView.isHidden = video.uploadStatus != .ready
     }
     
     // MARK: - Reuse
@@ -132,6 +138,7 @@ class VideoThumbnailCell: UICollectionViewCell {
         super.prepareForReuse()
         thumbnailImageView.image = nil
         durationLabel.text = nil
+        durationLabel.isHidden = false
         viewCountLabel.text = nil
         playIconView.isHidden = false
     }

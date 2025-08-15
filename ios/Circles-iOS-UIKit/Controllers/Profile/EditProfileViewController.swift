@@ -606,9 +606,14 @@ class EditProfileViewController: BaseViewController {
 // MARK: - UIGestureRecognizerDelegate
 extension EditProfileViewController: UIGestureRecognizerDelegate {
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        // Ensure touch.view is valid and is a UIView
+        guard let view = touch.view as? UIView else {
+            return false
+        }
+        
         // Only dismiss if tapping outside the avatar picker view
-        if let view = touch.view, view.isDescendant(of: gestureRecognizer.view!) {
-            return touch.view == gestureRecognizer.view
+        if view.isDescendant(of: gestureRecognizer.view!) {
+            return view == gestureRecognizer.view
         }
         return true
     }

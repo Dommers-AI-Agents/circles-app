@@ -61,6 +61,10 @@ class VideoCompressionService {
                 exportSession.outputFileType = .mp4
                 exportSession.shouldOptimizeForNetworkUse = true
                 
+                print("📹 Export session configuration:")
+                print("  - Preset: \(getPresetName(for: quality))")
+                print("  - Output URL: \(outputURL.lastPathComponent)")
+                
                 // Set time range to trim video to 15 seconds if needed
                 if durationInSeconds > maxDuration {
                     let startTime = CMTime.zero
@@ -69,9 +73,29 @@ class VideoCompressionService {
                     print("📹 Auto-trimming video from \(durationInSeconds)s to \(maxDuration)s")
                 }
                 
-                // Apply video settings
-                let videoComposition = try await createVideoComposition(for: videoTrack, quality: quality)
-                exportSession.videoComposition = videoComposition
+                // Check if this is a camera-recorded video by examining the transform
+                // Camera videos often have specific transform values
+                let preferredTransform = try await videoTrack.load(.preferredTransform)
+                let naturalSize = try await videoTrack.load(.naturalSize)
+                
+                // Detect if this is likely a camera-recorded portrait video
+                // These often have issues with custom video compositions
+                let isCameraPortraitVideo = (preferredTransform.a == 0 && abs(preferredTransform.b) == 1) ||
+                                           (abs(preferredTransform.a) == 1 && preferredTransform.b == 0 && naturalSize.width > naturalSize.height)
+                
+                if isCameraPortraitVideo {
+                    // For camera-recorded videos, skip custom composition
+                    // Let the export preset handle orientation naturally
+                    print("📹 Camera video detected - using native export without custom composition")
+                    print("  - Transform: a=\(preferredTransform.a), b=\(preferredTransform.b)")
+                    print("  - Natural size: \(naturalSize)")
+                    // Don't set videoComposition - let export preset handle it
+                } else {
+                    // For other videos (library uploads, etc), apply custom composition
+                    print("📹 Non-camera video - applying custom composition")
+                    let videoComposition = try await createVideoComposition(for: videoTrack, quality: quality)
+                    exportSession.videoComposition = videoComposition
+                }
                 
                 // Set up progress timer
                 let progressTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
@@ -209,10 +233,14 @@ class VideoCompressionService {
     }
     
     private func getPresetName(for quality: VideoQuality) -> String {
+        // Use presets that properly handle video orientation
         switch quality {
         case .preview:
+            // Use medium quality which handles orientation well
+            // and produces reasonable file sizes
             return AVAssetExportPresetMediumQuality
         case .full:
+            // Use high quality for full resolution
             return AVAssetExportPresetHighestQuality
         }
     }
@@ -220,13 +248,28 @@ class VideoCompressionService {
     private func createVideoComposition(for videoTrack: AVAssetTrack, quality: VideoQuality) async throws -> AVMutableVideoComposition {
         let composition = AVMutableVideoComposition()
         
-        // Get natural size
+        // Get natural size and transform
         let naturalSize = try await videoTrack.load(.naturalSize)
         let preferredTransform = try await videoTrack.load(.preferredTransform)
         
-        // Calculate output size based on quality
-        let targetSize = quality.resolution
-        let videoSize = naturalSize.applying(preferredTransform)
+        // Apply transform to get actual video dimensions
+        let transformedRect = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
+        let videoSize = CGSize(width: abs(transformedRect.width), height: abs(transformedRect.height))
+        
+        // Determine video orientation based on actual dimensions after transform
+        let orientation = VideoOrientation.from(size: videoSize)
+        
+        // Get appropriate target size based on orientation
+        let targetSize = quality.resolution(for: orientation)
+        
+        // Enhanced debug logging
+        print("📹 Video compression debug:")
+        print("  - Natural size: \(naturalSize)")
+        print("  - Preferred transform: \(preferredTransform)")
+        print("  - Transformed size: \(videoSize)")
+        print("  - Detected orientation: \(orientation)")
+        print("  - Target resolution: \(targetSize)")
+        print("  - Quality preset: \(quality)")
         
         // Create layer instructions
         let instruction = AVMutableVideoCompositionInstruction()
@@ -234,13 +277,65 @@ class VideoCompressionService {
         
         let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTrack)
         
-        // Calculate scale to fit target resolution
-        let scaleX = targetSize.width / abs(videoSize.width)
-        let scaleY = targetSize.height / abs(videoSize.height)
-        let scale = min(scaleX, scaleY)
-        
-        let transform = preferredTransform.scaledBy(x: scale, y: scale)
-        layerInstruction.setTransform(transform, at: .zero)
+        // For portrait videos from iPhone, we need to handle the rotation properly
+        if orientation == .portrait {
+            // iPhone portrait videos typically have a 90 degree rotation
+            // Natural size is landscape but needs to be displayed as portrait
+            
+            print("📹 Processing portrait video transform:")
+            print("  - Natural size (pre-rotation): \(naturalSize)")
+            print("  - Video size (post-rotation): \(videoSize)")
+            print("  - Target size: \(targetSize)")
+            print("  - Preferred transform: a=\(preferredTransform.a), b=\(preferredTransform.b), c=\(preferredTransform.c), d=\(preferredTransform.d), tx=\(preferredTransform.tx), ty=\(preferredTransform.ty)")
+            
+            // Simplified approach: Let the export session handle most of the transform
+            // Just apply the preferred transform and scale to fit the target
+            var transform = CGAffineTransform.identity
+            
+            // Apply the video's preferred transform (handles rotation)
+            transform = transform.concatenating(preferredTransform)
+            
+            // Now scale to fill the target size
+            // After rotation, the video is in portrait orientation
+            let scaleX = targetSize.width / videoSize.width
+            let scaleY = targetSize.height / videoSize.height
+            let scale = max(scaleX, scaleY) // Aspect fill
+            
+            print("  - Scale: \(scale)")
+            
+            // Apply scale
+            transform = transform.scaledBy(x: scale, y: scale)
+            
+            // Calculate where the video ends up after transform
+            let transformedRect = CGRect(origin: .zero, size: naturalSize).applying(transform)
+            
+            // Center it in the target frame
+            let translateX = (targetSize.width - transformedRect.width) / 2 - transformedRect.minX
+            let translateY = (targetSize.height - transformedRect.height) / 2 - transformedRect.minY
+            
+            print("  - Transformed rect: \(transformedRect)")
+            print("  - Translation: X=\(translateX), Y=\(translateY)")
+            
+            transform = transform.translatedBy(x: translateX, y: translateY)
+            
+            layerInstruction.setTransform(transform, at: .zero)
+            
+        } else {
+            // For landscape or square videos, also use aspect fill for consistency
+            let scaleX = targetSize.width / naturalSize.width
+            let scaleY = targetSize.height / naturalSize.height
+            let scale = max(scaleX, scaleY) // Use max for aspect fill
+            
+            var transform = preferredTransform.scaledBy(x: scale, y: scale)
+            
+            // Center the video (it will be cropped if needed)
+            let scaledSize = CGSize(width: naturalSize.width * scale, height: naturalSize.height * scale)
+            let xOffset = (targetSize.width - scaledSize.width) / 2
+            let yOffset = (targetSize.height - scaledSize.height) / 2
+            
+            transform = transform.translatedBy(x: xOffset, y: yOffset)
+            layerInstruction.setTransform(transform, at: .zero)
+        }
         
         instruction.layerInstructions = [layerInstruction]
         composition.instructions = [instruction]
@@ -249,10 +344,18 @@ class VideoCompressionService {
         composition.frameDuration = CMTime(value: 1, timescale: 30) // 30 fps
         composition.renderSize = targetSize
         
-        // Apply bitrate through compression settings
+        // IMPORTANT: Set render scale to 1.0 to avoid scaling issues
+        composition.renderScale = 1.0
+        
+        // Apply compression settings
         composition.colorPrimaries = AVVideoColorPrimaries_ITU_R_709_2
         composition.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
         composition.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
+        
+        print("📹 Video composition final settings:")
+        print("  - Render size: \(composition.renderSize)")
+        print("  - Frame duration: \(composition.frameDuration.seconds)s")
+        print("  - Instructions count: \(composition.instructions.count)")
         
         return composition
     }

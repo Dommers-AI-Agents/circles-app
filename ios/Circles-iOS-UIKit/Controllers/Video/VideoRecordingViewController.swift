@@ -94,9 +94,11 @@ class VideoRecordingViewController: UIViewController {
         return progress
     }()
     
+    // Place selection removed - now happens after video capture
     private let placeSelectionButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setTitle("📍 Select a Place", for: .normal)
+        button.setTitle("📍 Place will be added next", for: .normal)
+        button.isHidden = true  // Hidden since selection happens after
         button.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
         button.setTitleColor(.white, for: .normal)
         button.backgroundColor = UIColor.black.withAlphaComponent(0.5)
@@ -144,6 +146,10 @@ class VideoRecordingViewController: UIViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         stopCaptureSession()
+    }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
     
     override var prefersStatusBarHidden: Bool {
@@ -219,7 +225,8 @@ class VideoRecordingViewController: UIViewController {
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
         flipCameraButton.addTarget(self, action: #selector(flipCameraTapped), for: .touchUpInside)
         flashButton.addTarget(self, action: #selector(flashTapped), for: .touchUpInside)
-        placeSelectionButton.addTarget(self, action: #selector(selectPlaceTapped), for: .touchUpInside)
+        // Place selection removed - happens after video capture
+        // placeSelectionButton.addTarget(self, action: #selector(selectPlaceTapped), for: .touchUpInside)
         uploadButton.addTarget(self, action: #selector(uploadFromLibraryTapped), for: .touchUpInside)
         
         // Setup record button gestures
@@ -257,7 +264,8 @@ class VideoRecordingViewController: UIViewController {
     
     private func setupCamera() {
         captureSession = AVCaptureSession()
-        captureSession?.sessionPreset = .high
+        // Use HD preset for consistent quality
+        captureSession?.sessionPreset = .hd1920x1080
         
         // Setup video input
         guard let videoDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: currentCameraPosition),
@@ -280,6 +288,17 @@ class VideoRecordingViewController: UIViewController {
         
         if let videoOutput = videoOutput, captureSession.canAddOutput(videoOutput) {
             captureSession.addOutput(videoOutput)
+            
+            // Configure the connection for proper orientation
+            if let connection = videoOutput.connection(with: .video) {
+                // Enable video stabilization for better quality
+                if connection.isVideoStabilizationSupported {
+                    connection.preferredVideoStabilizationMode = .auto
+                }
+                
+                // Set initial orientation
+                updateVideoOrientation()
+            }
         }
         
         // Setup preview layer
@@ -290,6 +309,14 @@ class VideoRecordingViewController: UIViewController {
         if let previewLayer = previewLayer {
             previewView.layer.addSublayer(previewLayer)
         }
+        
+        // Observe device orientation changes
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(deviceOrientationDidChange),
+            name: UIDevice.orientationDidChangeNotification,
+            object: nil
+        )
     }
     
     private func startCaptureSession() {
@@ -317,18 +344,26 @@ class VideoRecordingViewController: UIViewController {
     private func startRecording() {
         guard !isRecording else { return }
         
-        // Check if place is selected
-        guard selectedPlaceName != nil else {
-            showAlert(title: "Select a Place", message: "Please select a place for this video")
-            return
-        }
-        
+        // Check quota before recording
+        checkQuotaAndRecord()
+    }
+    
+    private func checkQuotaAndRecord() {
+        // For now, proceed with recording - quota check happens on upload
+        // This could be enhanced to check quota before recording
+        proceedWithRecording()
+    }
+    
+    private func proceedWithRecording() {
         // Create output URL
         let fileName = "reel_\(Date().timeIntervalSince1970).mp4"
         let tempDir = NSTemporaryDirectory()
         outputURL = URL(fileURLWithPath: tempDir).appendingPathComponent(fileName)
         
         guard let outputURL = outputURL else { return }
+        
+        // Update video orientation before recording
+        updateVideoOrientation()
         
         // Start recording
         videoOutput?.startRecording(to: outputURL, recordingDelegate: self)
@@ -392,6 +427,41 @@ class VideoRecordingViewController: UIViewController {
     @objc private func closeTapped() {
         delegate?.videoRecordingDidCancel()
         dismiss(animated: true)
+    }
+    
+    @objc private func deviceOrientationDidChange() {
+        updateVideoOrientation()
+    }
+    
+    private func updateVideoOrientation() {
+        guard let connection = videoOutput?.connection(with: .video) else { return }
+        
+        // Get the current device orientation
+        let deviceOrientation = UIDevice.current.orientation
+        
+        // Convert device orientation to video orientation
+        let videoOrientation: AVCaptureVideoOrientation
+        
+        switch deviceOrientation {
+        case .portrait:
+            videoOrientation = .portrait
+        case .portraitUpsideDown:
+            videoOrientation = .portraitUpsideDown
+        case .landscapeLeft:
+            videoOrientation = .landscapeRight // Note: these are reversed
+        case .landscapeRight:
+            videoOrientation = .landscapeLeft  // Note: these are reversed
+        default:
+            videoOrientation = .portrait // Default to portrait
+        }
+        
+        // Set the orientation if supported
+        if connection.isVideoOrientationSupported {
+            connection.videoOrientation = videoOrientation
+        }
+        
+        // Also update preview layer orientation
+        previewLayer?.connection?.videoOrientation = videoOrientation
     }
     
     @objc private func flipCameraTapped() {
@@ -484,7 +554,8 @@ extension VideoRecordingViewController: AVCaptureFileOutputRecordingDelegate {
             showAlert(title: "Recording Failed", message: error.localizedDescription)
         } else {
             // Recording successful
-            delegate?.videoRecordingDidFinish(with: outputFileURL, place: selectedPlace)
+            // Pass nil for place - selection happens after video processing
+            delegate?.videoRecordingDidFinish(with: outputFileURL, place: nil)
             dismiss(animated: true)
         }
     }
@@ -497,13 +568,8 @@ extension VideoRecordingViewController: UIImagePickerControllerDelegate, UINavig
         
         guard let videoURL = info[.mediaURL] as? URL else { return }
         
-        // Check if place is selected
-        guard selectedPlaceName != nil else {
-            showAlert(title: "Select a Place", message: "Please select a place for this video")
-            return
-        }
-        
-        delegate?.videoRecordingDidFinish(with: videoURL, place: selectedPlace)
+        // Pass nil for place - selection happens after video processing
+        delegate?.videoRecordingDidFinish(with: videoURL, place: nil)
         dismiss(animated: true)
     }
     
@@ -514,6 +580,16 @@ extension VideoRecordingViewController: UIImagePickerControllerDelegate, UINavig
 
 // MARK: - PlaceSearchDelegate
 extension VideoRecordingViewController: PlaceSearchDelegate {
+    func didSelectExistingPlace(_ place: Place) {
+        // Use the existing place
+        selectedPlaceName = place.name
+        selectedPlaceId = place.id
+        selectedPlace = place
+        
+        // Update the button to show the selected place
+        placeSelectionButton.setTitle("📍 \(place.name)", for: .normal)
+    }
+    
     func didSelectPlace(name: String, address: String, coordinate: CLLocationCoordinate2D, phone: String?, website: String?, category: String?, description: String?) {
         // For video recording, we just need to track the place name and generate an ID
         // The full place object will be created on the backend when uploading

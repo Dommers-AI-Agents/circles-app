@@ -314,6 +314,27 @@ class SSEService {
   isUserConnected(userId) {
     return this.clients.has(userId) && this.clients.get(userId).size > 0;
   }
+
+  // Broadcast video engagement updates to all connected clients
+  broadcastVideoEngagement(videoId, eventType, data) {
+    // Send to all connected clients
+    this.clients.forEach((clientSet, userId) => {
+      this.sendEvent(userId, {
+        type: 'video_engagement_update',
+        subType: eventType,
+        videoId: videoId,
+        data: data,
+        timestamp: new Date().toISOString()
+      });
+    });
+  }
+
+  // Listen for video engagement for specific video
+  listenToVideoEngagement(userId, videoId) {
+    // This could be enhanced to create specific listeners for a video
+    // For now, the broadcastVideoEngagement method will handle updates
+    console.log(`📡 SSE: User ${userId} listening to video ${videoId} engagement`);
+  }
 }
 
 // Export singleton instance

@@ -11,6 +11,9 @@ router.get('/network/activities', protect, activityController.getNetworkActiviti
 // Mark activities as read
 router.put('/network/activities/mark-read', protect, activityController.markActivitiesAsRead);
 
+// Delete an activity
+router.delete('/activities/:activityId', protect, activityController.deleteActivity);
+
 // Activity reactions
 router.post('/activities/:activityId/reactions', protect, activityInteractionController.addReaction);
 router.post('/activities/:activityId/reactions/remove', protect, activityInteractionController.removeReaction);

@@ -24,7 +24,7 @@ struct Activity: Codable {
     let circleName: String?
     let metadata: ActivityMetadata?
     let timestamp: Date
-    let isRead: Bool
+    let isRead: Bool?
     let reactionCount: Int?
     let commentCount: Int?
     let userReaction: String? // Current user's reaction emoji

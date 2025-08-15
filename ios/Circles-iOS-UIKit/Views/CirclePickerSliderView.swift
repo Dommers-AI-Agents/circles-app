@@ -314,7 +314,11 @@ extension CirclePickerSliderView: UIPickerViewDelegate {
 // MARK: - UIGestureRecognizerDelegate
 extension CirclePickerSliderView: UIGestureRecognizerDelegate {
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        return touch.view == self
+        // Ensure touch.view is valid and is a UIView
+        guard let touchView = touch.view as? UIView else {
+            return false
+        }
+        return touchView == self
     }
 }
 

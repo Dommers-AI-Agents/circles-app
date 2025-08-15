@@ -69,9 +69,37 @@ class VideoQuotaService {
   
   // Get user's subscription tier
   async getUserSubscriptionTier(userId) {
-    // TODO: Implement subscription check
-    // For now, return 'free' for all users
-    return 'free';
+    try {
+      // Get user document to check subscription status
+      const userDoc = await db.collection('users').doc(userId).get();
+      
+      if (!userDoc.exists) {
+        console.warn(`User ${userId} not found, defaulting to free tier`);
+        return 'free';
+      }
+      
+      const userData = userDoc.data();
+      const subscriptionStatus = userData.subscriptionStatus || 'none';
+      
+      // Check if user has active subscription
+      if (subscriptionStatus === 'active' || subscriptionStatus === 'trial') {
+        // Additional check for expiry date if available
+        if (userData.subscriptionExpiryDate) {
+          const expiryDate = new Date(userData.subscriptionExpiryDate);
+          if (expiryDate > new Date()) {
+            return 'premium';
+          }
+        } else {
+          // If status is active/trial but no expiry date, consider it premium
+          return 'premium';
+        }
+      }
+      
+      return 'free';
+    } catch (error) {
+      console.error('Error checking user subscription tier:', error);
+      return 'free'; // Default to free tier on error
+    }
   }
   
   // Update quota limits based on subscription

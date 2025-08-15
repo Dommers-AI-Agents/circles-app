@@ -123,7 +123,7 @@ extension PlaceSearchable {
         content.text = place.name
         
         // Show address and circle name if available
-        if let circle = circles.first(where: { $0.id == place.circleId }) {
+        if let circleId = place.circleId, let circle = circles.first(where: { $0.id == circleId }) {
             content.secondaryText = "\(place.address) • \(circle.name)"
         } else {
             content.secondaryText = place.address

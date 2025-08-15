@@ -205,13 +205,14 @@ extension NotificationService {
     
     // MARK: - In-App Notifications
     
-    func getNotifications(limit: Int = 50, offset: Int = 0, completion: @escaping (Result<NotificationsResponse, Error>) -> Void) {
+    func getNotifications(limit: Int = 50, offset: Int = 0, archived: Bool = false, completion: @escaping (Result<NotificationsResponse, Error>) -> Void) {
         print("🚀 NotificationService: getNotifications called")
-        print("🚀 NotificationService: limit: \(limit), offset: \(offset)")
+        print("🚀 NotificationService: limit: \(limit), offset: \(offset), archived: \(archived)")
         
         let queryParams: [String: String] = [
             "limit": "\(limit)",
-            "offset": "\(offset)"
+            "offset": "\(offset)",
+            "archived": archived ? "true" : "false"
         ]
         
         print("🚀 NotificationService: Making API request to 'notifications' endpoint")
@@ -281,6 +282,51 @@ extension NotificationService {
             }
         }
     }
+    
+    func archiveAllNotifications(completion: @escaping (Result<String, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "notifications/archive-all",
+            method: .put,
+            requiresAuth: true
+        ) { (result: Result<NotificationActionResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.message))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    func deleteNotification(notificationId: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "notifications/\(notificationId)",
+            method: .delete,
+            requiresAuth: true
+        ) { (result: Result<EmptyResponse, APIError>) in
+            switch result {
+            case .success:
+                completion(.success(()))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    func clearArchivedNotifications(completion: @escaping (Result<String, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "notifications/archived",
+            method: .delete,
+            requiresAuth: true
+        ) { (result: Result<NotificationActionResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.message))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
 }
 
 // MARK: - Response Models
@@ -288,4 +334,9 @@ extension NotificationService {
 private struct NotificationUnreadCountResponse: Codable {
     let success: Bool
     let unreadCount: Int
+}
+
+private struct NotificationActionResponse: Codable {
+    let success: Bool
+    let message: String
 }

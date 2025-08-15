@@ -1022,6 +1022,101 @@ class APIService {
             }
         }
     }
+    
+    // MARK: - Videos
+    
+    func getUserVideos(userId: String, limit: Int = 20, offset: Int = 0, completion: @escaping (Result<VideosResponse, APIError>) -> Void) {
+        let queryParams = "?limit=\(limit)&offset=\(offset)"
+        request(
+            endpoint: "videos/user/\(userId)\(queryParams)",
+            method: .get,
+            requiresAuth: false
+        ) { (result: Result<VideosResponse, APIError>) in
+            completion(result)
+        }
+    }
+    
+    func getUserReels(userId: String, limit: Int = 20, offset: Int = 0, completion: @escaping (Result<VideosResponse, APIError>) -> Void) {
+        let queryParams = "?limit=\(limit)&offset=\(offset)"
+        request(
+            endpoint: "videos/reels/user/\(userId)\(queryParams)",
+            method: .get,
+            requiresAuth: true
+        ) { (result: Result<VideosResponse, APIError>) in
+            completion(result)
+        }
+    }
+    
+    func getReelsFeed(limit: Int = 20, offset: Int = 0, completion: @escaping (Result<VideosResponse, APIError>) -> Void) {
+        let queryParams = "?limit=\(limit)&offset=\(offset)"
+        request(
+            endpoint: "videos/reels/feed\(queryParams)",
+            method: .get,
+            requiresAuth: true
+        ) { (result: Result<VideosResponse, APIError>) in
+            completion(result)
+        }
+    }
+    
+    func deleteVideo(videoId: String, completion: @escaping (Result<Void, APIError>) -> Void) {
+        request(
+            endpoint: "videos/\(videoId)",
+            method: .delete,
+            requiresAuth: true
+        ) { (result: Result<SimpleAPIResponse, APIError>) in
+            switch result {
+            case .success:
+                completion(.success(()))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    func likeReel(videoId: String, completion: @escaping (Result<Void, APIError>) -> Void) {
+        request(
+            endpoint: "videos/reels/\(videoId)/like",
+            method: .post,
+            requiresAuth: true
+        ) { (result: Result<SimpleAPIResponse, APIError>) in
+            switch result {
+            case .success:
+                completion(.success(()))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    func unlikeReel(videoId: String, completion: @escaping (Result<Void, APIError>) -> Void) {
+        request(
+            endpoint: "videos/reels/\(videoId)/like",
+            method: .delete,
+            requiresAuth: true
+        ) { (result: Result<SimpleAPIResponse, APIError>) in
+            switch result {
+            case .success:
+                completion(.success(()))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    func trackReelView(videoId: String, completion: @escaping (Result<Void, APIError>) -> Void) {
+        request(
+            endpoint: "videos/reels/\(videoId)/view",
+            method: .post,
+            requiresAuth: true
+        ) { (result: Result<SimpleAPIResponse, APIError>) in
+            switch result {
+            case .success:
+                completion(.success(()))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
 }
 
 // MARK: - Response Types

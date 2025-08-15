@@ -342,12 +342,44 @@ extension SettingsViewController {
         }
     }
     
-    override func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        return Section(rawValue: section)?.title
+    // Removed titleForHeaderInSection to avoid conflicts with viewForHeaderInSection
+    // The custom header view in viewForHeaderInSection provides the section titles
+    
+    override func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+        guard let sectionType = Section(rawValue: section) else { return nil }
+        
+        let headerView = UIView()
+        headerView.backgroundColor = Constants.Colors.background
+        
+        let label = UILabel()
+        label.text = sectionType.title.uppercased()
+        label.font = UIFont.systemFont(ofSize: 13, weight: .medium)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.translatesAutoresizingMaskIntoConstraints = false
+        
+        headerView.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 16),
+            label.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -16),
+            label.bottomAnchor.constraint(equalTo: headerView.bottomAnchor, constant: -6)
+        ])
+        
+        return headerView
+    }
+    
+    override func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
+        return 38
     }
     
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "Cell", for: indexPath)
+        
+        // Reset cell to default state to prevent reuse issues
+        cell.textLabel?.text = ""
+        cell.textLabel?.textColor = Constants.Colors.label
+        cell.detailTextLabel?.text = nil
+        cell.accessoryType = .none
+        cell.accessoryView = nil
         
         guard let section = Section(rawValue: indexPath.section) else { return cell }
         

@@ -125,6 +125,7 @@ const createCircle = (circleData, ownerId) => {
     placesCount: circleData.placesCount || 0, // Count of places for efficient display
     privacy: circleData.privacy || 'myNetwork', // public, myNetwork, private
     allowNetworkEdit: circleData.allowNetworkEdit || false,
+    isSystemCircle: circleData.isSystemCircle || false, // Flag for system-created circles like "My Moments"
     category: circleData.category || 'other', // travel, food, services, shopping, healthcare, entertainment, other
     customCategoryId: circleData.customCategoryId || null, // Reference to user's custom category
     location: circleData.location || null,
@@ -353,12 +354,13 @@ const createPlaceVideo = (videoData, userId) => {
     userId: userId,
     placeId: videoData.placeId,
     placeName: videoData.placeName,
+    contentType: videoData.contentType || 'video', // 'photo', 'video', 'carousel'
     videoUrl: videoData.videoUrl || null,
     previewUrl: videoData.previewUrl || null,
     thumbnailUrl: videoData.thumbnailUrl || null,
     title: videoData.title || '',
     description: videoData.description || '',
-    duration: videoData.duration || 0, // seconds, max 30
+    duration: videoData.duration || 0, // seconds, max 30 for videos, 0 for photos
     fileSize: videoData.fileSize || 0, // bytes after compression
     originalSize: videoData.originalSize || 0, // bytes before compression
     compressionRatio: videoData.compressionRatio || 0,
@@ -424,7 +426,7 @@ const createUserVideoQuota = (userId, tier = 'free') => {
     videosUploaded: 0,
     totalSize: 0, // Total bytes this month
     subscriptionTier: tier, // free or premium
-    quotaLimit: tier === 'free' ? 5 : 50, // Videos per month
+    quotaLimit: tier === 'free' ? 100 : 500, // Videos per month - increased for testing
     sizeLimit: tier === 'free' ? 262144000 : 2147483648, // 250MB for free, 2GB for premium
     lastResetDate: now.toISOString(),
     createdAt: now.toISOString(),

@@ -160,6 +160,7 @@ class VideoLinkInputViewController: UIViewController {
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        urlTextField.addDoneButtonOnKeyboard()
         urlTextField.becomeFirstResponder()
     }
     
@@ -460,6 +461,13 @@ class VideoLinkInputViewController: UIViewController {
 
 // MARK: - PlaceSearchDelegate
 extension VideoLinkInputViewController: PlaceSearchDelegate {
+    func didSelectExistingPlace(_ place: Place) {
+        // Use the existing place directly
+        selectedPlace = place
+        placeSelectionButton.setTitle("📍 \(place.name)", for: .normal)
+        updateAddButtonState()
+    }
+    
     func didSelectPlace(name: String, address: String, coordinate: CLLocationCoordinate2D, phone: String?, website: String?, category: String?, description: String?) {
         // Create a minimal place object for video association
         let location = GeoLocation(

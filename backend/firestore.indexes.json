@@ -447,6 +447,24 @@
       ]
     },
     {
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "archived",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "activityComments",
       "queryScope": "COLLECTION",
       "fields": [
@@ -475,6 +493,104 @@
         {
           "fieldPath": "createdAt",
           "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "place_videos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "deletedAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "uploadStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "visibility",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "viewCount",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "place_videos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "deletedAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "uploadStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "visibility",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "place_videos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "uploadStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "deletedAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "video_comments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "videoId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "parentCommentId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "video_comments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "parentCommentId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
         }
       ]
     }
