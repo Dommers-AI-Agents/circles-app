@@ -456,7 +456,7 @@ exports.completeVideoUpload = async (req, res) => {
         videoDuration: videoData.duration,
         placeId: videoData.placeId
       },
-      timestamp: new Date().toISOString(),
+      timestamp: FieldValue.serverTimestamp(),
       isRead: false,
       viewers: [],
       reactionCount: 0,

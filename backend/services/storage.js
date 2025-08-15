@@ -1,6 +1,7 @@
 // backend/services/storage.js
 const { getStorage } = require('../config/firebase');
 const { v4: uuidv4 } = require('uuid');
+const axios = require('axios');
 
 // Upload image to Firebase Storage
 const uploadImage = async (base64Data, filename) => {
@@ -157,7 +158,73 @@ const deleteImage = async (imageUrl) => {
   }
 };
 
+// Download image from URL and upload to Firebase Storage
+const downloadAndUploadImage = async (imageUrl, filename = null) => {
+  try {
+    console.log('📥 Downloading image from URL:', imageUrl);
+    
+    // Download the image
+    const response = await axios.get(imageUrl, {
+      responseType: 'arraybuffer',
+      timeout: 30000, // 30 second timeout
+      maxContentLength: 10 * 1024 * 1024, // 10MB max
+      headers: {
+        'User-Agent': 'Circles-App/1.0'
+      }
+    });
+    
+    // Convert to base64
+    const base64 = Buffer.from(response.data, 'binary').toString('base64');
+    
+    // Determine filename
+    if (!filename) {
+      // Try to extract extension from URL or content-type
+      let ext = 'jpg';
+      if (response.headers['content-type']) {
+        const contentType = response.headers['content-type'];
+        if (contentType.includes('png')) ext = 'png';
+        else if (contentType.includes('gif')) ext = 'gif';
+        else if (contentType.includes('webp')) ext = 'webp';
+      }
+      filename = `place-photo-${uuidv4()}.${ext}`;
+    }
+    
+    // Upload to Firebase Storage
+    const firebaseUrl = await uploadImage(base64, filename);
+    console.log('✅ Image uploaded to Firebase:', firebaseUrl);
+    
+    return firebaseUrl;
+  } catch (error) {
+    console.error('Error downloading and uploading image:', error);
+    if (error.response) {
+      console.error('Response status:', error.response.status);
+      console.error('Response headers:', error.response.headers);
+    }
+    throw error;
+  }
+};
+
+// Download multiple images and upload to Firebase
+const downloadAndUploadMultipleImages = async (imageUrls) => {
+  const uploadedUrls = [];
+  const errors = [];
+  
+  for (const imageUrl of imageUrls) {
+    try {
+      const firebaseUrl = await downloadAndUploadImage(imageUrl);
+      uploadedUrls.push(firebaseUrl);
+    } catch (error) {
+      console.error(`Failed to process image ${imageUrl}:`, error.message);
+      errors.push({ url: imageUrl, error: error.message });
+    }
+  }
+  
+  return { uploadedUrls, errors };
+};
+
 module.exports = {
   uploadImage,
-  deleteImage
+  deleteImage,
+  downloadAndUploadImage,
+  downloadAndUploadMultipleImages
 };

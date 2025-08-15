@@ -21,7 +21,8 @@ const {
   trackPlaceView,
   movePlace,
   getPlacesByMultipleCircles,
-  getMyPlacesForCheckIn
+  getMyPlacesForCheckIn,
+  migrateGooglePhotosToFirebase
 } = require('../controllers/firebasePlaceController');
 const { protect } = require('../middleware/firebaseAuth');
 
@@ -41,6 +42,10 @@ router.route('/batch')
 // Get all user's places for check-in
 router.route('/my-places')
   .get(getMyPlacesForCheckIn);
+
+// Migration endpoint for Google API photos
+router.route('/migrate-photos')
+  .post(migrateGooglePhotosToFirebase);
 
 router.route('/search')
   .get(searchPlaces);

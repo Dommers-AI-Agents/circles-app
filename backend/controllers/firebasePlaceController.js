@@ -594,6 +594,23 @@ exports.createPlace = async (req, res, next) => {
     // Create place data
     const placeData = createPlace(req.body, circleId, req.user.uid);
     
+    // Validate photos - reject Google Places API URLs
+    if (placeData.photos && placeData.photos.length > 0) {
+      const invalidPhotos = placeData.photos.filter(photo => 
+        photo.includes('maps.googleapis.com') || 
+        photo.includes('photoreference=')
+      );
+      
+      if (invalidPhotos.length > 0) {
+        console.error('❌ Rejected place creation with Google Places API URLs:', invalidPhotos);
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid photo URLs detected. Photos must be uploaded to Firebase Storage, not Google Places API URLs.',
+          invalidUrls: invalidPhotos
+        });
+      }
+    }
+    
     // If location is missing but address is provided, try to geocode it
     if (!placeData.location && placeData.address && googleMapsApiKey) {
       console.log('🗺️ Place missing location, attempting to geocode address:', placeData.address);
@@ -1129,18 +1146,35 @@ exports.refreshPlaceFromGoogle = async (req, res, next) => {
       // Update photos if available (always refresh to get latest photos)
       if (googlePlace.photos && googlePlace.photos.length > 0) {
         // Get photo URLs (limit to 3 photos to avoid excessive API calls)
-        const photoUrls = [];
+        const googlePhotoUrls = [];
         const photosToFetch = Math.min(3, googlePlace.photos.length);
         
         for (let i = 0; i < photosToFetch; i++) {
           const photo = googlePlace.photos[i];
           const photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${photo.photo_reference}&key=${googleMapsApiKey}`;
-          photoUrls.push(photoUrl);
+          googlePhotoUrls.push(photoUrl);
         }
         
-        if (photoUrls.length > 0) {
-          updateData.photos = photoUrls;
-          console.log(`📸 Added ${photoUrls.length} Google Places photos`);
+        if (googlePhotoUrls.length > 0) {
+          // Download images from Google and upload to Firebase Storage
+          const { downloadAndUploadMultipleImages } = require('../services/storage');
+          console.log(`📸 Downloading ${googlePhotoUrls.length} photos from Google Places...`);
+          
+          try {
+            const { uploadedUrls, errors } = await downloadAndUploadMultipleImages(googlePhotoUrls);
+            
+            if (uploadedUrls.length > 0) {
+              updateData.photos = uploadedUrls;
+              console.log(`✅ Successfully uploaded ${uploadedUrls.length} photos to Firebase Storage`);
+            }
+            
+            if (errors.length > 0) {
+              console.error(`⚠️ Failed to upload ${errors.length} photos:`, errors);
+            }
+          } catch (error) {
+            console.error('❌ Error processing Google Places photos:', error);
+            // Don't update photos if download failed
+          }
         }
       }
       
@@ -2912,6 +2946,136 @@ exports.getMyPlacesForCheckIn = async (req, res, next) => {
     
   } catch (error) {
     console.error('Error fetching places for check-in:', error);
+    next(error);
+  }
+};
+
+// @desc    Migrate Google API photo URLs to Firebase Storage
+// @route   POST /api/places/migrate-photos
+// @access  Private (admin only)
+exports.migrateGooglePhotosToFirebase = async (req, res, next) => {
+  try {
+    const userId = req.user.uid;
+    const { placeId, dryRun = false } = req.body;
+    
+    console.log('🔄 Starting photo migration:', { userId, placeId, dryRun });
+    
+    // Import storage service
+    const { downloadAndUploadMultipleImages } = require('../services/storage');
+    
+    // Query for places with Google API URLs
+    let query = db.collection(COLLECTIONS.PLACES);
+    
+    if (placeId) {
+      // Migrate specific place
+      query = query.where(admin.firestore.FieldPath.documentId(), '==', placeId);
+    }
+    
+    const placesSnapshot = await query.get();
+    
+    const placesToMigrate = [];
+    const migrationResults = [];
+    
+    // Find places with Google API URLs
+    placesSnapshot.forEach(doc => {
+      const place = serializeDoc(doc);
+      
+      if (place.photos && place.photos.length > 0) {
+        const googleUrls = place.photos.filter(photo => 
+          photo.includes('maps.googleapis.com') || 
+          photo.includes('photoreference=')
+        );
+        
+        if (googleUrls.length > 0) {
+          placesToMigrate.push({
+            id: doc.id,
+            name: place.name,
+            photos: place.photos,
+            googleUrls: googleUrls
+          });
+        }
+      }
+    });
+    
+    console.log(`📊 Found ${placesToMigrate.length} places with Google API URLs`);
+    
+    if (dryRun) {
+      return res.status(200).json({
+        success: true,
+        message: 'Dry run complete',
+        placesToMigrate: placesToMigrate.map(p => ({
+          id: p.id,
+          name: p.name,
+          googleUrlCount: p.googleUrls.length
+        }))
+      });
+    }
+    
+    // Process each place
+    for (const place of placesToMigrate) {
+      try {
+        console.log(`Processing place: ${place.name} (${place.id})`);
+        
+        // Download and upload Google photos
+        const { uploadedUrls, errors } = await downloadAndUploadMultipleImages(place.googleUrls);
+        
+        if (uploadedUrls.length > 0) {
+          // Filter out Google Places API URLs and add Firebase URLs
+          const nonGoogleUrls = place.photos.filter(photo => 
+            !photo.includes('maps.googleapis.com') && 
+            !photo.includes('photoreference=')
+          );
+          
+          const newPhotos = [...nonGoogleUrls, ...uploadedUrls];
+          
+          // Update the place in Firestore
+          await db.collection(COLLECTIONS.PLACES).doc(place.id).update({
+            photos: newPhotos,
+            updatedAt: new Date().toISOString()
+          });
+          
+          migrationResults.push({
+            placeId: place.id,
+            placeName: place.name,
+            status: 'success',
+            migratedCount: uploadedUrls.length,
+            failedCount: errors.length
+          });
+          
+          console.log(`✅ Migrated ${uploadedUrls.length} photos for ${place.name}`);
+        } else {
+          migrationResults.push({
+            placeId: place.id,
+            placeName: place.name,
+            status: 'failed',
+            error: 'No photos could be migrated',
+            errors: errors
+          });
+          
+          console.error(`❌ Failed to migrate photos for ${place.name}`);
+        }
+      } catch (error) {
+        console.error(`Error migrating place ${place.id}:`, error);
+        migrationResults.push({
+          placeId: place.id,
+          placeName: place.name,
+          status: 'error',
+          error: error.message
+        });
+      }
+    }
+    
+    const successCount = migrationResults.filter(r => r.status === 'success').length;
+    const failedCount = migrationResults.filter(r => r.status !== 'success').length;
+    
+    res.status(200).json({
+      success: true,
+      message: `Migration complete: ${successCount} succeeded, ${failedCount} failed`,
+      results: migrationResults
+    });
+    
+  } catch (error) {
+    console.error('Error in photo migration:', error);
     next(error);
   }
 };
