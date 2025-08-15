@@ -28,7 +28,8 @@ const {
   getTutorialStatus,
   completeTutorial,
   retryOnboarding,
-  mergeUserAccounts
+  mergeUserAccounts,
+  getDailySummary
 } = require('../controllers/firebaseUserController');
 const { changePassword } = require('../controllers/firebaseAuthController');
 const { protect } = require('../middleware/firebaseAuth');
@@ -51,6 +52,9 @@ router.route('/me/friends')
 
 router.route('/me/friend-requests')
   .get(getFriendRequests);
+
+router.route('/me/daily-summary')
+  .get(getDailySummary);
 
 router.route('/me/circles/reorder')
   .put(reorderCircles);

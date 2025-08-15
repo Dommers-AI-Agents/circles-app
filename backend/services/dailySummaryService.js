@@ -75,10 +75,8 @@ class DailySummaryService {
       // Send push notification
       await notificationService.sendToUser(userId, notification);
       
-      // Send email summary (only if has activity)
-      if (hasActivity) {
-        await this.sendSummaryEmail(user, stats, notification);
-      }
+      // Send email summary (always send when daily summary is triggered)
+      await this.sendSummaryEmail(user, stats, notification, hasActivity);
       
       // Record that we sent today's summary
       await this.recordSummarySent(userId);
@@ -433,14 +431,16 @@ class DailySummaryService {
   }
 
   // Send summary email
-  async sendSummaryEmail(user, stats, notification) {
+  async sendSummaryEmail(user, stats, notification, hasActivity) {
     try {
       if (!user.email) {
         console.log(`⚠️ No email for user ${user.displayName}`);
         return;
       }
 
-      const emailHtml = this.buildSummaryEmailHtml(user, stats, notification);
+      const emailHtml = hasActivity 
+        ? this.buildSummaryEmailHtml(user, stats, notification)
+        : this.buildEngagementEmailHtml(user, stats, notification);
       
       await emailService.sendEmail({
         to: user.email,
@@ -448,7 +448,7 @@ class DailySummaryService {
         html: emailHtml
       });
 
-      console.log(`📧 Sent summary email to ${user.email}`);
+      console.log(`📧 Sent ${hasActivity ? 'summary' : 'engagement'} email to ${user.email}`);
     } catch (error) {
       console.error(`❌ Error sending summary email to ${user.email}:`, error);
       // Don't throw - email failure shouldn't stop the process
@@ -648,6 +648,146 @@ class DailySummaryService {
         type: 'daily_summary'
       }
     };
+  }
+
+  // Build HTML email for engagement (no activity)
+  buildEngagementEmailHtml(user, stats, notification) {
+    const today = new Date().toLocaleDateString('en-US', { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+
+    // Determine the appropriate content based on user situation
+    let mainContent = '';
+    let ctaText = 'Open Circles';
+    let ctaLink = 'circles://daily-summary';
+
+    if (stats.connectionCount === 0) {
+      // User has no connections
+      mainContent = `
+        <div style="background: #f8f9fa; padding: 25px; border-radius: 8px; margin-bottom: 20px; text-align: center;">
+          <h2 style="margin: 0 0 15px 0; color: #333; font-size: 24px;">👥 Build Your Network</h2>
+          <p style="margin: 0 0 20px 0; color: #666; line-height: 1.6;">
+            Circles is better with friends! Connect with people you know to discover their favorite places and share yours.
+          </p>
+          <div style="margin: 20px 0;">
+            <div style="display: inline-block; background: #fff; padding: 15px 25px; border-radius: 8px; border: 1px solid #e0e0e0;">
+              <p style="margin: 0; color: #999; font-size: 14px;">Currently in your network</p>
+              <p style="margin: 5px 0 0 0; color: #333; font-size: 28px; font-weight: bold;">0 connections</p>
+            </div>
+          </div>
+        </div>
+      `;
+      ctaText = 'Find Friends';
+      ctaLink = 'circles://network/find-friends';
+    } else if (stats.userPlaceCount === 0) {
+      // User has connections but no places
+      mainContent = `
+        <div style="background: #f8f9fa; padding: 25px; border-radius: 8px; margin-bottom: 20px; text-align: center;">
+          <h2 style="margin: 0 0 15px 0; color: #333; font-size: 24px;">📍 Share Your First Place</h2>
+          <p style="margin: 0 0 20px 0; color: #666; line-height: 1.6;">
+            Your network is waiting to discover your favorite spots! Add your first place to start sharing.
+          </p>
+          <div style="margin: 20px 0;">
+            <div style="display: inline-block; background: #fff; padding: 15px 25px; border-radius: 8px; border: 1px solid #e0e0e0;">
+              <p style="margin: 0; color: #999; font-size: 14px;">Places you've shared</p>
+              <p style="margin: 5px 0 0 0; color: #333; font-size: 28px; font-weight: bold;">0 places</p>
+            </div>
+          </div>
+        </div>
+      `;
+      ctaText = 'Add Your First Place';
+      ctaLink = 'circles://add-place';
+    } else {
+      // User has connections and places but no recent activity
+      mainContent = `
+        <div style="background: #f8f9fa; padding: 25px; border-radius: 8px; margin-bottom: 20px; text-align: center;">
+          <h2 style="margin: 0 0 15px 0; color: #333; font-size: 24px;">🌟 Stay Connected</h2>
+          <p style="margin: 0 0 20px 0; color: #666; line-height: 1.6;">
+            It's been quiet in your network lately. Check in to see if there's anything new!
+          </p>
+          <div style="margin: 20px 0; display: flex; justify-content: center; gap: 20px;">
+            <div style="background: #fff; padding: 15px 20px; border-radius: 8px; border: 1px solid #e0e0e0;">
+              <p style="margin: 0; color: #999; font-size: 14px;">Your network</p>
+              <p style="margin: 5px 0 0 0; color: #333; font-size: 24px; font-weight: bold;">${stats.connectionCount}</p>
+            </div>
+            <div style="background: #fff; padding: 15px 20px; border-radius: 8px; border: 1px solid #e0e0e0;">
+              <p style="margin: 0; color: #999; font-size: 14px;">Your places</p>
+              <p style="margin: 5px 0 0 0; color: #333; font-size: 24px; font-weight: bold;">${stats.userPlaceCount}</p>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>${notification.title}</title>
+      </head>
+      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+          <!-- Header -->
+          <div style="background-color: #4CAF50; padding: 30px 20px; text-align: center;">
+            <h1 style="margin: 0; color: #ffffff; font-size: 24px;">Circles</h1>
+            <p style="margin: 10px 0 0 0; color: #ffffff; font-size: 16px;">Your Daily Update</p>
+          </div>
+          
+          <!-- Content -->
+          <div style="padding: 30px 20px;">
+            <h2 style="margin: 0 0 20px 0; color: #333; font-size: 20px;">
+              Hi ${user.displayName || 'there'} 👋
+            </h2>
+            
+            ${mainContent}
+            
+            <!-- CTA Button -->
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${ctaLink}" style="display: inline-block; background-color: #4CAF50; color: #ffffff; text-decoration: none; padding: 12px 30px; border-radius: 25px; font-weight: 600;">
+                ${ctaText}
+              </a>
+            </div>
+            
+            <!-- Tips Section -->
+            <div style="background: #fafafa; padding: 20px; border-radius: 8px; margin-top: 30px;">
+              <h3 style="margin: 0 0 10px 0; color: #333; font-size: 16px;">💡 Quick Tips</h3>
+              <ul style="margin: 0; padding-left: 20px; color: #666; line-height: 1.8;">
+                ${stats.connectionCount === 0 ? `
+                  <li>Search for friends by name or email</li>
+                  <li>Import contacts to find people you know</li>
+                  <li>Share your profile link to connect faster</li>
+                ` : stats.userPlaceCount === 0 ? `
+                  <li>Long press on the map to add a place</li>
+                  <li>Add notes about why you love each spot</li>
+                  <li>Organize places into themed circles</li>
+                ` : `
+                  <li>Check your network feed for updates</li>
+                  <li>Send a place suggestion to a friend</li>
+                  <li>Explore new circles shared with you</li>
+                `}
+              </ul>
+            </div>
+            
+            <!-- Footer -->
+            <div style="border-top: 1px solid #eee; margin-top: 40px; padding-top: 20px; text-align: center;">
+              <p style="color: #999; font-size: 14px; margin: 0;">
+                ${today}
+              </p>
+              <p style="color: #999; font-size: 12px; margin: 10px 0 0 0;">
+                You're receiving this because you have daily summaries enabled.<br>
+                <a href="circles://settings/notifications" style="color: #4CAF50;">Manage notification preferences</a>
+              </p>
+            </div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
   }
 }
 

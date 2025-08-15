@@ -2497,6 +2497,50 @@ exports.recalculateFollowerCounts = async (req, res, next) => {
 // @desc    Merge duplicate user accounts
 // @route   POST /api/users/merge-accounts
 // @access  Private (Admin only or same user)
+// @desc    Get daily summary data for user
+// @route   GET /api/users/me/daily-summary
+// @access  Private
+exports.getDailySummary = async (req, res, next) => {
+  try {
+    const userId = req.user.uid;
+    console.log(`📊 Getting daily summary for user ${userId}`);
+    
+    // Import the daily summary service
+    const dailySummaryService = require('../services/dailySummaryService');
+    
+    // Gather the user's stats (same as what's used for notifications)
+    const stats = await dailySummaryService.gatherUserStats(userId);
+    
+    // Format the response
+    const summaryData = {
+      date: new Date().toISOString(),
+      newPlaces: stats.newPlaces,
+      newPlacesByCategory: stats.newPlacesByCategory,
+      newConnections: stats.newConnections,
+      unreadMessages: stats.unreadMessages,
+      placeComments: stats.placeComments,
+      placeLikes: stats.placeLikes,
+      topContributors: stats.topContributors,
+      connectionCount: stats.connectionCount,
+      userPlaceCount: stats.userPlaceCount
+    };
+    
+    console.log(`📊 Summary data gathered:`, summaryData);
+    
+    res.json({
+      success: true,
+      data: summaryData
+    });
+  } catch (error) {
+    console.error('❌ Error getting daily summary:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get daily summary',
+      error: error.message
+    });
+  }
+};
+
 exports.mergeUserAccounts = async (req, res, next) => {
   try {
     const { primaryAccountId, secondaryAccountId } = req.body;

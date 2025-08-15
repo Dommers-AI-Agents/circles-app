@@ -109,7 +109,12 @@ class NotificationService {
               'relevance-score': 1.0, // Ensures notifications persist in Notification Center
               'thread-id': notification.type || 'default', // Groups related notifications
               ...(category && { category }) // Add category if defined
-            }
+            },
+            // IMPORTANT: Add custom data at root level of payload (outside aps)
+            // This ensures iOS can access the data when notification is tapped
+            ...notification.data,
+            // Also add type at root for easier access
+            type: notification.type
           },
           headers: {
             'apns-priority': '10', // High priority for immediate delivery
@@ -134,12 +139,27 @@ class NotificationService {
         const failedTokens = [];
         response.responses.forEach((resp, idx) => {
           if (!resp.success) {
+            console.log(`🔔 ❌ Token failed: ${tokens[idx].substring(0, 20)}...`);
+            console.log(`🔔 ❌ Error: ${resp.error?.message || 'Unknown error'}`);
+            console.log(`🔔 ❌ Error code: ${resp.error?.code || 'No code'}`);
             failedTokens.push(tokens[idx]);
           }
         });
         
-        // Remove invalid tokens
-        await this.removeInvalidTokens(userId, failedTokens);
+        // Only remove tokens with specific unrecoverable errors
+        const unrecoverableErrors = ['messaging/invalid-registration-token', 'messaging/registration-token-not-registered'];
+        const tokensToRemove = [];
+        
+        response.responses.forEach((resp, idx) => {
+          if (!resp.success && resp.error?.code && unrecoverableErrors.includes(resp.error.code)) {
+            tokensToRemove.push(tokens[idx]);
+          }
+        });
+        
+        if (tokensToRemove.length > 0) {
+          console.log(`🔔 Removing ${tokensToRemove.length} invalid tokens`);
+          await this.removeInvalidTokens(userId, tokensToRemove);
+        }
       }
 
       return { 
