@@ -27,9 +27,22 @@ class OEmbedService {
   }
 
   /**
+   * Check if URL is a direct video file
+   */
+  isDirectVideoUrl(url) {
+    const videoExtensions = /\.(mp4|webm|ogg|mov|avi|mkv|m4v|3gp|wmv)(\?.*)?$/i;
+    return videoExtensions.test(url);
+  }
+
+  /**
    * Detect platform from URL
    */
   detectPlatform(url) {
+    // First check if it's a direct video URL
+    if (this.isDirectVideoUrl(url)) {
+      return 'direct';
+    }
+    
     for (const [platform, config] of Object.entries(this.providers)) {
       if (config.pattern.test(url)) {
         return platform;
@@ -56,7 +69,12 @@ class OEmbedService {
     try {
       const platform = this.detectPlatform(url);
       if (!platform) {
-        throw new Error('Unsupported video platform');
+        throw new Error('Unsupported video platform or URL format');
+      }
+
+      // Handle direct video URLs
+      if (platform === 'direct') {
+        return this.fetchDirectVideoMetadata(url);
       }
 
       const config = this.providers[platform];
@@ -87,6 +105,47 @@ class OEmbedService {
     } catch (error) {
       console.error('Error fetching video metadata:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Fetch metadata for direct video URLs
+   */
+  async fetchDirectVideoMetadata(url) {
+    try {
+      // Extract filename from URL
+      const urlParts = new URL(url);
+      const pathParts = urlParts.pathname.split('/');
+      const filename = pathParts[pathParts.length - 1] || 'Direct Video';
+      
+      // Try to fetch basic info with a HEAD request
+      let contentLength = null;
+      try {
+        const response = await axios.head(url, { timeout: 5000 });
+        contentLength = response.headers['content-length'];
+      } catch (error) {
+        console.log('Could not fetch video headers:', error.message);
+      }
+
+      return {
+        platform: 'direct',
+        title: decodeURIComponent(filename),
+        author: urlParts.hostname,
+        authorUrl: `${urlParts.protocol}//${urlParts.hostname}`,
+        thumbnailUrl: null, // Direct videos don't have thumbnails via URL
+        embedHtml: null, // No embed HTML needed
+        videoUrl: url, // Store the direct URL
+        width: null,
+        height: null,
+        duration: null,
+        fileSize: contentLength ? parseInt(contentLength) : null,
+        providerName: 'Direct Video',
+        providerUrl: `${urlParts.protocol}//${urlParts.hostname}`,
+        isDirectVideo: true
+      };
+    } catch (error) {
+      console.error('Error fetching direct video metadata:', error);
+      throw new Error('Failed to fetch direct video information');
     }
   }
 
@@ -270,15 +329,59 @@ class OEmbedService {
   }
 
   /**
-   * Clean and sanitize embed HTML
+   * Clean and sanitize embed HTML for security
    */
   sanitizeEmbedHtml(html) {
-    // Remove script tags for security (we'll load them separately)
+    if (!html) return '';
+    
+    // Remove all script tags and their content
     html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
     
-    // Add responsive wrapper classes
+    // Remove event handlers
+    html = html.replace(/\son\w+\s*=\s*"[^"]*"/gi, '');
+    html = html.replace(/\son\w+\s*=\s*'[^']*'/gi, '');
+    html = html.replace(/\son\w+\s*=\s*[^\s>]*/gi, '');
+    
+    // Remove javascript: protocol
+    html = html.replace(/javascript:/gi, '');
+    
+    // Remove data: URIs that could contain scripts
+    html = html.replace(/data:text\/html[^,]*,/gi, '');
+    
+    // Only allow specific iframe attributes from trusted sources
+    const trustedDomains = [
+      'youtube.com',
+      'youtube-nocookie.com',
+      'tiktok.com',
+      'instagram.com',
+      'twitter.com',
+      'x.com'
+    ];
+    
+    // Check if iframe src is from trusted domain
+    const srcMatch = html.match(/src="([^"]*)"/);
+    if (srcMatch) {
+      const src = srcMatch[1];
+      const isTrusted = trustedDomains.some(domain => 
+        src.includes(domain) || src.includes(`//${domain}`)
+      );
+      
+      if (!isTrusted) {
+        console.warn(`⚠️ Untrusted iframe source blocked: ${src}`);
+        return ''; // Block untrusted iframes completely
+      }
+    }
+    
+    // Make responsive
     html = html.replace(/width="\d+"/, 'width="100%"');
     html = html.replace(/height="\d+"/, 'height="100%"');
+    
+    // Add sandbox attribute for additional security
+    if (html.includes('<iframe')) {
+      if (!html.includes('sandbox=')) {
+        html = html.replace('<iframe', '<iframe sandbox="allow-scripts allow-same-origin allow-presentation"');
+      }
+    }
     
     return html;
   }

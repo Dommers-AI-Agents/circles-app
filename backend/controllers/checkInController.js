@@ -4,6 +4,7 @@ const {
   COLLECTIONS, 
   createCheckIn, 
   createPlace,
+  createCircle,
   validateCheckIn,
   serializeDoc,
   serializeQuerySnapshot 
@@ -11,8 +12,135 @@ const {
 const { createActivity } = require('./activityController');
 const notificationService = require('../services/notificationService');
 const sseService = require('../services/sseService');
+const { Client } = require('@googlemaps/google-maps-services-js');
+const { googleMapsApiKey } = require('../config/config');
 
 const db = getFirestore();
+const googleMapsClient = new Client({});
+
+// Helper function to find or create user's check-in circle
+async function findOrCreateCheckInCircle(userId) {
+  try {
+    // Look for existing check-in circle
+    const circlesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
+      .where('owner', '==', userId)
+      .where('isCheckInCircle', '==', true)
+      .limit(1)
+      .get();
+    
+    if (!circlesSnapshot.empty) {
+      // Return existing check-in circle
+      return serializeDoc(circlesSnapshot.docs[0]);
+    }
+    
+    // Create new check-in circle
+    const checkInCircleData = {
+      name: 'Check-in Places',
+      description: 'Places I\'ve checked into',
+      privacy: 'public', // Public by default for discovery
+      isCheckInCircle: true,
+      icon: '📍',
+      color: '#4CAF50'
+    };
+    
+    const circle = createCircle(checkInCircleData, userId);
+    const circleRef = await db.collection(COLLECTIONS.CIRCLES).add(circle);
+    const circleDoc = await circleRef.get();
+    
+    console.log(`✅ Created Check-in Places circle for user ${userId}`);
+    return serializeDoc(circleDoc);
+  } catch (error) {
+    console.error('Error finding/creating check-in circle:', error);
+    throw error;
+  }
+}
+
+// Helper function to enrich place data with Google Places API
+async function enrichPlaceWithGoogleData(placeName, location) {
+  try {
+    if (!googleMapsApiKey) {
+      console.warn('Google Maps API key not configured, skipping enrichment');
+      return {};
+    }
+    
+    // Search for the place using name and location
+    const searchQuery = placeName;
+    const searchLocation = location ? `${location.latitude},${location.longitude}` : null;
+    
+    // First try to find the place
+    const searchResponse = await googleMapsClient.findPlaceFromText({
+      params: {
+        input: searchQuery,
+        inputtype: 'textquery',
+        fields: ['place_id', 'name', 'formatted_address', 'photos', 'types', 'rating', 'price_level'],
+        locationbias: searchLocation ? `circle:1000@${searchLocation}` : undefined,
+        key: googleMapsApiKey
+      }
+    });
+    
+    if (!searchResponse.data.candidates || searchResponse.data.candidates.length === 0) {
+      console.log(`No Google Places results found for: ${placeName}`);
+      return {};
+    }
+    
+    const candidate = searchResponse.data.candidates[0];
+    const placeId = candidate.place_id;
+    
+    // Get detailed place information
+    const detailsResponse = await googleMapsClient.placeDetails({
+      params: {
+        place_id: placeId,
+        fields: ['name', 'formatted_address', 'photos', 'types', 'rating', 'price_level', 'website', 'formatted_phone_number', 'opening_hours'],
+        key: googleMapsApiKey
+      }
+    });
+    
+    const placeDetails = detailsResponse.data.result;
+    
+    // Format photos array
+    const photos = [];
+    if (placeDetails.photos && placeDetails.photos.length > 0) {
+      // Get up to 3 photos
+      for (let i = 0; i < Math.min(3, placeDetails.photos.length); i++) {
+        const photo = placeDetails.photos[i];
+        const photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${photo.photo_reference}&key=${googleMapsApiKey}`;
+        photos.push(photoUrl);
+      }
+    }
+    
+    // Determine category from types
+    let category = 'other';
+    if (placeDetails.types) {
+      if (placeDetails.types.includes('restaurant') || placeDetails.types.includes('food')) {
+        category = 'restaurant';
+      } else if (placeDetails.types.includes('cafe')) {
+        category = 'cafe';
+      } else if (placeDetails.types.includes('bar') || placeDetails.types.includes('night_club')) {
+        category = 'bar';
+      } else if (placeDetails.types.includes('shopping_mall') || placeDetails.types.includes('store')) {
+        category = 'shopping';
+      } else if (placeDetails.types.includes('museum') || placeDetails.types.includes('art_gallery')) {
+        category = 'entertainment';
+      }
+    }
+    
+    return {
+      googlePlaceId: placeId,
+      name: placeDetails.name || placeName,
+      address: placeDetails.formatted_address || '',
+      photos: photos,
+      category: category,
+      rating: placeDetails.rating || null,
+      priceLevel: placeDetails.price_level || null,
+      website: placeDetails.website || null,
+      phoneNumber: placeDetails.formatted_phone_number || null,
+      openingHours: placeDetails.opening_hours ? placeDetails.opening_hours.weekday_text : null
+    };
+  } catch (error) {
+    console.error('Error enriching place with Google data:', error);
+    return {};
+  }
+}
 
 // Create a new check-in
 exports.createCheckIn = async (req, res) => {
@@ -111,6 +239,7 @@ exports.createCheckIn = async (req, res) => {
       // Ensure place exists in database for all check-ins
       let finalPlaceId = checkIn.placeId;
       let placePhoto = null;
+      let circleIdForActivity = checkIn.circleId;
       
       if (checkIn.placeId) {
         // Check if place exists in database
@@ -121,6 +250,7 @@ exports.createCheckIn = async (req, res) => {
             if (placeData.photos && placeData.photos.length > 0) {
               placePhoto = placeData.photos[0];
             }
+            circleIdForActivity = placeData.circleId || circleIdForActivity;
           } else {
             // Place ID provided but doesn't exist - clear it to create new
             finalPlaceId = null;
@@ -131,14 +261,18 @@ exports.createCheckIn = async (req, res) => {
         }
       }
       
-      // If no valid place ID, create a new place from check-in data
+      // If no valid place ID, create a new place in the check-in circle
       if (!finalPlaceId) {
         try {
-          // First check if a place with same name and address already exists
+          // Get or create the user's check-in circle
+          const checkInCircle = await findOrCreateCheckInCircle(userId);
+          circleIdForActivity = checkInCircle.id;
+          
+          // First check if a place with same name already exists in any of user's circles
           const existingPlacesQuery = await db.collection(COLLECTIONS.PLACES)
             .where('name', '==', checkIn.placeName)
-            .where('address', '==', checkIn.placeAddress)
-            .where('deletedAt', '==', null) // Only active places
+            .where('addedBy', '==', userId)
+            .where('deletedAt', '==', null)
             .limit(1)
             .get();
           
@@ -151,25 +285,46 @@ exports.createCheckIn = async (req, res) => {
             }
             console.log(`✅ Using existing place for check-in: ${checkIn.placeName} (ID: ${finalPlaceId})`);
           } else {
-            // Create new place from check-in information
+            // Enrich place data with Google Places API
+            const googleData = await enrichPlaceWithGoogleData(
+              checkIn.placeName,
+              checkIn.location
+            );
+            
+            // Create new place in check-in circle with enriched data
             const placeData = {
-              name: checkIn.placeName,
-              address: checkIn.placeAddress,
+              name: googleData.name || checkIn.placeName,
+              address: googleData.address || checkIn.placeAddress,
               location: checkIn.location ? {
                 coordinates: [checkIn.location.longitude, checkIn.location.latitude]
               } : null,
-              category: checkIn.placeCategory || 'other',
-              // Mark this place as created from check-in
-              addedViaCheckIn: true,
-              photos: [] // Could add photos from check-in if available
+              category: googleData.category || checkIn.placeCategory || 'other',
+              photos: googleData.photos || [],
+              googlePlaceId: googleData.googlePlaceId || null,
+              rating: googleData.rating || null,
+              priceLevel: googleData.priceLevel || null,
+              website: googleData.website || null,
+              phoneNumber: googleData.phoneNumber || null,
+              openingHours: googleData.openingHours || null,
+              addedViaCheckIn: true
             };
             
-            // Create the place document
-            const place = createPlace(placeData, null, userId); // circleId = null for floating places
+            // Create the place document in the check-in circle
+            const place = createPlace(placeData, checkInCircle.id, userId);
             const placeRef = await db.collection(COLLECTIONS.PLACES).add(place);
             finalPlaceId = placeRef.id;
             
-            console.log(`✅ Created new place from check-in: ${checkIn.placeName} (ID: ${finalPlaceId})`);
+            // Update the circle's places array
+            await db.collection(COLLECTIONS.CIRCLES).doc(checkInCircle.id).update({
+              places: FieldValue.arrayUnion(finalPlaceId)
+            });
+            
+            // Use the first photo for activity thumbnail
+            if (placeData.photos && placeData.photos.length > 0) {
+              placePhoto = placeData.photos[0];
+            }
+            
+            console.log(`✅ Created enriched place in check-in circle: ${placeData.name} (ID: ${finalPlaceId})`);
           }
         } catch (error) {
           console.error('Error creating place from check-in:', error);
@@ -187,7 +342,7 @@ exports.createCheckIn = async (req, res) => {
           placeAddress: checkIn.placeAddress,
           message: checkIn.message,
           endTime: checkIn.endTime,
-          circleId: checkIn.circleId,
+          circleId: circleIdForActivity,
           circleName: null, // Could fetch circle name if needed
           placePhoto: placePhoto,
           placeId: finalPlaceId, // Use the guaranteed place ID

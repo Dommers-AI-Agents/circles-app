@@ -135,4 +135,28 @@ router.route('/:id/mark-activities-viewed')
     }
   });
 
+// Mark circle as viewed (alias for mark-activities-viewed)
+router.route('/:id/mark-viewed')
+  .post(async (req, res) => {
+    try {
+      const userId = req.user.firebaseDocId || req.user.uid;
+      const { id: circleId } = req.params;
+      
+      const activityService = require('../services/activityService');
+      await activityService.markCircleActivitiesAsViewed(userId, circleId);
+      
+      res.status(200).json({
+        success: true,
+        message: 'Circle marked as viewed'
+      });
+    } catch (error) {
+      console.error('Error marking circle as viewed:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to mark circle as viewed',
+        error: error.message
+      });
+    }
+  });
+
 module.exports = router;

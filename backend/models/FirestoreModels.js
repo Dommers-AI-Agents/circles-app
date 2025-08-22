@@ -29,7 +29,8 @@ const COLLECTIONS = {
   PLACE_VIDEOS: 'placeVideos',
   USER_VIDEO_QUOTAS: 'userVideoQuotas',
   VIDEO_LIKES: 'videoLikes',
-  VIDEO_VIEWS: 'videoViews'
+  VIDEO_VIEWS: 'videoViews',
+  CIRCLE_GROUPS: 'circleGroups'
 };
 
 // User model structure
@@ -143,6 +144,23 @@ const createCircle = (circleData, ownerId) => {
     likes: circleData.likes || [],
     likesCount: circleData.likesCount || 0,
     commentsCount: circleData.commentsCount || 0,
+    groupId: circleData.groupId || null, // ID of the circle group this circle belongs to
+    orderInGroup: circleData.orderInGroup || null, // Position within the group
+    createdAt: now,
+    updatedAt: now
+  };
+};
+
+// Circle Group model structure
+const createCircleGroup = (groupData, ownerId) => {
+  const now = new Date().toISOString();
+  return {
+    name: groupData.name,
+    circleIds: groupData.circleIds || [], // Array of circle IDs in this group
+    coverImages: groupData.coverImages || [], // Up to 4 cover images from member circles
+    owner: ownerId,
+    circleCount: groupData.circleIds ? groupData.circleIds.length : 0,
+    privacy: groupData.privacy || 'private', // Inherited from member circles
     createdAt: now,
     updatedAt: now
   };
@@ -201,6 +219,7 @@ const createPlace = (placeData, circleId, addedBy) => {
     privacy: placeData.privacy || 'followCircle', // followCircle, public, myNetwork, private
     addedViaCheckIn: placeData.addedViaCheckIn || false, // Track places created from check-ins
     deletedAt: null, // Soft delete timestamp
+    lastRefreshedAt: placeData.lastRefreshedAt || null, // Last time data was refreshed from Google Places API
     createdAt: now,
     updatedAt: now
   };
@@ -987,10 +1006,34 @@ const validateActivityComment = (commentData) => {
   return errors;
 };
 
+// Validate circle group
+const validateCircleGroup = (groupData) => {
+  const errors = [];
+  
+  if (!groupData.name || groupData.name.trim().length === 0) {
+    errors.push('Group name is required');
+  }
+  
+  if (!groupData.circleIds || !Array.isArray(groupData.circleIds)) {
+    errors.push('Circle IDs must be an array');
+  }
+  
+  if (groupData.circleIds && groupData.circleIds.length < 2) {
+    errors.push('A group must contain at least 2 circles');
+  }
+  
+  if (groupData.name && groupData.name.length > 100) {
+    errors.push('Group name must be 100 characters or less');
+  }
+  
+  return errors;
+};
+
 module.exports = {
   COLLECTIONS,
   createUser,
   createCircle,
+  createCircleGroup,
   createPlace,
   createFriendRequest,
   createConnection,
@@ -1010,6 +1053,7 @@ module.exports = {
   createPlaceVideo,
   createUserVideoQuota,
   validateCircle,
+  validateCircleGroup,
   validatePlace,
   validateConnection,
   validateCircleShare,

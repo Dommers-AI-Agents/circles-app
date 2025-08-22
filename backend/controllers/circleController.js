@@ -425,3 +425,66 @@ exports.unfollowCircle = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Mark circle as viewed by user (clears new indicators)
+// @route   POST /api/circles/:id/mark-viewed
+// @access  Private
+exports.markCircleAsViewed = async (req, res, next) => {
+  try {
+    const circleId = req.params.id;
+    const userId = req.user.id;
+    
+    // Get the circle
+    const circle = await Circle.findById(circleId);
+    
+    if (!circle) {
+      return res.status(404).json({
+        success: false,
+        message: 'Circle not found'
+      });
+    }
+    
+    // Check if user has access to view this circle
+    const hasAccess = 
+      circle.owner.toString() === userId ||
+      circle.sharedWith?.includes(userId) ||
+      circle.privacy === 'public' ||
+      (circle.privacy === 'myNetwork' && req.user.connections?.includes(circle.owner.toString()));
+    
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to view this circle'
+      });
+    }
+    
+    // Update or create user's view record for this circle
+    const now = new Date();
+    
+    // Store the last viewed timestamp in a separate collection
+    // For Firestore implementation, we would use:
+    const { getFirestore } = require('../config/firebase');
+    const db = getFirestore();
+    
+    await db.collection('circle_views').doc(`${userId}_${circleId}`).set({
+      userId,
+      circleId,
+      lastViewedAt: now.toISOString(),
+      updatedAt: now.toISOString()
+    }, { merge: true });
+    
+    // Clear hasNewPlaces flag for this circle for this user
+    // This would typically be calculated when fetching circles based on lastViewedAt
+    
+    res.status(200).json({
+      success: true,
+      message: 'Circle marked as viewed',
+      data: {
+        circleId,
+        lastViewedAt: now.toISOString()
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};

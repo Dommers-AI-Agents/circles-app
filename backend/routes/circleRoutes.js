@@ -49,6 +49,9 @@ router.route('/:id/upload-cover')
 router.route('/:id/share')
   .post(shareCircle);
 
+router.route('/:id/mark-viewed')
+  .post(require('../controllers/circleController').markCircleAsViewed);
+
 router.route('/:id/follow')
   .post(followCircle);
 
@@ -60,5 +63,19 @@ router.route('/:id/places')
 
 router.route('/:id/places/reorder')
   .put(require('../controllers/placeController').reorderPlacesInCircle);
+
+// Circle Groups endpoints
+router.route('/groups')
+  .get(require('../controllers/circleGroupController').getGroups)
+  .post(require('../controllers/circleGroupController').createGroup);
+
+router.route('/groups/:groupId')
+  .get(require('../controllers/circleGroupController').getGroup)
+  .put(require('../controllers/circleGroupController').updateGroup)
+  .delete(require('../controllers/circleGroupController').deleteGroup);
+
+router.route('/:id/group')
+  .put(require('../controllers/circleGroupController').addCircleToGroup)
+  .delete(require('../controllers/circleGroupController').removeCircleFromGroup);
 
 module.exports = router;

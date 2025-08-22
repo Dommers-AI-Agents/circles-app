@@ -694,9 +694,12 @@ const getUserCircles = async (req, res) => {
     const currentUserId = req.user.uid;
     const targetUserId = req.params.userId;
     
+    // Import activityService at function level to ensure it's always in scope
+    const activityService = require('../services/activityService');
+    
     console.log('getUserCircles called:', { currentUserId, targetUserId });
 
-    // Verify the users are connected
+    // Check if users are connected OR if current user is following target user
     const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
       .where('userId', '==', currentUserId)
       .where('connectedUserId', '==', targetUserId)
@@ -709,20 +712,37 @@ const getUserCircles = async (req, res) => {
       .where('status', '==', 'accepted')
       .get();
 
-    if (connection1.empty && connection2.empty) {
+    const isConnected = !connection1.empty || !connection2.empty;
+    let isFollowing = false;
+
+    // If not connected, check if current user is following target user
+    if (!isConnected) {
+      const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(currentUserId).get();
+      if (currentUserDoc.exists) {
+        const currentUserData = currentUserDoc.data();
+        const following = currentUserData?.following || [];
+        isFollowing = following.includes(targetUserId);
+      }
+    }
+
+    console.log(`🔍 Permission check - Connected: ${isConnected}, Following: ${isFollowing}`);
+
+    // Allow access if user is connected OR following
+    if (!isConnected && !isFollowing) {
       return res.status(403).json({
         success: false,
-        message: 'You are not connected to this user'
+        message: 'You are not connected to this user and not following them'
       });
     }
     
-    // Get the connection document to check for recent activity
-    const connectionDoc = !connection1.empty ? connection1.docs[0] : connection2.docs[0];
-    const connectionData = connectionDoc.data();
+    // Get the connection document to check for recent activity (only exists for connections)
+    const connectionDoc = !connection1.empty ? connection1.docs[0] : (!connection2.empty ? connection2.docs[0] : null);
+    const connectionData = connectionDoc ? connectionDoc.data() : null;
     
-    // Track that the user viewed this connection
-    const activityService = require('../services/activityService');
-    await activityService.trackConnectionView(currentUserId, targetUserId);
+    // Track that the user viewed this connection (only for actual connections)
+    if (isConnected) {
+      await activityService.trackConnectionView(currentUserId, targetUserId);
+    }
 
     // Get user details
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(targetUserId).get();
@@ -768,10 +788,19 @@ const getUserCircles = async (req, res) => {
       userData.isFollowing = false;
     }
 
-    // Get circles from the target user with non-private privacy
+    // Get circles based on relationship type
+    let allowedPrivacyLevels = [];
+    if (isConnected) {
+      // Connected users can see both public and myNetwork circles
+      allowedPrivacyLevels = ['public', 'myNetwork'];
+    } else if (isFollowing) {
+      // Followers can only see public circles
+      allowedPrivacyLevels = ['public'];
+    }
+
     const circlesQuery = await db.collection(COLLECTIONS.CIRCLES)
       .where('owner', '==', targetUserId)
-      .where('privacy', 'in', ['public', 'myNetwork'])
+      .where('privacy', 'in', allowedPrivacyLevels)
       .get();
     
     // Sort in memory for now until Firestore index is created

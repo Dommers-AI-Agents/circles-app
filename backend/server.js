@@ -5,6 +5,15 @@ const cors = require('cors');
 const morgan = require('morgan');
 const { initializeFirebase } = require('./config/firebase');
 const errorHandler = require('./middleware/errorHandler');
+const { 
+  generalLimiter, 
+  authLimiter, 
+  uploadLimiter,
+  messageLimiter,
+  securityHeaders, 
+  sanitizeInput,
+  securityLogger 
+} = require('./middleware/security');
 
 // CRITICAL ENVIRONMENT VARIABLES for Cloud Run deployment:
 // 
@@ -57,6 +66,7 @@ const { getPlacesByCircleId, getPlacesByCircleIdPublic, reorderPlacesInCircle } 
 const { protect } = require('./middleware/firebaseAuth');
 
 const app = express();
+const path = require('path');
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -65,14 +75,57 @@ app.use((req, res, next) => {
   next();
 });
 
-// Middleware
-app.use(cors({
-  origin: true, // Allow all origins in development
-  credentials: true
-}));
+// Middleware - CORS with production security for Cloud Run
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Production allowed origins
+    const allowedOrigins = [
+      'https://circles-app.com',
+      'https://www.circles-app.com',
+      'capacitor://localhost', // iOS app
+      'ionic://localhost', // iOS app alternative
+      'http://localhost' // iOS app WebView
+    ];
+    
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) {
+      return callback(null, true);
+    }
+    
+    // In production, check against whitelist
+    if (process.env.NODE_ENV === 'production') {
+      if (allowedOrigins.some(allowed => origin.startsWith(allowed))) {
+        callback(null, true);
+      } else {
+        console.warn(`🚫 CORS blocked origin: ${origin}`);
+        callback(new Error('Not allowed by CORS'));
+      }
+    } else {
+      // In development, allow all origins
+      callback(null, true);
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset']
+};
+
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '50mb' })); // Increased limit for image uploads
 app.use(express.urlencoded({ limit: '50mb', extended: true })); // Also handle URL encoded data
 app.use(morgan('combined'));
+
+// Security middleware
+app.use(securityHeaders);
+app.use(securityLogger);
+app.use(sanitizeInput);
+
+// Apply general rate limiting to all requests
+app.use('/api/', generalLimiter);
+
+// Serve static files from public directory
+app.use('/public', express.static(path.join(__dirname, 'public')));
 
 // Images are now served from Firebase Storage, not local filesystem
 
@@ -91,20 +144,21 @@ app.use('/api/users', (req, res, next) => {
   next();
 });
 
-// API Routes
-app.use('/api/auth', firebaseAuthRoutes);
-app.use('/api/auth', linkedinAuthRoutes); // LinkedIn auth routes
+// API Routes with specific rate limiting
+app.use('/api/auth', authLimiter, firebaseAuthRoutes);
+app.use('/api/auth', authLimiter, linkedinAuthRoutes); // LinkedIn auth routes
 // Mount categories routes at a separate path to avoid conflicts with user /:id routes
 app.use('/api/categories', userCategoriesRoutes);
 // Mount contacts routes BEFORE generic user routes to avoid conflicts
 app.use('/api/users/contacts', userContactsRoutes);
 app.use('/api/users', firebaseUserRoutes);
+app.use('/api/circles/groups', require('./routes/circleGroupsRoutes'));
 app.use('/api/circles', firebaseCircleRoutes);
 app.use('/api/places', firebasePlaceRoutes);
-app.use('/api/upload', uploadRoutes);
+app.use('/api/upload', uploadLimiter, uploadRoutes);
 app.use('/api/connections', connectionRoutes);
 app.use('/api/network', networkRoutes);
-app.use('/api/messages', messagingRoutes);
+app.use('/api/messages', messageLimiter, messagingRoutes);
 app.use('/api/suggestions', suggestionRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/sse', sseRoutes);
@@ -116,6 +170,11 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/visits', visitRoutes);
 app.use('/api/check-ins', checkInRoutes);
 app.use('/api/videos', videoRoutes);
+
+// Share page route - serves HTML for shared video links
+app.get('/share/video/:videoId', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'video-share.html'));
+});
 app.use('/api/users/subscription', require('./routes/subscriptionRoutes'));
 app.use('/api/users/referral', require('./routes/referralRoutes'));
 app.use('/api/home', require('./routes/dashboardRoutes'));
@@ -123,6 +182,10 @@ app.use('/api/home', require('./routes/dashboardRoutes'));
 // LinkedIn OAuth callback route (outside /api prefix)
 const linkedinCallback = require('./routes/linkedinCallback');
 app.use('/', linkedinCallback);
+
+// App redirect routes for deep linking from emails
+const appRedirectRoutes = require('./routes/appRedirectRoutes');
+app.use('/app', appRedirectRoutes);
 
 // Special route for circle-specific places
 app.get('/api/circles/:circleId/places', protect, getPlacesByCircleId);

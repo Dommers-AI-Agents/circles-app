@@ -817,14 +817,38 @@ exports.register = async (req, res, next) => {
       
       // Complete onboarding for new user (synchronously)
       const userId = normalizeUserId(user.id || user.uid);
+      let circlesCount = 0;
+      let placesCount = 0;
+      
       try {
         console.log(`🎯 Starting onboarding for new user ${userId}...`);
-        await OnboardingService.completeUserOnboarding(userId);
+        const onboardingResult = await OnboardingService.completeUserOnboarding(userId);
         console.log(`✅ Onboarding completed for user ${userId}`);
+        
+        // After onboarding, fetch the created circles to get accurate counts
+        if (onboardingResult.success) {
+          const circlesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
+            .where('owner', '==', userId)
+            .get();
+          
+          circlesCount = circlesSnapshot.size;
+          
+          // Count total places across all circles
+          circlesSnapshot.forEach(doc => {
+            const circleData = doc.data();
+            placesCount += circleData.placesCount || 0;
+          });
+          
+          console.log(`📊 New user stats: ${circlesCount} circles, ${placesCount} places`);
+        }
       } catch (error) {
         console.error(`❌ Onboarding failed for user ${userId}:`, error);
         // Don't fail the registration if onboarding fails
       }
+      
+      // Add counts to user object
+      user.circlesCount = circlesCount;
+      user.placesCount = placesCount;
     } else {
       const userDoc = await result.userRef.get();
       user = serializeDoc(userDoc);
@@ -861,6 +885,8 @@ exports.register = async (req, res, next) => {
         friendRequests: user.friendRequests || [],
         followersCount: user.followersCount || 0,
         followingCount: user.followingCount || 0,
+        circlesCount: user.circlesCount || 0,
+        placesCount: user.placesCount || 0,
         createdAt: user.createdAt
       }
     });

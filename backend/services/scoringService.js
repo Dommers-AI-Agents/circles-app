@@ -94,21 +94,28 @@ class ScoringService {
       }
     }
 
-    // 3. Content & Activity Score (0-20 points)
-    // Check for unviewed activity
-    if (connection.hasRecentPlace || connection.hasNewActivity) {
-      scoreComponents.content += this.weights.content.hasUnviewedActivity;
-    }
+    // 3. Content & Activity Score (0-50 points) - FIXED validation
+    // Only award unviewed activity points if there's ACTUAL unviewed content
+    let hasActualUnviewedActivity = false;
     
-    // Alternatively, check recentActivity array
+    // Check recentActivity array first for actual content
     if (connection.recentActivity && connection.recentActivity.length > 0) {
-      const hasUnviewed = connection.recentActivity.some(activity => {
+      hasActualUnviewedActivity = connection.recentActivity.some(activity => {
         const viewedBy = activity.viewedBy || [];
         return !viewedBy.includes(currentUserId);
       });
-      if (hasUnviewed && scoreComponents.content < this.weights.content.hasUnviewedActivity) {
-        scoreComponents.content = this.weights.content.hasUnviewedActivity;
-      }
+    }
+    
+    // Only trust the flags if we have actual unviewed activity
+    if (hasActualUnviewedActivity || 
+        (connection.hasRecentPlace && connection.unviewedActivityCount > 0) || 
+        (connection.hasNewActivity && connection.unviewedActivityCount > 0)) {
+      scoreComponents.content += this.weights.content.hasUnviewedActivity;
+      console.log(`✅ Awarding ${this.weights.content.hasUnviewedActivity} content points for actual unviewed activity`);
+    } else if (connection.hasRecentPlace || connection.hasNewActivity) {
+      // Log suspicious case where flags are set but no actual activity
+      const displayName = connection.connectedUser?.displayName || 'Unknown';
+      console.log(`⚠️ WARNING: ${displayName} has activity flags set but no actual unviewed content - not awarding points`);
     }
 
     // Places bonus

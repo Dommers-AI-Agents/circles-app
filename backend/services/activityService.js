@@ -987,6 +987,281 @@ const logActivity = async (activityData) => {
   }
 };
 
+// Track when a user uploads a moment/video
+const trackMomentUpload = async (momentId, placeId, placeName, uploadedByUserId) => {
+  try {
+    // Create activity record
+    await createActivity(
+      'moment_uploaded',
+      uploadedByUserId,
+      'moment',
+      momentId,
+      placeName || 'Unknown Place',
+      {
+        placeId: placeId,
+        placeName: placeName
+      }
+    );
+    
+    // Send SSE events to connections and followers
+    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', uploadedByUserId)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', uploadedByUserId)
+        .where('status', '==', 'accepted')
+        .get()
+    ]);
+    
+    const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
+    
+    allConnections.forEach(doc => {
+      const connectionData = doc.data();
+      const otherUserId = connectionData.userId === uploadedByUserId 
+        ? connectionData.connectedUserId 
+        : connectionData.userId;
+      
+      // Send moment uploaded event
+      SSEService.sendEvent(otherUserId, {
+        type: 'moment_uploaded',
+        data: {
+          momentId: momentId,
+          placeId: placeId,
+          placeName: placeName,
+          uploadedByUserId: uploadedByUserId,
+          timestamp: new Date().toISOString()
+        }
+      });
+      
+      // Also send new_activity event for activity feed
+      SSEService.sendEvent(otherUserId, {
+        type: 'new_activity',
+        data: {
+          type: 'moment_uploaded',
+          actorId: uploadedByUserId,
+          entityType: 'moment',
+          entityId: momentId,
+          entityName: placeName,
+          timestamp: new Date().toISOString()
+        }
+      });
+    });
+    
+    console.log(`✅ Tracked moment upload for place ${placeName}`);
+  } catch (error) {
+    console.error('Error tracking moment upload:', error);
+  }
+};
+
+// Track when a user adds a reaction
+const trackReaction = async (targetType, targetId, targetName, reaction, reactedByUserId) => {
+  try {
+    // Create activity record
+    await createActivity(
+      'reaction_added',
+      reactedByUserId,
+      targetType, // 'circle', 'place', 'comment', etc.
+      targetId,
+      targetName,
+      {
+        reaction: reaction
+      }
+    );
+    
+    // Send SSE events to connections
+    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', reactedByUserId)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', reactedByUserId)
+        .where('status', '==', 'accepted')
+        .get()
+    ]);
+    
+    const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
+    
+    allConnections.forEach(doc => {
+      const connectionData = doc.data();
+      const otherUserId = connectionData.userId === reactedByUserId 
+        ? connectionData.connectedUserId 
+        : connectionData.userId;
+      
+      SSEService.sendEvent(otherUserId, {
+        type: 'reaction_added',
+        data: {
+          targetType: targetType,
+          targetId: targetId,
+          targetName: targetName,
+          reaction: reaction,
+          reactedByUserId: reactedByUserId,
+          timestamp: new Date().toISOString()
+        }
+      });
+      
+      // Also send new_activity event
+      SSEService.sendEvent(otherUserId, {
+        type: 'new_activity',
+        data: {
+          type: 'reaction_added',
+          actorId: reactedByUserId,
+          entityType: targetType,
+          entityId: targetId,
+          entityName: targetName,
+          metadata: { reaction: reaction },
+          timestamp: new Date().toISOString()
+        }
+      });
+    });
+    
+    console.log(`✅ Tracked reaction ${reaction} on ${targetType}`);
+  } catch (error) {
+    console.error('Error tracking reaction:', error);
+  }
+};
+
+// Track when a user checks in to a place  
+const trackCheckIn = async (placeId, placeName, circleId, circleName, checkedInByUserId) => {
+  try {
+    // Create activity record
+    await createActivity(
+      'check_in',
+      checkedInByUserId,
+      'place',
+      placeId,
+      placeName,
+      {
+        circleId: circleId,
+        circleName: circleName
+      }
+    );
+    
+    // Send SSE events to connections
+    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', checkedInByUserId)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', checkedInByUserId)
+        .where('status', '==', 'accepted')
+        .get()
+    ]);
+    
+    const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
+    
+    allConnections.forEach(doc => {
+      const connectionData = doc.data();
+      const otherUserId = connectionData.userId === checkedInByUserId 
+        ? connectionData.connectedUserId 
+        : connectionData.userId;
+      
+      SSEService.sendEvent(otherUserId, {
+        type: 'check_in',
+        data: {
+          placeId: placeId,
+          placeName: placeName,
+          circleId: circleId,
+          circleName: circleName,
+          checkedInByUserId: checkedInByUserId,
+          timestamp: new Date().toISOString()
+        }
+      });
+      
+      // Also send new_activity event
+      SSEService.sendEvent(otherUserId, {
+        type: 'new_activity',
+        data: {
+          type: 'check_in',
+          actorId: checkedInByUserId,
+          entityType: 'place',
+          entityId: placeId,
+          entityName: placeName,
+          metadata: { circleId: circleId, circleName: circleName },
+          timestamp: new Date().toISOString()
+        }
+      });
+    });
+    
+    console.log(`✅ Tracked check-in at ${placeName}`);
+  } catch (error) {
+    console.error('Error tracking check-in:', error);
+  }
+};
+
+// Track when a user adds a comment
+const trackComment = async (targetType, targetId, targetName, commentId, commentText, commentedByUserId) => {
+  try {
+    // Create activity record
+    await createActivity(
+      'comment_added',
+      commentedByUserId,
+      targetType, // 'circle', 'place', 'moment'
+      targetId,
+      targetName,
+      {
+        commentId: commentId,
+        commentPreview: commentText.substring(0, 100) // First 100 chars
+      }
+    );
+    
+    // Send SSE events to connections
+    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', commentedByUserId)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', commentedByUserId)
+        .where('status', '==', 'accepted')
+        .get()
+    ]);
+    
+    const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
+    
+    allConnections.forEach(doc => {
+      const connectionData = doc.data();
+      const otherUserId = connectionData.userId === commentedByUserId 
+        ? connectionData.connectedUserId 
+        : connectionData.userId;
+      
+      SSEService.sendEvent(otherUserId, {
+        type: 'comment_added',
+        data: {
+          targetType: targetType,
+          targetId: targetId,
+          targetName: targetName,
+          commentId: commentId,
+          commentPreview: commentText.substring(0, 100),
+          commentedByUserId: commentedByUserId,
+          timestamp: new Date().toISOString()
+        }
+      });
+      
+      // Also send new_activity event
+      SSEService.sendEvent(otherUserId, {
+        type: 'new_activity',
+        data: {
+          type: 'comment_added',
+          actorId: commentedByUserId,
+          entityType: targetType,
+          entityId: targetId,
+          entityName: targetName,
+          metadata: { commentPreview: commentText.substring(0, 100) },
+          timestamp: new Date().toISOString()
+        }
+      });
+    });
+    
+    console.log(`✅ Tracked comment on ${targetType}`);
+  } catch (error) {
+    console.error('Error tracking comment:', error);
+  }
+};
+
 module.exports = {
   trackCircleCreated,
   trackPlaceAdded,
@@ -995,6 +1270,10 @@ module.exports = {
   trackPlaceView,
   trackCircleLiked,
   trackCircleCommented,
+  trackMomentUpload,
+  trackReaction,
+  trackCheckIn,
+  trackComment,
   clearActivityNotification,
   getConnectionsWithStats,
   cleanupOldActivity,

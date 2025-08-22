@@ -804,9 +804,11 @@ const markMessagesAsRead = async (req, res) => {
         const message = messageDoc.data();
         
         // Only mark if not already read and not sent by current user
-        if (message.senderId !== userId && !message.readBy.includes(userId)) {
+        // Check if readBy exists (for backward compatibility with older messages)
+        const readByArray = message.readBy || [];
+        if (message.senderId !== userId && !readByArray.includes(userId)) {
           batch.update(messageDoc.ref, {
-            readBy: [...message.readBy, userId]
+            readBy: [...readByArray, userId]
           });
 
           // Create read receipt

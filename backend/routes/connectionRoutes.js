@@ -10,6 +10,7 @@ const {
   getSharedCirclesWithConnection,
   removeConnection,
   getActiveConnections,
+  getActiveRelationships,
   clearConnectionActivity,
   trackConnectionView
 } = require('../controllers/connectionController');
@@ -26,6 +27,9 @@ router.route('/')
 
 router.route('/active')
   .get(getActiveConnections);
+
+router.route('/active-relationships')
+  .get(getActiveRelationships);
 
 router.route('/invite')
   .post(sendConnectionRequest);

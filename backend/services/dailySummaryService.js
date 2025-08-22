@@ -548,7 +548,7 @@ class DailySummaryService {
             
             <!-- CTA Button -->
             <div style="text-align: center; margin: 30px 0;">
-              <a href="circles://daily-summary" style="display: inline-block; background-color: #4CAF50; color: #ffffff; text-decoration: none; padding: 12px 30px; border-radius: 25px; font-weight: 600;">
+              <a href="https://circles-backend-196924649787.us-central1.run.app/app/daily-summary" style="display: inline-block; background-color: #4CAF50; color: #ffffff; text-decoration: none; padding: 12px 30px; border-radius: 25px; font-weight: 600;">
                 View in App
               </a>
             </div>
@@ -560,7 +560,7 @@ class DailySummaryService {
               </p>
               <p style="color: #999; font-size: 12px; margin: 10px 0 0 0;">
                 You're receiving this because you have daily summaries enabled.<br>
-                <a href="circles://settings/notifications" style="color: #4CAF50;">Manage notification preferences</a>
+                <a href="https://circles-backend-196924649787.us-central1.run.app/app/open?path=settings/notifications" style="color: #4CAF50;">Manage notification preferences</a>
               </p>
             </div>
           </div>
@@ -662,7 +662,7 @@ class DailySummaryService {
     // Determine the appropriate content based on user situation
     let mainContent = '';
     let ctaText = 'Open Circles';
-    let ctaLink = 'circles://daily-summary';
+    let ctaLink = 'https://circles-backend-196924649787.us-central1.run.app/app/daily-summary';
 
     if (stats.connectionCount === 0) {
       // User has no connections
@@ -681,7 +681,7 @@ class DailySummaryService {
         </div>
       `;
       ctaText = 'Find Friends';
-      ctaLink = 'circles://network/find-friends';
+      ctaLink = 'https://circles-backend-196924649787.us-central1.run.app/app/open?path=network/find-friends';
     } else if (stats.userPlaceCount === 0) {
       // User has connections but no places
       mainContent = `
@@ -699,7 +699,7 @@ class DailySummaryService {
         </div>
       `;
       ctaText = 'Add Your First Place';
-      ctaLink = 'circles://add-place';
+      ctaLink = 'https://circles-backend-196924649787.us-central1.run.app/app/open?path=add-place';
     } else {
       // User has connections and places but no recent activity
       mainContent = `
@@ -780,7 +780,7 @@ class DailySummaryService {
               </p>
               <p style="color: #999; font-size: 12px; margin: 10px 0 0 0;">
                 You're receiving this because you have daily summaries enabled.<br>
-                <a href="circles://settings/notifications" style="color: #4CAF50;">Manage notification preferences</a>
+                <a href="https://circles-backend-196924649787.us-central1.run.app/app/open?path=settings/notifications" style="color: #4CAF50;">Manage notification preferences</a>
               </p>
             </div>
           </div>

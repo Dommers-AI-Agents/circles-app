@@ -10,12 +10,16 @@ const {
   facebookDataDeletion
 } = require('../controllers/firebaseAuthController');
 const { protect } = require('../middleware/firebaseAuth');
+const { 
+  validateUserRegistration, 
+  validateUserLogin 
+} = require('../middleware/validation');
 
 const router = express.Router();
 
-// Public routes
-router.post('/register', register);
-router.post('/login', login);
+// Public routes with validation
+router.post('/register', validateUserRegistration, register);
+router.post('/login', validateUserLogin, login);
 router.post('/firebase', firebaseAuth);
 router.post('/refresh-token', refreshToken);
 router.post('/facebook-deauthorize', facebookDataDeletion);

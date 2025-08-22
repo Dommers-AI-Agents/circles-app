@@ -11,6 +11,7 @@ const {
 } = require('../models/FirestoreModels');
 const { trackCircleCreated, trackCircleView, trackCircleLiked, trackCircleCommented } = require('../services/activityService');
 const { normalizeUserId } = require('../services/idService');
+const subscriptionLimitService = require('../services/subscriptionLimitService');
 
 const db = getFirestore();
 
@@ -271,6 +272,18 @@ exports.createCircle = async (req, res, next) => {
       return res.status(400).json({
         success: false,
         message: 'User ID is missing'
+      });
+    }
+    
+    // Check subscription limits BEFORE validation and other checks
+    const limitCheck = await subscriptionLimitService.canCreateCircle(req.user.uid);
+    if (!limitCheck.canCreate) {
+      return res.status(403).json({
+        success: false,
+        message: limitCheck.error,
+        upgradeRequired: true,
+        currentCount: limitCheck.currentCount,
+        maxAllowed: limitCheck.maxAllowed
       });
     }
     

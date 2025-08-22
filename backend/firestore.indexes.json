@@ -593,6 +593,20 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "video_likes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "videoId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

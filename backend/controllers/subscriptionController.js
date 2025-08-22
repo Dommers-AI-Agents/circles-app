@@ -1,9 +1,10 @@
 const admin = require('firebase-admin');
 const axios = require('axios');
+const subscriptionLimitService = require('../services/subscriptionLimitService');
 
 // Supported Product IDs
 // - com.favcircles.circles.premium.subscription.monthly ($2.99/month)
-// - com.favcircles.circles.premium.subscription.annual ($29.99/year)
+// - com.favcircles.circles.premium.annual ($29.99/year)
 
 // Apple App Store Server API configuration
 const APPLE_VERIFY_RECEIPT_URL = process.env.NODE_ENV === 'production' 
@@ -382,6 +383,37 @@ exports.startFreeTrial = async (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Failed to start trial'
+        });
+    }
+};
+
+// @desc    Get user's usage statistics and limits
+// @route   GET /api/users/subscription/usage
+// @access  Private
+exports.getUserUsageStats = async (req, res) => {
+    try {
+        const userId = req.user?.uid || req.userId;
+        
+        if (!userId) {
+            return res.status(401).json({
+                success: false,
+                error: 'User ID not found in request'
+            });
+        }
+        
+        // Get usage statistics from the subscription limit service
+        const usageStats = await subscriptionLimitService.getUserUsageStats(userId);
+        
+        res.json({
+            success: true,
+            usage: usageStats
+        });
+        
+    } catch (error) {
+        console.error('Get usage stats error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get usage statistics'
         });
     }
 };

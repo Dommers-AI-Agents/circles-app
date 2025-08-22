@@ -60,7 +60,7 @@ This guide covers how to test the iOS subscription system for the Circles app.
 
 1. **Initial Purchase**
    ```
-   Product ID: com.favcircles.circles.premium.subscription.annual
+   Product ID: com.favcircles.circles.premium.annual
    ```
    - Same flow as monthly, but select annual option
    - Verify correct pricing displayed

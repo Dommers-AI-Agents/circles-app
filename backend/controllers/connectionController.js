@@ -418,6 +418,55 @@ const sendConnectionRequest = async (req, res) => {
       data: connection
     });
 
+    // If auto-accepted, update user arrays immediately
+    if (autoAccept) {
+      try {
+        console.log('🔄 Auto-accept flow: Updating user arrays for both users');
+        
+        const batch = db.batch();
+        
+        // Update requester's arrays
+        const requesterRef = db.collection(COLLECTIONS.USERS).doc(userId);
+        batch.update(requesterRef, {
+          connections: FieldValue.arrayUnion(targetUserDocId),
+          following: FieldValue.arrayUnion(targetUserDocId),
+          followingCount: FieldValue.increment(1),
+          followers: FieldValue.arrayUnion(targetUserDocId),
+          followersCount: FieldValue.increment(1),
+          updatedAt: new Date().toISOString()
+        });
+        
+        // Update target user's arrays
+        const targetRef = db.collection(COLLECTIONS.USERS).doc(targetUserDocId);
+        batch.update(targetRef, {
+          connections: FieldValue.arrayUnion(userId),
+          following: FieldValue.arrayUnion(userId),
+          followingCount: FieldValue.increment(1),
+          followers: FieldValue.arrayUnion(userId),
+          followersCount: FieldValue.increment(1),
+          updatedAt: new Date().toISOString()
+        });
+        
+        await batch.commit();
+        console.log('✅ Auto-accept: User arrays updated successfully');
+        
+        // Send SSE notifications for the auto-accepted connection
+        sseService.notifyUser(userId, 'connection_accepted', {
+          connectionId: connection.id,
+          acceptedBy: targetUserDocId
+        });
+        
+        sseService.notifyUser(targetUserDocId, 'connection_accepted', {
+          connectionId: connection.id,
+          acceptedBy: userId
+        });
+        
+      } catch (autoAcceptError) {
+        console.error('❌ Error updating user arrays for auto-accept:', autoAcceptError);
+        // Don't fail the request if array update fails
+      }
+    }
+
     // Send notification to target user if not auto-accepted
     if (!autoAccept) {
       try {
@@ -562,8 +611,18 @@ const acceptConnection = async (req, res) => {
         followersCount: FieldValue.increment(1)
       });
       
+      // Update connections arrays for both users
+      batch.update(acceptingUserRef, {
+        connections: FieldValue.arrayUnion(connection.userId)
+      });
+      
+      batch.update(requesterRef, {
+        connections: FieldValue.arrayUnion(userId)
+      });
+      
       await batch.commit();
       console.log('✅ Auto-follow successful - Both users now follow each other');
+      console.log('✅ Connections arrays updated for both users');
       
       // Send SSE notifications for the follows
       sseService.notifyUser(userId, 'following_added', {
@@ -849,8 +908,33 @@ const removeConnection = async (req, res) => {
       });
     }
 
-    // Delete the connection
-    await connectionDoc.ref.delete();
+    // Remove from connections arrays and delete the connection
+    try {
+      const batch = db.batch();
+      
+      // Remove from both users' connections arrays
+      const user1Ref = db.collection(COLLECTIONS.USERS).doc(connection.userId);
+      batch.update(user1Ref, {
+        connections: FieldValue.arrayRemove(connection.connectedUserId),
+        updatedAt: new Date().toISOString()
+      });
+      
+      const user2Ref = db.collection(COLLECTIONS.USERS).doc(connection.connectedUserId);
+      batch.update(user2Ref, {
+        connections: FieldValue.arrayRemove(connection.userId),
+        updatedAt: new Date().toISOString()
+      });
+      
+      // Delete the connection document
+      batch.delete(connectionDoc.ref);
+      
+      await batch.commit();
+      console.log('✅ Connection removed and user arrays updated');
+    } catch (updateError) {
+      console.error('❌ Error updating arrays during connection removal:', updateError);
+      // Try to at least delete the connection document
+      await connectionDoc.ref.delete();
+    }
 
     res.status(200).json({
       success: true,
@@ -926,7 +1010,7 @@ const getActiveConnections = async (req, res) => {
             
             // Check for unviewed activities AND calculate total activity
             const recentActivity = connection.recentActivity || [];
-            const hasUnviewedActivity = recentActivity.some(activity => {
+            const hasUnviewedActivity = recentActivity.length > 0 && recentActivity.some(activity => {
               const viewedBy = activity.viewedBy || [];
               return !viewedBy.includes(userId);
             });
@@ -970,10 +1054,10 @@ const getActiveConnections = async (req, res) => {
               }
             }
             
-            // Add stats
+            // Add stats - FIXED: Only set hasRecentPlace/hasNewActivity if there's actual unviewed content
             connection.totalPlaces = totalPlaces;
-            connection.hasRecentPlace = hasUnviewedActivity;
-            connection.hasNewActivity = hasUnviewedActivity;
+            connection.hasRecentPlace = hasUnviewedActivity && unviewedActivityCount > 0;
+            connection.hasNewActivity = hasUnviewedActivity && unviewedActivityCount > 0;
             connection.viewCount = connection.viewCount || 0;
             connection.lastMessageAt = lastMessageAt;
             connection.lastMessageSenderId = lastMessageSenderId;
@@ -1129,6 +1213,198 @@ const trackConnectionView = async (req, res) => {
   }
 };
 
+// @desc    Get active connections and followed users combined
+// @route   GET /api/connections/active-relationships
+// @access  Private
+const getActiveRelationships = async (req, res) => {
+  try {
+    const userId = req.user.firebaseDocId || req.user.uid;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = parseInt(req.query.offset) || 0;
+    
+    console.log(`🔍 Getting active relationships (connections + following) for user ${userId} with limit ${limit}, offset ${offset}`);
+    
+    // Get all accepted connections (same as before)
+    const connectionsQuery1 = db.collection(COLLECTIONS.CONNECTIONS)
+      .where('userId', '==', userId)
+      .where('status', '==', 'accepted');
+      
+    const connectionsQuery2 = db.collection(COLLECTIONS.CONNECTIONS)
+      .where('connectedUserId', '==', userId)
+      .where('status', '==', 'accepted');
+
+    // Get users this person is following
+    console.log(`🔍 Looking up user document for: ${userId}`);
+    const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+    
+    if (!userDoc.exists) {
+      console.log(`⚠️ User document not found for: ${userId}`);
+    }
+    
+    const userData = userDoc.exists ? userDoc.data() : null;
+    const followingIds = userData?.following || [];
+    
+    console.log(`📊 User ${userId} is following ${followingIds.length} users`);
+    if (followingIds.length > 0) {
+      console.log(`📊 Following IDs: ${followingIds.join(', ')}`);
+    }
+
+    const [snapshot1, snapshot2] = await Promise.all([
+      connectionsQuery1.get(),
+      connectionsQuery2.get()
+    ]);
+
+    // Process connections
+    const connectionDocs = [...snapshot1.docs, ...snapshot2.docs];
+    const connectionMap = new Map();
+    
+    for (const doc of connectionDocs) {
+      const data = doc.data();
+      const otherUserId = data.userId === userId ? data.connectedUserId : data.userId;
+      
+      if (!connectionMap.has(otherUserId)) {
+        connectionMap.set(otherUserId, {
+          id: doc.id,
+          ...data,
+          relationshipType: 'connection'
+        });
+      }
+    }
+
+    // Now get followed users that are NOT connections
+    const followedOnlyIds = followingIds.filter(id => !connectionMap.has(id));
+    console.log(`📊 ${followedOnlyIds.length} followed users are not connections`);
+
+    // Fetch user data for all relationships
+    const allUserIds = [...Array.from(connectionMap.keys()), ...followedOnlyIds];
+    
+    if (allUserIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        relationships: [],
+        total: 0
+      });
+    }
+
+    // Get user data for all relationships
+    const userPromises = allUserIds.map(id => 
+      db.collection(COLLECTIONS.USERS).doc(id).get()
+    );
+    const userDocs = await Promise.all(userPromises);
+    const userDataMap = new Map();
+    
+    userDocs.forEach(doc => {
+      if (doc.exists) {
+        userDataMap.set(doc.id, {
+          id: doc.id,
+          ...doc.data()
+        });
+      }
+    });
+
+    // Build relationships array with both connections and followed users
+    const relationships = [];
+    
+    // Add connections
+    for (const [otherUserId, connectionData] of connectionMap) {
+      const userData = userDataMap.get(otherUserId);
+      if (userData) {
+        // Calculate activity score for connection
+        const scoreData = scoringService.calculateConnectionScore(connectionData, userId);
+        
+        relationships.push({
+          ...connectionData,
+          connectedUser: userData,
+          relationshipType: 'connection',
+          connectionScore: scoreData.score,
+          scoreComponents: scoreData.components,
+          hasRecentPlace: scoreData.hasRecentPlace,
+          lastMessageAt: scoreData.lastMessageAt,
+          totalPlaces: scoreData.totalPlaces
+        });
+      }
+    }
+
+    // Add followed-only users
+    for (const followedId of followedOnlyIds) {
+      const userData = userDataMap.get(followedId);
+      if (userData) {
+        // Calculate activity score for followed user
+        const recentPlaceSnapshot = await db.collection(COLLECTIONS.PLACES)
+          .where('addedBy', '==', followedId)
+          .where('createdAt', '>', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000))
+          .limit(1)
+          .get();
+        
+        const hasRecentPlace = !recentPlaceSnapshot.empty;
+        
+        // Get total places count
+        const totalPlacesSnapshot = await db.collection(COLLECTIONS.PLACES)
+          .where('addedBy', '==', followedId)
+          .count()
+          .get();
+        
+        const totalPlaces = totalPlacesSnapshot.data().count || 0;
+        
+        // FIXED: More balanced scoring for followed users (not inflated)
+        // Base score on actual activity, not just existence of places
+        let score = 0;
+        if (hasRecentPlace) {
+          score = 30; // Recent activity gets 30 points
+        }
+        if (totalPlaces > 10) {
+          score += 15; // Active user bonus
+        } else if (totalPlaces > 5) {
+          score += 10; // Moderate activity
+        } else if (totalPlaces > 0) {
+          score += 5; // Some activity
+        }
+        
+        relationships.push({
+          id: `follow_${followedId}`, // Synthetic ID for followed relationships
+          userId: userId,
+          connectedUserId: followedId,
+          connectedUser: userData,
+          relationshipType: 'following',
+          status: 'following', // Not a connection status, but indicates following
+          connectionScore: score,
+          hasRecentPlace: hasRecentPlace,
+          totalPlaces: totalPlaces,
+          createdAt: userData.createdAt || new Date()
+        });
+      }
+    }
+
+    // Sort all relationships by score
+    relationships.sort((a, b) => {
+      const scoreA = a.connectionScore || 0;
+      const scoreB = b.connectionScore || 0;
+      return scoreB - scoreA;
+    });
+
+    // Apply pagination
+    const paginatedRelationships = relationships.slice(offset, offset + limit);
+    
+    console.log(`✅ Returning ${paginatedRelationships.length} active relationships (${relationships.length} total)`);
+    console.log(`   - Connections: ${relationships.filter(r => r.relationshipType === 'connection').length}`);
+    console.log(`   - Following: ${relationships.filter(r => r.relationshipType === 'following').length}`);
+
+    res.status(200).json({
+      success: true,
+      relationships: paginatedRelationships,
+      total: relationships.length
+    });
+
+  } catch (error) {
+    console.error('Error getting active relationships:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getConnections,
   getConnectionById,
@@ -1139,6 +1415,7 @@ module.exports = {
   getSharedCirclesWithConnection,
   removeConnection,
   getActiveConnections,
+  getActiveRelationships,
   clearConnectionActivity,
   trackConnectionView
 };

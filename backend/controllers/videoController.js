@@ -1,5 +1,5 @@
 // backend/controllers/videoController.js
-const { getFirestore, FieldValue } = require('../config/firebase');
+const { getFirestore, FieldValue, admin } = require('../config/firebase');
 const { getStorage } = require('firebase-admin/storage');
 const { 
   COLLECTIONS, 
@@ -11,9 +11,50 @@ const {
 } = require('../models/FirestoreModels');
 const { createActivity } = require('./activityController');
 const videoQuotaService = require('../services/videoQuotaService');
+const axios = require('axios');
 
 const db = getFirestore();
 const bucket = getStorage().bucket();
+
+// Helper function to verify video processing is complete
+async function verifyVideoProcessing(videoUrl, previewUrl, thumbnailUrl) {
+  try {
+    const timeout = 10000; // 10 second timeout
+    
+    // Check if main files are accessible using axios
+    const checks = [
+      axios.head(videoUrl, { timeout }),
+      axios.head(thumbnailUrl, { timeout })
+    ];
+    
+    // Only check preview if it exists (photos don't have preview)
+    if (previewUrl) {
+      checks.push(axios.head(previewUrl, { timeout }));
+    }
+    
+    const results = await Promise.allSettled(checks);
+    
+    // Check if all requests succeeded
+    const allSuccessful = results.every(result => 
+      result.status === 'fulfilled' && 
+      result.value.status >= 200 && 
+      result.value.status < 400
+    );
+    
+    console.log('📹 Video processing verification:', {
+      videoUrl: results[0].status === 'fulfilled' && results[0].value?.status < 400,
+      thumbnailUrl: results[1].status === 'fulfilled' && results[1].value?.status < 400,
+      previewUrl: previewUrl ? (results[2]?.status === 'fulfilled' && results[2]?.value?.status < 400) : 'N/A',
+      allSuccessful
+    });
+    
+    return allSuccessful;
+  } catch (error) {
+    console.error('❌ Video processing verification failed:', error);
+    // Return true to avoid blocking uploads due to verification errors
+    return true;
+  }
+}
 
 // Helper function to ensure My Moments circle exists for a user
 async function ensureMyMomentsCircle(userId) {
@@ -421,16 +462,50 @@ exports.completeVideoUpload = async (req, res) => {
       contentType: videoData.contentType
     });
     
-    // Update video document
+    // First update with processing status
     await videoRef.update({
       videoUrl,
       previewUrl,
       thumbnailUrl,
       originalSize,
       compressionRatio,
-      uploadStatus: 'ready',
-      uploadProgress: 100,
+      uploadStatus: 'processing',
+      uploadProgress: 90,
       updatedAt: new Date().toISOString()
+    });
+    
+    // Verify video files are accessible with retry logic
+    let isVideoReady = false;
+    const maxRetries = 3;
+    
+    for (let i = 0; i < maxRetries && !isVideoReady; i++) {
+      if (i > 0) {
+        // Wait before retrying (exponential backoff: 1s, 2s, 4s)
+        const delay = 1000 * Math.pow(2, i - 1);
+        console.log(`📹 Retry ${i}/${maxRetries - 1}: Waiting ${delay}ms before verification...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+      
+      isVideoReady = await verifyVideoProcessing(videoUrl, previewUrl, thumbnailUrl);
+      
+      if (!isVideoReady && i < maxRetries - 1) {
+        console.log(`📹 Verification failed, will retry (attempt ${i + 1}/${maxRetries})`);
+      }
+    }
+    
+    // If verification still fails after retries, mark as ready anyway
+    // to avoid blocking uploads (files might be accessible but verification failed)
+    if (!isVideoReady) {
+      console.log('⚠️ Video verification failed after retries, marking as ready anyway');
+      isVideoReady = true;
+    }
+    
+    // Final update to ready status
+    await videoRef.update({
+      uploadStatus: isVideoReady ? 'ready' : 'error',
+      uploadProgress: isVideoReady ? 100 : 0,
+      updatedAt: new Date().toISOString(),
+      processingCompleted: isVideoReady ? new Date().toISOString() : null
     });
     
     // Update user quota
@@ -814,6 +889,42 @@ exports.deleteVideo = async (req, res) => {
       // Continue with database deletion even if storage deletion fails
     }
     
+    // Delete associated activity and its reactions/comments if exists
+    if (videoData.activityId) {
+      try {
+        // Delete activity reactions
+        const activityReactionsQuery = db.collection(COLLECTIONS.ACTIVITY_REACTIONS)
+          .where('activityId', '==', videoData.activityId);
+        const activityReactionsSnapshot = await activityReactionsQuery.get();
+        
+        const reactionsDeletePromises = activityReactionsSnapshot.docs.map(doc => doc.ref.delete());
+        await Promise.all(reactionsDeletePromises);
+        
+        if (activityReactionsSnapshot.size > 0) {
+          console.log(`✅ Deleted ${activityReactionsSnapshot.size} activity reactions for video ${videoId}`);
+        }
+        
+        // Delete activity comments
+        const activityCommentsQuery = db.collection(COLLECTIONS.ACTIVITY_COMMENTS)
+          .where('activityId', '==', videoData.activityId);
+        const activityCommentsSnapshot = await activityCommentsQuery.get();
+        
+        const commentsDeletePromises = activityCommentsSnapshot.docs.map(doc => doc.ref.delete());
+        await Promise.all(commentsDeletePromises);
+        
+        if (activityCommentsSnapshot.size > 0) {
+          console.log(`✅ Deleted ${activityCommentsSnapshot.size} activity comments for video ${videoId}`);
+        }
+        
+        // Delete the activity itself
+        await db.collection(COLLECTIONS.ACTIVITIES).doc(videoData.activityId).delete();
+        console.log(`✅ Deleted associated activity ${videoData.activityId} for video ${videoId}`);
+      } catch (activityError) {
+        console.error(`Error deleting associated activity for video ${videoId}:`, activityError);
+        // Continue with video deletion even if activity deletion fails
+      }
+    }
+
     // Hard delete from database (completely remove the document)
     await videoRef.delete();
     console.log(`✅ Permanently deleted video ${videoId} from database`);
@@ -996,96 +1107,139 @@ exports.getReelsFeed = async (req, res) => {
       db.collection(COLLECTIONS.USERS).doc(userId).get()
     ]);
     
+    // Separate connections from following for proper visibility filtering
     const connectionIds = new Set([userId]);
     connections1.docs.forEach(doc => connectionIds.add(doc.data().connectedUserId));
     connections2.docs.forEach(doc => connectionIds.add(doc.data().userId));
     
     const following = userDoc.data()?.following || [];
-    following.forEach(id => connectionIds.add(id));
+    const followingIds = new Set(following);
+    
+    // Combine for user content discovery
+    const allUserIds = new Set([...connectionIds, ...followingIds]);
     
     // Algorithm: Mix of following (40%), popular (30%), nearby (20%), random (10%)
     const videos = [];
     const seenVideoIds = new Set();
     
     // 1. Following/connections videos (40%)
-    if (connectionIds.size > 1) {
-      // Limit to 10 connections to avoid Firestore query limits
-      // Randomly select if more than 10 for variety on refresh
+    if (allUserIds.size > 1) {
+      // Fetch videos from connections (can see both public and network)
       const connectionArray = Array.from(connectionIds);
-      const selectedConnections = connectionArray.length > 10 
+      if (connectionArray.length > 1) {
+        const selectedConnections = connectionArray.length > 10 
+          ? connectionArray.sort(() => 0.5 - Math.random()).slice(0, 10)
+          : connectionArray;
+        
+        console.log(`📹 Fetching reels from ${selectedConnections.length} connections`);
+        
+        const connectionVideos = await db.collection(COLLECTIONS.PLACE_VIDEOS)
+          .where('userId', 'in', selectedConnections)
+          .where('uploadStatus', '==', 'ready')
+          .where('deletedAt', '==', null)
+          .where('visibility', 'in', ['public', 'network'])
+          .orderBy('createdAt', 'desc')
+          .limit(5)
+          .get();
+        
+        connectionVideos.docs.forEach(doc => {
+          if (!seenVideoIds.has(doc.id)) {
+            videos.push({ ...serializeDoc(doc), algorithm: 'connections' });
+            seenVideoIds.add(doc.id);
+          }
+        });
+      }
+      
+      // Fetch videos from following (can only see public)
+      const followingArray = Array.from(followingIds).filter(id => !connectionIds.has(id));
+      if (followingArray.length > 0) {
+        const selectedFollowing = followingArray.length > 10 
+          ? followingArray.sort(() => 0.5 - Math.random()).slice(0, 10)
+          : followingArray;
+        
+        console.log(`📹 Fetching reels from ${selectedFollowing.length} followed users`);
+        
+        const followingVideos = await db.collection(COLLECTIONS.PLACE_VIDEOS)
+          .where('userId', 'in', selectedFollowing)
+          .where('uploadStatus', '==', 'ready')
+          .where('deletedAt', '==', null)
+          .where('visibility', '==', 'public')  // Following can only see public
+          .orderBy('createdAt', 'desc')
+          .limit(3)
+          .get();
+        
+        followingVideos.docs.forEach(doc => {
+          if (!seenVideoIds.has(doc.id)) {
+            videos.push({ ...serializeDoc(doc), algorithm: 'following' });
+            seenVideoIds.add(doc.id);
+          }
+        });
+      }
+    }
+    
+    // 2. More videos from connections if we don't have enough
+    if (videos.length < 10 && connectionIds.size > 1) {
+      const connectionArray = Array.from(connectionIds);
+      // Limit to 10 users to avoid Firestore query limits
+      const limitedConnections = connectionArray.length > 10 
         ? connectionArray.sort(() => 0.5 - Math.random()).slice(0, 10)
         : connectionArray;
+      console.log(`📹 Fetching additional reels from ${limitedConnections.length} connections`);
       
-      console.log(`📹 Fetching reels from ${selectedConnections.length} connections (out of ${connectionArray.length} total)`);
-      
-      const followingVideos = await db.collection(COLLECTIONS.PLACE_VIDEOS)
-        .where('userId', 'in', selectedConnections)
+      const moreConnectionVideos = await db.collection(COLLECTIONS.PLACE_VIDEOS)
+        .where('userId', 'in', limitedConnections)
         .where('uploadStatus', '==', 'ready')
         .where('deletedAt', '==', null)
         .where('visibility', 'in', ['public', 'network'])
         .orderBy('createdAt', 'desc')
-        .limit(8)
+        .limit(20)
         .get();
       
-      followingVideos.docs.forEach(doc => {
+      moreConnectionVideos.docs.forEach(doc => {
         if (!seenVideoIds.has(doc.id)) {
-          videos.push({ ...serializeDoc(doc), algorithm: 'following' });
+          videos.push({ ...serializeDoc(doc), algorithm: 'connections' });
           seenVideoIds.add(doc.id);
         }
       });
     }
     
-    // 2. Popular videos (30% - based on view count)
-    const popularVideos = await db.collection(COLLECTIONS.PLACE_VIDEOS)
-      .where('uploadStatus', '==', 'ready')
-      .where('deletedAt', '==', null)
-      .where('visibility', '==', 'public')
-      .orderBy('viewCount', 'desc')
-      .limit(6)
-      .get();
-    
-    popularVideos.docs.forEach(doc => {
-      if (!seenVideoIds.has(doc.id)) {
-        videos.push({ ...serializeDoc(doc), algorithm: 'popular' });
-        seenVideoIds.add(doc.id);
+    // 3. More videos from following if still need more
+    if (videos.length < 15 && followingIds.size > 0) {
+      const followingArray = Array.from(followingIds).filter(id => !connectionIds.has(id));
+      if (followingArray.length > 0) {
+        // Limit to 10 users to avoid Firestore query limits
+        const limitedFollowing = followingArray.length > 10
+          ? followingArray.sort(() => 0.5 - Math.random()).slice(0, 10)
+          : followingArray;
+        console.log(`📹 Fetching additional reels from ${limitedFollowing.length} followed users`);
+        
+        const moreFollowingVideos = await db.collection(COLLECTIONS.PLACE_VIDEOS)
+          .where('userId', 'in', limitedFollowing)
+          .where('uploadStatus', '==', 'ready')
+          .where('deletedAt', '==', null)
+          .where('visibility', '==', 'public')  // Following can only see public
+          .orderBy('createdAt', 'desc')
+          .limit(10)
+          .get();
+        
+        moreFollowingVideos.docs.forEach(doc => {
+          if (!seenVideoIds.has(doc.id)) {
+            videos.push({ ...serializeDoc(doc), algorithm: 'following' });
+            seenVideoIds.add(doc.id);
+          }
+        });
       }
+    }
+    
+    // NO random or popular videos from unknown users - respecting privacy
+    
+    // Sort by most recent first
+    const shuffledVideos = videos.sort((a, b) => {
+      // Sort by createdAt in descending order (most recent first)
+      const dateA = new Date(a.createdAt);
+      const dateB = new Date(b.createdAt);
+      return dateB - dateA;
     });
-    
-    // 3. Recent videos (20%)
-    const recentVideos = await db.collection(COLLECTIONS.PLACE_VIDEOS)
-      .where('uploadStatus', '==', 'ready')
-      .where('deletedAt', '==', null)
-      .where('visibility', '==', 'public')
-      .orderBy('createdAt', 'desc')
-      .limit(4)
-      .get();
-    
-    recentVideos.docs.forEach(doc => {
-      if (!seenVideoIds.has(doc.id)) {
-        videos.push({ ...serializeDoc(doc), algorithm: 'recent' });
-        seenVideoIds.add(doc.id);
-      }
-    });
-    
-    // 4. Random discovery (10%)
-    const randomVideos = await db.collection(COLLECTIONS.PLACE_VIDEOS)
-      .where('uploadStatus', '==', 'ready')
-      .where('deletedAt', '==', null)
-      .where('visibility', '==', 'public')
-      .limit(50)
-      .get();
-    
-    const randomDocs = randomVideos.docs
-      .filter(doc => !seenVideoIds.has(doc.id))
-      .sort(() => Math.random() - 0.5)
-      .slice(0, 2);
-    
-    randomDocs.forEach(doc => {
-      videos.push({ ...serializeDoc(doc), algorithm: 'discovery' });
-    });
-    
-    // Shuffle for variety
-    const shuffledVideos = videos.sort(() => Math.random() - 0.5);
     
     // Apply pagination
     const paginatedVideos = shuffledVideos.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
@@ -1174,10 +1328,54 @@ exports.getUserReels = async (req, res) => {
     const { userId } = req.params;
     const { limit = 20, offset = 0 } = req.query;
     
+    // Check relationship with target user
+    let visibilityFilter = ['public']; // Default: only public content
+    
+    if (currentUserId === userId) {
+      // User viewing their own content - show all
+      console.log(`📹 User viewing their own reels`);
+      visibilityFilter = ['public', 'network', 'private'];
+    } else {
+      // Check if users are connected
+      const [connection1, connection2] = await Promise.all([
+        db.collection(COLLECTIONS.CONNECTIONS)
+          .where('userId', '==', currentUserId)
+          .where('connectedUserId', '==', userId)
+          .where('status', '==', 'accepted')
+          .get(),
+        db.collection(COLLECTIONS.CONNECTIONS)
+          .where('userId', '==', userId)
+          .where('connectedUserId', '==', currentUserId)
+          .where('status', '==', 'accepted')
+          .get()
+      ]);
+      
+      const isConnected = !connection1.empty || !connection2.empty;
+      
+      if (isConnected) {
+        // Connected users can see public and network content
+        console.log(`📹 Users are connected - showing public and network reels`);
+        visibilityFilter = ['public', 'network'];
+      } else {
+        // Check if current user is following the target user
+        const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(currentUserId).get();
+        if (currentUserDoc.exists) {
+          const following = currentUserDoc.data().following || [];
+          if (following.includes(userId)) {
+            console.log(`📹 User is following - showing public reels only`);
+            visibilityFilter = ['public'];
+          } else {
+            console.log(`📹 No relationship - showing public reels only`);
+          }
+        }
+      }
+    }
+    
     const videosQuery = await db.collection(COLLECTIONS.PLACE_VIDEOS)
       .where('userId', '==', userId)
       .where('uploadStatus', '==', 'ready')
       .where('deletedAt', '==', null)
+      .where('visibility', 'in', visibilityFilter)
       .orderBy('createdAt', 'desc')
       .limit(parseInt(limit))
       .offset(parseInt(offset))
@@ -1251,24 +1449,84 @@ exports.getUserReels = async (req, res) => {
 // Get place's reels
 exports.getPlaceReels = async (req, res) => {
   try {
+    const currentUserId = req.user.uid;
     const { placeId } = req.params;
     const { limit = 20, offset = 0 } = req.query;
     
-    const videosQuery = await db.collection(COLLECTIONS.PLACE_VIDEOS)
+    // First get all videos for this place
+    const allVideosQuery = await db.collection(COLLECTIONS.PLACE_VIDEOS)
       .where('placeId', '==', placeId)
       .where('uploadStatus', '==', 'ready')
       .where('deletedAt', '==', null)
       .orderBy('createdAt', 'desc')
-      .limit(parseInt(limit))
-      .offset(parseInt(offset))
       .get();
     
-    const videos = serializeQuerySnapshot(videosQuery);
+    const allVideos = serializeQuerySnapshot(allVideosQuery);
+    
+    if (allVideos.length === 0) {
+      return res.json({
+        success: true,
+        data: [],
+        hasMore: false
+      });
+    }
+    
+    // Get unique user IDs from videos
+    const videoUserIds = [...new Set(allVideos.map(v => v.userId))];
+    
+    // Check relationships with all video creators
+    const [connections1, connections2, currentUserDoc] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', currentUserId)
+        .where('connectedUserId', 'in', videoUserIds)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', 'in', videoUserIds)
+        .where('connectedUserId', '==', currentUserId)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection(COLLECTIONS.USERS).doc(currentUserId).get()
+    ]);
+    
+    // Build sets of connected and following users
+    const connectedUserIds = new Set();
+    connections1.docs.forEach(doc => connectedUserIds.add(doc.data().connectedUserId));
+    connections2.docs.forEach(doc => connectedUserIds.add(doc.data().userId));
+    
+    const followingUserIds = new Set();
+    if (currentUserDoc.exists) {
+      const following = currentUserDoc.data().following || [];
+      following.forEach(id => followingUserIds.add(id));
+    }
+    
+    // Filter videos based on visibility and relationships
+    const filteredVideos = allVideos.filter(video => {
+      // User's own videos - always visible
+      if (video.userId === currentUserId) return true;
+      
+      // Check visibility based on relationship
+      const isConnected = connectedUserIds.has(video.userId);
+      const isFollowing = followingUserIds.has(video.userId);
+      
+      if (video.visibility === 'public') {
+        return true; // Public videos visible to all
+      } else if (video.visibility === 'network') {
+        return isConnected; // Network videos only visible to connections
+      } else if (video.visibility === 'private') {
+        return false; // Private videos not visible in place feeds
+      }
+      
+      return false; // Default deny
+    });
+    
+    // Apply pagination to filtered results
+    const paginatedVideos = filteredVideos.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
     
     res.json({
       success: true,
-      data: videos,
-      hasMore: videos.length === parseInt(limit)
+      data: paginatedVideos,
+      hasMore: filteredVideos.length > parseInt(offset) + parseInt(limit)
     });
   } catch (error) {
     console.error('Error getting place reels:', error);
@@ -1485,44 +1743,92 @@ exports.addEmbeddedVideo = async (req, res) => {
       });
     }
     
-    // Create video document
-    const videoData = {
-      placeId,
-      placeName,
-      userId,
-      title: title || metadata.title,
-      description: description || '',
-      visibility,
-      tags,
-      
-      // Embedded video specific fields
-      videoType: 'embedded',
-      embedUrl: url,
-      embedPlatform: metadata.platform,
-      embedHtml: oembedService.sanitizeEmbedHtml(metadata.embedHtml),
-      embedMetadata: {
-        author: metadata.author,
-        authorUrl: metadata.authorUrl,
-        providerName: metadata.providerName,
-        providerUrl: metadata.providerUrl,
-        width: metadata.width,
-        height: metadata.height
-      },
-      
-      // Use thumbnail from platform
-      thumbnailUrl: metadata.thumbnailUrl,
-      
-      // Standard fields
-      duration: metadata.duration || 0,
-      viewCount: 0,
-      likeCount: 0,
-      commentCount: 0,
-      uploadStatus: 'ready', // Embedded videos are immediately ready
-      
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      deletedAt: null
-    };
+    // Create video document based on type
+    let videoData;
+    
+    if (metadata.isDirectVideo) {
+      // Handle direct video URLs - treat them like uploaded videos
+      videoData = {
+        placeId,
+        placeName,
+        userId,
+        title: title || metadata.title,
+        description: description || '',
+        visibility,
+        tags,
+        
+        // Direct video specific fields
+        videoType: 'direct',
+        videoUrl: url, // Store the direct URL as videoUrl
+        previewUrl: url, // Use same URL for preview
+        contentType: 'video',
+        
+        // No embed fields for direct videos
+        embedUrl: null,
+        embedPlatform: null,
+        embedHtml: null,
+        embedMetadata: null,
+        
+        // Use metadata info
+        thumbnailUrl: metadata.thumbnailUrl,
+        fileSize: metadata.fileSize,
+        
+        // Standard fields
+        duration: metadata.duration || 0,
+        viewCount: 0,
+        likeCount: 0,
+        commentCount: 0,
+        uploadStatus: 'ready',
+        
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        deletedAt: null
+      };
+    } else {
+      // Handle embedded social media videos
+      videoData = {
+        placeId,
+        placeName,
+        userId,
+        title: title || metadata.title,
+        description: description || '',
+        visibility,
+        tags,
+        
+        // Embedded video specific fields
+        videoType: 'embedded',
+        embedUrl: url,
+        embedPlatform: metadata.platform,
+        embedHtml: oembedService.sanitizeEmbedHtml(metadata.embedHtml),
+        embedMetadata: {
+          author: metadata.author,
+          authorUrl: metadata.authorUrl,
+          providerName: metadata.providerName,
+          providerUrl: metadata.providerUrl,
+          width: metadata.width,
+          height: metadata.height
+        },
+        contentType: 'video',
+        
+        // No direct video fields for embedded
+        videoUrl: null,
+        previewUrl: null,
+        
+        // Use thumbnail from platform
+        thumbnailUrl: metadata.thumbnailUrl,
+        
+        // Standard fields
+        duration: metadata.duration || 0,
+        viewCount: 0,
+        likeCount: 0,
+        commentCount: 0,
+        uploadStatus: 'ready',
+        
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        deletedAt: null
+      };
+    }
     
     const videoRef = await db.collection(COLLECTIONS.PLACE_VIDEOS).add(videoData);
     const videoId = videoRef.id;
@@ -1620,7 +1926,13 @@ exports.getVideoComments = async (req, res) => {
       // Get user details
       const userDoc = await db.collection(COLLECTIONS.USERS).doc(comment.userId).get();
       if (userDoc.exists) {
-        comment.user = serializeDoc(userDoc);
+        const user = serializeDoc(userDoc);
+        // Flatten user fields for iOS compatibility
+        comment.userName = user.displayName || 'Unknown User';
+        comment.userPhoto = user.profilePicture || null;
+      } else {
+        comment.userName = 'Unknown User';
+        comment.userPhoto = null;
       }
       
       // Get reply count
@@ -1630,6 +1942,11 @@ exports.getVideoComments = async (req, res) => {
         .get();
       
       comment.replyCount = replyCountQuery.data().count || 0;
+      
+      // Check if current user has liked this comment (if user is authenticated)
+      comment.isLikedByUser = false;
+      comment.likes = comment.likes || [];
+      
       comments.push(comment);
     }
     
@@ -1981,11 +2298,21 @@ exports.createVideoCommentReply = async (req, res) => {
     const replyDoc = await replyRef.get();
     const reply = serializeDoc(replyDoc);
     
-    // Get user details
+    // Get user details and flatten for iOS compatibility
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
     if (userDoc.exists) {
-      reply.user = serializeDoc(userDoc);
+      const user = serializeDoc(userDoc);
+      reply.userName = user.displayName || 'Unknown User';
+      reply.userPhoto = user.profilePicture || null;
+    } else {
+      reply.userName = 'Unknown User';
+      reply.userPhoto = null;
     }
+    
+    // Add default fields for compatibility
+    reply.likes = reply.likes || [];
+    reply.isLikedByUser = false;
+    reply.replyCount = 0;
     
     // TODO: Send notification to parent comment author
     
@@ -2123,11 +2450,21 @@ exports.getVideoCommentReplies = async (req, res) => {
     for (const replyDoc of repliesQuery.docs) {
       const reply = serializeDoc(replyDoc);
       
-      // Get user details
+      // Get user details and flatten for iOS compatibility
       const userDoc = await db.collection(COLLECTIONS.USERS).doc(reply.userId).get();
       if (userDoc.exists) {
-        reply.user = serializeDoc(userDoc);
+        const user = serializeDoc(userDoc);
+        reply.userName = user.displayName || 'Unknown User';
+        reply.userPhoto = user.profilePicture || null;
+      } else {
+        reply.userName = 'Unknown User';
+        reply.userPhoto = null;
       }
+      
+      // Add default fields for compatibility
+      reply.likes = reply.likes || [];
+      reply.isLikedByUser = false;
+      reply.replyCount = 0;
       
       replies.push(reply);
     }
@@ -2141,6 +2478,149 @@ exports.getVideoCommentReplies = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to get replies',
+      error: error.message
+    });
+  }
+};
+
+// Get public video details (no auth required)
+exports.getPublicVideoDetails = async (req, res) => {
+  try {
+    const { videoId } = req.params;
+    
+    // Get video document
+    const videoDoc = await db.collection(COLLECTIONS.PLACE_VIDEOS).doc(videoId).get();
+    
+    if (!videoDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Video not found'
+      });
+    }
+    
+    const video = serializeDoc(videoDoc);
+    
+    // Only return public or non-sensitive information
+    const publicVideo = {
+      id: video.id,
+      title: video.title,
+      description: video.description,
+      thumbnailUrl: video.thumbnailUrl,
+      placeName: video.placeName,
+      placeId: video.placeId,
+      placeAddress: video.placeAddress,
+      userName: video.userName || 'Circles User',
+      userPhoto: video.userPhoto,
+      createdAt: video.createdAt,
+      likeCount: video.likeCount || 0,
+      commentCount: video.commentCount || 0,
+      viewCount: video.viewCount || 0,
+      // Don't include the actual video URL for non-authenticated users
+      hasVideo: !!video.videoUrl,
+      duration: video.duration
+    };
+    
+    res.json({
+      success: true,
+      data: publicVideo
+    });
+  } catch (error) {
+    console.error('Error getting public video details:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get video details',
+      error: error.message
+    });
+  }
+};
+
+// Generate share link for video
+exports.generateVideoShareLink = async (req, res) => {
+  try {
+    const { videoId } = req.params;
+    const userId = req.user.uid;
+    
+    // Verify video exists and user has access
+    const videoDoc = await db.collection(COLLECTIONS.PLACE_VIDEOS).doc(videoId).get();
+    
+    if (!videoDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Video not found'
+      });
+    }
+    
+    const video = videoDoc.data();
+    
+    // Generate share URL
+    const shareUrl = `https://circles-app.com/share/video/${videoId}`;
+    const deepLink = `circles://video/${videoId}`;
+    
+    // Create share text with place info
+    const shareText = `Check out this moment at ${video.placeName || 'this place'} on Circles!`;
+    
+    res.json({
+      success: true,
+      data: {
+        shareUrl,
+        deepLink,
+        shareText,
+        videoTitle: video.title,
+        placeName: video.placeName,
+        thumbnailUrl: video.thumbnailUrl
+      }
+    });
+  } catch (error) {
+    console.error('Error generating share link:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate share link',
+      error: error.message
+    });
+  }
+};
+
+// Check video processing status
+exports.checkVideoStatus = async (req, res) => {
+  try {
+    const { videoId } = req.params;
+    const userId = req.user.uid;
+    
+    const videoRef = db.collection(COLLECTIONS.PLACE_VIDEOS).doc(videoId);
+    const videoDoc = await videoRef.get();
+    
+    if (!videoDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Video not found'
+      });
+    }
+    
+    const videoData = videoDoc.data();
+    
+    // Only owner can check status
+    if (videoData.userId !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Unauthorized'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        videoId,
+        uploadStatus: videoData.uploadStatus || 'pending',
+        uploadProgress: videoData.uploadProgress || 0,
+        processingCompleted: videoData.processingCompleted || null,
+        isReady: videoData.uploadStatus === 'ready'
+      }
+    });
+  } catch (error) {
+    console.error('Error checking video status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check video status',
       error: error.message
     });
   }

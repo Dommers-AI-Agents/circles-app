@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/firebaseAuth');
+const { uploadLimiter } = require('../middleware/security');
 const {
   checkVideoQuota,
   initiateVideoUpload,
@@ -17,12 +18,12 @@ const {
 // Quota check
 router.get('/quota', protect, checkVideoQuota);
 
-// Upload flow
-router.post('/upload/initiate', protect, initiateVideoUpload);
-router.post('/:videoId/upload/complete', protect, completeVideoUpload);
+// Upload flow - Apply uploadLimiter only to actual upload endpoints
+router.post('/upload/initiate', protect, uploadLimiter, initiateVideoUpload);
+router.post('/:videoId/upload/complete', protect, uploadLimiter, completeVideoUpload);
 
-// Embedded video endpoints
-router.post('/embed', protect, require('../controllers/videoController').addEmbeddedVideo);
+// Embedded video endpoints - Also limited as they create content
+router.post('/embed', protect, uploadLimiter, require('../controllers/videoController').addEmbeddedVideo);
 router.get('/metadata', protect, require('../controllers/videoController').getVideoMetadata);
 
 // Get videos
@@ -44,6 +45,12 @@ router.get('/:videoId/likes', protect, require('../controllers/videoController')
 // Activity endpoint for videos
 router.get('/:videoId/activity', protect, require('../controllers/videoController').getVideoActivity);
 
+// Share link generation
+router.post('/:videoId/share', protect, require('../controllers/videoController').generateVideoShareLink);
+
+// Public video access (no auth required)
+router.get('/public/:videoId', require('../controllers/videoController').getPublicVideoDetails);
+
 // Comments endpoints for videos
 router.get('/:videoId/comments', protect, require('../controllers/videoController').getVideoComments);
 router.post('/:videoId/comments', protect, require('../controllers/videoController').createVideoComment);
@@ -53,6 +60,9 @@ router.post('/:videoId/comments/:commentId/replies', protect, require('../contro
 router.get('/:videoId/comments/:commentId/replies', protect, require('../controllers/videoController').getVideoCommentReplies);
 
 router.get('/:videoId', getVideoDetails);
+
+// Video status check for polling
+router.get('/:videoId/status', protect, require('../controllers/videoController').checkVideoStatus);
 
 // Video management
 router.delete('/:videoId', protect, deleteVideo);

@@ -11,6 +11,9 @@ const { Client } = require('@googlemaps/google-maps-services-js');
 const { googleMapsApiKey } = require('../config/config');
 const notificationService = require('../services/notificationService');
 const { trackPlaceAdded, trackPlaceView } = require('../services/activityService');
+const placeCache = require('../services/placeCache');
+const requestDeduplicator = require('../services/requestDeduplicator');
+const subscriptionLimitService = require('../services/subscriptionLimitService');
 
 const db = getFirestore();
 const googleMapsClient = new Client({});
@@ -235,12 +238,113 @@ exports.getPlacesByCircleId = async (req, res, next) => {
     
     const commentCounts = await Promise.all(commentCountPromises);
     
+    // Get activity records to determine which places are new for this user
+    // Look for connections where this user is connected to the circle owner
+    let activityRecords = [];
+    if (circle.owner !== req.user.uid) {
+      // User is not the owner, check for activity records
+      // Check BOTH directions of the connection to ensure we find all activities
+      const [connection1, connection2] = await Promise.all([
+        db.collection(COLLECTIONS.CONNECTIONS)
+          .where('userId', '==', req.user.uid)
+          .where('connectedUserId', '==', circle.owner)
+          .where('status', '==', 'accepted')
+          .get(),
+        db.collection(COLLECTIONS.CONNECTIONS)
+          .where('userId', '==', circle.owner)
+          .where('connectedUserId', '==', req.user.uid)
+          .where('status', '==', 'accepted')
+          .get()
+      ]);
+      
+      // Combine activities from both connection documents
+      const connections = [...connection1.docs, ...connection2.docs];
+      
+      console.log(`🔍 Checking ${connections.length} connection document(s) for activities`);
+      
+      connections.forEach(doc => {
+        const connectionData = doc.data();
+        if (connectionData.recentActivity && connectionData.recentActivity.length > 0) {
+          // Add all activities from this connection
+          activityRecords.push(...connectionData.recentActivity);
+          console.log(`🔍 Found ${connectionData.recentActivity.length} activities in connection ${doc.id}`);
+        }
+      });
+      
+      // Remove duplicates based on entityId
+      const uniqueActivities = [];
+      const seenIds = new Set();
+      activityRecords.forEach(activity => {
+        if (!seenIds.has(activity.entityId)) {
+          seenIds.add(activity.entityId);
+          uniqueActivities.push(activity);
+        }
+      });
+      activityRecords = uniqueActivities;
+      
+      console.log(`🔍 Total unique activity records found: ${activityRecords.length}`);
+      if (activityRecords.length > 0) {
+        console.log(`🔍 Activity types and IDs:`, activityRecords.map(a => ({
+          type: a.type,
+          entityId: a.entityId,
+          entityName: a.entityName,
+          viewedBy: a.viewedBy || []
+        })));
+      }
+    }
+    
     // Add user information and comment count to each place
-    const placesWithUsers = places.map((place, index) => ({
-      ...place,
-      addedByUser: userMap.get(place.addedBy) || null,
-      commentsCount: commentCounts[index].data().count || 0
-    }));
+    // Filter privateNotes based on ownership
+    const placesWithUsers = places.map((place, index) => {
+      // Check if this place is new for the current user
+      let isNew = false;
+      
+      // Don't mark as new if user is the one who added it
+      if (place.addedBy !== req.user.uid) {
+        // Find activity record for this place
+        const placeActivity = activityRecords.find(activity => 
+          activity.type === 'place' && activity.entityId === place.id
+        );
+        
+        if (placeActivity) {
+          // Check if user has viewed this place
+          const viewedBy = placeActivity.viewedBy || [];
+          isNew = !viewedBy.includes(req.user.uid);
+          
+          console.log(`🔍 Place "${place.name}" (${place.id}):`);
+          console.log(`   - Has activity record: YES`);
+          console.log(`   - ViewedBy: [${viewedBy.join(', ')}]`);
+          console.log(`   - Current user (${req.user.uid}) has viewed: ${viewedBy.includes(req.user.uid)}`);
+          console.log(`   - IsNew: ${isNew}`);
+          
+          if (isNew) {
+            console.log(`🆕 Place "${place.name}" is NEW for user ${req.user.uid}`);
+          }
+        } else {
+          // No activity record found for this place
+          // This could mean it was added before activity tracking was implemented
+          // or it's a place in a private circle
+          console.log(`🔍 Place "${place.name}" (${place.id}): No activity record found`);
+        }
+      } else {
+        console.log(`🔍 Place "${place.name}" (${place.id}): Skipped - user is the one who added it`);
+      }
+      
+      // Only include privateNotes if the current user added this place
+      const placeData = {
+        ...place,
+        addedByUser: userMap.get(place.addedBy) || null,
+        commentsCount: commentCounts[index].data().count || 0,
+        isNew: isNew // Set the isNew flag
+      };
+      
+      // Filter privateNotes - only visible to the user who added the place
+      if (place.addedBy !== req.user.uid) {
+        delete placeData.privateNotes;
+      }
+      
+      return placeData;
+    });
     
     // Create a map for quick lookup
     const placesMap = new Map();
@@ -386,11 +490,75 @@ exports.getPlacesByCircleIdPublic = async (req, res, next) => {
       }
     });
     
+    // Check if request has authenticated user (optional for public endpoints)
+    let activityRecords = [];
+    const userId = req.user?.uid;
+    
+    if (userId && circle.owner !== userId) {
+      // Authenticated user viewing public circle - check for activity records
+      const [connection1, connection2] = await Promise.all([
+        db.collection(COLLECTIONS.CONNECTIONS)
+          .where('userId', '==', userId)
+          .where('connectedUserId', '==', circle.owner)
+          .where('status', '==', 'accepted')
+          .get(),
+        db.collection(COLLECTIONS.CONNECTIONS)
+          .where('userId', '==', circle.owner)
+          .where('connectedUserId', '==', userId)
+          .where('status', '==', 'accepted')
+          .get()
+      ]);
+      
+      // Combine activities from both connection documents
+      const connections = [...connection1.docs, ...connection2.docs];
+      
+      connections.forEach(doc => {
+        const connectionData = doc.data();
+        if (connectionData.recentActivity && connectionData.recentActivity.length > 0) {
+          activityRecords.push(...connectionData.recentActivity);
+        }
+      });
+      
+      // Remove duplicates
+      const uniqueActivities = [];
+      const seenIds = new Set();
+      activityRecords.forEach(activity => {
+        if (!seenIds.has(activity.entityId)) {
+          seenIds.add(activity.entityId);
+          uniqueActivities.push(activity);
+        }
+      });
+      activityRecords = uniqueActivities;
+      
+      console.log(`🔍 Public endpoint: Found ${activityRecords.length} unique activity records for authenticated user`);
+    }
+    
     // Attach user information to each place
-    const placesWithUsers = places.map(place => ({
-      ...place,
-      addedByUser: userMap.get(place.addedBy) || null
-    }));
+    const placesWithUsers = places.map(place => {
+      let isNew = false;
+      
+      // Check if place is new for authenticated user
+      if (userId && place.addedBy !== userId) {
+        const placeActivity = activityRecords.find(activity => 
+          activity.type === 'place' && activity.entityId === place.id
+        );
+        
+        if (placeActivity) {
+          const viewedBy = placeActivity.viewedBy || [];
+          isNew = !viewedBy.includes(userId);
+          
+          if (isNew) {
+            console.log(`🆕 Public circle: Place "${place.name}" is NEW for user ${userId}`);
+          }
+        }
+      }
+      
+      return {
+        ...place,
+        addedByUser: userMap.get(place.addedBy) || null,
+        isNew: isNew
+      };
+    });
     
     // Order places - if circle has places array, use it for ordering, otherwise use creation date
     let orderedPlaces = [];
@@ -427,10 +595,28 @@ exports.getPlacesByCircleIdPublic = async (req, res, next) => {
 // @route   GET /api/places/:id
 // @access  Private
 exports.getPlace = async (req, res, next) => {
+  // IMMEDIATE LOG TO DEBUG - VERSION 3 - 2025-08-18-11:58
+  console.error(`📍📍📍 GET PLACE CALLED V3 - PlaceId: ${req.params.id}, User: ${req.user?.email || 'NO USER'}`);
+  console.log(`\n📍 ========== GET PLACE REQUEST STARTED V3 ==========`);
+  console.log(`📍 Request URL: ${req.originalUrl}`);
+  console.log(`📍 Request params:`, req.params);
+  console.log(`📍 Request query:`, req.query);
+  
   try {
-    const placeDoc = await db.collection(COLLECTIONS.PLACES).doc(req.params.id).get();
+    const placeId = req.params.id;
+    const userId = req.user.uid;
+    const fromActivity = req.query.fromActivity === 'true';
+    
+    console.log(`📍 PlaceId: ${placeId}`);
+    console.log(`📍 UserId: ${userId}`);
+    console.log(`📍 User Email: ${req.user.email}`);
+    console.log(`📍 User Original UID: ${req.user.originalUid}`);
+    console.log(`📍 FromActivity: ${fromActivity}`);
+    
+    const placeDoc = await db.collection(COLLECTIONS.PLACES).doc(placeId).get();
     
     if (!placeDoc.exists) {
+      console.log(`❌ Place ${placeId} not found in database`);
       return res.status(404).json({
         success: false,
         message: 'Place not found'
@@ -438,6 +624,9 @@ exports.getPlace = async (req, res, next) => {
     }
 
     const place = serializeDoc(placeDoc);
+    console.log(`📍 Place found: ${place.name}`);
+    console.log(`📍 CircleId: ${place.circleId || 'none (floating place)'}`);
+    console.log(`📍 AddedBy: ${place.addedBy}`);
     
     // Check if place is soft-deleted
     if (place.deletedAt) {
@@ -449,10 +638,12 @@ exports.getPlace = async (req, res, next) => {
 
     // Check permissions based on whether place belongs to a circle
     if (place.circleId) {
+      console.log(`\n🔐 ========== CHECKING PERMISSIONS ==========`);
       // Place belongs to a circle - check circle permissions
       const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(place.circleId).get();
       
       if (!circleDoc.exists) {
+        console.log(`❌ Circle ${place.circleId} not found`);
         return res.status(404).json({
           success: false,
           message: 'Circle not found'
@@ -460,17 +651,104 @@ exports.getPlace = async (req, res, next) => {
       }
 
       const circle = serializeDoc(circleDoc);
+      console.log(`🔐 Circle found: ${circle.name}`);
+      console.log(`🔐 Circle owner: ${circle.owner}`);
+      console.log(`🔐 Circle privacy: ${circle.privacy}`);
       
       // Check permissions
-      const isOwner = circle.owner === req.user.uid;
-      const isSharedWith = circle.sharedWith.includes(req.user.uid);
+      const isOwner = circle.owner === userId;
+      const isSharedWith = circle.sharedWith && circle.sharedWith.includes(userId);
       const isPublic = circle.privacy === 'public';
       
-      if (!isOwner && !isSharedWith && !isPublic) {
+      console.log(`🔐 Is owner: ${isOwner}`);
+      console.log(`🔐 Is shared with: ${isSharedWith}`);
+      console.log(`🔐 Is public: ${isPublic}`);
+      
+      // Check relationship with circle owner to determine access
+      let hasAccess = false;
+      
+      // Owner always has access
+      if (isOwner) {
+        hasAccess = true;
+      }
+      // Explicitly shared users have access
+      else if (isSharedWith) {
+        hasAccess = true;
+      }
+      // Public circles are accessible to everyone
+      else if (isPublic) {
+        hasAccess = true;
+      }
+      // For non-public circles, check relationship with owner
+      else {
+        console.log(`\n🔐 Checking relationship with circle owner...`);
+        const ownerDoc = await db.collection(COLLECTIONS.USERS).doc(circle.owner).get();
+        if (ownerDoc.exists) {
+          const ownerData = serializeDoc(ownerDoc);
+          
+          // Check if current user is following the owner (gets access to public circles)
+          const isFollowingOwner = ownerData.followers && ownerData.followers.includes(userId);
+          
+          // Check if current user is connected to the owner (gets access to myNetwork circles)  
+          const isConnected = ownerData.connections && ownerData.connections.includes(userId);
+          
+          console.log(`🔐 Owner's connections array: ${ownerData.connections ? ownerData.connections.length + ' connections' : 'none'}`);
+          console.log(`🔐 Is user in owner's connections: ${isConnected}`);
+          console.log(`🔐 Is user following owner: ${isFollowingOwner}`);
+          
+          // Also check the connections collection for proper connection status
+          const connectionQuery = await db.collection(COLLECTIONS.CONNECTIONS)
+            .where('userId', '==', circle.owner)
+            .where('connectedUserId', '==', userId)
+            .where('status', '==', 'accepted')
+            .get();
+          
+          const reverseConnectionQuery = await db.collection(COLLECTIONS.CONNECTIONS)
+            .where('userId', '==', userId)
+            .where('connectedUserId', '==', circle.owner)
+            .where('status', '==', 'accepted')
+            .get();
+            
+          const hasConnectionRecord = !connectionQuery.empty || !reverseConnectionQuery.empty;
+          console.log(`🔐 Has connection record in connections collection: ${hasConnectionRecord}`);
+          
+          // For myNetwork privacy, connections have access
+          if ((circle.privacy === 'myNetwork' || circle.privacy === 'my_network') && (isConnected || hasConnectionRecord)) {
+            console.log(`✅ Access granted: User is connected to circle owner (myNetwork circle)`);
+            hasAccess = true;
+          }
+          // For public circles, followers have access (but we already checked isPublic above)
+          // This is redundant but kept for clarity
+          else if (isPublic && isFollowingOwner) {
+            hasAccess = true;
+          }
+        } else {
+          console.log(`❌ Owner document not found for userId: ${circle.owner}`);
+        }
+      }
+      
+      // Deny access if none of the conditions are met
+      if (!hasAccess) {
+        console.log(`\n❌ ========== ACCESS DENIED ==========`);
+        console.log(`❌ Place: ${place.name}`);
+        console.log(`❌ Circle: ${circle.name}`);
+        console.log(`❌ User: ${userId}`);
+        console.log(`❌ Circle Owner: ${circle.owner}`);
+        console.log(`❌ Circle Privacy: ${circle.privacy}`);
+        console.log(`❌ Is Owner: ${isOwner}`);
+        console.log(`❌ Is Shared With: ${isSharedWith}`);
+        console.log(`❌ Is Public: ${isPublic}`);
+        console.log(`❌ ====================================\n`);
+        
+        console.error('❌ DENYING ACCESS - Version 3 - 2025-08-18-11:58');
         return res.status(403).json({
           success: false,
-          message: 'Not authorized to access this place'
+          message: 'Not authorized to access this place (v3-2025-08-18)'
         });
+      } else {
+        console.log(`\n✅ ========== ACCESS GRANTED ==========`);
+        console.log(`✅ User ${userId} can access place ${place.name}`);
+        console.log(`✅ ====================================\n`);
       }
     } else {
       // Floating place (no circle) - created from check-in
@@ -479,9 +757,10 @@ exports.getPlace = async (req, res, next) => {
       const isFromCheckIn = place.addedViaCheckIn === true;
       
       if (!isCreator && !isFromCheckIn) {
+        console.error('❌ DENYING ACCESS - Version 3 - 2025-08-18-11:58');
         return res.status(403).json({
           success: false,
-          message: 'Not authorized to access this place'
+          message: 'Not authorized to access this place (v3-2025-08-18)'
         });
       }
       
@@ -498,12 +777,23 @@ exports.getPlace = async (req, res, next) => {
     
     const commentsCount = commentCountSnapshot.data().count || 0;
     
+    // Filter privateNotes - only visible to the user who added the place
+    const placeData = {
+      ...place,
+      commentsCount
+    };
+    
+    // Remove privateNotes if the current user is not the one who added the place
+    if (place.addedBy !== req.user.uid) {
+      delete placeData.privateNotes;
+      console.log(`🔒 Filtering out privateNotes for user ${req.user.uid} viewing place added by ${place.addedBy}`);
+    } else {
+      console.log(`✅ Including privateNotes for owner ${req.user.uid} viewing their own place`);
+    }
+    
     res.status(200).json({
       success: true,
-      place: {
-        ...place,
-        commentsCount
-      }
+      place: placeData
     });
   } catch (error) {
     console.error('Error fetching place:', error);
@@ -548,6 +838,18 @@ exports.createPlace = async (req, res, next) => {
       });
     }
 
+    // Check subscription limits for the circle owner (not the current user if they're just shared with)
+    const limitCheck = await subscriptionLimitService.canAddPlace(circle.owner, circleId);
+    if (!limitCheck.canAdd) {
+      return res.status(403).json({
+        success: false,
+        message: limitCheck.error,
+        upgradeRequired: true,
+        currentCount: limitCheck.currentCount,
+        maxAllowed: limitCheck.maxAllowed
+      });
+    }
+
     // Validate place data
     const validationErrors = validatePlace(req.body);
     if (validationErrors.length > 0) {
@@ -559,36 +861,41 @@ exports.createPlace = async (req, res, next) => {
     }
 
     // Check for duplicates before creating (excluding soft-deleted places)
-    const { googlePlaceId, name, address } = req.body;
+    // Skip duplicate check if force flag is set (user selected "Add Anyway")
+    const { googlePlaceId, name, address, force } = req.body;
     
-    if (googlePlaceId) {
-      const existingPlace = await db.collection(COLLECTIONS.PLACES)
-        .where('circleId', '==', circleId)
-        .where('googlePlaceId', '==', googlePlaceId)
-        .where('deletedAt', '==', null)
-        .get();
-        
-      if (!existingPlace.empty) {
-        return res.status(400).json({
-          success: false,
-          message: 'This place already exists in the selected circle'
-        });
+    if (!force) {
+      if (googlePlaceId) {
+        const existingPlace = await db.collection(COLLECTIONS.PLACES)
+          .where('circleId', '==', circleId)
+          .where('googlePlaceId', '==', googlePlaceId)
+          .where('deletedAt', '==', null)
+          .get();
+          
+        if (!existingPlace.empty) {
+          return res.status(400).json({
+            success: false,
+            message: 'This place already exists in the selected circle'
+          });
+        }
+      } else if (name && address) {
+        // For custom places without googlePlaceId
+        const existingPlace = await db.collection(COLLECTIONS.PLACES)
+          .where('circleId', '==', circleId)
+          .where('name', '==', name)
+          .where('address', '==', address)
+          .where('deletedAt', '==', null)
+          .get();
+          
+        if (!existingPlace.empty) {
+          return res.status(400).json({
+            success: false,
+            message: 'This place already exists in the selected circle'
+          });
+        }
       }
-    } else if (name && address) {
-      // For custom places without googlePlaceId
-      const existingPlace = await db.collection(COLLECTIONS.PLACES)
-        .where('circleId', '==', circleId)
-        .where('name', '==', name)
-        .where('address', '==', address)
-        .where('deletedAt', '==', null)
-        .get();
-        
-      if (!existingPlace.empty) {
-        return res.status(400).json({
-          success: false,
-          message: 'This place already exists in the selected circle'
-        });
-      }
+    } else {
+      console.log('⚠️ Duplicate check bypassed with force flag for place:', { name, address, googlePlaceId });
     }
 
     // Create place data
@@ -615,16 +922,40 @@ exports.createPlace = async (req, res, next) => {
     if (!placeData.location && placeData.address && googleMapsApiKey) {
       console.log('🗺️ Place missing location, attempting to geocode address:', placeData.address);
       try {
-        const geocodeResponse = await googleMapsClient.geocode({
-          params: {
-            address: placeData.address,
-            key: googleMapsApiKey
-          }
-        });
+        // Check cache first
+        let geocodeResult = placeCache.get('geocoding', placeData.address);
         
-        if (geocodeResponse.data.results && geocodeResponse.data.results.length > 0) {
-          const result = geocodeResponse.data.results[0];
-          const { lat, lng } = result.geometry.location;
+        if (!geocodeResult) {
+          // Use deduplicator to prevent concurrent identical geocoding requests
+          const requestKey = requestDeduplicator.generateGeocodeKey(placeData.address);
+          
+          geocodeResult = await requestDeduplicator.execute(requestKey, async () => {
+            // Double-check cache in case another request just completed
+            const cachedResult = placeCache.get('geocoding', placeData.address);
+            if (cachedResult) {
+              return cachedResult;
+            }
+            
+            const geocodeResponse = await googleMapsClient.geocode({
+              params: {
+                address: placeData.address,
+                key: googleMapsApiKey
+              }
+            });
+            
+            if (geocodeResponse.data.results && geocodeResponse.data.results.length > 0) {
+              const result = geocodeResponse.data.results[0];
+              // Cache the geocoding result with 1-year TTL (addresses rarely change)
+              placeCache.set('geocoding', placeData.address, result, 365 * 24 * 60 * 60 * 1000);
+              return result;
+            }
+            
+            return null;
+          });
+        }
+        
+        if (geocodeResult) {
+          const { lat, lng } = geocodeResult.geometry.location;
           
           // Validate coordinates
           if (typeof lng === 'number' && typeof lat === 'number' &&
@@ -756,14 +1087,15 @@ exports.updatePlace = async (req, res, next) => {
 
     const place = serializeDoc(placeDoc);
 
-    // Check if user can edit (owner of circle or person who added the place)
+    // Check if user can edit (owner of circle, shared with user, or person who added the place)
     const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(place.circleId).get();
     const circle = serializeDoc(circleDoc);
     
     const isCircleOwner = circle.owner === req.user.uid;
+    const isSharedWith = circle.sharedWith && circle.sharedWith.includes(req.user.uid);
     const isPlaceAdder = place.addedBy === req.user.uid;
     
-    if (!isCircleOwner && !isPlaceAdder) {
+    if (!isCircleOwner && !isSharedWith && !isPlaceAdder) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to update this place'
@@ -853,14 +1185,15 @@ exports.deletePlace = async (req, res, next) => {
 
     const place = serializeDoc(placeDoc);
 
-    // Check if user can delete (owner of circle or person who added the place)
+    // Check if user can delete (owner of circle, shared with user, or person who added the place)
     const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(place.circleId).get();
     const circle = serializeDoc(circleDoc);
     
     const isCircleOwner = circle.owner === req.user.uid;
+    const isSharedWith = circle.sharedWith && circle.sharedWith.includes(req.user.uid);
     const isPlaceAdder = place.addedBy === req.user.uid;
     
-    if (!isCircleOwner && !isPlaceAdder) {
+    if (!isCircleOwner && !isSharedWith && !isPlaceAdder) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to delete this place'
@@ -1029,6 +1362,23 @@ exports.refreshPlaceFromGoogle = async (req, res, next) => {
       });
     }
     
+    // Check if place was refreshed recently (within 30 days)
+    if (place.lastRefreshedAt) {
+      const lastRefresh = new Date(place.lastRefreshedAt);
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
+      if (lastRefresh > thirtyDaysAgo) {
+        const daysAgo = Math.floor((Date.now() - lastRefresh.getTime()) / (1000 * 60 * 60 * 24));
+        console.log(`ℹ️ Place was refreshed ${daysAgo} days ago, skipping refresh to save API costs`);
+        return res.status(200).json({
+          success: true,
+          message: `Place data is recent (updated ${daysAgo} days ago)`,
+          place: place
+        });
+      }
+    }
+    
     // Check if Google Places API key is configured
     if (!googleMapsApiKey) {
       console.log('⚠️ Google Maps API key not configured, cannot refresh place details');
@@ -1113,24 +1463,53 @@ exports.refreshPlaceFromGoogle = async (req, res, next) => {
     try {
       console.log('🔍 Refreshing place from Google Places API:', googlePlaceId);
       
-      // Fetch updated place details from Google
-      const response = await googleMapsClient.placeDetails({
-        params: {
-          place_id: googlePlaceId,
-          fields: ['name', 'rating', 'user_ratings_total', 'photos', 'formatted_address', 'formatted_phone_number', 'website', 'opening_hours'],
-          key: googleMapsApiKey
-        }
-      });
+      // Check cache first
+      let googlePlace = placeCache.get('placeDetails', googlePlaceId);
       
-      const googlePlace = response.data.result;
-      console.log('✅ Fetched place details from Google:', {
-        name: googlePlace.name,
-        rating: googlePlace.rating,
-        photosCount: googlePlace.photos?.length || 0
-      });
+      if (!googlePlace) {
+        // Use deduplicator to prevent concurrent identical requests
+        const requestKey = requestDeduplicator.generatePlaceKey(googlePlaceId);
+        
+        googlePlace = await requestDeduplicator.execute(requestKey, async () => {
+          // Double-check cache in case another request just completed
+          const cachedResult = placeCache.get('placeDetails', googlePlaceId);
+          if (cachedResult) {
+            return cachedResult;
+          }
+          
+          // Fetch updated place details from Google
+          const response = await googleMapsClient.placeDetails({
+            params: {
+              place_id: googlePlaceId,
+              fields: ['name', 'rating', 'user_ratings_total', 'photos', 'formatted_address', 'formatted_phone_number', 'website', 'opening_hours'],
+              key: googleMapsApiKey
+            }
+          });
+          
+          const result = response.data.result;
+          
+          // Cache the response
+          placeCache.set('placeDetails', googlePlaceId, result);
+          
+          console.log('✅ Fetched place details from Google API:', {
+            name: result.name,
+            rating: result.rating,
+            photosCount: result.photos?.length || 0
+          });
+          
+          return result;
+        });
+      } else {
+        console.log('✅ Using cached place details:', {
+          name: googlePlace.name,
+          rating: googlePlace.rating,
+          photosCount: googlePlace.photos?.length || 0
+        });
+      }
       
       // Prepare update data
       const updateData = {
+        lastRefreshedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
       
@@ -2836,7 +3215,12 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
               const place = serializeDoc(placeDoc);
               // Ensure place belongs to the correct circle
               if (place.circleId === circle.id) {
-                allPlaces.push(place);
+                // Filter privateNotes - only visible to the user who added the place
+                const placeData = { ...place };
+                if (place.addedBy !== currentUserId) {
+                  delete placeData.privateNotes;
+                }
+                allPlaces.push(placeData);
               }
             });
           }
@@ -2919,12 +3303,19 @@ exports.getMyPlacesForCheckIn = async (req, res, next) => {
         const place = serializeDoc(placeDoc);
         const circle = circleMap.get(place.circleId);
         
-        // Add circle info to place
-        allPlaces.push({
+        // Filter privateNotes - only visible to the user who added the place
+        const placeData = {
           ...place,
           circleName: circle?.name || 'Unknown Circle',
           circleCategory: circle?.category || 'other'
-        });
+        };
+        
+        // Remove privateNotes if the current user is not the one who added the place
+        if (place.addedBy !== userId) {
+          delete placeData.privateNotes;
+        }
+        
+        allPlaces.push(placeData);
       });
     });
     
