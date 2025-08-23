@@ -139,6 +139,18 @@ app.get('/', (req, res) => {
   });
 });
 
+// Apple App Site Association file for Universal Links
+app.get('/.well-known/apple-app-site-association', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.sendFile(path.join(__dirname, 'public', 'apple-app-site-association'));
+});
+
+// Also serve at root for compatibility
+app.get('/apple-app-site-association', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.sendFile(path.join(__dirname, 'public', 'apple-app-site-association'));
+});
+
 // Route debug middleware (reduced logging)
 app.use('/api/users', (req, res, next) => {
   next();

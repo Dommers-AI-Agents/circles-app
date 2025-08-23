@@ -1,0 +1,25 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "LQ4B3G6TQT.com.favcircles.circles",
+        "paths": [
+          "/app/*",
+          "/app/daily-summary",
+          "/app/open",
+          "/app/video/*",
+          "/app/circle/*",
+          "/app/connect/*",
+          "/video/*",
+          "/circle/*",
+          "/connect/*",
+          "/daily-summary"
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": ["LQ4B3G6TQT.com.favcircles.circles"]
+  }
+}

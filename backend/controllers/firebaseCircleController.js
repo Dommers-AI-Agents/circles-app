@@ -40,17 +40,58 @@ exports.getMyCircles = async (req, res, next) => {
       .where('owner', '==', req.user.uid)
       .get();
 
-    const circles = serializeQuerySnapshot(snapshot);
+    let circles = serializeQuerySnapshot(snapshot);
+    
+    // For the current user's own circles, check if any connections have added new places
+    // This helps the user see if their connections have contributed new places to shared circles
+    const connectionsSnapshot = await db.collection(COLLECTIONS.CONNECTIONS)
+      .where('status', '==', 'accepted')
+      .where('userId', '==', req.user.uid)
+      .get();
+    
+    const connections = serializeQuerySnapshot(connectionsSnapshot);
+    
+    // Collect all recent activities from connections
+    const allActivities = [];
+    connections.forEach(conn => {
+      const activities = conn.recentActivity || [];
+      activities.forEach(activity => {
+        // Only include activities where the current user hasn't viewed them
+        const viewedBy = activity.viewedBy || [];
+        if (!viewedBy.includes(req.user.uid)) {
+          allActivities.push(activity);
+        }
+      });
+    });
+    
+    // Create a map of circleId -> unviewed place count
+    const unviewedPlacesByCircle = new Map();
+    allActivities
+      .filter(a => a.type === 'place' && a.circleId)
+      .forEach(activity => {
+        const count = unviewedPlacesByCircle.get(activity.circleId) || 0;
+        unviewedPlacesByCircle.set(activity.circleId, count + 1);
+      });
+    
+    // Mark circles that have new places
+    circles = circles.map(circle => ({
+      ...circle,
+      hasNewPlaces: unviewedPlacesByCircle.has(circle.id),
+      newPlacesCount: unviewedPlacesByCircle.get(circle.id) || 0
+    }));
     
     console.log(`🔍 DEBUG - Found ${circles.length} circles for user ${req.user.uid}`);
     if (circles.length > 0) {
       console.log('🔍 DEBUG - Circle names:', circles.map(c => c.name));
+      console.log('🔍 DEBUG - Circles with new places:', circles.filter(c => c.hasNewPlaces).map(c => c.name));
       console.log('🔍 DEBUG - First circle data:', {
         name: circles[0].name,
         id: circles[0].id,
         owner: circles[0].owner,
         placesCount: circles[0].placesCount,
-        placesArrayLength: circles[0].places?.length
+        placesArrayLength: circles[0].places?.length,
+        hasNewPlaces: circles[0].hasNewPlaces,
+        newPlacesCount: circles[0].newPlacesCount
       });
     } else {
       console.log('🔍 DEBUG - No circles found, this might be the issue!');
@@ -106,17 +147,18 @@ exports.getMyCircles = async (req, res, next) => {
 exports.getSharedCircles = async (req, res, next) => {
   try {
     const circlesRef = db.collection(COLLECTIONS.CIRCLES);
+    const currentUserId = req.user.uid;
     
     // Get public circles and circles shared with me
     const publicCirclesPromise = circlesRef
       .where('privacy', '==', 'public')
-      .where('owner', '!=', req.user.uid)
+      .where('owner', '!=', currentUserId)
       .orderBy('owner') // Required for != queries
       .orderBy('updatedAt', 'desc')
       .get();
       
     const sharedCirclesPromise = circlesRef
-      .where('sharedWith', 'array-contains', req.user.uid)
+      .where('sharedWith', 'array-contains', currentUserId)
       .orderBy('updatedAt', 'desc')
       .get();
 
@@ -130,9 +172,58 @@ exports.getSharedCircles = async (req, res, next) => {
     
     // Combine and deduplicate
     const allCircles = [...publicCircles, ...sharedCircles];
-    const uniqueCircles = allCircles.filter((circle, index, self) => 
+    let uniqueCircles = allCircles.filter((circle, index, self) => 
       index === self.findIndex(c => c.id === circle.id)
     );
+    
+    // Get connections to check for new activities
+    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', currentUserId)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', currentUserId)
+        .where('status', '==', 'accepted')
+        .get()
+    ]);
+    
+    // Collect all recent activities from connections
+    const allActivities = [];
+    [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs].forEach(doc => {
+      const connectionData = doc.data();
+      const activities = connectionData.recentActivity || [];
+      activities.forEach(activity => {
+        // Only include activities where the current user hasn't viewed them
+        const viewedBy = activity.viewedBy || [];
+        if (!viewedBy.includes(currentUserId)) {
+          allActivities.push(activity);
+        }
+      });
+    });
+    
+    // Create maps for unviewed circles and places
+    const unviewedCircleIds = new Set(
+      allActivities
+        .filter(a => a.type === 'circle')
+        .map(a => a.entityId)
+    );
+    
+    const unviewedPlacesByCircle = new Map();
+    allActivities
+      .filter(a => a.type === 'place' && a.circleId)
+      .forEach(activity => {
+        const count = unviewedPlacesByCircle.get(activity.circleId) || 0;
+        unviewedPlacesByCircle.set(activity.circleId, count + 1);
+      });
+    
+    // Mark circles with new status
+    uniqueCircles = uniqueCircles.map(circle => ({
+      ...circle,
+      isNew: unviewedCircleIds.has(circle.id),
+      hasNewPlaces: unviewedPlacesByCircle.has(circle.id),
+      newPlacesCount: unviewedPlacesByCircle.get(circle.id) || 0
+    }));
 
     res.status(200).json({
       success: true,
@@ -211,6 +302,42 @@ exports.getCircle = async (req, res, next) => {
     
     // Note: Public circles are accessible to anyone, including followers
     // The isFollowing check above is just for logging/analytics purposes
+    
+    // Check for new places in this circle
+    if (!isOwner && circle.privacy !== 'private') {
+      // Get connection between current user and circle owner
+      const [connectionSnapshot1, connectionSnapshot2] = await Promise.all([
+        db.collection(COLLECTIONS.CONNECTIONS)
+          .where('userId', '==', req.user.uid)
+          .where('connectedUserId', '==', circle.owner)
+          .where('status', '==', 'accepted')
+          .get(),
+        db.collection(COLLECTIONS.CONNECTIONS)
+          .where('userId', '==', circle.owner)
+          .where('connectedUserId', '==', req.user.uid)
+          .where('status', '==', 'accepted')
+          .get()
+      ]);
+      
+      const connectionDoc = !connectionSnapshot1.empty ? connectionSnapshot1.docs[0] : 
+                           (!connectionSnapshot2.empty ? connectionSnapshot2.docs[0] : null);
+      
+      if (connectionDoc) {
+        const connectionData = connectionDoc.data();
+        const activities = connectionData.recentActivity || [];
+        
+        // Count unviewed places in this circle
+        const unviewedPlaces = activities.filter(activity => {
+          const viewedBy = activity.viewedBy || [];
+          return activity.type === 'place' && 
+                 activity.circleId === req.params.id && 
+                 !viewedBy.includes(req.user.uid);
+        });
+        
+        circle.hasNewPlaces = unviewedPlaces.length > 0;
+        circle.newPlacesCount = unviewedPlaces.length;
+      }
+    }
 
     res.status(200).json({
       success: true,

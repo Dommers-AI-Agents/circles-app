@@ -920,7 +920,7 @@ exports.reorderCircles = async (req, res, next) => {
 // @access  Private
 exports.registerDeviceToken = async (req, res, next) => {
   try {
-    const { deviceToken, platform } = req.body;
+    const { deviceToken, platform, replaceExisting } = req.body;
     
     if (!deviceToken || !platform) {
       return res.status(400).json({
@@ -940,7 +940,13 @@ exports.registerDeviceToken = async (req, res, next) => {
     }
     
     const userData = userDoc.data();
-    const deviceTokens = userData.deviceTokens || [];
+    let deviceTokens = userData.deviceTokens || [];
+    
+    // If replaceExisting is true, clear all existing tokens for this platform
+    if (replaceExisting) {
+      console.log(`🔔 Replacing all existing ${platform} tokens for user ${req.user.uid}`);
+      deviceTokens = deviceTokens.filter(t => t.platform !== platform);
+    }
     
     // Check if this token already exists
     const existingTokenIndex = deviceTokens.findIndex(t => t.token === deviceToken);
@@ -1695,13 +1701,8 @@ exports.getUserFollowers = async (req, res, next) => {
       currentUserIdNormalized: currentUserId
     });
     
-    // Only the user can see their own followers list - check normalized IDs
-    if (!isSameUser(userId, currentUserId)) {
-      return res.status(403).json({
-        success: false,
-        message: 'You can only view your own followers'
-      });
-    }
+    // Allow any authenticated user to view followers lists
+    // This enables social discovery through connections' networks
     
     // Get user
     const userRef = db.collection(COLLECTIONS.USERS).doc(userId);
@@ -1716,6 +1717,19 @@ exports.getUserFollowers = async (req, res, next) => {
     
     const user = serializeDoc(userDoc);
     const followerIds = user.followers || [];
+    
+    // Get current user's following list to determine isFollowing status
+    let currentUserFollowing = [];
+    if (currentUserId !== userId) {
+      const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(currentUserId).get();
+      if (currentUserDoc.exists) {
+        const currentUserData = serializeDoc(currentUserDoc);
+        currentUserFollowing = (currentUserData.following || []).map(id => normalizeUserId(id));
+      }
+    } else {
+      // If viewing own followers, use the profile owner's following list
+      currentUserFollowing = (user.following || []).map(id => normalizeUserId(id));
+    }
     
     // Get follower details with batch fetching for performance
     const followers = [];
@@ -1735,9 +1749,9 @@ exports.getUserFollowers = async (req, res, next) => {
         
         followersSnapshot.forEach(doc => {
           const follower = serializeDoc(doc);
-          // Check if current user is following this follower back
-          const isFollowing = (user.following || []).includes(follower.id) || 
-                             (user.following || []).includes(normalizeUserId(follower.id));
+          // Check if current user is following this follower
+          const normalizedFollowerId = normalizeUserId(follower.id);
+          const isFollowing = currentUserFollowing.includes(normalizedFollowerId);
           
           followers.push({
             id: normalizeUserId(follower.id), // Always return normalized ID
@@ -1787,13 +1801,8 @@ exports.getUserFollowing = async (req, res, next) => {
       currentUserIdNormalized: currentUserId
     });
     
-    // Only the user can see their own following list - check normalized IDs
-    if (!isSameUser(userId, currentUserId)) {
-      return res.status(403).json({
-        success: false,
-        message: 'You can only view your own following list'
-      });
-    }
+    // Allow any authenticated user to view following lists
+    // This enables social discovery through connections' networks
     
     // Get user
     const userRef = db.collection(COLLECTIONS.USERS).doc(userId);
@@ -1808,6 +1817,19 @@ exports.getUserFollowing = async (req, res, next) => {
     
     const user = serializeDoc(userDoc);
     const followingIds = user.following || [];
+    
+    // Get current user's following list to determine isFollowing status
+    let currentUserFollowing = [];
+    if (currentUserId !== userId) {
+      const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(currentUserId).get();
+      if (currentUserDoc.exists) {
+        const currentUserData = serializeDoc(currentUserDoc);
+        currentUserFollowing = (currentUserData.following || []).map(id => normalizeUserId(id));
+      }
+    } else {
+      // If viewing own following list, all users are followed by definition
+      currentUserFollowing = followingIds.map(id => normalizeUserId(id));
+    }
     
     // Get following details with batch fetching for performance
     const following = [];
@@ -1827,7 +1849,10 @@ exports.getUserFollowing = async (req, res, next) => {
         
         followingSnapshot.forEach(doc => {
           const followingUser = serializeDoc(doc);
-          // When viewing our following list, we are following all these users by definition
+          // Check if current user is following this user
+          const normalizedFollowingUserId = normalizeUserId(followingUser.id);
+          const isFollowing = currentUserFollowing.includes(normalizedFollowingUserId);
+          
           following.push({
             id: normalizeUserId(followingUser.id), // Always return normalized ID
             email: followingUser.email || '', // Include email field for iOS decoding
@@ -1836,7 +1861,7 @@ exports.getUserFollowing = async (req, res, next) => {
             bio: followingUser.bio || null,
             firstName: followingUser.firstName || null,
             lastName: followingUser.lastName || null,
-            isFollowing: true // We are following all users in this list
+            isFollowing: isFollowing
           });
         });
       }

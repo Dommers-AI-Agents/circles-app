@@ -90,6 +90,7 @@ class NotificationService {
         notification: {
           title: notification.title,
           body: notification.body
+          // Note: Do NOT include 'sound' here - it causes FCM errors
         },
         data: notification.data || {},
         apns: {
@@ -98,8 +99,8 @@ class NotificationService {
               alert: {
                 title: notification.title,
                 body: notification.body,
-                ...(notification.subtitle && { subtitle: notification.subtitle }),
-                sound: 'default'
+                ...(notification.subtitle && { subtitle: notification.subtitle })
+                // Removed 'sound' from alert object - it goes at aps level
               },
               badge: notification.badge !== undefined ? notification.badge : 1,
               sound: 'default',
@@ -197,7 +198,12 @@ class NotificationService {
       newPlaces: true,
       connectionRequests: true,
       circleInvites: true,
-      checkIns: true
+      checkIns: true,
+      dailySummary: true,
+      discoveryPrompts: true,
+      weekendRecommendations: true,
+      socialActivity: true,
+      milestones: true
     };
 
     const typeMap = {

@@ -374,20 +374,11 @@ class DailySummaryService {
       // Daily summaries should not affect badge count - they're informational only
       badge: 0,
       data: {
-        // Firebase pushes data fields to root level, so we need type here too
+        // Keep only essential fields to stay under APNS 4KB limit
         type: 'daily_summary',
-        summaryDate: new Date().toISOString().split('T')[0],
-        newPlaces: stats.newPlaces.toString(),
-        newConnections: stats.newConnections.toString(),
-        unreadMessages: stats.unreadMessages.toString(),
-        placeComments: stats.placeComments.toString(),
-        placeLikes: stats.placeLikes.toString(),
-        placeCategories: JSON.stringify(stats.newPlacesByCategory),
-        topContributors: JSON.stringify(stats.topContributors.slice(0, 3))
-      },
-      // Also add at root level for iOS compatibility
-      customData: {
-        type: 'daily_summary'
+        summaryDate: new Date().toISOString().split('T')[0]
+        // Removed large fields that were causing APNS payload to exceed 4KB limit
+        // The app can fetch full summary data via API when notification is tapped
       }
     };
   }
@@ -548,7 +539,7 @@ class DailySummaryService {
             
             <!-- CTA Button -->
             <div style="text-align: center; margin: 30px 0;">
-              <a href="https://circles-backend-196924649787.us-central1.run.app/app/daily-summary" style="display: inline-block; background-color: #4CAF50; color: #ffffff; text-decoration: none; padding: 12px 30px; border-radius: 25px; font-weight: 600;">
+              <a href="circles://daily-summary" style="display: inline-block; background-color: #4CAF50; color: #ffffff; text-decoration: none; padding: 12px 30px; border-radius: 25px; font-weight: 600;">
                 View in App
               </a>
             </div>
@@ -643,9 +634,6 @@ class DailySummaryService {
         type: 'daily_summary',
         engagementPrompt: 'true',
         summaryDate: new Date().toISOString().split('T')[0]
-      },
-      customData: {
-        type: 'daily_summary'
       }
     };
   }
@@ -662,7 +650,7 @@ class DailySummaryService {
     // Determine the appropriate content based on user situation
     let mainContent = '';
     let ctaText = 'Open Circles';
-    let ctaLink = 'https://circles-backend-196924649787.us-central1.run.app/app/daily-summary';
+    let ctaLink = 'circles://daily-summary';
 
     if (stats.connectionCount === 0) {
       // User has no connections
@@ -681,7 +669,8 @@ class DailySummaryService {
         </div>
       `;
       ctaText = 'Find Friends';
-      ctaLink = 'https://circles-backend-196924649787.us-central1.run.app/app/open?path=network/find-friends';
+      ctaLink = 'circles://network/find-friends';
+      fallbackLink = 'https://circles-backend-196924649787.us-central1.run.app/app/open?path=network/find-friends';
     } else if (stats.userPlaceCount === 0) {
       // User has connections but no places
       mainContent = `
@@ -699,7 +688,8 @@ class DailySummaryService {
         </div>
       `;
       ctaText = 'Add Your First Place';
-      ctaLink = 'https://circles-backend-196924649787.us-central1.run.app/app/open?path=add-place';
+      ctaLink = 'circles://add-place';
+      fallbackLink = 'https://circles-backend-196924649787.us-central1.run.app/app/open?path=add-place';
     } else {
       // User has connections and places but no recent activity
       mainContent = `
