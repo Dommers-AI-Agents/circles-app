@@ -92,4 +92,81 @@ extension UIViewController {
     func showLoading(message: String = "Loading...") -> UIAlertController {
         return AlertPresenter.showLoading(message: message, from: self)
     }
+    
+    /// Finds the topmost presented view controller in the hierarchy
+    func topMostViewController() -> UIViewController {
+        var topController = self
+        while let presentedController = topController.presentedViewController {
+            topController = presentedController
+        }
+        return topController
+    }
+    
+    /// Checks if any view controller in the hierarchy is presenting another view controller
+    func isAnyViewControllerPresenting() -> Bool {
+        // Check if this view controller is presenting something
+        if self.presentedViewController != nil {
+            return true
+        }
+        
+        // Check parent view controllers
+        var currentVC: UIViewController? = self
+        while let parent = currentVC?.parent {
+            if parent.presentedViewController != nil {
+                return true
+            }
+            currentVC = parent
+        }
+        
+        // Check navigation controller if we're in one
+        if let navController = self.navigationController,
+           navController.presentedViewController != nil {
+            return true
+        }
+        
+        // Check tab bar controller if we're in one
+        if let tabController = self.tabBarController,
+           tabController.presentedViewController != nil {
+            return true
+        }
+        
+        // Check the root view controller
+        if let window = UIApplication.shared.windows.first,
+           let rootVC = window.rootViewController,
+           rootVC.presentedViewController != nil {
+            return true
+        }
+        
+        return false
+    }
+    
+    /// Gets the root view controller for fallback presentation
+    func getRootViewController() -> UIViewController? {
+        guard let window = UIApplication.shared.windows.first,
+              let rootVC = window.rootViewController else {
+            return nil
+        }
+        
+        // Don't use topMostViewController as it might return an alert
+        // Instead, get the base root VC that can present new content
+        
+        // If root VC is presenting something, we need to be careful
+        if let presented = rootVC.presentedViewController {
+            // If it's presenting an alert, we can still use the root VC
+            if presented is UIAlertController {
+                return rootVC
+            }
+            
+            // If it's presenting a navigation or tab controller, use that
+            if presented is UINavigationController || presented is UITabBarController {
+                return presented
+            }
+            
+            // Otherwise, use the root VC
+            return rootVC
+        }
+        
+        // Root VC is not presenting anything, safe to use
+        return rootVC
+    }
 }

@@ -114,6 +114,7 @@ enum VideoUploadStatus: String, Codable {
     case processing = "processing"
     case ready = "ready"
     case failed = "failed"
+    case error = "error"  // Added to match backend response
 }
 
 enum StorageClass: String, Codable {

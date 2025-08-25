@@ -20,6 +20,9 @@ enum APIError: Error, LocalizedError {
     case unauthorized
     case serverError
     case duplicateRequest
+    case processingFailed
+    case processingTimeout
+    case rateLimited(retryAfter: TimeInterval?)
     case unknown
     
     public var errorDescription: String? {
@@ -42,6 +45,15 @@ enum APIError: Error, LocalizedError {
             return "Server error occurred"
         case .duplicateRequest:
             return "Duplicate request prevented"
+        case .processingFailed:
+            return "Video processing failed"
+        case .processingTimeout:
+            return "Video processing took too long"
+        case .rateLimited(let retryAfter):
+            if let retryAfter = retryAfter {
+                return "Too many requests. Please try again in \(Int(retryAfter)) seconds"
+            }
+            return "Too many requests. Please try again in a moment"
         case .unknown:
             return "Unknown error occurred"
         }
@@ -64,9 +76,10 @@ enum APIError: Error, LocalizedError {
                 return polishErrorMessage(errorResponse.message)
             }
             
-            // If there are specific errors, show the first one
-            if let errors = errorResponse.errors, !errors.isEmpty {
-                return polishErrorMessage(errors.first ?? "Server error occurred")
+            // If there are specific field errors, use the helper to get them
+            let allErrors = errorResponse.allErrorMessages
+            if allErrors != errorResponse.message {
+                return polishErrorMessage(allErrors)
             }
         }
         
@@ -186,6 +199,9 @@ class APIService {
     // Rate limiting
     private var rateLimitRemaining: Int = 100
     private var rateLimitReset: Date?
+    private var retryQueue = [() -> Void]()
+    private var rateLimitBackoffMultiplier: TimeInterval = 1.0
+    private let maxBackoffMultiplier: TimeInterval = 32.0
     
     // Network status
     private var networkMonitorId = "APIService"
@@ -193,6 +209,11 @@ class APIService {
     // Request deduplication (simple approach)
     private var pendingGETRequests = Set<String>()
     private var pendingRequestTimers = [String: Timer]()
+    private var lastRequestTimes = [String: Date]()
+    private let minRequestInterval: TimeInterval = 0.5 // Minimum 500ms between identical requests to reduce load
+    
+    // Logger flags
+    private var hasLoggedNoInternetOnce = false
     
     private init() {
         let configuration = URLSessionConfiguration.default
@@ -319,30 +340,42 @@ class APIService {
         requiresAuth: Bool = true,
         completion: @escaping (Result<T, APIError>) -> Void
     ) {
-        // Simple duplicate request prevention (only for GET requests)
+        // Improved duplicate request prevention for GET requests
+        // Only prevent duplicates for identical requests within a short time window
         if method == .get {
             let requestKey = createRequestKey(endpoint: endpoint, method: method, body: body)
             
-            if pendingGETRequests.contains(requestKey) {
+            // Only prevent duplicates for specific endpoints that are problematic
+            let shouldPreventDuplicates = endpoint.contains("/users/") || 
+                                         endpoint.contains("/circles/") ||
+                                         endpoint.contains("/places/")
+            
+            if shouldPreventDuplicates && pendingGETRequests.contains(requestKey) {
                 Logger.debug("Preventing duplicate GET request: \(requestKey)")
                 completion(.failure(.duplicateRequest))
                 return
             }
             
-            pendingGETRequests.insert(requestKey)
-            
-            // Set a timer to clean up the pending request after 1 second
-            let timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
-                self?.pendingGETRequests.remove(requestKey)
-                self?.pendingRequestTimers.removeValue(forKey: requestKey)
-                Logger.debug("Cleaned up stale pending request: \(requestKey)")
+            if shouldPreventDuplicates {
+                pendingGETRequests.insert(requestKey)
+                
+                // Clean up pending request after 0.5 seconds (reduced from 1.0)
+                let timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+                    self?.pendingGETRequests.remove(requestKey)
+                    self?.pendingRequestTimers.removeValue(forKey: requestKey)
+                    Logger.debug("Cleaned up stale pending request: \(requestKey)")
+                }
+                pendingRequestTimers[requestKey] = timer
             }
-            pendingRequestTimers[requestKey] = timer
         }
         
-        // Check internet connection
+        // Check internet connection silently
         guard NetworkMonitor.shared.isConnected else {
-            Logger.error("APIService: No internet connection")
+            // Only log once per session using instance variable
+            if !hasLoggedNoInternetOnce {
+                Logger.error("APIService: No internet connection")
+                hasLoggedNoInternetOnce = true
+            }
             completion(.failure(.noInternet))
             return
         }
@@ -400,6 +433,34 @@ class APIService {
             print("📡 API APIService: Method: \(method.rawValue)")
             print("📡 API APIService: Requires Auth: \(requiresAuth)")
         }
+        
+        // Rate limiting check - prevent duplicate requests too close together
+        let requestKey = "\(method.rawValue):\(endpoint)"
+        if let lastRequestTime = lastRequestTimes[requestKey] {
+            let timeSinceLastRequest = Date().timeIntervalSince(lastRequestTime)
+            if timeSinceLastRequest < minRequestInterval {
+                if logLevel >= .minimal {
+                    print("⏰ APIService: Throttling request to \(endpoint) (last request \(Int(timeSinceLastRequest * 1000))ms ago)")
+                }
+                // Delay the request
+                DispatchQueue.main.asyncAfter(deadline: .now() + (minRequestInterval - timeSinceLastRequest)) {
+                    self.performRequest(
+                        endpoint: endpoint,
+                        method: method,
+                        queryParams: queryParams,
+                        body: body,
+                        headers: headers,
+                        requiresAuth: requiresAuth,
+                        retryCount: retryCount,
+                        completion: completion
+                    )
+                }
+                return
+            }
+        }
+        
+        // Update last request time
+        lastRequestTimes[requestKey] = Date()
         
         // Build URL with query parameters
         guard var urlComponents = URLComponents(string: "\(environment.baseURL)/\(endpoint)") else {
@@ -705,39 +766,94 @@ class APIService {
                 return
                 
             case 429:
-                // Rate limit exceeded
-                if let resetString = httpResponse.allHeaderFields["X-RateLimit-Reset"] as? String,
-                   let resetTimestamp = Double(resetString) {
-                    
+                // Rate limit exceeded - implement exponential backoff
+                if self.logLevel >= .minimal {
+                    Logger.warning("Rate limit exceeded (429) for \(endpoint). Implementing exponential backoff.")
+                }
+                
+                // Check for retry-after header or use a modest default delay
+                var delay: TimeInterval = 2.0 // Default 2 second delay
+                
+                if let retryAfterString = httpResponse.allHeaderFields["Retry-After"] as? String,
+                   let retryAfterSeconds = Double(retryAfterString) {
+                    delay = retryAfterSeconds
+                } else if let resetString = httpResponse.allHeaderFields["X-RateLimit-Reset"] as? String,
+                          let resetTimestamp = Double(resetString) {
                     let resetDate = Date(timeIntervalSince1970: resetTimestamp)
-                    let delay = resetDate.timeIntervalSince(Date())
-                    
+                    let calculatedDelay = resetDate.timeIntervalSince(Date())
+                    if calculatedDelay > 0 && calculatedDelay < 30.0 { // Only use if reasonable
+                        delay = calculatedDelay
+                    }
+                }
+                
+                // Cap the delay at a maximum of 30 seconds
+                delay = min(delay, 30.0)
+                
+                // Reduce retry attempts from 3 to 1 to prevent retry storms
+                if retryCount < 1 && delay <= 10.0 { // Only retry once and only if delay is reasonable
                     if self.logLevel >= .minimal {
-                        Logger.warning("Rate limit exceeded. Retrying in \(Int(delay)) seconds.")
+                        Logger.warning("Retrying rate-limited request in \(Int(delay)) seconds (attempt \(retryCount + 1)/1)")
                     }
                     
-                    // Retry after the rate limit resets
-                    DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [weak self] in
-                        self?.request(
+                    // Clean up pending request tracking for GET requests
+                    if method == .get {
+                        let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
+                        self.pendingGETRequests.remove(requestKey)
+                        self.pendingRequestTimers[requestKey]?.invalidate()
+                        self.pendingRequestTimers.removeValue(forKey: requestKey)
+                    }
+                    
+                    // Retry after delay using performRequest
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                        self.performRequest(
                             endpoint: endpoint,
                             method: method,
                             queryParams: queryParams,
                             body: body,
                             headers: headers,
                             requiresAuth: requiresAuth,
+                            retryCount: retryCount + 1,
                             completion: completion
                         )
                     }
                     return
+                } else {
+                    // No retries for rate limiting or delay too long - fail immediately
+                    if self.logLevel >= .minimal {
+                        Logger.warning("Rate limited request not retried (retryCount: \(retryCount), delay: \(delay)s) for \(endpoint)")
+                    }
+                    
+                    // Clean up pending request tracking for GET requests
+                    if method == .get {
+                        let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
+                        self.pendingGETRequests.remove(requestKey)
+                        self.pendingRequestTimers[requestKey]?.invalidate()
+                        self.pendingRequestTimers.removeValue(forKey: requestKey)
+                    }
+                    
+                    completion(.failure(.rateLimited(retryAfter: delay)))
+                    return
                 }
                 
-                completion(.failure(.httpError(httpResponse.statusCode, data)))
-                return
-                
             case 500..<600:
-                // Log server errors
+                // Log server errors with detailed information
+                var errorMessage = "HTTP \(httpResponse.statusCode) Server Error"
+                var isFirestoreIndexError = false
+                
                 if let data = data, let errorString = String(data: data, encoding: .utf8) {
-                    Logger.error("HTTP \(httpResponse.statusCode) Server Error: \(errorString)")
+                    Logger.error("\(errorMessage): \(errorString)")
+                    
+                    // Check if this is a Firestore index error (should not be retried automatically)
+                    if errorString.contains("FAILED_PRECONDITION") || 
+                       errorString.contains("requires an index") ||
+                       errorString.contains("composite index") {
+                        isFirestoreIndexError = true
+                        if self.logLevel >= .errors {
+                            Logger.error("Detected Firestore index error - will not retry automatically")
+                        }
+                    }
+                } else {
+                    Logger.error(errorMessage)
                 }
                 
                 // Clean up pending request tracking for GET requests
@@ -746,6 +862,28 @@ class APIService {
                     self.pendingGETRequests.remove(requestKey)
                     self.pendingRequestTimers[requestKey]?.invalidate()
                     self.pendingRequestTimers.removeValue(forKey: requestKey)
+                }
+                
+                // Don't retry Firestore index errors or after multiple attempts
+                if !isFirestoreIndexError && retryCount < 1 && httpResponse.statusCode >= 500 && httpResponse.statusCode < 503 {
+                    // Retry once for 500-502 errors (server temporarily unavailable)
+                    if self.logLevel >= .minimal {
+                        Logger.warning("Retrying server error \(httpResponse.statusCode) for \(endpoint) in 2 seconds")
+                    }
+                    
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                        self.performRequest(
+                            endpoint: endpoint,
+                            method: method,
+                            queryParams: queryParams,
+                            body: body,
+                            headers: headers,
+                            requiresAuth: requiresAuth,
+                            retryCount: retryCount + 1,
+                            completion: completion
+                        )
+                    }
+                    return
                 }
                 
                 completion(.failure(.serverError))
@@ -1117,6 +1255,22 @@ class APIService {
             }
         }
     }
+    
+    // MARK: - Daily Summary
+    func fetchDailySummary(completion: @escaping (Result<DailySummaryData, APIError>) -> Void) {
+        request(
+            endpoint: "users/me/daily-summary",
+            method: .get,
+            requiresAuth: true
+        ) { (result: Result<DailySummaryResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
 }
 
 // MARK: - Response Types
@@ -1124,4 +1278,28 @@ class APIService {
 struct RefreshTokenResponse: Decodable {
     let success: Bool
     let token: String?
+}
+
+// MARK: - Daily Summary Response Types
+struct DailySummaryResponse: Decodable {
+    let success: Bool
+    let data: DailySummaryData
+}
+
+struct DailySummaryData: Decodable {
+    let date: String
+    let newPlaces: Int
+    let newPlacesByCategory: [String: Int]
+    let newConnections: Int
+    let unreadMessages: Int
+    let placeComments: Int
+    let placeLikes: Int
+    let topContributors: [DailySummaryContributor]
+    let connectionCount: Int
+    let userPlaceCount: Int
+}
+
+struct DailySummaryContributor: Decodable {
+    let name: String
+    let count: Int
 }

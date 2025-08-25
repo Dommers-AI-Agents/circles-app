@@ -203,6 +203,7 @@ class EmailLoginViewController: BaseViewController {
                 switch result {
                 case .success(let user):
                     print("Successfully logged in user: \(user.displayName)")
+                    AnalyticsService.shared.trackLogin(method: "email")
                     self?.saveEmail(email)
                     
                     // Save credentials if remember me is checked
@@ -226,7 +227,8 @@ class EmailLoginViewController: BaseViewController {
     }
     
     @objc private func forgotPasswordTapped() {
-        AlertPresenter.showError(title: "Coming Soon", message: "Password reset functionality will be available soon.", from: self)
+        let passwordResetVC = PasswordResetViewController()
+        navigationController?.pushViewController(passwordResetVC, animated: true)
     }
     
     @objc private func dismissKeyboard() {

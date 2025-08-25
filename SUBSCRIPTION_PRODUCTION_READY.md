@@ -22,7 +22,7 @@ The Circles app subscription system is now **fully implemented and production-re
 ### Product Configuration
 - ✅ **Product IDs Defined**:
   - Monthly: `com.favcircles.circles.premium.subscription.monthly` ($2.99)
-  - Annual: `com.favcircles.circles.premium.subscription.annual` ($29.99)
+  - Annual: `com.favcircles.circles.premium.annual` ($29.99)
 - ✅ **StoreKit Configuration** - Local testing file configured
 - ✅ **Webhook URLs Updated** - Production backend URL configured
 

@@ -3,7 +3,7 @@ import StoreKit
 
 struct SubscriptionProduct {
     static let monthlyProductId = "com.favcircles.circles.premium.subscription.monthly"
-    static let annualProductId = "com.favcircles.circles.premium.subscription.annual"
+    static let annualProductId = "com.favcircles.circles.premium.annual"
     
     let product: Product
     let subscription: Product.SubscriptionInfo?

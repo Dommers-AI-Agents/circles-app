@@ -122,7 +122,10 @@ class UserActivityCell: UICollectionViewCell {
                 // Store the current user ID to check later
                 let currentUserId = user.id
                 
-                ImageService.shared.loadImage(from: profilePicture) { [weak self] image in
+                // Use a namespaced cache key to prevent collisions with place images
+                let profileCacheKey = "profile_\(currentUserId)_\(profilePicture)"
+                
+                ImageService.shared.loadImageWithKey(from: profilePicture, cacheKey: profileCacheKey) { [weak self] image in
                     DispatchQueue.main.async {
                         // Check if the cell is still displaying the same user
                         guard let self = self,

@@ -621,6 +621,21 @@ extension Place {
     func asMapAnnotation() -> PlaceAnnotation {
         return PlaceAnnotation(place: self)
     }
+    
+    // Convenience properties for accessing coordinates
+    var latitude: Double? {
+        guard let location = location,
+              location.coordinates.count == 2 else { return nil }
+        // MongoDB stores as [longitude, latitude]
+        return location.coordinates[1]
+    }
+    
+    var longitude: Double? {
+        guard let location = location,
+              location.coordinates.count == 2 else { return nil }
+        // MongoDB stores as [longitude, latitude]
+        return location.coordinates[0]
+    }
 }
 
 // Custom map annotation class for places
@@ -635,11 +650,17 @@ class PlaceAnnotation: NSObject, MKAnnotation {
     }
     
     var title: String? {
-        return place.name
+        // Add "NEW" prefix if this is a new place
+        return (place.isNew == true ? "🆕 " : "") + place.name
     }
     
     var subtitle: String? {
-        // Include owner information when viewing connection places
+        // If address is available and not empty, show it
+        if !place.address.isEmpty {
+            return place.address
+        }
+        
+        // Otherwise, include owner information when viewing connection places
         let categoryName = place.displayCategory
         let ownerName = place.addedByDisplayName
         

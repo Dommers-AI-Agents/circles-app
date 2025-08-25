@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 // Notification for circle deletion
 extension Notification.Name {
@@ -446,10 +447,57 @@ class CircleService {
     // MARK: - Helper Methods
     
     private func uploadImage(_ imageData: Data, completion: @escaping (Result<String, Error>) -> Void) {
-        // Convert image data to base64
-        let base64String = imageData.base64EncodedString()
+        // Apply compression if needed to stay under 1MB limit
+        var dataToUpload = imageData
+        let imageSizeInKB = Double(imageData.count) / 1024.0
         
-        print("Uploading image - size: \(imageData.count) bytes, base64 length: \(base64String.count)")
+        // Target 750KB for actual data since base64 encoding adds ~33%
+        let maxDataSizeKB: Double = 750
+        
+        if imageSizeInKB > maxDataSizeKB {
+            print("⚠️ Circle image size (\(String(format: "%.0f", imageSizeInKB)) KB) exceeds limit, compressing...")
+            
+            if let image = UIImage(data: imageData) {
+                // Try progressive compression
+                let compressionLevels: [CGFloat] = [0.7, 0.5, 0.3, 0.2]
+                
+                for quality in compressionLevels {
+                    if let compressedData = image.jpegData(compressionQuality: quality) {
+                        let compressedSizeKB = Double(compressedData.count) / 1024.0
+                        print("📸 Compressed to \(String(format: "%.0f", compressedSizeKB)) KB with quality \(quality)")
+                        
+                        if compressedSizeKB <= maxDataSizeKB {
+                            dataToUpload = compressedData
+                            break
+                        }
+                    }
+                }
+                
+                // If still too large, resize the image
+                if Double(dataToUpload.count) / 1024.0 > maxDataSizeKB {
+                    let maxDimension: CGFloat = 1024
+                    let scale = min(maxDimension / image.size.width, maxDimension / image.size.height)
+                    
+                    if scale < 1.0 {
+                        let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+                        UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
+                        image.draw(in: CGRect(origin: .zero, size: newSize))
+                        
+                        if let resizedImage = UIGraphicsGetImageFromCurrentImageContext(),
+                           let resizedData = resizedImage.jpegData(compressionQuality: 0.5) {
+                            dataToUpload = resizedData
+                            print("📐 Resized and compressed to \(Double(resizedData.count) / 1024.0) KB")
+                        }
+                        UIGraphicsEndImageContext()
+                    }
+                }
+            }
+        }
+        
+        // Convert image data to base64
+        let base64String = dataToUpload.base64EncodedString()
+        
+        print("Uploading image - size: \(dataToUpload.count) bytes, base64 length: \(base64String.count)")
         
         let body: [String: Any] = [
             "image": base64String,
@@ -580,7 +628,10 @@ class CircleService {
         case .noInternet, .requestFailed, .invalidURL, .invalidResponse, .decodingFailed, .duplicateRequest:
             return .networkError(error)
             
-        case .serverError, .unknown:
+        case .rateLimited:
+            return .networkError(error)
+            
+        case .serverError, .unknown, .processingFailed, .processingTimeout:
             return .unknown
         }
     }

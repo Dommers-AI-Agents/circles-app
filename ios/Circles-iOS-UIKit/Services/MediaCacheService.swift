@@ -83,13 +83,28 @@ class MediaCacheService {
             // Create subdirectory if needed
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: nil)
             
-            // Generate filename
+            // Generate filename with sanitization
             let filename = "\(mediaId).\(self.getFileExtension(for: mediaType))"
             let fileURL = dir.appendingPathComponent(filename)
             
-            // Write data to disk
+            // Check if file already exists
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                print("⚠️ MediaCacheService: File already exists, overwriting: \(filename)")
+            }
+            
+            // Write data to disk with better error handling
             do {
-                try data.write(to: fileURL)
+                // Ensure the directory exists
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: nil)
+                
+                // Write data
+                try data.write(to: fileURL, options: [.atomic])
+                
+                // Verify the file was written successfully
+                guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                    print("❌ MediaCacheService: File write verification failed")
+                    return
+                }
                 
                 // Add to memory cache
                 self.memoryCache.setObject(data as NSData, forKey: mediaId as NSString, cost: data.count)
@@ -115,8 +130,12 @@ class MediaCacheService {
                 
                 print("✅ MediaCacheService: Cached \(mediaType.rawValue) (\(data.count / 1024)KB) for \(isPermanent ? "user" : "network")")
                 
-            } catch {
-                print("❌ MediaCacheService: Failed to cache media: \(error)")
+            } catch let error as NSError {
+                print("❌ MediaCacheService: Failed to cache media: \(error.localizedDescription)")
+                print("❌ MediaCacheService: Error code: \(error.code), domain: \(error.domain)")
+                
+                // Clean up partial writes
+                try? FileManager.default.removeItem(at: fileURL)
             }
         }
         
@@ -248,8 +267,22 @@ class MediaCacheService {
     // MARK: - Helper Methods
     
     private func generateMediaId(from url: String) -> String {
-        // Create a unique ID from URL
-        return url.data(using: .utf8)?.base64EncodedString() ?? UUID().uuidString
+        // Create a consistent hash-based ID for the same URL
+        // This ensures the same URL always maps to the same cache entry
+        guard let data = url.data(using: .utf8) else {
+            return UUID().uuidString
+        }
+        
+        // Use a stable hash function without timestamp
+        // This creates a deterministic ID that remains constant for the same URL
+        var hash: Int64 = 0
+        for byte in data {
+            hash = hash &* 31 &+ Int64(byte)
+        }
+        
+        // Return a hex string representation of the hash
+        // This creates a consistent, filename-safe ID
+        return String(format: "%016llx", abs(hash))
     }
     
     private func getFileExtension(for mediaType: CachedMedia.MediaType) -> String {
@@ -345,6 +378,26 @@ class MediaCacheService {
             
             self.saveCacheIndex()
             print("✅ MediaCacheService: Cleared network cache")
+        }
+    }
+    
+    func clearImage(for urlString: String) {
+        cacheQueue.async(flags: .barrier) { [weak self] in
+            guard let self = self else { return }
+            
+            // Use the URL string directly as the cache key
+            let cacheKey = urlString
+            
+            // Remove from memory cache
+            self.memoryCache.removeObject(forKey: cacheKey as NSString)
+            
+            // Remove from disk if exists
+            if let cachedItem = self.cacheIndex[cacheKey] {
+                self.removeFromDisk(cachedMedia: cachedItem)
+                self.cacheIndex.removeValue(forKey: cacheKey)
+                self.saveCacheIndex()
+                print("✅ MediaCacheService: Cleared cached image for URL: \(urlString)")
+            }
         }
     }
     

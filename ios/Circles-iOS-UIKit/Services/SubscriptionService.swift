@@ -142,6 +142,13 @@ class SubscriptionService: ObservableObject {
     // MARK: - Check Subscription Status
     
     func updateSubscriptionStatus() async {
+        // Skip updating subscription status if user is not logged in
+        guard AuthService.shared.isLoggedIn else {
+            print("💎 Skipping subscription status update - user not logged in")
+            subscriptionStatus = .none
+            return
+        }
+        
         var highestStatus: Product.SubscriptionInfo.Status? = nil
         var highestProduct: Product? = nil
         
@@ -286,6 +293,12 @@ class SubscriptionService: ObservableObject {
     }
     
     private func checkTrialStatus() async {
+        // Skip checking trial status if user is not logged in
+        guard AuthService.shared.isLoggedIn else {
+            print("💎 Skipping trial status check - user not logged in")
+            return
+        }
+        
         APIService.shared.request(
             endpoint: "users/subscription/status",
             method: .get,
@@ -296,6 +309,11 @@ class SubscriptionService: ObservableObject {
                 self?.updateLocalSubscriptionInfo(response.subscription)
             case .failure(let error):
                 print("❌ Failed to check trial status: \(error)")
+                // Stop retrying if unauthorized
+                if case .unauthorized = error {
+                    print("💎 User unauthorized - stopping trial status checks")
+                    return
+                }
             }
         }
     }

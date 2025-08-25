@@ -140,6 +140,18 @@ class MediaCarouselView: UIView {
     // MARK: - Public Methods
     
     func configure(with mediaItems: [MediaItem]) {
+        print("📸 MediaCarouselView: configure() called with \(mediaItems.count) items")
+        for (index, item) in mediaItems.enumerated() {
+            switch item {
+            case .photo(let url):
+                print("  Item \(index + 1): Photo URL - \(url ?? "nil")")
+            case .photoImage(_):
+                print("  Item \(index + 1): Photo UIImage")
+            case .video(let thumbnailUrl, let videoUrl):
+                print("  Item \(index + 1): Video - thumb: \(thumbnailUrl ?? "nil"), video: \(videoUrl ?? "nil")")
+            }
+        }
+        
         self.mediaItems = mediaItems
         currentIndex = 0
         
@@ -165,9 +177,11 @@ class MediaCarouselView: UIView {
         pageControl.numberOfPages = mediaItems.count
         pageControl.currentPage = 0
         pageControl.isHidden = mediaItems.count <= 1
+        print("📸 MediaCarouselView: Page control - pages: \(pageControl.numberOfPages), hidden: \(pageControl.isHidden)")
         
         // Update navigation buttons
         updateNavigationButtons()
+        print("📸 MediaCarouselView: Configuration complete - \(contentStackView.arrangedSubviews.count) views in stack")
     }
     
     // MARK: - Private Methods

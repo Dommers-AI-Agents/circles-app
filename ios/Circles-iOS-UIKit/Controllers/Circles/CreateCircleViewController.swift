@@ -666,6 +666,12 @@ class CreateCircleViewController: UIViewController {
                         print("📍 Navigation controller exists: \(self.navigationController != nil)")
                         print("📍 Navigation stack count: \(self.navigationController?.viewControllers.count ?? 0)")
                         
+                        // Track circle creation analytics
+                        AnalyticsService.shared.trackCircleCreated(
+                            privacy: circle.privacy.rawValue,
+                            placeCount: 0
+                        )
+                        
                         // Share circle with selected connections
                         self.shareCircleWithConnections(circle, connections: selectedConnections, email: emailText)
                         

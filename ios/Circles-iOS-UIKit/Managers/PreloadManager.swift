@@ -9,6 +9,8 @@ struct PreloadedData: Codable {
     let connections: [Connection]
     let unreadMessageCount: Int
     let pendingConnectionCount: Int
+    let activities: [Activity]  // Activity feed items
+    let moments: [PlaceVideo]   // Moments/reels feed items
 }
 
 // MARK: - Preload Manager
@@ -23,7 +25,7 @@ class PreloadManager {
     private var preloadedData: PreloadedData?
     
     // Progress tracking
-    private var totalTasks = 6  // Including network circles now
+    private var totalTasks = 8  // Including network circles, activities, and moments now
     private var completedTasks = 0
     private var progressHandler: ((Double, String) -> Void)?
     
@@ -282,6 +284,8 @@ class PreloadManager {
         var loadedNetworkCircles: [Circle] = []
         var loadedPlaces: [Place] = []
         var loadedConnections: [Connection] = []
+        var loadedActivities: [Activity] = []
+        var loadedMoments: [PlaceVideo] = []
         var unreadCount = 0
         var pendingCount = 0
         
@@ -441,8 +445,60 @@ class PreloadManager {
             self?.taskCompletionTimes["pending"] = Date()
             
             pendingCount = count
-            self?.incrementProgress(status: "Almost ready...")
+            self?.incrementProgress(status: "Loading activities...")
             print("✅ PreloadManager: Pending connections: \(count)")
+        }
+        
+        // 8. Load Activities
+        loadGroup.enter()
+        let activitiesStartTime = Date()
+        
+        ActivityService.shared.getNetworkActivities(limit: 20, offset: 0) { [weak self] result in
+            defer { loadGroup.leave() }
+            let duration = Date().timeIntervalSince(activitiesStartTime)
+            self?.taskCompletionTimes["activities"] = Date()
+            
+            switch result {
+            case .success(let response):
+                loadedActivities = response.activities
+                self?.incrementProgress(status: "Loading moments...")
+                print("✅ PreloadManager: Loaded \(response.activities.count) activities")
+            case .failure(let error):
+                // Don't fail the entire preload for activities
+                print("⚠️ PreloadManager: Failed to load activities: \(error)")
+                self?.taskErrors["activities"] = error
+            }
+        }
+        
+        // 9. Load Moments/Reels
+        loadGroup.enter()
+        let momentsStartTime = Date()
+        
+        struct VideosResponse: Codable {
+            let success: Bool
+            let data: [PlaceVideo]
+            let hasMore: Bool
+        }
+        
+        APIService.shared.request(
+            endpoint: "videos/reels/feed?limit=20&offset=0",
+            method: .get,
+            requiresAuth: true
+        ) { [weak self] (result: Result<VideosResponse, APIError>) in
+            defer { loadGroup.leave() }
+            let duration = Date().timeIntervalSince(momentsStartTime)
+            self?.taskCompletionTimes["moments"] = Date()
+            
+            switch result {
+            case .success(let response):
+                loadedMoments = response.data
+                self?.incrementProgress(status: "Almost ready...")
+                print("✅ PreloadManager: Loaded \(response.data.count) moments")
+            case .failure(let error):
+                // Don't fail the entire preload for moments
+                print("⚠️ PreloadManager: Failed to load moments: \(error)")
+                self?.taskErrors["moments"] = error
+            }
         }
         
         // Wait for initial tasks to complete
@@ -478,6 +534,8 @@ class PreloadManager {
                         connections: loadedConnections,
                         unreadCount: unreadCount,
                         pendingCount: pendingCount,
+                        activities: loadedActivities,
+                        moments: loadedMoments,
                         completion: completion
                     )
                 }
@@ -491,6 +549,8 @@ class PreloadManager {
                     connections: loadedConnections,
                     unreadCount: unreadCount,
                     pendingCount: pendingCount,
+                    activities: loadedActivities,
+                    moments: loadedMoments,
                     completion: completion
                 )
             }
@@ -514,6 +574,8 @@ class PreloadManager {
                                 connections: [Connection],
                                 unreadCount: Int,
                                 pendingCount: Int,
+                                activities: [Activity],
+                                moments: [PlaceVideo],
                                 completion: @escaping (Result<PreloadedData, Error>) -> Void) {
         
         let preloadedData = PreloadedData(
@@ -523,7 +585,9 @@ class PreloadManager {
             allPlaces: places,
             connections: connections,
             unreadMessageCount: unreadCount,
-            pendingConnectionCount: pendingCount
+            pendingConnectionCount: pendingCount,
+            activities: activities,
+            moments: moments
         )
         
         self.preloadedData = preloadedData
@@ -541,6 +605,8 @@ class PreloadManager {
         print("   - Connections: \(connections.count)")
         print("   - Unread messages: \(unreadCount)")
         print("   - Pending connections: \(pendingCount)")
+        print("   - Activities: \(activities.count)")
+        print("   - Moments: \(moments.count)")
         
         // Add small delay to ensure UI updates are visible
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {

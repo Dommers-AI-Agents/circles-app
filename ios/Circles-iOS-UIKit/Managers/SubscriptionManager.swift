@@ -126,6 +126,7 @@ class SubscriptionManager {
         case circleLimit
         case placeLimit
         case exportFeature
+        case exportData  // Alias for exportFeature, specifically for data export
         case generalUpgrade
         
         var title: String {
@@ -134,7 +135,7 @@ class SubscriptionManager {
                 return "Circle Limit Reached"
             case .placeLimit:
                 return "Place Limit Reached"
-            case .exportFeature:
+            case .exportFeature, .exportData:
                 return "Premium Feature"
             case .generalUpgrade:
                 return "Upgrade to Premium"
@@ -149,6 +150,8 @@ class SubscriptionManager {
                 return "Free users can add up to \(PremiumFeatures.maxFreePlacesPerCircle) places per circle. Upgrade to Premium for unlimited places!"
             case .exportFeature:
                 return "Export and advanced sharing features are available to Premium members."
+            case .exportData:
+                return "Export your data to CSV and keep a backup of all your places and circles. Available to Premium members only."
             case .generalUpgrade:
                 return "Unlock all features with Circles Premium!"
             }

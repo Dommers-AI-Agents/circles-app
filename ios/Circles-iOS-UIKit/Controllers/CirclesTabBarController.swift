@@ -212,6 +212,13 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
             name: Notification.Name("NavigateToCircle"),
             object: nil
         )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(navigateToDailySummary(_:)),
+            name: Notification.Name("NavigateToDailySummary"),
+            object: nil
+        )
     }
     
     private func updateMessagesBadge() {
@@ -283,6 +290,20 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         if let navController = viewControllers?[0] as? UINavigationController,
            let circlesVC = navController.topViewController as? CirclesHomeViewController {
             circlesVC.navigateToCircle(withId: circleId)
+        }
+    }
+    
+    @objc private func navigateToDailySummary(_ notification: Notification) {
+        // Navigate to Home tab (index 0)
+        selectedIndex = 0
+        
+        // Tell the CirclesHomeViewController to fetch and show the daily summary
+        if let navController = viewControllers?[0] as? UINavigationController,
+           let circlesVC = navController.topViewController as? CirclesHomeViewController {
+            // Let the home view controller fetch and display the daily summary
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                circlesVC.fetchAndShowDailySummary()
+            }
         }
     }
     

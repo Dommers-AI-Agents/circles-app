@@ -4,6 +4,7 @@ import UIKit
 protocol ActivityFeedCellDelegate: AnyObject {
     func didTapUserProfile(user: User)
     func didTapPlaceImage(activity: Activity)
+    func didTapActivityContent(activity: Activity)
     func didTapReactions(activity: Activity)
     func didTapComments(activity: Activity)
     func didTapReactionButton(activity: Activity, emoji: String)
@@ -16,6 +17,10 @@ class ActivityFeedCell: UITableViewCell {
     static let identifier = "ActivityFeedCell"
     weak var delegate: ActivityFeedCellDelegate?
     private var currentActivity: Activity?
+    
+    // Image loading state management
+    private var currentAvatarLoadId: String?
+    private var currentPlaceImageLoadId: String?
     
     // MARK: - UI Elements
     private let containerView: UIView = {
@@ -157,6 +162,11 @@ class ActivityFeedCell: UITableViewCell {
         placeImageView.addGestureRecognizer(placeTapGesture)
         placeImageView.isUserInteractionEnabled = true
         
+        // Add tap gesture to activity content (for navigating to places)
+        let contentTapGesture = UITapGestureRecognizer(target: self, action: #selector(contentTapped))
+        containerView.addGestureRecognizer(contentTapGesture)
+        containerView.isUserInteractionEnabled = true
+        
         contentView.addSubview(containerView)
         containerView.addSubview(avatarImageView)
         containerView.addSubview(activityLabel)
@@ -265,9 +275,23 @@ class ActivityFeedCell: UITableViewCell {
             avatarImageView.tintColor = Constants.Colors.primary
             
             if let profilePicture = actor.profilePicture, !profilePicture.isEmpty {
-                ImageService.shared.loadImage(from: profilePicture) { [weak self] image in
+                // Generate unique load ID for this avatar request
+                let loadId = UUID().uuidString
+                currentAvatarLoadId = loadId
+                
+                // Use namespaced cache key for profile images to prevent collision with place images
+                let profileCacheKey = "profile_\(actor.id)_\(profilePicture)"
+                ImageService.shared.loadImageWithKey(from: profilePicture, cacheKey: profileCacheKey) { [weak self] image in
                     DispatchQueue.main.async {
-                        self?.avatarImageView.image = image
+                        // Only update if this is still the current load request
+                        guard let self = self, self.currentAvatarLoadId == loadId else {
+                            Logger.debug("ActivityFeedCell: Ignoring stale avatar image load")
+                            return
+                        }
+                        
+                        if let image = image {
+                            self.avatarImageView.image = image
+                        }
                     }
                 }
             }
@@ -297,17 +321,45 @@ class ActivityFeedCell: UITableViewCell {
         // Configure timestamp
         timestampLabel.text = activity.timeAgo
         
-        // Configure optional elements - show place image for check-ins and places
+        // Configure optional elements - show place image for check-ins, places, and video uploads
         let shouldShowPlaceImage = (activity.type == .checkIn || 
                                    activity.type == .placeAdded || 
-                                   activity.type == .placeLiked) && 
+                                   activity.type == .placeLiked ||
+                                   activity.type == .videoUploaded) && 
                                    activity.metadata?.placePhoto != nil
         
         placeImageView.isHidden = !shouldShowPlaceImage
-        if let placePhoto = activity.metadata?.placePhoto {
-            ImageService.shared.loadImage(from: placePhoto) { [weak self] image in
+        if let placePhoto = activity.metadata?.placePhoto, shouldShowPlaceImage {
+            // Generate unique load ID for this place image request
+            let loadId = UUID().uuidString
+            currentPlaceImageLoadId = loadId
+            
+            // Clear any existing place image to prevent showing stale content
+            placeImageView.image = nil
+            
+            Logger.debug("ActivityFeedCell: Loading place image for activity \(activity.type.rawValue) - \(activity.targetName)")
+            Logger.debug("ActivityFeedCell: Place photo URL: \(placePhoto)")
+            
+            // Use a namespaced cache key to prevent collisions with profile images
+            let placeCacheKey = "place_\(activity.targetId ?? "")_\(placePhoto)"
+            
+            ImageService.shared.loadImageWithKey(from: placePhoto, cacheKey: placeCacheKey) { [weak self] image in
                 DispatchQueue.main.async {
-                    self?.placeImageView.image = image
+                    // Only update if this is still the current load request
+                    guard let self = self, self.currentPlaceImageLoadId == loadId else {
+                        Logger.debug("ActivityFeedCell: Ignoring stale place image load")
+                        return
+                    }
+                    
+                    if let image = image {
+                        Logger.debug("ActivityFeedCell: Successfully loaded place image for \(activity.targetName)")
+                        self.placeImageView.image = image
+                    } else {
+                        Logger.warning("ActivityFeedCell: Failed to load place image for \(activity.targetName) from URL: \(placePhoto)")
+                        // Set a default place image
+                        self.placeImageView.image = UIImage(systemName: "photo")
+                        self.placeImageView.tintColor = Constants.Colors.lightGray
+                    }
                 }
             }
         }
@@ -358,6 +410,19 @@ class ActivityFeedCell: UITableViewCell {
     @objc private func placeImageTapped() {
         guard let activity = currentActivity else { return }
         delegate?.didTapPlaceImage(activity: activity)
+    }
+    
+    @objc private func contentTapped() {
+        guard let activity = currentActivity else { return }
+        
+        // Navigate for all place-related activities
+        if activity.type == .placeAdded || 
+           activity.type == .placeLiked || 
+           activity.type == .placeCommented ||
+           activity.type == .checkIn ||
+           activity.type == .videoUploaded {
+            delegate?.didTapActivityContent(activity: activity)
+        }
     }
     
     @objc private func reactionButtonTapped() {
@@ -440,8 +505,16 @@ class ActivityFeedCell: UITableViewCell {
     // MARK: - Reuse
     override func prepareForReuse() {
         super.prepareForReuse()
+        
+        // Cancel any pending image loads by clearing load IDs
+        currentAvatarLoadId = nil
+        currentPlaceImageLoadId = nil
+        
+        // Reset UI elements to default state
         avatarImageView.image = UIImage(systemName: "person.circle.fill")
+        avatarImageView.tintColor = Constants.Colors.primary
         placeImageView.image = nil
+        placeImageView.tintColor = nil
         placeImageView.isHidden = true
         commentLabel.isHidden = true
         commentLabel.text = nil
@@ -453,5 +526,7 @@ class ActivityFeedCell: UITableViewCell {
         reactionPillsContainer.isHidden = true
         currentActivity = nil
         delegate = nil
+        
+        Logger.debug("ActivityFeedCell: prepareForReuse completed - cleared all image load states")
     }
 }

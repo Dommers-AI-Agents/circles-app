@@ -17,6 +17,10 @@ enum SSEEventType: String {
     case circleCreated = "circle_created"
     case connectionActivity = "connection_activity"
     case onboardingCompleted = "onboarding_completed"
+    case momentUploaded = "moment_uploaded"
+    case reactionAdded = "reaction_added"
+    case commentAdded = "comment_added"
+    case checkIn = "check_in"
 }
 
 // MARK: - SSE Event

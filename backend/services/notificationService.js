@@ -83,6 +83,21 @@ class NotificationService {
         case 'check_in':
           category = 'CHECK_IN';
           break;
+        case 'engagement_reminder':
+          category = 'ENGAGEMENT_REMINDER';
+          break;
+        case 'weekly_summary':
+          category = 'WEEKLY_SUMMARY';
+          break;
+        case 'monthly_summary':
+          category = 'MONTHLY_SUMMARY';
+          break;
+        case 'special_event':
+          category = 'SPECIAL_EVENT';
+          break;
+        case 'network_growth':
+          category = 'NETWORK_GROWTH';
+          break;
       }
 
       // Prepare the message with enhanced iOS configuration

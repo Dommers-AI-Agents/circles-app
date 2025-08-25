@@ -528,8 +528,15 @@ class ActivityCommentCell: UITableViewCell {
         // Configure like count
         likeCountLabel.text = comment.likesCount > 0 ? "\(comment.likesCount)" : ""
         
-        // Configure reply count
-        replyCountLabel.text = comment.replyCount > 0 ? "\(comment.replyCount)" : ""
+        // Hide reply button and count for comments that are already replies
+        let isReply = comment.isReply
+        replyButton.isHidden = isReply
+        replyCountLabel.isHidden = isReply
+        
+        // Configure reply count (only for top-level comments)
+        if !isReply {
+            replyCountLabel.text = comment.replyCount > 0 ? "\(comment.replyCount)" : ""
+        }
     }
     
     @objc private func moreButtonTapped() {

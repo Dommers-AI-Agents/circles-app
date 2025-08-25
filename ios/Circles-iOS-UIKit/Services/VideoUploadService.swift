@@ -52,7 +52,17 @@ class VideoUploadService {
                         ) { completeResult in
                             switch completeResult {
                             case .success(let video):
-                                completion(.success(video))
+                                // Poll for processing completion before returning success
+                                self?.waitForVideoProcessing(videoId: uploadInfo.videoId) { processingResult in
+                                    switch processingResult {
+                                    case .success:
+                                        completion(.success(video))
+                                    case .failure(let error):
+                                        print("⚠️ Video processing check failed: \(error)")
+                                        // Still return success but video might show as processing
+                                        completion(.success(video))
+                                    }
+                                }
                             case .failure(let error):
                                 completion(.failure(error))
                             }
@@ -155,16 +165,23 @@ class VideoUploadService {
         if let thumbnail = generateThumbnail(from: fullVideoUrl) {
             uploadGroup.enter()
             if let thumbnailData = thumbnail.jpegData(compressionQuality: 0.8) {
+                print("📤 VideoUploadService: Uploading thumbnail - Size: \(thumbnailData.count) bytes")
+                print("   - Thumbnail URL: \(uploadUrls.thumbnail.suffix(100))")
                 uploadToSignedUrl(data: thumbnailData, signedUrl: uploadUrls.thumbnail) { error in
                     if let error = error {
-                        print("Failed to upload thumbnail: \(error)")
+                        print("❌ VideoUploadService: Failed to upload thumbnail: \(error)")
                         // Don't fail the whole upload if thumbnail fails
+                    } else {
+                        print("✅ VideoUploadService: Thumbnail uploaded successfully")
                     }
                     uploadGroup.leave()
                 }
             } else {
+                print("⚠️ VideoUploadService: Failed to convert thumbnail to JPEG data")
                 uploadGroup.leave()
             }
+        } else {
+            print("⚠️ VideoUploadService: No thumbnail generated")
         }
         
         uploadGroup.notify(queue: .main) {
@@ -243,6 +260,8 @@ class VideoUploadService {
     }
     
     private func generateThumbnail(from videoUrl: URL) -> UIImage? {
+        print("🎬 VideoUploadService: Generating thumbnail from: \(videoUrl.lastPathComponent)")
+        
         // Use AVAssetImageGenerator to create thumbnail
         let asset = AVAsset(url: videoUrl)
         let imageGenerator = AVAssetImageGenerator(asset: asset)
@@ -252,11 +271,70 @@ class VideoUploadService {
         
         do {
             let cgImage = try imageGenerator.copyCGImage(at: time, actualTime: nil)
-            return UIImage(cgImage: cgImage)
+            let thumbnail = UIImage(cgImage: cgImage)
+            print("✅ VideoUploadService: Thumbnail generated - Size: \(thumbnail.size)")
+            return thumbnail
         } catch {
-            print("Error generating thumbnail: \(error)")
+            print("❌ VideoUploadService: Error generating thumbnail: \(error)")
             return nil
         }
+    }
+    
+    // MARK: - Video Processing Status
+    
+    private func waitForVideoProcessing(videoId: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        let maxAttempts = 30 // 30 attempts with 2-second intervals = 60 seconds max
+        var attempts = 0
+        
+        func checkStatus() {
+            attempts += 1
+            
+            APIService.shared.request(
+                endpoint: "videos/\(videoId)/status",
+                method: .get,
+                body: nil
+            ) { (result: Result<VideoStatusResponse, APIError>) in
+                switch result {
+                case .success(let response):
+                    if response.success, let data = response.data {
+                        if data.isReady {
+                            // Processing complete
+                            print("✅ Video \(videoId) processing completed")
+                            completion(.success(()))
+                            return
+                        } else if data.uploadStatus == "error" {
+                            // Processing failed
+                            completion(.failure(APIError.processingFailed))
+                            return
+                        } else if attempts < maxAttempts {
+                            // Still processing, wait and check again
+                            print("📹 Video \(videoId) still processing... (\(attempts)/\(maxAttempts))")
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                checkStatus()
+                            }
+                        } else {
+                            // Timeout - processing took too long
+                            print("⏰ Video \(videoId) processing timeout after \(maxAttempts) attempts")
+                            completion(.failure(APIError.processingTimeout))
+                        }
+                    } else {
+                        completion(.failure(APIError.invalidResponse))
+                    }
+                case .failure(let error):
+                    if attempts < maxAttempts {
+                        // Retry on network error
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                            checkStatus()
+                        }
+                    } else {
+                        completion(.failure(error))
+                    }
+                }
+            }
+        }
+        
+        // Start checking status
+        checkStatus()
     }
 }
 
@@ -283,4 +361,17 @@ struct VideoStoragePaths {
 struct VideoCompleteResponse: Codable {
     let success: Bool
     let data: PlaceVideo?
+}
+
+struct VideoStatusResponse: Codable {
+    let success: Bool
+    let data: VideoStatusData?
+    
+    struct VideoStatusData: Codable {
+        let videoId: String
+        let uploadStatus: String
+        let uploadProgress: Int
+        let processingCompleted: String?
+        let isReady: Bool
+    }
 }

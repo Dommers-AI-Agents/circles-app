@@ -431,7 +431,7 @@ private class ConnectionChipView: UIView {
         backgroundColor = Constants.Colors.primary.withAlphaComponent(0.1)
         layer.cornerRadius = 16
         
-        label.text = user.firstName ?? user.displayName
+        label.text = user.displayName
         label.font = UIFont.systemFont(ofSize: 14)
         label.textColor = Constants.Colors.primary
         label.translatesAutoresizingMaskIntoConstraints = false

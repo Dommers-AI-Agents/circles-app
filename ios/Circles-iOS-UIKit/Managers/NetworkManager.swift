@@ -263,7 +263,7 @@ class NetworkManager {
         shareText += "\n\n📱 Connect with me: \(deepLink)"
         
         // Add app store link
-        let appStoreLink = "https://testflight.apple.com/join/n1sBRMG3"
+        let appStoreLink = "https://apps.apple.com/us/app/favcircles/id6746807095"
         shareText += "\n\nDon't have Circles? Download here: \(appStoreLink)"
         
         return [shareText]
@@ -730,6 +730,46 @@ class NetworkManager {
         )
     }
     
+    func fetchActiveRelationships(limit: Int = 10, offset: Int = 0, completion: @escaping ([Connection]?, Error?) -> Void) {
+        print("🔍 NetworkManager: fetchActiveRelationships called with limit: \(limit), offset: \(offset)")
+        
+        // Load active relationships (connections + following) sorted by activity
+        var queryParams = ["limit": "\(limit)"]
+        if offset > 0 {
+            queryParams["offset"] = "\(offset)"
+        }
+        
+        apiService.request(
+            endpoint: "connections/active-relationships",
+            method: .get,
+            queryParams: queryParams,
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<ConnectionsResponse, Error>) in
+                DispatchQueue.main.async(flags: .barrier) {
+                    switch result {
+                    case .success(let response):
+                        print("✅ NetworkManager: fetchActiveRelationships successful")
+                        
+                        // Handle both old response format (connections) and new format (relationships)
+                        let relationships = response.relationships ?? response.connections
+                        
+                        print("📊 NetworkManager: Total relationships in response: \(relationships.count)")
+                        let connections = relationships.filter { $0.relationshipType == "connection" || $0.relationshipType == nil }
+                        let following = relationships.filter { $0.relationshipType == "following" }
+                        print("   - Connections: \(connections.count)")
+                        print("   - Following: \(following.count)")
+                        
+                        completion(relationships, nil)
+                        
+                    case .failure(let error):
+                        print("❌ NetworkManager: fetchActiveRelationships failed: \(error)")
+                        completion(nil, error)
+                    }
+                }
+            }
+        )
+    }
+    
     func clearConnectionActivity(connectionId: String, completion: @escaping (Error?) -> Void) {
         apiService.request(
             endpoint: "connections/\(connectionId)/clear-activity",
@@ -936,10 +976,12 @@ class NetworkManager {
 struct ConnectionsResponse: Codable {
     let success: Bool
     let connections: [Connection]
+    let relationships: [Connection]? // New field for combined connections and following
     
     enum CodingKeys: String, CodingKey {
         case success
         case connections
+        case relationships
         case data
     }
     
@@ -947,15 +989,25 @@ struct ConnectionsResponse: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         success = try container.decode(Bool.self, forKey: .success)
         
-        // Try to decode from 'connections' key first, fallback to 'data'
+        // Try to decode from 'relationships' key first (new format)
+        if let relationships = try? container.decode([Connection].self, forKey: .relationships) {
+            self.relationships = relationships
+            self.connections = relationships // For backward compatibility
+            print("✅ NetworkManager: Successfully decoded \(relationships.count) relationships from 'relationships' key")
+            return
+        }
+        
+        // Fallback to 'connections' key
         do {
             self.connections = try container.decode([Connection].self, forKey: .connections)
+            self.relationships = nil
             print("✅ NetworkManager: Successfully decoded \(self.connections.count) connections from 'connections' key")
         } catch let connectionsError {
             print("⚠️ NetworkManager: Failed to decode from 'connections' key: \(connectionsError)")
             
             do {
                 self.connections = try container.decode([Connection].self, forKey: .data)
+                self.relationships = nil
                 print("✅ NetworkManager: Successfully decoded \(self.connections.count) connections from 'data' key")
             } catch let dataError {
                 print("❌ NetworkManager: Failed to decode from 'data' key: \(dataError)")
@@ -971,6 +1023,7 @@ struct ConnectionsResponse: Codable {
                 
                 // If neither key exists or both fail to decode, use empty array
                 self.connections = []
+                self.relationships = nil
                 print("⚠️ NetworkManager: Using empty connections array as fallback")
             }
         }

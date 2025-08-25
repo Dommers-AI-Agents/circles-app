@@ -147,6 +147,34 @@ class EditProfileViewController: BaseViewController {
         return textField
     }()
     
+    private let zipcodeLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Zipcode"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .bold)
+        label.textColor = Constants.Colors.darkGray
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let zipcodeTextField: UITextField = {
+        let textField = UITextField()
+        textField.placeholder = "5-digit zipcode"
+        textField.keyboardType = .numberPad
+        textField.borderStyle = .roundedRect
+        textField.translatesAutoresizingMaskIntoConstraints = false
+        return textField
+    }()
+    
+    private let zipcodeHelpLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Your zipcode helps us show relevant places nearby"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.numberOfLines = 0
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
     private let bioLabel: UILabel = {
         let label = UILabel()
         label.text = "Bio"
@@ -216,6 +244,9 @@ class EditProfileViewController: BaseViewController {
         contentView.addSubview(emailTextField)
         contentView.addSubview(locationLabel)
         contentView.addSubview(locationTextField)
+        contentView.addSubview(zipcodeLabel)
+        contentView.addSubview(zipcodeTextField)
+        contentView.addSubview(zipcodeHelpLabel)
         contentView.addSubview(bioLabel)
         contentView.addSubview(bioTextView)
         contentView.addSubview(saveButton)
@@ -308,8 +339,23 @@ class EditProfileViewController: BaseViewController {
             locationTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             locationTextField.heightAnchor.constraint(equalToConstant: 40),
             
+            // Zipcode label
+            zipcodeLabel.topAnchor.constraint(equalTo: locationTextField.bottomAnchor, constant: Constants.Spacing.medium),
+            zipcodeLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            
+            // Zipcode text field
+            zipcodeTextField.topAnchor.constraint(equalTo: zipcodeLabel.bottomAnchor, constant: Constants.Spacing.small),
+            zipcodeTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            zipcodeTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            zipcodeTextField.heightAnchor.constraint(equalToConstant: 40),
+            
+            // Zipcode help label
+            zipcodeHelpLabel.topAnchor.constraint(equalTo: zipcodeTextField.bottomAnchor, constant: Constants.Spacing.small),
+            zipcodeHelpLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            zipcodeHelpLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            
             // Bio label
-            bioLabel.topAnchor.constraint(equalTo: locationTextField.bottomAnchor, constant: Constants.Spacing.medium),
+            bioLabel.topAnchor.constraint(equalTo: zipcodeHelpLabel.bottomAnchor, constant: Constants.Spacing.medium),
             bioLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             
             // Bio text view
@@ -331,6 +377,9 @@ class EditProfileViewController: BaseViewController {
         changePhotoButton.addTarget(self, action: #selector(changePhotoButtonTapped), for: .touchUpInside)
         useAvatarButton.addTarget(self, action: #selector(useAvatarButtonTapped), for: .touchUpInside)
         saveButton.addTarget(self, action: #selector(saveButtonTapped), for: .touchUpInside)
+        
+        // Set text field delegate for zipcode validation
+        zipcodeTextField.delegate = self
     }
     
     // MARK: - Data Loading
@@ -368,6 +417,7 @@ class EditProfileViewController: BaseViewController {
         phoneNumberTextField.text = user.phoneNumber ?? ""
         emailTextField.text = user.email
         locationTextField.text = user.location ?? ""
+        zipcodeTextField.text = user.zipcode ?? ""
         bioTextView.text = user.bio ?? ""
     }
     
@@ -410,6 +460,22 @@ class EditProfileViewController: BaseViewController {
             updates["location"] = location
         }
         
+        // Validate and include zipcode
+        if let zipcode = zipcodeTextField.text, !zipcode.isEmpty {
+            // Validate US zipcode format (5 digits)
+            let zipcodeRegex = "^[0-9]{5}$"
+            let zipcodePredicate = NSPredicate(format: "SELF MATCHES %@", zipcodeRegex)
+            
+            if zipcodePredicate.evaluate(with: zipcode) {
+                updates["zipcode"] = zipcode
+            } else if !zipcode.isEmpty {
+                showError("Please enter a valid 5-digit zipcode")
+                isLoading = false
+                saveButton.setLoading(false)
+                return
+            }
+        }
+        
         if let bio = bioTextView.text, !bio.isEmpty {
             updates["bio"] = bio
         }
@@ -427,6 +493,7 @@ class EditProfileViewController: BaseViewController {
     private func updateProfile(with updates: [String: Any]) {
         let displayName = updates["displayName"] as? String
         let location = updates["location"] as? String
+        let zipcode = updates["zipcode"] as? String
         let bio = updates["bio"] as? String
         
         // Debug logging
@@ -436,6 +503,7 @@ class EditProfileViewController: BaseViewController {
         print("   - Last Name: \(updates["lastName"] ?? "nil")")
         print("   - Phone Number: \(updates["phoneNumber"] ?? "nil")")
         print("   - Location: \(location ?? "nil")")
+        print("   - Zipcode: \(zipcode ?? "nil")")
         print("   - Bio: \(bio ?? "nil")")
         
         // Convert selected image to data or handle avatar
@@ -456,6 +524,7 @@ class EditProfileViewController: BaseViewController {
             phoneNumber: updates["phoneNumber"] as? String,
             bio: bio,
             location: location,
+            zipcode: zipcode,
             profilePicture: profileImageData
         ) { [weak self] result in
             DispatchQueue.main.async {
@@ -614,6 +683,27 @@ extension EditProfileViewController: UIGestureRecognizerDelegate {
         // Only dismiss if tapping outside the avatar picker view
         if view.isDescendant(of: gestureRecognizer.view!) {
             return view == gestureRecognizer.view
+        }
+        return true
+    }
+}
+
+// MARK: - UITextFieldDelegate
+extension EditProfileViewController: UITextFieldDelegate {
+    func textField(_ textField: UITextField, shouldChangeCharactersIn range: NSRange, replacementString string: String) -> Bool {
+        if textField == zipcodeTextField {
+            let currentText = textField.text ?? ""
+            let newText = (currentText as NSString).replacingCharacters(in: range, with: string)
+            
+            // Only allow digits
+            let allowedCharacters = CharacterSet.decimalDigits
+            let characterSet = CharacterSet(charactersIn: string)
+            if !allowedCharacters.isSuperset(of: characterSet) && !string.isEmpty {
+                return false
+            }
+            
+            // Limit to 5 digits
+            return newText.count <= 5
         }
         return true
     }

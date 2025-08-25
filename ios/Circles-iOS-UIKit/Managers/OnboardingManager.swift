@@ -56,6 +56,7 @@ class OnboardingManager {
     private let shouldShowSuggestedUsersKey = "shouldShowSuggestedUsers"
     private let hasShownVisitTrackingPermissionKey = "hasShownVisitTrackingPermission"
     private let visitTrackingPermissionResponseKey = "visitTrackingPermissionResponse"
+    private let hasShownAddPlaceTutorialKey = "hasShownAddPlaceTutorial"
     
     // Current tutorial state
     private var completedSteps: Set<String> {
@@ -82,6 +83,7 @@ class OnboardingManager {
         UserDefaults.standard.removeObject(forKey: shouldShowSuggestedUsersKey)
         UserDefaults.standard.removeObject(forKey: hasShownVisitTrackingPermissionKey)
         UserDefaults.standard.removeObject(forKey: visitTrackingPermissionResponseKey)
+        UserDefaults.standard.removeObject(forKey: hasShownAddPlaceTutorialKey)
         // Ensure the flag returns to default state (true)
         shouldShowSuggestedUsers = true
         Logger.info("Onboarding state reset for new user")
@@ -316,8 +318,12 @@ class OnboardingManager {
         }
     }
     
-    /// Mark tutorial as completed on backend
+    /// Mark tutorial as completed on backend with retry logic
     func markTutorialCompleted() {
+        markTutorialCompleted(retryCount: 0)
+    }
+    
+    private func markTutorialCompleted(retryCount: Int) {
         APIService.shared.request(
             endpoint: "users/me/complete-tutorial",
             method: .post,
@@ -327,9 +333,53 @@ class OnboardingManager {
             case .success:
                 Logger.info("Tutorial marked as completed on backend")
             case .failure(let error):
-                Logger.error("Failed to mark tutorial completed: \(error)")
+                Logger.error("Failed to mark tutorial completed (attempt \(retryCount + 1)): \(error)")
+                
+                // Retry logic for specific error types
+                if retryCount < 2 { // Max 3 attempts
+                    var shouldRetry = false
+                    var retryDelay: TimeInterval = 2.0 // Base delay of 2 seconds
+                    
+                    switch error {
+                    case .noInternet:
+                        shouldRetry = true
+                        retryDelay = 5.0 // Longer delay for network issues
+                    case .rateLimited:
+                        shouldRetry = true
+                        retryDelay = Double(retryCount + 1) * 3.0 // Exponential backoff
+                    case .requestFailed, .serverError:
+                        shouldRetry = true
+                        retryDelay = Double(retryCount + 1) * 2.0 // Progressive delay
+                    default:
+                        shouldRetry = false // Don't retry for auth errors, etc.
+                    }
+                    
+                    if shouldRetry {
+                        Logger.warning("Retrying tutorial completion in \(Int(retryDelay)) seconds...")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) {
+                            self.markTutorialCompleted(retryCount: retryCount + 1)
+                        }
+                    } else {
+                        Logger.error("Not retrying tutorial completion due to error type: \(error)")
+                    }
+                } else {
+                    Logger.error("Max retry attempts exceeded for tutorial completion")
+                }
             }
         }
+    }
+    
+    // MARK: - Add Place Tutorial
+    
+    /// Check if user should see add place tutorial
+    func shouldShowAddPlaceTutorial() -> Bool {
+        // Show if user hasn't seen it before
+        return !UserDefaults.standard.bool(forKey: hasShownAddPlaceTutorialKey)
+    }
+    
+    func markAddPlaceTutorialShown() {
+        UserDefaults.standard.set(true, forKey: hasShownAddPlaceTutorialKey)
+        Logger.info("Add place tutorial marked as shown")
     }
     
     // MARK: - Contacts Onboarding

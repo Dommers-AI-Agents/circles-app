@@ -1,4 +1,5 @@
 import Foundation
+import FirebaseAuth
 
 // Authentication-related errors
 enum AuthError: Error, LocalizedError, Equatable {
@@ -275,6 +276,32 @@ class AuthService {
         }
     }
     
+    // MARK: - Password Reset
+    
+    func requestPasswordReset(email: String, completion: @escaping (Result<Void, AuthError>) -> Void) {
+        // Since we're using Firebase Auth directly in the PasswordResetViewController,
+        // this method is optional and provided for consistency with the AuthService interface
+        
+        Auth.auth().sendPasswordReset(withEmail: email) { error in
+            if let error = error {
+                let nsError = error as NSError
+                
+                switch nsError.code {
+                case AuthErrorCode.userNotFound.rawValue:
+                    completion(.failure(.userNotFound))
+                case AuthErrorCode.invalidEmail.rawValue:
+                    completion(.failure(.invalidEmail))
+                case AuthErrorCode.networkError.rawValue:
+                    completion(.failure(.networkError(error)))
+                default:
+                    completion(.failure(.unknown(error.localizedDescription)))
+                }
+            } else {
+                completion(.success(()))
+            }
+        }
+    }
+    
     func logout(completion: ((Bool) -> Void)? = nil) {
         // Handle notifications cleanup
         NotificationService.shared.handleUserLogout()
@@ -456,6 +483,9 @@ class AuthService {
                 // Reset onboarding state for the new user
                 OnboardingManager.shared.resetForNewUser()
             }
+            
+            // Track analytics
+            AnalyticsService.shared.setUserId(response.user.id)
             
             // Save tokens with expiration
             let expiration: Date?
@@ -656,8 +686,8 @@ class AuthService {
                     if errorResponse.message.lowercased().contains("private relay") {
                         return .privateRelayNotAllowed
                     }
-                    // General validation error
-                    return .unknown(errorResponse.message)
+                    // Use allErrorMessages to get detailed validation errors
+                    return .unknown(errorResponse.allErrorMessages)
                 case 401:
                     return .invalidCredentials
                 case 403:
@@ -691,7 +721,13 @@ class AuthService {
         case .noInternet, .requestFailed, .invalidURL, .invalidResponse, .decodingFailed, .duplicateRequest:
             return .networkError(error)
             
-        case .serverError, .unknown:
+        case .rateLimited(let retryAfter):
+            if let retryAfter = retryAfter {
+                return .unknown("Too many requests. Please try again in \(Int(retryAfter)) seconds")
+            }
+            return .unknown("Too many requests. Please try again in a moment")
+            
+        case .serverError, .unknown, .processingFailed, .processingTimeout:
             return .unknown(error.localizedDescription)
         }
     }

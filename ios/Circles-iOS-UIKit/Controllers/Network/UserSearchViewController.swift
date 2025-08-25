@@ -263,15 +263,7 @@ class UserSearchViewController: BaseViewController {
     }
     
     private func getDisplayName(for user: User) -> String {
-        if let firstName = user.firstName, let lastName = user.lastName {
-            return "\\(firstName) \\(lastName)"
-        } else if let firstName = user.firstName {
-            return firstName
-        } else if let lastName = user.lastName {
-            return lastName
-        } else {
-            return user.displayName
-        }
+        return user.displayName
     }
     
     // MARK: - Empty States
@@ -445,16 +437,8 @@ class UserSearchCell: UITableViewCell {
     
     // MARK: - Configure
     func configure(with user: User) {
-        // Display full name if available, otherwise display name
-        if let firstName = user.firstName, let lastName = user.lastName {
-            nameLabel.text = "\(firstName) \(lastName)"
-        } else if let firstName = user.firstName {
-            nameLabel.text = firstName
-        } else if let lastName = user.lastName {
-            nameLabel.text = lastName
-        } else {
-            nameLabel.text = user.displayName
-        }
+        // Display only displayName for privacy
+        nameLabel.text = user.displayName
         // Display bio instead of email for privacy
         if let bio = user.bio, !bio.isEmpty {
             userInfoLabel.text = bio

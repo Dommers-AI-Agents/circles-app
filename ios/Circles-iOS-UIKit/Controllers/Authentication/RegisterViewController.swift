@@ -128,7 +128,7 @@ class RegisterViewController: BaseViewController {
     
     private let passwordRequirementLabel: UILabel = {
         let label = UILabel()
-        label.text = "Password must be at least 6 characters"
+        label.text = "Password must be at least 8 characters with uppercase, lowercase, and number"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
         label.textColor = Constants.Colors.secondaryLabel
         label.numberOfLines = 0
@@ -178,11 +178,28 @@ class RegisterViewController: BaseViewController {
         return stackView
     }()
     
+    private let appleSignInContainerView: UIView = {
+        let container = UIView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.backgroundColor = .clear
+        return container
+    }()
+    
     private let appleSignInButton: ASAuthorizationAppleIDButton = {
         let button = ASAuthorizationAppleIDButton(authorizationButtonType: .signUp, authorizationButtonStyle: .black)
         button.cornerRadius = 8
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
+    }()
+    
+    private let appleSignInSubtitleLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Real email required - 'Hide My Email' not supported"
+        label.font = UIFont.systemFont(ofSize: 10)
+        label.textColor = UIColor.white.withAlphaComponent(0.6)
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }()
     
     private lazy var googleSignInButton: UIButton = {
@@ -197,10 +214,12 @@ class RegisterViewController: BaseViewController {
         return button
     }()
     
+    
     // MARK: - Properties
     private var isRegistering = false {
         didSet {
-            let buttons = [registerButton, appleSignInButton, googleSignInButton, facebookSignInButton]
+            // Apple Sign-In temporarily disabled - removed from buttons array
+            let buttons = [registerButton, googleSignInButton, facebookSignInButton]
             buttons.forEach { $0.isEnabled = !isRegistering }
             
             let textFields = [emailTextField, passwordTextField, confirmPasswordTextField, referralCodeTextField]
@@ -240,10 +259,15 @@ class RegisterViewController: BaseViewController {
     
     // MARK: - UI Setup
     private func setupUI() {
-        // Configure social stack view
-        socialStackView.addArrangedSubview(appleSignInButton)
+        // Configure Apple sign-in container (commented out for now)
+        // appleSignInContainerView.addSubview(appleSignInButton)
+        // appleSignInContainerView.addSubview(appleSignInSubtitleLabel)
+        
+        // Configure social stack view - match LoginViewController order
         socialStackView.addArrangedSubview(googleSignInButton)
         socialStackView.addArrangedSubview(facebookSignInButton)
+        // Apple Sign-In temporarily disabled
+        // socialStackView.addArrangedSubview(appleSignInContainerView)
         
         // Setup password field right views
         passwordTextField.rightView = togglePasswordButton
@@ -379,6 +403,20 @@ class RegisterViewController: BaseViewController {
             socialStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             socialStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             socialStackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
+            
+            // Apple sign-in container constraints commented out
+            // appleSignInContainerView.heightAnchor.constraint(equalToConstant: 50),
+            
+            // Apple sign-in button within container
+            // appleSignInButton.topAnchor.constraint(equalTo: appleSignInContainerView.topAnchor),
+            // appleSignInButton.leadingAnchor.constraint(equalTo: appleSignInContainerView.leadingAnchor),
+            // appleSignInButton.trailingAnchor.constraint(equalTo: appleSignInContainerView.trailingAnchor),
+            // appleSignInButton.bottomAnchor.constraint(equalTo: appleSignInContainerView.bottomAnchor),
+            
+            // Apple sign-in subtitle label
+            // appleSignInSubtitleLabel.leadingAnchor.constraint(equalTo: appleSignInContainerView.leadingAnchor, constant: 10),
+            // appleSignInSubtitleLabel.trailingAnchor.constraint(equalTo: appleSignInContainerView.trailingAnchor, constant: -10),
+            // appleSignInSubtitleLabel.bottomAnchor.constraint(equalTo: appleSignInContainerView.bottomAnchor, constant: -4)
         ])
     }
     
@@ -390,11 +428,15 @@ class RegisterViewController: BaseViewController {
     
     private func setupActions() {
         registerButton.addTarget(self, action: #selector(registerButtonTapped), for: .touchUpInside)
-        appleSignInButton.addTarget(self, action: #selector(appleSignInButtonTapped), for: .touchUpInside)
+        // Apple Sign-In temporarily disabled
+        // appleSignInButton.addTarget(self, action: #selector(appleSignInButtonTapped), for: .touchUpInside)
         googleSignInButton.addTarget(self, action: #selector(googleSignInButtonTapped), for: .touchUpInside)
         facebookSignInButton.addTarget(self, action: #selector(facebookSignInButtonTapped), for: .touchUpInside)
         togglePasswordButton.addTarget(self, action: #selector(togglePasswordVisibility), for: .touchUpInside)
         toggleConfirmPasswordButton.addTarget(self, action: #selector(toggleConfirmPasswordVisibility), for: .touchUpInside)
+        
+        // Add real-time password validation
+        passwordTextField.addTarget(self, action: #selector(passwordTextFieldDidChange), for: .editingChanged)
         
         // Keyboard handling
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
@@ -411,8 +453,15 @@ class RegisterViewController: BaseViewController {
             return
         }
         
-        guard let password = passwordTextField.text, !password.isEmpty, password.count >= 6 else {
-            showError("Password must be at least 6 characters")
+        // Validate password with detailed requirements
+        guard let password = passwordTextField.text, !password.isEmpty else {
+            showError("Please enter a password")
+            return
+        }
+        
+        let passwordValidation = validatePassword(password)
+        if !passwordValidation.isValid {
+            showError(passwordValidation.errors.joined(separator: "\n"))
             return
         }
         
@@ -448,6 +497,7 @@ class RegisterViewController: BaseViewController {
                 switch result {
                 case .success(let user):
                     print("Successfully registered user: \(user.displayName)")
+                    AnalyticsService.shared.trackSignUp(method: "email")
                     
                     // Apply referral code if we have one
                     if let _ = referralCode, !referralCode!.isEmpty {
@@ -471,8 +521,47 @@ class RegisterViewController: BaseViewController {
     }
     
     @objc private func appleSignInButtonTapped() {
-        handleSocialAuth {
-            SocialAuthService.shared.signInWithApple(from: self, completion: $0)
+        print("🍎 Apple Sign-In button tapped in RegisterViewController")
+        
+        // Show warning about private relay before proceeding
+        let alert = UIAlertController(
+            title: "Important: Email Requirements",
+            message: "When signing in with Apple, you must choose 'Share My Email' instead of 'Hide My Email'.\n\nCircles requires your real email to send daily summaries and important updates.\n\nDo you want to continue?",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "Continue", style: .default) { [weak self] _ in
+            self?.proceedWithAppleSignIn()
+        })
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        
+        present(alert, animated: true)
+    }
+    
+    private func proceedWithAppleSignIn() {
+        print("🍎 Proceeding with Apple Sign-In after warning")
+        isRegistering = true
+        
+        SocialAuthService.shared.signInWithApple(from: self) { [weak self] result in
+            DispatchQueue.main.async {
+                self?.isRegistering = false
+                
+                switch result {
+                case .success(let user):
+                    print("🍎 Successfully registered with Apple: \(user.displayName)")
+                    self?.showSuccessMessage()
+                case .failure(let error):
+                    print("🍎 Apple Sign-In Failed with error: \(error.localizedDescription)")
+                    
+                    // Check if it's a private relay error
+                    if let authError = error as? AuthError, authError == .privateRelayNotAllowed {
+                        self?.showPrivateRelayGuidance()
+                    } else {
+                        self?.showError("Apple Sign-In Failed: \(error.localizedDescription)")
+                    }
+                }
+            }
         }
     }
     
@@ -502,6 +591,24 @@ class RegisterViewController: BaseViewController {
         confirmPasswordTextField.isSecureTextEntry.toggle()
         let imageName = confirmPasswordTextField.isSecureTextEntry ? "eye.slash.fill" : "eye.fill"
         toggleConfirmPasswordButton.setImage(UIImage(systemName: imageName), for: .normal)
+    }
+    
+    @objc private func passwordTextFieldDidChange() {
+        guard let password = passwordTextField.text, !password.isEmpty else {
+            passwordRequirementLabel.text = "Password must be at least 8 characters with uppercase, lowercase, and number"
+            passwordRequirementLabel.textColor = Constants.Colors.secondaryLabel
+            return
+        }
+        
+        let validation = validatePassword(password)
+        
+        if validation.isValid {
+            passwordRequirementLabel.text = "✓ Password meets all requirements"
+            passwordRequirementLabel.textColor = Constants.Colors.success
+        } else {
+            passwordRequirementLabel.text = validation.errors.joined(separator: "\n")
+            passwordRequirementLabel.textColor = Constants.Colors.danger
+        }
     }
     
     // MARK: - Helper Methods
@@ -560,6 +667,28 @@ class RegisterViewController: BaseViewController {
         return zipcodePredicate.evaluate(with: zipcode)
     }
     
+    private func validatePassword(_ password: String) -> (isValid: Bool, errors: [String]) {
+        var errors: [String] = []
+        
+        if password.count < 8 {
+            errors.append("• At least 8 characters required")
+        }
+        
+        if !password.contains(where: { $0.isUppercase }) {
+            errors.append("• Must contain an uppercase letter")
+        }
+        
+        if !password.contains(where: { $0.isLowercase }) {
+            errors.append("• Must contain a lowercase letter")
+        }
+        
+        if !password.contains(where: { $0.isNumber }) {
+            errors.append("• Must contain a number")
+        }
+        
+        return (errors.isEmpty, errors)
+    }
+    
     private func findFirstResponder() -> UIView? {
         let responders: [UIView] = [emailTextField, passwordTextField, confirmPasswordTextField, zipcodeTextField, referralCodeTextField]
         return responders.first { $0.isFirstResponder }
@@ -568,13 +697,13 @@ class RegisterViewController: BaseViewController {
     // MARK: - Private Relay Guidance
     private func showPrivateRelayGuidance() {
         let alert = UIAlertController(
-            title: "Private Relay Not Allowed",
-            message: "To create an account with Circles, please sign in with Apple again and choose 'Share My Email' instead of 'Hide My Email'. This ensures you can access your account from all devices.",
+            title: "Email Not Accepted",
+            message: "You selected 'Hide My Email' which is not supported.\n\nHow to fix this:\n1. Tap 'Try Again' below\n2. When Apple Sign-In appears, tap your name/email at the top\n3. Choose 'Share My Email' instead of 'Hide My Email'\n4. Continue with sign in\n\nWhy we need your real email:\n• Send daily activity summaries\n• Important account notifications\n• Password reset emails",
             preferredStyle: .alert
         )
         
         alert.addAction(UIAlertAction(title: "Try Again", style: .default) { [weak self] _ in
-            self?.appleSignInButtonTapped()
+            self?.proceedWithAppleSignIn()
         })
         
         alert.addAction(UIAlertAction(title: "Use Email Instead", style: .default) { [weak self] _ in

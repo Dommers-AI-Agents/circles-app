@@ -8,6 +8,7 @@ class SettingsViewController: BaseTableViewController {
     
     private enum Section: Int, CaseIterable {
         case subscription
+        case data
         case account
         case privacy
         case notifications
@@ -18,6 +19,7 @@ class SettingsViewController: BaseTableViewController {
         var title: String {
             switch self {
             case .subscription: return "Subscription"
+            case .data: return "Data"
             case .account: return "Account"
             case .privacy: return "Privacy"
             case .notifications: return "Notifications"
@@ -36,6 +38,16 @@ class SettingsViewController: BaseTableViewController {
             switch self {
             case .status: return "Premium Status"
             case .manage: return "Manage Subscription"
+            }
+        }
+    }
+    
+    private enum DataRow: Int, CaseIterable {
+        case exportData
+        
+        var title: String {
+            switch self {
+            case .exportData: return "Export My Data"
             }
         }
     }
@@ -68,10 +80,12 @@ class SettingsViewController: BaseTableViewController {
     
     private enum NotificationRow: Int, CaseIterable {
         case pushNotifications
+        case troubleshoot
         
         var title: String {
             switch self {
             case .pushNotifications: return "Push Notifications"
+            case .troubleshoot: return "Troubleshoot Notifications"
             }
         }
     }
@@ -91,10 +105,14 @@ class SettingsViewController: BaseTableViewController {
     }
     
     private enum TutorialRow: Int, CaseIterable {
+        case helpCenter
+        case watchTutorial
         case resetTutorial
         
         var title: String {
             switch self {
+            case .helpCenter: return "Help Center"
+            case .watchTutorial: return "Watch Tutorial Video"
             case .resetTutorial: return "Reset Tutorial"
             }
         }
@@ -173,6 +191,28 @@ class SettingsViewController: BaseTableViewController {
         let accountMergeVC = AccountMergeViewController()
         let navController = UINavigationController(rootViewController: accountMergeVC)
         present(navController, animated: true)
+    }
+    
+    private func showEmailDetails() {
+        guard let email = AuthService.shared.currentUser?.email else {
+            showError("Email not available")
+            return
+        }
+        
+        let alert = UIAlertController(
+            title: "Account Email",
+            message: email,
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "Copy Email", style: .default) { _ in
+            UIPasteboard.general.string = email
+            self.showSuccess("Email copied to clipboard")
+        })
+        
+        alert.addAction(UIAlertAction(title: "OK", style: .cancel))
+        
+        present(alert, animated: true)
     }
     
     private func showProfileVisibility() {
@@ -264,6 +304,69 @@ class SettingsViewController: BaseTableViewController {
         )
     }
     
+    private func showNotificationTroubleshooting() {
+        let alert = UIAlertController(
+            title: "Notification Troubleshooting",
+            message: "If you're not receiving notifications, try these steps:",
+            preferredStyle: .actionSheet
+        )
+        
+        alert.addAction(UIAlertAction(title: "Check iOS Settings", style: .default) { _ in
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(url)
+            }
+        })
+        
+        alert.addAction(UIAlertAction(title: "Re-register for Notifications", style: .default) { [weak self] _ in
+            NotificationService.shared.updatePushToken()
+            self?.showSuccess("Re-registering for push notifications...")
+            
+            // Check status after a delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                self?.checkNotificationPermissions()
+            }
+        })
+        
+        alert.addAction(UIAlertAction(title: "Test Notification", style: .default) { [weak self] _ in
+            NotificationService.shared.scheduleTestNotification()
+            self?.showSuccess("Test notification scheduled. You should see it in 5 seconds.")
+        })
+        
+        alert.addAction(UIAlertAction(title: "View Help Guide", style: .default) { [weak self] _ in
+            guard let self = self else { return }
+            let helpMessage = """
+            Common notification issues:
+            
+            1. Check Settings → Circles → Notifications is ON
+            2. Check Do Not Disturb is OFF
+            3. Check Focus modes aren't blocking Circles
+            4. Ensure Background App Refresh is ON
+            5. Check you have a stable internet connection
+            
+            If issues persist, try:
+            - Log out and log back in
+            - Delete and reinstall the app
+            """
+            
+            AlertPresenter.showSuccess(
+                title: "Notification Help",
+                message: helpMessage,
+                from: self
+            )
+        })
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        
+        // For iPad
+        if let popover = alert.popoverPresentationController {
+            popover.sourceView = view
+            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
+        }
+        
+        present(alert, animated: true)
+    }
+    
     private func showTermsOfService() {
         let termsVC = TermsOfServiceViewController()
         navigationController?.pushViewController(termsVC, animated: true)
@@ -273,6 +376,20 @@ class SettingsViewController: BaseTableViewController {
         if let url = URL(string: "https://favcircles.com/privacy.html") {
             UIApplication.shared.open(url)
         }
+    }
+    
+    private func showHelpCenter() {
+        let helpVC = HelpViewController()
+        let navController = UINavigationController(rootViewController: helpVC)
+        navController.modalPresentationStyle = .fullScreen
+        present(navController, animated: true)
+    }
+    
+    private func showTutorialVideo() {
+        let tutorialVC = TutorialViewController()
+        let navController = UINavigationController(rootViewController: tutorialVC)
+        navController.modalPresentationStyle = .fullScreen
+        present(navController, animated: true)
     }
     
     private func showResetTutorialConfirmation() {
@@ -287,6 +404,26 @@ class SettingsViewController: BaseTableViewController {
                 self?.showSuccess("Tutorial has been reset. You'll see helpful tips as you navigate the app.")
             }
         )
+    }
+    
+    private func showDataExport() {
+        // Check if user is subscribed
+        if !SubscriptionManager.shared.isSubscribed {
+            // Show paywall
+            SubscriptionManager.shared.showPaywall(from: self, reason: .exportFeature)
+            // Note: PaywallViewController will auto-dismiss on successful purchase
+            // User can retry the export action after subscribing
+        } else {
+            // User is subscribed, show export directly
+            presentDataExportViewController()
+        }
+    }
+    
+    private func presentDataExportViewController() {
+        let exportVC = DataExportViewController()
+        let navController = UINavigationController(rootViewController: exportVC)
+        navController.modalPresentationStyle = .fullScreen
+        present(navController, animated: true)
     }
     
     private func showDeleteAccountConfirmation() {
@@ -333,6 +470,7 @@ extension SettingsViewController {
         
         switch sectionType {
         case .subscription: return SubscriptionRow.allCases.count
+        case .data: return DataRow.allCases.count
         case .account: return AccountRow.allCases.count
         case .privacy: return PrivacyRow.allCases.count
         case .notifications: return NotificationRow.allCases.count
@@ -407,13 +545,68 @@ extension SettingsViewController {
                 }
             }
             
+        case .data:
+            if let row = DataRow(rawValue: indexPath.row) {
+                switch row {
+                case .exportData:
+                    cell.textLabel?.text = row.title
+                    cell.accessoryType = .disclosureIndicator
+                    
+                    // Add icon
+                    let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
+                    let icon = UIImage(systemName: "square.and.arrow.down", withConfiguration: config)
+                    let iconView = UIImageView(image: icon)
+                    iconView.tintColor = Constants.Colors.primary
+                    iconView.translatesAutoresizingMaskIntoConstraints = false
+                    
+                    // Add premium badge if not subscribed
+                    if !SubscriptionManager.shared.isSubscribed {
+                        let stackView = UIStackView()
+                        stackView.axis = .horizontal
+                        stackView.spacing = 8
+                        stackView.alignment = .center
+                        
+                        let premiumBadge = UILabel()
+                        premiumBadge.text = "Premium"
+                        premiumBadge.font = UIFont.systemFont(ofSize: 11, weight: .semibold)
+                        premiumBadge.textColor = .white
+                        premiumBadge.backgroundColor = Constants.Colors.primary
+                        premiumBadge.layer.cornerRadius = 4
+                        premiumBadge.clipsToBounds = true
+                        premiumBadge.textAlignment = .center
+                        
+                        // Add padding to the badge
+                        let paddedBadge = UIView()
+                        paddedBadge.addSubview(premiumBadge)
+                        premiumBadge.translatesAutoresizingMaskIntoConstraints = false
+                        NSLayoutConstraint.activate([
+                            premiumBadge.topAnchor.constraint(equalTo: paddedBadge.topAnchor, constant: 2),
+                            premiumBadge.bottomAnchor.constraint(equalTo: paddedBadge.bottomAnchor, constant: -2),
+                            premiumBadge.leadingAnchor.constraint(equalTo: paddedBadge.leadingAnchor, constant: 6),
+                            premiumBadge.trailingAnchor.constraint(equalTo: paddedBadge.trailingAnchor, constant: -6)
+                        ])
+                        
+                        stackView.addArrangedSubview(iconView)
+                        stackView.addArrangedSubview(paddedBadge)
+                        cell.accessoryView = stackView
+                    } else {
+                        cell.accessoryView = iconView
+                    }
+                }
+            }
+            
         case .account:
             if let row = AccountRow(rawValue: indexPath.row) {
                 switch row {
                 case .email:
-                    cell.textLabel?.text = row.title
-                    cell.detailTextLabel?.text = AuthService.shared.currentUser?.email
-                    cell.selectionStyle = .none
+                    var config = cell.defaultContentConfiguration()
+                    config.text = row.title
+                    if let email = AuthService.shared.currentUser?.email {
+                        config.secondaryText = email
+                        config.secondaryTextProperties.color = .secondaryLabel
+                    }
+                    cell.contentConfiguration = config
+                    cell.accessoryType = .disclosureIndicator
                 case .changePassword:
                     cell.textLabel?.text = row.title
                     cell.accessoryType = .disclosureIndicator
@@ -454,33 +647,58 @@ extension SettingsViewController {
                     
                     cell.contentConfiguration = config
                     cell.accessoryType = .disclosureIndicator
+                    
+                case .troubleshoot:
+                    var config = cell.defaultContentConfiguration()
+                    config.text = row.title
+                    config.secondaryText = "Fix notification issues"
+                    config.secondaryTextProperties.color = .secondaryLabel
+                    cell.contentConfiguration = config
+                    cell.accessoryType = .disclosureIndicator
                 }
             }
             
         case .about:
             if let row = AboutRow(rawValue: indexPath.row) {
+                var config = cell.defaultContentConfiguration()
+                config.text = row.title
+                
                 switch row {
                 case .version:
-                    cell.textLabel?.text = row.title
-                    cell.detailTextLabel?.text = "1.0.0"
+                    config.secondaryText = "1.0.0"
+                    config.secondaryTextProperties.color = .secondaryLabel
+                    cell.contentConfiguration = config
                     cell.selectionStyle = .none
+                    cell.accessoryType = .none
                 case .termsOfService, .privacyPolicy:
-                    cell.textLabel?.text = row.title
+                    cell.contentConfiguration = config
+                    cell.selectionStyle = .default
                     cell.accessoryType = .disclosureIndicator
                 }
             }
             
         case .tutorial:
             if let row = TutorialRow(rawValue: indexPath.row) {
-                cell.textLabel?.text = row.title
-                cell.textLabel?.textColor = Constants.Colors.primary
+                var config = cell.defaultContentConfiguration()
+                config.text = row.title
+                
+                if row == .resetTutorial {
+                    config.textProperties.color = Constants.Colors.primary
+                } else {
+                    config.textProperties.color = Constants.Colors.label
+                }
+                
+                cell.contentConfiguration = config
                 cell.accessoryType = .disclosureIndicator
             }
             
         case .danger:
             if let row = DangerRow(rawValue: indexPath.row) {
-                cell.textLabel?.text = row.title
-                cell.textLabel?.textColor = Constants.Colors.danger
+                // Use content configuration to properly reset cell state
+                var config = cell.defaultContentConfiguration()
+                config.text = row.title
+                config.textProperties.color = Constants.Colors.danger
+                cell.contentConfiguration = config
                 cell.accessoryType = .disclosureIndicator
             }
         }
@@ -507,11 +725,19 @@ extension SettingsViewController {
                 }
             }
             
+        case .data:
+            if let row = DataRow(rawValue: indexPath.row) {
+                switch row {
+                case .exportData:
+                    showDataExport()
+                }
+            }
+            
         case .account:
             if let row = AccountRow(rawValue: indexPath.row) {
                 switch row {
                 case .email:
-                    break // Do nothing for email
+                    showEmailDetails()
                 case .changePassword:
                     showChangePassword()
                 case .manageAccounts:
@@ -534,6 +760,8 @@ extension SettingsViewController {
                 switch row {
                 case .pushNotifications:
                     openNotificationSettings()
+                case .troubleshoot:
+                    showNotificationTroubleshooting()
                 }
             }
             
@@ -552,6 +780,10 @@ extension SettingsViewController {
         case .tutorial:
             if let row = TutorialRow(rawValue: indexPath.row) {
                 switch row {
+                case .helpCenter:
+                    showHelpCenter()
+                case .watchTutorial:
+                    showTutorialVideo()
                 case .resetTutorial:
                     showResetTutorialConfirmation()
                 }

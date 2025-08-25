@@ -37,6 +37,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         // Configure Firebase first
         FirebaseApp.configure()
         
+        // Initialize Analytics Service
+        AnalyticsService.shared.initialize(withConsent: true)
+        AnalyticsService.shared.startSession()
+        
         // Configure Firebase Messaging
         Messaging.messaging().delegate = self
         
@@ -79,6 +83,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         DispatchQueue.global(qos: .background).async {
             print("🧹 Starting media cache cleanup...")
             MediaCacheService.shared.cleanupExpiredCache()
+            
+            // Clear potentially corrupted activity feed image caches
+            print("🧹 Clearing activity feed image caches to fix corruption...")
+            ImageService.shared.clearActivityFeedCaches()
             
             let stats = MediaCacheService.shared.getCacheStatistics()
             print("📊 Media Cache Statistics:")
@@ -140,9 +148,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         // Try to restore previous Google Sign-In session
         // Note: The SDK automatically manages session persistence in newer versions
         
-        // Initialize Facebook SDK
-        print("📘 Initializing Facebook SDK")
-        ApplicationDelegate.shared.application(application, didFinishLaunchingWithOptions: launchOptions)
+        // Initialize Facebook SDK asynchronously to avoid blocking startup
+        DispatchQueue.global(qos: .background).async {
+            print("📘 Initializing Facebook SDK in background")
+            ApplicationDelegate.shared.application(application, didFinishLaunchingWithOptions: launchOptions)
+        }
         
         // Initialize Google Places SDK using API_KEY from GoogleService-Info.plist
         if let gmsApiKey = plist["API_KEY"] as? String {
@@ -472,10 +482,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         return nil
     }
     
+    // Removed storeDailySummaryData - notification doesn't contain full data
+    // The DailySummaryViewController will fetch data from API when presented
+    
+    // Removed cleanupOldSummaries - no longer storing summaries locally
+    
     private func presentDailySummary(with userInfo: [AnyHashable: Any]) {
-        print("📊 Presenting daily summary modal")
-        print("📊 UserInfo keys: \(userInfo.keys)")
-        print("📊 Raw userInfo: \(userInfo)")
+        print("📊 Presenting daily summary modal (will fetch fresh data)")
         
         // Function to actually present the modal
         let presentModal = {
@@ -488,55 +501,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
                 return
             }
             
-            // Convert userInfo to String dictionary and extract all possible data locations
-            var notificationData: [String: Any] = [:]
-            
-            // First, add all root level string keys
-            for (key, value) in userInfo {
-                if let stringKey = key as? String {
-                    notificationData[stringKey] = value
-                }
-            }
-            
-            // Check if data is nested in "gcm.notification.data" (common FCM pattern)
-            if let gcmData = userInfo["gcm.notification.data"] as? String,
-               let data = gcmData.data(using: .utf8),
-               let jsonData = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                print("📊 Found data in gcm.notification.data")
-                // Merge the nested data
-                for (key, value) in jsonData {
-                    notificationData[key] = value
-                }
-            }
-            
-            // Check if data is in a "data" field
-            if let dataField = userInfo["data"] as? [String: Any] {
-                print("📊 Found data in 'data' field")
-                // Merge the nested data
-                for (key, value) in dataField {
-                    notificationData[key] = value
-                }
-            }
-            
-            // Check for individual fields at root level (FCM sometimes flattens custom data)
-            let dailySummaryFields = ["newPlaces", "newConnections", "unreadMessages", 
-                                     "placeComments", "placeLikes", "placeCategories", 
-                                     "topContributors", "summaryDate", "type"]
-            
-            for field in dailySummaryFields {
-                // Check with "gcm.notification." prefix (another FCM pattern)
-                if let value = userInfo["gcm.notification.\(field)"] as? String {
-                    print("📊 Found \(field) at gcm.notification.\(field): \(value)")
-                    notificationData[field] = value
-                }
-            }
-            
-            print("📊 AppDelegate: Presenting daily summary with processed data:")
-            print("📊 Keys: \(notificationData.keys.sorted())")
-            print("📊 Full processed data: \(notificationData)")
-            
-            // Create and present daily summary
-            let summaryVC = DailySummaryViewController(notificationData: notificationData)
+            // Create and present daily summary view controller
+            // It will fetch its own data from the API
+            let summaryVC = DailySummaryViewController()
             
             // Check if topViewController can present
             if topViewController.presentedViewController != nil {
@@ -761,9 +728,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             // Clear badge count since daily summaries are informational only
             UIApplication.shared.applicationIconBadgeNumber = 0
             
-            // Present daily summary modal
+            // Navigate to Home tab and trigger daily summary display
+            // The summary will be fetched from API when displayed
             DispatchQueue.main.async {
-                self.presentDailySummary(with: userInfo)
+                NotificationCenter.default.post(
+                    name: Notification.Name("NavigateToDailySummary"),
+                    object: nil,
+                    userInfo: ["showDailySummary": true]
+                )
             }
         default:
             break

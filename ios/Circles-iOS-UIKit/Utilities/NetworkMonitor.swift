@@ -10,6 +10,8 @@ class NetworkMonitor {
     private let monitor = NWPathMonitor()
     private let queue = DispatchQueue(label: "NetworkMonitor")
     private var observers: [String: (Bool) -> Void] = [:]
+    private var lastConnectionState = true
+    private var suppressLogging = false
     
     private init() {
         startMonitoring()
@@ -18,12 +20,30 @@ class NetworkMonitor {
     private func startMonitoring() {
         monitor.pathUpdateHandler = { [weak self] path in
             DispatchQueue.main.async {
-                self?.isConnected = path.status == .satisfied
-                self?.updateConnectionType(path)
+                guard let self = self else { return }
                 
-                // Notify all observers
-                self?.observers.forEach { _, handler in
-                    handler(path.status == .satisfied)
+                let newState = path.status == .satisfied
+                let stateChanged = newState != self.lastConnectionState
+                
+                self.isConnected = newState
+                self.updateConnectionType(path)
+                
+                // Only log significant changes, not every check
+                if stateChanged && !self.suppressLogging {
+                    if newState {
+                        Logger.info("Network connection restored: \(self.connectionType)")
+                    } else {
+                        Logger.warning("Network connection lost")
+                    }
+                }
+                
+                self.lastConnectionState = newState
+                
+                // Notify all observers only on state change
+                if stateChanged {
+                    self.observers.forEach { _, handler in
+                        handler(newState)
+                    }
                 }
             }
         }

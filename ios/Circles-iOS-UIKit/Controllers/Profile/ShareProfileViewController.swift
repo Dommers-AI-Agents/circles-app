@@ -450,7 +450,7 @@ class ShareProfileViewController: BaseViewController {
     @objc private func shareButtonTapped() {
         guard let qrImage = qrCodeImage else { return }
         
-        let shareText = "\(user.displayName) wants to connect with you on Circles!\n\n📱 Scan this QR code or use this link:\n\(deepLink)\n\nDon't have Circles? Download here:\nhttps://testflight.apple.com/join/n1sBRMG3"
+        let shareText = "\(user.displayName) wants to connect with you on Circles!\n\n📱 Scan this QR code or use this link:\n\(deepLink)\n\nDon't have Circles? Download here:\nhttps://apps.apple.com/us/app/favcircles/id6746807095"
         
         let activityViewController = UIActivityViewController(
             activityItems: [shareText, qrImage],

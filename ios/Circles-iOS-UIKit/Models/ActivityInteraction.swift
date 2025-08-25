@@ -53,6 +53,14 @@ struct ActivityComment: Codable {
         guard let currentUserId = AuthService.shared.currentUser?.id else { return false }
         return likes.contains(currentUserId)
     }
+    
+    var isReply: Bool {
+        return parentCommentId != nil
+    }
+    
+    var displayReplyCount: Int {
+        return replyCount
+    }
 }
 
 // MARK: - Reaction Group Model

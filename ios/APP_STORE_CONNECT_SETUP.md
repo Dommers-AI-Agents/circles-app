@@ -51,7 +51,7 @@ This error means the subscription products haven't been created in App Store Con
 
 2. **Product Details:**
    - Reference Name: `Circles Premium Annual`
-   - Product ID: `com.favcircles.circles.premium.subscription.annual`
+   - Product ID: `com.favcircles.circles.premium.annual`
    - Duration: 1 Year
    - Click **Create**
 
@@ -122,7 +122,7 @@ After products are processed:
 
 1. **Check Product IDs match exactly:**
    - `com.favcircles.circles.premium.subscription.monthly`
-   - `com.favcircles.circles.premium.subscription.annual`
+   - `com.favcircles.circles.premium.yearly`
 
 2. **Verify app bundle ID:**
    - Must be: `com.favcircles.circles`

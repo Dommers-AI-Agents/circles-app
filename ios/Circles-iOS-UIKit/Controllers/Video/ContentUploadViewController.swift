@@ -14,6 +14,13 @@ class ContentUploadViewController: UIViewController {
     weak var delegate: ContentUploadDelegate?
     private var selectedPlace: Place?
     private var pendingContent: ContentType?
+    private var selectedVisibility: VideoVisibility = .public // Default to public
+    private var shouldNavigateToMomentsOnSuccess = false // Flag to control navigation behavior
+    
+    // Background image processing
+    private var originalImage: UIImage?
+    private var processedImage: UIImage?
+    private var isImageProcessingComplete = false
     
     // MARK: - UI Elements
     private let titleLabel: UILabel = {
@@ -71,9 +78,9 @@ class ContentUploadViewController: UIViewController {
     // MARK: - Setup
     private func setupUI() {
         view.backgroundColor = .systemBackground
-        title = "Add Content"
+        title = "Share a Moment"
         
-        // Navigation items
+        // Navigation items - Add cancel button for easy exit
         navigationItem.leftBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .cancel,
             target: self,
@@ -235,44 +242,53 @@ class ContentUploadViewController: UIViewController {
     
     // MARK: - Actions
     @objc private func cancelTapped() {
+        print("📸 User tapped cancel button - dismissing content upload")
         delegate?.contentUploadDidCancel()
         dismiss(animated: true)
     }
     
     @objc private func recordVideoTapped() {
-        // Present video recording controller
-        let videoRecordingVC = VideoRecordingViewController()
-        videoRecordingVC.delegate = self
-        videoRecordingVC.modalPresentationStyle = .fullScreen
-        present(videoRecordingVC, animated: true)
+        showPrivacySelection { [weak self] in
+            // Present video recording controller
+            let videoRecordingVC = VideoRecordingViewController()
+            videoRecordingVC.delegate = self
+            videoRecordingVC.modalPresentationStyle = .fullScreen
+            self?.present(videoRecordingVC, animated: true)
+        }
     }
     
     @objc private func linkFromSocialTapped() {
-        let linkInputVC = VideoLinkInputViewController()
-        linkInputVC.delegate = self
-        let nav = UINavigationController(rootViewController: linkInputVC)
-        nav.modalPresentationStyle = .fullScreen
-        present(nav, animated: true)
+        showPrivacySelection { [weak self] in
+            let linkInputVC = VideoLinkInputViewController()
+            linkInputVC.delegate = self
+            let nav = UINavigationController(rootViewController: linkInputVC)
+            nav.modalPresentationStyle = .fullScreen
+            self?.present(nav, animated: true)
+        }
     }
     
     @objc private func takePhotoTapped() {
-        if UIImagePickerController.isSourceTypeAvailable(.camera) {
-            let imagePicker = UIImagePickerController()
-            imagePicker.sourceType = .camera
-            imagePicker.delegate = self
-            imagePicker.allowsEditing = false
-            present(imagePicker, animated: true)
-        } else {
-            showErrorAlert("Camera not available")
+        showPrivacySelection { [weak self] in
+            if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                let imagePicker = UIImagePickerController()
+                imagePicker.sourceType = .camera
+                imagePicker.delegate = self
+                imagePicker.allowsEditing = false
+                self?.present(imagePicker, animated: true)
+            } else {
+                self?.showErrorAlert("Camera not available")
+            }
         }
     }
     
     @objc private func chooseFromLibraryTapped() {
-        checkPhotoLibraryPermission { [weak self] granted in
-            if granted {
-                self?.presentPhotoPicker()
-            } else {
-                self?.showErrorAlert("Photo library access denied")
+        showPrivacySelection { [weak self] in
+            self?.checkPhotoLibraryPermission { granted in
+                if granted {
+                    self?.presentPhotoPicker()
+                } else {
+                    self?.showErrorAlert("Photo library access denied")
+                }
             }
         }
     }
@@ -303,9 +319,64 @@ class ContentUploadViewController: UIViewController {
     }
     
     private func showErrorAlert(_ message: String) {
+        // Dismiss any presented view controller first
+        if let presented = self.presentedViewController {
+            print("⚠️ ContentUpload: Dismissing \(type(of: presented)) before showing error: \(message)")
+            presented.dismiss(animated: false) { [weak self] in
+                self?.presentErrorAlertAfterDismissal(message)
+            }
+        } else {
+            presentErrorAlertAfterDismissal(message)
+        }
+    }
+    
+    private func presentErrorAlertAfterDismissal(_ message: String) {
+        // Double-check we're still in the view hierarchy
+        guard self.view.window != nil else {
+            print("⚠️ ContentUpload: View not in window hierarchy, skipping alert: \(message)")
+            return
+        }
+        
         let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
+    }
+    
+    private func showPrivacySelection(completion: @escaping () -> Void) {
+        let alertController = UIAlertController(
+            title: "Who can see this moment?",
+            message: "Choose who can view your moment",
+            preferredStyle: .actionSheet
+        )
+        
+        // Public option (default) - with checkmark to show it's selected
+        let publicTitle = selectedVisibility == .public ? "✓ Followers" : "Followers"
+        let publicAction = UIAlertAction(title: publicTitle, style: .default) { [weak self] _ in
+            self?.selectedVisibility = .public
+            completion()
+        }
+        
+        // Network only option
+        let networkTitle = selectedVisibility == .network ? "✓ Only My Connections" : "Only My Connections"
+        let networkAction = UIAlertAction(title: networkTitle, style: .default) { [weak self] _ in
+            self?.selectedVisibility = .network
+            completion()
+        }
+        
+        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel)
+        
+        alertController.addAction(publicAction)
+        alertController.addAction(networkAction)
+        alertController.addAction(cancelAction)
+        
+        // iPad support
+        if let popover = alertController.popoverPresentationController {
+            popover.sourceView = view
+            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
+        }
+        
+        present(alertController, animated: true)
     }
     
     private func handleQuotaError() {
@@ -359,43 +430,39 @@ extension ContentUploadViewController: UIImagePickerControllerDelegate, UINaviga
     }
     
     private func processImage(_ image: UIImage) {
-        // Show compression progress
-        let loadingAlert = AlertPresenter.showLoading(message: "Optimizing image...", from: self)
+        print("📸 Starting image processing in background...")
         
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            // Resize image to max dimension of 1080 and compress
+        // Store original image
+        self.originalImage = image
+        
+        // Start place selection immediately with original image
+        self.startUploadAndShowPlaceSelection(for: .photo(image))
+        
+        // Process image in background
+        self.processImageInBackground(image)
+    }
+    
+    private func processImageInBackground(_ image: UIImage) {
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let strongSelf = self else { return }
+            
+            // Resize and compress image
             let resizedImage = image.resized(to: CGSize(width: 1080, height: 1080))
             
-            // Get compressed data
-            guard let compressedData = resizedImage.jpegData(compressionQuality: 0.7) else {
-                DispatchQueue.main.async {
-                    loadingAlert.dismiss(animated: true) {
-                        self?.showErrorAlert("Failed to compress image")
-                    }
-                }
-                return
-            }
-            
-            // Convert back to UIImage
-            guard let compressedImage = UIImage(data: compressedData) else {
-                DispatchQueue.main.async {
-                    loadingAlert.dismiss(animated: true) {
-                        self?.showErrorAlert("Failed to process image")
-                    }
-                }
+            guard let compressedData = resizedImage.jpegData(compressionQuality: 0.7),
+                  let compressedImage = UIImage(data: compressedData) else {
+                print("⚠️ Background image processing failed, will use original")
                 return
             }
             
             DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true) {
-                    // Add small delay to avoid presentation conflict
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        self?.startUploadAndShowPlaceSelection(for: .photo(compressedImage))
-                    }
-                }
+                strongSelf.processedImage = compressedImage
+                strongSelf.isImageProcessingComplete = true
+                print("📸 Background image processing completed")
             }
         }
     }
+    
     
     private func processVideo(at url: URL) {
         // Show compression progress
@@ -424,29 +491,6 @@ extension ContentUploadViewController: UIImagePickerControllerDelegate, UINaviga
         }
     }
     
-    private func processVideo(at url: URL, for place: Place) {
-        // Show compression progress
-        let loadingAlert = AlertPresenter.showLoading(message: "Compressing video...", from: self)
-        
-        // Use aggressive compression for moments (15 sec, 720p, 500kbps)
-        VideoCompressionService.shared.compressVideo(
-            inputURL: url,
-            quality: .preview, // Use preview quality for aggressive compression
-            progress: { _ in }
-        ) { [weak self] result in
-            DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true) {
-                    switch result {
-                    case .success(let compressed):
-                        // Directly upload the video with the provided place
-                        self?.uploadContent(.video(compressed.url), for: place)
-                    case .failure(let error):
-                        self?.showErrorAlert("Failed to compress video: \(error.localizedDescription)")
-                    }
-                }
-            }
-        }
-    }
     
     private func showPlaceSelection(for content: ContentType) {
         let placeSearchVC = PlaceSearchViewController()
@@ -530,8 +574,19 @@ extension ContentUploadViewController: PlaceSearchDelegate {
     func didSelectExistingPlace(_ place: Place) {
         guard let content = pendingContent else { return }
         
-        // Upload content directly with the existing place
-        uploadContent(content, for: place)
+        // Store the selected place
+        self.selectedPlace = place
+        
+        // Dismiss place search first, then start upload
+        if let presentedVC = presentedViewController {
+            presentedVC.dismiss(animated: true) { [weak self] in
+                // Now that place search is dismissed, show processing and upload
+                self?.showProcessingAndUpload(content: content, place: place)
+            }
+        } else {
+            // Fallback if somehow not presented
+            showProcessingAndUpload(content: content, place: place)
+        }
         
         // Clear pending content
         pendingContent = nil
@@ -598,12 +653,65 @@ extension ContentUploadViewController: PlaceSearchDelegate {
             isNew: nil
         )
         
-        // Upload content and create moment
-        uploadContent(content, for: place)
+        // Store the selected place
+        self.selectedPlace = place
+        
+        // Dismiss place search first, then start upload
+        if let presentedVC = presentedViewController {
+            presentedVC.dismiss(animated: true) { [weak self] in
+                // Now that place search is dismissed, show processing and upload
+                self?.showProcessingAndUpload(content: content, place: place)
+            }
+        } else {
+            // Fallback if somehow not presented
+            showProcessingAndUpload(content: content, place: place)
+        }
+        
+        // Clear pending content
+        pendingContent = nil
+    }
+    
+    private func showProcessingAndUpload(content: ContentType, place: Place) {
+        // Show a better processing view with place name
+        let message = "Adding your moment to \(place.name)..."
+        let loadingAlert = AlertPresenter.showLoading(message: message, from: self)
+        
+        // Set flag to navigate to moments on success
+        shouldNavigateToMomentsOnSuccess = true
+        
+        // Start the actual upload
+        uploadContent(content, for: place, withLoadingAlert: loadingAlert)
+    }
+    
+    private func uploadContent(_ content: ContentType, for place: Place, withLoadingAlert loadingAlert: UIAlertController) {
+        switch content {
+        case .photo(let image):
+            uploadPhoto(image, for: place, loadingAlert: loadingAlert)
+        case .video(let url):
+            uploadVideo(at: url, for: place, loadingAlert: loadingAlert)
+        case .carousel(let images):
+            uploadCarousel(images, for: place, loadingAlert: loadingAlert)
+        case .embedded(let video):
+            // Embedded video already created
+            let moment = PlaceMoment(from: video)
+            loadingAlert.dismiss(animated: true) {
+                if self.shouldNavigateToMomentsOnSuccess {
+                    self.navigateToMomentsTab(with: moment)
+                } else {
+                    self.delegate?.contentUploadDidFinish(with: moment)
+                    self.dismiss(animated: true)
+                }
+            }
+        }
     }
     
     private func uploadContent(_ content: ContentType, for place: Place) {
-        let loadingAlert = AlertPresenter.showLoading(message: "Uploading content...", from: self)
+        // Use the same nice feedback as showProcessingAndUpload for consistency
+        let message = "Adding your moment to \(place.name)..."
+        let loadingAlert = AlertPresenter.showLoading(message: message, from: self)
+        
+        // Set navigation flag for consistency with home page flow
+        shouldNavigateToMomentsOnSuccess = true
         
         switch content {
         case .photo(let image):
@@ -622,9 +730,41 @@ extension ContentUploadViewController: PlaceSearchDelegate {
         }
     }
     
+    private func navigateToMomentsTab(with moment: PlaceMoment) {
+        // Notify delegate first
+        self.delegate?.contentUploadDidFinish(with: moment)
+        
+        // Dismiss this controller and navigate to moments
+        self.dismiss(animated: true) { [weak self] in
+            // Find the tab bar controller
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let window = windowScene.windows.first,
+               let tabBarController = window.rootViewController as? UITabBarController {
+                
+                // Switch to home tab (index 0)
+                tabBarController.selectedIndex = 0
+                
+                // If the home view controller is a navigation controller with CirclesHomeViewController
+                if let navController = tabBarController.viewControllers?[0] as? UINavigationController,
+                   let homeVC = navController.viewControllers.first as? CirclesHomeViewController {
+                    // Ensure we're showing the Moments tab
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        // This will trigger the moments tab to be selected
+                        homeVC.contentSegmentedControl.selectedSegmentIndex = 1 // Moments is at index 1 (Activity is 0, Moments is 1)
+                        homeVC.contentSegmentChanged()
+                    }
+                }
+            }
+        }
+    }
+    
     private func uploadPhoto(_ image: UIImage, for place: Place, loadingAlert: UIAlertController) {
+        // Use processed image if available, otherwise use original
+        let imageToUpload = isImageProcessingComplete ? (processedImage ?? image) : image
+        print("📸 Using \(isImageProcessingComplete ? "processed" : "original") image for upload")
+        
         // Convert image to JPEG data
-        guard let imageData = image.jpegData(compressionQuality: 0.7) else {
+        guard let imageData = imageToUpload.jpegData(compressionQuality: 0.7) else {
             loadingAlert.dismiss(animated: true) {
                 self.showErrorAlert("Failed to process image")
             }
@@ -640,7 +780,7 @@ extension ContentUploadViewController: PlaceSearchDelegate {
             "placeName": place.name,
             "title": place.name,
             "description": "",
-            "visibility": "public",
+            "visibility": selectedVisibility.rawValue,
             "tags": [],
             "contentType": "photo",
             "fileSize": imageData.count,
@@ -722,6 +862,7 @@ extension ContentUploadViewController: PlaceSearchDelegate {
         }
         
         // Generate thumbnail
+        print("🎬 Generating thumbnail for video at URL: \(url.lastPathComponent)")
         let imageGenerator = AVAssetImageGenerator(asset: asset)
         imageGenerator.appliesPreferredTrackTransform = true
         let time = CMTimeMake(value: 1, timescale: 2) // Get frame at 0.5 seconds
@@ -731,8 +872,15 @@ extension ContentUploadViewController: PlaceSearchDelegate {
             let cgImage = try imageGenerator.copyCGImage(at: time, actualTime: nil)
             let thumbnail = UIImage(cgImage: cgImage)
             thumbnailData = thumbnail.jpegData(compressionQuality: 0.7)
+            let thumbnailSize = thumbnailData?.count ?? 0
+            print("✅ Thumbnail generated successfully - Size: \(thumbnailSize) bytes")
+            print("   - Image dimensions: \(thumbnail.size)")
+            
+            // Add unique identifier to verify uniqueness
+            let uniqueId = UUID().uuidString.prefix(8)
+            print("   - Thumbnail unique ID: \(uniqueId)")
         } catch {
-            print("Failed to generate thumbnail: \(error)")
+            print("❌ Failed to generate thumbnail: \(error)")
         }
         
         // Check if this is a new place (not from existing places)
@@ -744,7 +892,7 @@ extension ContentUploadViewController: PlaceSearchDelegate {
             "placeName": place.name,
             "title": "Moment at \(place.name)",
             "description": "",
-            "visibility": "public",
+            "visibility": selectedVisibility.rawValue,
             "tags": [],
             "contentType": "video",
             "fileSize": fileSize,
@@ -831,13 +979,20 @@ extension ContentUploadViewController: PlaceSearchDelegate {
         
         // Upload thumbnail if available
         if let thumbnailData = thumbnailData {
+            print("📤 Uploading thumbnail - Size: \(thumbnailData.count) bytes")
+            print("   - Upload URL: \(uploadUrls.thumbnail.suffix(100))")
             group.enter()
             uploadFile(data: thumbnailData, to: uploadUrls.thumbnail, contentType: "image/jpeg") { error in
                 if let error = error {
+                    print("❌ Thumbnail upload failed: \(error)")
                     uploadErrors.append(error)
+                } else {
+                    print("✅ Thumbnail uploaded successfully")
                 }
                 group.leave()
             }
+        } else {
+            print("⚠️ No thumbnail data available for upload")
         }
         
         // Wait for all uploads to complete
@@ -908,16 +1063,40 @@ extension ContentUploadViewController: PlaceSearchDelegate {
                 loadingAlert.dismiss(animated: true) {
                     switch result {
                     case .success(let response):
-                        if response.success, let video = response.data {
-                            let moment = PlaceMoment(from: video)
-                            self?.delegate?.contentUploadDidFinish(with: moment)
-                            self?.dismiss(animated: true)
+                        print("📹 ContentUpload: Complete response received - success: \(response.success)")
+                        if let video = response.data {
+                            print("📹 ContentUpload: Video data - ID: \(video.id), Status: \(video.uploadStatus), URLs: video=\(video.videoUrl ?? "nil"), preview=\(video.previewUrl ?? "nil"), thumbnail=\(video.thumbnailUrl ?? "nil")")
+                            
+                            // Check if upload actually succeeded
+                            if video.uploadStatus == .error || video.uploadStatus == .failed {
+                                print("❌ ContentUpload: Upload failed with status: \(video.uploadStatus)")
+                                // Delay to ensure loading alert is fully dismissed
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    self?.showErrorAlert("Upload failed. Please try again.")
+                                }
+                            } else if response.success {
+                                let moment = PlaceMoment(from: video)
+                                if self?.shouldNavigateToMomentsOnSuccess == true {
+                                    self?.navigateToMomentsTab(with: moment)
+                                } else {
+                                    self?.delegate?.contentUploadDidFinish(with: moment)
+                                    self?.dismiss(animated: true)
+                                }
+                            } else {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    self?.showErrorAlert("Failed to complete upload")
+                                }
+                            }
                         } else {
-                            self?.showErrorAlert("Failed to complete upload")
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                self?.showErrorAlert("Failed to complete upload")
+                            }
                         }
                         
                     case .failure(let error):
-                        self?.showErrorAlert("Upload failed: \(error.localizedDescription)")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            self?.showErrorAlert("Upload failed: \(error.localizedDescription)")
+                        }
                     }
                 }
             }
@@ -982,16 +1161,40 @@ extension ContentUploadViewController: PlaceSearchDelegate {
                 loadingAlert.dismiss(animated: true) {
                     switch result {
                     case .success(let response):
-                        if response.success, let video = response.data {
-                            let moment = PlaceMoment(from: video)
-                            self?.delegate?.contentUploadDidFinish(with: moment)
-                            self?.dismiss(animated: true)
+                        print("📹 ContentUpload: Complete response received - success: \(response.success)")
+                        if let video = response.data {
+                            print("📹 ContentUpload: Video data - ID: \(video.id), Status: \(video.uploadStatus), URLs: video=\(video.videoUrl ?? "nil"), preview=\(video.previewUrl ?? "nil"), thumbnail=\(video.thumbnailUrl ?? "nil")")
+                            
+                            // Check if upload actually succeeded
+                            if video.uploadStatus == .error || video.uploadStatus == .failed {
+                                print("❌ ContentUpload: Upload failed with status: \(video.uploadStatus)")
+                                // Delay to ensure loading alert is fully dismissed
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    self?.showErrorAlert("Upload failed. Please try again.")
+                                }
+                            } else if response.success {
+                                let moment = PlaceMoment(from: video)
+                                if self?.shouldNavigateToMomentsOnSuccess == true {
+                                    self?.navigateToMomentsTab(with: moment)
+                                } else {
+                                    self?.delegate?.contentUploadDidFinish(with: moment)
+                                    self?.dismiss(animated: true)
+                                }
+                            } else {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    self?.showErrorAlert("Failed to complete upload")
+                                }
+                            }
                         } else {
-                            self?.showErrorAlert("Failed to complete upload")
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                self?.showErrorAlert("Failed to complete upload")
+                            }
                         }
                         
                     case .failure(let error):
-                        self?.showErrorAlert("Upload failed: \(error.localizedDescription)")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            self?.showErrorAlert("Upload failed: \(error.localizedDescription)")
+                        }
                     }
                 }
             }

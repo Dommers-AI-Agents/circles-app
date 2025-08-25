@@ -405,9 +405,9 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
         imageView.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(imageView)
         
-        // Load profile image
+        // Load profile image - use profile-specific loading to prevent cache collisions
         if let urlString = user.profilePicture {
-            ImageService.shared.loadImage(from: urlString) { image in
+            ImageService.shared.loadProfileImage(for: user.id, from: urlString) { image in
                 DispatchQueue.main.async {
                     imageView.image = image ?? UIImage(systemName: "person.circle.fill")
                     if image == nil {

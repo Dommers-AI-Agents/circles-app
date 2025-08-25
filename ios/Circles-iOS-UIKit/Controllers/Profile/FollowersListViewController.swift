@@ -223,8 +223,7 @@ extension FollowersListViewController: UISearchResultsUpdating {
         isSearching = true
         filteredUsers = users.filter { user in
             let displayName = user.displayName.lowercased()
-            let fullName = "\(user.firstName ?? "") \(user.lastName ?? "")".lowercased()
-            return displayName.contains(searchText) || fullName.contains(searchText)
+            return displayName.contains(searchText)
         }
         tableView.reloadData()
         updateEmptyState()
@@ -442,12 +441,8 @@ class FollowerUserCell: UITableViewCell {
         self.user = user
         self.currentListType = listType
         
-        // Set user info
-        if let firstName = user.firstName, let lastName = user.lastName {
-            nameLabel.text = "\(firstName) \(lastName)"
-        } else {
-            nameLabel.text = user.displayName
-        }
+        // Set user info - only use displayName for privacy
+        nameLabel.text = user.displayName
         usernameLabel.text = "@\(user.displayName)"
         
         // Load profile image

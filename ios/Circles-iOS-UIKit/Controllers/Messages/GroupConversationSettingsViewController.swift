@@ -366,9 +366,10 @@ class GroupConversationSettingsViewController: BaseViewController {
     // MARK: - Participant Management
     
     private func presentAddParticipantController() {
-        // TODO: Implement participant selection controller
-        // For now, show a simple alert
-        showError("Add participant functionality coming soon!")
+        let addParticipantsVC = AddParticipantsViewController(existingParticipantIds: conversation.participants)
+        addParticipantsVC.delegate = self
+        let navController = UINavigationController(rootViewController: addParticipantsVC)
+        present(navController, animated: true)
     }
     
     private func removeParticipant(_ participant: User) {
@@ -743,6 +744,75 @@ extension GroupConversationSettingsViewController: UITableViewDataSource, UITabl
     
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
         return 60
+    }
+}
+
+// MARK: - AddParticipantsDelegate
+extension GroupConversationSettingsViewController: AddParticipantsDelegate {
+    func addParticipants(_ controller: AddParticipantsViewController, didSelectUsers users: [User]) {
+        // Dismiss the selection controller
+        controller.dismiss(animated: true)
+        
+        // Show loading indicator
+        let loadingAlert = AlertPresenter.showLoading(message: "Adding participants...", from: self)
+        
+        // Track results for batch operation
+        var successCount = 0
+        var failureCount = 0
+        let group = DispatchGroup()
+        
+        // Add each selected user
+        for user in users {
+            group.enter()
+            MessagingService.shared.addParticipant(
+                conversationId: conversation.id,
+                userId: user.id
+            ) { result in
+                switch result {
+                case .success:
+                    successCount += 1
+                case .failure(let error):
+                    failureCount += 1
+                    print("❌ Failed to add participant \(user.displayName): \(error)")
+                }
+                group.leave()
+            }
+        }
+        
+        // Handle completion
+        group.notify(queue: .main) { [weak self] in
+            loadingAlert.dismiss(animated: true) {
+                guard let self = self else { return }
+                
+                if successCount > 0 {
+                    // Reload participant details
+                    self.loadParticipantDetails()
+                    
+                    // Show success message
+                    let message = successCount == 1 ? 
+                        "1 participant added successfully" : 
+                        "\(successCount) participants added successfully"
+                    
+                    if failureCount > 0 {
+                        let failureMessage = failureCount == 1 ?
+                            "Failed to add 1 participant" :
+                            "Failed to add \(failureCount) participants"
+                        self.showError("\(message). \(failureMessage)")
+                    } else {
+                        self.showSuccess(message)
+                    }
+                    
+                    // Post notification to update chat view if it's open
+                    NotificationCenter.default.post(
+                        name: Notification.Name("ConversationUpdated"),
+                        object: nil,
+                        userInfo: ["conversationId": self.conversation.id]
+                    )
+                } else {
+                    self.showError("Failed to add participants")
+                }
+            }
+        }
     }
 }
 

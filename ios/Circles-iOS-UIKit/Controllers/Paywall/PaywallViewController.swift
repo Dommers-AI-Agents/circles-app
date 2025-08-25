@@ -281,6 +281,9 @@ class PaywallViewController: BaseViewController {
         case .exportFeature:
             titleLabel.text = "Premium Feature"
             subtitleLabel.text = "Export and advanced sharing features are available to Premium members"
+        case .exportData:
+            titleLabel.text = "Export Your Data"
+            subtitleLabel.text = "Download all your circles and places as a CSV file with Premium"
         case .generalUpgrade:
             titleLabel.text = "Unlock Circles Premium"
             subtitleLabel.text = "Get unlimited access to all features"

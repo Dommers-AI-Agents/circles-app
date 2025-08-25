@@ -37,6 +37,10 @@ struct Circle: Codable, Identifiable {
     var hasNewPlaces: Bool? // Indicates if circle has new places since last login
     var newPlacesCount: Int? // Number of new places since last login
     
+    // Circle Groups support
+    let groupId: String? // ID of the group this circle belongs to (nil if not grouped)
+    let orderInGroup: Int? // Order of this circle within its group
+    
     enum CodingKeys: String, CodingKey {
         case id = "_id"
         case name, description, coverImage, owner, ownerDetails
@@ -46,6 +50,7 @@ struct Circle: Codable, Identifiable {
         case isSharedWithMe, sharedBy, myAccessLevel
         case likes, likesCount, commentsCount
         case createdAt, updatedAt, isNew, hasNewPlaces, newPlacesCount
+        case groupId, orderInGroup
     }
     
     init(from decoder: Decoder) throws {
@@ -92,6 +97,8 @@ struct Circle: Codable, Identifiable {
         isNew = try container.decodeIfPresent(Bool.self, forKey: .isNew)
         hasNewPlaces = try container.decodeIfPresent(Bool.self, forKey: .hasNewPlaces)
         newPlacesCount = try container.decodeIfPresent(Int.self, forKey: .newPlacesCount)
+        groupId = try container.decodeIfPresent(String.self, forKey: .groupId)
+        orderInGroup = try container.decodeIfPresent(Int.self, forKey: .orderInGroup)
     }
     
     // Add manual init for creating circles in code
@@ -104,7 +111,8 @@ struct Circle: Codable, Identifiable {
          isSharedWithMe: Bool?, sharedBy: User?, myAccessLevel: AccessLevel?,
          likes: [String]? = nil, likesCount: Int? = nil, commentsCount: Int? = nil,
          createdAt: Date, updatedAt: Date, isNew: Bool? = nil,
-         hasNewPlaces: Bool? = nil, newPlacesCount: Int? = nil) {
+         hasNewPlaces: Bool? = nil, newPlacesCount: Int? = nil,
+         groupId: String? = nil, orderInGroup: Int? = nil) {
         self.id = id
         self.name = name
         self.description = description
@@ -137,11 +145,18 @@ struct Circle: Codable, Identifiable {
         self.isNew = isNew
         self.hasNewPlaces = hasNewPlaces
         self.newPlacesCount = newPlacesCount
+        self.groupId = groupId
+        self.orderInGroup = orderInGroup
     }
     
     // Helper computed properties
     var shareCount: Int {
         return activeShareIds?.count ?? activeShares?.count ?? 0
+    }
+    
+    /// Whether this circle belongs to a group
+    var isGrouped: Bool {
+        return groupId != nil
     }
     
     var hasActiveShares: Bool {
@@ -211,10 +226,23 @@ struct Circle: Codable, Identifiable {
     }
 }
 
-enum PrivacyLevel: String, Codable {
+enum PrivacyLevel: String, Codable, Comparable {
     case `public`
     case myNetwork
     case `private`
+    
+    // Order of privacy restrictiveness (public < myNetwork < private)
+    private var sortOrder: Int {
+        switch self {
+        case .public: return 0
+        case .myNetwork: return 1
+        case .private: return 2
+        }
+    }
+    
+    static func < (lhs: PrivacyLevel, rhs: PrivacyLevel) -> Bool {
+        return lhs.sortOrder < rhs.sortOrder
+    }
 }
 
 enum CircleCategory: String, Codable {

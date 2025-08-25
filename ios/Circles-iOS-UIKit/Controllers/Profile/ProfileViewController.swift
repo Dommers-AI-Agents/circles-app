@@ -81,6 +81,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     // MARK: - Properties
     private var user: User?
     var circles: [Circle] = []
+    private var displayItems: [CircleDisplayItem] = []
+    private var circleGroups: [CircleGroup] = []
     private var isShowingMap = false
     var allPlaces: [Place] = []
     var filteredPlaces: [Place] = []
@@ -90,6 +92,12 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     var isSearching = false
     var searchResultsHeightConstraint: NSLayoutConstraint?
     private var videos: [PlaceVideo] = []
+    
+    // MARK: - Drag & Drop Properties
+    private var dragAndDropEnabled = false
+    
+    // Request deduplication
+    private var isFetchingOtherUserCircles = false
     
     // MARK: - BaseViewController Configuration
     override var showsLoadingIndicator: Bool { true }
@@ -123,6 +131,31 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     func resetToListViewIfNeeded() {
         if isShowingMap {
             toggleViewMode()
+        }
+    }
+    
+    /// Force clear all profile picture caches and refresh the profile
+    /// Call this when profile picture corruption is detected
+    func forceRefreshProfileAndClearCache() {
+        print("🚨 ProfileViewController: Force clearing all profile caches and refreshing")
+        
+        // Clear all image caches
+        ImageService.shared.clearAllProfilePictureCaches()
+        
+        // Clear any cached profile picture URL
+        if let profilePictureUrl = user?.profilePicture {
+            ImageService.shared.clearCachedImage(for: profilePictureUrl)
+        }
+        
+        // Reset the profile image view
+        profileImageView.image = UIImage(systemName: "person.circle.fill")
+        profileImageView.tintColor = Constants.Colors.primary
+        
+        // Force fetch fresh user data
+        fetchFreshUserData { [weak self] in
+            print("✅ ProfileViewController: Profile refreshed after cache clear")
+            // Reload circles as well to ensure correct order
+            self?.loadUserCircles()
         }
     }
     
@@ -268,6 +301,26 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         label.textColor = Constants.Colors.label
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    // Location label to display home city
+    private let locationLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 13)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.numberOfLines = 1
+        label.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Configure with location icon
+        let attachment = NSTextAttachment()
+        attachment.image = UIImage(systemName: "location.fill")?.withTintColor(Constants.Colors.secondaryLabel, renderingMode: .alwaysOriginal)
+        attachment.bounds = CGRect(x: 0, y: -1, width: 12, height: 12)
+        
+        let attributedString = NSMutableAttributedString()
+        attributedString.append(NSAttributedString(attachment: attachment))
+        label.attributedText = attributedString
+        
         return label
     }()
     
@@ -423,19 +476,21 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     private var circlesCollectionHeightConstraint: NSLayoutConstraint?
     
-    // Videos collection view
+    // Videos collection view - Instagram-style 3-column grid
     private let videosCollectionView: UICollectionView = {
         let layout = UICollectionViewFlowLayout()
         layout.scrollDirection = .vertical
-        layout.minimumInteritemSpacing = 1
-        layout.minimumLineSpacing = 1
-        layout.sectionInset = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+        layout.minimumInteritemSpacing = 2
+        layout.minimumLineSpacing = 2
+        layout.sectionInset = UIEdgeInsets.zero
         
         let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
-        collectionView.backgroundColor = Constants.Colors.background
+        collectionView.backgroundColor = .systemBackground
+        collectionView.isPagingEnabled = false
+        collectionView.showsVerticalScrollIndicator = true
+        collectionView.contentInsetAdjustmentBehavior = .automatic
         collectionView.translatesAutoresizingMaskIntoConstraints = false
-        collectionView.showsVerticalScrollIndicator = false
-        collectionView.isScrollEnabled = false
+        collectionView.isScrollEnabled = true
         collectionView.isHidden = true
         return collectionView
     }()
@@ -464,6 +519,22 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     private var logoutButtonTopToCollectionConstraint: NSLayoutConstraint?
     private var logoutButtonTopToMapConstraint: NSLayoutConstraint?
     private var logoutButtonTopToVideosConstraint: NSLayoutConstraint?
+    
+    // Floating add button for creating circles
+    private lazy var floatingAddButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "plus.circle.fill"), for: .normal)
+        button.tintColor = .white
+        button.backgroundColor = Constants.Colors.primary
+        button.layer.cornerRadius = 28
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOffset = CGSize(width: 0, height: 2)
+        button.layer.shadowOpacity = 0.2
+        button.layer.shadowRadius = 4
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(createCircleButtonTapped), for: .touchUpInside)
+        return button
+    }()
     
     // Map view elements
     private lazy var mapContainerView: UIView = {
@@ -570,6 +641,10 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     private var followButtonLeadingToConnectConstraint: NSLayoutConstraint?
     private var connectButtonLeadingConstraint: NSLayoutConstraint?
     
+    // Dynamic constraints for search bar container positioning
+    private var searchBarContainerTopToSegmentedConstraint: NSLayoutConstraint?
+    private var searchBarContainerTopToSeparatorConstraint: NSLayoutConstraint?
+    
     // MARK: - Lifecycle
     
     init(user: User? = nil) {
@@ -606,6 +681,25 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        
+        // Check if we need to clear profile picture cache due to corruption
+        let isCurrentUser = user?.id == AuthService.shared.getUserId()
+        if isCurrentUser {
+            // Clear profile picture cache if there's an issue
+            if let profilePictureUrl = user?.profilePicture {
+                // Check if the cached image might be incorrect
+                // This is a temporary fix - clear cache if we suspect corruption
+                let shouldClearCache = UserDefaults.standard.bool(forKey: "ProfilePictureCacheNeedsClearing")
+                if shouldClearCache {
+                    ImageService.shared.clearCachedImage(for: profilePictureUrl)
+                    UserDefaults.standard.set(false, forKey: "ProfilePictureCacheNeedsClearing")
+                    print("🔄 ProfileViewController: Cleared profile picture cache due to potential corruption")
+                    
+                    // Force refresh profile data
+                    loadUserProfile()
+                }
+            }
+        }
         
         // Always reset to list view when navigating to Profile tab
         if isShowingMap {
@@ -729,6 +823,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         topStatsContainer.addSubview(connectionsStatView)
         bottomStatsContainer.addSubview(followersStatView)
         bottomStatsContainer.addSubview(followingStatView)
+        profileHeaderView.addSubview(locationLabel)
         profileHeaderView.addSubview(bioLabel)
         profileHeaderView.addSubview(buttonsContainer)
         buttonsContainer.addSubview(editProfileButton)
@@ -764,6 +859,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         contentView.addSubview(versionLabel)
         
         // Add floating add button last so it's on top
+        view.addSubview(floatingAddButton)
         
         // Add search results table view on top of everything
         view.addSubview(searchResultsTableView)
@@ -841,8 +937,13 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             followingStatView.bottomAnchor.constraint(equalTo: bottomStatsContainer.bottomAnchor),
             followingStatView.widthAnchor.constraint(equalTo: bottomStatsContainer.widthAnchor, multiplier: 0.4),
             
+            // Location label
+            locationLabel.topAnchor.constraint(equalTo: profileImageView.bottomAnchor, constant: Constants.Spacing.small),
+            locationLabel.leadingAnchor.constraint(equalTo: profileHeaderView.leadingAnchor, constant: Constants.Spacing.medium),
+            locationLabel.trailingAnchor.constraint(equalTo: profileHeaderView.trailingAnchor, constant: -Constants.Spacing.medium),
+            
             // Bio label
-            bioLabel.topAnchor.constraint(equalTo: profileImageView.bottomAnchor, constant: Constants.Spacing.medium),
+            bioLabel.topAnchor.constraint(equalTo: locationLabel.bottomAnchor, constant: Constants.Spacing.small),
             bioLabel.leadingAnchor.constraint(equalTo: profileHeaderView.leadingAnchor, constant: Constants.Spacing.medium),
             bioLabel.trailingAnchor.constraint(equalTo: profileHeaderView.trailingAnchor, constant: -Constants.Spacing.medium),
             
@@ -906,8 +1007,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             contentTypeSegmentedControl.widthAnchor.constraint(equalToConstant: 200),
             contentTypeSegmentedControl.heightAnchor.constraint(equalToConstant: 32),
             
-            // Search bar container
-            searchBarContainer.topAnchor.constraint(equalTo: contentTypeSegmentedControl.bottomAnchor, constant: Constants.Spacing.medium),
+            // Search bar container (top constraint will be set dynamically)
             searchBarContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
             searchBarContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
             searchBarContainer.heightAnchor.constraint(equalToConstant: 44),
@@ -1006,7 +1106,13 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             versionLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             versionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
             versionLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
-            versionLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
+            versionLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large),
+            
+            // Floating add button
+            floatingAddButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
+            floatingAddButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
+            floatingAddButton.widthAnchor.constraint(equalToConstant: 56),
+            floatingAddButton.heightAnchor.constraint(equalToConstant: 56)
         ])
         
         // Create height constraints for collection views
@@ -1026,6 +1132,30 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         logoutButtonTopToMapConstraint?.isActive = false
         logoutButtonTopToVideosConstraint?.isActive = false
         
+        // Create dynamic constraints for search bar container
+        searchBarContainerTopToSegmentedConstraint = searchBarContainer.topAnchor.constraint(
+            equalTo: contentTypeSegmentedControl.bottomAnchor, 
+            constant: Constants.Spacing.medium
+        )
+        searchBarContainerTopToSeparatorConstraint = searchBarContainer.topAnchor.constraint(
+            equalTo: separatorLine.bottomAnchor, 
+            constant: Constants.Spacing.medium
+        )
+        
+        // Initially activate based on whether viewing current user
+        let isCurrentUser = user?.id == AuthService.shared.getUserId()
+        if isCurrentUser {
+            searchBarContainerTopToSegmentedConstraint?.isActive = true
+            searchBarContainerTopToSeparatorConstraint?.isActive = false
+            // Show floating add button for current user
+            floatingAddButton.isHidden = false
+        } else {
+            searchBarContainerTopToSegmentedConstraint?.isActive = false
+            searchBarContainerTopToSeparatorConstraint?.isActive = true
+            // Hide floating add button for other users
+            floatingAddButton.isHidden = true
+        }
+        
         // Setup filter menus
         setupCategoryFilterMenu()
         setupCityFilterMenu()
@@ -1035,9 +1165,19 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         circlesCollectionView.dataSource = self
         circlesCollectionView.register(CircleCell.self, forCellWithReuseIdentifier: "CircleCell")
         
+        // Drag and drop disabled for now
+        
         videosCollectionView.delegate = self
         videosCollectionView.dataSource = self
         videosCollectionView.register(VideoThumbnailCell.self, forCellWithReuseIdentifier: "VideoThumbnailCell")
+        
+        // Configure videos collection view layout for 3-column grid
+        if let flowLayout = videosCollectionView.collectionViewLayout as? UICollectionViewFlowLayout {
+            flowLayout.scrollDirection = .vertical
+            flowLayout.minimumInteritemSpacing = 2
+            flowLayout.minimumLineSpacing = 2
+            flowLayout.sectionInset = .zero
+        }
         
         // Drag and drop will be configured conditionally in configureDragAndDrop()
         
@@ -1112,14 +1252,18 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     private func configureDragAndDrop() {
         // Only enable drag and drop for the current user's own profile
         let isCurrentUser = user?.id == AuthService.shared.getUserId()
+        dragAndDropEnabled = isCurrentUser // Enable for current user
         
-        if isCurrentUser {
-            // Enable drag and drop for reordering own circles
+        if dragAndDropEnabled {
+            // Set up drag and drop delegates
             circlesCollectionView.dragDelegate = self
             circlesCollectionView.dropDelegate = self
             circlesCollectionView.dragInteractionEnabled = true
+            
+            // Enable reordering
+            circlesCollectionView.reorderingCadence = .immediate
         } else {
-            // Disable drag and drop when viewing other users' profiles
+            // Disable drag and drop for other users' profiles
             circlesCollectionView.dragDelegate = nil
             circlesCollectionView.dropDelegate = nil
             circlesCollectionView.dragInteractionEnabled = false
@@ -1199,6 +1343,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
     
     @objc private func contentTypeChanged() {
+        let isCurrentUser = user?.id == AuthService.shared.getUserId()
+        
         if contentTypeSegmentedControl.selectedSegmentIndex == 0 {
             // Show circles
             circlesCollectionView.isHidden = isShowingMap
@@ -1206,6 +1352,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             videosEmptyLabel.isHidden = true
             searchBar.placeholder = "Search places..."
             mapToggleButton.isHidden = false
+            
+            // Show floating add button for current user on Circles tab
+            floatingAddButton.isHidden = !isCurrentUser
             
             // Ensure map container visibility matches current state
             mapContainerView.isHidden = !isShowingMap
@@ -1235,11 +1384,20 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             }
         } else {
             // Show videos
+            print("📹 Switching to Moments tab")
+            
+            // TEMPORARY: Clear image cache to debug duplicate thumbnails
+            ImageService.shared.clearAllCaches()
+            print("🧹 Cleared all image caches for debugging")
+            
             circlesCollectionView.isHidden = true
             videosCollectionView.isHidden = false
             mapContainerView.isHidden = true
             searchBar.placeholder = "Search videos..."
             mapToggleButton.isHidden = true
+            
+            // Hide floating add button on Moments tab
+            floatingAddButton.isHidden = true
             
             // Check cache first before fetching
             if videos.isEmpty && !isLoadingVideos {
@@ -1460,24 +1618,18 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     
     @objc private func followersStatTapped() {
-        guard let user = user,
-              user.id == AuthService.shared.getUserId() else {
-            // Only allow owner to view their followers list
-            return
-        }
+        guard let user = user else { return }
         
-        // Show followers list
+        // Allow viewing any user's followers list
+        // This enables social discovery through connections' networks
         showFollowersList(userId: user.id, listType: .followers)
     }
     
     @objc private func followingStatTapped() {
-        guard let user = user,
-              user.id == AuthService.shared.getUserId() else {
-            // Only allow owner to view their following list
-            return
-        }
+        guard let user = user else { return }
         
-        // Show following list
+        // Allow viewing any user's following list
+        // This enables social discovery through connections' networks
         showFollowersList(userId: user.id, listType: .following)
     }
     
@@ -1728,6 +1880,16 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         let navigationController = UINavigationController(rootViewController: fullScreenMapVC)
         navigationController.modalPresentationStyle = .fullScreen
         present(navigationController, animated: true)
+    }
+    
+    @objc private func createCircleButtonTapped() {
+        let createCircleVC = CreateCircleViewController()
+        createCircleVC.delegate = self
+        
+        let navController = UINavigationController(rootViewController: createCircleVC)
+        navController.modalPresentationStyle = .pageSheet
+        
+        present(navController, animated: true, completion: nil)
     }
     
     @objc private func zoomToUserLocation() {
@@ -1983,14 +2145,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         // Update follow button appearance based on follow status
         followButton.setTitle(isFollowing ? "Following" : "Follow", for: .normal)
         if isFollowing {
-            followButton.backgroundColor = Constants.Colors.primary
-            followButton.setTitleColor(.white, for: .normal)
-            followButton.layer.borderWidth = 0
+            followButton.setStyle(.following)
         } else {
-            followButton.backgroundColor = .clear
-            followButton.setTitleColor(Constants.Colors.primary, for: .normal)
-            followButton.layer.borderWidth = 1
-            followButton.layer.borderColor = Constants.Colors.primary.cgColor
+            followButton.setStyle(.secondary)
         }
     }
     
@@ -2160,7 +2317,13 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                         let hasValidUrl = video.contentType == "photo" ? video.thumbnailUrl != nil : video.videoUrl != nil
                         return video.uploadStatus == .ready && hasValidUrl
                     }
-                    print("✅ ProfileViewController: Fetched \(response.data.count) videos, showing \(self.videos.count) valid ones for user \(userId)")
+                    
+                    // Debug: Log thumbnail URLs to check for duplicates
+                    print("📹 ProfileViewController: Fetched \(response.data.count) videos, showing \(self.videos.count) valid ones")
+                    for (index, video) in self.videos.enumerated() {
+                        let thumbnailPreview = video.thumbnailUrl?.suffix(50) ?? "none"
+                        print("   [\(index)] ID: \(video.id.prefix(8))... Type: \(video.contentType ?? "video") Thumbnail: ...\(thumbnailPreview)")
+                    }
                     
                     // Log video details
                     for (index, video) in response.data.enumerated() {
@@ -2220,7 +2383,17 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         print("   - Phone Number: \(user.phoneNumber ?? "nil")")
         print("   - Bio: \(user.bio ?? "nil")")
         print("   - Location: \(user.location ?? "nil")")
+        print("   - Circles Count: \(user.circlesCount ?? 0)")
+        print("   - Places Count: \(user.placesCount ?? 0)")
         
+        // Display initial counts from user object if available (for new users)
+        // This ensures counts show immediately after registration
+        if let circlesCount = user.circlesCount {
+            circlesStatView.configure(number: "\(circlesCount)", title: "Circles")
+        }
+        if let placesCount = user.placesCount {
+            placesStatView.configure(number: "\(placesCount)", title: "Places")
+        }
         
         // Update UI with user data
         if let profileImageUrl = user.profilePicture {
@@ -2255,25 +2428,34 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             premiumBadgeView.isHidden = true
         }
         
-        // Combine full name and bio like Instagram
-        var bioText = ""
-        if let firstName = user.firstName, !firstName.isEmpty, let lastName = user.lastName, !lastName.isEmpty {
-            bioText = "\(firstName) \(lastName)"
-        } else if let firstName = user.firstName, !firstName.isEmpty {
-            bioText = firstName
-        } else if let lastName = user.lastName, !lastName.isEmpty {
-            bioText = lastName
+        // Show location if available
+        if let location = user.location, !location.isEmpty {
+            // Create attributed string with location icon
+            let attachment = NSTextAttachment()
+            attachment.image = UIImage(systemName: "location.fill")?.withTintColor(Constants.Colors.secondaryLabel, renderingMode: .alwaysOriginal)
+            attachment.bounds = CGRect(x: 0, y: -1, width: 12, height: 12)
+            
+            let attributedString = NSMutableAttributedString()
+            attributedString.append(NSAttributedString(attachment: attachment))
+            attributedString.append(NSAttributedString(string: " \(location)", attributes: [
+                .font: UIFont.systemFont(ofSize: 13),
+                .foregroundColor: Constants.Colors.secondaryLabel
+            ]))
+            
+            locationLabel.attributedText = attributedString
+            locationLabel.isHidden = false
+        } else {
+            locationLabel.isHidden = true
         }
         
+        // Show only bio - displayName is already shown in usernameLabel
         if let bio = user.bio, !bio.isEmpty {
-            if !bioText.isEmpty {
-                bioText += "\n\(bio)"
-            } else {
-                bioText = bio
-            }
+            bioLabel.text = bio
+            bioLabel.isHidden = false
+        } else {
+            bioLabel.text = nil
+            bioLabel.isHidden = true
         }
-        
-        bioLabel.text = bioText.isEmpty ? nil : bioText
         
         // Show/hide buttons based on whether this is the current user
         editProfileButton.isHidden = !isCurrentUser
@@ -2283,6 +2465,20 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         logoutButton.isHidden = !isCurrentUser
         versionLabel.isHidden = !isCurrentUser
         contentTypeSegmentedControl.isHidden = !isCurrentUser
+        floatingAddButton.isHidden = !isCurrentUser || contentTypeSegmentedControl.selectedSegmentIndex != 0
+        
+        // Switch search bar container constraints based on user type
+        if isCurrentUser {
+            // Current user - search bar anchored to segmented control
+            searchBarContainerTopToSeparatorConstraint?.isActive = false
+            searchBarContainerTopToSegmentedConstraint?.isActive = true
+            print("📐 Switched to segmented control constraint - showing tabs for current user")
+        } else {
+            // Connection profile - search bar anchored to separator line
+            searchBarContainerTopToSegmentedConstraint?.isActive = false
+            searchBarContainerTopToSeparatorConstraint?.isActive = true
+            print("📐 Switched to separator constraint - hiding tabs for connection profile")
+        }
         
         // Update navigation bar items based on profile type
         if isCurrentUser {
@@ -2330,14 +2526,14 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                         
                         // Calculate total places from the same fetch
                         var totalPlaces = 0
-                        for circle in circles {
+                        for circle in self.circles {
                             let placeCount = circle.placesCount ?? circle.places?.count ?? 0
                             totalPlaces += placeCount
                             print("   Circle '\(circle.name)': placesCount=\(circle.placesCount ?? -1), places array=\(circle.places?.count ?? 0)")
                         }
                         
                         // Update both stats
-                        self.circlesStatView.configure(number: "\(circles.count)", title: "Circles")
+                        self.circlesStatView.configure(number: "\(self.circles.count)", title: "Circles")
                         self.placesStatView.configure(number: "\(totalPlaces)", title: "Places")
                         print("   Total places calculated: \(totalPlaces)")
                         
@@ -2388,10 +2584,21 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
     
     private func fetchOtherUserCircles(userId: String) {
+        // Prevent multiple simultaneous requests for the same user
+        guard !isFetchingOtherUserCircles else {
+            print("🔍 Already fetching circles for user \(userId), skipping duplicate request")
+            return
+        }
+        
+        isFetchingOtherUserCircles = true
+        
         // Fetch circles from network endpoint for other users
         let endpoint = "network/user-circles/\(userId)"
         let completion = createAPICompletion { (result: Result<UserCirclesResponse, Error>) in
             DispatchQueue.main.async {
+                // Reset the flag when request completes
+                self.isFetchingOtherUserCircles = false
+                
                 switch result {
                 case .success(let response):
                     self.circles = response.data.circles
@@ -2432,6 +2639,15 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                 case .failure(let error):
                     print("Failed to load other user circles: \(error)")
                     
+                    // Handle rate limiting gracefully
+                    if case APIError.rateLimited(let retryAfter) = error {
+                        print("🔍 Rate limited loading user circles, will retry in \(retryAfter ?? 0) seconds")
+                        // Don't show error to user for rate limiting - just use cached/default data
+                    } else {
+                        // Show error for other types of failures
+                        print("❌ Non-rate-limit error loading user circles: \(error)")
+                    }
+                    
                     // Show default stats on error
                     self.circlesStatView.configure(number: "0", title: "Circles")
                     self.placesStatView.configure(number: "0", title: "Places")
@@ -2460,7 +2676,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         profileImageView.tintColor = Constants.Colors.primary
         
         usernameLabel.text = "User"
+        locationLabel.isHidden = true
         bioLabel.text = "No bio available"
+        bioLabel.isHidden = false
         
         circlesStatView.configure(number: "0", title: "Circles")
         placesStatView.configure(number: "0", title: "Places")
@@ -2643,22 +2861,34 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     // MARK: - Video Methods
     
     private func updateVideosCollectionHeight() {
-        // Calculate required height based on number of videos (3-column grid)
-        let itemsPerRow: CGFloat = 3
-        let interitemSpacing: CGFloat = 1
-        let lineSpacing: CGFloat = 1
-        let totalHorizontalSpacing = interitemSpacing * (itemsPerRow - 1)
-        let itemWidth = (view.bounds.width - totalHorizontalSpacing) / itemsPerRow
-        let itemHeight = itemWidth * 1.5 // 3:2 aspect ratio for video thumbnails
+        // For 3-column grid layout, calculate height based on number of rows
+        guard !videos.isEmpty else {
+            videosCollectionHeightConstraint?.constant = 100 // Minimum height for empty state
+            return
+        }
         
-        let rows = ceil(CGFloat(videos.count) / itemsPerRow)
-        let totalHeight = (rows * itemHeight) + ((rows - 1) * lineSpacing)
+        // Calculate grid dimensions
+        let spacing: CGFloat = 2
+        let numberOfColumns: CGFloat = 3
+        let totalSpacing = spacing * (numberOfColumns - 1)
+        let collectionWidth = videosCollectionView.bounds.width > 0 ? videosCollectionView.bounds.width : UIScreen.main.bounds.width
+        let itemWidth = (collectionWidth - totalSpacing) / numberOfColumns
+        let itemHeight = itemWidth // Square items
         
-        videosCollectionHeightConstraint?.constant = max(totalHeight, 100) // Minimum height
+        // Calculate number of rows
+        let numberOfRows = ceil(Double(videos.count) / Double(numberOfColumns))
+        let totalRowSpacing = spacing * (CGFloat(numberOfRows) - 1)
+        let totalHeight = (CGFloat(numberOfRows) * itemHeight) + totalRowSpacing + 20 // Add some padding
         
+        videosCollectionHeightConstraint?.isActive = true
+        videosCollectionHeightConstraint?.constant = totalHeight
+        
+        // Force layout update
         UIView.animate(withDuration: 0.3) {
             self.view.layoutIfNeeded()
         }
+        
+        print("📐 ProfileViewController: Updated videos collection height to \(totalHeight) for \(videos.count) videos in \(numberOfRows) rows")
     }
     
     private func confirmDeleteVideo(_ video: PlaceVideo, at indexPath: IndexPath) {
@@ -2687,6 +2917,17 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                     
                     switch result {
                     case .success:
+                        // Clear video from cache
+                        if let videoUrl = video.videoUrl {
+                            MediaCacheService.shared.clearImage(for: videoUrl)
+                        }
+                        if let thumbnailUrl = video.thumbnailUrl {
+                            MediaCacheService.shared.clearImage(for: thumbnailUrl)
+                        }
+                        if let previewUrl = video.previewUrl {
+                            MediaCacheService.shared.clearImage(for: previewUrl)
+                        }
+                        
                         // Remove from array
                         self.videos.remove(at: indexPath.item)
                         
@@ -2699,6 +2940,17 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                         
                         // Show success
                         self.showSuccess("Content deleted successfully")
+                        
+                        // Post notification for activity feed cleanup
+                        NotificationCenter.default.post(
+                            name: Notification.Name("MomentDeleted"),
+                            object: nil,
+                            userInfo: [
+                                "videoId": video.id,
+                                "userId": video.userId
+                            ]
+                        )
+                        print("📢 Posted MomentDeleted notification for video: \(video.id)")
                         
                     case .failure(let error):
                         self.showError(error)
@@ -2726,11 +2978,9 @@ extension ProfileViewController: UICollectionViewDataSource {
             cell.configure(with: video)
             return cell
         }
-        guard let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "CircleCell", for: indexPath) as? CircleCell else {
-            return UICollectionViewCell()
-        }
         
         let circle = circles[indexPath.item]
+        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "CircleCell", for: indexPath) as! CircleCell
         cell.configure(with: circle)
         return cell
     }
@@ -2836,7 +3086,7 @@ extension ProfileViewController: UICollectionViewDelegate {
         
         // Add deep link
         shareText += "\n\n📱 Open in Circles: circles://circle/\(circle.id)"
-        shareText += "\n🔗 Get Circles App: https://testflight.apple.com/join/n1sBRMG3"
+        shareText += "\n🔗 Get Circles App: https://apps.apple.com/us/app/favcircles/id6746807095"
         shareText += "\n\nJoin me on Circles!"
         
         let activityItems: [Any] = [shareText]
@@ -2884,13 +3134,12 @@ extension ProfileViewController: UICollectionViewDelegate {
 extension ProfileViewController: UICollectionViewDelegateFlowLayout {
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
         if collectionView == videosCollectionView {
-            // Video thumbnails with 3 columns and 3:2 aspect ratio
-            let spacing: CGFloat = 1
+            // Instagram-style 3-column grid with square items
+            let spacing: CGFloat = 2
             let numberOfColumns: CGFloat = 3
             let totalSpacing = spacing * (numberOfColumns - 1)
             let itemWidth = (collectionView.bounds.width - totalSpacing) / numberOfColumns
-            let itemHeight = itemWidth * 1.5 // 3:2 aspect ratio
-            return CGSize(width: itemWidth, height: itemHeight)
+            return CGSize(width: itemWidth, height: itemWidth) // Square items
         } else {
             // Circular grid with 3 columns
             let spacing: CGFloat = 12
@@ -2903,11 +3152,11 @@ extension ProfileViewController: UICollectionViewDelegateFlowLayout {
     }
     
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumLineSpacingForSectionAt section: Int) -> CGFloat {
-        return collectionView == videosCollectionView ? 1 : 16
+        return collectionView == videosCollectionView ? 2 : 16
     }
     
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumInteritemSpacingForSectionAt section: Int) -> CGFloat {
-        return collectionView == videosCollectionView ? 1 : 12
+        return collectionView == videosCollectionView ? 2 : 12
     }
 }
 
@@ -2944,13 +3193,14 @@ extension ProfileViewController: EditCircleDelegate {
     }
 }
 
+
 // MARK: - UICollectionViewDragDelegate
 extension ProfileViewController: UICollectionViewDragDelegate {
     func collectionView(_ collectionView: UICollectionView, itemsForBeginning session: UIDragSession, at indexPath: IndexPath) -> [UIDragItem] {
-        // Safety check: only allow dragging for current user
-        guard user?.id == AuthService.shared.getUserId() else {
-            return []
-        }
+        guard collectionView == circlesCollectionView else { return [] }
+        
+        // Only allow dragging for current user's own circles
+        guard user?.id == AuthService.shared.getUserId() else { return [] }
         
         let circle = circles[indexPath.item]
         let itemProvider = NSItemProvider(object: circle.id as NSString)
@@ -2962,35 +3212,86 @@ extension ProfileViewController: UICollectionViewDragDelegate {
 
 // MARK: - UICollectionViewDropDelegate
 extension ProfileViewController: UICollectionViewDropDelegate {
+    func collectionView(_ collectionView: UICollectionView, canHandle session: UIDropSession) -> Bool {
+        guard collectionView == circlesCollectionView else { return false }
+        return session.canLoadObjects(ofClass: NSString.self)
+    }
+    
     func collectionView(_ collectionView: UICollectionView, dropSessionDidUpdate session: UIDropSession, withDestinationIndexPath destinationIndexPath: IndexPath?) -> UICollectionViewDropProposal {
-        // Safety check: only allow dropping for current user
+        guard collectionView == circlesCollectionView else {
+            return UICollectionViewDropProposal(operation: .forbidden)
+        }
+        
+        // Only allow drops for current user's own profile
         guard user?.id == AuthService.shared.getUserId() else {
             return UICollectionViewDropProposal(operation: .forbidden)
         }
         
-        if collectionView.hasActiveDrag {
-            return UICollectionViewDropProposal(operation: .move, intent: .insertAtDestinationIndexPath)
+        // Check what's being dragged (should be a circle)
+        guard let dragItem = session.items.first,
+              let _ = dragItem.localObject as? Circle else {
+            return UICollectionViewDropProposal(operation: .forbidden)
         }
-        return UICollectionViewDropProposal(operation: .forbidden)
+        
+        // Allow reordering
+        return UICollectionViewDropProposal(operation: .move, intent: .insertAtDestinationIndexPath)
     }
     
+    func collectionView(_ collectionView: UICollectionView, dropSessionDidExit session: UIDropSession) {
+        // Clean up any visual feedback
+        collectionView.visibleCells.forEach { cell in
+            if let circleCell = cell as? CircleCell {
+                circleCell.setDropTargetState(false)
+            }
+        }
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, dropSessionDidEnd session: UIDropSession) {
+        // Final cleanup
+    }
+    
+    
     func collectionView(_ collectionView: UICollectionView, performDropWith coordinator: UICollectionViewDropCoordinator) {
-        // Safety check: only allow dropping for current user
-        guard user?.id == AuthService.shared.getUserId() else {
+        guard let destinationIndexPath = coordinator.destinationIndexPath,
+              let dragItem = coordinator.items.first,
+              let sourceCircle = dragItem.dragItem.localObject as? Circle else {
             return
         }
         
-        var destinationIndexPath: IndexPath
-        
-        if let indexPath = coordinator.destinationIndexPath {
-            destinationIndexPath = indexPath
-        } else {
-            let row = collectionView.numberOfItems(inSection: 0)
-            destinationIndexPath = IndexPath(item: row - 1, section: 0)
+        // Find the source index path
+        guard let sourceIndexPath = circles.firstIndex(where: { $0.id == sourceCircle.id }).map({ IndexPath(item: $0, section: 0) }) else {
+            return
         }
         
-        if coordinator.proposal.operation == .move {
-            self.reorderItems(coordinator: coordinator, destinationIndexPath: destinationIndexPath, collectionView: collectionView)
+        // Perform the reorder
+        handleReorder(from: sourceIndexPath, to: destinationIndexPath, coordinator: coordinator)
+    }
+    
+    // MARK: - Drop Handling Methods
+    
+    private func handleReorder(from sourceIndexPath: IndexPath, to destinationIndexPath: IndexPath, coordinator: UICollectionViewDropCoordinator) {
+        // Safety check: only allow reordering for current user's own profile
+        guard user?.id == AuthService.shared.getUserId() else {
+            print("❌ ProfileViewController: Attempted to reorder for non-current user")
+            return
+        }
+        
+        // Perform the reorder
+        circlesCollectionView.performBatchUpdates({
+            // Update circles array
+            let movedCircle = circles.remove(at: sourceIndexPath.item)
+            circles.insert(movedCircle, at: destinationIndexPath.item)
+            
+            // Move the item in the collection view
+            circlesCollectionView.moveItem(at: sourceIndexPath, to: destinationIndexPath)
+        }) { [weak self] _ in
+            // Save the new order to the backend
+            self?.saveCircleOrder()
+        }
+        
+        // Handle the drop
+        if let dragItem = coordinator.items.first?.dragItem {
+            coordinator.drop(dragItem, toItemAt: destinationIndexPath)
         }
     }
     
@@ -3138,6 +3439,7 @@ extension ProfileViewController: UICollectionViewDropDelegate {
         setupCategoryFilterMenu()
     }
 }
+
 
 // MARK: - SSEServiceDelegate
 extension ProfileViewController: SSEServiceDelegate {
@@ -3337,6 +3639,21 @@ extension ProfileViewController: ContentUploadDelegate {
             object: nil,
             userInfo: ["moment": moment]
         )
+        
+        // Navigate to home tab to show the new moment in the feed
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            // Find the tab bar controller and switch to home tab
+            if let tabBarController = self?.tabBarController {
+                print("🏠 Navigating to home tab after successful moment upload")
+                tabBarController.selectedIndex = 0 // Home tab is index 0
+            } else if let navController = self?.navigationController,
+                      let tabBarController = navController.tabBarController {
+                print("🏠 Navigating to home tab via nav controller after successful moment upload")
+                tabBarController.selectedIndex = 0
+            } else {
+                print("⚠️ Could not find tab bar controller for navigation")
+            }
+        }
     }
     
     func contentUploadDidCancel() {

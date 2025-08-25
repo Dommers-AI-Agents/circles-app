@@ -133,14 +133,18 @@ class PlaceService {
     }
     
     func fetchPlaceById(id: String, completion: @escaping (Result<Place, Error>) -> Void) {
+        Logger.info("📍 PlaceService.fetchPlaceById: Fetching place with ID: \(id)")
+        
         APIService.shared.request(
             endpoint: "places/\(id)",
             method: .get,
             requiresAuth: true,
             completion: createAPICompletion { (result: Result<PlaceResponse, Error>) in
                 if case .success(let response) = result {
+                    Logger.info("📍 PlaceService.fetchPlaceById: Successfully fetched place: \(response.place.name)")
                     completion(.success(response.place))
                 } else if case .failure(let error) = result {
+                    Logger.error("📍 PlaceService.fetchPlaceById: Failed to fetch place \(id): \(error.localizedDescription)")
                     completion(.failure(error))
                 }
             }
@@ -204,7 +208,7 @@ class PlaceService {
         )
     }
     
-    func createPlace(name: String, description: String?, address: String, category: PlaceCategory, customCategory: String? = nil, subcategory: String? = nil, circleId: String, privacy: PlacePrivacy = .followCirclePrivacy, website: String? = nil, phone: String? = nil, tags: [String]? = nil, photos: [Data]? = nil, photoUrls: [String]? = nil, location: CLLocationCoordinate2D? = nil, googlePlaceId: String? = nil, privateNotes: String? = nil, publicNotes: String? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
+    func createPlace(name: String, description: String?, address: String, category: PlaceCategory, customCategory: String? = nil, subcategory: String? = nil, circleId: String, privacy: PlacePrivacy = .followCirclePrivacy, website: String? = nil, phone: String? = nil, tags: [String]? = nil, photos: [Data]? = nil, photoUrls: [String]? = nil, location: CLLocationCoordinate2D? = nil, googlePlaceId: String? = nil, privateNotes: String? = nil, publicNotes: String? = nil, force: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
         
         // Use provided location or geocode the address
         if let providedLocation = location {
@@ -225,6 +229,7 @@ class PlaceService {
                     publicNotes: publicNotes,
                     googlePlaceId: googlePlaceId,
                     preUploadedPhotoUrls: photoUrls,
+                    force: force,
                     completion: completion
                 )
                 return
@@ -248,6 +253,7 @@ class PlaceService {
                 photoUrls: photoUrls,
                 privateNotes: privateNotes,
                 publicNotes: publicNotes,
+                force: force,
                 completion: completion
             )
         } else {
@@ -272,6 +278,7 @@ class PlaceService {
                         photoUrls: photoUrls,
                         privateNotes: privateNotes,
                         publicNotes: publicNotes,
+                        force: force,
                         completion: completion
                     )
                 case .failure(let error):
@@ -281,7 +288,7 @@ class PlaceService {
         }
     }
     
-    private func continueCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photos: [Data]?, photoUrls: [String]?, privateNotes: String?, publicNotes: String?, completion: @escaping (Result<Place, Error>) -> Void) {
+    private func continueCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photos: [Data]?, photoUrls: [String]?, privateNotes: String?, publicNotes: String?, force: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
         // If we already have photo URLs, use them directly
         if let urls = photoUrls, !urls.isEmpty {
             Logger.debug("Using \(urls.count) pre-uploaded photo URLs")
@@ -301,6 +308,7 @@ class PlaceService {
                 photoUrls: urls,
                 privateNotes: privateNotes,
                 publicNotes: publicNotes,
+                force: force,
                 completion: completion
             )
         }
@@ -327,6 +335,7 @@ class PlaceService {
                         photoUrls: photoUrls,
                         privateNotes: privateNotes,
                         publicNotes: publicNotes,
+                        force: force,
                         completion: completion
                     )
                 case .failure(let error):
@@ -349,6 +358,7 @@ class PlaceService {
                         photoUrls: nil,
                         privateNotes: privateNotes,
                         publicNotes: publicNotes,
+                        force: force,
                         completion: completion
                     )
                 }
@@ -372,12 +382,13 @@ class PlaceService {
                 photoUrls: nil,
                 privateNotes: privateNotes,
                 publicNotes: publicNotes,
+                force: force,
                 completion: completion
             )
         }
     }
     
-    private func performCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photoUrls: [String]?, privateNotes: String?, publicNotes: String?, completion: @escaping (Result<Place, Error>) -> Void) {
+    private func performCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photoUrls: [String]?, privateNotes: String?, publicNotes: String?, force: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
         
         // Validate coordinates before sending to backend
         guard location.latitude >= -90 && location.latitude <= 90 &&
@@ -451,6 +462,12 @@ class PlaceService {
             body["publicNotes"] = publicNotes
         }
         
+        // Add force flag if provided (for "Add Anyway" functionality)
+        if force {
+            body["force"] = true
+            Logger.debug("Force flag set in performCreatePlace - will bypass duplicate validation")
+        }
+        
         APIService.shared.request(
             endpoint: "places",
             method: .post,
@@ -488,7 +505,7 @@ class PlaceService {
     
     // MARK: - Add Place from POI
     
-    func addPlaceFromPOI(name: String, address: String, location: GeoLocation?, category: PlaceCategory, website: String? = nil, phone: String? = nil, description: String? = nil, circleId: String, notes: String?, publicNotes: String? = nil, googlePlaceId: String? = nil, preUploadedPhotoUrls: [String]? = nil, rating: Double? = nil, userRatingsTotal: Int? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
+    func addPlaceFromPOI(name: String, address: String, location: GeoLocation?, category: PlaceCategory, website: String? = nil, phone: String? = nil, description: String? = nil, circleId: String, notes: String?, publicNotes: String? = nil, googlePlaceId: String? = nil, preUploadedPhotoUrls: [String]? = nil, rating: Double? = nil, userRatingsTotal: Int? = nil, force: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
         Logger.debug("PlaceService.addPlaceFromPOI called with name: \(name), googlePlaceId: \(googlePlaceId ?? "nil"), photos: \(preUploadedPhotoUrls?.count ?? 0)")
         
         var body: [String: Any] = [
@@ -551,10 +568,20 @@ class PlaceService {
             body["userRatingsTotal"] = userRatingsTotal
         }
         
+        // Add force flag if provided (for "Add Anyway" functionality)
+        if force {
+            body["force"] = true
+            Logger.debug("Force flag set - will bypass duplicate validation")
+        }
+        
         // Start with pre-uploaded photos if available
         var collectedImageUrls: [String] = []
         if let preUploadedUrls = preUploadedPhotoUrls, !preUploadedUrls.isEmpty {
             Logger.debug("Starting with \(preUploadedUrls.count) pre-uploaded photos")
+            print("📸 DEBUG: Pre-uploaded photos received in PlaceService:")
+            for (index, url) in preUploadedUrls.enumerated() {
+                print("  Pre-uploaded \(index + 1): \(url)")
+            }
             collectedImageUrls.append(contentsOf: preUploadedUrls)
         }
         
@@ -562,7 +589,10 @@ class PlaceService {
         let imageCollectionGroup = DispatchGroup()
         
         // Try to get Apple Look Around image if location is available
-        if let location = location, location.coordinates.count >= 2 {
+        // Skip if we already have 2 or more pre-uploaded photos (likely means we have both Google and Apple)
+        let shouldFetchLookAround = (preUploadedPhotoUrls?.count ?? 0) < 2
+        if shouldFetchLookAround, let location = location, location.coordinates.count >= 2 {
+            print("📸 DEBUG: Attempting to fetch Apple Look Around (pre-uploaded count: \(preUploadedPhotoUrls?.count ?? 0))")
             let latitude = location.coordinates[1]
             let longitude = location.coordinates[0]
             let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
@@ -583,39 +613,44 @@ class PlaceService {
                             
                             // Convert to JPEG data
                             if let imageData = lookAroundImage.jpegData(compressionQuality: 0.8) {
-                                // Upload the image
-                                self.uploadImage(imageData) { uploadResult in
-                                    switch uploadResult {
-                                    case .success(let imageUrl):
-                                        collectedImageUrls.append(imageUrl)
-                                        Logger.debug("Apple Look Around image uploaded successfully: \(imageUrl)")
-                                    case .failure(let error):
-                                        Logger.error("Failed to upload Look Around image: \(error)")
-                                        Logger.warning("Will continue place creation without this image")
+                                // Upload the image using async continuation
+                                let uploadResult = await withCheckedContinuation { continuation in
+                                    self.uploadImage(imageData) { result in
+                                        continuation.resume(returning: result)
                                     }
-                                    imageCollectionGroup.leave()
+                                }
+                                
+                                switch uploadResult {
+                                case .success(let imageUrl):
+                                    collectedImageUrls.append(imageUrl)
+                                    Logger.debug("Apple Look Around image uploaded successfully: \(imageUrl)")
+                                case .failure(let error):
+                                    Logger.error("Failed to upload Look Around image: \(error)")
+                                    Logger.warning("Will continue place creation without this image")
                                 }
                             } else {
                                 Logger.error("Failed to convert Look Around image to JPEG")
-                                imageCollectionGroup.leave()
                             }
                         } catch {
                             Logger.error("Failed to get Look Around snapshot: \(error)")
-                            imageCollectionGroup.leave()
                         }
                     } else {
                         Logger.debug("Look Around is NOT available at this location")
-                        imageCollectionGroup.leave()
                     }
+                    
+                    // Always leave the dispatch group after all async operations complete
+                    imageCollectionGroup.leave()
                 }
             } else {
                 print("⚠️ PlaceService: iOS version < 16.0, skipping Look Around")
             }
+        } else if !shouldFetchLookAround {
+            print("📸 DEBUG: Skipping Apple Look Around fetch - already have \(preUploadedPhotoUrls?.count ?? 0) pre-uploaded photos")
         }
         
         // Try to get Google Places photo if googlePlaceId is available and we don't already have Google photos
         // Skip if we already have pre-uploaded photos (which are likely Google Places photos)
-        if let googlePlaceId = googlePlaceId, !googlePlaceId.isEmpty, collectedImageUrls.isEmpty {
+        if let googlePlaceId = googlePlaceId, !googlePlaceId.isEmpty, (preUploadedPhotoUrls?.isEmpty ?? true) {
             print("🔍 PlaceService: Fetching Google Places photo for placeId: \(googlePlaceId)")
             imageCollectionGroup.enter()
             
@@ -681,9 +716,15 @@ class PlaceService {
             
             // Add collected images to the body
             if !collectedImageUrls.isEmpty {
-                body["photos"] = collectedImageUrls
-                print("📸 PlaceService: Collected \(collectedImageUrls.count) images for the place")
-                for (index, url) in collectedImageUrls.enumerated() {
+                // Remove duplicates before sending
+                let uniqueUrls = Array(Set(collectedImageUrls))
+                if uniqueUrls.count != collectedImageUrls.count {
+                    print("⚠️ PlaceService: Found \(collectedImageUrls.count - uniqueUrls.count) duplicate photo URLs, removing duplicates")
+                }
+                
+                body["photos"] = uniqueUrls
+                print("📸 PlaceService: Collected \(uniqueUrls.count) unique images for the place")
+                for (index, url) in uniqueUrls.enumerated() {
                     print("  Image \(index + 1): \(url)")
                 }
             } else {
@@ -1008,31 +1049,32 @@ class PlaceService {
         
         // Log image size
         let imageSizeInKB = Double(imageData.count) / 1024.0
-        print("📸 Uploading image - size: \(String(format: "%.0f", imageSizeInKB)) KB (attempt #\(attemptNumber), quality: \(compressionQuality))")
+        print("📸 Processing image - size: \(String(format: "%.0f", imageSizeInKB)) KB (attempt #\(attemptNumber))")
         
-        // CRITICAL: Max size is 1MB (1024KB) to match backend limits
-        // DO NOT increase this without also updating backend/routes/uploadRoutes.js
-        let maxSizeKB: Double = 1024 // 1MB - DO NOT CHANGE
+        // CRITICAL: Max size for actual data is ~750KB to ensure base64 encoded version stays under 1MB
+        // Base64 encoding increases size by ~33%, so 750KB data -> ~1MB base64
+        let maxDataSizeKB: Double = 750 // Target size for actual data
         let maxAttempts = 6
-        // Progressive compression levels - will try each until under 1MB
-        let compressionLevels: [Float] = [0.8, 0.6, 0.4, 0.2, 0.1, 0.05]
+        // More aggressive compression levels to ensure we get under 1MB
+        let compressionLevels: [Float] = [0.7, 0.5, 0.3, 0.2, 0.1, 0.05]
         
         var dataToUpload = imageData
         
-        if imageSizeInKB > maxSizeKB && attemptNumber <= maxAttempts {
-            print("⚠️ Image size exceeds \(maxSizeKB)KB limit, attempting to compress...")
+        // Always check and compress if needed, regardless of attempt number
+        if imageSizeInKB > maxDataSizeKB {
+            print("⚠️ Image size exceeds \(maxDataSizeKB)KB target, compressing...")
             
-            // Try to compress the image further
-            if let image = UIImage(data: imageData),
-               attemptNumber <= compressionLevels.count {
+            // Try to compress the image
+            if let image = UIImage(data: imageData) {
                 
                 // Progressive resizing strategy based on attempt number
                 var imageToCompress = image
                 
-                // Start resizing earlier and more aggressively to achieve 1MB goal
-                if attemptNumber >= 2 { // Start resizing on second attempt
-                    let resizeDimensions: [CGFloat] = [2048, 1920, 1280, 1024, 800, 640]
-                    let dimensionIndex = min(attemptNumber - 2, resizeDimensions.count - 1)
+                // Start resizing immediately if image is large
+                if imageSizeInKB > 1000 || attemptNumber >= 2 {
+                    // More aggressive resizing dimensions
+                    let resizeDimensions: [CGFloat] = [1920, 1280, 1024, 800, 640, 480]
+                    let dimensionIndex = min(max(0, attemptNumber - 1), resizeDimensions.count - 1)
                     let maxDimension = resizeDimensions[dimensionIndex]
                     
                     let scale = min(maxDimension / image.size.width, maxDimension / image.size.height)
@@ -1048,21 +1090,24 @@ class PlaceService {
                     }
                 }
                 
-                if let compressedData = imageToCompress.jpegData(compressionQuality: CGFloat(compressionLevels[attemptNumber - 1])) {
+                // Apply compression with the appropriate quality level
+                let compressionIndex = min(attemptNumber - 1, compressionLevels.count - 1)
+                if let compressedData = imageToCompress.jpegData(compressionQuality: CGFloat(compressionLevels[compressionIndex])) {
                     let compressedSizeKB = Double(compressedData.count) / 1024.0
-                    print("📸 Compressed image size: \(String(format: "%.0f", compressedSizeKB)) KB with quality \(compressionLevels[attemptNumber - 1])")
+                    print("📸 Compressed image size: \(String(format: "%.0f", compressedSizeKB)) KB with quality \(compressionLevels[compressionIndex])")
                     
-                    // If still too large and we have more compression levels to try
-                    if compressedSizeKB > maxSizeKB && attemptNumber < compressionLevels.count {
-                        uploadImageWithCompression(compressedData, compressionQuality: compressionLevels[attemptNumber], attemptNumber: attemptNumber + 1, completion: completion)
+                    // If still too large and we have more attempts available
+                    if compressedSizeKB > maxDataSizeKB && attemptNumber < maxAttempts {
+                        // Recursively try with next compression level
+                        uploadImageWithCompression(compressedData, compressionQuality: compressionLevels[min(attemptNumber, compressionLevels.count - 1)], attemptNumber: attemptNumber + 1, completion: completion)
                         return
                     }
                     
-                    // Use the compressed data even if slightly over limit on final attempt
+                    // Use the compressed data
                     dataToUpload = compressedData
                 }
             } else {
-                print("⚠️ Unable to compress image further, uploading as is...")
+                print("⚠️ Unable to create UIImage from data, uploading as is...")
             }
         }
         
@@ -1157,7 +1202,10 @@ class PlaceService {
         case .noInternet, .requestFailed, .invalidURL, .invalidResponse, .decodingFailed, .duplicateRequest:
             return .networkError(error)
             
-        case .serverError, .unknown:
+        case .rateLimited:
+            return .networkError(error)
+            
+        case .serverError, .unknown, .processingFailed, .processingTimeout:
             return .unknown
         }
     }
@@ -1361,6 +1409,26 @@ class PlaceService {
                 }
             }
         )
+    }
+    
+    // MARK: - Photo Migration
+    
+    /// Migrates Google Photos API URLs to Firebase Storage
+    func migrateGooglePhotosToFirebase(completion: @escaping (Result<Bool, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "places/migrate-photos",
+            method: .post,
+            requiresAuth: true
+        ) { (result: Result<APIResponse<Bool>, APIError>) in
+            switch result {
+            case .success:
+                Logger.info("PlaceService: Photo migration completed successfully")
+                completion(.success(true))
+            case .failure(let error):
+                Logger.error("PlaceService: Photo migration failed: \(error.localizedDescription)")
+                completion(.failure(error))
+            }
+        }
     }
 }
 

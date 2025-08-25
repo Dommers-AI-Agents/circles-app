@@ -18,3 +18,12 @@ struct TutorialStatusResponse: Codable {
     let hasCompletedTutorial: Bool
     let onboardingCompleted: Bool
 }
+
+// Video response for single video fetch
+struct PlaceVideoResponse: Codable {
+    let success: Bool
+    let data: PlaceVideo
+    let message: String?
+}
+
+// Daily Summary Response models are defined in APIService.swift

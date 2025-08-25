@@ -159,9 +159,9 @@ class DiscoverUserCell: UITableViewCell {
         // Discovery reason
         configureDiscoveryReason(user: user, type: discoveryType)
         
-        // Profile image
+        // Profile image - use profile-specific loading to prevent cache collisions
         if let profilePicture = user.profilePicture, !profilePicture.isEmpty {
-            ImageService.shared.loadImage(from: profilePicture) { [weak self] image in
+            ImageService.shared.loadProfileImage(for: user.id, from: profilePicture) { [weak self] image in
                 DispatchQueue.main.async {
                     self?.profileImageView.image = image ?? UIImage(systemName: "person.circle.fill")
                     if image == nil {

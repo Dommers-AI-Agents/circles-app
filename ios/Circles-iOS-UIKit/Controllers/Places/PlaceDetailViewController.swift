@@ -46,19 +46,26 @@ class PlaceDetailViewController: BaseViewController {
     private var currentPhotoIndex = 0
     
     private func updateMediaCarousel() {
+        print("📸 DEBUG: updateMediaCarousel() called")
         var mediaItems: [MediaItem] = []
         
         // Add photos
         if !placePhotos.isEmpty {
+            print("📸 DEBUG: Using loaded UIImages - count: \(placePhotos.count)")
             // Use loaded UIImages
-            for photo in placePhotos {
+            for (index, photo) in placePhotos.enumerated() {
                 mediaItems.append(.photoImage(image: photo))
+                print("  Added UIImage \(index + 1) to mediaItems")
             }
         } else if let photos = place.photos, !photos.isEmpty {
+            print("📸 DEBUG: Using photo URLs directly - count: \(photos.count)")
             // Use photo URLs directly
-            for photoUrl in photos {
+            for (index, photoUrl) in photos.enumerated() {
                 mediaItems.append(.photo(url: photoUrl))
+                print("  Added URL \(index + 1) to mediaItems: \(photoUrl)")
             }
+        } else {
+            print("📸 DEBUG: No photos available, will use placeholder")
         }
         
         // Add videos
@@ -76,7 +83,9 @@ class PlaceDetailViewController: BaseViewController {
         }
         
         // Configure carousel
+        print("📸 DEBUG: Total mediaItems to configure: \(mediaItems.count)")
         mediaCarouselView.configure(with: mediaItems)
+        print("📸 DEBUG: MediaCarouselView configured with \(mediaItems.count) items")
     }
     
     private let streetViewToggleButton: UIButton = {
@@ -119,6 +128,8 @@ class PlaceDetailViewController: BaseViewController {
         return button
     }()
     
+    // Commented out - automatic photo migration now handles this
+    /*
     private let updateInfoButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle("Update Place Info", for: .normal)
@@ -138,6 +149,7 @@ class PlaceDetailViewController: BaseViewController {
         button.layer.shadowRadius = 6
         return button
     }()
+    */
     
     private let updateAddressButton: UIButton = {
         let button = UIButton(type: .system)
@@ -652,6 +664,13 @@ class PlaceDetailViewController: BaseViewController {
         super.viewDidLoad()
         Logger.debug("PlaceDetailViewController viewDidLoad")
         
+        // Track place viewed event
+        AnalyticsService.shared.logEvent(AnalyticsService.Events.placeViewed, parameters: [
+            "place_id": place.id,
+            "place_name": place.name,
+            "has_circle": place.circleId != nil
+        ])
+        
         // Configure scroll view behavior
         scrollView.contentInsetAdjustmentBehavior = .automatic
         scrollView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 20, right: 0)
@@ -684,6 +703,78 @@ class PlaceDetailViewController: BaseViewController {
         // Fetch rating if not available
         if place.rating == nil || place.rating == 0 {
             fetchPlaceRating()
+        }
+        
+        // Listen for place added notification from modal AddPlaceViewController
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handlePlaceAddedToCircle(_:)),
+            name: Notification.Name("PlaceAddedToCircle"),
+            object: nil
+        )
+    }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+    
+    @objc private func handlePlaceAddedToCircle(_ notification: Notification) {
+        // Place was successfully added from the modal AddPlaceViewController
+        // Hide the add button since the place is now in user's circle
+        DispatchQueue.main.async { [weak self] in
+            self?.addToCircleButton.isHidden = true
+            self?.updateAddressTitleConstraint()
+            
+            // Show a subtle success message
+            let successView = UIView()
+            successView.backgroundColor = Constants.Colors.primary
+            successView.layer.cornerRadius = 8
+            successView.translatesAutoresizingMaskIntoConstraints = false
+            
+            let checkIcon = UIImageView(image: UIImage(systemName: "checkmark.circle.fill"))
+            checkIcon.tintColor = .white
+            checkIcon.translatesAutoresizingMaskIntoConstraints = false
+            
+            let label = UILabel()
+            label.text = "Added to your circle"
+            label.textColor = .white
+            label.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+            label.translatesAutoresizingMaskIntoConstraints = false
+            
+            successView.addSubview(checkIcon)
+            successView.addSubview(label)
+            
+            self?.view.addSubview(successView)
+            
+            NSLayoutConstraint.activate([
+                checkIcon.leadingAnchor.constraint(equalTo: successView.leadingAnchor, constant: 12),
+                checkIcon.centerYAnchor.constraint(equalTo: successView.centerYAnchor),
+                checkIcon.widthAnchor.constraint(equalToConstant: 20),
+                checkIcon.heightAnchor.constraint(equalToConstant: 20),
+                
+                label.leadingAnchor.constraint(equalTo: checkIcon.trailingAnchor, constant: 8),
+                label.trailingAnchor.constraint(equalTo: successView.trailingAnchor, constant: -12),
+                label.centerYAnchor.constraint(equalTo: successView.centerYAnchor),
+                
+                successView.bottomAnchor.constraint(equalTo: self?.view.safeAreaLayoutGuide.bottomAnchor ?? successView.bottomAnchor, constant: -20),
+                successView.centerXAnchor.constraint(equalTo: self?.view.centerXAnchor ?? successView.centerXAnchor),
+                successView.heightAnchor.constraint(equalToConstant: 44)
+            ])
+            
+            successView.alpha = 0
+            successView.transform = CGAffineTransform(translationX: 0, y: 20)
+            
+            UIView.animate(withDuration: 0.3, animations: {
+                successView.alpha = 1
+                successView.transform = .identity
+            }) { _ in
+                UIView.animate(withDuration: 0.3, delay: 2.0, options: [], animations: {
+                    successView.alpha = 0
+                    successView.transform = CGAffineTransform(translationX: 0, y: 20)
+                }) { _ in
+                    successView.removeFromSuperview()
+                }
+            }
         }
     }
     
@@ -781,7 +872,7 @@ class PlaceDetailViewController: BaseViewController {
         // Add photo control buttons on top of image view
         mediaCarouselView.addSubview(streetViewToggleButton)
         mediaCarouselView.addSubview(editImageButton)
-        mediaCarouselView.addSubview(updateInfoButton)
+        // mediaCarouselView.addSubview(updateInfoButton) // Commented - automatic migration handles this
         mediaCarouselView.isUserInteractionEnabled = true
         
         // Add info container after image view
@@ -879,7 +970,7 @@ class PlaceDetailViewController: BaseViewController {
         streetViewToggleButton.addTarget(self, action: #selector(streetViewToggleButtonTapped), for: .touchUpInside)
         
         // Add target for update info button
-        updateInfoButton.addTarget(self, action: #selector(updateInfoButtonTapped), for: .touchUpInside)
+        // updateInfoButton.addTarget(self, action: #selector(updateInfoButtonTapped), for: .touchUpInside) // Commented - automatic migration
         
         // Add target for update address button
         updateAddressButton.addTarget(self, action: #selector(updateAddressButtonTapped), for: .touchUpInside)
@@ -947,11 +1038,11 @@ class PlaceDetailViewController: BaseViewController {
             editImageButton.heightAnchor.constraint(equalToConstant: 32),
             editImageButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 100),
             
-            // Update Info button - positioned to the left of Edit Image button
-            updateInfoButton.bottomAnchor.constraint(equalTo: mediaCarouselView.bottomAnchor, constant: -16),
-            updateInfoButton.trailingAnchor.constraint(equalTo: editImageButton.leadingAnchor, constant: -8),
-            updateInfoButton.heightAnchor.constraint(equalToConstant: 32),
-            updateInfoButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 100),
+            // Update Info button - commented out as automatic migration handles this
+            // updateInfoButton.bottomAnchor.constraint(equalTo: mediaCarouselView.bottomAnchor, constant: -16),
+            // updateInfoButton.trailingAnchor.constraint(equalTo: editImageButton.leadingAnchor, constant: -8),
+            // updateInfoButton.heightAnchor.constraint(equalToConstant: 32),
+            // updateInfoButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 100),
             
             
             // Info container view - positioned below the image with padding
@@ -1212,7 +1303,7 @@ class PlaceDetailViewController: BaseViewController {
         }
         mediaCarouselView.bringSubviewToFront(streetViewToggleButton)
         mediaCarouselView.bringSubviewToFront(editImageButton)
-        mediaCarouselView.bringSubviewToFront(updateInfoButton)
+        // mediaCarouselView.bringSubviewToFront(updateInfoButton) // Commented - automatic migration
         
         // Set up button actions
         categoryEditButton.addTarget(self, action: #selector(editButtonTapped), for: .touchUpInside)
@@ -1270,7 +1361,7 @@ class PlaceDetailViewController: BaseViewController {
         
         // Show button if showing default icon AND either has googlePlaceId OR has location coordinates
         let canSearchGooglePlaces = place.googlePlaceId != nil || place.location != nil
-        updateInfoButton.isHidden = !isShowingDefaultIcon || !canSearchGooglePlaces
+        // updateInfoButton.isHidden = !isShowingDefaultIcon || !canSearchGooglePlaces // Commented - automatic migration
         
         // Show Update Address button if place has location coordinates
         let hasLocation = place.location?.clLocation != nil
@@ -1764,8 +1855,8 @@ class PlaceDetailViewController: BaseViewController {
         // Add deep link and web link
         shareText += "\n\n📱 Open in Circles: circles://place/\(place.id)"
         
-        // Add TestFlight link
-        shareText += "\n\n🔗 Get Circles App: https://testflight.apple.com/join/n1sBRMG3"
+        // Add App Store link
+        shareText += "\n\n🔗 Get Circles App: https://apps.apple.com/us/app/favcircles/id6746807095"
         
         var activityItems: [Any] = [shareText]
         
@@ -1808,28 +1899,35 @@ class PlaceDetailViewController: BaseViewController {
     }
     
     @objc private func ratingViewTapped() {
-        // Open Google Maps/Google search to show reviews
-        guard let googlePlaceId = place.googlePlaceId, !googlePlaceId.isEmpty else {
-            // If no Google Place ID, try searching by name and address
-            let searchQuery = "\(place.name) \(place.address)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-            let googleSearchURL = URL(string: "https://www.google.com/search?q=\(searchQuery)+reviews")
-            
-            if let url = googleSearchURL {
-                UIApplication.shared.open(url)
-            }
-            return
+        // Open Google reviews by searching for the place name and reviews
+        // This approach ensures users see reviews prominently
+        
+        // Build search query with place name and address
+        var searchComponents = [place.name]
+        
+        // Add address if available
+        if !place.address.isEmpty {
+            searchComponents.append(place.address)
         }
         
-        // Try to open in Google Maps app first
-        let googleMapsURL = URL(string: "comgooglemaps://?q=place_id:\(googlePlaceId)")
+        // Add "reviews" to the search to ensure review results show up
+        searchComponents.append("reviews")
         
-        if let url = googleMapsURL, UIApplication.shared.canOpenURL(url) {
+        // Create the search query
+        let searchQuery = searchComponents.joined(separator: " ")
+            .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        
+        // Open Google search for reviews
+        // This will show the Google knowledge panel with reviews prominently displayed
+        let googleSearchURL = URL(string: "https://www.google.com/search?q=\(searchQuery)")
+        
+        if let url = googleSearchURL {
             UIApplication.shared.open(url)
         } else {
-            // Fallback to Google Maps website
-            let googleMapsWebURL = URL(string: "https://www.google.com/maps/place/?q=place_id:\(googlePlaceId)")
-            if let url = googleMapsWebURL {
-                UIApplication.shared.open(url)
+            // Fallback: If URL creation fails somehow, try with just the name
+            let fallbackQuery = "\(place.name) reviews".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            if let fallbackURL = URL(string: "https://www.google.com/search?q=\(fallbackQuery)") {
+                UIApplication.shared.open(fallbackURL)
             }
         }
     }
@@ -2060,7 +2158,7 @@ class PlaceDetailViewController: BaseViewController {
                             self.updateImageView()
                             self.streetViewToggleButton.isHidden = true // Hide toggle when street view is the only option
                             // Hide update info button since we now have street view
-                            self.updateInfoButton.isHidden = true
+                            // self.updateInfoButton.isHidden = true // Commented - automatic migration
                             Logger.debug("PlaceDetailViewController: Auto-showing street view for place without photos")
                         } else {
                             // Has photos, just store street view for toggle option
@@ -2250,39 +2348,42 @@ class PlaceDetailViewController: BaseViewController {
         ) { [weak self] result in
             guard let self = self else { return }
             
-            loadingAlert.dismiss(animated: true) {
-                switch result {
-                case .success(_):
-                    // Update the UI with the new notes
-                    var notesText = ""
-                    
-                    if !publicNotes.isEmpty {
-                        notesText = publicNotes
-                    }
-                    
-                    if self.place.isAddedByCurrentUser && !privateNotes.isEmpty {
-                        if !notesText.isEmpty {
-                            notesText += "\n\nPrivate Notes:\n"
+            // Ensure all UI updates happen on the main thread
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    switch result {
+                    case .success(_):
+                        // Update the UI with the new notes
+                        var notesText = ""
+                        
+                        if !publicNotes.isEmpty {
+                            notesText = publicNotes
                         }
-                        notesText += privateNotes
+                        
+                        if self.place.isAddedByCurrentUser && !privateNotes.isEmpty {
+                            if !notesText.isEmpty {
+                                notesText += "\n\nPrivate Notes:\n"
+                            }
+                            notesText += privateNotes
+                        }
+                        
+                        if !notesText.isEmpty {
+                            self.notesLabel.text = notesText
+                            self.notesLabel.textColor = Constants.Colors.gray
+                            self.notesLabel.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
+                            self.notesLabel.isHidden = false
+                            self.addNotesButton.isHidden = true
+                            self.notesEditButton.isHidden = false
+                        } else {
+                            self.notesLabel.isHidden = true
+                            self.addNotesButton.isHidden = false
+                            self.notesEditButton.isHidden = true
+                        }
+                        
+                    case .failure(let error):
+                        // Show error alert
+                        self.showError("Failed to save notes: \(error.localizedDescription)")
                     }
-                    
-                    if !notesText.isEmpty {
-                        self.notesLabel.text = notesText
-                        self.notesLabel.textColor = Constants.Colors.gray
-                        self.notesLabel.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
-                        self.notesLabel.isHidden = false
-                        self.addNotesButton.isHidden = true
-                        self.notesEditButton.isHidden = false
-                    } else {
-                        self.notesLabel.isHidden = true
-                        self.addNotesButton.isHidden = false
-                        self.notesEditButton.isHidden = true
-                    }
-                    
-                case .failure(let error):
-                    // Show error alert
-                    self.showError("Failed to save notes: \(error.localizedDescription)")
                 }
             }
         }
@@ -2431,12 +2532,20 @@ class PlaceDetailViewController: BaseViewController {
         // First check if place has photos from the API
         if let photos = place.photos, !photos.isEmpty {
             print("🖼️ PlaceDetailViewController: Loading \(photos.count) photos for place: \(place.name)")
+            print("📸 DEBUG: Photo URLs from place object:")
             for (index, photo) in photos.enumerated() {
                 print("  Photo \(index + 1): \(photo)")
+                // Check if it's a Google or Apple photo
+                if photo.contains("firebasestorage") || photo.contains("googleapis") {
+                    print("    Type: Firebase Storage")
+                } else {
+                    print("    Type: Unknown")
+                }
             }
             
             // Load all photos from the API
             placePhotos.removeAll()
+            print("📸 DEBUG: Cleared placePhotos array, starting fresh load...")
             let loadGroup = DispatchGroup()
             
             for (index, photoUrl) in photos.enumerated() {
@@ -2471,13 +2580,14 @@ class PlaceDetailViewController: BaseViewController {
                 guard let self = self else { return }
                 
                 print("🏁 PlaceDetailViewController: Finished loading photos. Total loaded: \(self.placePhotos.count)")
+                print("📸 DEBUG: placePhotos array now contains \(self.placePhotos.count) UIImages")
                 
                 // Update media carousel
+                print("📸 DEBUG: Calling updateMediaCarousel()...")
                 self.updateMediaCarousel()
                 
-                // Show first photo if available
-                if let firstPhoto = self.placePhotos.first {
-                    self.customImage = firstPhoto
+                // Update UI if photos were loaded
+                if !self.placePhotos.isEmpty {
                     self.editImageButton.setTitle("Add Photo or Video", for: .normal)
                     
                     // Update photo section buttons
@@ -2618,6 +2728,8 @@ class PlaceDetailViewController: BaseViewController {
     
     // MARK: - Actions
     
+    // Commented out - automatic photo migration now handles this
+    /*
     @objc private func updateInfoButtonTapped() {
         // Show loading alert
         let loadingAlert = UIAlertController(title: "Updating Place Info", message: "Fetching latest information from Google Places...", preferredStyle: .alert)
@@ -2676,7 +2788,7 @@ class PlaceDetailViewController: BaseViewController {
             loadPlacePhotos()
             
             // Hide the update info button since we now have photos
-            updateInfoButton.isHidden = true
+            // updateInfoButton.isHidden = true // Commented - automatic migration
         }
         
         // Update rating if available
@@ -2703,6 +2815,7 @@ class PlaceDetailViewController: BaseViewController {
         // Post notification to refresh any lists
         NotificationCenter.default.post(name: NSNotification.Name("PlaceUpdated"), object: nil, userInfo: ["place": updatedPlace])
     }
+    */
     
     @objc private func updateAddressButtonTapped() {
         // Create and present the address search view controller
@@ -3010,7 +3123,7 @@ extension PlaceDetailViewController {
                             let showingStreetView = self?.showingStreetView ?? false
                             let isShowingDefaultIcon = !hasCustomImage && !hasAPIPhotos && !showingStreetView
                             let canSearchGooglePlaces = newPlace.googlePlaceId != nil || newPlace.location != nil
-                            self?.updateInfoButton.isHidden = !isShowingDefaultIcon || !canSearchGooglePlaces
+                            // self?.updateInfoButton.isHidden = !isShowingDefaultIcon || !canSearchGooglePlaces // Commented - automatic migration
                             
                             // Show success message
                             let alert = UIAlertController(

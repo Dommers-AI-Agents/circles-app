@@ -71,7 +71,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "com.favcircles.circles.premium.subscription.annual",
+          "productID" : "com.favcircles.circles.premium.annual",
           "recurringSubscriptionPeriod" : "P1Y",
           "reviewNote" : "",
           "subscriptionGroupID" : "21512641"

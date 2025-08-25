@@ -12,7 +12,11 @@ class NotificationService {
     // MARK: - Device Token Management
     
     func registerDeviceToken(_ token: String) {
-        print("🔔 Registering device token: \(token.prefix(20))...")
+        print("🔔 ===== REGISTER DEVICE TOKEN =====")
+        print("🔔 Token length: \(token.count)")
+        print("🔔 Token preview: \(token.prefix(30))...")
+        print("🔔 User logged in: \(AuthService.shared.isLoggedIn)")
+        
         self.deviceToken = token
         
         // Save to UserDefaults for persistence
@@ -22,11 +26,12 @@ class NotificationService {
         
         // Only send to backend if user is logged in
         guard AuthService.shared.isLoggedIn else {
-            print("🔔 User not logged in, storing device token for later")
+            print("🔔 User not logged in, storing device token for later registration")
+            print("🔔 Token will be sent when user logs in")
             return
         }
         
-        print("🔔 User is logged in, sending token to backend")
+        print("🔔 User is logged in, sending token to backend NOW")
         sendDeviceTokenToBackend(token)
     }
     
@@ -34,7 +39,8 @@ class NotificationService {
         print("🔔 Sending device token to backend...")
         let body: [String: Any] = [
             "deviceToken": token,
-            "platform": "ios"
+            "platform": "ios",
+            "replaceExisting": true  // Tell backend to replace all existing tokens
         ]
         
         APIService.shared.request(
@@ -46,9 +52,16 @@ class NotificationService {
             switch result {
             case .success:
                 print("🔔 ✅ Device token registered successfully with backend")
+                print("🔔 Old tokens have been automatically cleaned up")
             case .failure(let error):
                 print("🔔 ❌ Failed to register device token: \(error)")
                 print("🔔 Error details: \(error.localizedDescription)")
+                
+                // Retry once after a delay if it fails
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                    print("🔔 Retrying device token registration...")
+                    self.sendDeviceTokenToBackend(token)
+                }
             }
         }
     }

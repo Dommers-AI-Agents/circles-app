@@ -243,8 +243,8 @@ class AllUsersCell: UITableViewCell {
                     profileImageView.contentMode = .scaleAspectFit
                 }
             } else {
-                // Regular image URL
-                ImageService.shared.loadImage(from: profilePicture) { [weak self] image in
+                // Regular image URL - use profile-specific loading to prevent cache collisions
+                ImageService.shared.loadProfileImage(for: user.id, from: profilePicture) { [weak self] image in
                     DispatchQueue.main.async {
                         self?.profileImageView.image = image ?? UIImage(systemName: "person.circle.fill")
                         self?.profileImageView.contentMode = image != nil ? .scaleAspectFill : .scaleAspectFit

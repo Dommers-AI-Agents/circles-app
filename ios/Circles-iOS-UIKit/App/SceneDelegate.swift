@@ -136,6 +136,26 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
     }
     
+    // Handle Universal Links
+    func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+        print("📱 SceneDelegate: continue userActivity called")
+        
+        guard userActivity.activityType == NSUserActivityTypeBrowsingWeb,
+              let url = userActivity.webpageURL else {
+            print("📱 SceneDelegate: Not a web browsing activity")
+            return
+        }
+        
+        print("📱 SceneDelegate: Universal Link received: \(url.absoluteString)")
+        print("📱 SceneDelegate: URL host: \(url.host ?? "nil")")
+        print("📱 SceneDelegate: URL path: \(url.path)")
+        
+        // Handle Universal Links from our backend
+        if url.host == "circles-backend-196924649787.us-central1.run.app" {
+            handleUniversalLink(url)
+        }
+    }
+    
     private func updateRootViewController(isLoggedIn: Bool) {
         if isLoggedIn {
             // Show splash screen with preloading
@@ -218,6 +238,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                                     // Check if user is new and should see onboarding
                                     if OnboardingManager.shared.shouldShowContactsOnboarding() {
                                         self.showContactsOnboarding()
+                                    } else if self.shouldShowNotificationOnboarding() {
+                                        // Show notification onboarding for users who haven't seen it
+                                        self.showNotificationOnboarding()
                                     } else {
                                         // Check if user needs tutorial
                                         OnboardingManager.shared.checkIfUserNeedsTutorial { needsTutorial in
@@ -310,6 +333,73 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         handleDeepLink(url)
     }
     
+    private func handleUniversalLink(_ url: URL) {
+        // Handle Universal Links from our backend
+        print("📱 SceneDelegate: Processing Universal Link with path: \(url.path)")
+        
+        let pathComponents = url.pathComponents.filter { $0 != "/" }
+        
+        // Check if it's an /app/* path
+        if pathComponents.first == "app" && pathComponents.count >= 2 {
+            let appPath = pathComponents[1]
+            
+            switch appPath {
+            case "daily-summary":
+                navigateToDailySummary()
+            case "open":
+                // Handle generic open with path parameter
+                if let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
+                   let pathParam = urlComponents.queryItems?.first(where: { $0.name == "path" })?.value {
+                    handleOpenPath(pathParam)
+                }
+            case "video":
+                if pathComponents.count >= 3 {
+                    let videoId = pathComponents[2]
+                    navigateToVideo(videoId: videoId)
+                }
+            case "circle":
+                if pathComponents.count >= 3 {
+                    let circleId = pathComponents[2]
+                    navigateToCircle(circleId: circleId)
+                }
+            case "connect":
+                if pathComponents.count >= 3 {
+                    let userId = pathComponents[2]
+                    handleConnectionInvite(from: userId)
+                }
+            default:
+                print("📱 SceneDelegate: Unknown app path: \(appPath)")
+            }
+        } else if pathComponents.first == "daily-summary" {
+            navigateToDailySummary()
+        } else if pathComponents.first == "video" && pathComponents.count >= 2 {
+            let videoId = pathComponents[1]
+            navigateToVideo(videoId: videoId)
+        } else if pathComponents.first == "circle" && pathComponents.count >= 2 {
+            let circleId = pathComponents[1]
+            navigateToCircle(circleId: circleId)
+        } else if pathComponents.first == "connect" && pathComponents.count >= 2 {
+            let userId = pathComponents[1]
+            handleConnectionInvite(from: userId)
+        }
+    }
+    
+    private func handleOpenPath(_ path: String) {
+        // Handle specific paths
+        if path == "settings/notifications" {
+            navigateToNotificationSettings()
+        } else if path == "network/find-friends" {
+            // Navigate to find friends
+            guard let tabBarController = window?.rootViewController as? CirclesTabBarController else { return }
+            tabBarController.selectedIndex = 1 // Network tab
+        } else if path == "add-place" {
+            // Navigate to add place
+            guard let tabBarController = window?.rootViewController as? CirclesTabBarController else { return }
+            tabBarController.selectedIndex = 0 // Home tab
+            // Trigger add place action
+        }
+    }
+    
     private func handleDeepLink(_ url: URL) {
         // Parse the URL and navigate to the appropriate screen
         guard url.scheme == "circles" else {
@@ -346,6 +436,18 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 }
             }
             
+            // Handle video deep links (e.g., circles://video/[videoId])
+            if url.host == "video" {
+                print("📱 SceneDelegate: Detected 'video' as host")
+                let videoId = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                print("📱 SceneDelegate: Extracted videoId from path: \(videoId)")
+                if !videoId.isEmpty {
+                    print("📱 SceneDelegate: Calling handleVideoDeepLink with videoId: \(videoId)")
+                    self.handleVideoDeepLink(videoId: videoId)
+                    return
+                }
+            }
+            
             // Handle referral deep links (e.g., circles://referral?code=ABC123)
             if url.host == "referral" {
                 print("📱 SceneDelegate: Detected 'referral' as host")
@@ -355,6 +457,20 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     self.handleReferralCode(code)
                     return
                 }
+            }
+            
+            // Handle daily summary deep link (e.g., circles://daily-summary)
+            if url.host == "daily-summary" {
+                print("📱 SceneDelegate: Detected 'daily-summary' deep link")
+                self.navigateToDailySummary()
+                return
+            }
+            
+            // Handle settings/notifications deep link (e.g., circles://settings/notifications)
+            if url.host == "settings" && url.path == "/notifications" {
+                print("📱 SceneDelegate: Detected 'settings/notifications' deep link")
+                self.navigateToNotificationSettings()
+                return
             }
             
             // Handle circle deep links with share tokens (e.g., circles://circle/circleId?share=shareToken)
@@ -893,6 +1009,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 case "connect":
                     let id = String(components[1])
                     self.handleConnectionInvite(from: id)
+                case "video":
+                    let id = String(components[1])
+                    self.navigateToVideo(videoId: id)
+                case "daily-summary":
+                    self.navigateToDailySummary()
+                case "settings":
+                    if components.count >= 2 && components[1] == "notifications" {
+                        self.navigateToNotificationSettings()
+                    }
                 default:
                     break
                 }
@@ -987,6 +1112,55 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         
         // Present in navigation controller
         let navController = UINavigationController(rootViewController: contactsPermissionVC)
+        navController.modalPresentationStyle = .fullScreen
+        
+        // Present from the tab bar controller
+        tabBarController.present(navController, animated: true)
+    }
+    
+    private func shouldShowNotificationOnboarding() -> Bool {
+        // Check if we've already shown notification onboarding
+        let hasShownOnboarding = UserDefaults.standard.bool(forKey: "hasShownNotificationOnboarding")
+        if hasShownOnboarding {
+            return false
+        }
+        
+        // Check if notifications are already enabled
+        let semaphore = DispatchSemaphore(value: 0)
+        var isEnabled = false
+        
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            isEnabled = settings.authorizationStatus == .authorized
+            semaphore.signal()
+        }
+        
+        semaphore.wait()
+        
+        // Only show if notifications are not enabled
+        return !isEnabled
+    }
+    
+    private func showNotificationOnboarding() {
+        guard let tabBarController = window?.rootViewController as? CirclesTabBarController else { return }
+        
+        Logger.info("Showing notification onboarding")
+        
+        // Create notification onboarding view controller
+        let notificationVC = NotificationOnboardingViewController()
+        
+        // Configure completion callback
+        notificationVC.onCompletion = { [weak self] in
+            // Check if user needs tutorial after notification onboarding
+            OnboardingManager.shared.checkIfUserNeedsTutorial { needsTutorial in
+                if needsTutorial {
+                    OnboardingManager.shared.startTutorial()
+                    Logger.info("Starting tutorial after notification onboarding")
+                }
+            }
+        }
+        
+        // Present in navigation controller
+        let navController = UINavigationController(rootViewController: notificationVC)
         navController.modalPresentationStyle = .fullScreen
         
         // Present from the tab bar controller
@@ -1102,6 +1276,132 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     }
                 }
             }
+        }
+    }
+    
+    // MARK: - Video Deep Link Handling
+    
+    private func handleVideoDeepLink(videoId: String) {
+        print("📱 SceneDelegate: handleVideoDeepLink called with videoId: \(videoId)")
+        
+        // If user is not logged in, store the video link and prompt login
+        guard AuthService.shared.isLoggedIn else {
+            print("📱 SceneDelegate: User not logged in, storing pending video link")
+            UserDefaults.standard.set("video:\(videoId)", forKey: "pendingDeepLink")
+            
+            // Show alert prompting user to login
+            let alert = UIAlertController(
+                title: "Login Required",
+                message: "Please login to view this video",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Login", style: .default) { _ in
+                // The auth state listener will handle showing login screen
+            })
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            
+            if let rootVC = window?.rootViewController {
+                rootVC.present(alert, animated: true)
+            }
+            return
+        }
+        
+        // Navigate to video
+        navigateToVideo(videoId: videoId)
+    }
+    
+    private func navigateToVideo(videoId: String) {
+        guard AuthService.shared.isLoggedIn,
+              let tabBarController = window?.rootViewController as? CirclesTabBarController else {
+            // Store the deep link target to navigate after login
+            UserDefaults.standard.set("video:\(videoId)", forKey: "pendingDeepLink")
+            return
+        }
+        
+        // Switch to the Circles tab (home)
+        tabBarController.selectedIndex = 0
+        
+        // Get the navigation controller
+        guard let navController = tabBarController.viewControllers?[0] as? UINavigationController,
+              let circlesVC = navController.viewControllers.first as? CirclesHomeViewController else {
+            return
+        }
+        
+        // Pop to root first
+        navController.popToRootViewController(animated: false)
+        
+        // Load video details and navigate
+        APIService.shared.request(
+            endpoint: "videos/\(videoId)",
+            method: .get
+        ) { (result: Result<PlaceVideoResponse, APIError>) in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let response):
+                    // Create a video reels view controller with this single video
+                    let videoReelsVC = VideoReelsViewController(reels: [response.data], startIndex: 0)
+                    videoReelsVC.placeNavigationHandler = { placeId in
+                        // Handle place navigation if needed
+                        self.navigateToPlace(placeId: placeId)
+                    }
+                    navController.pushViewController(videoReelsVC, animated: true)
+                    
+                case .failure(let error):
+                    print("Failed to load video: \(error)")
+                    let alert = UIAlertController(
+                        title: "Video Not Found",
+                        message: "Unable to load the requested video",
+                        preferredStyle: .alert
+                    )
+                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    navController.present(alert, animated: true)
+                }
+            }
+        }
+    }
+    
+    // MARK: - Daily Summary Navigation
+    
+    private func navigateToDailySummary() {
+        guard AuthService.shared.isLoggedIn,
+              let tabBarController = window?.rootViewController as? CirclesTabBarController else {
+            // Store the deep link target to navigate after login
+            UserDefaults.standard.set("daily-summary", forKey: "pendingDeepLink")
+            return
+        }
+        
+        // Present the DailySummaryViewController modally
+        let summaryVC = DailySummaryViewController()
+        tabBarController.present(summaryVC, animated: true)
+        
+        print("📱 SceneDelegate: Presented DailySummaryViewController from daily-summary deep link")
+    }
+    
+    // MARK: - Notification Settings Navigation
+    
+    private func navigateToNotificationSettings() {
+        guard AuthService.shared.isLoggedIn,
+              let tabBarController = window?.rootViewController as? CirclesTabBarController else {
+            // Store the deep link target to navigate after login
+            UserDefaults.standard.set("settings:notifications", forKey: "pendingDeepLink")
+            return
+        }
+        
+        // Switch to profile tab (index 3)
+        tabBarController.selectedIndex = 3
+        
+        // Navigate to settings and then to notification preferences
+        if let navController = tabBarController.viewControllers?[3] as? UINavigationController {
+            // Pop to root first to ensure we're at the profile screen
+            navController.popToRootViewController(animated: false)
+            
+            // Push settings view controller
+            let settingsVC = SettingsViewController()
+            navController.pushViewController(settingsVC, animated: false)
+            
+            // Push notification preferences view controller
+            let notificationPrefsVC = NotificationPreferencesViewController()
+            navController.pushViewController(notificationPrefsVC, animated: true)
         }
     }
     

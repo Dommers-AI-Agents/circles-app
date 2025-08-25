@@ -2,6 +2,8 @@ const cron = require('node-cron');
 const { getFirestore } = require('../config/firebase');
 const notificationService = require('./notificationService');
 const dailySummaryService = require('./dailySummaryService');
+const engagementNotificationService = require('./engagementNotificationService');
+const milestoneService = require('./milestoneService');
 
 const db = getFirestore();
 
@@ -17,11 +19,29 @@ class ScheduledNotifications {
     // Daily summary at noon (12:00 PM) every day
     this.scheduleDailySummary();
     
+    // Engagement reminders at 3 PM for inactive users
+    this.scheduleEngagementReminders();
+    
+    // Weekly summary every Monday at 9 AM
+    this.scheduleWeeklySummary();
+    
+    // Monthly summary on the 1st at 10 AM
+    this.scheduleMonthlySummary();
+    
     // Discovery prompts at strategic times
     this.scheduleDiscoveryPrompts();
     
     // Weekend recommendations
     this.scheduleWeekendRecommendations();
+    
+    // Weekly network growth check (Sunday nights)
+    this.scheduleNetworkGrowthCheck();
+    
+    // Monthly top contributors (last day of month)
+    this.scheduleTopContributors();
+    
+    // Special event notifications
+    this.scheduleSpecialEvents();
     
     console.log('✅ Scheduled notifications initialized');
   }
@@ -43,6 +63,63 @@ class ScheduledNotifications {
     });
 
     this.jobs.set('dailySummary', job);
+  }
+
+  // Schedule engagement reminders for inactive users
+  scheduleEngagementReminders() {
+    // Run at 3:00 PM every day
+    const job = cron.schedule('0 15 * * *', async () => {
+      console.log('📱 Running engagement reminders...');
+      try {
+        await engagementNotificationService.sendEngagementReminders();
+        console.log('✅ Engagement reminders sent successfully');
+      } catch (error) {
+        console.error('❌ Error sending engagement reminders:', error);
+      }
+    }, {
+      scheduled: true,
+      timezone: "America/New_York"
+    });
+
+    this.jobs.set('engagementReminders', job);
+  }
+
+  // Schedule weekly summary
+  scheduleWeeklySummary() {
+    // Run every Monday at 9:00 AM
+    const job = cron.schedule('0 9 * * 1', async () => {
+      console.log('📊 Running weekly summary...');
+      try {
+        await engagementNotificationService.sendWeeklySummaries();
+        console.log('✅ Weekly summaries sent successfully');
+      } catch (error) {
+        console.error('❌ Error sending weekly summaries:', error);
+      }
+    }, {
+      scheduled: true,
+      timezone: "America/New_York"
+    });
+
+    this.jobs.set('weeklySummary', job);
+  }
+
+  // Schedule monthly summary
+  scheduleMonthlySummary() {
+    // Run on the 1st of each month at 10:00 AM
+    const job = cron.schedule('0 10 1 * *', async () => {
+      console.log('📅 Running monthly summary...');
+      try {
+        await engagementNotificationService.sendMonthlySummaries();
+        console.log('✅ Monthly summaries sent successfully');
+      } catch (error) {
+        console.error('❌ Error sending monthly summaries:', error);
+      }
+    }, {
+      scheduled: true,
+      timezone: "America/New_York"
+    });
+
+    this.jobs.set('monthlySummary', job);
   }
 
   // Schedule morning discovery prompts
@@ -93,6 +170,99 @@ class ScheduledNotifications {
     });
 
     this.jobs.set('weekendRecommendations', weekendJob);
+  }
+
+  // Schedule weekly network growth check
+  scheduleNetworkGrowthCheck() {
+    // Run every Sunday at 8:00 PM
+    const job = cron.schedule('0 20 * * 0', async () => {
+      console.log('📈 Checking weekly network growth...');
+      try {
+        await milestoneService.checkWeeklyNetworkGrowth();
+        console.log('✅ Network growth check completed');
+      } catch (error) {
+        console.error('❌ Error checking network growth:', error);
+      }
+    }, {
+      scheduled: true,
+      timezone: "America/New_York"
+    });
+
+    this.jobs.set('networkGrowth', job);
+  }
+
+  // Schedule top contributors check
+  scheduleTopContributors() {
+    // Run on the last day of each month at 6:00 PM
+    const job = cron.schedule('0 18 28-31 * *', async () => {
+      // Check if today is the last day of the month
+      const today = new Date();
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      if (tomorrow.getDate() === 1) {
+        console.log('🏆 Checking top contributors...');
+        try {
+          await milestoneService.checkTopContributors();
+          console.log('✅ Top contributors check completed');
+        } catch (error) {
+          console.error('❌ Error checking top contributors:', error);
+        }
+      }
+    }, {
+      scheduled: true,
+      timezone: "America/New_York"
+    });
+
+    this.jobs.set('topContributors', job);
+  }
+
+  // Schedule special event notifications
+  scheduleSpecialEvents() {
+    // Christmas - December 20th at 10 AM
+    const christmasJob = cron.schedule('0 10 20 12 *', async () => {
+      await engagementNotificationService.sendSpecialEventNotification('christmas');
+    }, {
+      scheduled: true,
+      timezone: "America/New_York"
+    });
+    this.jobs.set('christmas', christmasJob);
+
+    // Valentine's Day - February 12th at 10 AM
+    const valentinesJob = cron.schedule('0 10 12 2 *', async () => {
+      await engagementNotificationService.sendSpecialEventNotification('valentines');
+    }, {
+      scheduled: true,
+      timezone: "America/New_York"
+    });
+    this.jobs.set('valentines', valentinesJob);
+
+    // Summer - June 21st at 10 AM
+    const summerJob = cron.schedule('0 10 21 6 *', async () => {
+      await engagementNotificationService.sendSpecialEventNotification('summer');
+    }, {
+      scheduled: true,
+      timezone: "America/New_York"
+    });
+    this.jobs.set('summer', summerJob);
+
+    // Thanksgiving - Third Thursday of November (approximately 22nd)
+    const thanksgivingJob = cron.schedule('0 10 22 11 *', async () => {
+      await engagementNotificationService.sendSpecialEventNotification('thanksgiving');
+    }, {
+      scheduled: true,
+      timezone: "America/New_York"
+    });
+    this.jobs.set('thanksgiving', thanksgivingJob);
+
+    // New Year - January 1st at 10 AM
+    const newYearJob = cron.schedule('0 10 1 1 *', async () => {
+      await engagementNotificationService.sendSpecialEventNotification('newyear');
+    }, {
+      scheduled: true,
+      timezone: "America/New_York"
+    });
+    this.jobs.set('newyear', newYearJob);
   }
 
   // Send discovery prompts based on time of day

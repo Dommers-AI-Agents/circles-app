@@ -428,16 +428,24 @@ class VisitHistoryViewController: BaseViewController {
         
         switch authStatus {
         case .authorizedAlways:
+            // iOS may report this even during provisional authorization
+            // The actual permission in Settings may still show "While Using App"
             if trackingEnabled {
-                statusText = "✅ Tracking enabled - Location: Always allowed"
+                statusText = "✅ Tracking enabled - Check Settings if not working"
                 statusColor = .systemGreen
             } else {
                 statusText = "⏸️ Tracking disabled - Enable in settings"
                 statusColor = .systemOrange
             }
         case .authorizedWhenInUse:
-            statusText = "⚠️ Limited tracking - Grant 'Always Allow' location permission"
-            statusColor = .systemOrange
+            // This is the actual state when iOS grants provisional "Always" authorization
+            if trackingEnabled {
+                statusText = "⚠️ Limited tracking - iOS pending 'Always Allow' upgrade"
+                statusColor = .systemOrange
+            } else {
+                statusText = "⚠️ Limited - Enable tracking & grant 'Always Allow'"
+                statusColor = .systemOrange
+            }
         case .denied, .restricted:
             statusText = "❌ Location access denied - Enable in Settings app"
             statusColor = .systemRed
@@ -456,6 +464,31 @@ class VisitHistoryViewController: BaseViewController {
             statusView.backgroundColor = UIColor.systemGreen.withAlphaComponent(0.1)
         } else {
             statusView.backgroundColor = UIColor.systemGray6
+        }
+        
+        // Add tap gesture to open Settings if permission needs adjustment
+        if authStatus == .authorizedWhenInUse || authStatus == .denied || authStatus == .restricted {
+            let tapGesture = UITapGestureRecognizer(target: self, action: #selector(openLocationSettings))
+            statusView.isUserInteractionEnabled = true
+            statusView.addGestureRecognizer(tapGesture)
+            
+            // Add hint text
+            let hintLabel = UILabel()
+            hintLabel.text = "Tap to open Settings"
+            hintLabel.font = .systemFont(ofSize: 10)
+            hintLabel.textColor = .systemBlue
+            statusView.addSubview(hintLabel)
+            hintLabel.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                hintLabel.trailingAnchor.constraint(equalTo: statusView.trailingAnchor, constant: -12),
+                hintLabel.bottomAnchor.constraint(equalTo: statusView.bottomAnchor, constant: -4)
+            ])
+        }
+    }
+    
+    @objc private func openLocationSettings() {
+        if let settingsUrl = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(settingsUrl)
         }
     }
     

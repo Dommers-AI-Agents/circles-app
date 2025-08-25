@@ -50,6 +50,26 @@ class NotificationPromptBanner: UIView {
         return label
     }()
     
+    // New: Activity indicator for context
+    private let activityBadge: UIView = {
+        let view = UIView()
+        view.backgroundColor = .systemRed
+        view.layer.cornerRadius = 6
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isHidden = true
+        return view
+    }()
+    
+    private let activityLabel: UILabel = {
+        let label = UILabel()
+        label.text = "3"
+        label.font = UIFont.systemFont(ofSize: 10, weight: .bold)
+        label.textColor = .white
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
     private lazy var enableButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle("Enable Notifications", for: .normal)
@@ -222,7 +242,9 @@ class NotificationPromptManager {
     static let shared = NotificationPromptManager()
     
     private let lastPromptKey = "lastNotificationPromptDate"
-    private let promptIntervalDays = 7
+    private let promptCountKey = "notificationPromptCount"
+    private let dismissCountKey = "notificationDismissCount"
+    private let userCreatedDateKey = "userCreatedDate"
     private var currentBanner: NotificationPromptBanner?
     
     private init() {}
@@ -239,13 +261,43 @@ class NotificationPromptManager {
     }
     
     private func shouldShowPrompt() -> Bool {
-        // Check if we've prompted recently
         let defaults = UserDefaults.standard
+        
+        // Check if user has dismissed too many times (3 dismissals = stop prompting)
+        let dismissCount = defaults.integer(forKey: dismissCountKey)
+        if dismissCount >= 3 {
+            return false
+        }
+        
+        // Get smart interval based on user age
+        let promptInterval = getSmartPromptInterval()
+        
+        // Check if we've prompted recently
         if let lastPromptDate = defaults.object(forKey: lastPromptKey) as? Date {
             let daysSinceLastPrompt = Calendar.current.dateComponents([.day], from: lastPromptDate, to: Date()).day ?? 0
-            return daysSinceLastPrompt >= promptIntervalDays
+            return daysSinceLastPrompt >= promptInterval
         }
         return true
+    }
+    
+    private func getSmartPromptInterval() -> Int {
+        let defaults = UserDefaults.standard
+        
+        // Get user creation date (or use current date if not set)
+        let userCreatedDate = defaults.object(forKey: userCreatedDateKey) as? Date ?? Date()
+        let daysSinceCreation = Calendar.current.dateComponents([.day], from: userCreatedDate, to: Date()).day ?? 0
+        
+        // Smart intervals:
+        // First 3 days: prompt every day
+        // Days 4-14: prompt every 3 days  
+        // After 14 days: prompt every 14 days
+        if daysSinceCreation <= 3 {
+            return 1
+        } else if daysSinceCreation <= 14 {
+            return 3
+        } else {
+            return 14
+        }
     }
     
     private func showPrompt(in viewController: UIViewController, context: NotificationPromptContext) {

@@ -106,8 +106,8 @@ async function createPlaceInMyMoments(userId, circleId, placeData) {
       };
     }
     
-    const newPlace = createPlace({
-      circleId,
+    // Prepare place data object (without circleId)
+    const placeDataForCreation = {
       name: placeData.name,
       description: placeData.description || '',
       address: placeData.address || '',
@@ -119,7 +119,10 @@ async function createPlaceInMyMoments(userId, circleId, placeData) {
       addedViaCheckIn: false,
       notes: '',
       tags: []
-    }, userId);
+    };
+    
+    // Call createPlace with correct parameter order: placeData, circleId, addedBy
+    const newPlace = createPlace(placeDataForCreation, circleId, userId);
     
     const placeRef = await db.collection(COLLECTIONS.PLACES).add(newPlace);
     

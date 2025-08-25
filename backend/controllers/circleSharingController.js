@@ -538,15 +538,35 @@ const getMyNetworkCircles = async (req, res) => {
     }
 
     // Get circles from connected users with non-private privacy (public or myNetwork)
-    const circlesQuery = await db.collection(COLLECTIONS.CIRCLES)
-      .where('owner', 'in', Array.from(connectedUserIds))
-      .where('privacy', 'in', ['public', 'myNetwork'])
-      .get();
+    // Firestore 'in' operator has a limit of 30 disjunctions total
+    // With 2 privacy values, we can safely query 10 owners at a time (10 * 2 = 20 disjunctions)
+    const connectedUserIdsArray = Array.from(connectedUserIds);
+    const circleOwnerBatches = [];
+    for (let i = 0; i < connectedUserIdsArray.length; i += 10) {
+      circleOwnerBatches.push(connectedUserIdsArray.slice(i, i + 10));
+    }
     
-    console.log('🔵 Found circles from connections:', circlesQuery.size);
-
-    // Serialize all circles first
-    const circles = circlesQuery.docs.map(doc => serializeDoc(doc));
+    console.log(`📦 Batching ${connectedUserIdsArray.length} owners into ${circleOwnerBatches.length} batches for circles query`);
+    
+    // Fetch circles from all batches in parallel
+    const circleResults = await Promise.all(
+      circleOwnerBatches.map(batch => 
+        db.collection(COLLECTIONS.CIRCLES)
+          .where('owner', 'in', batch)
+          .where('privacy', 'in', ['public', 'myNetwork'])
+          .get()
+      )
+    );
+    
+    // Combine all circle results
+    const circles = [];
+    circleResults.forEach(snapshot => {
+      snapshot.docs.forEach(doc => {
+        circles.push(serializeDoc(doc));
+      });
+    });
+    
+    console.log('🔵 Found circles from connections:', circles.length);
     
     // OPTIMIZATION: Batch fetch all unique owner IDs
     const uniqueOwnerIds = [...new Set(circles.map(circle => circle.owner))];

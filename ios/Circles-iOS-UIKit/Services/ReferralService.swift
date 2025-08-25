@@ -91,7 +91,7 @@ class ReferralService {
     // MARK: - Share Referral Link
     
     func shareReferralLink(code: String, from viewController: UIViewController) {
-        let appStoreLink = "https://apps.apple.com/app/circles/id6450318599"
+        let appStoreLink = "https://apps.apple.com/us/app/favcircles/id6746807095"
         let message = """
         Join me on Circles! 🌟
         

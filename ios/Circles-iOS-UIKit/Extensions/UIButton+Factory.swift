@@ -164,6 +164,10 @@ extension UIButton {
             button.setTitleColor(.label, for: .normal)
             button.backgroundColor = .systemGray5
             button.isEnabled = false
+        case .following:
+            button.setTitleColor(.systemGray, for: .normal)
+            button.backgroundColor = .systemGray5
+            button.layer.borderWidth = 0
         }
         
         return button
@@ -186,6 +190,7 @@ extension UIButton {
         case secondary
         case danger
         case disabled
+        case following
     }
     
     // MARK: - Convenience Methods
@@ -236,6 +241,10 @@ extension UIButton {
             self.backgroundColor = .systemGray5
             self.layer.borderWidth = 0
             self.isEnabled = false
+        case .following:
+            self.setTitleColor(.systemGray, for: .normal)
+            self.backgroundColor = .systemGray5
+            self.layer.borderWidth = 0
         }
     }
 }

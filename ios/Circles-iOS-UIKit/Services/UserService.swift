@@ -91,7 +91,7 @@ class UserService {
         }
     }
     
-    func updateUserProfile(displayName: String? = nil, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, bio: String? = nil, location: String? = nil, profilePicture: Data? = nil, completion: @escaping (Result<User, Error>) -> Void) {
+    func updateUserProfile(displayName: String? = nil, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, bio: String? = nil, location: String? = nil, zipcode: String? = nil, profilePicture: Data? = nil, completion: @escaping (Result<User, Error>) -> Void) {
         
         // First check if we need to upload an image
         if let imageData = profilePicture {
@@ -99,18 +99,18 @@ class UserService {
                 switch result {
                 case .success(let imageUrl):
                     // Now update the profile with the image URL
-                    self?.performUpdateProfile(displayName: displayName, firstName: firstName, lastName: lastName, phoneNumber: phoneNumber, bio: bio, location: location, profilePictureUrl: imageUrl, completion: completion)
+                    self?.performUpdateProfile(displayName: displayName, firstName: firstName, lastName: lastName, phoneNumber: phoneNumber, bio: bio, location: location, zipcode: zipcode, profilePictureUrl: imageUrl, completion: completion)
                 case .failure(let error):
                     completion(.failure(error))
                 }
             }
         } else {
             // Update profile without changing image
-            performUpdateProfile(displayName: displayName, firstName: firstName, lastName: lastName, phoneNumber: phoneNumber, bio: bio, location: location, profilePictureUrl: nil, completion: completion)
+            performUpdateProfile(displayName: displayName, firstName: firstName, lastName: lastName, phoneNumber: phoneNumber, bio: bio, location: location, zipcode: zipcode, profilePictureUrl: nil, completion: completion)
         }
     }
     
-    private func performUpdateProfile(displayName: String?, firstName: String?, lastName: String?, phoneNumber: String?, bio: String?, location: String?, profilePictureUrl: String?, completion: @escaping (Result<User, Error>) -> Void) {
+    private func performUpdateProfile(displayName: String?, firstName: String?, lastName: String?, phoneNumber: String?, bio: String?, location: String?, zipcode: String?, profilePictureUrl: String?, completion: @escaping (Result<User, Error>) -> Void) {
         
         var body: [String: Any] = [:]
         
@@ -139,6 +139,10 @@ class UserService {
             body["location"] = location
         }
         
+        if let zipcode = zipcode {
+            body["zipcode"] = zipcode
+        }
+        
         if let profilePictureUrl = profilePictureUrl {
             body["profilePicture"] = profilePictureUrl
         }
@@ -151,6 +155,7 @@ class UserService {
         print("   - phoneNumber: \(body["phoneNumber"] ?? "nil")")
         print("   - bio: \(body["bio"] ?? "nil")")
         print("   - location: \(body["location"] ?? "nil")")
+        print("   - zipcode: \(body["zipcode"] ?? "nil")")
         print("   - profilePicture: \(body["profilePicture"] ?? "nil")")
         
         // Only proceed if there are changes to make
@@ -445,7 +450,10 @@ class UserService {
         case .noInternet, .requestFailed, .invalidURL, .invalidResponse, .decodingFailed, .duplicateRequest:
             return .networkError(error)
             
-        case .serverError, .unknown:
+        case .rateLimited:
+            return .networkError(error)
+            
+        case .serverError, .unknown, .processingFailed, .processingTimeout:
             return .unknown
         }
     }

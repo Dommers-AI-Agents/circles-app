@@ -6,10 +6,32 @@ const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     console.warn(`⚠️ Validation errors on ${req.path}:`, errors.array());
+    
+    // Group errors by field for better client-side handling
+    const fieldErrors = {};
+    const errorArray = errors.array();
+    
+    errorArray.forEach(error => {
+      const field = error.path || error.param;
+      if (!fieldErrors[field]) {
+        fieldErrors[field] = [];
+      }
+      fieldErrors[field].push(error.msg);
+    });
+    
+    // Create a user-friendly message based on the first error
+    let userMessage = 'Validation failed';
+    if (errorArray.length > 0) {
+      const firstError = errorArray[0];
+      const field = firstError.path || firstError.param;
+      userMessage = `${field}: ${firstError.msg}`;
+    }
+    
     return res.status(400).json({
       success: false,
-      message: 'Invalid input data',
-      errors: errors.array()
+      message: userMessage,
+      errors: fieldErrors,
+      rawErrors: errorArray // Keep raw errors for backwards compatibility
     });
   }
   next();
@@ -20,12 +42,33 @@ exports.validateUserRegistration = [
   body('email')
     .isEmail()
     .normalizeEmail()
-    .withMessage('Valid email is required'),
+    .withMessage('Please enter a valid email address'),
   body('password')
-    .isLength({ min: 8 })
-    .withMessage('Password must be at least 8 characters long')
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
-    .withMessage('Password must contain at least one uppercase letter, one lowercase letter, and one number'),
+    .custom((value) => {
+      const errors = [];
+      
+      if (!value || value.length < 8) {
+        errors.push('Password must be at least 8 characters long');
+      }
+      
+      if (value && !/[A-Z]/.test(value)) {
+        errors.push('Password must contain at least one uppercase letter');
+      }
+      
+      if (value && !/[a-z]/.test(value)) {
+        errors.push('Password must contain at least one lowercase letter');
+      }
+      
+      if (value && !/\d/.test(value)) {
+        errors.push('Password must contain at least one number');
+      }
+      
+      if (errors.length > 0) {
+        throw new Error(errors.join(', '));
+      }
+      
+      return true;
+    }),
   body('displayName')
     .trim()
     .isLength({ min: 2, max: 50 })

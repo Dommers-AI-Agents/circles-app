@@ -54,9 +54,14 @@ class CircleCell: UICollectionViewCell {
     private let activityIndicatorView: UIView = {
         let view = UIView()
         view.backgroundColor = .systemRed
-        view.layer.cornerRadius = 4
+        view.layer.cornerRadius = 5
         view.translatesAutoresizingMaskIntoConstraints = false
         view.isHidden = true
+        // Add a subtle pulsing animation for better visibility
+        view.layer.shadowColor = UIColor.systemRed.cgColor
+        view.layer.shadowOffset = CGSize(width: 0, height: 0)
+        view.layer.shadowRadius = 3
+        view.layer.shadowOpacity = 0.8
         return view
     }()
     
@@ -105,11 +110,11 @@ class CircleCell: UICollectionViewCell {
             privacyImageView.widthAnchor.constraint(equalToConstant: 20),
             privacyImageView.heightAnchor.constraint(equalToConstant: 20),
             
-            // Activity indicator in top left corner
+            // Activity indicator in top left corner (made slightly bigger for better visibility)
             activityIndicatorView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 8),
             activityIndicatorView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
-            activityIndicatorView.widthAnchor.constraint(equalToConstant: 8),
-            activityIndicatorView.heightAnchor.constraint(equalToConstant: 8)
+            activityIndicatorView.widthAnchor.constraint(equalToConstant: 10),
+            activityIndicatorView.heightAnchor.constraint(equalToConstant: 10)
         ])
         
         // Set initial corner radius based on expected size
@@ -141,7 +146,15 @@ class CircleCell: UICollectionViewCell {
         placeCountLabel.text = "\(placeCount) \(placeCount == 1 ? "place" : "places")"
         
         // Show/hide activity indicator based on hasNewPlaces
-        activityIndicatorView.isHidden = !(circle.hasNewPlaces ?? false)
+        let hasNew = circle.hasNewPlaces ?? false
+        activityIndicatorView.isHidden = !hasNew
+        
+        // Add pulsing animation if there are new places
+        if hasNew {
+            addPulsingAnimation()
+        } else {
+            removePulsingAnimation()
+        }
         
         // Set privacy icon
         switch circle.privacy {
@@ -191,9 +204,70 @@ class CircleCell: UICollectionViewCell {
         layoutIfNeeded()
     }
     
+    // MARK: - Animation Methods
+    
+    private func addPulsingAnimation() {
+        // Create a pulsing animation for the new indicator
+        let pulseAnimation = CABasicAnimation(keyPath: "transform.scale")
+        pulseAnimation.fromValue = 1.0
+        pulseAnimation.toValue = 1.3
+        pulseAnimation.duration = 0.6
+        pulseAnimation.autoreverses = true
+        pulseAnimation.repeatCount = .infinity
+        pulseAnimation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        
+        activityIndicatorView.layer.add(pulseAnimation, forKey: "pulse")
+    }
+    
+    private func removePulsingAnimation() {
+        activityIndicatorView.layer.removeAnimation(forKey: "pulse")
+    }
+    
+    // MARK: - Drag & Drop Visual States
+    
+    /// Set visual state for when this cell is being dragged
+    func setDragState(_ isDragging: Bool) {
+        UIView.animate(withDuration: 0.2, delay: 0, options: [.allowUserInteraction]) {
+            if isDragging {
+                self.transform = CGAffineTransform(scaleX: 1.1, y: 1.1)
+                self.alpha = 0.8
+                self.layer.shadowColor = UIColor.black.cgColor
+                self.layer.shadowOpacity = 0.3
+                self.layer.shadowOffset = CGSize(width: 0, height: 4)
+                self.layer.shadowRadius = 8
+            } else {
+                self.transform = .identity
+                self.alpha = 1.0
+                self.layer.shadowOpacity = 0
+            }
+        }
+    }
+    
+    /// Set visual state for when another item is being dragged over this cell
+    func setDropTargetState(_ isDropTarget: Bool) {
+        UIView.animate(withDuration: 0.2) {
+            if isDropTarget {
+                self.containerView.layer.borderWidth = 3
+                self.containerView.layer.borderColor = Constants.Colors.primary.cgColor
+                self.transform = CGAffineTransform(scaleX: 1.05, y: 1.05)
+            } else {
+                self.containerView.layer.borderWidth = 0
+                self.transform = .identity
+            }
+        }
+    }
+    
     // MARK: - Reuse
     override func prepareForReuse() {
         super.prepareForReuse()
+        
+        // Reset visual state
+        transform = .identity
+        alpha = 1.0
+        layer.shadowOpacity = 0
+        containerView.layer.borderWidth = 0
+        
+        // Reset content
         coverImageView.image = nil
         nameLabel.text = nil
         placeCountLabel.text = nil

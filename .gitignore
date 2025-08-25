@@ -132,3 +132,4 @@ backend/update*
 # Planning documents
 LOCATION_TRACKING_PLAN.md
 PERFORMANCE_OPTIMIZATION_SUMMARY.md
+.gitignored-backup/

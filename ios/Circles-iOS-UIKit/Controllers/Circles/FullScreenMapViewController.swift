@@ -12,7 +12,7 @@ enum MapViewMode {
 }
 
 
-class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
+class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableViewDelegate {
     
     // MARK: - Properties
     private var places: [Place]
@@ -247,6 +247,12 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
             ($0.connectedUser?.displayName ?? "").localizedCaseInsensitiveCompare($1.connectedUser?.displayName ?? "") == .orderedAscending
         }
         self.connectionPlaces = connectionPlaces
+        
+        // If we have a selected connection filter and now have the data, we should re-zoom
+        if selectedConnectionId != nil && selectedConnectionId != "my_places_only" {
+            // Reset the zoom flag to allow proper zooming to filtered places
+            hasInitiallyZoomed = false
+        }
         
         // Reload connection table if visible
         if viewMode == .allPlaces {
@@ -514,56 +520,26 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
     
     private func adjustMapRegion() {
         // Prevent concurrent adjustments
-        guard !isAdjustingRegion else { return }
+        guard !isAdjustingRegion else { 
+            print("📍 adjustMapRegion: Skipping - already adjusting")
+            return 
+        }
         isAdjustingRegion = true
         
-        // Get user location
-        let userLocation = locationManager.location ?? mapView.userLocation.location
+        print("📍 adjustMapRegion called:")
+        print("  - selectedConnectionId: \(selectedConnectionId ?? "nil")")
+        print("  - selectedCategory: \(selectedCategory?.displayName ?? "nil")")
+        print("  - filteredPlaces.count: \(filteredPlaces.count)")
+        print("  - hasInitiallyZoomed: \(hasInitiallyZoomed)")
         
-        if let userLocation = userLocation {
-            // Start with 25 mile radius (40233.6 meters)
-            let initialRadius: CLLocationDistance = 40233.6
-            
-            // Count places within initial radius
-            let placesWithinRadius = filteredPlaces.filter { place in
-                guard let placeLocation = place.location?.clLocation else { return false }
-                return userLocation.distance(from: placeLocation) <= initialRadius
-            }
-            
-            if placesWithinRadius.count >= 10 || filteredPlaces.count <= 10 {
-                // Show 25 mile radius or all places if less than 10 total
-                let region = MKCoordinateRegion(
-                    center: userLocation.coordinate,
-                    latitudinalMeters: initialRadius * 2,
-                    longitudinalMeters: initialRadius * 2
-                )
-                mapView.setRegion(region, animated: !hasInitiallyZoomed)
-                hasInitiallyZoomed = true
-            } else {
-                // Expand radius to show at least 10 closest places
-                let sortedPlaces = filteredPlaces
-                    .compactMap { place -> (place: Place, distance: CLLocationDistance)? in
-                        guard let placeLocation = place.location?.clLocation else { return nil }
-                        return (place, userLocation.distance(from: placeLocation))
-                    }
-                    .sorted { $0.distance < $1.distance }
-                
-                // Get the 10th closest place (or last if less than 10)
-                let targetIndex = min(9, sortedPlaces.count - 1)
-                if targetIndex >= 0 {
-                    let requiredRadius = sortedPlaces[targetIndex].distance * 1.2 // Add 20% padding
-                    
-                    let region = MKCoordinateRegion(
-                        center: userLocation.coordinate,
-                        latitudinalMeters: requiredRadius * 2,
-                        longitudinalMeters: requiredRadius * 2
-                    )
-                    mapView.setRegion(region, animated: !hasInitiallyZoomed)
-                    hasInitiallyZoomed = true
-                }
-            }
-        } else if filteredPlaces.count > 0 {
-            // No user location - show all places
+        // If a specific connection is selected, always zoom to show their places
+        let shouldZoomToFilteredPlaces = (selectedConnectionId != nil && selectedConnectionId != "my_places_only") || 
+                                        selectedCategory != nil
+        
+        print("  - shouldZoomToFilteredPlaces: \(shouldZoomToFilteredPlaces)")
+        
+        if shouldZoomToFilteredPlaces && filteredPlaces.count > 0 {
+            // Zoom to show all filtered places
             var coordinates: [CLLocationCoordinate2D] = []
             for place in filteredPlaces {
                 if let location = place.location?.clLocation {
@@ -571,8 +547,10 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
                 }
             }
             
+            print("  - Coordinates for zoom: \(coordinates.count)")
+            
             if !coordinates.isEmpty {
-                // Calculate center and span to show all places
+                // Calculate center and span to show all filtered places
                 let minLat = coordinates.map { $0.latitude }.min() ?? 0
                 let maxLat = coordinates.map { $0.latitude }.max() ?? 0
                 let minLon = coordinates.map { $0.longitude }.min() ?? 0
@@ -583,14 +561,97 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate {
                     longitude: (minLon + maxLon) / 2
                 )
                 
+                // Add padding to the span
+                let latDelta = max((maxLat - minLat) * 1.3, 0.01) // Minimum span of 0.01
+                let lonDelta = max((maxLon - minLon) * 1.3, 0.01)
+                
                 let span = MKCoordinateSpan(
-                    latitudeDelta: (maxLat - minLat) * 1.3,
-                    longitudeDelta: (maxLon - minLon) * 1.3
+                    latitudeDelta: latDelta,
+                    longitudeDelta: lonDelta
                 )
                 
+                print("  - Setting region to center: \(center), span: \(span)")
+                
                 let region = MKCoordinateRegion(center: center, span: span)
-                mapView.setRegion(region, animated: !hasInitiallyZoomed)
+                mapView.setRegion(region, animated: true)
                 hasInitiallyZoomed = true
+            }
+        } else {
+            // Get user location for default behavior
+            let userLocation = locationManager.location ?? mapView.userLocation.location
+            
+            if let userLocation = userLocation {
+                // Start with 25 mile radius (40233.6 meters)
+                let initialRadius: CLLocationDistance = 40233.6
+                
+                // Count places within initial radius
+                let placesWithinRadius = filteredPlaces.filter { place in
+                    guard let placeLocation = place.location?.clLocation else { return false }
+                    return userLocation.distance(from: placeLocation) <= initialRadius
+                }
+                
+                if placesWithinRadius.count >= 10 || filteredPlaces.count <= 10 {
+                    // Show 25 mile radius or all places if less than 10 total
+                    let region = MKCoordinateRegion(
+                        center: userLocation.coordinate,
+                        latitudinalMeters: initialRadius * 2,
+                        longitudinalMeters: initialRadius * 2
+                    )
+                    mapView.setRegion(region, animated: !hasInitiallyZoomed)
+                    hasInitiallyZoomed = true
+                } else {
+                    // Expand radius to show at least 10 closest places
+                    let sortedPlaces = filteredPlaces
+                        .compactMap { place -> (place: Place, distance: CLLocationDistance)? in
+                            guard let placeLocation = place.location?.clLocation else { return nil }
+                            return (place, userLocation.distance(from: placeLocation))
+                        }
+                        .sorted { $0.distance < $1.distance }
+                    
+                    // Get the 10th closest place (or last if less than 10)
+                    let targetIndex = min(9, sortedPlaces.count - 1)
+                    if targetIndex >= 0 {
+                        let requiredRadius = sortedPlaces[targetIndex].distance * 1.2 // Add 20% padding
+                        
+                        let region = MKCoordinateRegion(
+                            center: userLocation.coordinate,
+                            latitudinalMeters: requiredRadius * 2,
+                            longitudinalMeters: requiredRadius * 2
+                        )
+                        mapView.setRegion(region, animated: !hasInitiallyZoomed)
+                        hasInitiallyZoomed = true
+                    }
+                }
+            } else if filteredPlaces.count > 0 {
+                // No user location - show all places
+                var coordinates: [CLLocationCoordinate2D] = []
+                for place in filteredPlaces {
+                    if let location = place.location?.clLocation {
+                        coordinates.append(location.coordinate)
+                    }
+                }
+                
+                if !coordinates.isEmpty {
+                    // Calculate center and span to show all places
+                    let minLat = coordinates.map { $0.latitude }.min() ?? 0
+                    let maxLat = coordinates.map { $0.latitude }.max() ?? 0
+                    let minLon = coordinates.map { $0.longitude }.min() ?? 0
+                    let maxLon = coordinates.map { $0.longitude }.max() ?? 0
+                    
+                    let center = CLLocationCoordinate2D(
+                        latitude: (minLat + maxLat) / 2,
+                        longitude: (minLon + maxLon) / 2
+                    )
+                    
+                    let span = MKCoordinateSpan(
+                        latitudeDelta: (maxLat - minLat) * 1.3,
+                        longitudeDelta: (maxLon - minLon) * 1.3
+                    )
+                    
+                    let region = MKCoordinateRegion(center: center, span: span)
+                    mapView.setRegion(region, animated: !hasInitiallyZoomed)
+                    hasInitiallyZoomed = true
+                }
             }
         }
         
@@ -1256,7 +1317,7 @@ extension FullScreenMapViewController: UITableViewDataSource {
 }
 
 // MARK: - UITableViewDelegate
-extension FullScreenMapViewController: UITableViewDelegate {
+extension FullScreenMapViewController {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         if tableView == categoryTableView {
             if indexPath.row == 0 {

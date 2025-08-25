@@ -60,6 +60,7 @@ const taskRoutes = require('./routes/taskRoutes');
 const visitRoutes = require('./routes/visitRoutes');
 const checkInRoutes = require('./routes/checkInRoutes');
 const videoRoutes = require('./routes/videoRoutes');
+const notificationTestRoutes = require('./routes/notificationTestRoutes');
 
 // Import Firebase Place controller for circle-specific routes
 const { getPlacesByCircleId, getPlacesByCircleIdPublic, reorderPlacesInCircle } = require('./controllers/firebasePlaceController');
@@ -190,6 +191,12 @@ app.get('/share/video/:videoId', (req, res) => {
 app.use('/api/users/subscription', require('./routes/subscriptionRoutes'));
 app.use('/api/users/referral', require('./routes/referralRoutes'));
 app.use('/api/home', require('./routes/dashboardRoutes'));
+
+// Notification test routes (development only)
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/api/notifications/test', notificationTestRoutes);
+  console.log('🔔 Notification test routes enabled at /api/notifications/test/*');
+}
 
 // LinkedIn OAuth callback route (outside /api prefix)
 const linkedinCallback = require('./routes/linkedinCallback');

@@ -88,6 +88,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     // Suggested users overlay
     private var suggestedUsersOverlay: SuggestedUsersOverlayView?
     private var visitTrackingPermissionOverlay: VisitTrackingPermissionView?
+    private var addPlaceTutorialOverlay: AddFirstPlaceTutorialView?
+    
+    // Welcome tour tracking
+    private var isShowingWelcomeTour = false
     
     // Reaction picker tracking
     private var currentReactionActivity: Activity?
@@ -563,6 +567,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     private var isLoadingActivities = false
     private var activityTableHeightConstraint: NSLayoutConstraint?
     
+    // Daily Summary Properties
+    private var dailySummaryCard: DailySummaryCardView?
+    private var hasDailySummaryData = false
+    
     // Reels Properties
     private var reels: [PlaceVideo] = []
     private var isLoadingReels = false
@@ -573,6 +581,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     // Suggested Users Overlay
     private var hasCheckedForSuggestedUsers = false
     private var hasCheckedTutorialAndOverlay = false
+    private var tutorialCheckRetryCount = 0
+    private let maxTutorialCheckRetries = 3
     
     // Pagination properties
     private var currentOffset = 0
@@ -597,12 +607,29 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }()
     
     // Segmented control for Activity/Moments tabs
-    private let contentSegmentedControl: UISegmentedControl = {
+    let contentSegmentedControl: UISegmentedControl = {
         let items = ["Activity", "Moments"]
         let control = UISegmentedControl(items: items)
         control.selectedSegmentIndex = 0
         control.translatesAutoresizingMaskIntoConstraints = false
         return control
+    }()
+    
+    // Camera button for Moments tab
+    private let momentsCameraButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.backgroundColor = Constants.Colors.primary
+        button.tintColor = .white
+        button.setImage(UIImage(systemName: "video.fill"), for: .normal)
+        button.layer.cornerRadius = 28
+        button.isHidden = true // Hidden by default, shown when Moments tab is selected
+        button.translatesAutoresizingMaskIntoConstraints = false
+        // Add shadow for better visibility over the segment
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOpacity = 0.2
+        button.layer.shadowOffset = CGSize(width: 0, height: 2)
+        button.layer.shadowRadius = 3
+        return button
     }()
     
     private let activityTableView: UITableView = {
@@ -636,6 +663,15 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     // Track current video index for auto-play
     private var currentReelIndex = 0
     private var reelPlayers: [Int: AVPlayer] = [:]
+    
+    // Track video loading states to prevent index misalignment
+    enum VideoLoadState {
+        case notLoaded
+        case loading
+        case ready
+        case failed
+    }
+    private var reelVideoStates: [Int: VideoLoadState] = [:]
     
     private let activityEmptyStateLabel: UILabel = {
         let label = UILabel()
@@ -727,6 +763,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         print("🟡 Instance: \(ObjectIdentifier(self))")
         
         setupUI()
+        setupNavigationBar()
         setupNotifications()
         setupSearchBar()
         setupDropdownViews()
@@ -842,6 +879,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Update navigation bar for subscription status
         updateNavigationBarForSubscription()
         
+        // Check for daily summary data
+        checkForDailySummary()
+        
         // Ensure Activity tab is selected when returning to home
         if contentSegmentedControl.selectedSegmentIndex != 0 {
             contentSegmentedControl.selectedSegmentIndex = 0
@@ -954,18 +994,53 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
         hasCheckedTutorialAndOverlay = true
         
-        // First check if user has 0 connections - show suggested users overlay if so
-        let connectionCount = NetworkManager.shared.connections.count
-        print("🔍 checkTutorialAndOverlay - Connection count: \(connectionCount)")
+        // If no relationship data has loaded yet, wait a bit longer for async data
+        let hasAnyLoadedData = NetworkManager.shared.connections.count > 0 || 
+                              NetworkManager.shared.pendingConnections.count > 0 || 
+                              userListView.connectionCount > 0
         
-        if connectionCount == 0 {
-            print("✅ User has 0 connections - checking if should show overlay")
-            // For users with 0 connections, always show the overlay unless they've explicitly dismissed it this session
-            // Reset the flag for users with 0 connections to ensure they see it
+        if !hasAnyLoadedData && tutorialCheckRetryCount < maxTutorialCheckRetries {
+            tutorialCheckRetryCount += 1
+            print("🔍 No relationship data loaded yet, scheduling retry \(tutorialCheckRetryCount)/\(maxTutorialCheckRetries) in 2 seconds")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                // Reset flag and try again with hopefully loaded data
+                self?.hasCheckedTutorialAndOverlay = false
+                self?.checkTutorialAndOverlay()
+            }
+            return
+        }
+        
+        // First check if user has 0 total relationships (connections + following + pending) - show suggested users overlay if so
+        let acceptedConnectionCount = NetworkManager.shared.connections.count
+        let pendingConnectionCount = NetworkManager.shared.pendingConnections.count
+        let horizontalViewCount = userListView.connectionCount
+        
+        // Total relationships = accepted connections + following relationships (from horizontal view)
+        // We also count pending connections as proof the user isn't "new"
+        let totalRelationshipCount = acceptedConnectionCount + horizontalViewCount + pendingConnectionCount
+        
+        print("🔍 checkTutorialAndOverlay - Accepted connections: \(acceptedConnectionCount), Following: \(horizontalViewCount), Pending: \(pendingConnectionCount), Total: \(totalRelationshipCount)")
+        
+        // Additional safety check: also check user profile counts as backup
+        let currentUser = AuthService.shared.currentUser
+        let profileFollowingCount = currentUser?.followingCount ?? 0
+        let profileConnectionsCount = currentUser?.connectionsCount ?? 0
+        let profileTotalRelationships = profileFollowingCount + profileConnectionsCount
+        
+        print("🔍 Profile backup check - Following: \(profileFollowingCount), Connections: \(profileConnectionsCount), Profile total: \(profileTotalRelationships)")
+        
+        // Only show overlay if BOTH the loaded data AND profile data indicate no relationships
+        let shouldConsiderAsNewUser = totalRelationshipCount == 0 && profileTotalRelationships == 0
+        
+        if shouldConsiderAsNewUser {
+            print("✅ User has 0 total relationships in both loaded data and profile - checking if should show overlay")
+            // For users with 0 total relationships, always show the overlay unless they've explicitly dismissed it this session
+            // Reset the flag for users with 0 relationships to ensure they see it
             if !hasCheckedForSuggestedUsers {
-                // Enable the overlay for users with 0 connections
+                hasCheckedForSuggestedUsers = true  // Set the flag to prevent repeated showing
+                // Enable the overlay for users with 0 relationships
                 OnboardingManager.shared.enableSuggestedUsersOverlay()
-                print("✅ Enabled suggested users overlay for user with 0 connections")
+                print("✅ Enabled suggested users overlay for user with 0 relationships")
             }
             
             if OnboardingManager.shared.shouldShowSuggestedUsers {
@@ -975,6 +1050,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             } else {
                 print("❌ Suggested users overlay disabled in settings")
             }
+        } else {
+            print("✅ User has relationships (loaded: \(totalRelationshipCount), profile: \(profileTotalRelationships)) - skipping new user overlay")
         }
         
         // Check tutorial status from backend
@@ -1044,6 +1121,71 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
+    private func showAddPlaceTutorialIfNeeded() {
+        // Check if should show add place tutorial
+        guard OnboardingManager.shared.shouldShowAddPlaceTutorial() else {
+            // Continue with visit tracking permission
+            showVisitTrackingPermissionIfNeeded()
+            return
+        }
+        
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            // Don't show if already showing
+            guard self.addPlaceTutorialOverlay == nil else { return }
+            
+            let overlay = AddFirstPlaceTutorialView()
+            overlay.delegate = self
+            self.addPlaceTutorialOverlay = overlay
+            
+            // Show overlay with the Add Place button as target
+            overlay.show(in: self.view, targetButton: self.quickAddPlaceButton)
+        }
+    }
+    
+    // MARK: - Forced Display Methods (for Welcome Tour)
+    
+    private func forceShowSuggestedUsersOverlay() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            // Dismiss any existing overlay first
+            if let existingOverlay = self.suggestedUsersOverlay {
+                existingOverlay.dismiss()
+                self.suggestedUsersOverlay = nil
+            }
+            
+            // Create and show new overlay without any checks
+            let overlay = SuggestedUsersOverlayView()
+            overlay.delegate = self
+            self.suggestedUsersOverlay = overlay
+            
+            // Show overlay
+            overlay.show(in: self.view)
+        }
+    }
+    
+    private func forceShowAddPlaceTutorial() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            // Dismiss any existing overlay first
+            if let existingOverlay = self.addPlaceTutorialOverlay {
+                existingOverlay.dismiss()
+                self.addPlaceTutorialOverlay = nil
+            }
+            
+            // Create and show new overlay without any checks
+            let overlay = AddFirstPlaceTutorialView()
+            overlay.delegate = self
+            self.addPlaceTutorialOverlay = overlay
+            
+            // Show overlay with the Add Place button as target
+            overlay.show(in: self.view, targetButton: self.quickAddPlaceButton)
+        }
+    }
+    
     private func showVisitTrackingPermissionIfNeeded() {
         // Check if should show visit tracking permission
         guard OnboardingManager.shared.shouldShowVisitTrackingPermission() else {
@@ -1092,36 +1234,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         navigationItem.largeTitleDisplayMode = .never
         // Removed redundant title - tab bar already shows "My Circles"
         
-        // Setup navigation bar
-        // Create check-in button
-        let checkInButton = UIBarButtonItem(image: UIImage(systemName: "checkmark.circle"), style: .plain, target: self, action: #selector(checkInButtonTapped))
-        
-        // Create notification button with bell icon
-        let notificationButton = UIBarButtonItem(image: UIImage(systemName: "bell"), style: .plain, target: self, action: #selector(notificationButtonTapped))
-        self.notificationBarButton = notificationButton
-        
         // Create custom view for notification button with badge
         setupNotificationBadge()
-        
-        // Create upgrade button for free users
-        var rightBarButtons = [checkInButton, notificationButton]
-        
-        // Check if user is not subscribed
-        Task { @MainActor in
-            if !SubscriptionManager.shared.isSubscribed {
-                let upgradeButton = UIBarButtonItem(
-                    image: UIImage(systemName: "crown.fill"),
-                    style: .plain,
-                    target: self,
-                    action: #selector(upgradeButtonTapped)
-                )
-                upgradeButton.tintColor = Constants.Colors.primary
-                rightBarButtons.insert(upgradeButton, at: 0) // Add as first button
-                navigationItem.rightBarButtonItems = rightBarButtons
-            } else {
-                navigationItem.rightBarButtonItems = rightBarButtons
-            }
-        }
         
         // Setup empty state view
         emptyStateView.addSubview(emptyStateImageView)
@@ -1175,6 +1289,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         contentView.addSubview(activityFeedSection)
         activityFeedSection.addSubview(activityHeaderLabel)
         activityFeedSection.addSubview(contentSegmentedControl)
+        activityFeedSection.addSubview(momentsCameraButton)
         activityFeedSection.addSubview(activityTableView)
         activityFeedSection.addSubview(reelsCollectionView)
         activityFeedSection.addSubview(activityEmptyStateLabel)
@@ -1182,6 +1297,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Ensure loading container is on top
         activityFeedSection.bringSubviewToFront(activityLoadingContainer)
+        // Ensure camera button is on top of segmented control
+        activityFeedSection.bringSubviewToFront(momentsCameraButton)
         
         // Add loading container
         view.addSubview(loadingContainerView)
@@ -1198,9 +1315,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Add search results table view
         view.addSubview(searchResultsTableView)
         
-        // Add floating record button (for Reels tab)
+        // Add floating record button (for Reels tab) - now hidden in favor of camera button
         view.addSubview(floatingRecordButton)
         floatingRecordButton.addTarget(self, action: #selector(recordReelTapped), for: .touchUpInside)
+        floatingRecordButton.isHidden = true // Always hidden now that we have the camera button
+        
+        // Add action to camera button
+        momentsCameraButton.addTarget(self, action: #selector(recordReelTapped), for: .touchUpInside)
         
         // Bring elements to proper z-order - filters and expand button above map
         contentView.bringSubviewToFront(filterContainer)
@@ -1434,10 +1555,16 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             activityHeaderLabel.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor, constant: Constants.Spacing.medium),
             activityHeaderLabel.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor, constant: -Constants.Spacing.medium),
             
-            // Segmented control
+            // Segmented control - full width
             contentSegmentedControl.topAnchor.constraint(equalTo: activityHeaderLabel.bottomAnchor, constant: Constants.Spacing.small),
             contentSegmentedControl.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor, constant: Constants.Spacing.medium),
             contentSegmentedControl.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor, constant: -Constants.Spacing.medium),
+            
+            // Camera button for Moments - overlay on the right side of Moments segment
+            momentsCameraButton.centerYAnchor.constraint(equalTo: contentSegmentedControl.centerYAnchor),
+            momentsCameraButton.trailingAnchor.constraint(equalTo: contentSegmentedControl.trailingAnchor, constant: -5),
+            momentsCameraButton.widthAnchor.constraint(equalToConstant: 56),
+            momentsCameraButton.heightAnchor.constraint(equalToConstant: 56),
             
             // Activity table view
             activityTableView.topAnchor.constraint(equalTo: contentSegmentedControl.bottomAnchor, constant: Constants.Spacing.small),
@@ -1735,9 +1862,15 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Set circles and places
         self.circles = data.circles
         
+        // Set activities and moments from preloaded data
+        self.activities = data.activities
+        self.reels = data.moments
+        
         print("📍 usePreloadedData: Got \(data.circles.count) circles")
         print("📍 usePreloadedData: Got \(data.allPlaces.count) places (INCOMPLETE!)")
         print("📍 usePreloadedData: Got \(data.connections.count) connections")
+        print("📍 usePreloadedData: Got \(data.activities.count) activities")
+        print("📍 usePreloadedData: Got \(data.moments.count) moments")
         print("📍 usePreloadedData: Should have 124 places according to profile")
         
         // Don't set initial connections from preloaded data since they don't have message timestamps
@@ -1778,10 +1911,23 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             // Update empty state visibility
             self.updateEmptyState()
             
+            // Reload activity and moments UI if we have data
+            if !self.activities.isEmpty {
+                self.activityTableView.reloadData()
+                self.activityLoadingContainer.isHidden = true
+                self.activityEmptyStateLabel.isHidden = true
+            }
+            
+            if !self.reels.isEmpty {
+                self.reelsCollectionView.reloadData()
+            }
+            
             print("✅ Preloaded data applied successfully")
             print("   - Circles: \(self.circles.count)")
             print("   - Places: \(self.allPlaces.count) (INCOMPLETE - need to fetch all)")
             print("   - Filtered places: \(self.filteredPlaces.count)")
+            print("   - Activities: \(self.activities.count)")
+            print("   - Moments: \(self.reels.count)")
             
             // Now fetch ALL places from circles
             self.fetchAllPlacesFromCircles()
@@ -1792,6 +1938,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     @objc private func refreshActivityFeed() {
         // Refresh the horizontal user list
         userListView.refresh()
+        
+        // Check for daily summary data
+        checkForDailySummary()
         
         // Refresh content based on selected tab
         if contentSegmentedControl.selectedSegmentIndex == 0 {
@@ -1808,14 +1957,14 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    @objc private func contentSegmentChanged() {
+    @objc func contentSegmentChanged() {
         let selectedIndex = contentSegmentedControl.selectedSegmentIndex
         
         if selectedIndex == 0 {
             // Show Activity feed
             activityTableView.isHidden = false
             reelsCollectionView.isHidden = true
-            floatingRecordButton.isHidden = true
+            momentsCameraButton.isHidden = true
             activityHeaderLabel.text = "Recent Activity"
             
             // Pause any playing videos
@@ -1848,16 +1997,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 reelsCollectionView.scrollToItem(at: firstIndexPath, at: .top, animated: false)
             }
             
-            floatingRecordButton.isHidden = false
+            momentsCameraButton.isHidden = false
             activityHeaderLabel.text = "Moments"
             
-            // Load reels if needed
-            if reels.isEmpty {
-                fetchReels()
-            } else {
-                // Start playing the current video if we already have reels
-                playVideo(at: currentReelIndex)
-            }
+            // Always refresh reels when switching to Moments tab to get latest videos
+            fetchReels()
+            
+            // Note: fetchReels will handle playing the first video after loading
         }
     }
     
@@ -1960,8 +2106,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         activityLoadingIndicator.stopAnimating()
         activityLoadingContainer.isHidden = true
         
-        // Show table view
-        activityTableView.isHidden = false
+        // Only show table view if Activity tab is selected
+        if contentSegmentedControl.selectedSegmentIndex == 2 {
+            activityTableView.isHidden = false
+        }
         
         // Update empty state
         activityEmptyStateLabel.isHidden = !activities.isEmpty
@@ -2001,6 +2149,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             activityEmptyStateLabel.isHidden = true
             reelsOffset = 0
             hasMoreReels = true
+            
+            // Clear existing players and states when loading fresh data
+            for player in reelPlayers.values {
+                player.pause()
+            }
+            reelPlayers.removeAll()
+            reelVideoStates.removeAll()
         }
         
         let offset = loadMore ? reelsOffset : 0
@@ -2041,7 +2196,32 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     
                 case .failure(let error):
                     print("❌ Error fetching reels: \(error)")
-                    if !loadMore {
+                    
+                    // Handle specific error types gracefully
+                    var isHandledError = false
+                    
+                    if case APIError.serverError = error {
+                        // Check if this is the "too many disjunctions" error
+                        let errorString = error.localizedDescription
+                        if errorString.contains("Too many disjunctions") || errorString.contains("32 disjunctions") {
+                            print("🔍 Detected Firestore disjunction limit error - showing user-friendly message")
+                            
+                            if !loadMore {
+                                self.showFirestoreQueryLimitError()
+                                isHandledError = true
+                            }
+                        }
+                    } else if case APIError.rateLimited = error {
+                        print("🔍 Rate limited loading Moments feed - showing fallback content")
+                        
+                        if !loadMore {
+                            self.showMomentsFeedFallback()
+                            isHandledError = true
+                        }
+                    }
+                    
+                    // Only show empty state if error wasn't handled with a specific fallback
+                    if !isHandledError && !loadMore {
                         self.reels = []
                         self.updateReelsFeed()
                     }
@@ -2058,8 +2238,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         activityLoadingIndicator.stopAnimating()
         activityLoadingContainer.isHidden = true
         
-        // Show collection view
-        reelsCollectionView.isHidden = false
+        // Only show collection view if Moments tab is selected
+        if contentSegmentedControl.selectedSegmentIndex == 1 {
+            reelsCollectionView.isHidden = false
+        }
         
         // Update empty state
         if reels.isEmpty {
@@ -2080,6 +2262,17 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Reload collection
         reelsCollectionView.reloadData()
+        
+        // Preload video for first visible item after reload
+        if !reels.isEmpty {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                if self.reels[0].contentType != "photo" && self.reelVideoStates[0] == nil {
+                    self.reelVideoStates[0] = .loading
+                    self.loadReelVideo(at: 0)
+                }
+            }
+        }
         
         // Reset scroll position to top after loading new data
         reelsCollectionView.setContentOffset(.zero, animated: false)
@@ -2105,6 +2298,53 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
+    private func showFirestoreQueryLimitError() {
+        isLoadingReels = false
+        activityLoadingIndicator.stopAnimating()
+        activityLoadingContainer.isHidden = true
+        
+        // Only show collection view if Moments tab is selected
+        if contentSegmentedControl.selectedSegmentIndex == 1 {
+            reelsCollectionView.isHidden = false
+        }
+        activityEmptyStateLabel.text = "Too much content to load right now! Try refreshing in a few moments, or check back later for your Moments feed."
+        activityEmptyStateLabel.isHidden = false
+        
+        print("🔍 Showing user-friendly message for Firestore query limit")
+        
+        // Clear reels array to show empty state
+        reels = []
+        reelsCollectionView.reloadData()
+        
+        // Auto-retry after 30 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30.0) { [weak self] in
+            print("🔍 Auto-retrying Moments feed after Firestore error")
+            self?.fetchReels()
+        }
+    }
+    
+    private func showMomentsFeedFallback() {
+        isLoadingReels = false
+        activityLoadingIndicator.stopAnimating()
+        activityLoadingContainer.isHidden = true
+        
+        // Only show collection view if Moments tab is selected
+        if contentSegmentedControl.selectedSegmentIndex == 1 {
+            reelsCollectionView.isHidden = false
+        }
+        activityEmptyStateLabel.text = "Feed temporarily unavailable due to high activity. Pull to refresh to try again!"
+        activityEmptyStateLabel.isHidden = false
+        
+        print("🔍 Showing fallback message for rate limited Moments feed")
+        
+        // Clear reels array to show empty state
+        reels = []
+        reelsCollectionView.reloadData()
+        
+        // Enable pull-to-refresh for immediate retry
+        scrollView.refreshControl?.isEnabled = true
+    }
+    
     // MARK: - Data Fetching
     private func performInitialDataLoad() {
         
@@ -2128,6 +2368,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         var myCirclesResult: [Circle] = []
         var networkCirclesResult: [Circle] = []
         var activitiesResult: [Activity] = []
+        var reelsResult: [PlaceVideo] = []
         var allFetchedPlaces: [Place] = []
         
         // 1. Load my circles
@@ -2173,7 +2414,24 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             group.leave()
         }
         
-        // First phase completion - process circles and activities
+        // 4. Load initial moments/reels (parallel)
+        group.enter()
+        APIService.shared.request(
+            endpoint: "videos/reels/feed?limit=20&offset=0",
+            method: .get,
+            requiresAuth: true
+        ) { (result: Result<VideosResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                reelsResult = response.data
+                print("✅ Fetched \(reelsResult.count) moments")
+            case .failure(let error):
+                print("❌ Failed to fetch moments: \(error)")
+            }
+            group.leave()
+        }
+        
+        // First phase completion - process circles, activities, and moments
         group.notify(queue: .main) { [weak self] in
             guard let self = self else { return }
             
@@ -2181,6 +2439,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             self.circles = myCirclesResult
             self.networkCircles = networkCirclesResult
             self.activities = activitiesResult
+            self.reels = reelsResult
             
             let circleLoadTime = CFAbsoluteTimeGetCurrent() - startTime
             print("⏱️ Phase 1 completed in \(String(format: "%.2f", circleLoadTime)) seconds")
@@ -2279,6 +2538,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 print("   - Network circles: \(networkCirclesResult.count)")
                 print("   - Total places: \(uniquePlaces.count)")
                 print("   - Activities: \(activitiesResult.count)")
+                print("   - Moments: \(reelsResult.count)")
             }
         }
     }
@@ -2324,8 +2584,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Show place count now that loading is complete
         mapViewController?.showPlaceCount()
         
-        // Fetch activities when map data is loaded
-        fetchActivities()
+        // Activities and moments are already loaded in performInitialDataLoad
+        // No need to fetch again here
     }
     
     private func fetchCircles(completion: (() -> Void)? = nil) {
@@ -2381,7 +2641,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    private func fetchNetworkCircles() {
+    private func fetchNetworkCircles(completion: (() -> Void)? = nil) {
         // Use CircleService to fetch network circles
         APIService.shared.request(
             endpoint: "network/my-network-circles",
@@ -2408,9 +2668,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     }
                     self.networkCircles = response.data
                     self.updateEmptyState()
-                    // Don't call updateMapPlaces here - fetchAllPlacesFromCircles handles everything
+                    completion?()
                 case .failure(let error):
                     print("❌ Error fetching network circles: \(error.localizedDescription)")
+                    completion?()
                     
                     // If it's a duplicate request error, just ignore it
                     if case .duplicateRequest = error {
@@ -2859,6 +3120,53 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
+    private func setupNavigationBar() {
+        // Create help button for left side
+        let helpButton = UIBarButtonItem(
+            image: UIImage(systemName: "questionmark.circle"),
+            style: .plain,
+            target: self,
+            action: #selector(helpButtonTapped)
+        )
+        navigationItem.leftBarButtonItem = helpButton
+        
+        // Create check-in button
+        let checkInButton = UIBarButtonItem(
+            image: UIImage(systemName: "checkmark.circle"),
+            style: .plain,
+            target: self,
+            action: #selector(checkInButtonTapped)
+        )
+        
+        // Create notification button with bell icon
+        let notificationButton = UIBarButtonItem(
+            image: UIImage(systemName: "bell"),
+            style: .plain,
+            target: self,
+            action: #selector(notificationButtonTapped)
+        )
+        self.notificationBarButton = notificationButton
+        
+        // Create upgrade button for free users
+        var rightBarButtons = [checkInButton, notificationButton]
+        
+        // Check if user is not subscribed
+        Task { @MainActor in
+            if !SubscriptionManager.shared.isSubscribed {
+                let upgradeButton = UIBarButtonItem(
+                    image: UIImage(systemName: "crown.fill"),
+                    style: .plain,
+                    target: self,
+                    action: #selector(upgradeButtonTapped)
+                )
+                upgradeButton.tintColor = Constants.Colors.primary
+                rightBarButtons.insert(upgradeButton, at: 0) // Add as first button
+            }
+            
+            navigationItem.rightBarButtonItems = rightBarButtons
+        }
+    }
+    
     // MARK: - Notifications
     
     private func setupNotifications() {
@@ -2883,6 +3191,22 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             self,
             selector: #selector(handleAppWillEnterForeground),
             name: UIApplication.willEnterForegroundNotification,
+            object: nil
+        )
+        
+        // Listen for onboarding tour request from Help view
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleShowOnboardingTour),
+            name: Notification.Name("ShowOnboardingTour"),
+            object: nil
+        )
+        
+        // Listen for moment deletion to update activity feed
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleMomentDeleted(_:)),
+            name: Notification.Name("MomentDeleted"),
             object: nil
         )
     }
@@ -2930,6 +3254,68 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
+    @objc private func handleMomentDeleted(_ notification: Notification) {
+        guard let videoId = notification.userInfo?["videoId"] as? String else { return }
+        
+        print("📢 Received MomentDeleted notification for video: \(videoId)")
+        
+        // Find the indices of activities to remove
+        var indexPathsToRemove: [IndexPath] = []
+        var indicesToRemove: [Int] = []
+        
+        for (index, activity) in activities.enumerated() {
+            if activity.targetType == "place_video" && activity.targetId == videoId {
+                print("🗑️ Found activity to remove at index \(index) for video: \(videoId)")
+                indexPathsToRemove.append(IndexPath(row: index, section: 0))
+                indicesToRemove.append(index)
+            }
+        }
+        
+        // Remove from data source (in reverse order to maintain indices)
+        for index in indicesToRemove.reversed() {
+            activities.remove(at: index)
+        }
+        
+        if !indexPathsToRemove.isEmpty {
+            print("✅ Removing \(indexPathsToRemove.count) activity(ies) from feed")
+            
+            // Update UI if activity feed is visible
+            if contentSegmentedControl.selectedSegmentIndex == 2 { // Activity tab
+                // Use performBatchUpdates for proper animation and consistency
+                activityTableView.performBatchUpdates({
+                    activityTableView.deleteRows(at: indexPathsToRemove, with: .fade)
+                }) { [weak self] _ in
+                    // Update empty state after animation completes
+                    self?.activityEmptyStateLabel.isHidden = !(self?.activities.isEmpty ?? true)
+                }
+            } else {
+                // If not visible, just update the empty state
+                activityEmptyStateLabel.isHidden = activities.isEmpty
+            }
+        }
+    }
+    
+    @objc private func handleShowOnboardingTour(_ notification: Notification) {
+        // Called when user taps "Show Welcome Tour" from Help view
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            // Set tour mode flag
+            self.isShowingWelcomeTour = true
+            
+            // Make sure we're on the Home tab
+            if let tabBar = self.tabBarController {
+                tabBar.selectedIndex = 0
+            }
+            
+            // Force show the suggested users overlay (bypassing all checks)
+            self.forceShowSuggestedUsersOverlay()
+            
+            // The add place tutorial will be shown after suggested users is dismissed
+            // through the normal flow in didTapNext/didTapSkip
+        }
+    }
+    
     // MARK: - Actions
     @objc private func addButtonTapped() {
         let createCircleVC = CreateCircleViewController()
@@ -2974,13 +3360,27 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Set flag to prevent map updates when returning
         isReturningFromFullScreenMap = true
         
-        // Present full screen map with all places but no filters
-        // Let the full screen map have its own independent filters
+        // If we have a connection filter but no network circles, fetch them first
+        if let connectionId = selectedConnectionId, 
+           connectionId != "my_places_only",
+           networkCircles.isEmpty {
+            print("📍 Fetching network circles before expanding map...")
+            fetchNetworkCircles { [weak self] in
+                guard let self = self else { return }
+                self.presentFullScreenMapWithCurrentState()
+            }
+        } else {
+            presentFullScreenMapWithCurrentState()
+        }
+    }
+    
+    private func presentFullScreenMapWithCurrentState() {
+        // Present full screen map with current filter states
         let fullScreenMap = FullScreenMapViewController(
             places: allPlaces,
             initialRegion: nil,
-            selectedCategory: nil,  // Don't pass embedded filter
-            selectedConnectionId: nil  // Don't pass connection filter
+            selectedCategory: selectedCategory,  // Pass current category filter
+            selectedConnectionId: selectedConnectionId  // Pass current connection filter
         )
         fullScreenMap.viewMode = .allPlaces
         fullScreenMap.isPresentedModally = true
@@ -2992,6 +3392,22 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         let currentUserId = AuthService.shared.getUserId() ?? ""
         let userCircleIds = Set(circles.map { $0.id })
         
+        // Get connections from NetworkManager
+        let connections = NetworkManager.shared.connections
+        
+        // Build a map of circle owner IDs to connection otherUserIds
+        // This handles the ID normalization and connection data issues
+        var ownerToConnectionId: [String: String] = [:]
+        for connection in connections {
+            let otherUserId = connection.otherUserId(currentUserId: currentUserId)
+            // Try to find this connection's circles in networkCircles
+            for circle in networkCircles {
+                if IDNormalizer.isSameUser(circle.owner, otherUserId) {
+                    ownerToConnectionId[circle.owner] = otherUserId
+                }
+            }
+        }
+        
         for place in allPlaces {
             // Check if this is a user's place
             if let circleId = place.circleId, userCircleIds.contains(circleId) {
@@ -3002,16 +3418,25 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     userPlaces.append(place)
                 } else {
                     // This is a connection's place
-                    if connectionPlacesMap[circle.owner] == nil {
-                        connectionPlacesMap[circle.owner] = []
+                    // Use the normalized connection ID as the key
+                    let mapKey = ownerToConnectionId[circle.owner] ?? circle.owner
+                    if connectionPlacesMap[mapKey] == nil {
+                        connectionPlacesMap[mapKey] = []
                     }
-                    connectionPlacesMap[circle.owner]?.append(place)
+                    connectionPlacesMap[mapKey]?.append(place)
                 }
             }
         }
         
-        // Get connections from NetworkManager
-        let connections = NetworkManager.shared.connections
+        // Debug connection data
+        print("🔍 DEBUG: Checking connections before passing to full screen map")
+        print("🔍 Connection places map keys: \(connectionPlacesMap.keys.sorted())")
+        for (index, connection) in connections.enumerated() {
+            let otherUserId = connection.otherUserId(currentUserId: currentUserId)
+            let placeCount = connectionPlacesMap[otherUserId]?.count ?? 0
+            print("  \(index): \(connection.connectedUser?.displayName ?? "Unknown") - \(placeCount) places")
+            print("     - otherUserId: \(otherUserId)")
+        }
         
         // Update the full screen map with connections data
         fullScreenMap.updatePlacesWithConnections(
@@ -3288,16 +3713,25 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             } else {
                 // Show only places from the selected connection
                 // Get all places from circles owned by this connection
+                print("📍 FILTER: Specific connection selected: \(connectionId)")
                 var connectionFilteredPlaces: [Place] = []
+                var debugCircleOwners = Set<String>()
+                
                 for place in places {
                     // Find the circle this place belongs to
                     if let circle = self.networkCircles.first(where: { $0.id == place.circleId }) {
-                        if circle.owner == connectionId {
+                        debugCircleOwners.insert(circle.owner)
+                        // Use IDNormalizer to compare IDs properly
+                        if IDNormalizer.isSameUser(circle.owner, connectionId) {
                             connectionFilteredPlaces.append(place)
+                            print("   ✅ Found place '\(place.name)' from circle '\(circle.name)' owned by connection")
                         }
                     }
                 }
+                
                 mapFilteredPlaces = connectionFilteredPlaces
+                print("   Available circle owners: \(debugCircleOwners)")
+                print("   Looking for connectionId: \(connectionId)")
                 print("   Filtered to connection '\(connectionId)': \(mapFilteredPlaces.count) places")
             }
         } else {
@@ -3648,6 +4082,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     @objc private func checkInButtonTapped() {
         let checkInVC = CheckInViewController()
         let navController = UINavigationController(rootViewController: checkInVC)
+        navController.modalPresentationStyle = .fullScreen
+        present(navController, animated: true)
+    }
+    
+    @objc private func helpButtonTapped() {
+        let helpVC = HelpViewController()
+        let navController = UINavigationController(rootViewController: helpVC)
         navController.modalPresentationStyle = .fullScreen
         present(navController, animated: true)
     }
@@ -4427,11 +4868,30 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 selectedConnectionId = connection.otherUserId(currentUserId: currentUserId)
                 let userName = connection.connectedUser?.displayName ?? "Unknown"
                 connectionFilterButton.setTitle(userName, for: .normal)
+                
+                // Debug logging
+                print("📍 CONNECTION SELECTED:")
+                print("   Connection ID: \(connection.id)")
+                print("   Connection userId: \(connection.userId)")
+                print("   Connection connectedUserId: \(connection.connectedUserId)")
+                print("   Current user ID: \(currentUserId)")
+                print("   Selected connection ID (otherUserId): \(selectedConnectionId ?? "nil")")
+                print("   Connected user name: \(userName)")
+                print("   Connected user ID from object: \(connection.connectedUser?.id ?? "nil")")
             }
             
             // Update UI and hide dropdown
             print("📍 Connection filter changed to: \(selectedConnectionId ?? "All Connections")")
-            updateMapPlaces()
+            
+            // If a specific connection is selected and we don't have network circles, fetch them
+            if selectedConnectionId != nil && selectedConnectionId != "my_places_only" && networkCircles.isEmpty {
+                print("📍 Need to fetch network circles for connection filtering")
+                fetchNetworkCircles { [weak self] in
+                    self?.updateMapPlaces()
+                }
+            } else {
+                updateMapPlaces()
+            }
             hideConnectionDropdown()
             isConnectionDropdownOpen = false
         } else if tableView == searchScopeTableView {
@@ -4720,6 +5180,147 @@ extension CirclesHomeViewController: HorizontalUserListViewDelegate {
     }
 }
 
+// MARK: - Daily Summary Methods
+extension CirclesHomeViewController {
+    func showDailySummaryIfAvailable() {
+        // This is for showing stored summaries (if any) in the card view
+        // Only used for persistent display, not for notification taps
+        checkForDailySummary()
+    }
+    
+    // Called when notification is tapped - fetch fresh data and show modal
+    func fetchAndShowDailySummary() {
+        // Always present the modal DailySummaryViewController
+        // It will fetch its own data from the API
+        let summaryVC = DailySummaryViewController()
+        present(summaryVC, animated: true, completion: nil)
+    }
+    
+    private func checkForDailySummary() {
+        // Remove any existing card since we're not using this feature anymore
+        // Daily summaries should be shown as modals when notification is tapped
+        removeDailySummaryCard()
+        
+        // Clear any old stored data
+        if let latestKey = UserDefaults.standard.string(forKey: "latestDailySummaryKey") {
+            UserDefaults.standard.removeObject(forKey: latestKey)
+            UserDefaults.standard.removeObject(forKey: "latestDailySummaryKey")
+        }
+    }
+    
+    private func showDailySummaryCard(with data: [String: Any]) {
+        // Don't show if already showing
+        if dailySummaryCard != nil { return }
+        
+        // Create the card
+        let card = DailySummaryCardView()
+        card.delegate = self
+        card.configure(with: data)
+        card.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Add to the activity feed section at the top
+        activityFeedSection.addSubview(card)
+        
+        // Position between header and segmented control
+        NSLayoutConstraint.activate([
+            card.topAnchor.constraint(equalTo: activityHeaderLabel.bottomAnchor, constant: Constants.Spacing.small),
+            card.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor, constant: Constants.Spacing.medium),
+            card.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor, constant: -Constants.Spacing.medium)
+        ])
+        
+        // Adjust segmented control position
+        contentSegmentedControl.constraints.forEach { constraint in
+            if constraint.firstItem === contentSegmentedControl && 
+               constraint.firstAttribute == .top &&
+               constraint.secondItem === activityHeaderLabel {
+                constraint.isActive = false
+            }
+        }
+        
+        contentSegmentedControl.topAnchor.constraint(equalTo: card.bottomAnchor, constant: Constants.Spacing.small).isActive = true
+        
+        // Animate in
+        card.alpha = 0
+        card.transform = CGAffineTransform(translationX: 0, y: -20)
+        
+        UIView.animate(withDuration: 0.3) {
+            card.alpha = 1
+            card.transform = .identity
+        }
+        
+        dailySummaryCard = card
+        hasDailySummaryData = true
+    }
+    
+    private func removeDailySummaryCard() {
+        guard let card = dailySummaryCard else { return }
+        
+        // Restore segmented control constraint
+        contentSegmentedControl.constraints.forEach { constraint in
+            if constraint.firstItem === contentSegmentedControl && 
+               constraint.firstAttribute == .top &&
+               constraint.secondItem === card {
+                constraint.isActive = false
+            }
+        }
+        
+        contentSegmentedControl.topAnchor.constraint(equalTo: activityHeaderLabel.bottomAnchor, constant: Constants.Spacing.small).isActive = true
+        
+        // Animate out
+        UIView.animate(withDuration: 0.3, animations: {
+            card.alpha = 0
+            card.transform = CGAffineTransform(translationX: 0, y: -20)
+        }) { _ in
+            card.removeFromSuperview()
+        }
+        
+        dailySummaryCard = nil
+        hasDailySummaryData = false
+    }
+}
+
+// MARK: - DailySummaryCardViewDelegate
+extension CirclesHomeViewController: DailySummaryCardViewDelegate {
+    func dailySummaryCardDidTapNewPlaces() {
+        // Already on home tab, just scroll to map
+        scrollView.setContentOffset(.zero, animated: true)
+    }
+    
+    func dailySummaryCardDidTapNewConnections() {
+        // Navigate to network tab
+        if let tabBarController = tabBarController {
+            tabBarController.selectedIndex = 1
+        }
+    }
+    
+    func dailySummaryCardDidTapUnreadMessages() {
+        // Navigate to messages tab
+        if let tabBarController = tabBarController {
+            tabBarController.selectedIndex = 2
+        }
+    }
+    
+    func dailySummaryCardDidTapClose() {
+        removeDailySummaryCard()
+        
+        // Clear the stored data for today
+        if let latestKey = UserDefaults.standard.string(forKey: "latestDailySummaryKey") {
+            UserDefaults.standard.removeObject(forKey: latestKey)
+            UserDefaults.standard.removeObject(forKey: "latestDailySummaryKey")
+        }
+    }
+    
+    func dailySummaryCardDidExpand() {
+        // Track analytics if needed
+        print("📊 Daily summary expanded")
+    }
+    
+    func dailySummaryCardDidCollapse() {
+        // Track analytics if needed
+        print("📊 Daily summary collapsed")
+    }
+}
+
 // MARK: - ActivityFeedCellDelegate
 extension CirclesHomeViewController: ActivityFeedCellDelegate {
     func didTapUserProfile(user: User) {
@@ -4729,22 +5330,107 @@ extension CirclesHomeViewController: ActivityFeedCellDelegate {
         navigationController?.pushViewController(profileVC, animated: true)
     }
     
+    func didTapActivityContent(activity: Activity) {
+        // Navigate based on activity type
+        switch activity.type {
+        case .videoUploaded:
+            // For video uploads, navigate to the video player
+            navigateToVideoFromActivity(activity)
+        case .placeAdded, .placeLiked, .placeCommented, .checkIn:
+            // For place-related activities, navigate to place detail
+            navigateToPlaceFromActivity(activity)
+        default:
+            break
+        }
+    }
+    
     func didTapPlaceImage(activity: Activity) {
-        // Navigate to place detail if we have a placeId
-        guard let placeId = activity.metadata?.placeId,
-              let metadata = activity.metadata else { return }
+        navigateToPlaceFromActivity(activity)
+    }
+    
+    private func navigateToVideoFromActivity(_ activity: Activity) {
+        // The targetId contains the video ID for video upload activities
+        let videoId = activity.targetId
+        guard !videoId.isEmpty else { return }
+        
+        // Fetch the video details
+        APIService.shared.request(
+            endpoint: "videos/\(videoId)",
+            method: .get
+        ) { [weak self] (result: Result<PlaceVideoResponse, APIError>) in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let response):
+                    let video = response.data
+                    // Create and present the video player with just this video
+                    let videoReelsVC = VideoReelsViewController(reels: [video], startIndex: 0)
+                        videoReelsVC.modalPresentationStyle = .fullScreen
+                        
+                        // Set up navigation handler for when user taps on place in video
+                        videoReelsVC.placeNavigationHandler = { [weak self] placeId in
+                            // Dismiss the video player first
+                            self?.dismiss(animated: true) {
+                                // Then navigate to place
+                                let tempActivity = Activity(
+                                    id: activity.id,
+                                    type: .placeAdded,
+                                    actorId: activity.actorId,
+                                    actor: activity.actor,
+                                    targetType: "place",
+                                    targetId: placeId,
+                                    targetName: activity.targetName,
+                                    circleId: activity.circleId,
+                                    circleName: activity.circleName,
+                                    metadata: activity.metadata,
+                                    timestamp: activity.timestamp,
+                                    isRead: activity.isRead,
+                                    reactionCount: activity.reactionCount,
+                                    commentCount: activity.commentCount,
+                                    userReaction: activity.userReaction,
+                                    reactionSummary: activity.reactionSummary
+                                )
+                                self?.navigateToPlaceFromActivity(tempActivity)
+                            }
+                        }
+                        
+                        self?.present(videoReelsVC, animated: true)
+                case .failure(let error):
+                    self?.showError("Failed to load video: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    
+    private func navigateToPlaceFromActivity(_ activity: Activity) {
+        // For video uploads, use placeId from metadata; for check-ins use metadata placeId; otherwise use targetId
+        let placeId: String
+        if activity.type == .videoUploaded || activity.type == .checkIn {
+            placeId = activity.metadata?.placeId ?? ""
+        } else {
+            placeId = activity.targetId
+        }
+        guard !placeId.isEmpty else { return }
+        
+        Logger.info("🔍 navigateToPlaceFromActivity: Attempting to navigate to place")
+        Logger.info("🔍 Activity type: \(activity.type)")
+        Logger.info("🔍 Activity target: \(activity.targetName)")
+        Logger.info("🔍 PlaceId: \(placeId)")
+        Logger.info("🔍 CircleId: \(activity.circleId ?? "none")")
+        Logger.info("🔍 Actor: \(activity.actor?.displayName ?? "unknown")")
         
         // Try to find the place in an existing circle
         PlaceService.shared.fetchPlaceById(id: placeId) { [weak self] (result: Result<Place, Error>) in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let place):
+                    Logger.info("✅ Successfully fetched place: \(place.name)")
                     let detailVC = PlaceDetailViewController(place: place)
                     self?.navigationController?.pushViewController(detailVC, animated: true)
-                case .failure:
+                case .failure(let error):
+                    Logger.error("❌ Failed to fetch place \(placeId): \(error.localizedDescription)")
                     // If we can't fetch the place (likely because it's not in a user's circle),
-                    // create a temporary place object from the activity metadata for check-ins
-                    if activity.type == .checkIn {
+                    // create a temporary place object from the activity metadata for check-ins and video uploads
+                    if activity.type == .checkIn || activity.type == .videoUploaded {
                         let placeName = activity.targetName
                         
                         // Show a simple place view with limited functionality
@@ -4752,10 +5438,10 @@ extension CirclesHomeViewController: ActivityFeedCellDelegate {
                         tempPlaceVC.configure(
                             placeId: placeId,
                             name: placeName,
-                            address: metadata.placeAddress ?? "",
-                            latitude: metadata.latitude,
-                            longitude: metadata.longitude,
-                            photo: metadata.placePhoto
+                            address: activity.metadata?.placeAddress ?? "",
+                            latitude: activity.metadata?.latitude,
+                            longitude: activity.metadata?.longitude,
+                            photo: activity.metadata?.placePhoto
                         )
                         self?.navigationController?.pushViewController(tempPlaceVC, animated: true)
                     } else {
@@ -5268,6 +5954,12 @@ extension CirclesHomeViewController: UIScrollViewDelegate {
             updateCurrentReelIndex()
         }
     }
+    
+    func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+        if scrollView == reelsCollectionView {
+            updateCurrentReelIndex()
+        }
+    }
 }
 
 // MARK: - UIGestureRecognizerDelegate
@@ -5325,24 +6017,123 @@ extension CirclesHomeViewController {
             DispatchQueue.main.async { [weak self] in
                 self?.loadData()
             }
+            
         case .placeAdded, .circleCreated, .connectionActivity:
             // Connection activity events - refresh user list to show updated activity
             Logger.info("Received connection activity event, refreshing user list")
             DispatchQueue.main.async { [weak self] in
                 self?.userListView.refresh()
+                // Also refresh activity feed if on Activity tab
+                if self?.contentSegmentedControl.selectedSegmentIndex == 0 {
+                    self?.refreshActivityFeedWithNewItem()
+                }
             }
+            
+        case .newActivity:
+            // New activity in network - refresh activity feed
+            Logger.info("Received new activity event for activity feed")
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                // Only refresh if Activity tab is selected
+                if self.contentSegmentedControl.selectedSegmentIndex == 0 {
+                    self.refreshActivityFeedWithNewItem()
+                }
+            }
+            
         default:
-            // Handle other events if needed
-            break
+            // Handle other specific event types
+            if let eventTypeString = event.data["type"] as? String {
+                switch eventTypeString {
+                case "moment_uploaded":
+                    Logger.info("Received moment uploaded event")
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self = self else { return }
+                        // Refresh activity feed if on Activity tab
+                        if self.contentSegmentedControl.selectedSegmentIndex == 0 {
+                            self.refreshActivityFeedWithNewItem()
+                        }
+                        // Refresh moments feed if on Moments tab
+                        if self.contentSegmentedControl.selectedSegmentIndex == 1 {
+                            self.fetchReels()
+                        }
+                    }
+                    
+                case "comment_added", "reaction_added", "check_in":
+                    Logger.info("Received \(eventTypeString) event")
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self = self else { return }
+                        // Refresh activity feed if on Activity tab
+                        if self.contentSegmentedControl.selectedSegmentIndex == 0 {
+                            self.refreshActivityFeedWithNewItem()
+                        }
+                    }
+                    
+                default:
+                    break
+                }
+            }
+        }
+    }
+    
+    private func refreshActivityFeedWithNewItem() {
+        // Smart refresh - only load new items without full reload
+        // This prevents scroll position loss and provides better UX
+        
+        // If we don't have any activities yet, do a full load
+        if activities.isEmpty {
+            fetchActivities()
+            return
+        }
+        
+        // Otherwise, fetch just the newest activities
+        ActivityService.shared.getNetworkActivities(limit: 5, offset: 0) { [weak self] result in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let response):
+                    let newActivities = response.activities
+                    
+                    // Find activities that aren't already in our list
+                    var addedActivities: [Activity] = []
+                    for activity in newActivities {
+                        if !self.activities.contains(where: { $0.id == activity.id }) {
+                            addedActivities.append(activity)
+                        }
+                    }
+                    
+                    if !addedActivities.isEmpty {
+                        // Insert new activities at the beginning
+                        self.activities.insert(contentsOf: addedActivities, at: 0)
+                        
+                        // Update table view with animation
+                        let indexPaths = (0..<addedActivities.count).map { IndexPath(row: $0, section: 0) }
+                        self.activityTableView.insertRows(at: indexPaths, with: .automatic)
+                        
+                        // Update empty state
+                        self.activityEmptyStateLabel.isHidden = !self.activities.isEmpty
+                        
+                        Logger.info("Added \(addedActivities.count) new activities to feed via SSE")
+                    }
+                    
+                case .failure(let error):
+                    Logger.error("Failed to fetch new activities via SSE: \(error)")
+                }
+            }
         }
     }
     
     func sseServiceDidConnect(_ service: SSEService) {
         // Connection established
+        Logger.info("SSE connection established")
     }
     
     func sseServiceDidDisconnect(_ service: SSEService, error: Error?) {
         // Connection lost
+        if let error = error {
+            Logger.error("SSE connection lost: \(error)")
+        } else {
+            Logger.info("SSE connection closed")
+        }
     }
 }
 
@@ -5377,27 +6168,101 @@ extension CirclesHomeViewController: SuggestedUsersOverlayViewDelegate {
         // Clean up overlay reference
         suggestedUsersOverlay = nil
         
-        // Mark that user has dismissed the overlay
-        OnboardingManager.shared.disableSuggestedUsersOverlay()
-        
-        // Now check and show tutorial
-        checkTutorialAndOverlay()
+        if isShowingWelcomeTour {
+            // If in tour mode, reset the flag
+            isShowingWelcomeTour = false
+        } else {
+            // Mark that user has dismissed the overlay in normal flow
+            OnboardingManager.shared.disableSuggestedUsersOverlay()
+            
+            // Now check and show tutorial
+            checkTutorialAndOverlay()
+        }
     }
     
     func didTapNext(selectedUsers: [User]) {
         // Clean up overlay reference
         suggestedUsersOverlay = nil
         
-        // Show visit tracking permission if needed
-        showVisitTrackingPermissionIfNeeded()
+        if isShowingWelcomeTour {
+            // In tour mode, force show the add place tutorial
+            forceShowAddPlaceTutorial()
+        } else {
+            // Normal flow - check if should show add place tutorial
+            showAddPlaceTutorialIfNeeded()
+        }
     }
     
     func didTapSkip() {
         // Clean up overlay reference
         suggestedUsersOverlay = nil
+        hasCheckedForSuggestedUsers = true  // Set the flag to prevent showing again
         
-        // Show visit tracking permission if needed
-        showVisitTrackingPermissionIfNeeded()
+        if isShowingWelcomeTour {
+            // In tour mode, force show the add place tutorial
+            forceShowAddPlaceTutorial()
+        } else {
+            // Normal flow - check if should show add place tutorial
+            showAddPlaceTutorialIfNeeded()
+        }
+    }
+}
+
+// MARK: - ContentUploadDelegate
+extension CirclesHomeViewController: ContentUploadDelegate {
+    func contentUploadDidFinish(with moment: PlaceMoment) {
+        // Refresh reels to show the newly uploaded video
+        fetchReels()
+        
+        // Also refresh activities to show the upload activity
+        fetchActivities()
+        
+        // Ensure the correct tab content is displayed based on selected tab
+        // This prevents Moments content from showing when Activity tab is selected
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.contentSegmentChanged()
+        }
+    }
+    
+    func contentUploadDidCancel() {
+        // Nothing to do on cancel
+    }
+}
+
+// MARK: - AddFirstPlaceTutorialViewDelegate
+extension CirclesHomeViewController: AddFirstPlaceTutorialViewDelegate {
+    func didTapGotIt() {
+        // Clean up overlay reference
+        addPlaceTutorialOverlay = nil
+        
+        if isShowingWelcomeTour {
+            // In tour mode, just reset the flag
+            isShowingWelcomeTour = false
+            // Don't mark as shown so it can be shown again
+        } else {
+            // Normal flow - mark tutorial as shown
+            OnboardingManager.shared.markAddPlaceTutorialShown()
+            
+            // Continue with visit tracking permission
+            showVisitTrackingPermissionIfNeeded()
+        }
+    }
+    
+    func didTapSkipTutorial() {
+        // Clean up overlay reference
+        addPlaceTutorialOverlay = nil
+        
+        if isShowingWelcomeTour {
+            // In tour mode, just reset the flag
+            isShowingWelcomeTour = false
+            // Don't mark as shown so it can be shown again
+        } else {
+            // Normal flow - mark tutorial as shown
+            OnboardingManager.shared.markAddPlaceTutorialShown()
+            
+            // Continue with visit tracking permission
+            showVisitTrackingPermissionIfNeeded()
+        }
     }
 }
 
@@ -5472,12 +6337,27 @@ extension CirclesHomeViewController: UICollectionViewDataSource {
             let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "VideoReelCell", for: indexPath) as! VideoReelCell
             let reel = reels[indexPath.item]
             
-            // Get or create player for this video
-            if reel.contentType != "photo" && reelPlayers[indexPath.item] == nil {
+            // Check video state for this index
+            let videoState = reelVideoStates[indexPath.item] ?? .notLoaded
+            
+            // Load video if needed and not already loading
+            if reel.contentType != "photo" && !reel.isEmbedded && videoState == .notLoaded {
+                reelVideoStates[indexPath.item] = .loading
                 loadReelVideo(at: indexPath.item)
+            } else if reel.isEmbedded && videoState == .notLoaded {
+                // Mark embedded videos as ready immediately
+                reelVideoStates[indexPath.item] = .ready
             }
             
-            let player = reel.contentType == "photo" ? nil : reelPlayers[indexPath.item]
+            // Only pass player for non-embedded videos
+            let player: AVPlayer? = {
+                if reel.contentType == "photo" || reel.isEmbedded {
+                    return nil // Photos and embedded videos don't use AVPlayer
+                }
+                return videoState == .ready ? reelPlayers[indexPath.item] : nil
+            }()
+            
+            // Configure cell - it will handle embedded videos internally
             cell.configure(with: reel, player: player)
             cell.delegate = self
             
@@ -5530,25 +6410,6 @@ extension CirclesHomeViewController: UICollectionViewDelegateFlowLayout {
 
 // MARK: - VideoLinkInputDelegate
 
-extension CirclesHomeViewController: ContentUploadDelegate {
-    func contentUploadDidFinish(with moment: PlaceMoment) {
-        // Content was successfully added, refresh the reels feed
-        showSuccess("Content added successfully!")
-        fetchReels() // Refresh the reels feed
-        
-        // Track activity
-        NotificationCenter.default.post(
-            name: Notification.Name("MomentUploaded"),
-            object: nil,
-            userInfo: ["moment": moment]
-        )
-    }
-    
-    func contentUploadDidCancel() {
-        // User cancelled - nothing to do
-    }
-}
-
 // Keep the old delegate for backward compatibility if needed
 extension CirclesHomeViewController: VideoLinkInputDelegate {
     func videoLinkInputDidFinish(with video: PlaceVideo) {
@@ -5566,15 +6427,30 @@ extension CirclesHomeViewController: VideoLinkInputDelegate {
 
 extension CirclesHomeViewController {
     private func loadReelVideo(at index: Int) {
-        guard index >= 0 && index < reels.count else { return }
+        guard index >= 0 && index < reels.count else { 
+            reelVideoStates[index] = .failed
+            return 
+        }
         
         let reel = reels[index]
         
         // Skip loading video player for photos
         if reel.contentType == "photo" {
+            reelVideoStates[index] = .ready // Photos don't need video loading
             return
         }
         
+        // Skip loading AVPlayer for embedded videos - they use EmbeddedVideoPlayerView
+        if reel.isEmbedded {
+            print("✅ CirclesHome: Skipping AVPlayer for embedded video \(reel.id)")
+            print("   - videoType: \(reel.videoType ?? "nil")")
+            print("   - embedPlatform: \(reel.embedPlatform ?? "nil")")
+            print("   - embedUrl: \(reel.embedUrl ?? "nil")")
+            reelVideoStates[index] = .ready // Mark as ready so cell will be configured
+            return
+        }
+        
+        // For regular and direct videos, load AVPlayer
         guard let urlString = reel.videoUrl ?? reel.previewUrl,
               let url = URL(string: urlString) else { 
             print("❌ CirclesHome: Invalid video URL for reel \(reel.id)")
@@ -5582,6 +6458,7 @@ extension CirclesHomeViewController {
             print("   - previewUrl: \(reel.previewUrl ?? "nil")")
             print("   - title: \(reel.title)")
             print("   - uploadStatus: \(reel.uploadStatus.rawValue)")
+            reelVideoStates[index] = .failed
             return 
         }
         
@@ -5598,11 +6475,17 @@ extension CirclesHomeViewController {
         }
         
         reelPlayers[index] = player
+        reelVideoStates[index] = .ready
         print("✅ CirclesHome: Loaded video for index \(index), URL: \(url)")
         
         // Force collection view to reload this cell to update with the player
         DispatchQueue.main.async { [weak self] in
-            if let cell = self?.reelsCollectionView.cellForItem(at: IndexPath(item: index, section: 0)) as? VideoReelCell {
+            guard let self = self else { return }
+            let indexPath = IndexPath(item: index, section: 0)
+            
+            // Only update if the cell is still showing the same reel
+            if index < self.reels.count,
+               let cell = self.reelsCollectionView.cellForItem(at: indexPath) as? VideoReelCell {
                 cell.configure(with: reel, player: player)
                 print("📹 CirclesHome: Reconfigured cell with player for index \(index)")
             }
@@ -5630,6 +6513,9 @@ extension CirclesHomeViewController {
     
     private func playVideo(at index: Int) {
         guard index >= 0 && index < reels.count else { return }
+        
+        // Track view for both photos and videos
+        trackReelView(at: index)
         
         // Check if it's a photo
         if reels[index].contentType == "photo" {
@@ -5663,12 +6549,36 @@ extension CirclesHomeViewController {
         }
     }
     
+    private func trackReelView(at index: Int) {
+        guard index >= 0 && index < reels.count else { return }
+        
+        let reel = reels[index]
+        let endpoint = "videos/reels/\(reel.id)/view"
+        
+        // Send view tracking request
+        APIService.shared.request(
+            endpoint: endpoint,
+            method: .post,
+            body: [:],
+            requiresAuth: true
+        ) { (result: Result<SimpleAPIResponse, APIError>) in
+            // Silent tracking, no need to handle response
+            if case .failure(let error) = result {
+                print("❌ CirclesHome: Failed to track view for reel \(reel.id): \(error)")
+            } else {
+                print("✅ CirclesHome: Successfully tracked view for reel \(reel.id)")
+            }
+        }
+    }
+    
     private func preloadAdjacentVideos() {
         // Preload videos around current index
         let preloadRange = max(0, currentReelIndex - 1)...min(reels.count - 1, currentReelIndex + 1)
         
         for index in preloadRange {
-            if reelPlayers[index] == nil && reels[index].contentType != "photo" {
+            let videoState = reelVideoStates[index] ?? .notLoaded
+            if videoState == .notLoaded && reels[index].contentType != "photo" {
+                reelVideoStates[index] = .loading
                 loadReelVideo(at: index)
             }
         }
@@ -5683,6 +6593,7 @@ extension CirclesHomeViewController {
             if abs(index - currentReelIndex) > 2 {
                 player.pause()
                 reelPlayers.removeValue(forKey: index)
+                reelVideoStates[index] = .notLoaded // Reset state for released videos
                 print("🗑 CirclesHome: Released video at index \(index)")
             }
         }
@@ -5755,18 +6666,73 @@ extension CirclesHomeViewController: VideoReelCellDelegate {
         guard let indexPath = reelsCollectionView.indexPath(for: cell) else { return }
         let reel = reels[indexPath.item]
         
-        let shareText = "Check out this place: \(reel.placeName)"
-        let shareItems: [Any] = [shareText]
+        // Show loading indicator
+        let loadingAlert = AlertPresenter.showLoading(message: "Generating share link...", from: self)
         
-        let activityVC = UIActivityViewController(activityItems: shareItems, applicationActivities: nil)
-        
-        // For iPad
-        if let popover = activityVC.popoverPresentationController {
-            popover.sourceView = cell
-            popover.sourceRect = cell.bounds
+        // Call API to generate share link
+        APIService.shared.request(
+            endpoint: "videos/\(reel.id)/share",
+            method: .post
+        ) { [weak self] (result: Result<VideoShareLinkResponse, APIError>) in
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: false) {
+                    switch result {
+                    case .success(let response):
+                        // Create share items with the generated URL
+                        var shareItems: [Any] = []
+                        
+                        // Add share text
+                        shareItems.append(response.data.shareText)
+                        
+                        // Add share URL
+                        if let url = URL(string: response.data.shareUrl) {
+                            shareItems.append(url)
+                        }
+                        
+                        // Add thumbnail image if available
+                        if let thumbnailUrl = response.data.thumbnailUrl,
+                           let cachedImage = ImageService.shared.getCachedImage(for: thumbnailUrl) {
+                            shareItems.append(cachedImage)
+                        }
+                        
+                        let activityVC = UIActivityViewController(
+                            activityItems: shareItems,
+                            applicationActivities: nil
+                        )
+                        
+                        // Customize the share sheet
+                        activityVC.setValue(response.data.videoTitle ?? "Check out this moment", forKey: "subject")
+                        
+                        // For iPad
+                        if let popover = activityVC.popoverPresentationController {
+                            popover.sourceView = cell
+                            popover.sourceRect = cell.bounds
+                        }
+                        
+                        self?.present(activityVC, animated: true)
+                        
+                    case .failure(let error):
+                        // Fallback to basic sharing if API fails
+                        let shareText = "Check out this moment at \(reel.placeName) on Circles!"
+                        let shareItems: [Any] = [shareText]
+                        
+                        let activityVC = UIActivityViewController(
+                            activityItems: shareItems,
+                            applicationActivities: nil
+                        )
+                        
+                        if let popover = activityVC.popoverPresentationController {
+                            popover.sourceView = cell
+                            popover.sourceRect = cell.bounds
+                        }
+                        
+                        self?.present(activityVC, animated: true)
+                        
+                        print("Failed to generate share link: \(error)")
+                    }
+                }
+            }
         }
-        
-        present(activityVC, animated: true)
     }
     
     func videoReelCellDidTapProfile(_ cell: VideoReelCell) {
@@ -5781,6 +6747,9 @@ extension CirclesHomeViewController: VideoReelCellDelegate {
     func videoReelCellDidTapPlace(_ cell: VideoReelCell) {
         guard let indexPath = reelsCollectionView.indexPath(for: cell) else { return }
         let reel = reels[indexPath.item]
+        
+        // Pause all playing videos before navigating away
+        pauseAllVideos()
         
         // Navigate to place detail
         showLoadingState()
@@ -5807,11 +6776,31 @@ extension CirclesHomeViewController: VideoReelCellDelegate {
     }
     
     func videoReelCellDidTapReaction(_ cell: VideoReelCell) {
-        // Not implementing reactions in the home feed
+        guard let indexPath = reelsCollectionView.indexPath(for: cell) else { return }
+        let reel = reels[indexPath.item]
+        
+        // Pause all playing videos before presenting engagement view
+        pauseAllVideos()
+        
+        // Present the engagement view controller
+        let engagementVC = VideoEngagementViewController(video: reel)
+        engagementVC.setSelectedSegment(0) // Show likes tab
+        let navController = UINavigationController(rootViewController: engagementVC)
+        present(navController, animated: true)
     }
     
     func videoReelCellDidTapActivityEngagement(_ cell: VideoReelCell) {
-        // Not implementing activity engagement in the home feed
+        guard let indexPath = reelsCollectionView.indexPath(for: cell) else { return }
+        let reel = reels[indexPath.item]
+        
+        // Pause all playing videos before presenting engagement view
+        pauseAllVideos()
+        
+        // Present the engagement view controller
+        let engagementVC = VideoEngagementViewController(video: reel)
+        engagementVC.setSelectedSegment(1) // Show comments tab
+        let navController = UINavigationController(rootViewController: engagementVC)
+        present(navController, animated: true)
     }
     
     func videoReelCellDidTapLikeCount(_ cell: VideoReelCell) {

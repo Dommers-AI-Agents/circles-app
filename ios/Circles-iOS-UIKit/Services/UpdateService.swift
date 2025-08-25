@@ -292,7 +292,7 @@ class UpdateService {
         } else {
             // Open App Store
             if let bundleId = Bundle.main.bundleIdentifier,
-               let url = URL(string: "https://apps.apple.com/app/id<YOUR_APP_ID>") { // Replace with your actual App ID
+               let url = URL(string: "https://apps.apple.com/us/app/favcircles/id6746807095") {
                 UIApplication.shared.open(url)
             }
         }

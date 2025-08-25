@@ -2,6 +2,8 @@
 const express = require('express');
 const dailySummaryService = require('../services/dailySummaryService');
 const scheduledNotifications = require('../services/scheduledNotifications');
+const engagementNotificationService = require('../services/engagementNotificationService');
+const milestoneService = require('../services/milestoneService');
 
 const router = express.Router();
 
@@ -118,6 +120,139 @@ router.post('/weekend-recommendations', verifyCloudScheduler, async (req, res) =
   }
 });
 
+// Engagement reminders endpoint (3 PM daily)
+router.post('/engagement-reminders', verifyCloudScheduler, async (req, res) => {
+  try {
+    console.log('📱 Engagement reminders triggered via API');
+    
+    await engagementNotificationService.sendEngagementReminders();
+    
+    res.json({ 
+      success: true, 
+      message: 'Engagement reminders sent successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error in engagement reminders endpoint:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to send engagement reminders',
+      details: error.message
+    });
+  }
+});
+
+// Weekly summary endpoint (Mondays at 9 AM)
+router.post('/weekly-summary', verifyCloudScheduler, async (req, res) => {
+  try {
+    console.log('📊 Weekly summary triggered via API');
+    
+    await engagementNotificationService.sendWeeklySummaries();
+    
+    res.json({ 
+      success: true, 
+      message: 'Weekly summaries sent successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error in weekly summary endpoint:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to send weekly summaries',
+      details: error.message
+    });
+  }
+});
+
+// Monthly summary endpoint (1st of month at 10 AM)
+router.post('/monthly-summary', verifyCloudScheduler, async (req, res) => {
+  try {
+    console.log('📅 Monthly summary triggered via API');
+    
+    await engagementNotificationService.sendMonthlySummaries();
+    
+    res.json({ 
+      success: true, 
+      message: 'Monthly summaries sent successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error in monthly summary endpoint:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to send monthly summaries',
+      details: error.message
+    });
+  }
+});
+
+// Network growth check endpoint (Sundays at 8 PM)
+router.post('/network-growth', verifyCloudScheduler, async (req, res) => {
+  try {
+    console.log('📈 Network growth check triggered via API');
+    
+    await milestoneService.checkWeeklyNetworkGrowth();
+    
+    res.json({ 
+      success: true, 
+      message: 'Network growth check completed successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error in network growth endpoint:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to check network growth',
+      details: error.message
+    });
+  }
+});
+
+// Top contributors endpoint (last day of month at 6 PM)
+router.post('/top-contributors', verifyCloudScheduler, async (req, res) => {
+  try {
+    console.log('🏆 Top contributors check triggered via API');
+    
+    await milestoneService.checkTopContributors();
+    
+    res.json({ 
+      success: true, 
+      message: 'Top contributors check completed successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error in top contributors endpoint:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to check top contributors',
+      details: error.message
+    });
+  }
+});
+
+// Special event endpoints
+router.post('/special-event/:eventType', verifyCloudScheduler, async (req, res) => {
+  try {
+    const { eventType } = req.params;
+    console.log(`🎉 Special event (${eventType}) triggered via API`);
+    
+    await engagementNotificationService.sendSpecialEventNotification(eventType);
+    
+    res.json({ 
+      success: true, 
+      message: `Special event notifications (${eventType}) sent successfully`,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error(`❌ Error in special event endpoint (${req.params.eventType}):`, error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to send special event notifications',
+      details: error.message
+    });
+  }
+});
+
 // Health check endpoint for scheduled tasks
 router.get('/health', (req, res) => {
   res.json({ 
@@ -127,7 +262,13 @@ router.get('/health', (req, res) => {
       '/api/tasks/daily-summary',
       '/api/tasks/morning-discovery', 
       '/api/tasks/lunch-discovery',
-      '/api/tasks/weekend-recommendations'
+      '/api/tasks/weekend-recommendations',
+      '/api/tasks/engagement-reminders',
+      '/api/tasks/weekly-summary',
+      '/api/tasks/monthly-summary',
+      '/api/tasks/network-growth',
+      '/api/tasks/top-contributors',
+      '/api/tasks/special-event/:eventType'
     ]
   });
 });

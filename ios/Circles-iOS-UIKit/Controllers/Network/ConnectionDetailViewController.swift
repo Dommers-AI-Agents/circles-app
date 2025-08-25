@@ -245,16 +245,8 @@ class ConnectionDetailViewController: BaseViewController {
     private func configureView() {
         guard let connection = connection else { return }
         
-        // Display full name if available
-        if let firstName = connection.connectedUser?.firstName, let lastName = connection.connectedUser?.lastName {
-            nameLabel.text = "\(firstName) \(lastName)"
-        } else if let firstName = connection.connectedUser?.firstName {
-            nameLabel.text = firstName
-        } else if let lastName = connection.connectedUser?.lastName {
-            nameLabel.text = lastName
-        } else {
-            nameLabel.text = connection.connectedUser?.displayName ?? "Unknown User"
-        }
+        // Display only displayName for privacy
+        nameLabel.text = connection.connectedUser?.displayName ?? "Unknown User"
         
         // Display user info instead of email for privacy
         if let phoneNumber = connection.connectedUser?.phoneNumber, !phoneNumber.isEmpty {

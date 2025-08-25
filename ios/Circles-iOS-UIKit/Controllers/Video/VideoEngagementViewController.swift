@@ -395,9 +395,26 @@ extension VideoEngagementViewController: VideoEngagementCommentCellDelegate {
         guard let indexPath = tableView.indexPath(for: cell) else { return }
         let comment = comments[indexPath.row]
         
-        // For now, just show an alert indicating reply functionality
-        // In a full implementation, we would navigate to replies
-        showError("Reply functionality coming soon")
+        // Convert VideoEngagementComment to VideoComment
+        let videoComment = VideoComment(
+            id: comment.id,
+            videoId: comment.videoId,
+            userId: comment.userId,
+            text: comment.text,
+            parentCommentId: comment.parentCommentId,
+            createdAt: comment.createdAt,
+            updatedAt: comment.createdAt, // Use createdAt since we don't have updatedAt
+            editedAt: nil,
+            deletedAt: nil,
+            replyCount: comment.replyCount,
+            likes: comment.likes,
+            likesCount: comment.likes.count,
+            user: nil // User info not fully available in VideoEngagementComment
+        )
+        
+        // Navigate to replies view controller
+        let repliesVC = VideoCommentRepliesViewController(video: video, parentComment: videoComment)
+        navigationController?.pushViewController(repliesVC, animated: true)
     }
     
     func videoEngagementCommentCellDidTapProfile(_ cell: VideoEngagementCommentCell) {

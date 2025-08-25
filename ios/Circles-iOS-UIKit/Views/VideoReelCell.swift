@@ -181,6 +181,19 @@ class VideoReelCell: UICollectionViewCell {
         return button
     }()
     
+    private let watchOnPlatformButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Watch on Platform", for: .normal)
+        button.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
+        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+        button.layer.cornerRadius = 8
+        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isHidden = true
+        return button
+    }()
+    
     private let playPauseButton: UIButton = {
         let button = UIButton(type: .system)
         button.setImage(UIImage(systemName: "play.fill"), for: .normal)
@@ -230,6 +243,7 @@ class VideoReelCell: UICollectionViewCell {
         videoContainerView.addSubview(reactionCountLabel)
         videoContainerView.addSubview(reactionSummaryView)
         videoContainerView.addSubview(soundButton)
+        videoContainerView.addSubview(watchOnPlatformButton)
         videoContainerView.addSubview(playPauseButton)
         
         // Setup gradient
@@ -310,6 +324,10 @@ class VideoReelCell: UICollectionViewCell {
             soundButton.widthAnchor.constraint(equalToConstant: 40),
             soundButton.heightAnchor.constraint(equalToConstant: 40),
             
+            // Watch on Platform button (centered at top)
+            watchOnPlatformButton.topAnchor.constraint(equalTo: videoContainerView.safeAreaLayoutGuide.topAnchor, constant: 120),
+            watchOnPlatformButton.centerXAnchor.constraint(equalTo: videoContainerView.centerXAnchor),
+            
             // Play/Pause button (center)
             playPauseButton.centerXAnchor.constraint(equalTo: videoContainerView.centerXAnchor),
             playPauseButton.centerYAnchor.constraint(equalTo: videoContainerView.centerYAnchor),
@@ -323,6 +341,7 @@ class VideoReelCell: UICollectionViewCell {
         shareButton.addTarget(self, action: #selector(shareTapped), for: .touchUpInside)
         reactionButton.addTarget(self, action: #selector(reactionTapped), for: .touchUpInside)
         soundButton.addTarget(self, action: #selector(soundTapped), for: .touchUpInside)
+        watchOnPlatformButton.addTarget(self, action: #selector(watchOnPlatformTapped), for: .touchUpInside)
         playPauseButton.addTarget(self, action: #selector(playPauseTapped), for: .touchUpInside)
         
         // Add tap gesture to reaction summary
@@ -388,7 +407,10 @@ class VideoReelCell: UICollectionViewCell {
         print("   - ID: \(reel.id)")
         print("   - Title: \(reel.title)")
         print("   - Content Type: \(reel.contentType ?? "video")")
+        print("   - Video Type: \(reel.videoType ?? "nil")")
         print("   - Is Embedded: \(reel.isEmbedded)")
+        print("   - Embed URL: \(reel.embedUrl ?? "nil")")
+        print("   - Embed Platform: \(reel.embedPlatform ?? "nil")")
         print("   - Has Player: \(player != nil)")
         print("   - Video URL: \(reel.videoUrl ?? "nil")")
         print("   - Preview URL: \(reel.previewUrl ?? "nil")")
@@ -405,6 +427,15 @@ class VideoReelCell: UICollectionViewCell {
         photoImageView.image = nil
         photoImageView.isHidden = true
         photoImageView.removeFromSuperview()
+        
+        // Configure watch on platform button for embedded videos
+        if reel.isEmbedded, let platform = reel.embedPlatform {
+            watchOnPlatformButton.isHidden = false
+            let platformName = platform.capitalized
+            watchOnPlatformButton.setTitle("Watch on \(platformName)", for: .normal)
+        } else {
+            watchOnPlatformButton.isHidden = true
+        }
         
         // Setup display based on content type
         if reel.contentType == "photo" {
@@ -464,7 +495,7 @@ class VideoReelCell: UICollectionViewCell {
                     if item.status == .readyToPlay {
                         print("📹 VideoReelCell: Video ready to play!")
                         self?.playerLayer?.isHidden = false
-                        player.play()
+                        // Don't auto-play here - let CirclesHomeViewController control playback
                     } else if item.status == .failed {
                         print("❌ VideoReelCell: Player item failed: \(item.error?.localizedDescription ?? "Unknown error")")
                     }
@@ -512,9 +543,8 @@ class VideoReelCell: UICollectionViewCell {
             print("📹 VideoReelCell: Video container alpha: \(videoContainerView.alpha)")
             print("📹 VideoReelCell: Number of sublayers: \(videoContainerView.layer.sublayers?.count ?? 0)")
             
-            // Try playing the video to ensure it's loaded
-            player.play()
-            print("📹 VideoReelCell: Started playback")
+            // Don't auto-play here - let CirclesHomeViewController control playback
+            print("📹 VideoReelCell: Player configured, waiting for playback command")
             
             // Force layout update
             videoContainerView.setNeedsLayout()
@@ -598,6 +628,15 @@ class VideoReelCell: UICollectionViewCell {
     
     @objc private func reactionSummaryTapped() {
         delegate?.videoReelCellDidTapActivityEngagement(self)
+    }
+    
+    @objc private func watchOnPlatformTapped() {
+        guard let reel = reel,
+              let embedUrl = reel.embedUrl,
+              let url = URL(string: embedUrl) else { return }
+        
+        // Open the original platform URL in Safari
+        UIApplication.shared.open(url, options: [:], completionHandler: nil)
     }
     
     @objc private func soundTapped() {

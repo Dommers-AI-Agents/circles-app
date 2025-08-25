@@ -53,7 +53,7 @@ class AppleLookAroundService {
             throw LookAroundError.sceneNotAvailable
         }
         
-        return MKLookAroundViewController(scene: scene)
+        return await MKLookAroundViewController(scene: scene)
     }
 }
 

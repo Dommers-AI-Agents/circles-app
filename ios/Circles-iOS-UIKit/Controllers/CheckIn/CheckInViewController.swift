@@ -416,8 +416,33 @@ class CheckInViewController: BaseViewController {
                 
                 switch result {
                 case .success(let places):
-                    self.myPlaces = places
-                    self.filteredPlaces = places
+                    // Sort places by proximity if we have location
+                    let sortedPlaces: [Place]
+                    if let currentLocation = self.currentLocation {
+                        sortedPlaces = places.sorted { place1, place2 in
+                            // Calculate distances
+                            let distance1 = self.calculateDistanceToPlace(place1, from: currentLocation)
+                            let distance2 = self.calculateDistanceToPlace(place2, from: currentLocation)
+                            
+                            // Sort by distance (nearest first)
+                            if let d1 = distance1, let d2 = distance2 {
+                                return d1 < d2
+                            } else if distance1 != nil {
+                                return true // Place with distance comes first
+                            } else if distance2 != nil {
+                                return false
+                            } else {
+                                // Neither has distance, sort alphabetically
+                                return place1.name < place2.name
+                            }
+                        }
+                    } else {
+                        // No location, sort alphabetically
+                        sortedPlaces = places.sorted { $0.name < $1.name }
+                    }
+                    
+                    self.myPlaces = sortedPlaces
+                    self.filteredPlaces = sortedPlaces
                     self.placesTableView.reloadData()
                     
                     if places.isEmpty {
@@ -440,6 +465,15 @@ class CheckInViewController: BaseViewController {
                 }
             }
         }
+    }
+    
+    private func calculateDistanceToPlace(_ place: Place, from location: CLLocation) -> CLLocationDistance? {
+        // Check if place has coordinates
+        if let lat = place.latitude, let lng = place.longitude {
+            let placeLocation = CLLocation(latitude: lat, longitude: lng)
+            return location.distance(from: placeLocation)
+        }
+        return nil
     }
     
     // Removed loadNearbyPlaces and fallbackToNaturalLanguageSearch - now using MKLocalSearchCompleter
@@ -691,12 +725,30 @@ extension CheckInViewController: UITableViewDataSource {
         else if placeSelectionSegmentedControl.selectedSegmentIndex == 0 {
             let place = filteredPlaces[indexPath.row]
             cell.textLabel?.text = place.name
-            cell.detailTextLabel?.text = place.address
             
-            // Show circle name
-            if let circleName = place.circleName {
-                cell.detailTextLabel?.text = "\(place.address) • \(circleName)"
+            // Build detail text with address, distance, and circle name
+            var detailComponents: [String] = []
+            
+            // Add distance if available
+            if let location = currentLocation,
+               let distance = calculateDistanceToPlace(place, from: location) {
+                let formatter = MKDistanceFormatter()
+                formatter.unitStyle = .abbreviated
+                let distanceString = formatter.string(fromDistance: distance)
+                detailComponents.append(distanceString)
             }
+            
+            // Add circle name if available
+            if let circleName = place.circleName {
+                detailComponents.append(circleName)
+            }
+            
+            // Add address
+            if !place.address.isEmpty {
+                detailComponents.append(place.address)
+            }
+            
+            cell.detailTextLabel?.text = detailComponents.joined(separator: " • ")
         }
         
         // Show checkmark for selected cell

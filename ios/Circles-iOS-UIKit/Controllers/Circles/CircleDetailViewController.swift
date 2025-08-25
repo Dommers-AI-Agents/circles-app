@@ -16,6 +16,10 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     private var isSharedViaLink: Bool = false
     private var editors: [User] = []
     
+    // Dynamic constraints for managing spacing when editors are hidden/shown
+    private var circleInfoViewBottomToPrivacyConstraint: NSLayoutConstraint?
+    private var circleInfoViewBottomToEditorsConstraint: NSLayoutConstraint?
+    
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
         let scrollView = UIScrollView()
@@ -259,6 +263,12 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         setupUI()
         configureUI()
         
+        // Track circle viewed event
+        AnalyticsService.shared.trackCircleViewed(
+            circleId: circle.id,
+            isOwner: circle.owner == AuthService.shared.currentUser?.id
+        )
+        
         // Set a safe initial map region to prevent crashes during layout
         let safeInitialRegion = MKCoordinateRegion(
             center: CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060), // NYC
@@ -290,6 +300,9 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         
         // Force map to render properly
         mapView.setNeedsDisplay()
+        
+        // Mark circle as viewed to clear new indicators
+        markCircleAsViewed()
         
         // Check current authorization status
         switch locationManager.authorizationStatus {
@@ -413,7 +426,6 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             editorsContainerView.topAnchor.constraint(equalTo: privacyView.bottomAnchor, constant: Constants.Spacing.medium),
             editorsContainerView.leadingAnchor.constraint(equalTo: circleInfoView.leadingAnchor, constant: Constants.Spacing.large),
             editorsContainerView.trailingAnchor.constraint(equalTo: circleInfoView.trailingAnchor, constant: -Constants.Spacing.large),
-            editorsContainerView.bottomAnchor.constraint(equalTo: circleInfoView.bottomAnchor, constant: -Constants.Spacing.large),
             
             // Editors label
             editorsLabel.topAnchor.constraint(equalTo: editorsContainerView.topAnchor),
@@ -459,6 +471,22 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             tableView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             tableView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: circle.canAddPlaces ? -100 : -20) // Adjust padding based on button visibility
         ])
+        
+        // Create dynamic bottom constraints for circleInfoView
+        // Constraint when editors are hidden - connect privacy view to circle info bottom
+        circleInfoViewBottomToPrivacyConstraint = privacyView.bottomAnchor.constraint(
+            equalTo: circleInfoView.bottomAnchor, 
+            constant: -Constants.Spacing.large
+        )
+        
+        // Constraint when editors are shown - connect editors container to circle info bottom  
+        circleInfoViewBottomToEditorsConstraint = editorsContainerView.bottomAnchor.constraint(
+            equalTo: circleInfoView.bottomAnchor, 
+            constant: -Constants.Spacing.large
+        )
+        
+        // Initially activate the editors constraint (will be switched in configureEditors)
+        circleInfoViewBottomToEditorsConstraint?.isActive = true
         
         // Add constraints for add place button if it exists
         if circle.canAddPlaces {
@@ -674,9 +702,15 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     private func configureEditors() {
         // Check if circle has editors
         guard let editorIds = circle.editors, !editorIds.isEmpty else {
+            // No editors - hide container and switch to privacy constraint
             editorsContainerView.isHidden = true
+            switchToPrivacyConstraint()
             return
         }
+        
+        // Has editors - show container and switch to editors constraint  
+        editorsContainerView.isHidden = false
+        switchToEditorsConstraint()
         
         // If editorsDetails is already populated, use it
         if let editorsDetails = circle.editorsDetails, !editorsDetails.isEmpty {
@@ -688,6 +722,20 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         }
     }
     
+    /// Switches to privacy constraint when no editors exist (reduces spacing)
+    private func switchToPrivacyConstraint() {
+        circleInfoViewBottomToEditorsConstraint?.isActive = false
+        circleInfoViewBottomToPrivacyConstraint?.isActive = true
+        print("📐 Switched to privacy constraint - reduced spacing for no editors")
+    }
+    
+    /// Switches to editors constraint when editors exist (normal spacing)
+    private func switchToEditorsConstraint() {
+        circleInfoViewBottomToPrivacyConstraint?.isActive = false
+        circleInfoViewBottomToEditorsConstraint?.isActive = true
+        print("📐 Switched to editors constraint - normal spacing for editors section")
+    }
+    
     private func loadEditors() {
         CircleService.shared.getEditors(circleId: circle.id) { [weak self] result in
             DispatchQueue.main.async {
@@ -697,8 +745,9 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                     self?.displayEditors()
                 case .failure(let error):
                     print("Failed to load editors: \(error)")
-                    // Still show the container but maybe show user IDs instead
+                    // Hide editors container and switch to privacy constraint
                     self?.editorsContainerView.isHidden = true
+                    self?.switchToPrivacyConstraint()
                 }
             }
         }
@@ -1497,7 +1546,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         }
         
         // Add app download link
-        let appStoreLink = "https://apps.apple.com/app/circles/id123456789" // TODO: Replace with actual App Store link
+        let appStoreLink = "https://apps.apple.com/us/app/favcircles/id6746807095"
         shareText += "\n\nDon't have Circles? Download here: \(appStoreLink)"
         
         var activityItems: [Any] = [shareText]
@@ -1919,8 +1968,8 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         let deepLink = "circles://place/\(place.id)"
         shareText += "\n📱 Open in Circles: \(deepLink)"
         
-        // App Store link (use TestFlight for now)
-        let appStoreLink = "https://testflight.apple.com/join/YourTestFlightLink" // Replace with actual App Store link
+        // App Store link
+        let appStoreLink = "https://apps.apple.com/us/app/favcircles/id6746807095"
         shareText += "\n\nDon't have Circles? Download here: \(appStoreLink)"
         
         var activityItems: [Any] = [shareText]
@@ -2529,9 +2578,14 @@ class PlaceTableViewCell: UITableViewCell {
     private let activityIndicatorView: UIView = {
         let view = UIView()
         view.backgroundColor = .systemRed
-        view.layer.cornerRadius = 4
+        view.layer.cornerRadius = 5
         view.translatesAutoresizingMaskIntoConstraints = false
         view.isHidden = true
+        // Add shadow for better visibility
+        view.layer.shadowColor = UIColor.systemRed.cgColor
+        view.layer.shadowOffset = CGSize(width: 0, height: 0)
+        view.layer.shadowRadius = 3
+        view.layer.shadowOpacity = 0.8
         return view
     }()
     
@@ -2805,11 +2859,11 @@ class PlaceTableViewCell: UITableViewCell {
             ratingLabel.trailingAnchor.constraint(equalTo: ratingView.trailingAnchor, constant: -4),
             ratingLabel.centerYAnchor.constraint(equalTo: ratingView.centerYAnchor),
             
-            // Activity indicator in top left corner of place image
+            // Activity indicator in top left corner of place image (made bigger for visibility)
             activityIndicatorView.topAnchor.constraint(equalTo: placeImageView.topAnchor, constant: 4),
             activityIndicatorView.leadingAnchor.constraint(equalTo: placeImageView.leadingAnchor, constant: 4),
-            activityIndicatorView.widthAnchor.constraint(equalToConstant: 8),
-            activityIndicatorView.heightAnchor.constraint(equalToConstant: 8)
+            activityIndicatorView.widthAnchor.constraint(equalToConstant: 10),
+            activityIndicatorView.heightAnchor.constraint(equalToConstant: 10)
         ])
     }
     
@@ -2825,14 +2879,23 @@ class PlaceTableViewCell: UITableViewCell {
             containerView.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.05)
             activityIndicatorView.isHidden = false
             
+            // Add pulsing animation to the activity indicator
+            let pulseAnimation = CABasicAnimation(keyPath: "transform.scale")
+            pulseAnimation.fromValue = 1.0
+            pulseAnimation.toValue = 1.3
+            pulseAnimation.duration = 0.6
+            pulseAnimation.autoreverses = true
+            pulseAnimation.repeatCount = .infinity
+            pulseAnimation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            activityIndicatorView.layer.add(pulseAnimation, forKey: "pulse")
+            
             // Add new badge to name
             let attributedString = NSMutableAttributedString(string: nameLabel.text ?? "")
             let newBadge = NSAttributedString(
-                string: " NEW",
+                string: " 🆕",  // Using emoji for better visibility
                 attributes: [
-                    .font: UIFont.systemFont(ofSize: 10, weight: .bold),
-                    .foregroundColor: Constants.Colors.primary,
-                    .backgroundColor: Constants.Colors.primary.withAlphaComponent(0.1)
+                    .font: UIFont.systemFont(ofSize: 12, weight: .bold),
+                    .foregroundColor: Constants.Colors.primary
                 ]
             )
             attributedString.append(newBadge)
@@ -2842,6 +2905,7 @@ class PlaceTableViewCell: UITableViewCell {
             containerView.layer.borderWidth = 1
             containerView.backgroundColor = Constants.Colors.secondaryBackground
             activityIndicatorView.isHidden = true
+            activityIndicatorView.layer.removeAnimation(forKey: "pulse")
             nameLabel.attributedText = nil
             nameLabel.text = place.name.isEmpty ? "Unnamed Place" : place.name
         }
@@ -3051,6 +3115,7 @@ class PlaceTableViewCell: UITableViewCell {
         placeImageView.image = nil
         categoryIconView.isHidden = false
         imageGradientView.isHidden = true
+        ratingView.isHidden = true  // Reset rating view visibility
         directionsButton.isHidden = false
         activityIndicatorView.isHidden = true
         photoLoadingTask?.cancel()
@@ -3415,6 +3480,22 @@ extension CircleDetailViewController {
     }
     
     // MARK: - Helper Methods
+    private func markCircleAsViewed() {
+        // Call API to mark this circle as viewed
+        APIService.shared.request(
+            endpoint: "circles/\(circle.id)/mark-viewed",
+            method: .post
+        ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
+            switch result {
+            case .success:
+                print("✅ Circle marked as viewed, new indicators cleared")
+            case .failure(let error):
+                print("⚠️ Failed to mark circle as viewed: \(error.localizedDescription)")
+                // Not critical, so we don't show an error to the user
+            }
+        }
+    }
+    
     private func createSafeRegion(center: CLLocationCoordinate2D, span: MKCoordinateSpan) -> MKCoordinateRegion? {
         // Validate center coordinates
         guard center.latitude >= -90 && center.latitude <= 90 &&
@@ -3580,8 +3661,27 @@ extension CircleDetailViewController {
         
         // Customize marker appearance
         if let markerView = annotationView {
-            markerView.markerTintColor = placeAnnotation.place.category.color
-            markerView.glyphImage = UIImage(systemName: placeAnnotation.place.category.systemIconName)
+            // Check if this is a new place
+            if placeAnnotation.place.isNew == true {
+                // Use red color for new places
+                markerView.markerTintColor = .systemRed
+                markerView.glyphImage = UIImage(systemName: "sparkles")
+                markerView.displayPriority = .required // Ensure new places show on top
+                
+                // Add subtle animation
+                let pulseAnimation = CABasicAnimation(keyPath: "transform.scale")
+                pulseAnimation.duration = 1.0
+                pulseAnimation.fromValue = 0.95
+                pulseAnimation.toValue = 1.05
+                pulseAnimation.autoreverses = true
+                pulseAnimation.repeatCount = .infinity
+                markerView.layer.add(pulseAnimation, forKey: "pulse")
+            } else {
+                // Regular appearance for existing places
+                markerView.markerTintColor = placeAnnotation.place.category.color
+                markerView.glyphImage = UIImage(systemName: placeAnnotation.place.category.systemIconName)
+                markerView.layer.removeAnimation(forKey: "pulse")
+            }
         }
         
         return annotationView

@@ -55,6 +55,10 @@ struct VideoComment: Codable {
     var hasReplies: Bool {
         return displayReplyCount > 0
     }
+    
+    var isReply: Bool {
+        return parentCommentId != nil
+    }
 }
 
 // MARK: - Response Types
@@ -825,9 +829,16 @@ class VideoCommentCell: UITableViewCell {
         let likesCount = comment.displayLikesCount
         likeCountLabel.text = likesCount > 0 ? "\(likesCount)" : ""
         
-        // Configure reply count
-        let replyCount = comment.displayReplyCount
-        replyCountLabel.text = replyCount > 0 ? "\(replyCount)" : ""
+        // Hide reply button and count for comments that are already replies
+        let isReply = comment.isReply
+        replyButton.isHidden = isReply
+        replyCountLabel.isHidden = isReply
+        
+        // Configure reply count (only for top-level comments)
+        if !isReply {
+            let replyCount = comment.displayReplyCount
+            replyCountLabel.text = replyCount > 0 ? "\(replyCount)" : ""
+        }
     }
     
     @objc private func moreButtonTapped() {

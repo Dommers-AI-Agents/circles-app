@@ -268,11 +268,11 @@ class HorizontalUserListView: UIView {
                 print("🔍 HorizontalUserListView: No accepted connections found, checking active connections endpoint")
                 
                 let offset = self.currentPage * self.pageSize
-                NetworkManager.shared.fetchActiveConnections(limit: self.pageSize, offset: offset) { [weak self] activeConnections, error in
+                NetworkManager.shared.fetchActiveRelationships(limit: self.pageSize, offset: offset) { [weak self] activeRelationships, error in
                     guard let self = self else { return }
                     
                     if let error = error {
-                        print("❌ HorizontalUserListView: Error loading active connections for user with no accepted connections: \(error)")
+                        print("❌ HorizontalUserListView: Error loading active relationships for user with no accepted connections: \(error)")
                         
                         // Apply same retry logic here
                         if self.loadRetryCount < self.maxRetries {
@@ -289,21 +289,26 @@ class HorizontalUserListView: UIView {
                     
                     self.hasLoadedConnections = true
                     
-                    // If active connections also returns empty or errors, then truly show empty state
-                    print("🔍 HorizontalUserListView: Active connections check complete - truly no connections")
-                    self.displayConnections([], alreadySorted: false, allowEmptyState: true)
+                    // Display the fetched relationships (could be following relationships even with no connections)
+                    if let activeRelationships = activeRelationships, !activeRelationships.isEmpty {
+                        print("🔍 HorizontalUserListView: Found \(activeRelationships.count) relationships for user with no connections")
+                        self.displayConnections(activeRelationships, alreadySorted: true, allowEmptyState: true)
+                    } else {
+                        print("🔍 HorizontalUserListView: No relationships found - showing empty state")
+                        self.displayConnections([], alreadySorted: false, allowEmptyState: true)
+                    }
                 }
             } else {
-                // User has connections - try to get active ones, but fall back to all if needed
+                // User has connections - try to get active ones including followed users
                 let offset = self.currentPage * self.pageSize
-                NetworkManager.shared.fetchActiveConnections(limit: self.pageSize, offset: offset) { [weak self] activeConnections, error in
+                NetworkManager.shared.fetchActiveRelationships(limit: self.pageSize, offset: offset) { [weak self] activeRelationships, error in
                     guard let self = self else { return }
                     
                     self.hasLoadedConnections = true
                     
-                    print("🔍 HorizontalUserListView: Received \(activeConnections?.count ?? 0) active connections")
+                    print("🔍 HorizontalUserListView: Received \(activeRelationships?.count ?? 0) active relationships")
                     if let error = error {
-                        print("❌ HorizontalUserListView: Error loading active connections: \(error)")
+                        print("❌ HorizontalUserListView: Error loading active relationships: \(error)")
                         
                         // If we fail to get active connections but we know the user has connections,
                         // we should still use the accepted connections we already have
@@ -314,23 +319,24 @@ class HorizontalUserListView: UIView {
                         }
                     }
                     
-                    // Debug: Log all active connections received from backend
-                    if let activeConnections = activeConnections {
-                        print("🔍 HorizontalUserListView: Raw active connections from backend:")
-                        for (index, connection) in activeConnections.enumerated() {
-                            let name = connection.connectedUser?.displayName ?? "Unknown"
-                            let score = connection.connectionScore != nil ? String(format: "%.2f", connection.connectionScore!) : "NO SCORE"
-                            let hasMessages = connection.lastMessageAt != nil ? "✓" : "✗"
-                            let hasActivity = (connection.hasRecentPlace ?? false) ? "✓" : "✗"
-                            print("   \(index + 1). \(name) | Score: \(score) | Messages: \(hasMessages) | Activity: \(hasActivity)")
+                    // Debug: Log all active relationships received from backend
+                    if let activeRelationships = activeRelationships {
+                        print("🔍 HorizontalUserListView: Raw active relationships from backend:")
+                        for (index, relationship) in activeRelationships.enumerated() {
+                            let name = relationship.connectedUser?.displayName ?? "Unknown"
+                            let type = relationship.relationshipType ?? "connection"
+                            let score = relationship.connectionScore != nil ? String(format: "%.2f", relationship.connectionScore!) : "NO SCORE"
+                            let hasMessages = relationship.lastMessageAt != nil ? "✓" : "✗"
+                            let hasActivity = (relationship.hasRecentPlace ?? false) ? "✓" : "✗"
+                            print("   \(index + 1). \(name) | Type: \(type) | Score: \(score) | Messages: \(hasMessages) | Activity: \(hasActivity)")
                         }
                     }
                     
-                    if let activeConnections = activeConnections, !activeConnections.isEmpty {
-                        // Use active connections (already sorted by backend)
-                        print("🔍 HorizontalUserListView: ✅ USING BACKEND-SORTED ACTIVE CONNECTIONS")
-                        print("🔍 HorizontalUserListView: This should preserve backend ordering with Dan first if scored correctly")
-                        self.displayConnections(activeConnections, alreadySorted: true, allowEmptyState: true)
+                    if let activeRelationships = activeRelationships, !activeRelationships.isEmpty {
+                        // Use active relationships (already sorted by backend)
+                        print("🔍 HorizontalUserListView: ✅ USING BACKEND-SORTED ACTIVE RELATIONSHIPS")
+                        print("🔍 HorizontalUserListView: Including both connections and followed users")
+                        self.displayConnections(activeRelationships, alreadySorted: true, allowEmptyState: true)
                     } else {
                         // Fall back to all connections if active endpoint returns empty
                         print("🔍 HorizontalUserListView: ❌ FALLING BACK TO CLIENT-SIDE SORTING")
@@ -341,22 +347,22 @@ class HorizontalUserListView: UIView {
             }
             } // End of fetchConnections closure
         } else {
-            // For subsequent pages, directly load more connections
+            // For subsequent pages, directly load more relationships
             let offset = currentPage * pageSize
-            NetworkManager.shared.fetchActiveConnections(limit: pageSize, offset: offset) { [weak self] activeConnections, error in
+            NetworkManager.shared.fetchActiveRelationships(limit: pageSize, offset: offset) { [weak self] activeRelationships, error in
                 guard let self = self else { return }
                 
                 if let error = error {
-                    print("❌ HorizontalUserListView: Error loading more connections: \(error)")
+                    print("❌ HorizontalUserListView: Error loading more relationships: \(error)")
                     self.isLoadingMore = false
                     return
                 }
                 
-                if let activeConnections = activeConnections, !activeConnections.isEmpty {
-                    self.displayConnections(activeConnections, alreadySorted: true, allowEmptyState: true)
+                if let activeRelationships = activeRelationships, !activeRelationships.isEmpty {
+                    self.displayConnections(activeRelationships, alreadySorted: true, allowEmptyState: true)
                 } else {
-                    // No more connections available
-                    print("🔍 HorizontalUserListView: No connections returned for page \(self.currentPage), stopping pagination")
+                    // No more relationships available
+                    print("🔍 HorizontalUserListView: No relationships returned for page \(self.currentPage), stopping pagination")
                     self.hasMoreConnections = false
                     self.isLoadingMore = false
                 }
@@ -411,11 +417,13 @@ class HorizontalUserListView: UIView {
     
     // MARK: - Sorting Logic
     static func sortConnections(_ connections: [Connection]) -> [Connection] {
-        // Filter for accepted connections only
-        let acceptedConnections = connections.filter { $0.status == .accepted }
+        // Filter for accepted connections and following relationships
+        let validRelationships = connections.filter { 
+            $0.status == .accepted || $0.relationshipType == "following" 
+        }
         
         // Sort connections by weighted score if available
-        let sortedConnections = acceptedConnections.sorted { (a, b) in
+        let sortedConnections = validRelationships.sorted { (a, b) in
             let aScore = a.connectionScore
             let bScore = b.connectionScore
             
@@ -486,10 +494,37 @@ class HorizontalUserListView: UIView {
                 let finalConnections: [Connection]
                 
                 if alreadySorted {
-                    // Trust backend sorting - just filter for accepted connections
-                    let acceptedConnections = connectionList.filter { $0.status == .accepted }
-                    finalConnections = acceptedConnections
-                    print("🔍 HorizontalUserListView: Using backend-sorted connections, filtered to \(finalConnections.count) accepted")
+                    // Trust backend sorting - filter for accepted connections and following relationships
+                    var validRelationships = connectionList.filter { 
+                        $0.status == .accepted || $0.relationshipType == "following" 
+                    }
+                    
+                    // CLIENT-SIDE VALIDATION: Filter out users with suspicious scores
+                    // If a user has a high content score but no actual activity, it's likely a bug
+                    validRelationships = validRelationships.filter { connection in
+                        guard let components = connection.scoreComponents else { 
+                            // No score components, keep the connection
+                            return true 
+                        }
+                        
+                        // Check for suspicious content score without actual activity
+                        let hasHighContentScore = components.content >= 25.0
+                        let hasNoMessages = connection.lastMessageAt == nil
+                        let hasNoRecentActivity = !(connection.hasRecentPlace ?? false) && 
+                                                  !(connection.hasNewActivity ?? false)
+                        let totalActivityCount = connection.recentActivity?.count ?? 0
+                        
+                        if hasHighContentScore && hasNoMessages && hasNoRecentActivity && totalActivityCount == 0 {
+                            // This is suspicious - user has high content score but no actual activity
+                            print("⚠️ FILTERING OUT: \(connection.connectedUser?.displayName ?? "Unknown") has content score \(components.content) but no actual activity")
+                            return false
+                        }
+                        
+                        return true
+                    }
+                    
+                    finalConnections = validRelationships
+                    print("🔍 HorizontalUserListView: Using backend-sorted relationships, filtered to \(finalConnections.count) valid relationships")
                 } else {
                     // Use client-side sorting for fallback data
                     let sortedConnections = HorizontalUserListView.sortConnections(connectionList)
@@ -499,13 +534,14 @@ class HorizontalUserListView: UIView {
                 print("🔍 HorizontalUserListView: Final connections to display: \(finalConnections.count)")
                 
                 // Log connections being displayed
-                print("🔍 HorizontalUserListView: Final connections in display order:")
+                print("🔍 HorizontalUserListView: Final relationships in display order:")
                 for (index, connection) in finalConnections.enumerated() {
+                    let typeInfo = " | Type: \(connection.relationshipType ?? "connection")"
                     let messageInfo = connection.lastMessageAt != nil ? " | Has messages" : " | No messages"
                     let activityInfo = (connection.hasRecentPlace ?? false) ? " | Recent activity" : ""
                     let scoreInfo = connection.connectionScore != nil ? " | Score: \(String(format: "%.2f", connection.connectionScore!))" : " | NO SCORE"
                     let componentsInfo = connection.scoreComponents != nil ? " | Components: M:\(String(format: "%.1f", connection.scoreComponents!.messages)) E:\(String(format: "%.1f", connection.scoreComponents!.engagement)) C:\(String(format: "%.1f", connection.scoreComponents!.content)) R:\(String(format: "%.1f", connection.scoreComponents!.recency))" : ""
-                    print("   \(index + 1). \(connection.connectedUser?.displayName ?? "Unknown")\(scoreInfo)\(componentsInfo)\(messageInfo)\(activityInfo)")
+                    print("   \(index + 1). \(connection.connectedUser?.displayName ?? "Unknown")\(typeInfo)\(scoreInfo)\(componentsInfo)\(messageInfo)\(activityInfo)")
                     
                     // Log missing score reasons
                     if connection.connectionScore == nil {
@@ -677,6 +713,11 @@ class HorizontalUserListView: UIView {
                 }
             }
         }
+    }
+    
+    // MARK: - Public Properties
+    var connectionCount: Int {
+        return connections.count
     }
 }
 

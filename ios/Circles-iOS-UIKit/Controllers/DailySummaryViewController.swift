@@ -10,16 +10,19 @@ import UIKit
 class DailySummaryViewController: UIViewController {
     
     // MARK: - Properties
-    private var summaryData: DailySummaryData?
+    private var summaryData: LocalDailySummaryData?
+    private let containerView = UIView()
     private let dismissButton = UIButton(type: .system)
     private let scrollView = UIScrollView()
     private let contentView = UIView()
     private let headerLabel = UILabel()
     private let dateLabel = UILabel()
     private let stackView = UIStackView()
+    private let loadingIndicator = UIActivityIndicatorView(style: .large)
+    private let refreshControl = UIRefreshControl()
     
     // MARK: - Data Model
-    struct DailySummaryData {
+    struct LocalDailySummaryData {
         let date: Date
         let newPlaces: Int
         let newPlacesByCategory: [String: Int]
@@ -29,76 +32,30 @@ class DailySummaryViewController: UIViewController {
         let placeLikes: Int
         let topContributors: [(name: String, count: Int)]
         
-        init(from notification: [String: Any]) {
-            // Debug logging
-            print("📊 DailySummaryData: Parsing notification data")
-            print("📊 Available keys: \(notification.keys.sorted())")
+        init(from apiData: DailySummaryData) {
+            // Parse date string to Date
+            let formatter = ISO8601DateFormatter()
+            self.date = formatter.date(from: apiData.date) ?? Date()
             
-            self.date = Date()
+            self.newPlaces = apiData.newPlaces
+            self.newConnections = apiData.newConnections
+            self.unreadMessages = apiData.unreadMessages
+            self.placeComments = apiData.placeComments
+            self.placeLikes = apiData.placeLikes
+            self.newPlacesByCategory = apiData.newPlacesByCategory
             
-            // FCM places data fields at the root level, not in a nested 'data' object
-            self.newPlaces = Int(notification["newPlaces"] as? String ?? "0") ?? 0
-            self.newConnections = Int(notification["newConnections"] as? String ?? "0") ?? 0
-            self.unreadMessages = Int(notification["unreadMessages"] as? String ?? "0") ?? 0
-            self.placeComments = Int(notification["placeComments"] as? String ?? "0") ?? 0
-            self.placeLikes = Int(notification["placeLikes"] as? String ?? "0") ?? 0
+            // Convert contributors
+            self.topContributors = apiData.topContributors.map { ($0.name, $0.count) }
             
-            // Log parsed values
-            print("📊 Parsed values:")
-            print("  - newPlaces: \(self.newPlaces)")
-            print("  - newConnections: \(self.newConnections)")
-            print("  - unreadMessages: \(self.unreadMessages)")
-            print("  - placeComments: \(self.placeComments)")
-            print("  - placeLikes: \(self.placeLikes)")
-            
-            // Parse categories if available
-            if let categoriesString = notification["placeCategories"] as? String {
-                print("📊 Found placeCategories: \(categoriesString)")
-                if let data = categoriesString.data(using: .utf8),
-                   let categories = try? JSONSerialization.jsonObject(with: data) as? [String: Int] {
-                    self.newPlacesByCategory = categories
-                    print("📊 Parsed categories: \(categories)")
-                } else {
-                    self.newPlacesByCategory = [:]
-                    print("📊 Failed to parse categories")
-                }
-            } else {
-                self.newPlacesByCategory = [:]
-                print("📊 No placeCategories found")
-            }
-            
-            // Parse contributors if available
-            if let contributorsString = notification["topContributors"] as? String {
-                print("📊 Found topContributors: \(contributorsString)")
-                if let data = contributorsString.data(using: .utf8),
-                   let contributors = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
-                    self.topContributors = contributors.compactMap { dict in
-                        guard let name = dict["name"] as? String,
-                              let count = dict["count"] as? Int else { return nil }
-                        return (name, count)
-                    }
-                    print("📊 Parsed contributors: \(self.topContributors)")
-                } else {
-                    self.topContributors = []
-                    print("📊 Failed to parse contributors")
-                }
-            } else {
-                self.topContributors = []
-                print("📊 No topContributors found")
-            }
-            
-            print("📊 DailySummaryData initialization complete")
+            print("📊 DailySummaryData initialized from API response")
         }
     }
     
     // MARK: - Initialization
-    init(notificationData: [String: Any]) {
+    init() {
         super.init(nibName: nil, bundle: nil)
         
-        print("📊 DailySummaryViewController: Initializing with notification data")
-        print("📊 Raw notification data: \(notificationData)")
-        
-        self.summaryData = DailySummaryData(from: notificationData)
+        print("📊 DailySummaryViewController: Initializing (will fetch data from API)")
         
         // Present as modal
         self.modalPresentationStyle = .overFullScreen
@@ -113,7 +70,19 @@ class DailySummaryViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
-        displaySummary()
+        fetchDailySummary()
+    }
+    
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        print("📊 ViewDidAppear - Final frames:")
+        print("  - View frame: \(view.frame)")
+        print("  - Container frame: \(containerView.frame)")
+        print("  - ScrollView frame: \(scrollView.frame)")
+        print("  - ContentView frame: \(contentView.frame)")
+        print("  - StackView frame: \(stackView.frame)")
+        print("  - ScrollView contentSize: \(scrollView.contentSize)")
+        print("  - Number of cards: \(stackView.arrangedSubviews.count)")
     }
     
     // MARK: - UI Setup
@@ -158,7 +127,17 @@ class DailySummaryViewController: UIViewController {
         
         // Scroll view
         scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.refreshControl = refreshControl
+        scrollView.showsVerticalScrollIndicator = true
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.alwaysBounceVertical = true
+        refreshControl.addTarget(self, action: #selector(refreshData), for: .valueChanged)
         containerView.addSubview(scrollView)
+        
+        // Loading indicator
+        loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
+        loadingIndicator.hidesWhenStopped = true
+        containerView.addSubview(loadingIndicator)
         
         // Content view
         contentView.translatesAutoresizingMaskIntoConstraints = false
@@ -168,6 +147,8 @@ class DailySummaryViewController: UIViewController {
         stackView.axis = .vertical
         stackView.spacing = 12
         stackView.translatesAutoresizingMaskIntoConstraints = false
+        stackView.distribution = .fill
+        stackView.alignment = .fill
         contentView.addSubview(stackView)
         
         // Constraints
@@ -183,6 +164,7 @@ class DailySummaryViewController: UIViewController {
             containerView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             containerView.widthAnchor.constraint(lessThanOrEqualToConstant: 400),
             containerView.widthAnchor.constraint(lessThanOrEqualTo: view.widthAnchor, multiplier: 0.9),
+            containerView.heightAnchor.constraint(greaterThanOrEqualToConstant: 400),
             containerView.heightAnchor.constraint(lessThanOrEqualTo: view.heightAnchor, multiplier: 0.8),
             
             // Dismiss button
@@ -207,43 +189,80 @@ class DailySummaryViewController: UIViewController {
             scrollView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -20),
             
-            // Content view
-            contentView.topAnchor.constraint(equalTo: scrollView.topAnchor),
-            contentView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
-            contentView.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
-            contentView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
-            contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
+            // Content view - Use contentLayoutGuide for proper scrolling
+            contentView.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+            contentView.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+            contentView.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
+            contentView.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+            contentView.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor),
             
             // Stack view
             stackView.topAnchor.constraint(equalTo: contentView.topAnchor),
             stackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             stackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-            stackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
+            stackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            
+            // Loading indicator
+            loadingIndicator.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
+            loadingIndicator.centerYAnchor.constraint(equalTo: containerView.centerYAnchor)
         ])
+    }
+    
+    // MARK: - Fetch Data
+    private func fetchDailySummary() {
+        print("📊 Fetching daily summary from API...")
+        
+        // Show loading state
+        loadingIndicator.startAnimating()
+        scrollView.isHidden = true
+        
+        APIService.shared.fetchDailySummary { [weak self] result in
+            DispatchQueue.main.async {
+                self?.loadingIndicator.stopAnimating()
+                self?.refreshControl.endRefreshing()
+                
+                switch result {
+                case .success(let apiData):
+                    print("📊 Successfully fetched daily summary data")
+                    self?.summaryData = LocalDailySummaryData(from: apiData)
+                    self?.scrollView.isHidden = false
+                    self?.displaySummary()
+                    
+                case .failure(let error):
+                    print("📊 Failed to fetch daily summary: \(error)")
+                    self?.scrollView.isHidden = false
+                    self?.displayError(error)
+                }
+            }
+        }
+    }
+    
+    @objc private func refreshData() {
+        fetchDailySummary()
     }
     
     // MARK: - Display Summary
     private func displaySummary() {
+        // Clear existing content
+        stackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        
+        // Ensure scrollView is visible
+        scrollView.isHidden = false
+        scrollView.alpha = 1.0
+        
         guard let data = summaryData else { 
-            print("📊 No summary data available")
-            // Show a fallback message
-            let noDataCard = createSummaryCard(
-                emoji: "📊",
-                title: "Your Daily Summary",
-                subtitle: "Check out what's happening in your network",
-                color: Constants.Colors.primary,
-                action: #selector(dismissTapped)
-            )
-            stackView.addArrangedSubview(noDataCard)
+            print("📊 ❌ No summary data available")
+            displayError(nil)
             return
         }
         
-        print("📊 Displaying summary with data:")
+        print("📊 ✅ Displaying summary with data:")
         print("  - newPlaces: \(data.newPlaces)")
         print("  - newConnections: \(data.newConnections)")
         print("  - unreadMessages: \(data.unreadMessages)")
         print("  - placeComments: \(data.placeComments)")
         print("  - placeLikes: \(data.placeLikes)")
+        print("  - topContributors: \(data.topContributors.count) contributors")
         
         // Format date
         let formatter = DateFormatter()
@@ -253,14 +272,27 @@ class DailySummaryViewController: UIViewController {
         
         // Add summary cards
         if data.newPlaces > 0 {
+            // Build subtitle with top contributor
+            var subtitle = ""
+            if let topContributor = data.topContributors.first {
+                subtitle = "\(topContributor.name) added \(topContributor.count)"
+                if data.topContributors.count > 1 {
+                    let othersCount = data.topContributors.dropFirst().reduce(0) { $0 + $1.count }
+                    subtitle += " • Others added \(othersCount)"
+                }
+            } else {
+                subtitle = formatPlaceCategories(data.newPlacesByCategory)
+            }
+            
             let placesCard = createSummaryCard(
-                emoji: "🆕",
-                title: "\(data.newPlaces) New Places",
-                subtitle: formatPlaceCategories(data.newPlacesByCategory),
+                emoji: "📍",
+                title: "\(data.newPlaces) New Place\(data.newPlaces > 1 ? "s" : "")",
+                subtitle: subtitle,
                 color: Constants.Colors.primary,
                 action: #selector(viewNewPlaces)
             )
             stackView.addArrangedSubview(placesCard)
+            print("📊 Added places card with \(data.newPlaces) places")
         }
         
         if data.newConnections > 0 {
@@ -322,6 +354,26 @@ class DailySummaryViewController: UIViewController {
                 action: #selector(dismissTapped)
             )
             stackView.addArrangedSubview(noActivityCard)
+        }
+        
+        // Log final state
+        print("📊 StackView now has \(stackView.arrangedSubviews.count) subviews")
+        print("📊 ScrollView hidden: \(scrollView.isHidden)")
+        
+        // Force layout and log sizes
+        view.layoutIfNeeded()
+        
+        // Debug view hierarchy
+        print("📊 View hierarchy debug:")
+        print("  - Container frame: \(containerView.frame)")
+        print("  - ScrollView frame: \(scrollView.frame)")
+        print("  - ContentView frame: \(contentView.frame)")
+        print("  - StackView frame: \(stackView.frame)")
+        print("  - ScrollView contentSize: \(scrollView.contentSize)")
+        
+        // Log each card's frame
+        for (index, subview) in stackView.arrangedSubviews.enumerated() {
+            print("  - Card \(index) frame: \(subview.frame)")
         }
     }
     
@@ -387,38 +439,55 @@ class DailySummaryViewController: UIViewController {
     
     private func createContributorsView(_ contributors: [(name: String, count: Int)]) -> UIView {
         let container = UIView()
+        container.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.05)
+        container.layer.cornerRadius = 12
         container.translatesAutoresizingMaskIntoConstraints = false
         
         let titleLabel = UILabel()
-        titleLabel.text = "Top Contributors"
-        titleLabel.font = .systemFont(ofSize: 16, weight: .medium)
-        titleLabel.textColor = .secondaryLabel
+        titleLabel.text = "🏆 Top Contributors"
+        titleLabel.font = .systemFont(ofSize: 18, weight: .semibold)
+        titleLabel.textColor = .label
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(titleLabel)
         
         let contributorsStack = UIStackView()
         contributorsStack.axis = .vertical
-        contributorsStack.spacing = 8
+        contributorsStack.spacing = 12
         contributorsStack.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(contributorsStack)
         
-        for contributor in contributors.prefix(3) {
+        for (index, contributor) in contributors.prefix(3).enumerated() {
+            let contributorView = UIView()
+            contributorView.translatesAutoresizingMaskIntoConstraints = false
+            
+            let medalEmoji = index == 0 ? "🥇" : (index == 1 ? "🥈" : "🥉")
+            
             let label = UILabel()
-            label.text = "\(contributor.name) added \(contributor.count) place\(contributor.count > 1 ? "s" : "")"
-            label.font = .systemFont(ofSize: 14)
+            label.text = "\(medalEmoji) \(contributor.name) added \(contributor.count) place\(contributor.count > 1 ? "s" : "")"
+            label.font = .systemFont(ofSize: 16, weight: index == 0 ? .medium : .regular)
             label.textColor = .label
-            contributorsStack.addArrangedSubview(label)
+            label.translatesAutoresizingMaskIntoConstraints = false
+            contributorView.addSubview(label)
+            
+            NSLayoutConstraint.activate([
+                label.topAnchor.constraint(equalTo: contributorView.topAnchor),
+                label.leadingAnchor.constraint(equalTo: contributorView.leadingAnchor),
+                label.trailingAnchor.constraint(equalTo: contributorView.trailingAnchor),
+                label.bottomAnchor.constraint(equalTo: contributorView.bottomAnchor)
+            ])
+            
+            contributorsStack.addArrangedSubview(contributorView)
         }
         
         NSLayoutConstraint.activate([
-            titleLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
-            titleLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            titleLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            titleLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: 16),
+            titleLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            titleLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
             
-            contributorsStack.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
-            contributorsStack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            contributorsStack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            contributorsStack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -8)
+            contributorsStack.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 12),
+            contributorsStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            contributorsStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+            contributorsStack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -16)
         ])
         
         return container
@@ -436,44 +505,109 @@ class DailySummaryViewController: UIViewController {
     }
     
     @objc private func viewNewPlaces() {
-        dismiss(animated: true) { [weak self] in
+        print("📊 View New Places tapped")
+        dismiss(animated: true) { 
             // Navigate to home tab to see new places
-            if let tabBar = UIApplication.shared.windows.first?.rootViewController as? UITabBarController {
-                tabBar.selectedIndex = 0
+            DispatchQueue.main.async {
+                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                   let window = windowScene.windows.first,
+                   let tabBar = window.rootViewController as? UITabBarController {
+                    print("📊 Navigating to home tab (index 0)")
+                    tabBar.selectedIndex = 0  // Circles/Home is at index 0
+                    
+                    // Optional: Scroll to top of the home feed to show latest places
+                    if let navController = tabBar.viewControllers?[0] as? UINavigationController,
+                       let circlesVC = navController.topViewController as? CirclesHomeViewController {
+                        // The view controller will refresh and show latest places
+                        print("📊 ✅ Successfully navigated to Circles home")
+                    }
+                } else {
+                    print("📊 ❌ Failed to find tab bar controller")
+                }
             }
         }
     }
     
     @objc private func viewConnections() {
-        dismiss(animated: true) { [weak self] in
+        print("📊 View Connections tapped")
+        dismiss(animated: true) {
             // Navigate to network tab
-            if let tabBar = UIApplication.shared.windows.first?.rootViewController as? UITabBarController {
-                tabBar.selectedIndex = 3
+            DispatchQueue.main.async {
+                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                   let window = windowScene.windows.first,
+                   let tabBar = window.rootViewController as? UITabBarController {
+                    print("📊 Navigating to network tab (index 1)")
+                    tabBar.selectedIndex = 1  // Network is at index 1
+                } else {
+                    print("📊 ❌ Failed to find tab bar controller")
+                }
             }
         }
     }
     
     @objc private func viewMessages() {
-        dismiss(animated: true) { [weak self] in
-            // Navigate to messages
-            if let tabBar = UIApplication.shared.windows.first?.rootViewController as? UITabBarController {
-                tabBar.selectedIndex = 3
-                
-                // Find and push messages controller
-                if let navController = tabBar.selectedViewController as? UINavigationController {
-                    let messagesVC = ConversationsListViewController()
-                    navController.pushViewController(messagesVC, animated: true)
+        print("📊 View Messages tapped")
+        dismiss(animated: true) {
+            // Navigate to messages tab
+            DispatchQueue.main.async {
+                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                   let window = windowScene.windows.first,
+                   let tabBar = window.rootViewController as? UITabBarController {
+                    print("📊 Navigating to messages tab (index 2)")
+                    tabBar.selectedIndex = 2  // Messages is at index 2
+                    
+                    // The Messages tab already shows ConversationsListViewController, no need to push
+                } else {
+                    print("📊 ❌ Failed to find tab bar controller")
                 }
             }
         }
     }
     
     @objc private func viewActivity() {
-        dismiss(animated: true) { [weak self] in
+        print("📊 View Activity tapped")
+        dismiss(animated: true) {
             // Navigate to profile to see user's places with activity
-            if let tabBar = UIApplication.shared.windows.first?.rootViewController as? UITabBarController {
-                tabBar.selectedIndex = 4
+            DispatchQueue.main.async {
+                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                   let window = windowScene.windows.first,
+                   let tabBar = window.rootViewController as? UITabBarController {
+                    print("📊 Navigating to profile tab (index 3)")
+                    tabBar.selectedIndex = 3  // Profile is at index 3
+                } else {
+                    print("📊 ❌ Failed to find tab bar controller")
+                }
             }
         }
+    }
+    
+    // MARK: - Error Display
+    private func displayError(_ error: Error?) {
+        // Clear existing content
+        stackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        
+        // Set a default date if not available
+        let formatter = DateFormatter()
+        formatter.dateStyle = .long
+        formatter.timeStyle = .none
+        dateLabel.text = formatter.string(from: Date())
+        
+        let errorCard = createSummaryCard(
+            emoji: "⚠️",
+            title: "Unable to Load Summary",
+            subtitle: error?.localizedDescription ?? "Please check your connection and try again",
+            color: .systemRed,
+            action: #selector(refreshData)
+        )
+        stackView.addArrangedSubview(errorCard)
+        
+        // Add a refresh hint
+        let hintLabel = UILabel()
+        hintLabel.text = "Pull down to refresh"
+        hintLabel.font = .systemFont(ofSize: 12)
+        hintLabel.textColor = .tertiaryLabel
+        hintLabel.textAlignment = .center
+        hintLabel.translatesAutoresizingMaskIntoConstraints = false
+        stackView.addArrangedSubview(hintLabel)
     }
 }
