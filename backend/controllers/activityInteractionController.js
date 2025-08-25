@@ -6,6 +6,8 @@ const {
   createActivityComment,
   validateActivityReaction,
   validateActivityComment,
+  createNotification,
+  validateNotification,
   serializeDoc,
   serializeQuerySnapshot 
 } = require('../models/FirestoreModels');
@@ -84,6 +86,38 @@ exports.addReaction = async (req, res) => {
       
       // Send notification to activity owner if different from reactor
       if (activity.actorId !== userId) {
+        // Save notification to Firestore
+        const notificationData = createNotification({
+          userId: activity.actorId,
+          type: 'activity_reaction',
+          title: 'New Reaction',
+          body: `${userData.displayName} reacted ${emoji} to your activity`,
+          data: {
+            activityId: activityId,
+            fromUserId: userId,
+            fromUserName: userData.displayName,
+            fromUserPhoto: userData.profilePicture || null,
+            emoji: emoji
+          }
+        });
+
+        const validationErrors = validateNotification(notificationData);
+        if (validationErrors.length === 0) {
+          const notificationRef = await db.collection(COLLECTIONS.NOTIFICATIONS).add(notificationData);
+          
+          // Send SSE event for real-time notification count update
+          sseService.notifyUser(activity.actorId, 'new_notification', {
+            notificationId: notificationRef.id,
+            type: 'activity_reaction',
+            title: notificationData.title,
+            body: notificationData.body,
+            data: notificationData.data
+          });
+        } else {
+          console.error('❌ Validation errors for activity reaction notification:', validationErrors);
+        }
+
+        // Also send push notification
         await notificationService.sendToUser(activity.actorId, {
           type: 'activity_reaction',
           title: 'New Reaction',
@@ -309,6 +343,39 @@ exports.addComment = async (req, res) => {
     
     // Send notification to activity owner if different from commenter
     if (activity.actorId !== userId) {
+      // Save notification to Firestore
+      const notificationData = createNotification({
+        userId: activity.actorId,
+        type: 'activity_comment',
+        title: 'New Comment',
+        body: `${userData.displayName} commented on your activity`,
+        data: {
+          activityId: activityId,
+          commentId: commentRef.id,
+          fromUserId: userId,
+          fromUserName: userData.displayName,
+          fromUserPhoto: userData.profilePicture || null,
+          commentText: text
+        }
+      });
+
+      const validationErrors = validateNotification(notificationData);
+      if (validationErrors.length === 0) {
+        const notificationRef = await db.collection(COLLECTIONS.NOTIFICATIONS).add(notificationData);
+        
+        // Send SSE event for real-time notification count update
+        sseService.notifyUser(activity.actorId, 'new_notification', {
+          notificationId: notificationRef.id,
+          type: 'activity_comment',
+          title: notificationData.title,
+          body: notificationData.body,
+          data: notificationData.data
+        });
+      } else {
+        console.error('❌ Validation errors for activity comment notification:', validationErrors);
+      }
+
+      // Also send push notification
       await notificationService.sendToUser(activity.actorId, {
         type: 'activity_comment',
         title: 'New Comment',

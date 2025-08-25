@@ -70,7 +70,13 @@ class NotificationsViewController: BaseViewController {
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        // Mark all notifications as read when viewing
+        // Don't mark as read immediately - let user see them first
+        // We'll mark as read when they leave the view or after a delay
+    }
+    
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        // Mark all notifications as read when leaving the view
         markAllNotificationsAsRead()
     }
     
@@ -666,7 +672,7 @@ struct AppNotification: Codable {
     let createdAt: String
     
     enum CodingKeys: String, CodingKey {
-        case id = "_id"
+        case id // Backend now sends "id" not "_id"
         case userId, type, title, body, data, read, archived, createdAt
     }
 }

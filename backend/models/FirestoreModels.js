@@ -783,6 +783,7 @@ const createNotification = (notificationData) => {
     body: notificationData.body,
     data: notificationData.data || {}, // Additional data (fromUserId, placeId, etc.)
     read: false,
+    archived: false, // Explicitly set archived to false for new notifications
     createdAt: now
   };
 };
@@ -795,7 +796,20 @@ const validateNotification = (notificationData) => {
     errors.push('User ID is required');
   }
   
-  if (!notificationData.type || !['place_like', 'place_comment', 'new_follower'].includes(notificationData.type)) {
+  const validTypes = [
+    'place_like', 
+    'place_comment', 
+    'new_follower',
+    'new_message',
+    'connection_request',
+    'activity_reaction',
+    'activity_comment',
+    'check_in',
+    'new_suggestion',
+    'circle_invite'
+  ];
+  
+  if (!notificationData.type || !validTypes.includes(notificationData.type)) {
     errors.push('Valid notification type is required');
   }
   

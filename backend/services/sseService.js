@@ -223,6 +223,41 @@ class SSEService {
       });
     unsubscribers.push(suggestionListener);
 
+    // Listen for new notifications
+    const notificationListener = db.collection(COLLECTIONS.NOTIFICATIONS)
+      .where('userId', '==', userId)
+      .where('read', '==', false)
+      .orderBy('createdAt', 'desc')
+      .limit(1)
+      .onSnapshot((snapshot) => {
+        snapshot.docChanges().forEach(change => {
+          if (change.type === 'added') {
+            const notification = { id: change.doc.id, ...change.doc.data() };
+            console.log(`📡 SSE: New notification for user ${userId}:`, notification.type);
+            this.sendEvent(userId, {
+              type: 'new_notification',
+              data: notification,
+              timestamp: new Date().toISOString()
+            });
+            
+            // Also send a notification count update
+            // Get unread count for badge update
+            db.collection(COLLECTIONS.NOTIFICATIONS)
+              .where('userId', '==', userId)
+              .where('read', '==', false)
+              .get()
+              .then(unreadSnapshot => {
+                this.sendEvent(userId, {
+                  type: 'notification_count',
+                  data: { count: unreadSnapshot.size },
+                  timestamp: new Date().toISOString()
+                });
+              });
+          }
+        });
+      });
+    unsubscribers.push(notificationListener);
+
     // Listen for new activities in user's network
     // First, get user's connections to know which activities to listen for
     db.collection(COLLECTIONS.CONNECTIONS)

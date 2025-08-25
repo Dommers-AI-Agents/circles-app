@@ -291,6 +291,7 @@ class NotificationService {
   async notifyNewMessage(senderId, recipientId, message) {
     const senderDoc = await db.collection(COLLECTIONS.USERS).doc(senderId).get();
     const senderName = senderDoc.exists ? senderDoc.data().displayName : 'Someone';
+    const senderPhoto = senderDoc.exists ? senderDoc.data().profilePicture : null;
 
     // Format the message body based on type
     let notificationBody = message.content || 'Sent a message';
@@ -309,9 +310,44 @@ class NotificationService {
       notificationBody = notificationBody.substring(0, 97) + '...';
     }
 
+    const notificationTitle = `💬 ${senderName}`;
+
+    // Save notification to Firestore
+    const notificationData = createNotification({
+      userId: recipientId,
+      type: 'new_message',
+      title: notificationTitle,
+      body: notificationBody,
+      data: {
+        senderId: senderId,
+        senderName: senderName,
+        senderPhoto: senderPhoto,
+        messageId: message.id,
+        conversationId: message.conversationId,
+        messageContent: message.content
+      }
+    });
+
+    const validationErrors = validateNotification(notificationData);
+    if (validationErrors.length === 0) {
+      const notificationRef = await this.db.collection(COLLECTIONS.NOTIFICATIONS).add(notificationData);
+      
+      // Send SSE event for real-time notification count update
+      sseService.notifyUser(recipientId, 'new_notification', {
+        notificationId: notificationRef.id,
+        type: 'new_message',
+        title: notificationData.title,
+        body: notificationData.body,
+        data: notificationData.data
+      });
+    } else {
+      console.error('❌ Validation errors for message notification:', validationErrors);
+    }
+
+    // Also send push notification
     await this.sendToUser(recipientId, {
       type: 'new_message',
-      title: `💬 ${senderName}`,
+      title: notificationTitle,
       body: notificationBody,
       badge: 1, // This will increment the app badge
       data: {

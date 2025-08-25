@@ -20,34 +20,52 @@ exports.getNotifications = async (req, res, next) => {
     console.log('🔍 NOTIFICATION CONTROLLER: Fetching notifications');
     console.log('🔍 NOTIFICATION CONTROLLER: Limit:', limit, 'Offset:', offset, 'Archived:', isArchived);
     
-    // Build query based on archived status
+    // Build query - fetch all notifications for user first
+    // We'll filter archived status manually because Firestore's 'in' operator
+    // doesn't match undefined values
     let query = db.collection(COLLECTIONS.NOTIFICATIONS)
-      .where('userId', '==', userId);
+      .where('userId', '==', userId)
+      .orderBy('createdAt', 'desc');
     
-    // Filter by archived status (default to false for existing notifications)
-    if (isArchived) {
-      query = query.where('archived', '==', true);
-    } else {
-      query = query.where('archived', 'in', [false, null]); // Include null for existing notifications
-    }
+    // Get all notifications first (we'll filter after)
+    const allNotificationsSnapshot = await query.get();
     
-    const notificationsSnapshot = await query
-      .orderBy('createdAt', 'desc')
-      .limit(parseInt(limit))
-      .offset(parseInt(offset))
-      .get();
+    // Filter by archived status manually
+    const filteredNotifications = [];
+    allNotificationsSnapshot.forEach(doc => {
+      const notification = doc.data();
+      // For active notifications: include if archived is not explicitly true
+      // This handles undefined, null, and false values
+      if (isArchived) {
+        if (notification.archived === true) {
+          filteredNotifications.push({ id: doc.id, ...notification });
+        }
+      } else {
+        if (notification.archived !== true) {
+          filteredNotifications.push({ id: doc.id, ...notification });
+        }
+      }
+    });
+    
+    // Apply pagination manually
+    const startIndex = parseInt(offset);
+    const endIndex = startIndex + parseInt(limit);
+    const paginatedNotifications = filteredNotifications.slice(startIndex, endIndex);
     
     console.log('✅ NOTIFICATION CONTROLLER: Notifications query executed');
-    console.log('✅ NOTIFICATION CONTROLLER: Found', notificationsSnapshot.size, 'notifications');
+    console.log('✅ NOTIFICATION CONTROLLER: Total notifications:', allNotificationsSnapshot.size);
+    console.log('✅ NOTIFICATION CONTROLLER: Filtered notifications:', filteredNotifications.length);
+    console.log('✅ NOTIFICATION CONTROLLER: Paginated notifications:', paginatedNotifications.length);
     
-    const notifications = serializeQuerySnapshot(notificationsSnapshot);
+    // Check if there are more notifications
+    const hasMore = filteredNotifications.length > endIndex;
     
-    console.log('✅ NOTIFICATION CONTROLLER: Sending response with', notifications.length, 'notifications');
+    console.log('✅ NOTIFICATION CONTROLLER: Sending response with', paginatedNotifications.length, 'notifications');
     
     res.status(200).json({
       success: true,
-      notifications: notifications,
-      hasMore: notifications.length === parseInt(limit)
+      notifications: paginatedNotifications,
+      hasMore: hasMore
     });
   } catch (error) {
     console.error('❌ NOTIFICATION CONTROLLER: Error fetching notifications:', error);

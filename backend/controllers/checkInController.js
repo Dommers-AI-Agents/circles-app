@@ -6,6 +6,8 @@ const {
   createPlace,
   createCircle,
   validateCheckIn,
+  createNotification,
+  validateNotification,
   serializeDoc,
   serializeQuerySnapshot 
 } = require('../models/FirestoreModels');
@@ -218,6 +220,39 @@ exports.createCheckIn = async (req, res) => {
     for (const notifiedUserId of checkIn.notifiedUsers) {
       console.log(`📍 Sending check-in notification to user: ${notifiedUserId}`);
       try {
+        // Save notification to Firestore
+        const notificationData = createNotification({
+          userId: notifiedUserId,
+          type: 'check_in',
+          title: 'Check-in Notification',
+          body: `${userData.displayName} is at ${checkIn.placeName}${checkIn.message ? ': ' + checkIn.message : ''}`,
+          data: {
+            checkInId: checkInId,
+            placeName: checkIn.placeName,
+            fromUserId: userId,
+            fromUserName: userData.displayName,
+            fromUserPhoto: userData.profilePicture || null,
+            message: checkIn.message || null
+          }
+        });
+
+        const validationErrors = validateNotification(notificationData);
+        if (validationErrors.length === 0) {
+          const notificationRef = await db.collection(COLLECTIONS.NOTIFICATIONS).add(notificationData);
+          
+          // Send SSE event for real-time notification count update
+          sseService.notifyUser(notifiedUserId, 'new_notification', {
+            notificationId: notificationRef.id,
+            type: 'check_in',
+            title: notificationData.title,
+            body: notificationData.body,
+            data: notificationData.data
+          });
+        } else {
+          console.error('❌ Validation errors for check-in notification:', validationErrors);
+        }
+
+        // Also send push notification
         const result = await notificationService.sendToUser(notifiedUserId, {
           type: 'check_in',
           title: 'Check-in Notification',
