@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Circle on Circles - Share Your Favorite Places</title>
+    
+    <!-- Open Graph / Social Media Meta Tags -->
+    <meta property="og:title" content="Circle on Circles">
+    <meta property="og:description" content="Discover curated places shared by your network">
+    <meta property="og:image" content="https://api.favcircles.com/images/circles-preview.png">
+    <meta property="og:url" content="https://api.favcircles.com/circle/">
+    <meta property="og:type" content="website">
+    
+    <!-- Twitter Card Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Circle on Circles">
+    <meta name="twitter:description" content="Discover curated places shared by your network">
+    <meta name="twitter:image" content="https://api.favcircles.com/images/circles-preview.png">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="/images/favicon.png">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .app-header {
+            background: white;
+            padding: 20px;
+            border-radius: 20px 20px 0 0;
+            margin-top: 20px;
+            box-shadow: 0 -5px 20px rgba(0,0,0,0.1);
+        }
+        
+        .app-logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .app-logo img {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+        }
+        
+        .app-logo h1 {
+            font-size: 24px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            background: white;
+            border-radius: 20px;
+            margin-top: 20px;
+        }
+        
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .circle-header {
+            background: white;
+            padding: 20px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .circle-title {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        
+        .circle-description {
+            font-size: 16px;
+            color: #666;
+            margin-bottom: 15px;
+            line-height: 1.5;
+        }
+        
+        .circle-meta {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .creator-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .creator-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .creator-name {
+            font-weight: 600;
+        }
+        
+        .privacy-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .privacy-public {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        
+        .privacy-private {
+            background: #fff3e0;
+            color: #e65100;
+        }
+        
+        .places-count {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .cta-buttons {
+            background: white;
+            padding: 20px;
+            display: flex;
+            gap: 10px;
+            flex-direction: column;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .btn {
+            padding: 16px 24px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            text-decoration: none;
+            text-align: center;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-secondary {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+        
+        .btn-secondary:hover {
+            background: #f5f7ff;
+        }
+        
+        .places-list {
+            background: white;
+            padding-bottom: 20px;
+            border-radius: 0 0 20px 20px;
+        }
+        
+        .place-card {
+            padding: 20px;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background 0.3s ease;
+        }
+        
+        .place-card:hover {
+            background: #f9f9f9;
+        }
+        
+        .place-card:last-child {
+            border-bottom: none;
+        }
+        
+        .place-header {
+            display: flex;
+            align-items: start;
+            gap: 15px;
+            margin-bottom: 10px;
+        }
+        
+        .place-image {
+            width: 80px;
+            height: 80px;
+            border-radius: 12px;
+            object-fit: cover;
+            background: #f0f0f0;
+        }
+        
+        .place-info {
+            flex: 1;
+        }
+        
+        .place-name {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        
+        .place-address {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        
+        .place-category {
+            display: inline-block;
+            padding: 4px 10px;
+            background: #f0f0f0;
+            border-radius: 20px;
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .place-notes {
+            margin-top: 10px;
+            padding: 12px;
+            background: #f9f9f9;
+            border-radius: 8px;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #555;
+        }
+        
+        .place-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .place-action-btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            text-decoration: none;
+            color: #667eea;
+            border: 1px solid #667eea;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .place-action-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+        
+        .download-section {
+            background: white;
+            padding: 30px;
+            margin: 20px 0;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        }
+        
+        .download-title {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        
+        .download-subtitle {
+            color: #666;
+            margin-bottom: 20px;
+        }
+        
+        .store-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .store-button {
+            display: inline-block;
+        }
+        
+        .store-button img {
+            height: 50px;
+            transition: transform 0.3s ease;
+        }
+        
+        .store-button:hover img {
+            transform: scale(1.05);
+        }
+        
+        .error-message {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            margin-top: 20px;
+        }
+        
+        .error-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+        
+        @media (min-width: 768px) {
+            .cta-buttons {
+                flex-direction: row;
+            }
+            
+            .btn {
+                flex: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="app-header">
+            <div class="app-logo">
+                <img src="/images/app-icon.png" alt="Circles" onerror="this.style.display='none'">
+                <h1>Circles</h1>
+            </div>
+        </div>
+        
+        <div id="content">
+            <div class="loading">
+                <div class="loading-spinner"></div>
+                <p>Loading circle...</p>
+            </div>
+        </div>
+        
+        <div class="download-section">
+            <h2 class="download-title">Get the Circles App</h2>
+            <p class="download-subtitle">Save and share your favorite places with your network</p>
+            <div class="store-buttons">
+                <a href="https://apps.apple.com/app/circles-share-places/id6504237877" class="store-button" target="_blank">
+                    <img src="/images/app-store-badge.svg" alt="Download on the App Store">
+                </a>
+                <!-- Android coming soon
+                <a href="#" class="store-button">
+                    <img src="/images/google-play-badge.svg" alt="Get it on Google Play">
+                </a>
+                -->
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Extract circle ID from URL
+        const pathParts = window.location.pathname.split('/');
+        const circleId = pathParts[pathParts.indexOf('circle') + 1];
+        
+        if (!circleId) {
+            showError('Invalid circle link');
+        } else {
+            loadCircle(circleId);
+        }
+        
+        async function loadCircle(id) {
+            try {
+                const response = await fetch(`/api/circles/${id}/public`);
+                
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        showError('Circle not found');
+                    } else if (response.status === 403) {
+                        showPrivateCircle();
+                    } else {
+                        showError('Unable to load circle');
+                    }
+                    return;
+                }
+                
+                const data = await response.json();
+                displayCircle(data);
+                
+            } catch (error) {
+                console.error('Error loading circle:', error);
+                showError('Failed to load circle');
+            }
+        }
+        
+        function displayCircle(data) {
+            const circle = data.circle;
+            const places = data.places || [];
+            
+            // Update meta tags for social sharing
+            document.title = `${circle.name} - Circles`;
+            updateMetaTags(circle);
+            
+            const html = `
+                <div class="circle-header">
+                    <h2 class="circle-title">${escapeHtml(circle.name)}</h2>
+                    ${circle.description ? `<p class="circle-description">${escapeHtml(circle.description)}</p>` : ''}
+                    <div class="circle-meta">
+                        <div class="creator-info">
+                            <div class="creator-avatar">
+                                ${circle.creatorName ? circle.creatorName.charAt(0).toUpperCase() : 'C'}
+                            </div>
+                            <span class="creator-name">${escapeHtml(circle.creatorName || 'Anonymous')}</span>
+                        </div>
+                        <span class="privacy-badge privacy-${circle.privacy}">${circle.privacy}</span>
+                        <span class="places-count">${places.length} ${places.length === 1 ? 'place' : 'places'}</span>
+                    </div>
+                </div>
+                
+                <div class="cta-buttons">
+                    <a href="circles://circle/${circle.id}" class="btn btn-primary">
+                        📱 Open in App
+                    </a>
+                    <button onclick="shareCircle()" class="btn btn-secondary">
+                        📤 Share Circle
+                    </button>
+                </div>
+                
+                <div class="places-list">
+                    ${places.map(place => `
+                        <div class="place-card">
+                            <div class="place-header">
+                                ${place.photoUrl ? `
+                                    <img src="${place.photoUrl}" alt="${escapeHtml(place.name)}" class="place-image" onerror="this.style.display='none'">
+                                ` : ''}
+                                <div class="place-info">
+                                    <h3 class="place-name">${escapeHtml(place.name)}</h3>
+                                    <p class="place-address">${escapeHtml(place.address || 'No address available')}</p>
+                                    ${place.category ? `<span class="place-category">${escapeHtml(place.category)}</span>` : ''}
+                                </div>
+                            </div>
+                            ${place.notes ? `
+                                <div class="place-notes">
+                                    💭 ${escapeHtml(place.notes)}
+                                </div>
+                            ` : ''}
+                            <div class="place-actions">
+                                <a href="https://maps.apple.com/?q=${encodeURIComponent(place.name + ' ' + (place.address || ''))}" 
+                                   class="place-action-btn" target="_blank">
+                                    🗺️ Apple Maps
+                                </a>
+                                <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + ' ' + (place.address || ''))}" 
+                                   class="place-action-btn" target="_blank">
+                                    📍 Google Maps
+                                </a>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            
+            document.getElementById('content').innerHTML = html;
+        }
+        
+        function showPrivateCircle() {
+            const html = `
+                <div class="error-message">
+                    <div class="error-icon">🔒</div>
+                    <h2>This circle is private</h2>
+                    <p style="margin: 20px 0; color: #666;">Download the Circles app and connect with the creator to view this circle.</p>
+                    <a href="circles://circle/${circleId}" class="btn btn-primary" style="display: inline-block; margin-top: 20px;">
+                        Open in App
+                    </a>
+                </div>
+            `;
+            document.getElementById('content').innerHTML = html;
+        }
+        
+        function showError(message) {
+            const html = `
+                <div class="error-message">
+                    <div class="error-icon">⚠️</div>
+                    <h2>${message}</h2>
+                    <p style="margin: 20px 0; color: #666;">The circle you're looking for might have been removed or the link is invalid.</p>
+                    <a href="https://apps.apple.com/app/circles-share-places/id6504237877" class="btn btn-primary" style="display: inline-block; margin-top: 20px;">
+                        Download Circles App
+                    </a>
+                </div>
+            `;
+            document.getElementById('content').innerHTML = html;
+        }
+        
+        function shareCircle() {
+            if (navigator.share) {
+                navigator.share({
+                    title: document.title,
+                    text: 'Check out this circle on Circles!',
+                    url: window.location.href
+                });
+            } else {
+                // Fallback: Copy to clipboard
+                navigator.clipboard.writeText(window.location.href).then(() => {
+                    alert('Link copied to clipboard!');
+                });
+            }
+        }
+        
+        function escapeHtml(text) {
+            if (!text) return '';
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+        
+        function updateMetaTags(circle) {
+            // Update Open Graph tags
+            document.querySelector('meta[property="og:title"]').content = circle.name;
+            document.querySelector('meta[property="og:description"]').content = circle.description || 'Discover curated places';
+            document.querySelector('meta[property="og:url"]').content = window.location.href;
+            
+            // Update Twitter Card tags
+            document.querySelector('meta[name="twitter:title"]').content = circle.name;
+            document.querySelector('meta[name="twitter:description"]').content = circle.description || 'Discover curated places';
+        }
+    </script>
+</body>
+</html>

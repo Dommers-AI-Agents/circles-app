@@ -61,6 +61,7 @@ const visitRoutes = require('./routes/visitRoutes');
 const checkInRoutes = require('./routes/checkInRoutes');
 const videoRoutes = require('./routes/videoRoutes');
 const notificationTestRoutes = require('./routes/notificationTestRoutes');
+const globalPlaceRoutes = require('./routes/globalPlaceRoutes');
 
 // Import Firebase Place controller for circle-specific routes
 const { getPlacesByCircleId, getPlacesByCircleIdPublic, reorderPlacesInCircle } = require('./controllers/firebasePlaceController');
@@ -168,6 +169,7 @@ app.use('/api/users', firebaseUserRoutes);
 app.use('/api/circles/groups', require('./routes/circleGroupsRoutes'));
 app.use('/api/circles', firebaseCircleRoutes);
 app.use('/api/places', firebasePlaceRoutes);
+app.use('/api/places', globalPlaceRoutes); // Global places routes
 app.use('/api/upload', uploadLimiter, uploadRoutes);
 app.use('/api/connections', connectionRoutes);
 app.use('/api/network', networkRoutes);

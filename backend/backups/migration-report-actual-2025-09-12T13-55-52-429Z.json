@@ -1,0 +1,25 @@
+{
+  "migrationSummary": {
+    "type": "ACTUAL_MIGRATION",
+    "startTime": "2025-09-12T13:55:51.170Z",
+    "endTime": "2025-09-12T13:55:52.429Z",
+    "durationSeconds": 1,
+    "success": true
+  },
+  "statistics": {
+    "originalPlaces": 622,
+    "duplicatePlacesIdentified": 152,
+    "globalPlacesCreated": 2,
+    "userPlaceRelationsCreated": 2,
+    "photosAttributed": 3,
+    "videosAttributed": 0,
+    "publicReviewsCreated": 1,
+    "storageReductionPercent": 24
+  },
+  "errorSummary": {
+    "totalErrors": 0,
+    "validationErrors": 0,
+    "fatalErrors": 0
+  },
+  "errors": []
+}

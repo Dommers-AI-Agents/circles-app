@@ -1,0 +1,25 @@
+{
+  "migrationSummary": {
+    "type": "DRY_RUN_ANALYSIS",
+    "startTime": "2025-09-12T13:54:33.909Z",
+    "endTime": "2025-09-12T13:54:34.847Z",
+    "durationSeconds": 1,
+    "success": true
+  },
+  "statistics": {
+    "originalPlaces": 622,
+    "duplicatePlacesIdentified": 152,
+    "globalPlacesCreated": 5,
+    "userPlaceRelationsCreated": 9,
+    "photosAttributed": 0,
+    "videosAttributed": 0,
+    "publicReviewsCreated": 0,
+    "storageReductionPercent": 24
+  },
+  "errorSummary": {
+    "totalErrors": 0,
+    "validationErrors": 0,
+    "fatalErrors": 0
+  },
+  "errors": []
+}

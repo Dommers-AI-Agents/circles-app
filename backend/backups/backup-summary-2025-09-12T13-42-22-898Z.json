@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-09-12T13-42-22-898Z",
+  "totalPlaces": 622,
+  "totalCircles": 219,
+  "totalUsers": 38,
+  "totalVideos": 52,
+  "totalUserPlaceConnections": 566,
+  "backupFiles": [
+    "places-2025-09-12T13-42-22-898Z.json",
+    "circles-2025-09-12T13-42-22-898Z.json",
+    "users-essential-2025-09-12T13-42-22-898Z.json",
+    "place-videos-2025-09-12T13-42-22-898Z.json",
+    "user-place-relations-2025-09-12T13-42-22-898Z.json"
+  ]
+}
