@@ -16,17 +16,16 @@ class GlobalPlaceService {
     func getGlobalPlace(id placeId: String, completion: @escaping (Result<GlobalPlaceResponse, Error>) -> Void) {
         let endpoint = "/api/places/global/\(placeId)"
         
-        apiService.request(
+        apiService.request<GlobalPlaceDetailResponse>(
             endpoint: endpoint,
-            method: .GET,
-            responseType: GlobalPlaceDetailResponse.self
+            method: .get
         ) { result in
             switch result {
             case .success(let response):
                 if response.success {
                     completion(.success(response.data))
                 } else {
-                    completion(.failure(APIError.serverError("Failed to get global place")))
+                    completion(.failure(APIError.serverError))
                 }
             case .failure(let error):
                 completion(.failure(error))
@@ -70,18 +69,17 @@ class GlobalPlaceService {
         
         let endpoint = "/api/places/global/search"
         
-        apiService.requestWithQuery(
+        apiService.request<GlobalPlaceSearchResponse>(
             endpoint: endpoint,
-            method: .GET,
-            queryParams: queryParams,
-            responseType: GlobalPlaceSearchResponse.self
+            method: .get,
+            queryParams: queryParams
         ) { result in
             switch result {
             case .success(let response):
                 if response.success {
                     completion(.success(response.data))
                 } else {
-                    completion(.failure(APIError.serverError("Search failed")))
+                    completion(.failure(APIError.serverError))
                 }
             case .failure(let error):
                 completion(.failure(error))
@@ -99,18 +97,17 @@ class GlobalPlaceService {
     ) {
         let endpoint = "/api/places/global"
         
-        apiService.request(
+        apiService.request<CreateGlobalPlaceResponse>(
             endpoint: endpoint,
-            method: .POST,
-            body: placeData,
-            responseType: CreateGlobalPlaceResponse.self
+            method: .post,
+            body: placeData
         ) { result in
             switch result {
             case .success(let response):
                 if response.success {
                     completion(.success((place: response.data, created: response.created)))
                 } else {
-                    completion(.failure(APIError.serverError(response.message)))
+                    completion(.failure(APIError.serverError))
                 }
             case .failure(let error):
                 completion(.failure(error))
@@ -143,18 +140,17 @@ class GlobalPlaceService {
             "privacy": privacy.rawValue
         ]
         
-        apiService.request(
+        apiService.request<StandardResponse<UserPlaceRelation>>(
             endpoint: endpoint,
-            method: .POST,
-            body: requestData,
-            responseType: StandardResponse<UserPlaceRelation>.self
+            method: .post,
+            body: requestData
         ) { result in
             switch result {
             case .success(let response):
                 if response.success {
                     completion(.success(response.data))
                 } else {
-                    completion(.failure(APIError.serverError(response.message ?? "Failed to add place to circle")))
+                    completion(.failure(APIError.serverError))
                 }
             case .failure(let error):
                 completion(.failure(error))
@@ -184,18 +180,17 @@ class GlobalPlaceService {
             "photos": photos as Any
         ]
         
-        apiService.request(
+        apiService.request<StandardResponse<PublicReview>>(
             endpoint: endpoint,
-            method: .POST,
-            body: requestData,
-            responseType: StandardResponse<PublicReview>.self
+            method: .post,
+            body: requestData
         ) { result in
             switch result {
             case .success(let response):
                 if response.success {
                     completion(.success(response.data))
                 } else {
-                    completion(.failure(APIError.serverError(response.message ?? "Failed to add review")))
+                    completion(.failure(APIError.serverError))
                 }
             case .failure(let error):
                 completion(.failure(error))
@@ -219,7 +214,7 @@ class GlobalPlaceService {
         thumbnailUrl: String? = nil,
         title: String? = nil,
         description: String? = nil,
-        completion: @escaping (Result<Any, Error>) -> Void
+        completion: @escaping (Result<AttributedPhoto, Error>) -> Void
     ) {
         let endpoint = "/api/places/global/\(placeId)/media"
         
@@ -231,18 +226,19 @@ class GlobalPlaceService {
             "description": description as Any
         ]
         
-        apiService.request(
+        // For media upload, we'll return a generic success response
+        // since the specific media type varies
+        apiService.request<StandardResponse<AttributedPhoto>>(
             endpoint: endpoint,
-            method: .POST,
-            body: requestData,
-            responseType: StandardResponse<[String: Any]>.self
+            method: .post,
+            body: requestData
         ) { result in
             switch result {
             case .success(let response):
                 if response.success {
                     completion(.success(response.data))
                 } else {
-                    completion(.failure(APIError.serverError(response.message ?? "Failed to upload media")))
+                    completion(.failure(APIError.serverError))
                 }
             case .failure(let error):
                 completion(.failure(error))
@@ -260,17 +256,16 @@ class GlobalPlaceService {
     ) {
         let endpoint = "/api/places/global/\(placeId)/user-relation"
         
-        apiService.request(
+        apiService.request<StandardResponse<[UserPlaceRelation]>>(
             endpoint: endpoint,
-            method: .GET,
-            responseType: StandardResponse<[UserPlaceRelation]>.self
+            method: .get
         ) { result in
             switch result {
             case .success(let response):
                 if response.success {
                     completion(.success(response.data))
                 } else {
-                    completion(.failure(APIError.serverError("Failed to get user relations")))
+                    completion(.failure(APIError.serverError))
                 }
             case .failure(let error):
                 completion(.failure(error))
@@ -292,18 +287,17 @@ class GlobalPlaceService {
     ) {
         let endpoint = "/api/places/global/\(placeId)/relations/\(relationId)"
         
-        apiService.request(
+        apiService.request<StandardResponse<UserPlaceRelation>>(
             endpoint: endpoint,
-            method: .PUT,
-            body: updates,
-            responseType: StandardResponse<UserPlaceRelation>.self
+            method: .put,
+            body: updates
         ) { result in
             switch result {
             case .success(let response):
                 if response.success {
                     completion(.success(response.data))
                 } else {
-                    completion(.failure(APIError.serverError(response.message ?? "Failed to update relation")))
+                    completion(.failure(APIError.serverError))
                 }
             case .failure(let error):
                 completion(.failure(error))
@@ -394,7 +388,7 @@ extension GlobalPlaceService {
         // For backwards compatibility, we can continue using the existing endpoint
         // and gradually migrate circles to use global places
         
-        completion(.failure(APIError.serverError("Not yet implemented - use legacy PlaceService")))
+        completion(.failure(APIError.serverError))
     }
 }
 
