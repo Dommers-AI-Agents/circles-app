@@ -405,19 +405,38 @@ extension AttributedVideo {
     }
 }
 
-extension GlobalPlace: MKAnnotation {
+// MARK: - Map Annotation Helper
+extension GlobalPlace {
+    func asMapAnnotation() -> GlobalPlaceAnnotation {
+        return GlobalPlaceAnnotation(globalPlace: self)
+    }
+    
     var coordinate: CLLocationCoordinate2D {
         if let location = location?.clLocation {
             return location.coordinate
         }
         return CLLocationCoordinate2D(latitude: 0, longitude: 0)
     }
+}
+
+// Custom map annotation class for global places
+class GlobalPlaceAnnotation: NSObject, MKAnnotation {
+    let globalPlace: GlobalPlace
+    
+    var coordinate: CLLocationCoordinate2D {
+        return globalPlace.coordinate
+    }
     
     var title: String? {
-        return name
+        return globalPlace.name
     }
     
     var subtitle: String? {
-        return address
+        return globalPlace.address
+    }
+    
+    init(globalPlace: GlobalPlace) {
+        self.globalPlace = globalPlace
+        super.init()
     }
 }
