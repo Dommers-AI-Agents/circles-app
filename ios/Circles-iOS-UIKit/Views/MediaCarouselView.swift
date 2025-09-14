@@ -149,6 +149,8 @@ class MediaCarouselView: UIView {
                 print("  Item \(index + 1): Photo UIImage")
             case .video(let thumbnailUrl, let videoUrl):
                 print("  Item \(index + 1): Video - thumb: \(thumbnailUrl ?? "nil"), video: \(videoUrl ?? "nil")")
+            case .attributedPhoto(let url, let uploadedBy, let source):
+                print("  Item \(index + 1): Attributed Photo - URL: \(url), by: \(uploadedBy), source: \(source)")
             }
         }
         
@@ -269,6 +271,60 @@ class MediaCarouselView: UIView {
                 playButton.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
                 playButton.widthAnchor.constraint(equalToConstant: 80),
                 playButton.heightAnchor.constraint(equalToConstant: 80)
+            ])
+            
+        case .attributedPhoto(let url, let uploadedBy, let source):
+            let imageView = UIImageView()
+            imageView.contentMode = .scaleAspectFill
+            imageView.clipsToBounds = true
+            imageView.backgroundColor = Constants.Colors.lightGray
+            imageView.translatesAutoresizingMaskIntoConstraints = false
+            
+            // Load image
+            ImageService.shared.loadImage(from: url) { image in
+                DispatchQueue.main.async {
+                    imageView.image = image
+                }
+            }
+            
+            // Create attribution label
+            let attributionLabel = UILabel()
+            attributionLabel.text = "Photo by \(uploadedBy)"
+            attributionLabel.font = UIFont.systemFont(ofSize: 12, weight: .medium)
+            attributionLabel.textColor = .white
+            attributionLabel.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+            attributionLabel.layer.cornerRadius = 4
+            attributionLabel.clipsToBounds = true
+            attributionLabel.textAlignment = .center
+            attributionLabel.translatesAutoresizingMaskIntoConstraints = false
+            
+            // Add padding to the label
+            let paddingView = UIView()
+            paddingView.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+            paddingView.layer.cornerRadius = 4
+            paddingView.clipsToBounds = true
+            paddingView.translatesAutoresizingMaskIntoConstraints = false
+            
+            paddingView.addSubview(attributionLabel)
+            
+            containerView.addSubview(imageView)
+            containerView.addSubview(paddingView)
+            
+            NSLayoutConstraint.activate([
+                // Image constraints
+                imageView.topAnchor.constraint(equalTo: containerView.topAnchor),
+                imageView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+                imageView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+                imageView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+                
+                // Attribution label constraints
+                paddingView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
+                paddingView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -8),
+                
+                attributionLabel.topAnchor.constraint(equalTo: paddingView.topAnchor, constant: 4),
+                attributionLabel.leadingAnchor.constraint(equalTo: paddingView.leadingAnchor, constant: 8),
+                attributionLabel.trailingAnchor.constraint(equalTo: paddingView.trailingAnchor, constant: -8),
+                attributionLabel.bottomAnchor.constraint(equalTo: paddingView.bottomAnchor, constant: -4)
             ])
         }
         
@@ -393,4 +449,5 @@ enum MediaItem {
     case photo(url: String?)
     case photoImage(image: UIImage)
     case video(thumbnailUrl: String?, videoUrl: String?)
+    case attributedPhoto(url: String, uploadedBy: String, source: MediaSource)
 }

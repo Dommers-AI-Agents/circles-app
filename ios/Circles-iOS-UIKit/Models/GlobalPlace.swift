@@ -6,6 +6,8 @@ import MapKit
 struct GlobalPlace: Codable, Identifiable {
     let id: String
     let googlePlaceId: String?
+    let deduplicationKey: String?
+    let legacyPlaceIds: [String]?
     let name: String
     let address: String
     let location: GeoLocation?
@@ -39,7 +41,7 @@ struct GlobalPlace: Codable, Identifiable {
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
-        case googlePlaceId, name, address, location, category, subcategory
+        case googlePlaceId, deduplicationKey, legacyPlaceIds, name, address, location, category, subcategory
         case photos, videos, publicReviews, userContributions, googleData
         case totalCircleReferences, totalUserReferences, lastActivityAt
         case dataCompleteness, qualityScore
@@ -88,6 +90,7 @@ struct AttributedVideo: Codable, Identifiable {
 enum MediaSource: String, Codable {
     case userUpload = "user_upload"
     case googlePlaces = "google_places"
+    case legacyMigration = "legacy_migration"
     
     var displayName: String {
         switch self {
@@ -95,6 +98,8 @@ enum MediaSource: String, Codable {
             return "User Upload"
         case .googlePlaces:
             return "Google Places"
+        case .legacyMigration:
+            return "Legacy Migration"
         }
     }
 }
@@ -229,6 +234,45 @@ struct CreateGlobalPlaceResponse: Codable {
     let message: String
 }
 
+// MARK: - User Upload Models
+struct UserUploadedPhoto: Codable, Identifiable {
+    let id: String
+    let imageUrl: String
+    let placeName: String
+    let placeId: String
+    let uploadedAt: Date
+    let width: Int?
+    let height: Int?
+    let fileSize: Int64?
+    
+    // Place context for navigation
+    let placeAddress: String?
+    let placeCategory: PlaceCategory
+    
+    enum CodingKeys: String, CodingKey {
+        case id = "_id"
+        case imageUrl = "url"
+        case placeName = "place_name"
+        case placeId = "place_id"
+        case uploadedAt = "uploaded_at"
+        case width, height, fileSize = "file_size"
+        case placeAddress = "place_address"
+        case placeCategory = "place_category"
+    }
+}
+
+struct UserUploadsResponse: Codable {
+    let success: Bool
+    let data: [UserUploadedPhoto]
+    let total: Int
+    let hasMore: Bool
+    
+    enum CodingKeys: String, CodingKey {
+        case success, data, total
+        case hasMore = "has_more"
+    }
+}
+
 // MARK: - Extensions for Compatibility
 extension GlobalPlace {
     // Convert to legacy Place format for backwards compatibility
@@ -242,13 +286,48 @@ extension GlobalPlace {
         // Use public reviews as notes for legacy compatibility (take first review)
         let legacyNotes = publicReviews?.first?.text
         
-        // Use private notes from relation if available
+        // Use private notes from relation if available, fallback to public review
         let privateNotes = relation?.privateNotes
+        
+        // Map description from first public review text
+        let description = publicReviews?.first?.text
+        
+        // Debug logging to track conversion process
+        print("🔍 [GlobalPlace.toLegacyPlace] Converting GlobalPlace ID: \(id)")
+        print("🔍 [GlobalPlace.toLegacyPlace] Name: \(name)")
+        print("🔍 [GlobalPlace.toLegacyPlace] PublicReviews count: \(publicReviews?.count ?? 0)")
+        print("🔍 [GlobalPlace.toLegacyPlace] Description: \(description ?? "nil")")
+        if let firstReview = publicReviews?.first {
+            print("🔍 [GlobalPlace.toLegacyPlace] First review text: \(firstReview.text)")
+            print("🔍 [GlobalPlace.toLegacyPlace] First review likes count: \(firstReview.likesCount)")
+        }
+        print("🔍 [GlobalPlace.toLegacyPlace] UserContributions totalReviews: \(userContributions.totalReviews)")
+        
+        // Convert PublicReview array to PlaceReview array for legacy compatibility
+        let legacyReviews: [PlaceReview]? = publicReviews?.map { review in
+            PlaceReview(
+                id: UUID().uuidString,
+                user: review.userId,
+                rating: review.rating ?? 0.0,
+                comment: review.text,
+                date: review.createdAt
+            )
+        }
+        
+        // Aggregate likes from all public reviews
+        let aggregatedLikes = publicReviews?.flatMap { $0.likes } ?? []
+        let uniqueLikes = Array(Set(aggregatedLikes)) // Remove duplicates
+        
+        // Sum likes count from all public reviews
+        let totalLikesCount = publicReviews?.reduce(0) { $0 + $1.likesCount } ?? 0
+        
+        // Use userContributions for comments count
+        let commentsCount = userContributions.totalReviews
         
         return Place(
             id: id,
             name: name,
-            description: nil,
+            description: description,
             address: address,
             location: location,
             website: googleData?.website,
@@ -265,12 +344,12 @@ extension GlobalPlace {
             privateNotes: privateNotes,
             publicNotes: legacyNotes,
             tags: relation?.tags,
-            reviews: nil, // Could convert publicReviews if needed
+            reviews: legacyReviews,
             openingHours: googleData?.openingHours,
             priceLevel: googleData?.priceLevel,
-            likes: nil,
-            likesCount: nil,
-            commentsCount: nil,
+            likes: uniqueLikes.isEmpty ? nil : uniqueLikes,
+            likesCount: totalLikesCount > 0 ? totalLikesCount : nil,
+            commentsCount: commentsCount > 0 ? commentsCount : nil,
             circleId: relation?.circleId,
             addedBy: relation?.userId ?? "",
             addedByUser: nil,

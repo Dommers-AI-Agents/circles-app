@@ -346,13 +346,13 @@ struct VideoUploadInfo {
     let storagePaths: VideoStoragePaths
 }
 
-struct VideoUploadUrls {
+struct VideoUploadUrls: Codable {
     let video: String
     let preview: String
     let thumbnail: String
 }
 
-struct VideoStoragePaths {
+struct VideoStoragePaths: Codable {
     let video: String
     let preview: String
     let thumbnail: String

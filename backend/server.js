@@ -70,6 +70,9 @@ const { protect } = require('./middleware/firebaseAuth');
 const app = express();
 const path = require('path');
 
+// Trust proxy for Cloud Run (required for rate limiting)
+app.set('trust proxy', 1);
+
 // Request logging middleware
 app.use((req, res, next) => {
   // Request logging (reduced verbosity)
@@ -168,8 +171,8 @@ app.use('/api/users/contacts', userContactsRoutes);
 app.use('/api/users', firebaseUserRoutes);
 app.use('/api/circles/groups', require('./routes/circleGroupsRoutes'));
 app.use('/api/circles', firebaseCircleRoutes);
+app.use('/api/places', globalPlaceRoutes); // Global places routes (must come first - more specific)
 app.use('/api/places', firebasePlaceRoutes);
-app.use('/api/places', globalPlaceRoutes); // Global places routes
 app.use('/api/upload', uploadLimiter, uploadRoutes);
 app.use('/api/connections', connectionRoutes);
 app.use('/api/network', networkRoutes);
@@ -236,6 +239,13 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`📧 Email service configured: ${!!process.env.GMAIL_USER && !!process.env.GMAIL_APP_PASSWORD}`);
   console.log(`🗄️ Firebase Project ID: ${process.env.FIREBASE_PROJECT_ID || 'Not set'}`);
   console.log(`🗄️ Firebase Storage Bucket: ${process.env.FIREBASE_STORAGE_BUCKET || 'Not set'}`);
+  
+  // Start background aggregation job for performance optimization
+  if (firebaseInitialized) {
+    const dataAggregationJob = require('./jobs/dataAggregationJob');
+    dataAggregationJob.start();
+    console.log(`⚡ Background data aggregation started for enhanced performance`);
+  }
   
   if (!firebaseInitialized) {
     console.log('\n📝 To enable real Firebase:');

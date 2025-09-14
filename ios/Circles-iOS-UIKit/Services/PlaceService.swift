@@ -135,19 +135,88 @@ class PlaceService {
     func fetchPlaceById(id: String, completion: @escaping (Result<Place, Error>) -> Void) {
         Logger.info("📍 PlaceService.fetchPlaceById: Fetching place with ID: \(id)")
         
+        // First try legacy places endpoint
         APIService.shared.request(
             endpoint: "places/\(id)",
             method: .get,
-            requiresAuth: true,
-            completion: createAPICompletion { (result: Result<PlaceResponse, Error>) in
-                if case .success(let response) = result {
-                    Logger.info("📍 PlaceService.fetchPlaceById: Successfully fetched place: \(response.place.name)")
-                    completion(.success(response.place))
-                } else if case .failure(let error) = result {
-                    Logger.error("📍 PlaceService.fetchPlaceById: Failed to fetch place \(id): \(error.localizedDescription)")
-                    completion(.failure(error))
-                }
+            requiresAuth: true
+        ) { (result: Result<PlaceResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                Logger.info("📍 PlaceService.fetchPlaceById: Successfully fetched legacy place: \(response.place.name)")
+                completion(.success(response.place))
+                
+            case .failure(let error):
+                // If legacy place fetch fails, try Global Place lookup
+                Logger.info("📍 PlaceService.fetchPlaceById: Legacy place not found, trying Global Place lookup for ID: \(id)")
+                
+                self.fetchGlobalPlaceAsLegacy(id: id, completion: completion)
             }
+        }
+    }
+    
+    /// Fetch a Global Place and convert it to a legacy Place object for compatibility
+    private func fetchGlobalPlaceAsLegacy(id: String, completion: @escaping (Result<Place, Error>) -> Void) {
+        GlobalPlaceService.shared.getGlobalPlace(id: id) { result in
+            switch result {
+            case .success(let response):
+                let globalPlace = response.globalPlace
+                Logger.info("📍 PlaceService.fetchGlobalPlaceAsLegacy: Successfully fetched Global Place: \(globalPlace.name)")
+                
+                // Convert Global Place to legacy Place format
+                let legacyPlace = self.convertGlobalPlaceToLegacy(globalPlace: globalPlace)
+                completion(.success(legacyPlace))
+                
+            case .failure(let error):
+                Logger.error("📍 PlaceService.fetchGlobalPlaceAsLegacy: Failed to fetch Global Place \(id): \(error.localizedDescription)")
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    /// Convert a Global Place to a legacy Place object for backward compatibility
+    private func convertGlobalPlaceToLegacy(globalPlace: GlobalPlace) -> Place {
+        // Extract photo URLs from attributed photos
+        let photoUrls = globalPlace.photos?.map { $0.url } ?? []
+        
+        // Use the first legacy place ID if available, otherwise use the Global Place ID
+        let placeId = globalPlace.legacyPlaceIds?.first ?? globalPlace.id
+        
+        // Create a legacy Place object with Global Place data
+        return Place(
+            id: placeId,
+            globalPlaceId: globalPlace.id, // Link back to Global Place
+            name: globalPlace.name,
+            description: nil, // Global Places don't have descriptions in the same way
+            address: globalPlace.address,
+            location: globalPlace.location,
+            website: globalPlace.googleData?.website,
+            phone: globalPlace.googleData?.phone,
+            googlePlaceId: globalPlace.googlePlaceId,
+            photos: photoUrls.isEmpty ? nil : photoUrls,
+            videos: nil, // For now, videos are separate
+            category: globalPlace.category,
+            customCategoryId: nil,
+            subcategory: globalPlace.subcategory,
+            rating: globalPlace.googleData?.rating,
+            userRatingsTotal: globalPlace.googleData?.userRatingsTotal,
+            notes: nil,
+            privateNotes: nil,
+            publicNotes: nil,
+            tags: nil,
+            reviews: nil, // Reviews would need separate handling
+            openingHours: globalPlace.googleData?.openingHours,
+            priceLevel: globalPlace.googleData?.priceLevel,
+            likes: nil, // Legacy field
+            likesCount: nil, // Legacy field  
+            commentsCount: nil, // Legacy field
+            circleId: nil, // This would come from context
+            addedBy: "unknown", // Global Places don't track single owner
+            addedByUser: nil,
+            privacy: .public, // Default assumption for Global Places
+            createdAt: globalPlace.createdAt,
+            updatedAt: globalPlace.updatedAt,
+            isNew: nil
         )
     }
     
@@ -1037,7 +1106,7 @@ class PlaceService {
         }
     }
     
-    private func uploadImage(_ imageData: Data, completion: @escaping (Result<String, Error>) -> Void) {
+    func uploadImage(_ imageData: Data, completion: @escaping (Result<String, Error>) -> Void) {
         uploadImageWithCompression(imageData, compressionQuality: 1.0, attemptNumber: 1, completion: completion)
     }
     

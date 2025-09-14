@@ -10,6 +10,8 @@ const createGlobalPlace = (placeData) => {
   return {
     // Core place identification
     googlePlaceId: placeData.googlePlaceId || null, // Primary deduplication key
+    deduplicationKey: placeData.deduplicationKey, // Key used to identify and merge duplicate places
+    legacyPlaceIds: placeData.legacyPlaceIds || [], // Array of original place IDs that were merged into this global place
     name: placeData.name,
     address: placeData.address,
     location: placeData.location, // GeoPoint { type: 'Point', coordinates: [lng, lat] }
@@ -55,7 +57,10 @@ const createGlobalPlace = (placeData) => {
 
 // Attributed media structure
 const createAttributedPhoto = (photoData) => {
+  const admin = require('firebase-admin');
+  
   return {
+    id: photoData.id || admin.firestore().collection('dummy').doc().id, // Generate unique ID
     url: photoData.url,
     uploadedBy: photoData.uploadedBy,
     uploadedByName: photoData.uploadedByName || null,
@@ -68,7 +73,10 @@ const createAttributedPhoto = (photoData) => {
 };
 
 const createAttributedVideo = (videoData) => {
+  const admin = require('firebase-admin');
+  
   return {
+    id: videoData.id || admin.firestore().collection('dummy').doc().id, // Generate unique ID
     videoUrl: videoData.videoUrl,
     thumbnailUrl: videoData.thumbnailUrl || null,
     previewUrl: videoData.previewUrl || null,
@@ -329,6 +337,20 @@ const calculateQualityScore = (placeData) => {
   return Math.round(score * 100) / 100;
 };
 
+// Helper function to generate a consistent place key for deduplication
+const generatePlaceKey = (place) => {
+  // Primary: Use Google Place ID if available
+  if (place.googlePlaceId && place.googlePlaceId.trim()) {
+    return `google:${place.googlePlaceId}`;
+  }
+  
+  // Fallback: Use normalized name + address
+  const normalizedName = place.name.toLowerCase().trim().replace(/[^\w\s]/g, '');
+  const normalizedAddress = place.address.toLowerCase().trim().replace(/[^\w\s,]/g, '');
+  
+  return `manual:${normalizedName}:${normalizedAddress}`;
+};
+
 // Collection names for the new architecture
 const GLOBAL_COLLECTIONS = {
   GLOBAL_PLACES: 'globalPlaces',
@@ -352,5 +374,6 @@ module.exports = {
   validatePublicReview,
   mergeGooglePlaceData,
   calculateDataCompleteness,
-  calculateQualityScore
+  calculateQualityScore,
+  generatePlaceKey
 };

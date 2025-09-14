@@ -91,12 +91,14 @@ class NotificationService {
     // MARK: - Badge Management
     
     func updateApplicationBadge(count: Int) {
+        print("🔔 NotificationService: Setting application badge count to \(count)")
         DispatchQueue.main.async {
             UIApplication.shared.applicationIconBadgeNumber = count
         }
     }
     
     func clearBadge() {
+        print("🔔 NotificationService: Clearing application badge count")
         updateApplicationBadge(count: 0)
     }
     

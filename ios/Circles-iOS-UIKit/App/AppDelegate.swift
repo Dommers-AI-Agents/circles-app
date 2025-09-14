@@ -707,23 +707,96 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         }
         
         // Handle different notification types when user taps the notification
+        print("🔔 AppDelegate: Handling notification tap for type: \(type)")
+        print("🔔 AppDelegate: UserInfo: \(userInfo)")
+        
         switch type {
         case "new_message":
-            NotificationCenter.default.post(name: Notification.Name("NavigateToMessages"), object: nil)
+            // Navigate to specific conversation if conversationId is provided
+            if let conversationId = userInfo["conversationId"] as? String {
+                print("🔔 AppDelegate: Navigating to conversation: \(conversationId)")
+                NotificationCenter.default.post(
+                    name: Notification.Name("NavigateToConversation"),
+                    object: conversationId
+                )
+            } else {
+                NotificationCenter.default.post(name: Notification.Name("NavigateToMessages"), object: nil)
+            }
+            
         case "new_suggestion":
-            NotificationCenter.default.post(name: Notification.Name("NavigateToSuggestions"), object: nil)
+            // Navigate to suggestions with optional placeId
+            var suggestionInfo: [String: Any] = [:]
+            if let placeId = userInfo["placeId"] as? String {
+                suggestionInfo["placeId"] = placeId
+            }
+            if let suggestionId = userInfo["suggestionId"] as? String {
+                suggestionInfo["suggestionId"] = suggestionId
+            }
+            NotificationCenter.default.post(
+                name: Notification.Name("NavigateToSuggestions"),
+                object: nil,
+                userInfo: suggestionInfo.isEmpty ? nil : suggestionInfo
+            )
+            
         case "new_place":
             if let circleId = userInfo["circleId"] as? String {
                 NotificationCenter.default.post(name: Notification.Name("NavigateToCircle"), object: circleId)
             }
+            
+        case "place_liked", "place_commented":
+            // Navigate to specific place
+            if let placeId = userInfo["placeId"] as? String {
+                print("🔔 AppDelegate: Navigating to place: \(placeId)")
+                NotificationCenter.default.post(
+                    name: Notification.Name("NavigateToPlace"),
+                    object: placeId,
+                    userInfo: ["showComments": type == "place_commented"]
+                )
+            } else if let activityId = userInfo["activityId"] as? String {
+                // Fallback to activity view if no placeId
+                NotificationCenter.default.post(
+                    name: Notification.Name("NavigateToActivity"),
+                    object: activityId
+                )
+            }
+            
+        case "circle_liked", "circle_commented":
+            // Navigate to specific circle
+            if let circleId = userInfo["circleId"] as? String {
+                print("🔔 AppDelegate: Navigating to circle: \(circleId)")
+                NotificationCenter.default.post(
+                    name: Notification.Name("NavigateToCircle"),
+                    object: circleId,
+                    userInfo: ["showComments": type == "circle_commented"]
+                )
+            } else if let activityId = userInfo["activityId"] as? String {
+                // Fallback to activity view if no circleId
+                NotificationCenter.default.post(
+                    name: Notification.Name("NavigateToActivity"),
+                    object: activityId
+                )
+            }
+            
         case "connection_request":
-            NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
+            // Navigate to network tab with pending connections filter
+            NotificationCenter.default.post(
+                name: Notification.Name("NavigateToNetwork"),
+                object: nil,
+                userInfo: ["showPending": true]
+            )
+            
         case "connection_accepted":
             if let acceptedByUserId = userInfo["acceptedByUserId"] as? String {
                 UserDefaults.standard.set(acceptedByUserId, forKey: "newlyAcceptedConnectionId")
                 UserDefaults.standard.set(Date(), forKey: "newlyAcceptedConnectionDate")
+                // Navigate to specific user profile
+                NotificationCenter.default.post(
+                    name: Notification.Name("NavigateToNetwork"),
+                    object: acceptedByUserId
+                )
+            } else {
+                NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
             }
-            NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
         case "daily_summary":
             // Clear badge count since daily summaries are informational only
             UIApplication.shared.applicationIconBadgeNumber = 0
@@ -737,8 +810,62 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
                     userInfo: ["showDailySummary": true]
                 )
             }
+            
+        case "check_in", "checkin":
+            // Navigate to activity or specific place
+            if let placeId = userInfo["placeId"] as? String {
+                NotificationCenter.default.post(
+                    name: Notification.Name("NavigateToPlace"),
+                    object: placeId
+                )
+            } else if let activityId = userInfo["activityId"] as? String {
+                NotificationCenter.default.post(
+                    name: Notification.Name("NavigateToActivity"),
+                    object: activityId
+                )
+            }
+            
+        case "activity_update", "activity_like", "activity_comment":
+            // Navigate to activity feed with specific activity
+            if let activityId = userInfo["activityId"] as? String {
+                print("🔔 AppDelegate: Navigating to activity: \(activityId)")
+                NotificationCenter.default.post(
+                    name: Notification.Name("NavigateToActivity"),
+                    object: activityId
+                )
+            } else {
+                // Just go to home tab activity feed
+                NotificationCenter.default.post(
+                    name: Notification.Name("NavigateToActivity"),
+                    object: nil
+                )
+            }
+            
         default:
-            break
+            print("⚠️ AppDelegate: Unknown notification type: \(type)")
+            // For unknown types, try to navigate based on available data
+            if let activityId = userInfo["activityId"] as? String {
+                NotificationCenter.default.post(
+                    name: Notification.Name("NavigateToActivity"),
+                    object: activityId
+                )
+            } else if let circleId = userInfo["circleId"] as? String {
+                NotificationCenter.default.post(
+                    name: Notification.Name("NavigateToCircle"),
+                    object: circleId
+                )
+            } else if let placeId = userInfo["placeId"] as? String {
+                NotificationCenter.default.post(
+                    name: Notification.Name("NavigateToPlace"),
+                    object: placeId
+                )
+            } else if let conversationId = userInfo["conversationId"] as? String {
+                NotificationCenter.default.post(
+                    name: Notification.Name("NavigateToConversation"),
+                    object: conversationId
+                )
+            }
+            // If no specific data, do nothing (stay on current screen)
         }
     }
     

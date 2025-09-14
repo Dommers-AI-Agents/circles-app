@@ -143,7 +143,13 @@ router.route('/merge-accounts')
 // Import getUserCircles from circleSharingController
 const { getUserCircles } = require('../controllers/circleSharingController');
 
+// Import getUserUploads from globalPlaceController
+const { getUserUploads } = require('../controllers/globalPlaceController');
+
 router.route('/:userId/circles')
   .get(getUserCircles);
+
+router.route('/:userId/uploads')
+  .get(getUserUploads);
 
 module.exports = router;

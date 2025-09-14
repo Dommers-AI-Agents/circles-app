@@ -24,13 +24,13 @@ class PreloadManager {
     private var isPreloading = false
     private var preloadedData: PreloadedData?
     
-    // Progress tracking
-    private var totalTasks = 8  // Including network circles, activities, and moments now
+    // Progress tracking  
+    private var totalTasks = 6  // Reduced from 8 - combining related API calls
     private var completedTasks = 0
     private var progressHandler: ((Double, String) -> Void)?
     
     // Cache properties
-    private let cacheExpiryInterval: TimeInterval = 300 // 5 minutes
+    private let cacheExpiryInterval: TimeInterval = 900 // 15 minutes (reduced from 5)
     private var cacheKey: String {
         guard let userId = AuthService.shared.getUserId() else {
             return "PreloadedDataCache_Unknown"

@@ -3,7 +3,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { protect } = require('../middleware/auth');
+const { protect } = require('../middleware/firebaseAuth');
 
 const {
   getGlobalPlace,
@@ -13,7 +13,8 @@ const {
   addPublicReview,
   uploadPlaceMedia,
   getUserPlaceRelation,
-  updateUserPlaceRelation
+  updateUserPlaceRelation,
+  getPhotosDebug
 } = require('../controllers/globalPlaceController');
 
 // All routes require authentication
@@ -28,6 +29,10 @@ router.route('/global')
 
 router.route('/global/:placeId')
   .get(getGlobalPlace);
+
+// Debug route for photos
+router.route('/global/:placeId/photos-debug')
+  .get(getPhotosDebug);
 
 // User-place relationship routes
 router.route('/global/:placeId/relations')
@@ -45,5 +50,16 @@ router.route('/global/:placeId/reviews')
 
 router.route('/global/:placeId/media')
   .post(uploadPlaceMedia);
+
+// Import deleteUserPhoto from globalPlaceController
+const { deleteUserPhoto } = require('../controllers/globalPlaceController');
+
+router.route('/global/:placeId/media/:photoId')
+  .delete(deleteUserPhoto);
+
+// Like endpoints for Global Place uploads
+router.route('/global/:placeId/media/:photoId/like')
+  .post(require('../controllers/globalPlaceController').likeGlobalPlaceUpload)
+  .delete(require('../controllers/globalPlaceController').unlikeGlobalPlaceUpload);
 
 module.exports = router;

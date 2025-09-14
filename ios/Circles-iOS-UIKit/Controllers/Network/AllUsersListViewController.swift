@@ -469,7 +469,7 @@ extension AllUsersListViewController: UITableViewDataSource {
         
         if !filteredPendingOutgoingUsers.isEmpty {
             if section == currentSection {
-                return "Connection Requests Pending"
+                return nil // Custom view will handle this
             }
             currentSection += 1
         }
@@ -482,6 +482,46 @@ extension AllUsersListViewController: UITableViewDataSource {
         }
         
         return "Other Users"
+    }
+    
+    func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+        // Determine which section this is based on what's visible
+        var currentSection = 0
+        
+        if !filteredPendingIncomingUsers.isEmpty {
+            if section == currentSection {
+                return nil // Use default header
+            }
+            currentSection += 1
+        }
+        
+        if !filteredPendingOutgoingUsers.isEmpty {
+            if section == currentSection {
+                // Create custom orange header for "Connection Requests Pending"
+                let headerView = UIView()
+                headerView.backgroundColor = .clear
+                
+                let label = UILabel()
+                label.text = "CONNECTION REQUESTS PENDING"
+                label.font = .systemFont(ofSize: 13, weight: .medium)
+                label.textColor = Constants.Colors.brightOrange
+                label.translatesAutoresizingMaskIntoConstraints = false
+                
+                headerView.addSubview(label)
+                NSLayoutConstraint.activate([
+                    label.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 16),
+                    label.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -16),
+                    label.topAnchor.constraint(equalTo: headerView.topAnchor, constant: 8),
+                    label.bottomAnchor.constraint(equalTo: headerView.bottomAnchor, constant: -8)
+                ])
+                
+                return headerView
+            }
+            currentSection += 1
+        }
+        
+        // Use default header for other sections
+        return nil
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {

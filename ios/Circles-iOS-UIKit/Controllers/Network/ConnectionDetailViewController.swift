@@ -95,6 +95,50 @@ class ConnectionDetailViewController: BaseViewController {
         return button
     }()
     
+    // MARK: - Notification Settings
+    private let notificationsSectionLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Notifications"
+        label.font = .systemFont(ofSize: 20, weight: .semibold)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let notificationsContainer: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.secondaryBackground
+        view.layer.cornerRadius = 12
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let notificationTitleLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Activity Updates"
+        label.font = .systemFont(ofSize: 16, weight: .medium)
+        label.textColor = Constants.Colors.label
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let notificationDescriptionLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Get notified when they add places, share moments, or create circles"
+        label.font = .systemFont(ofSize: 14)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.numberOfLines = 0
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private lazy var activityNotificationsToggle: UISwitch = {
+        let toggle = UISwitch()
+        toggle.isOn = false // Default to disabled - user must opt-in for comprehensive activity notifications
+        toggle.addTarget(self, action: #selector(activityNotificationsToggled), for: .valueChanged)
+        toggle.translatesAutoresizingMaskIntoConstraints = false
+        return toggle
+    }()
+    
     private let circlesSectionLabel: UILabel = {
         let label = UILabel()
         label.text = "Circles"
@@ -158,6 +202,14 @@ class ConnectionDetailViewController: BaseViewController {
         contentView.addSubview(followButton)
         contentView.addSubview(connectButton)
         contentView.addSubview(removeButton)
+        
+        // Add notification settings views
+        contentView.addSubview(notificationsSectionLabel)
+        contentView.addSubview(notificationsContainer)
+        notificationsContainer.addSubview(notificationTitleLabel)
+        notificationsContainer.addSubview(notificationDescriptionLabel)
+        notificationsContainer.addSubview(activityNotificationsToggle)
+        
         contentView.addSubview(circlesSectionLabel)
         contentView.addSubview(circlesCollectionView)
         contentView.addSubview(noCirclesLabel)
@@ -209,7 +261,29 @@ class ConnectionDetailViewController: BaseViewController {
             removeButton.topAnchor.constraint(equalTo: messageButton.bottomAnchor, constant: 16),
             removeButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             
-            circlesSectionLabel.topAnchor.constraint(equalTo: removeButton.bottomAnchor, constant: 32),
+            // Notification settings section
+            notificationsSectionLabel.topAnchor.constraint(equalTo: removeButton.bottomAnchor, constant: 32),
+            notificationsSectionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            notificationsSectionLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            
+            notificationsContainer.topAnchor.constraint(equalTo: notificationsSectionLabel.bottomAnchor, constant: 12),
+            notificationsContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            notificationsContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            
+            // Constraints inside notifications container
+            notificationTitleLabel.topAnchor.constraint(equalTo: notificationsContainer.topAnchor, constant: 16),
+            notificationTitleLabel.leadingAnchor.constraint(equalTo: notificationsContainer.leadingAnchor, constant: 16),
+            notificationTitleLabel.trailingAnchor.constraint(equalTo: activityNotificationsToggle.leadingAnchor, constant: -16),
+            
+            activityNotificationsToggle.centerYAnchor.constraint(equalTo: notificationTitleLabel.centerYAnchor),
+            activityNotificationsToggle.trailingAnchor.constraint(equalTo: notificationsContainer.trailingAnchor, constant: -16),
+            
+            notificationDescriptionLabel.topAnchor.constraint(equalTo: notificationTitleLabel.bottomAnchor, constant: 4),
+            notificationDescriptionLabel.leadingAnchor.constraint(equalTo: notificationsContainer.leadingAnchor, constant: 16),
+            notificationDescriptionLabel.trailingAnchor.constraint(equalTo: activityNotificationsToggle.leadingAnchor, constant: -16),
+            notificationDescriptionLabel.bottomAnchor.constraint(equalTo: notificationsContainer.bottomAnchor, constant: -16),
+            
+            circlesSectionLabel.topAnchor.constraint(equalTo: notificationsContainer.bottomAnchor, constant: 32),
             circlesSectionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             circlesSectionLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
             
@@ -262,8 +336,11 @@ class ConnectionDetailViewController: BaseViewController {
         if let acceptedAt = connection.acceptedAt {
             let formatter = DateFormatter()
             formatter.dateStyle = .medium
-            connectionDateLabel.text = "Connected since \\(formatter.string(from: acceptedAt))"
+            connectionDateLabel.text = "Connected since \(formatter.string(from: acceptedAt))"
         }
+        
+        // Set initial state of activity notifications toggle
+        activityNotificationsToggle.isOn = connection.activityNotificationsEnabled ?? false
         
         // Load connection's circles and check follow status
         loadConnectionCircles()
@@ -347,6 +424,10 @@ class ConnectionDetailViewController: BaseViewController {
         // Show/hide buttons based on connection status
         messageButton.isHidden = !isConnected
         removeButton.isHidden = !isConnected
+        
+        // Show/hide notifications section only for connected users
+        notificationsSectionLabel.isHidden = !isConnected
+        notificationsContainer.isHidden = !isConnected
         
         // For connected users, show follow button but not connect button
         followButton.isHidden = !isConnected
@@ -481,6 +562,52 @@ class ConnectionDetailViewController: BaseViewController {
             ImageViewerService.shared.presentImageFromURL(profileImageURL, from: self)
         } else if let currentImage = profileImageView.image {
             ImageViewerService.shared.presentImage(currentImage, from: self)
+        }
+    }
+    
+    @objc private func activityNotificationsToggled() {
+        guard let connection = connection else { return }
+        
+        let isEnabled = activityNotificationsToggle.isOn
+        
+        // Show loading state while updating
+        activityNotificationsToggle.isEnabled = false
+        
+        // Update connection notification preference
+        updateConnectionNotificationPreference(connectionId: connection.id, enabled: isEnabled) { [weak self] success in
+            DispatchQueue.main.async {
+                self?.activityNotificationsToggle.isEnabled = true
+                
+                if !success {
+                    // Revert toggle state if update failed
+                    self?.activityNotificationsToggle.setOn(!isEnabled, animated: true)
+                    self?.showError("Failed to update notification preference")
+                }
+            }
+        }
+    }
+    
+    private func updateConnectionNotificationPreference(connectionId: String, enabled: Bool, completion: @escaping (Bool) -> Void) {
+        // Create a simple response model for this endpoint
+        struct NotificationPreferenceResponse: Codable {
+            let success: Bool
+            let message: String?
+        }
+        
+        APIService.shared.request(
+            endpoint: "connections/\(connectionId)/notifications",
+            method: .put,
+            body: ["activityNotificationsEnabled": enabled],
+            requiresAuth: true
+        ) { (result: Result<NotificationPreferenceResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                print("✅ Connection notification preference updated: \(response.success)")
+                completion(response.success)
+            case .failure(let error):
+                print("❌ Failed to update connection notification preference: \(error)")
+                completion(false)
+            }
         }
     }
     

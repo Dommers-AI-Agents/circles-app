@@ -1,0 +1,85 @@
+{
+  "migrationSummary": {
+    "type": "ACTUAL_MIGRATION",
+    "startTime": "2025-09-12T16:45:07.080Z",
+    "endTime": "2025-09-12T16:45:18.417Z",
+    "durationSeconds": 11,
+    "success": true
+  },
+  "statistics": {
+    "originalPlaces": 622,
+    "duplicatePlacesIdentified": 152,
+    "globalPlacesCreated": 466,
+    "userPlaceRelationsCreated": 613,
+    "photosAttributed": 541,
+    "videosAttributed": 0,
+    "publicReviewsCreated": 99,
+    "storageReductionPercent": 24
+  },
+  "errorSummary": {
+    "totalErrors": 9,
+    "validationErrors": 9,
+    "fatalErrors": 0
+  },
+  "errors": [
+    {
+      "placeKey": "google:Ei0xMDYwIEtpbmdzIEh3eSwgT2NlYW4gVG93bnNoaXAsIE5KIDA3NzEyLCBVU0EiMRIvChQKEgkzrTIiQy_CiRHSJuoeo-c5EBCkCCoUChIJbUQRHmgvwokRufGVPX3Jhqw",
+      "errors": [
+        "Valid location coordinates are required"
+      ]
+    },
+    {
+      "placeKey": "google:ChIJV_reNACHwYkRh-pGo8WjrsI",
+      "errors": [
+        "Valid location coordinates are required"
+      ]
+    },
+    {
+      "placeKey": "manual:inspired minds brielle:1025 nj70 w, brielle, nj  08730, united states",
+      "userId": "106180759668481093895",
+      "errors": [
+        "Circle ID is required"
+      ]
+    },
+    {
+      "placeKey": "manual:pet supplies plus:1825 rte 35, unit 1  2, wall township, nj 07719, united states",
+      "userId": "111819744557116370195",
+      "errors": [
+        "Circle ID is required"
+      ]
+    },
+    {
+      "placeKey": "google:ChIJh7uzYkEmwokRM9Yif_yeirw",
+      "errors": [
+        "Valid location coordinates are required"
+      ]
+    },
+    {
+      "placeKey": "manual:palmetto southern kitchen  bar:1000 ocean ave, asbury park, nj  07712, united states",
+      "userId": "106180759668481093895",
+      "errors": [
+        "Circle ID is required"
+      ]
+    },
+    {
+      "placeKey": "manual:tommys tavern  tap:2150 nj35, sea girt, nj  08750, united states",
+      "userId": "116043301815181310700",
+      "errors": [
+        "Circle ID is required"
+      ]
+    },
+    {
+      "placeKey": "google:ChIJo9V8bT_Uw4kRIbw2zLmVO70",
+      "errors": [
+        "Valid location coordinates are required"
+      ]
+    },
+    {
+      "placeKey": "manual:crunch fitness:1825 nj35\nwall township, nj  07719\nunited states",
+      "userId": "111819744557116370195",
+      "errors": [
+        "Circle ID is required"
+      ]
+    }
+  ]
+}

@@ -321,11 +321,12 @@ class ActivityFeedCell: UITableViewCell {
         // Configure timestamp
         timestampLabel.text = activity.timeAgo
         
-        // Configure optional elements - show place image for check-ins, places, and video uploads
+        // Configure optional elements - show place image for check-ins, places, video uploads, and photo uploads
         let shouldShowPlaceImage = (activity.type == .checkIn || 
                                    activity.type == .placeAdded || 
                                    activity.type == .placeLiked ||
-                                   activity.type == .videoUploaded) && 
+                                   activity.type == .videoUploaded ||
+                                   activity.type == .photoUploaded) && 
                                    activity.metadata?.placePhoto != nil
         
         placeImageView.isHidden = !shouldShowPlaceImage
@@ -420,7 +421,8 @@ class ActivityFeedCell: UITableViewCell {
            activity.type == .placeLiked || 
            activity.type == .placeCommented ||
            activity.type == .checkIn ||
-           activity.type == .videoUploaded {
+           activity.type == .videoUploaded ||
+           activity.type == .photoUploaded {
             delegate?.didTapActivityContent(activity: activity)
         }
     }

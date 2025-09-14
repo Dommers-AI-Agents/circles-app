@@ -488,8 +488,8 @@ class UserSearchCell: UITableViewCell {
                 connectionStatusLabel.text = "Connected"
                 connectionStatusLabel.textColor = .systemGreen
             case "pending":
-                connectionStatusLabel.text = "Pending"
-                connectionStatusLabel.textColor = .systemOrange
+                connectionStatusLabel.text = "Request Sent"
+                connectionStatusLabel.textColor = Constants.Colors.brightOrange
             default:
                 connectionStatusLabel.text = ""
             }

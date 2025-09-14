@@ -12,7 +12,8 @@ const {
   getActiveConnections,
   getActiveRelationships,
   clearConnectionActivity,
-  trackConnectionView
+  trackConnectionView,
+  updateConnectionNotificationPreferences
 } = require('../controllers/connectionController');
 const { protect } = require('../middleware/firebaseAuth');
 
@@ -51,6 +52,9 @@ router.route('/:id/clear-activity')
 
 router.route('/:id/track-view')
   .post(trackConnectionView);
+
+router.route('/:connectionId/notifications')
+  .put(updateConnectionNotificationPreferences);
 
 router.route('/:id')
   .get(getConnectionById)

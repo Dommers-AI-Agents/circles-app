@@ -48,6 +48,7 @@ struct Connection: Codable, Identifiable {
     let connectionScore: Double? // Weighted score calculated by backend
     let scoreComponents: ScoreComponents? // Breakdown of score components
     let scoreLastCalculated: Date? // When score was last calculated
+    let activityNotificationsEnabled: Bool? // Whether user wants push notifications for this connection's activities
     let createdAt: Date?
     let acceptedAt: Date?
     let updatedAt: Date?
@@ -61,6 +62,7 @@ struct Connection: Codable, Identifiable {
         case viewCount, lastViewedAt, totalPlaces, hasRecentPlace
         case lastMessageAt, lastMessageSenderId, hasRecentMessage
         case connectionScore, scoreComponents, scoreLastCalculated
+        case activityNotificationsEnabled
         case createdAt, acceptedAt, updatedAt
     }
     
@@ -100,6 +102,7 @@ struct Connection: Codable, Identifiable {
         connectionScore = try container.decodeIfPresent(Double.self, forKey: .connectionScore)
         scoreComponents = try container.decodeIfPresent(ScoreComponents.self, forKey: .scoreComponents)
         scoreLastCalculated = try container.decodeIfPresent(Date.self, forKey: .scoreLastCalculated)
+        activityNotificationsEnabled = try container.decodeIfPresent(Bool.self, forKey: .activityNotificationsEnabled)
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt)
         acceptedAt = try container.decodeIfPresent(Date.self, forKey: .acceptedAt)
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt)
@@ -134,6 +137,7 @@ struct Connection: Codable, Identifiable {
         try container.encodeIfPresent(connectionScore, forKey: .connectionScore)
         try container.encodeIfPresent(scoreComponents, forKey: .scoreComponents)
         try container.encodeIfPresent(scoreLastCalculated, forKey: .scoreLastCalculated)
+        try container.encodeIfPresent(activityNotificationsEnabled, forKey: .activityNotificationsEnabled)
         try container.encodeIfPresent(createdAt, forKey: .createdAt)
         try container.encodeIfPresent(acceptedAt, forKey: .acceptedAt)
         try container.encodeIfPresent(updatedAt, forKey: .updatedAt)

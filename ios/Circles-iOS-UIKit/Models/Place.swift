@@ -2,8 +2,59 @@ import Foundation
 import CoreLocation
 import MapKit
 
+// Helper for flexible JSON decoding
+struct AnyCodable: Codable {
+    let value: Any
+    
+    init(_ value: Any) {
+        self.value = value
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        
+        if let bool = try? container.decode(Bool.self) {
+            value = bool
+        } else if let int = try? container.decode(Int.self) {
+            value = int
+        } else if let double = try? container.decode(Double.self) {
+            value = double
+        } else if let string = try? container.decode(String.self) {
+            value = string
+        } else if let array = try? container.decode([AnyCodable].self) {
+            value = array.map { $0.value }
+        } else if let dictionary = try? container.decode([String: AnyCodable].self) {
+            value = dictionary.mapValues { $0.value }
+        } else {
+            throw DecodingError.typeMismatch(AnyCodable.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Unsupported type"))
+        }
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        
+        switch value {
+        case let bool as Bool:
+            try container.encode(bool)
+        case let int as Int:
+            try container.encode(int)
+        case let double as Double:
+            try container.encode(double)
+        case let string as String:
+            try container.encode(string)
+        case let array as [Any]:
+            try container.encode(array.map { AnyCodable($0) })
+        case let dictionary as [String: Any]:
+            try container.encode(dictionary.mapValues { AnyCodable($0) })
+        default:
+            throw EncodingError.invalidValue(value, EncodingError.Context(codingPath: encoder.codingPath, debugDescription: "Unsupported type"))
+        }
+    }
+}
+
 struct Place: Codable, Identifiable {
     let id: String
+    let globalPlaceId: String? // Reference to Global Place system
     let name: String
     let description: String?
     let address: String
@@ -39,6 +90,7 @@ struct Place: Codable, Identifiable {
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
+        case globalPlaceId
         case name, description, address, location, website, phone, googlePlaceId
         case photos, videos, category, customCategoryId, subcategory, rating, userRatingsTotal, notes, privateNotes, publicNotes, tags, reviews, openingHours
         case priceLevel, likes, likesCount, commentsCount, circleId, addedBy, addedByUser, privacy, createdAt, updatedAt, isNew, circleName
@@ -49,6 +101,7 @@ struct Place: Codable, Identifiable {
         
         // Decode all required fields
         self.id = try container.decode(String.self, forKey: .id)
+        self.globalPlaceId = try container.decodeIfPresent(String.self, forKey: .globalPlaceId)
         self.name = try container.decode(String.self, forKey: .name)
         self.description = try container.decodeIfPresent(String.self, forKey: .description)
         self.address = try container.decode(String.self, forKey: .address)
@@ -56,7 +109,28 @@ struct Place: Codable, Identifiable {
         self.website = try container.decodeIfPresent(String.self, forKey: .website)
         self.phone = try container.decodeIfPresent(String.self, forKey: .phone)
         self.googlePlaceId = try container.decodeIfPresent(String.self, forKey: .googlePlaceId)
-        self.photos = try container.decodeIfPresent([String].self, forKey: .photos)
+        // Handle mixed photo data types (strings and objects with metadata)
+        if let photosContainer = try? container.nestedUnkeyedContainer(forKey: .photos) {
+            var photos: [String] = []
+            var photosContainerCopy = photosContainer
+            
+            while !photosContainerCopy.isAtEnd {
+                if let photoString = try? photosContainerCopy.decode(String.self) {
+                    // Handle simple string URLs
+                    photos.append(photoString)
+                } else if let photoDict = try? photosContainerCopy.decode([String: AnyCodable].self),
+                          let url = photoDict["url"]?.value as? String {
+                    // Handle photo objects with metadata - extract URL
+                    photos.append(url)
+                } else {
+                    // Skip unknown format
+                    _ = try? photosContainerCopy.decode(AnyCodable.self)
+                }
+            }
+            self.photos = photos.isEmpty ? nil : photos
+        } else {
+            self.photos = try container.decodeIfPresent([String].self, forKey: .photos)
+        }
         self.videos = try container.decodeIfPresent([String].self, forKey: .videos)
         self.category = try container.decode(PlaceCategory.self, forKey: .category)
         self.customCategoryId = try container.decodeIfPresent(String.self, forKey: .customCategoryId)
@@ -106,7 +180,7 @@ struct Place: Codable, Identifiable {
     }
     
     // Manual initializer for creating Place instances in code
-    init(id: String, name: String, description: String?, address: String,
+    init(id: String, globalPlaceId: String? = nil, name: String, description: String?, address: String,
          location: GeoLocation?, website: String?, phone: String?,
          googlePlaceId: String?, photos: [String]?, videos: [String]?, category: PlaceCategory,
          customCategoryId: String?, subcategory: String?, rating: Double?, userRatingsTotal: Int?, notes: String?,
@@ -115,6 +189,7 @@ struct Place: Codable, Identifiable {
          priceLevel: PriceLevel?, likes: [String]?, likesCount: Int?, commentsCount: Int?, circleId: String?, addedBy: String,
          addedByUser: User?, privacy: PlacePrivacy, createdAt: Date, updatedAt: Date, isNew: Bool? = nil) {
         self.id = id
+        self.globalPlaceId = globalPlaceId
         self.name = name
         self.description = description
         self.address = address
@@ -222,6 +297,15 @@ struct PlaceReview: Codable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id = "_id"
         case user, rating, comment, date
+    }
+    
+    // Manual initializer for creating PlaceReview instances in code
+    init(id: String, user: String, rating: Double, comment: String?, date: Date) {
+        self.id = id
+        self.user = user
+        self.rating = rating
+        self.comment = comment
+        self.date = date
     }
 }
 
@@ -426,7 +510,17 @@ enum UnifiedCategory: Hashable, Equatable {
         case .standard(let category):
             return place.category == category
         case .custom(let name):
-            return place.category == .other && place.customCategoryId == name
+            // Custom categories are stored as: category: .other, customCategoryId: "Category Name"
+            let matches = place.category == .other && place.customCategoryId == name
+            
+            // Debug logging for custom category matching
+            if !matches {
+                print("🚫 Custom category '\(name)' does not match place '\(place.name)' - place category: \(place.category.rawValue), customCategoryId: '\(place.customCategoryId ?? "none")'")
+            } else {
+                print("✅ Custom category '\(name)' matches place '\(place.name)'")
+            }
+            
+            return matches
         }
     }
     
@@ -435,6 +529,10 @@ enum UnifiedCategory: Hashable, Equatable {
         if place.category == .other, let customName = place.customCategoryId, !customName.isEmpty {
             // Validate that this is actually a category name and not user data
             if isValidCategoryName(customName) {
+                // Check for custom categories that should map to standard categories
+                if let standardCategory = mapCustomToStandardCategory(customName) {
+                    return .standard(standardCategory)
+                }
                 return .custom(customName)
             } else {
                 // Fall back to "Other" category if invalid
@@ -444,6 +542,73 @@ enum UnifiedCategory: Hashable, Equatable {
         } else {
             return .standard(place.category)
         }
+    }
+    
+    // Map custom category names to standard categories to prevent duplicates
+    private static func mapCustomToStandardCategory(_ customName: String) -> PlaceCategory? {
+        let normalizedName = customName.lowercased().trimmingCharacters(in: .whitespaces)
+        
+        // Healthcare variations
+        if normalizedName == "healthcare" || normalizedName == "health care" || normalizedName == "medical" {
+            return .healthcare
+        }
+        
+        // Restaurant variations  
+        if normalizedName == "restaurant" || normalizedName == "restaurants" {
+            return .restaurant
+        }
+        
+        // Cafe variations
+        if normalizedName == "cafe" || normalizedName == "café" || normalizedName == "coffee" {
+            return .cafe
+        }
+        
+        // Bar variations
+        if normalizedName == "bar" || normalizedName == "bars" || normalizedName == "pub" {
+            return .bar
+        }
+        
+        // Retail variations
+        if normalizedName == "retail" || normalizedName == "shopping" || normalizedName == "store" {
+            return .retail
+        }
+        
+        // Hotel variations
+        if normalizedName == "hotel" || normalizedName == "accommodation" || normalizedName == "lodging" {
+            return .hotel
+        }
+        
+        // Service variations
+        if normalizedName == "service" || normalizedName == "services" {
+            return .service
+        }
+        
+        // Entertainment variations
+        if normalizedName == "entertainment" || normalizedName == "nightclub" {
+            return .entertainment
+        }
+        
+        // Fitness variations
+        if normalizedName == "fitness" || normalizedName == "gym" || normalizedName == "health club" {
+            return .fitness
+        }
+        
+        // Attraction variations
+        if normalizedName == "attraction" || normalizedName == "tourist" || normalizedName == "sightseeing" {
+            return .attraction
+        }
+        
+        // Home variations
+        if normalizedName == "home" || normalizedName == "house" || normalizedName == "residence" {
+            return .home
+        }
+        
+        // Work variations
+        if normalizedName == "work" || normalizedName == "office" || normalizedName == "workplace" {
+            return .work
+        }
+        
+        return nil // No mapping found, keep as custom category
     }
     
     // Validate that a string is a valid category name (not an email or user ID)
@@ -655,17 +820,8 @@ class PlaceAnnotation: NSObject, MKAnnotation {
     }
     
     var subtitle: String? {
-        // If address is available and not empty, show it
-        if !place.address.isEmpty {
-            return place.address
-        }
-        
-        // Otherwise, include owner information when viewing connection places
-        let categoryName = place.displayCategory
-        let ownerName = place.addedByDisplayName
-        
-        // Format: "Category • Added by Name"
-        return "\(categoryName) • Added by \(ownerName)"
+        // Always show who added the place
+        return "Added by \(place.addedByDisplayName)"
     }
     
     init(place: Place) {

@@ -22,6 +22,11 @@ class ContentUploadViewController: UIViewController {
     private var processedImage: UIImage?
     private var isImageProcessingComplete = false
     
+    // MARK: - Shared Media Services
+    private lazy var mediaCaptureService = MediaCaptureService()
+    private let mediaProcessingService = MediaProcessingService.shared
+    private let mediaStorageService = MediaStorageService.shared
+    
     // MARK: - UI Elements
     private let titleLabel: UILabel = {
         let label = UILabel()
@@ -269,54 +274,23 @@ class ContentUploadViewController: UIViewController {
     
     @objc private func takePhotoTapped() {
         showPrivacySelection { [weak self] in
-            if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                let imagePicker = UIImagePickerController()
-                imagePicker.sourceType = .camera
-                imagePicker.delegate = self
-                imagePicker.allowsEditing = false
-                self?.present(imagePicker, animated: true)
-            } else {
-                self?.showErrorAlert("Camera not available")
-            }
+            guard let self = self else { return }
+            self.mediaCaptureService.delegate = self
+            self.mediaCaptureService.presentCamera(from: self, for: .photo)
         }
     }
     
     @objc private func chooseFromLibraryTapped() {
         showPrivacySelection { [weak self] in
-            self?.checkPhotoLibraryPermission { granted in
-                if granted {
-                    self?.presentPhotoPicker()
-                } else {
-                    self?.showErrorAlert("Photo library access denied")
-                }
-            }
+            guard let self = self else { return }
+            self.mediaCaptureService.delegate = self
+            self.mediaCaptureService.presentPhotoLibrary(from: self, for: .both) // Allow both photos and videos
         }
     }
     
-    private func presentPhotoPicker() {
-        let imagePicker = UIImagePickerController()
-        imagePicker.sourceType = .photoLibrary
-        imagePicker.mediaTypes = ["public.image", "public.movie"]
-        imagePicker.delegate = self
-        imagePicker.allowsEditing = false
-        present(imagePicker, animated: true)
-    }
-    
-    private func checkPhotoLibraryPermission(completion: @escaping (Bool) -> Void) {
-        let status = PHPhotoLibrary.authorizationStatus()
-        switch status {
-        case .authorized, .limited:
-            completion(true)
-        case .notDetermined:
-            PHPhotoLibrary.requestAuthorization { newStatus in
-                DispatchQueue.main.async {
-                    completion(newStatus == .authorized || newStatus == .limited)
-                }
-            }
-        default:
-            completion(false)
-        }
-    }
+    // MARK: - Legacy Methods Removed
+    // presentPhotoPicker() and checkPhotoLibraryPermission() methods removed
+    // Now using shared MediaCaptureService for unified media handling
     
     private func showErrorAlert(_ message: String) {
         // Dismiss any presented view controller first
@@ -411,22 +385,79 @@ class ContentUploadViewController: UIViewController {
     }
 }
 
-// MARK: - UIImagePickerControllerDelegate
-extension ContentUploadViewController: UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-    func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
-        picker.dismiss(animated: true)
-        
-        if let image = info[.originalImage] as? UIImage {
-            // Compress and process image
-            processImage(image)
-        } else if let videoURL = info[.mediaURL] as? URL {
-            // Process video (trim to 15 seconds and compress)
-            processVideo(at: videoURL)
+// MARK: - MediaCaptureServiceDelegate (Unified Media Handling)
+extension ContentUploadViewController: MediaCaptureServiceDelegate {
+    func mediaCaptureService(_ service: MediaCaptureService, didCapture media: CapturedMedia) {
+        switch media.type {
+        case .photo(let image):
+            // Use shared MediaProcessingService for consistent processing
+            processImageUsingSharedService(image)
+        case .video(let videoURL):
+            // Use shared MediaProcessingService for consistent processing  
+            processVideoUsingSharedService(at: videoURL)
         }
     }
     
-    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-        picker.dismiss(animated: true)
+    func mediaCaptureService(_ service: MediaCaptureService, didFailWithError error: Error) {
+        DispatchQueue.main.async { [weak self] in
+            self?.showError(error)
+        }
+    }
+    
+    func mediaCaptureServiceDidCancel(_ service: MediaCaptureService) {
+        // User cancelled - no action needed
+    }
+    
+    // MARK: - Unified Media Processing (Using Shared Services)
+    
+    private func processImageUsingSharedService(_ image: UIImage) {
+        print("📸 Using shared MediaProcessingService for image processing...")
+        
+        // Store original image
+        self.originalImage = image
+        
+        // Start place selection immediately with original image
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, let originalImage = self.originalImage else { return }
+            let content = ContentType.photo(originalImage)
+            self.showPlaceSelection(for: content)
+        }
+        
+        // Use MediaProcessingService for consistent compression (same as PlaceDetailViewController)
+        mediaProcessingService.processPhoto(image) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let processedPhoto):
+                    // Store processed image and mark processing as complete
+                    self?.processedImage = processedPhoto.image
+                    self?.isImageProcessingComplete = true
+                    print("✅ Image processing complete using shared service")
+                case .failure(let error):
+                    print("❌ Image processing failed: \(error)")
+                    self?.showError(error)
+                }
+            }
+        }
+    }
+    
+    private func processVideoUsingSharedService(at url: URL) {
+        print("🎥 Using shared MediaProcessingService for video processing...")
+        
+        // Use MediaProcessingService for consistent compression (same as PlaceDetailViewController)
+        mediaProcessingService.processVideo(at: url) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let processedVideo):
+                    // Create a ContentType.video with processed data
+                    let content = ContentType.video(processedVideo.url)
+                    self?.showPlaceSelection(for: content)
+                    print("✅ Video processing complete using shared service")
+                case .failure(let error):
+                    print("❌ Video processing failed: \(error)")
+                    self?.showError(error)
+                }
+            }
+        }
     }
     
     private func processImage(_ image: UIImage) {

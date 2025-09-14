@@ -45,10 +45,18 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             }
         }
         
-        // Show a splash screen initially if user is logged in
+        // Show main interface immediately if user is logged in (faster loading)
         if AuthService.shared.isLoggedIn {
-            let splashVC = SplashScreenViewController()
-            window?.rootViewController = splashVC
+            // Check if we have cached data - if so, show main interface immediately
+            if PreloadManager.shared.getPreloadedData() != nil {
+                Logger.debug("Cached data available, showing main interface immediately")
+                let mainTabController = CirclesTabBarController()
+                window?.rootViewController = mainTabController
+            } else {
+                // No cached data, show splash screen
+                let splashVC = SplashScreenViewController()
+                window?.rootViewController = splashVC
+            }
             
             // Perform token refresh on app launch if user is logged in
             Logger.debug("User is logged in, checking token validity")
@@ -73,21 +81,19 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 Logger.debug("Token is still valid")
             }
             
-            // Try to restore Google Sign-In session if user previously signed in with Google
-            // BUT only if the token is valid (not expired)
+            // Restore Google Sign-In session asynchronously (don't block UI)
             if AuthService.shared.getAuthProvider() == "google" && !AuthService.shared.isTokenExpired() {
-                Logger.debug("User previously signed in with Google and token is valid, attempting to restore session")
-                SocialAuthService.shared.restoreGoogleSignInSession { result in
-                    switch result {
-                    case .success:
-                        Logger.debug("Google session restored successfully")
-                    case .failure(let error):
-                        Logger.warning("Google session restoration failed: \(error)")
-                        // The backend token might still be valid even if Google session expired
+                DispatchQueue.global(qos: .background).async {
+                    Logger.debug("User previously signed in with Google, restoring session in background")
+                    SocialAuthService.shared.restoreGoogleSignInSession { result in
+                        switch result {
+                        case .success:
+                            Logger.debug("Google session restored successfully")
+                        case .failure(let error):
+                            Logger.warning("Google session restoration failed: \(error)")
+                        }
                     }
                 }
-            } else if AuthService.shared.getAuthProvider() == "google" && AuthService.shared.isTokenExpired() {
-                Logger.debug("User previously signed in with Google but token is expired, skipping Google session restoration")
             }
         }
         
@@ -170,13 +176,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 window?.rootViewController = splashVC
             }
             
-            // Add failsafe timeout for splash screen - 30 seconds
+            // Add failsafe timeout for splash screen - reduced to 10 seconds
             var hasCompleted = false
-            DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self, weak splashVC] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self, weak splashVC] in
                 guard let self = self, let splashVC = splashVC else { return }
                 guard !hasCompleted else { return } // Already completed normally
                 
-                print("⏰ SceneDelegate: Splash screen timeout reached (30 seconds)")
+                print("⏰ SceneDelegate: Splash screen timeout reached (10 seconds)")
                 
                 // Show error with retry option
                 let alert = UIAlertController(
@@ -825,6 +831,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Called when the scene has moved from an inactive state to an active state.
         // Check for any pending notifications or updates
         if AuthService.shared.isLoggedIn {
+            // Clear notification badge when user opens the app
+            print("🔔 SceneDelegate: Clearing notification badge on app activation")
+            NotificationService.shared.clearBadge()
+            
             // Proactively check and refresh token if needed
             if AuthService.shared.isTokenExpired() {
                 print("🔄 SceneDelegate: Token expired, refreshing proactively on scene activation")

@@ -245,10 +245,10 @@ class DiscoverUserCell: UITableViewCell {
             followButton.layer.borderColor = UIColor.systemGreen.cgColor
             followButton.isEnabled = false
         } else if connectionStatus == "pending" {
-            followButton.setTitle("Pending", for: .normal)
-            followButton.backgroundColor = .systemOrange.withAlphaComponent(0.1)
-            followButton.setTitleColor(.systemOrange, for: .normal)
-            followButton.layer.borderColor = UIColor.systemOrange.cgColor
+            followButton.setTitle("Request Sent", for: .normal)
+            followButton.backgroundColor = Constants.Colors.brightOrange.withAlphaComponent(0.1)
+            followButton.setTitleColor(Constants.Colors.brightOrange, for: .normal)
+            followButton.layer.borderColor = Constants.Colors.brightOrange.cgColor
             followButton.isEnabled = false
         } else if isFollowing {
             followButton.setTitle("Following", for: .normal)

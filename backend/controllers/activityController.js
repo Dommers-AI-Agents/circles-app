@@ -91,25 +91,61 @@ exports.getNetworkActivities = async (req, res, next) => {
     // Convert Set to Array for Firebase query
     const userIds = Array.from(connectedUserIds);
     
-    // Build query
-    let activitiesQuery = db.collection(COLLECTIONS.ACTIVITIES)
-      .where('actorId', 'in', userIds)
-      .orderBy('timestamp', 'desc')
-      .limit(parseInt(limit));
+    console.log(`🔍 Fetching activities for ${userIds.length} users (connections + following + self)`);
     
-    // Add date filter if provided
-    if (since) {
-      const sinceDate = new Date(since);
-      activitiesQuery = activitiesQuery.where('timestamp', '>=', sinceDate);
+    // Handle Firestore IN query limitation (max 30 values)
+    let allActivities = [];
+    
+    if (userIds.length <= 30) {
+      // Single query for <= 30 users
+      let activitiesQuery = db.collection(COLLECTIONS.ACTIVITIES)
+        .where('actorId', 'in', userIds)
+        .orderBy('timestamp', 'desc');
+      
+      // Add date filter if provided
+      if (since) {
+        const sinceDate = new Date(since);
+        activitiesQuery = activitiesQuery.where('timestamp', '>=', sinceDate);
+      }
+      
+      const activitiesSnapshot = await activitiesQuery.get();
+      allActivities = serializeQuerySnapshot(activitiesSnapshot);
+    } else {
+      // Batch queries for > 30 users
+      console.log(`⚠️ User has ${userIds.length} connections, batching IN queries`);
+      
+      const userBatches = [];
+      for (let i = 0; i < userIds.length; i += 30) {
+        userBatches.push(userIds.slice(i, i + 30));
+      }
+      
+      const batchPromises = userBatches.map(async (batch) => {
+        let query = db.collection(COLLECTIONS.ACTIVITIES)
+          .where('actorId', 'in', batch)
+          .orderBy('timestamp', 'desc');
+        
+        // Add date filter if provided
+        if (since) {
+          const sinceDate = new Date(since);
+          query = query.where('timestamp', '>=', sinceDate);
+        }
+        
+        const snapshot = await query.get();
+        return serializeQuerySnapshot(snapshot);
+      });
+      
+      const batchResults = await Promise.all(batchPromises);
+      
+      // Merge and sort all results
+      allActivities = batchResults
+        .flat()
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     }
     
-    // Add offset if provided
-    if (offset > 0) {
-      activitiesQuery = activitiesQuery.offset(parseInt(offset));
-    }
-    
-    const activitiesSnapshot = await activitiesQuery.get();
-    const activities = serializeQuerySnapshot(activitiesSnapshot);
+    // Apply limit and offset after merging (for batched queries)
+    const startIndex = parseInt(offset) || 0;
+    const limitCount = parseInt(limit) || 20;
+    const activities = allActivities.slice(startIndex, startIndex + limitCount);
     
     // Found activities
     
@@ -288,8 +324,8 @@ exports.getNetworkActivities = async (req, res, next) => {
       }
     });
     
-    // Check if there are more activities (based on original fetch, not filtered)
-    const hasMore = activities.length === parseInt(limit);
+    // Check if there are more activities available for pagination
+    const hasMore = allActivities.length > startIndex + limitCount;
     
     res.status(200).json({
       success: true,

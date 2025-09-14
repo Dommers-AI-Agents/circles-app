@@ -160,7 +160,7 @@ class AllUsersCell: UITableViewCell {
             
             actionButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             actionButton.trailingAnchor.constraint(equalTo: removeButton.leadingAnchor, constant: -8),
-            actionButton.widthAnchor.constraint(equalToConstant: 70),
+            actionButton.widthAnchor.constraint(equalToConstant: 95),
             actionButton.heightAnchor.constraint(equalToConstant: 32),
             
             followButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
@@ -293,12 +293,12 @@ class AllUsersCell: UITableViewCell {
                 
                 removeButton.isHidden = true
                 declineButton.isHidden = false
-                contentView.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.05)
+                contentView.backgroundColor = Constants.Colors.brightOrange.withAlphaComponent(0.05)
             } else {
                 // Outgoing requests: Show Cancel and Follow buttons
-                actionButton.setTitle("Cancel", for: .normal)
-                actionButton.backgroundColor = .systemRed.withAlphaComponent(0.1)
-                actionButton.setTitleColor(.systemRed, for: .normal)
+                actionButton.setTitle("Request Sent", for: .normal)
+                actionButton.backgroundColor = Constants.Colors.brightOrange.withAlphaComponent(0.1)
+                actionButton.setTitleColor(Constants.Colors.brightOrange, for: .normal)
                 actionButton.isEnabled = true
                 
                 // Configure follow button
@@ -310,7 +310,7 @@ class AllUsersCell: UITableViewCell {
                 
                 removeButton.isHidden = true
                 declineButton.isHidden = true
-                contentView.backgroundColor = .systemBackground
+                contentView.backgroundColor = Constants.Colors.brightOrange.withAlphaComponent(0.05)
             }
         default:
             // Non-connected users: Show Connect and Follow buttons

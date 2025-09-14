@@ -9,6 +9,7 @@ enum ActivityType: String, Codable {
     case commentLiked = "comment_liked"
     case checkIn = "check_in"
     case videoUploaded = "video_uploaded"
+    case photoUploaded = "photo_uploaded"
 }
 
 // MARK: - Activity Model
@@ -97,6 +98,8 @@ extension Activity {
             return "checked in at \(targetName)"
         case .videoUploaded:
             return "uploaded a video at \(targetName)"
+        case .photoUploaded:
+            return "uploaded a photo at \(targetName)"
         }
     }
     

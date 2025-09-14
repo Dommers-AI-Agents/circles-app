@@ -115,8 +115,8 @@ class BlockService {
         // NetworkManager will refresh connections list when needed
         NotificationCenter.default.post(name: .userBlocked, object: nil, userInfo: ["userId": userId])
         
-        // Clear from conversations
-        MessagingService.shared.clearConversationsWithUser(userId: userId)
+        // Note: UI components should handle hiding conversations with blocked users
+        // MessagingService will filter out blocked users in conversation lists
     }
 }
 

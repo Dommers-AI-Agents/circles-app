@@ -7,9 +7,15 @@ class PlaceDetailViewController: BaseViewController {
     
     // MARK: - Properties
     private var place: Place
+    private var globalPlace: GlobalPlace? // Global place data with attribution
     private var circle: Circle?
     private var creatorUser: User? // Store the creator user for navigation
     private var userCircles: [Circle] = [] // Store user's circles for check-in detection
+    
+    // MARK: - Media Services
+    private lazy var mediaCaptureService = MediaCaptureService()
+    private let mediaProcessingService = MediaProcessingService.shared
+    private let mediaStorageService = MediaStorageService.shared
     
     // MARK: - Configuration
     override var loadsDataOnViewDidLoad: Bool { false }
@@ -46,23 +52,35 @@ class PlaceDetailViewController: BaseViewController {
     private var currentPhotoIndex = 0
     
     private func updateMediaCarousel() {
-        print("📸 DEBUG: updateMediaCarousel() called")
+        print("📸 [PlaceDetailViewController] updateMediaCarousel() called for place: \(place.name)")
         var mediaItems: [MediaItem] = []
         
-        // Add photos
-        if !placePhotos.isEmpty {
-            print("📸 DEBUG: Using loaded UIImages - count: \(placePhotos.count)")
-            // Use loaded UIImages
+        // Prioritize GlobalPlace photos with attribution data
+        if let globalPlace = self.globalPlace, let attributedPhotos = globalPlace.photos, !attributedPhotos.isEmpty {
+            print("✅ [PlaceDetailViewController] Using GlobalPlace attributed photos - count: \(attributedPhotos.count)")
+            for (index, attributedPhoto) in attributedPhotos.enumerated() {
+                mediaItems.append(.attributedPhoto(
+                    url: attributedPhoto.url,
+                    uploadedBy: attributedPhoto.uploadedByName ?? "Unknown User",
+                    source: attributedPhoto.source
+                ))
+                print("  📸 Added attributed photo \(index + 1): by '\(attributedPhoto.uploadedByName ?? "Unknown")'")
+            }
+        }
+        // Fallback to loaded UIImages
+        else if !placePhotos.isEmpty {
+            print("📸 [PlaceDetailViewController] Using loaded UIImages - count: \(placePhotos.count)")
             for (index, photo) in placePhotos.enumerated() {
                 mediaItems.append(.photoImage(image: photo))
-                print("  Added UIImage \(index + 1) to mediaItems")
+                print("  📸 Added UIImage \(index + 1) to mediaItems")
             }
-        } else if let photos = place.photos, !photos.isEmpty {
-            print("📸 DEBUG: Using photo URLs directly - count: \(photos.count)")
-            // Use photo URLs directly
+        }
+        // Fallback to legacy photo URLs
+        else if let photos = place.photos, !photos.isEmpty {
+            print("📸 [PlaceDetailViewController] Using legacy photo URLs - count: \(photos.count)")
             for (index, photoUrl) in photos.enumerated() {
                 mediaItems.append(.photo(url: photoUrl))
-                print("  Added URL \(index + 1) to mediaItems: \(photoUrl)")
+                print("  📸 Added legacy photo URL \(index + 1): \(photoUrl)")
             }
         } else {
             print("📸 DEBUG: No photos available, will use placeholder")
@@ -83,9 +101,17 @@ class PlaceDetailViewController: BaseViewController {
         }
         
         // Configure carousel
-        print("📸 DEBUG: Total mediaItems to configure: \(mediaItems.count)")
+        print("📸 [PlaceDetailViewController] Configuring MediaCarouselView with \(mediaItems.count) items")
+        let attributedCount = mediaItems.filter { 
+            if case .attributedPhoto = $0 { return true }
+            return false
+        }.count
+        if attributedCount > 0 {
+            print("✅ [PlaceDetailViewController] \(attributedCount) items have attribution - should show 'Photo by [Name]'")
+        }
+        
         mediaCarouselView.configure(with: mediaItems)
-        print("📸 DEBUG: MediaCarouselView configured with \(mediaItems.count) items")
+        print("📸 [PlaceDetailViewController] MediaCarouselView configured with \(mediaItems.count) items")
     }
     
     private let streetViewToggleButton: UIButton = {
@@ -664,6 +690,9 @@ class PlaceDetailViewController: BaseViewController {
         super.viewDidLoad()
         Logger.debug("PlaceDetailViewController viewDidLoad")
         
+        // Set up media capture service
+        mediaCaptureService.delegate = self
+        
         // Track place viewed event
         AnalyticsService.shared.logEvent(AnalyticsService.Events.placeViewed, parameters: [
             "place_id": place.id,
@@ -682,6 +711,9 @@ class PlaceDetailViewController: BaseViewController {
         
         // Load user's circles for check-in detection
         loadUserCircles()
+        
+        // Try to load GlobalPlace data for better attribution
+        loadGlobalPlaceData()
         
         setupUI()
         configureUI()
@@ -1368,10 +1400,18 @@ class PlaceDetailViewController: BaseViewController {
         updateAddressButton.isHidden = !hasLocation
         
         // Description - only show if available
+        print("🔍 [PlaceDetailViewController] Place ID: \(place.id)")
+        print("🔍 [PlaceDetailViewController] Place description: \(place.description ?? "nil")")
+        print("🔍 [PlaceDetailViewController] Place reviews count: \(place.reviews?.count ?? 0)")
+        print("🔍 [PlaceDetailViewController] Place likes count: \(place.likesCount ?? 0)")
+        print("🔍 [PlaceDetailViewController] Place comments count: \(place.commentsCount ?? 0)")
+        
         if let description = place.description, !description.isEmpty {
+            print("🔍 [PlaceDetailViewController] Showing description: \(description)")
             descriptionLabel.attributedText = createAttributedDescription(from: description)
             descriptionLabel.isHidden = false
         } else {
+            print("🔍 [PlaceDetailViewController] Hiding description - no content")
             descriptionLabel.isHidden = true
         }
         
@@ -1770,6 +1810,79 @@ class PlaceDetailViewController: BaseViewController {
                 print("Failed to load user circles: \(error)")
                 // Continue without user circles - will treat as check-in
                 self?.userCircles = []
+            }
+        }
+    }
+    
+    private func loadGlobalPlaceData() {
+        // Try to load global place data if available
+        // This provides better photo attribution and user tags
+        print("🔍 [PlaceDetailViewController] Starting loadGlobalPlaceData for place: \(place.name)")
+        print("📍 [PlaceDetailViewController] Using legacy place ID: \(place.id)")
+        
+        GlobalPlaceService.shared.getGlobalPlace(id: place.id) { [weak self] result in
+            switch result {
+            case .success(let globalPlaceResponse):
+                DispatchQueue.main.async {
+                    print("✅ [PlaceDetailViewController] GlobalPlace data loaded successfully")
+                    print("📍 [PlaceDetailViewController] GlobalPlace name: \(globalPlaceResponse.globalPlace.name)")
+                    print("🆔 [PlaceDetailViewController] GlobalPlace ID: \(globalPlaceResponse.globalPlace.id)")
+                    
+                    self?.globalPlace = globalPlaceResponse.globalPlace
+                    let photoCount = globalPlaceResponse.globalPlace.photos?.count ?? 0
+                    print("📷 [PlaceDetailViewController] Loaded GlobalPlace with \(photoCount) attributed photos")
+                    
+                    if let photos = globalPlaceResponse.globalPlace.photos, !photos.isEmpty {
+                        let firstPhoto = photos[0]
+                        print("📸 [PlaceDetailViewController] First photo by: '\(firstPhoto.uploadedByName ?? "Unknown")'")
+                    }
+                    
+                    // Refresh media carousel with attribution data
+                    print("🔄 [PlaceDetailViewController] Calling updateMediaCarousel() with GlobalPlace data")
+                    self?.updateMediaCarousel()
+                }
+            case .failure(let error):
+                print("❌ [PlaceDetailViewController] Could not load GlobalPlace data: \(error)")
+                print("📍 [PlaceDetailViewController] Continuing with legacy Place model for: \(self?.place.name ?? "Unknown")")
+                
+                DispatchQueue.main.async {
+                    // Try to add retry logic for common failures
+                    if case APIError.noInternet = error {
+                        print("🔄 [PlaceDetailViewController] No internet detected, will retry GlobalPlace lookup once")
+                        // Retry once after a short delay
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                            self?.retryGlobalPlaceDataLoad()
+                        }
+                    } else if case APIError.requestFailed = error {
+                        print("🔄 [PlaceDetailViewController] Request failed, will retry GlobalPlace lookup once")
+                        // Retry once after a short delay
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                            self?.retryGlobalPlaceDataLoad()
+                        }
+                    }
+                    
+                    // Continue with legacy Place model - no attribution data
+                    // But update media carousel to ensure photos are shown
+                    self?.updateMediaCarousel()
+                }
+            }
+        }
+    }
+    
+    private func retryGlobalPlaceDataLoad() {
+        print("🔄 [PlaceDetailViewController] Retrying GlobalPlace data load...")
+        
+        GlobalPlaceService.shared.getGlobalPlace(id: place.id) { [weak self] result in
+            switch result {
+            case .success(let globalPlaceResponse):
+                DispatchQueue.main.async {
+                    print("✅ [PlaceDetailViewController] GlobalPlace data loaded on retry")
+                    self?.globalPlace = globalPlaceResponse.globalPlace
+                    self?.updateMediaCarousel()
+                }
+            case .failure(let error):
+                print("❌ [PlaceDetailViewController] GlobalPlace retry failed: \(error)")
+                // Give up and continue with legacy data
             }
         }
     }
@@ -2407,20 +2520,19 @@ class PlaceDetailViewController: BaseViewController {
     // MARK: - Image Handling for Home/Work
     
     @objc private func editImageButtonTapped() {
-        let title = isHomeOrWorkPlace ? "Choose Photo or Video" : "Add Photo or Video for \(place.name)"
-        let message = isHomeOrWorkPlace ? nil : "The media will be uploaded and visible to others who can see this place"
-        let actionSheet = UIAlertController(title: title, message: message, preferredStyle: .actionSheet)
+        let actionSheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
         
+        // Use MediaCaptureService for photo and video
         actionSheet.addAction(UIAlertAction(title: "Take Photo", style: .default) { [weak self] _ in
-            self?.presentCamera()
+            self?.mediaCaptureService.presentCamera(from: self!, for: .photo)
         })
         
         actionSheet.addAction(UIAlertAction(title: "Record Video", style: .default) { [weak self] _ in
-            self?.presentVideoRecorder()
+            self?.mediaCaptureService.presentCamera(from: self!, for: .video)
         })
         
         actionSheet.addAction(UIAlertAction(title: "Photo Library", style: .default) { [weak self] _ in
-            self?.presentPhotoPicker()
+            self?.mediaCaptureService.presentPhotoLibrary(from: self!, for: .both)
         })
         
         // Add street view option if available
@@ -2447,50 +2559,7 @@ class PlaceDetailViewController: BaseViewController {
         present(actionSheet, animated: true)
     }
     
-    private func presentCamera() {
-        guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
-            showAlert(title: "Camera Not Available", message: "Camera is not available on this device.")
-            return
-        }
-        
-        let picker = UIImagePickerController()
-        picker.sourceType = .camera
-        picker.delegate = self
-        picker.allowsEditing = true
-        present(picker, animated: true)
-    }
-    
-    private func presentPhotoPicker() {
-        var config = PHPickerConfiguration()
-        config.selectionLimit = 1
-        config.filter = .images
-        
-        let picker = PHPickerViewController(configuration: config)
-        picker.delegate = self
-        present(picker, animated: true)
-    }
-    
-    private func presentVideoRecorder() {
-        // Check camera permission
-        AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
-            guard granted else {
-                DispatchQueue.main.async {
-                    self?.showError("Camera access is required to record videos")
-                }
-                return
-            }
-            
-            DispatchQueue.main.async {
-                let imagePicker = UIImagePickerController()
-                imagePicker.sourceType = .camera
-                imagePicker.mediaTypes = ["public.movie"]
-                imagePicker.videoMaximumDuration = 30 // 30 seconds max
-                imagePicker.videoQuality = .typeHigh
-                imagePicker.delegate = self
-                self?.present(imagePicker, animated: true)
-            }
-        }
-    }
+    // Old UIImagePickerController methods removed - now using MediaCaptureService
     
     private func removeCustomImage() {
         customImage = nil
@@ -2619,27 +2688,18 @@ class PlaceDetailViewController: BaseViewController {
     }
     
     private func updateToggleButtonVisibility() {
-        // Show toggle button if:
-        // 1. Apple Look Around is available, OR
-        // 2. There are multiple photos, OR
-        // 3. There's at least one photo AND Look Around is available
-        let hasPhotos = !placePhotos.isEmpty || customImage != nil
-        let hasMultiplePhotos = placePhotos.count > 1
-        let shouldShowToggle = isStreetViewAvailable || hasMultiplePhotos || (hasPhotos && isStreetViewAvailable)
+        // Show toggle button only if Apple Look Around is available
+        // Photo navigation is now handled by MediaCarouselView
+        let shouldShowToggle = isStreetViewAvailable
         
         print("🔘 PlaceDetailViewController: Toggle button visibility check:")
-        print("  - hasPhotos: \(hasPhotos)")
-        print("  - hasMultiplePhotos: \(hasMultiplePhotos)")
         print("  - isStreetViewAvailable: \(isStreetViewAvailable)")
         print("  - shouldShowToggle: \(shouldShowToggle)")
         
         streetViewToggleButton.isHidden = !shouldShowToggle
         
-        // Update button title based on what's available
-        if hasMultiplePhotos && currentPhotoIndex < placePhotos.count - 1 {
-            streetViewToggleButton.setTitle("Next Photo", for: .normal)
-            streetViewToggleButton.setImage(UIImage(systemName: "photo.on.rectangle"), for: .normal)
-        } else if isStreetViewAvailable {
+        // Only show "Look Around" functionality
+        if isStreetViewAvailable {
             streetViewToggleButton.setTitle("Look Around", for: .normal)
             streetViewToggleButton.setImage(UIImage(systemName: "eye.circle"), for: .normal)
         }
@@ -2969,67 +3029,150 @@ extension PlaceDetailViewController: CircleSelectionDelegate {
     }
 }
 
-// MARK: - UIImagePickerControllerDelegate
-extension PlaceDetailViewController: UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-    func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
-        picker.dismiss(animated: true)
-        
-        if let videoURL = info[.mediaURL] as? URL {
-            // Handle video
-            handleVideoSelection(at: videoURL)
-        } else if let editedImage = info[.editedImage] as? UIImage {
-            customImage = editedImage
-            placePhotos.append(editedImage)
-            updateMediaCarousel()
-            editImageButton.setTitle("Add Photo or Video", for: .normal)
-            saveImage(editedImage)
-            
-            // Update photo section buttons
-            addPhotoButton.isHidden = true
-            photosEditButton.isHidden = false
-        } else if let originalImage = info[.originalImage] as? UIImage {
-            customImage = originalImage
-            placePhotos.append(originalImage)
-            updateMediaCarousel()
-            editImageButton.setTitle("Add Photo or Video", for: .normal)
-            saveImage(originalImage)
-            
-            // Update photo section buttons
-            addPhotoButton.isHidden = true
-            photosEditButton.isHidden = false
+// MARK: - MediaCaptureServiceDelegate
+extension PlaceDetailViewController: MediaCaptureServiceDelegate {
+    func mediaCaptureService(_ service: MediaCaptureService, didCapture media: CapturedMedia) {
+        switch media.type {
+        case .photo(let image):
+            handleCapturedPhoto(image)
+        case .video(let videoURL):
+            handleCapturedVideo(url: videoURL)
         }
     }
     
-    private func handleVideoSelection(at url: URL) {
-        // Show loading indicator
-        showLoading()
+    func mediaCaptureService(_ service: MediaCaptureService, didFailWithError error: Error) {
+        DispatchQueue.main.async { [weak self] in
+            self?.isLoadingPhoto = false
+            self?.updateImageView()
+            self?.showError(error)
+        }
+    }
+    
+    func mediaCaptureServiceDidCancel(_ service: MediaCaptureService) {
+        // User cancelled - no action needed
+    }
+    
+    // MARK: - Media Handling (Using Shared Services)
+    
+    private func handleCapturedPhoto(_ image: UIImage) {
+        isLoadingPhoto = true
+        updateImageView()
         
-        // Compress video
-        VideoCompressionService.shared.compressVideoForUpload(
-            inputURL: url,
-            progress: { progress in
-                print("Video compression progress: \(progress * 100)%")
-            }
-        ) { [weak self] result in
-            DispatchQueue.main.async {
-                // Loading indicator is automatically hidden by AlertPresenter
-                
-                switch result {
-                case .success(let compressedVideos):
-                    // TODO: Upload compressed video to Firebase Storage
-                    // For now, just show success
-                    self?.showSuccess("Video ready to upload")
-                    self?.updateMediaCarousel()
-                    
-                case .failure(let error):
-                    self?.showError("Failed to compress video: \(error.localizedDescription)")
+        // Show immediate feedback to user
+        showSuccess("Processing photo...")
+        
+        // Use MediaProcessingService for consistent compression (same as Moments)
+        mediaProcessingService.processPhoto(image) { [weak self] result in
+            switch result {
+            case .success(let processedPhoto):
+                self?.uploadProcessedPhoto(processedPhoto)
+            case .failure(let error):
+                DispatchQueue.main.async {
+                    self?.isLoadingPhoto = false
+                    self?.updateImageView()
+                    self?.showError(error)
                 }
             }
         }
     }
     
-    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-        picker.dismiss(animated: true)
+    private func handleCapturedVideo(url: URL) {
+        isLoadingPhoto = true
+        updateImageView()
+        
+        // Use MediaProcessingService for consistent compression (same as Moments)
+        mediaProcessingService.processVideo(at: url) { [weak self] result in
+            switch result {
+            case .success(let processedVideo):
+                self?.uploadProcessedVideo(processedVideo)
+            case .failure(let error):
+                DispatchQueue.main.async {
+                    self?.isLoadingPhoto = false
+                    self?.updateImageView()
+                    self?.showError(error)
+                }
+            }
+        }
+    }
+    
+    private func uploadProcessedPhoto(_ processedPhoto: ProcessedPhoto) {
+        // Show upload progress feedback
+        showSuccess("Uploading photo...")
+        
+        // Use MediaStorageService for consistent upload handling (same as Moments)
+        mediaStorageService.uploadPhoto(
+            processedPhoto,
+            for: place,
+            type: .placePhoto,
+            visibility: "public",
+            progress: { [weak self] progress in
+                // Update user with upload progress
+                DispatchQueue.main.async {
+                    let percentage = Int(progress.progress * 100)
+                    switch progress.phase {
+                    case .initiating:
+                        self?.showSuccess("Preparing upload...")
+                    case .uploading:
+                        self?.showSuccess("Uploading... \(percentage)%")
+                    case .finalizing:
+                        self?.showSuccess("Finalizing upload...")
+                    case .completed:
+                        break // Will be handled in completion
+                    }
+                }
+            }
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                self?.isLoadingPhoto = false
+                self?.updateImageView()
+                
+                switch result {
+                case .success(let storageResult):
+                    // Update place with new image - add to carousel
+                    self?.customImage = processedPhoto.image
+                    self?.placePhotos.append(processedPhoto.image)
+                    
+                    // Update photo section buttons
+                    self?.addPhotoButton.isHidden = true
+                    self?.photosEditButton.isHidden = false
+                    
+                    print("✅ [PlaceDetailViewController] Photo upload successful, refreshing Global Place data...")
+                    
+                    // Clear any cached data and refresh Global Place data
+                    self?.globalPlace = nil
+                    self?.loadGlobalPlaceData()
+                    
+                    self?.showSuccess("Photo uploaded successfully")
+                    
+                case .failure(let error):
+                    self?.showError(error)
+                }
+            }
+        }
+    }
+    
+    private func uploadProcessedVideo(_ processedVideo: ProcessedVideo) {
+        // Use MediaStorageService for consistent upload handling (same as Moments)
+        mediaStorageService.uploadVideo(
+            processedVideo,
+            for: place,
+            type: .placeVideo,
+            visibility: "public"
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                self?.isLoadingPhoto = false
+                self?.updateImageView()
+                
+                switch result {
+                case .success(let storageResult):
+                    self?.showSuccess("Video uploaded successfully")
+                    self?.updateMediaCarousel()
+                    
+                case .failure(let error):
+                    self?.showError(error)
+                }
+            }
+        }
     }
 }
 

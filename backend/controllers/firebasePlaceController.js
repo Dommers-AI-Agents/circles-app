@@ -10,13 +10,28 @@ const {
 const { Client } = require('@googlemaps/google-maps-services-js');
 const { googleMapsApiKey } = require('../config/config');
 const notificationService = require('../services/notificationService');
-const { trackPlaceAdded, trackPlaceView } = require('../services/activityService');
+const { trackPlaceAdded, trackPlaceView, trackPlaceLiked } = require('../services/activityService');
 const placeCache = require('../services/placeCache');
 const requestDeduplicator = require('../services/requestDeduplicator');
 const subscriptionLimitService = require('../services/subscriptionLimitService');
 
 const db = getFirestore();
 const googleMapsClient = new Client({});
+
+// Helper function to normalize photos array for iOS compatibility
+const normalizePhotosArray = (place) => {
+  if (place.photos && Array.isArray(place.photos)) {
+    place.photos = place.photos.map(photo => {
+      if (typeof photo === 'string') {
+        return photo; // Already a string URL
+      } else if (photo && typeof photo === 'object' && photo.url) {
+        return photo.url; // Extract URL from object
+      }
+      return photo; // Keep as-is for any other format
+    });
+  }
+  return place;
+};
 
 // @desc    Get places by circle ID
 // @route   GET /api/circles/:circleId/places
@@ -343,6 +358,9 @@ exports.getPlacesByCircleId = async (req, res, next) => {
         delete placeData.privateNotes;
       }
       
+      // Normalize photos array format for iOS compatibility
+      normalizePhotosArray(placeData);
+      
       return placeData;
     });
     
@@ -553,11 +571,16 @@ exports.getPlacesByCircleIdPublic = async (req, res, next) => {
         }
       }
       
-      return {
+      const placeData = {
         ...place,
         addedByUser: userMap.get(place.addedBy) || null,
         isNew: isNew
       };
+      
+      // Normalize photos array format for iOS compatibility
+      normalizePhotosArray(placeData);
+      
+      return placeData;
     });
     
     // Order places - if circle has places array, use it for ordering, otherwise use creation date
@@ -782,6 +805,9 @@ exports.getPlace = async (req, res, next) => {
       ...place,
       commentsCount
     };
+    
+    // Normalize photos array format for iOS compatibility
+    normalizePhotosArray(placeData);
     
     // Remove privateNotes if the current user is not the one who added the place
     if (place.addedBy !== req.user.uid) {
@@ -1149,6 +1175,43 @@ exports.updatePlace = async (req, res, next) => {
           publicNotes: place.publicNotes ? `${place.publicNotes.substring(0, 50)}...` : 'empty',
           notes: place.notes ? `${place.notes.substring(0, 50)}...` : 'empty'
         }
+      });
+    }
+
+    // Handle photo operations
+    if (updateData.addPhotos || updateData.removePhotos) {
+      console.log('📷 Processing photo operations:', {
+        placeId: req.params.id,
+        addPhotos: updateData.addPhotos ? `${updateData.addPhotos.length} photos` : 'none',
+        removePhotos: updateData.removePhotos ? `${updateData.removePhotos.length} photos` : 'none',
+        existingPhotos: place.photos ? `${place.photos.length} photos` : 'none'
+      });
+
+      let currentPhotos = place.photos || [];
+      
+      // Add new photos to the array
+      if (updateData.addPhotos && Array.isArray(updateData.addPhotos)) {
+        console.log('📷 Adding photos:', updateData.addPhotos);
+        currentPhotos = [...currentPhotos, ...updateData.addPhotos];
+      }
+      
+      // Remove specified photos from the array
+      if (updateData.removePhotos && Array.isArray(updateData.removePhotos)) {
+        console.log('📷 Removing photos:', updateData.removePhotos);
+        const photosToRemove = new Set(updateData.removePhotos);
+        currentPhotos = currentPhotos.filter(url => !photosToRemove.has(url));
+      }
+      
+      // Update the photos array in the update data
+      updateData.photos = currentPhotos;
+      
+      // Remove the operation fields as they shouldn't be stored directly
+      delete updateData.addPhotos;
+      delete updateData.removePhotos;
+      
+      console.log('📷 Final photos array:', {
+        totalPhotos: currentPhotos.length,
+        photos: currentPhotos.slice(0, 3) // Show first 3 for debugging
       });
     }
 
@@ -1878,21 +1941,15 @@ exports.likePlace = async (req, res, next) => {
       place: updatedPlace
     });
     
-    // Track activity for likes (not unlikes)
+    // Track comprehensive activity for likes (not unlikes) with connection notifications
     if (!alreadyLiked) {
-      const { createActivity } = require('./activityController');
-      await createActivity(
-        'place_liked',
-        userId,
-        'place',
+      await trackPlaceLiked(
         placeId,
         place.name || 'Unknown Place',
-        {
-          circleId: place.circleId,
-          circleName: circle.name || 'Unknown Circle',
-          placePhoto: place.photos && place.photos.length > 0 ? place.photos[0] : null,
-          placeAddress: place.address || null
-        }
+        place.circleId,
+        circle.name || 'Unknown Circle',
+        userId,
+        place.addedBy
       );
     }
     

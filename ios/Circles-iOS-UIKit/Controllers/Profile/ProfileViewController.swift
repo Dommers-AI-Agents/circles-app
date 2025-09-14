@@ -89,6 +89,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     private var selectedCategory: PlaceCategory?
     private var availableCategories: [UnifiedCategory] = []
     private var selectedCity: String?
+    private var selectedConnectionId: String? // nil means "All Connections" (default)
     var isSearching = false
     var searchResultsHeightConstraint: NSLayoutConstraint?
     private var videos: [PlaceVideo] = []
@@ -378,6 +379,57 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         return label
     }()
     
+    // MARK: - Notification Settings (for connected users)
+    private let notificationsSectionContainer: UIView = {
+        let view = UIView()
+        view.isHidden = true
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let notificationsSectionLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Notifications"
+        label.font = .systemFont(ofSize: 18, weight: .semibold)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let notificationsContainer: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.secondaryBackground
+        view.layer.cornerRadius = 12
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let notificationTitleLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Activity Updates"
+        label.font = .systemFont(ofSize: 16, weight: .medium)
+        label.textColor = Constants.Colors.label
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private let notificationDescriptionLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Get notified when they add places, share moments, or create circles"
+        label.font = .systemFont(ofSize: 14)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.numberOfLines = 0
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
+    private lazy var activityNotificationsToggle: UISwitch = {
+        let toggle = UISwitch()
+        toggle.isOn = true // Default to enabled
+        toggle.addTarget(self, action: #selector(activityNotificationsToggled), for: .valueChanged)
+        toggle.translatesAutoresizingMaskIntoConstraints = false
+        return toggle
+    }()
+    
     // Separator line
     private let separatorLine: UIView = {
         let view = UIView()
@@ -388,7 +440,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     // Content type segmented control
     private let contentTypeSegmentedControl: UISegmentedControl = {
-        let control = UISegmentedControl(items: ["Circles", "Moments"])
+        let control = UISegmentedControl(items: ["Circles", "Moments", "Uploads"])
         control.selectedSegmentIndex = 0
         control.translatesAutoresizingMaskIntoConstraints = false
         return control
@@ -516,9 +568,48 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }()
     
     private var isLoadingVideos = false
+    
+    // Uploads collection view - Instagram-style 3-column grid
+    private let uploadsCollectionView: UICollectionView = {
+        let layout = UICollectionViewFlowLayout()
+        layout.scrollDirection = .vertical
+        layout.minimumInteritemSpacing = 2
+        layout.minimumLineSpacing = 2
+        
+        let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        collectionView.backgroundColor = .clear
+        collectionView.translatesAutoresizingMaskIntoConstraints = false
+        collectionView.isHidden = true
+        collectionView.showsVerticalScrollIndicator = false
+        return collectionView
+    }()
+    
+    private var uploads: [UserUploadedPhoto] = []
+    private var uploadsCollectionHeightConstraint: NSLayoutConstraint?
+    
+    private let uploadsEmptyLabel: UILabel = {
+        let label = UILabel()
+        label.text = "No uploads yet"
+        label.font = UIFont.systemFont(ofSize: 16)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.isHidden = true
+        return label
+    }()
+    
+    private let uploadsLoadingIndicator: UIActivityIndicatorView = {
+        let indicator = UIActivityIndicatorView(style: .medium)
+        indicator.hidesWhenStopped = true
+        indicator.translatesAutoresizingMaskIntoConstraints = false
+        return indicator
+    }()
+    
+    private var isLoadingUploads = false
     private var logoutButtonTopToCollectionConstraint: NSLayoutConstraint?
     private var logoutButtonTopToMapConstraint: NSLayoutConstraint?
     private var logoutButtonTopToVideosConstraint: NSLayoutConstraint?
+    private var logoutButtonTopToUploadsConstraint: NSLayoutConstraint?
     
     // Floating add button for creating circles
     private lazy var floatingAddButton: UIButton = {
@@ -632,6 +723,32 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         return button
     }()
     
+    private lazy var connectionFilterButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("All Connections", for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 14)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Style as dropdown button
+        button.backgroundColor = UIColor.systemBackground
+        button.layer.borderWidth = 1
+        button.layer.borderColor = UIColor.systemGray4.cgColor
+        button.layer.cornerRadius = 8
+        button.contentHorizontalAlignment = .left
+        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 32)
+        
+        // Add chevron down icon
+        let chevronImage = UIImage(systemName: "chevron.down")
+        button.setImage(chevronImage, for: .normal)
+        button.semanticContentAttribute = .forceRightToLeft
+        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: -12)
+        
+        button.showsMenuAsPrimaryAction = true
+        button.changesSelectionAsPrimaryAction = false
+        
+        return button
+    }()
+    
     // State tracking for other users
     private var isFollowing: Bool = false
     private var connectionStatus: ConnectionStatus?
@@ -644,6 +761,10 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     // Dynamic constraints for search bar container positioning
     private var searchBarContainerTopToSegmentedConstraint: NSLayoutConstraint?
     private var searchBarContainerTopToSeparatorConstraint: NSLayoutConstraint?
+    
+    // Dynamic constraints for separator line positioning
+    private var separatorLineTopToProfileConstraint: NSLayoutConstraint?
+    private var separatorLineTopToNotificationConstraint: NSLayoutConstraint?
     
     // MARK: - Lifecycle
     
@@ -834,6 +955,14 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         buttonsContainer.addSubview(followButton)
         buttonsContainer.addSubview(connectButton)
         
+        // Add notification settings section
+        contentView.addSubview(notificationsSectionContainer)
+        notificationsSectionContainer.addSubview(notificationsSectionLabel)
+        notificationsSectionContainer.addSubview(notificationsContainer)
+        notificationsContainer.addSubview(notificationTitleLabel)
+        notificationsContainer.addSubview(notificationDescriptionLabel)
+        notificationsContainer.addSubview(activityNotificationsToggle)
+        
         contentView.addSubview(separatorLine)
         contentView.addSubview(contentTypeSegmentedControl)
         contentView.addSubview(searchBarContainer)
@@ -845,12 +974,16 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         contentView.addSubview(videosCollectionView)
         contentView.addSubview(videosEmptyLabel)
         contentView.addSubview(videosLoadingIndicator)
+        contentView.addSubview(uploadsCollectionView)
+        contentView.addSubview(uploadsEmptyLabel)
+        contentView.addSubview(uploadsLoadingIndicator)
         
         // Add map container (initially hidden)
         contentView.addSubview(mapContainerView)
         mapContainerView.addSubview(filterContainerView)
         filterContainerView.addSubview(categoryFilterButton)
         filterContainerView.addSubview(cityFilterButton)
+        filterContainerView.addSubview(connectionFilterButton)
         mapContainerView.addSubview(mapView)
         mapContainerView.addSubview(mapExpandButton)
         mapContainerView.addSubview(locationButton)
@@ -995,8 +1128,34 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             connectButton.bottomAnchor.constraint(equalTo: buttonsContainer.bottomAnchor),
             connectButton.widthAnchor.constraint(equalTo: buttonsContainer.widthAnchor, multiplier: 0.48),
             
-            // Separator line
-            separatorLine.topAnchor.constraint(equalTo: profileHeaderView.bottomAnchor, constant: Constants.Spacing.medium),
+            // Notification settings section
+            notificationsSectionContainer.topAnchor.constraint(equalTo: profileHeaderView.bottomAnchor, constant: Constants.Spacing.medium),
+            notificationsSectionContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            notificationsSectionContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            
+            notificationsSectionLabel.topAnchor.constraint(equalTo: notificationsSectionContainer.topAnchor),
+            notificationsSectionLabel.leadingAnchor.constraint(equalTo: notificationsSectionContainer.leadingAnchor),
+            notificationsSectionLabel.trailingAnchor.constraint(equalTo: notificationsSectionContainer.trailingAnchor),
+            
+            notificationsContainer.topAnchor.constraint(equalTo: notificationsSectionLabel.bottomAnchor, constant: 8),
+            notificationsContainer.leadingAnchor.constraint(equalTo: notificationsSectionContainer.leadingAnchor),
+            notificationsContainer.trailingAnchor.constraint(equalTo: notificationsSectionContainer.trailingAnchor),
+            notificationsContainer.bottomAnchor.constraint(equalTo: notificationsSectionContainer.bottomAnchor),
+            
+            // Constraints inside notifications container
+            notificationTitleLabel.topAnchor.constraint(equalTo: notificationsContainer.topAnchor, constant: 16),
+            notificationTitleLabel.leadingAnchor.constraint(equalTo: notificationsContainer.leadingAnchor, constant: 16),
+            notificationTitleLabel.trailingAnchor.constraint(equalTo: activityNotificationsToggle.leadingAnchor, constant: -16),
+            
+            activityNotificationsToggle.centerYAnchor.constraint(equalTo: notificationTitleLabel.centerYAnchor),
+            activityNotificationsToggle.trailingAnchor.constraint(equalTo: notificationsContainer.trailingAnchor, constant: -16),
+            
+            notificationDescriptionLabel.topAnchor.constraint(equalTo: notificationTitleLabel.bottomAnchor, constant: 4),
+            notificationDescriptionLabel.leadingAnchor.constraint(equalTo: notificationsContainer.leadingAnchor, constant: 16),
+            notificationDescriptionLabel.trailingAnchor.constraint(equalTo: activityNotificationsToggle.leadingAnchor, constant: -16),
+            notificationDescriptionLabel.bottomAnchor.constraint(equalTo: notificationsContainer.bottomAnchor, constant: -16),
+            
+            // Separator line (fixed constraints)
             separatorLine.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             separatorLine.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             separatorLine.heightAnchor.constraint(equalToConstant: 0.5),
@@ -1050,9 +1209,24 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             videosEmptyLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
             videosEmptyLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
             
+            // Uploads collection view
+            uploadsCollectionView.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor),
+            uploadsCollectionView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            uploadsCollectionView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            
+            // Uploads empty label
+            uploadsEmptyLabel.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor, constant: 100),
+            uploadsEmptyLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            uploadsEmptyLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
+            uploadsEmptyLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+            
             // Videos loading indicator
             videosLoadingIndicator.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             videosLoadingIndicator.centerYAnchor.constraint(equalTo: videosEmptyLabel.centerYAnchor),
+            
+            // Uploads loading indicator
+            uploadsLoadingIndicator.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            uploadsLoadingIndicator.centerYAnchor.constraint(equalTo: uploadsEmptyLabel.centerYAnchor),
             
             // Map container (same position as circles collection)
             mapContainerView.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor),
@@ -1077,6 +1251,12 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             cityFilterButton.centerYAnchor.constraint(equalTo: filterContainerView.centerYAnchor),
             cityFilterButton.heightAnchor.constraint(equalToConstant: 36),
             cityFilterButton.widthAnchor.constraint(equalToConstant: 120),
+            
+            // Connection filter button
+            connectionFilterButton.leadingAnchor.constraint(equalTo: cityFilterButton.trailingAnchor, constant: Constants.Spacing.medium),
+            connectionFilterButton.centerYAnchor.constraint(equalTo: filterContainerView.centerYAnchor),
+            connectionFilterButton.heightAnchor.constraint(equalToConstant: 36),
+            connectionFilterButton.widthAnchor.constraint(equalToConstant: 140),
             
             // Map view
             mapView.topAnchor.constraint(equalTo: filterContainerView.bottomAnchor),
@@ -1122,10 +1302,14 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         videosCollectionHeightConstraint = videosCollectionView.heightAnchor.constraint(equalToConstant: 200)
         videosCollectionHeightConstraint?.isActive = true
         
+        uploadsCollectionHeightConstraint = uploadsCollectionView.heightAnchor.constraint(equalToConstant: 200)
+        uploadsCollectionHeightConstraint?.isActive = true
+        
         // Create switchable constraints for logout button
         logoutButtonTopToCollectionConstraint = logoutButton.topAnchor.constraint(equalTo: circlesCollectionView.bottomAnchor, constant: Constants.Spacing.xlarge)
         logoutButtonTopToMapConstraint = logoutButton.topAnchor.constraint(equalTo: mapContainerView.bottomAnchor, constant: Constants.Spacing.xlarge)
         logoutButtonTopToVideosConstraint = logoutButton.topAnchor.constraint(equalTo: videosCollectionView.bottomAnchor, constant: Constants.Spacing.xlarge)
+        logoutButtonTopToUploadsConstraint = logoutButton.topAnchor.constraint(equalTo: uploadsCollectionView.bottomAnchor, constant: Constants.Spacing.xlarge)
         
         // Initially show collection view
         logoutButtonTopToCollectionConstraint?.isActive = true
@@ -1142,16 +1326,32 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             constant: Constants.Spacing.medium
         )
         
+        // Create dynamic constraints for separator line positioning
+        separatorLineTopToProfileConstraint = separatorLine.topAnchor.constraint(
+            equalTo: profileHeaderView.bottomAnchor, 
+            constant: Constants.Spacing.medium
+        )
+        separatorLineTopToNotificationConstraint = separatorLine.topAnchor.constraint(
+            equalTo: notificationsSectionContainer.bottomAnchor, 
+            constant: Constants.Spacing.medium
+        )
+        
         // Initially activate based on whether viewing current user
         let isCurrentUser = user?.id == AuthService.shared.getUserId()
         if isCurrentUser {
+            // Current user - search bar anchored to segmented control, separator to profile
             searchBarContainerTopToSegmentedConstraint?.isActive = true
             searchBarContainerTopToSeparatorConstraint?.isActive = false
+            separatorLineTopToProfileConstraint?.isActive = true
+            separatorLineTopToNotificationConstraint?.isActive = false
             // Show floating add button for current user
             floatingAddButton.isHidden = false
         } else {
+            // Connection profile - search bar anchored to separator, separator to notification section
             searchBarContainerTopToSegmentedConstraint?.isActive = false
             searchBarContainerTopToSeparatorConstraint?.isActive = true
+            separatorLineTopToProfileConstraint?.isActive = false
+            separatorLineTopToNotificationConstraint?.isActive = true
             // Hide floating add button for other users
             floatingAddButton.isHidden = true
         }
@@ -1159,6 +1359,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         // Setup filter menus
         setupCategoryFilterMenu()
         setupCityFilterMenu()
+        setupConnectionFilterMenu()
         
         // Setup collection views
         circlesCollectionView.delegate = self
@@ -1171,8 +1372,20 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         videosCollectionView.dataSource = self
         videosCollectionView.register(VideoThumbnailCell.self, forCellWithReuseIdentifier: "VideoThumbnailCell")
         
+        uploadsCollectionView.delegate = self
+        uploadsCollectionView.dataSource = self
+        uploadsCollectionView.register(UploadThumbnailCell.self, forCellWithReuseIdentifier: "UploadThumbnailCell")
+        
         // Configure videos collection view layout for 3-column grid
         if let flowLayout = videosCollectionView.collectionViewLayout as? UICollectionViewFlowLayout {
+            flowLayout.scrollDirection = .vertical
+            flowLayout.minimumInteritemSpacing = 2
+            flowLayout.minimumLineSpacing = 2
+            flowLayout.sectionInset = .zero
+        }
+        
+        // Configure uploads collection view layout for 3-column grid
+        if let flowLayout = uploadsCollectionView.collectionViewLayout as? UICollectionViewFlowLayout {
             flowLayout.scrollDirection = .vertical
             flowLayout.minimumInteritemSpacing = 2
             flowLayout.minimumLineSpacing = 2
@@ -1382,8 +1595,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             DispatchQueue.main.async { [weak self] in
                 self?.updateCollectionViewHeight()
             }
-        } else {
-            // Show videos
+        } else if contentTypeSegmentedControl.selectedSegmentIndex == 1 {
+            // Show videos/moments
             print("📹 Switching to Moments tab")
             
             // TEMPORARY: Clear image cache to debug duplicate thumbnails
@@ -1392,6 +1605,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             
             circlesCollectionView.isHidden = true
             videosCollectionView.isHidden = false
+            uploadsCollectionView.isHidden = true
+            uploadsEmptyLabel.isHidden = true
             mapContainerView.isHidden = true
             searchBar.placeholder = "Search videos..."
             mapToggleButton.isHidden = true
@@ -1422,6 +1637,43 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             logoutButtonTopToCollectionConstraint?.isActive = false
             logoutButtonTopToMapConstraint?.isActive = false
             logoutButtonTopToVideosConstraint?.isActive = true
+            logoutButtonTopToUploadsConstraint?.isActive = false
+        } else {
+            // Show uploads (tab index 2)
+            print("📷 Switching to Uploads tab")
+            
+            circlesCollectionView.isHidden = true
+            videosCollectionView.isHidden = true
+            videosEmptyLabel.isHidden = true
+            uploadsCollectionView.isHidden = false
+            mapContainerView.isHidden = true
+            searchBar.placeholder = "Search uploads..."
+            mapToggleButton.isHidden = true
+            
+            // Hide floating add button on Uploads tab
+            floatingAddButton.isHidden = true
+            
+            // Check if we need to fetch uploads
+            if uploads.isEmpty && !isLoadingUploads {
+                // Show loading state
+                uploadsEmptyLabel.isHidden = true
+                uploadsLoadingIndicator.startAnimating()
+                
+                // Fetch uploads from network
+                fetchUserUploads()
+            } else if !uploads.isEmpty {
+                // Update UI if we have uploads
+                uploadsCollectionView.reloadData()
+                updateUploadsCollectionHeight()
+                uploadsEmptyLabel.isHidden = true
+                uploadsLoadingIndicator.stopAnimating()
+            }
+            
+            // Update logout button constraint to uploads collection
+            logoutButtonTopToCollectionConstraint?.isActive = false
+            logoutButtonTopToMapConstraint?.isActive = false
+            logoutButtonTopToVideosConstraint?.isActive = false
+            logoutButtonTopToUploadsConstraint?.isActive = true
         }
     }
     
@@ -1614,6 +1866,45 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         }
         
         cityFilterButton.menu = UIMenu(title: "", children: menuActions)
+    }
+    
+    private func setupConnectionFilterMenu() {
+        var menuActions: [UIAction] = []
+        
+        // Add "All Connections" option
+        let allConnectionsAction = UIAction(title: "All Connections") { [weak self] _ in
+            guard let self = self else { return }
+            self.selectedConnectionId = nil
+            self.connectionFilterButton.setTitle("All Connections", for: .normal)
+            self.filterPlaces()
+            self.setupConnectionFilterMenu() // Refresh to update checkmarks
+        }
+        
+        // Add checkmark for "All Connections" when no specific connection is selected
+        if selectedConnectionId == nil {
+            allConnectionsAction.state = .on
+        }
+        menuActions.append(allConnectionsAction)
+        
+        // Add "My Places Only" option
+        let myPlacesAction = UIAction(title: "My Places Only") { [weak self] _ in
+            guard let self = self else { return }
+            self.selectedConnectionId = "my_places_only"
+            self.connectionFilterButton.setTitle("My Places Only", for: .normal)
+            self.filterPlaces()
+            self.setupConnectionFilterMenu() // Refresh to update checkmarks
+        }
+        
+        // Add checkmark for "My Places Only"
+        if selectedConnectionId == "my_places_only" {
+            myPlacesAction.state = .on
+        }
+        menuActions.append(myPlacesAction)
+        
+        // TODO: Add individual connections when we have that data available
+        // For now, we'll keep it simple with just All Connections and My Places Only
+        
+        connectionFilterButton.menu = UIMenu(title: "", children: menuActions)
     }
     
     
@@ -1892,6 +2183,65 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         present(navController, animated: true, completion: nil)
     }
     
+    @objc private func activityNotificationsToggled() {
+        guard let user = user else { return }
+        
+        let isEnabled = activityNotificationsToggle.isOn
+        
+        // Show loading state while updating
+        activityNotificationsToggle.isEnabled = false
+        
+        // Find the connection for this user
+        let allConnections = NetworkManager.shared.connections + NetworkManager.shared.pendingConnections
+        let currentUserId = AuthService.shared.getUserId() ?? ""
+        guard let connection = allConnections.first(where: { 
+            $0.otherUserId(currentUserId: currentUserId) == user.id 
+        }) else {
+            print("❌ No connection found for user: \(user.id)")
+            activityNotificationsToggle.isEnabled = true
+            activityNotificationsToggle.setOn(!isEnabled, animated: true)
+            showError("Connection not found")
+            return
+        }
+        
+        // Update connection notification preference
+        updateConnectionNotificationPreference(connectionId: connection.id, enabled: isEnabled) { [weak self] success in
+            DispatchQueue.main.async {
+                self?.activityNotificationsToggle.isEnabled = true
+                
+                if !success {
+                    // Revert toggle state if update failed
+                    self?.activityNotificationsToggle.setOn(!isEnabled, animated: true)
+                    self?.showError("Failed to update notification preference")
+                }
+            }
+        }
+    }
+    
+    private func updateConnectionNotificationPreference(connectionId: String, enabled: Bool, completion: @escaping (Bool) -> Void) {
+        // Create a simple response model for this endpoint
+        struct NotificationPreferenceResponse: Codable {
+            let success: Bool
+            let message: String?
+        }
+        
+        APIService.shared.request(
+            endpoint: "connections/\(connectionId)/notifications",
+            method: .put,
+            body: ["activityNotificationsEnabled": enabled],
+            requiresAuth: true
+        ) { (result: Result<NotificationPreferenceResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                print("✅ Connection notification preference updated: \(response.success)")
+                completion(response.success)
+            case .failure(let error):
+                print("❌ Failed to update connection notification preference: \(error)")
+                completion(false)
+            }
+        }
+    }
+    
     @objc private func zoomToUserLocation() {
         let locationManager = CLLocationManager()
         
@@ -2149,6 +2499,22 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         } else {
             followButton.setStyle(.secondary)
         }
+        
+        // Show/hide notifications section based on connection status
+        let shouldShowNotifications = !isCurrentUser && isConnected
+        notificationsSectionContainer.isHidden = !shouldShowNotifications
+        
+        // Set initial toggle state if connected
+        if shouldShowNotifications {
+            // Find the connection and set toggle state
+            let allConnections = NetworkManager.shared.connections + NetworkManager.shared.pendingConnections
+            let currentUserId = AuthService.shared.getUserId() ?? ""
+            if let connection = allConnections.first(where: { 
+                $0.otherUserId(currentUserId: currentUserId) == user.id 
+            }) {
+                activityNotificationsToggle.isOn = connection.activityNotificationsEnabled ?? false
+            }
+        }
     }
     
     // MARK: - Data Loading
@@ -2182,6 +2548,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         
         filteredPlaces = allPlaces.filtered(
             category: unifiedCategory,
+            connectionId: selectedConnectionId,
             city: selectedCity,
             currentUserId: currentUserId
         )
@@ -2374,6 +2741,68 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         }
     }
     
+    // MARK: - User Uploads Data Loading
+    
+    private func fetchUserUploads() {
+        guard let userId = user?.id ?? AuthService.shared.getUserId() else {
+            print("⚠️ ProfileViewController: No user ID available for fetching uploads")
+            isLoadingUploads = false
+            uploadsLoadingIndicator.stopAnimating()
+            return
+        }
+        
+        print("📷 ProfileViewController: Fetching uploads for user: \(userId)")
+        isLoadingUploads = true
+        
+        GlobalPlaceService.shared.getUserUploads(userId: userId) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                
+                self.isLoadingUploads = false
+                
+                switch result {
+                case .success(let response):
+                    print("✅ ProfileViewController: Successfully fetched \(response.data.count) uploads")
+                    self.uploads = response.data
+                    
+                    // Log upload details for debugging
+                    if !response.data.isEmpty {
+                        print("📸 ProfileViewController: Upload details:")
+                        for (index, upload) in response.data.prefix(3).enumerated() {
+                            print("     Upload \(index + 1): \(upload.placeName) - \(upload.imageUrl)")
+                        }
+                    }
+                    
+                    // Update uploads collection view
+                    if self.contentTypeSegmentedControl.selectedSegmentIndex == 2 {
+                        self.uploadsLoadingIndicator.stopAnimating()
+                        self.uploadsCollectionView.reloadData()
+                        self.updateUploadsCollectionHeight()
+                        
+                        // Show/hide empty state
+                        self.uploadsEmptyLabel.isHidden = !self.uploads.isEmpty
+                        
+                        if self.uploads.isEmpty {
+                            print("📭 ProfileViewController: No uploads to display - showing empty state")
+                        }
+                    }
+                    
+                case .failure(let error):
+                    self.isLoadingUploads = false
+                    print("❌ ProfileViewController: Failed to fetch uploads: \(error)")
+                    print("   - Error details: \(error.localizedDescription)")
+                    
+                    // Don't show error to user, just leave uploads empty
+                    self.uploads = []
+                    if self.contentTypeSegmentedControl.selectedSegmentIndex == 2 {
+                        self.uploadsLoadingIndicator.stopAnimating()
+                        self.uploadsEmptyLabel.isHidden = false
+                    }
+                }
+            }
+        }
+    }
+    
     private func displayUser(_ user: User) {
         // Debug logging
         print("🔍 ProfileViewController - Displaying user data:")
@@ -2467,17 +2896,24 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         contentTypeSegmentedControl.isHidden = !isCurrentUser
         floatingAddButton.isHidden = !isCurrentUser || contentTypeSegmentedControl.selectedSegmentIndex != 0
         
-        // Switch search bar container constraints based on user type
-        if isCurrentUser {
-            // Current user - search bar anchored to segmented control
-            searchBarContainerTopToSeparatorConstraint?.isActive = false
-            searchBarContainerTopToSegmentedConstraint?.isActive = true
-            print("📐 Switched to segmented control constraint - showing tabs for current user")
-        } else {
-            // Connection profile - search bar anchored to separator line
-            searchBarContainerTopToSegmentedConstraint?.isActive = false
-            searchBarContainerTopToSeparatorConstraint?.isActive = true
-            print("📐 Switched to separator constraint - hiding tabs for connection profile")
+        // Switch constraints based on user type with animation
+        UIView.animate(withDuration: 0.3) {
+            if isCurrentUser {
+                // Current user - search bar anchored to segmented control, separator to profile
+                self.searchBarContainerTopToSeparatorConstraint?.isActive = false
+                self.searchBarContainerTopToSegmentedConstraint?.isActive = true
+                self.separatorLineTopToNotificationConstraint?.isActive = false
+                self.separatorLineTopToProfileConstraint?.isActive = true
+                print("📐 Switched to current user layout - no notification section space")
+            } else {
+                // Connection profile - search bar anchored to separator, separator to notification section
+                self.searchBarContainerTopToSegmentedConstraint?.isActive = false
+                self.searchBarContainerTopToSeparatorConstraint?.isActive = true
+                self.separatorLineTopToProfileConstraint?.isActive = false
+                self.separatorLineTopToNotificationConstraint?.isActive = true
+                print("📐 Switched to connection profile layout - with notification section space")
+            }
+            self.view.layoutIfNeeded()
         }
         
         // Update navigation bar items based on profile type
@@ -2501,6 +2937,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             followButton.isHidden = true
             connectButton.isHidden = true
         }
+        
+        // Hide activity notifications section for current user (only show for connections)
+        notificationsSectionContainer.isHidden = isCurrentUser
         
         // Configure drag and drop based on whether this is the current user
         configureDragAndDrop()
@@ -2891,6 +3330,107 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         print("📐 ProfileViewController: Updated videos collection height to \(totalHeight) for \(videos.count) videos in \(numberOfRows) rows")
     }
     
+    private func updateUploadsCollectionHeight() {
+        // For 3-column grid layout, calculate height based on number of rows
+        guard !uploads.isEmpty else {
+            uploadsCollectionHeightConstraint?.constant = 100 // Minimum height for empty state
+            return
+        }
+        
+        // Calculate grid dimensions
+        let spacing: CGFloat = 2
+        let numberOfColumns: CGFloat = 3
+        let totalSpacing = spacing * (numberOfColumns - 1)
+        let collectionWidth = uploadsCollectionView.bounds.width > 0 ? uploadsCollectionView.bounds.width : UIScreen.main.bounds.width
+        let itemWidth = (collectionWidth - totalSpacing) / numberOfColumns
+        let itemHeight = itemWidth // Square items
+        
+        // Calculate number of rows
+        let numberOfRows = ceil(Double(uploads.count) / Double(numberOfColumns))
+        let totalRowSpacing = spacing * (CGFloat(numberOfRows) - 1)
+        let totalHeight = (CGFloat(numberOfRows) * itemHeight) + totalRowSpacing + 20 // Add some padding
+        
+        uploadsCollectionHeightConstraint?.isActive = true
+        uploadsCollectionHeightConstraint?.constant = totalHeight
+        
+        // Force layout update
+        UIView.animate(withDuration: 0.3) {
+            self.view.layoutIfNeeded()
+        }
+        
+        print("📐 ProfileViewController: Updated uploads collection height to \(totalHeight) for \(uploads.count) uploads in \(numberOfRows) rows")
+    }
+    
+    // MARK: - Navigation Helpers
+    
+    private func navigateToPlaceDetail(from upload: UserUploadedPhoto) {
+        // Show loading indicator
+        let loadingAlert = AlertPresenter.showLoading(message: "Loading place details...", from: self)
+        
+        // Fetch complete global place data
+        GlobalPlaceService.shared.getGlobalPlace(id: upload.placeId) { [weak self] result in
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    guard let self = self else { return }
+                    
+                    switch result {
+                    case .success(let globalPlaceResponse):
+                        // Convert GlobalPlace to Place for PlaceDetailViewController
+                        let legacyPlace = globalPlaceResponse.globalPlace.toLegacyPlace(withRelation: globalPlaceResponse.userRelation)
+                        
+                        let placeDetailVC = PlaceDetailViewController(place: legacyPlace)
+                        self.navigationController?.pushViewController(placeDetailVC, animated: true)
+                        
+                    case .failure(let error):
+                        print("❌ ProfileViewController: Failed to load place details: \(error)")
+                        
+                        // Fallback: Create minimal Place object and still navigate
+                        let tempPlace = Place(
+                            id: upload.placeId,
+                            name: upload.placeName,
+                            description: nil,
+                            address: upload.placeAddress ?? "",
+                            location: nil,
+                            website: nil,
+                            phone: nil,
+                            googlePlaceId: nil,
+                            photos: [upload.imageUrl],
+                            videos: nil,
+                            category: upload.placeCategory,
+                            customCategoryId: nil,
+                            subcategory: nil,
+                            rating: nil,
+                            userRatingsTotal: nil,
+                            notes: nil,
+                            privateNotes: nil,
+                            publicNotes: nil,
+                            tags: [],
+                            reviews: nil,
+                            openingHours: nil,
+                            priceLevel: nil,
+                            likes: nil,
+                            likesCount: nil,
+                            commentsCount: nil,
+                            circleId: nil,
+                            addedBy: "",
+                            addedByUser: nil,
+                            privacy: .followCirclePrivacy,
+                            createdAt: upload.uploadedAt,
+                            updatedAt: upload.uploadedAt,
+                            isNew: false
+                        )
+                        
+                        let placeDetailVC = PlaceDetailViewController(place: tempPlace)
+                        self.navigationController?.pushViewController(placeDetailVC, animated: true)
+                        
+                        // Show error message as a toast
+                        self.showError("Could not load complete place details")
+                    }
+                }
+            }
+        }
+    }
+    
     private func confirmDeleteVideo(_ video: PlaceVideo, at indexPath: IndexPath) {
         let alert = UIAlertController(
             title: "Delete Content",
@@ -2960,6 +3500,56 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         }
     }
     
+    private func confirmDeleteUpload(_ upload: UserUploadedPhoto, at indexPath: IndexPath) {
+        let alert = UIAlertController(
+            title: "Delete Photo",
+            message: "Are you sure you want to delete this photo from \(upload.placeName)? This action cannot be undone.",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+            self?.deleteUpload(upload, at: indexPath)
+        })
+        
+        present(alert, animated: true)
+    }
+    
+    private func deleteUpload(_ upload: UserUploadedPhoto, at indexPath: IndexPath) {
+        // Show loading
+        let loadingAlert = AlertPresenter.showLoading(message: "Deleting photo...", from: self)
+        
+        GlobalPlaceService.shared.deleteUpload(upload) { [weak self] result in
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    guard let self = self else { return }
+                    
+                    switch result {
+                    case .success:
+                        // Clear image from cache
+                        ImageService.shared.clearCacheForUrl(upload.imageUrl)
+                        
+                        // Remove from local array
+                        self.uploads.remove(at: indexPath.item)
+                        
+                        // Update collection view with animation
+                        self.uploadsCollectionView.deleteItems(at: [indexPath])
+                        self.updateUploadsCollectionHeight()
+                        
+                        // Show/hide empty state if needed
+                        self.uploadsEmptyLabel.isHidden = !self.uploads.isEmpty
+                        
+                        // Show success
+                        self.showSuccess("Photo deleted successfully")
+                        
+                    case .failure(let error):
+                        self.showError(error)
+                    }
+                }
+            }
+        }
+    }
+    
 }
 
 // MARK: - UICollectionViewDataSource
@@ -2967,6 +3557,8 @@ extension ProfileViewController: UICollectionViewDataSource {
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
         if collectionView == videosCollectionView {
             return videos.count
+        } else if collectionView == uploadsCollectionView {
+            return uploads.count
         }
         return circles.count
     }
@@ -2976,6 +3568,11 @@ extension ProfileViewController: UICollectionViewDataSource {
             let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "VideoThumbnailCell", for: indexPath) as! VideoThumbnailCell
             let video = videos[indexPath.item]
             cell.configure(with: video)
+            return cell
+        } else if collectionView == uploadsCollectionView {
+            let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "UploadThumbnailCell", for: indexPath) as! UploadThumbnailCell
+            let upload = uploads[indexPath.item]
+            cell.configure(with: upload)
             return cell
         }
         
@@ -2994,6 +3591,10 @@ extension ProfileViewController: UICollectionViewDelegate {
             let reelsVC = VideoReelsViewController(reels: videos, startIndex: indexPath.item)
             reelsVC.modalPresentationStyle = .fullScreen
             present(reelsVC, animated: true)
+        } else if collectionView == uploadsCollectionView {
+            // Navigate to the place detail for the uploaded image
+            let upload = uploads[indexPath.item]
+            navigateToPlaceDetail(from: upload)
         } else {
             let circle = circles[indexPath.item]
             let detailVC = CircleDetailViewController(circle: circle)
@@ -3018,6 +3619,24 @@ extension ProfileViewController: UICollectionViewDelegate {
                     attributes: .destructive
                 ) { _ in
                     self.confirmDeleteVideo(video, at: indexPath)
+                }
+                
+                return UIMenu(title: "", children: [deleteAction])
+            }
+        } else if collectionView == uploadsCollectionView {
+            // Handle context menu for uploads
+            let upload = uploads[indexPath.item]
+            
+            // Only show delete for user's own uploads (they should always be the user's own uploads)
+            return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
+                guard let self = self else { return UIMenu(title: "", children: []) }
+                
+                let deleteAction = UIAction(
+                    title: "Delete Photo",
+                    image: UIImage(systemName: "trash"),
+                    attributes: .destructive
+                ) { _ in
+                    self.confirmDeleteUpload(upload, at: indexPath)
                 }
                 
                 return UIMenu(title: "", children: [deleteAction])
@@ -3140,6 +3759,13 @@ extension ProfileViewController: UICollectionViewDelegateFlowLayout {
             let totalSpacing = spacing * (numberOfColumns - 1)
             let itemWidth = (collectionView.bounds.width - totalSpacing) / numberOfColumns
             return CGSize(width: itemWidth, height: itemWidth) // Square items
+        } else if collectionView == uploadsCollectionView {
+            // Instagram-style 3-column grid with square items (same as videos)
+            let spacing: CGFloat = 2
+            let numberOfColumns: CGFloat = 3
+            let totalSpacing = spacing * (numberOfColumns - 1)
+            let itemWidth = (collectionView.bounds.width - totalSpacing) / numberOfColumns
+            return CGSize(width: itemWidth, height: itemWidth) // Square items
         } else {
             // Circular grid with 3 columns
             let spacing: CGFloat = 12
@@ -3152,11 +3778,11 @@ extension ProfileViewController: UICollectionViewDelegateFlowLayout {
     }
     
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumLineSpacingForSectionAt section: Int) -> CGFloat {
-        return collectionView == videosCollectionView ? 2 : 16
+        return (collectionView == videosCollectionView || collectionView == uploadsCollectionView) ? 2 : 16
     }
     
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumInteritemSpacingForSectionAt section: Int) -> CGFloat {
-        return collectionView == videosCollectionView ? 2 : 12
+        return (collectionView == videosCollectionView || collectionView == uploadsCollectionView) ? 2 : 12
     }
 }
 
@@ -3391,10 +4017,12 @@ extension ProfileViewController: UICollectionViewDropDelegate {
     }
     
     private func loadAllPlacesFromCircles(_ circles: [Circle]) {
+        print("🔍 [Places Debug] loadAllPlacesFromCircles called with \(circles.count) circles")
         allPlaces.removeAll()
         let dispatchGroup = DispatchGroup()
         
         for circle in circles {
+            print("🔍 [Places Debug] Loading places for circle: \(circle.name) (id: \(circle.id))")
             dispatchGroup.enter()
             PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { [weak self] result in
                 guard let self = self else { 
@@ -3404,12 +4032,12 @@ extension ProfileViewController: UICollectionViewDropDelegate {
                 
                 switch result {
                 case .success(let places):
+                    print("🔍 [Places Debug] Loaded \(places.count) places from circle: \(circle.name)")
                     DispatchQueue.main.async {
                         self.allPlaces.append(contentsOf: places)
                     }
-                case .failure:
-                    // Continue loading other circles
-                    break
+                case .failure(let error):
+                    print("⚠️ [Places Debug] Failed to fetch places for circle \(circle.name): \(error)")
                 }
                 dispatchGroup.leave()
             }
@@ -3417,6 +4045,16 @@ extension ProfileViewController: UICollectionViewDropDelegate {
         
         dispatchGroup.notify(queue: .main) { [weak self] in
             guard let self = self else { return }
+            
+            print("🔍 [Places Debug] All circles processed, total raw places: \(self.allPlaces.count)")
+            
+            // Log some sample places and their categories
+            if !self.allPlaces.isEmpty {
+                print("🔍 [Places Debug] Sample places and categories:")
+                for (index, place) in self.allPlaces.prefix(3).enumerated() {
+                    print("  \(index + 1). \(place.name) - Category: \(place.category.rawValue), Custom: \(place.customCategoryId ?? "none")")
+                }
+            }
             
             // Deduplicate places that might exist in multiple circles
             let deduplicatedPlaces = self.removeDuplicatePlaces(self.allPlaces)
@@ -3432,11 +4070,19 @@ extension ProfileViewController: UICollectionViewDropDelegate {
     }
     
     private func updateAvailableCategories() {
+        print("🔍 [Categories Debug] updateAvailableCategories called with \(allPlaces.count) places")
+        
         // Get unique categories from all places, including custom categories
         availableCategories = PlaceCategory.uniqueCategories(from: allPlaces)
         
+        print("🔍 [Categories Debug] Found \(availableCategories.count) unique categories:")
+        for (index, category) in availableCategories.enumerated() {
+            print("  \(index + 1). \(category.displayName) (\(category.isCustom ? "custom" : "standard"))")
+        }
+        
         // Update the category filter menu
         setupCategoryFilterMenu()
+        print("🔍 [Categories Debug] Category filter menu updated")
     }
 }
 

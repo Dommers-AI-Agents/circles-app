@@ -15,10 +15,20 @@ class DailySummaryService {
     console.log('📊 Starting daily summary generation...');
     
     try {
-      // Get all users with daily summary enabled
-      const usersSnapshot = await db.collection(COLLECTIONS.USERS)
-        .where('notificationPreferences.dailySummary', '==', true)
-        .get();
+      // Implement distributed lock to prevent concurrent executions
+      const lockAcquired = await this.acquireDailySummaryLock();
+      if (!lockAcquired) {
+        console.log('⚠️ Daily summary already running or completed today - skipping execution');
+        return;
+      }
+      
+      console.log('🔒 Acquired daily summary execution lock');
+      
+      try {
+        // Get all users with daily summary enabled
+        const usersSnapshot = await db.collection(COLLECTIONS.USERS)
+          .where('notificationPreferences.dailySummary', '==', true)
+          .get();
 
       if (usersSnapshot.empty) {
         console.log('No users have daily summary enabled');
@@ -36,9 +46,16 @@ class DailySummaryService {
         await Promise.all(batch.map(user => this.generateAndSendSummary(user)));
       }
 
-      console.log('✅ Daily summaries completed');
+        console.log('✅ Daily summaries completed');
+      } finally {
+        // Always release the lock, even if there was an error
+        await this.releaseDailySummaryLock();
+        console.log('🔓 Released daily summary execution lock');
+      }
     } catch (error) {
       console.error('❌ Error in sendDailySummaries:', error);
+      // Make sure to release lock on error
+      await this.releaseDailySummaryLock();
       throw error;
     }
   }
@@ -778,6 +795,53 @@ class DailySummaryService {
       </body>
       </html>
     `;
+  }
+
+  // Acquire distributed lock for daily summary execution
+  async acquireDailySummaryLock() {
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    const lockId = `daily-summary-${today}`;
+    const lockDoc = db.collection('system_locks').doc(lockId);
+    
+    try {
+      // Try to create the lock document atomically
+      await lockDoc.create({
+        lockType: 'daily_summary',
+        date: today,
+        acquiredAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), // 2 hour expiry
+        status: 'acquired'
+      });
+      
+      console.log(`🔒 Successfully acquired lock for daily summary: ${lockId}`);
+      return true;
+    } catch (error) {
+      if (error.code === 6) { // ALREADY_EXISTS error code
+        console.log(`⚠️ Daily summary lock already exists for ${today} - another process is running`);
+        return false;
+      } else {
+        console.error('Error acquiring daily summary lock:', error);
+        throw error;
+      }
+    }
+  }
+
+  // Release distributed lock for daily summary execution
+  async releaseDailySummaryLock() {
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    const lockId = `daily-summary-${today}`;
+    const lockDoc = db.collection('system_locks').doc(lockId);
+    
+    try {
+      await lockDoc.update({
+        status: 'completed',
+        completedAt: new Date().toISOString()
+      });
+      console.log(`🔓 Successfully released lock for daily summary: ${lockId}`);
+    } catch (error) {
+      // Don't throw error on lock release failure - just log it
+      console.warn('Warning: Could not release daily summary lock:', error.message);
+    }
   }
 }
 

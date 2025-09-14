@@ -11,6 +11,9 @@ const { createActivity } = require('../controllers/activityController');
 // Import SSE service for real-time notifications
 const SSEService = require('./sseService');
 
+// Import notification service for push notifications
+const notificationService = require('./notificationService');
+
 // Track when a user adds a new circle
 const trackCircleCreated = async (circleId, createdByUserId) => {
   try {
@@ -102,7 +105,7 @@ const trackCircleCreated = async (circleId, createdByUserId) => {
       // Circle creation activity tracked
       
       // Send real-time SSE events to connections who should see this activity
-      allConnections.forEach(doc => {
+      allConnections.forEach(async (doc) => {
         const connectionData = doc.data();
         const otherUserId = connectionData.userId === createdByUserId 
           ? connectionData.connectedUserId 
@@ -138,6 +141,30 @@ const trackCircleCreated = async (circleId, createdByUserId) => {
               timestamp: new Date().toISOString()
             }
           });
+          
+          // Send push notification if enabled for this connection
+          const connectionData = doc.data();
+          if (connectionData.activityNotificationsEnabled === true) { // Explicit opt-in required
+            try {
+              // Get creator's display name
+              const creatorDoc = await db.collection(COLLECTIONS.USERS).doc(createdByUserId).get();
+              const creatorName = creatorDoc.exists ? creatorDoc.data().displayName : 'Someone';
+              
+              await notificationService.sendToUser(otherUserId, {
+                type: 'activity_notification',
+                title: 'New Circle Created',
+                body: `${creatorName} created a new circle: ${circleName}`,
+                data: {
+                  type: 'circle_created',
+                  circleId: circleId,
+                  createdByUserId: createdByUserId,
+                  deepLink: `circles://circle/${circleId}`
+                }
+              });
+            } catch (notificationError) {
+              console.warn('Failed to send circle creation push notification:', notificationError);
+            }
+          }
         }
       });
     }
@@ -296,6 +323,32 @@ const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedBy
             timestamp: new Date().toISOString()
           }
         });
+        
+        // Send push notification if enabled for this connection
+        if (connectionData.activityNotificationsEnabled === true) { // Explicit opt-in required
+          (async () => {
+            try {
+              // Get place adder's display name
+              const adderDoc = await db.collection(COLLECTIONS.USERS).doc(addedByUserId).get();
+              const adderName = adderDoc.exists ? adderDoc.data().displayName : 'Someone';
+              
+              await notificationService.sendToUser(otherUserId, {
+                type: 'activity_notification',
+                title: 'New Place Added',
+                body: `${adderName} added ${placeName} to ${circleName}`,
+                data: {
+                  type: 'place_added',
+                  placeId: placeId,
+                  circleId: circleId,
+                  addedByUserId: addedByUserId,
+                  deepLink: `circles://place/${placeId}?circleId=${circleId}`
+                }
+              });
+            } catch (notificationError) {
+              console.warn('Failed to send place addition push notification:', notificationError);
+            }
+          })();
+        }
       }
     });
     
@@ -987,12 +1040,110 @@ const logActivity = async (activityData) => {
   }
 };
 
+// Track when a user uploads a photo to a global place
+const trackPhotoUploaded = async (photoId, placeId, placeName, photoUrl, uploadedByUserId) => {
+  try {
+    // Create activity record
+    await createActivity(
+      'photo_uploaded',
+      uploadedByUserId,
+      'place',
+      placeId,
+      placeName || 'Unknown Place',
+      {
+        placeId: placeId,
+        placeName: placeName,
+        placePhoto: photoUrl,
+        photoId: photoId
+      }
+    );
+    
+    // Send SSE events to connections and followers
+    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', uploadedByUserId)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', uploadedByUserId)
+        .where('status', '==', 'accepted')
+        .get()
+    ]);
+    
+    const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
+    
+    allConnections.forEach(doc => {
+      const connectionData = doc.data();
+      const otherUserId = connectionData.userId === uploadedByUserId 
+        ? connectionData.connectedUserId 
+        : connectionData.userId;
+      
+      // Send photo uploaded event
+      SSEService.sendEvent(otherUserId, {
+        type: 'photo_uploaded',
+        data: {
+          photoId: photoId,
+          placeId: placeId,
+          placeName: placeName,
+          photoUrl: photoUrl,
+          uploadedByUserId: uploadedByUserId,
+          timestamp: new Date().toISOString()
+        }
+      });
+      
+      // Also send new_activity event for activity feed
+      SSEService.sendEvent(otherUserId, {
+        type: 'new_activity',
+        data: {
+          type: 'photo_uploaded',
+          actorId: uploadedByUserId,
+          entityType: 'place',
+          entityId: placeId,
+          entityName: placeName,
+          metadata: { placePhoto: photoUrl },
+          timestamp: new Date().toISOString()
+        }
+      });
+      
+      // Send push notification if enabled for this connection
+      if (connectionData.activityNotificationsEnabled === true) { // Explicit opt-in required
+        (async () => {
+          try {
+            // Get uploader's display name
+            const uploaderDoc = await db.collection(COLLECTIONS.USERS).doc(uploadedByUserId).get();
+            const uploaderName = uploaderDoc.exists ? uploaderDoc.data().displayName : 'Someone';
+            
+            await notificationService.sendToUser(otherUserId, {
+              type: 'activity_notification',
+              title: 'New Photo Shared',
+              body: `${uploaderName} uploaded a photo at ${placeName}`,
+              data: {
+                type: 'photo_uploaded',
+                photoId: photoId,
+                placeId: placeId,
+                uploadedByUserId: uploadedByUserId,
+                deepLink: `circles://place/${placeId}`
+              }
+            });
+          } catch (notificationError) {
+            console.warn('Failed to send photo upload push notification:', notificationError);
+          }
+        })();
+      }
+    });
+    
+    console.log(`✅ Tracked photo upload for place ${placeName}`);
+  } catch (error) {
+    console.error('Error tracking photo upload:', error);
+  }
+};
+
 // Track when a user uploads a moment/video
 const trackMomentUpload = async (momentId, placeId, placeName, uploadedByUserId) => {
   try {
     // Create activity record
     await createActivity(
-      'moment_uploaded',
+      'video_uploaded',
       uploadedByUserId,
       'moment',
       momentId,
@@ -1047,6 +1198,32 @@ const trackMomentUpload = async (momentId, placeId, placeName, uploadedByUserId)
           timestamp: new Date().toISOString()
         }
       });
+      
+      // Send push notification if enabled for this connection
+      if (connectionData.activityNotificationsEnabled === true) { // Explicit opt-in required
+        (async () => {
+          try {
+            // Get uploader's display name
+            const uploaderDoc = await db.collection(COLLECTIONS.USERS).doc(uploadedByUserId).get();
+            const uploaderName = uploaderDoc.exists ? uploaderDoc.data().displayName : 'Someone';
+            
+            await notificationService.sendToUser(otherUserId, {
+              type: 'activity_notification',
+              title: 'New Moment Shared',
+              body: `${uploaderName} shared a moment at ${placeName}`,
+              data: {
+                type: 'moment_uploaded',
+                momentId: momentId,
+                placeId: placeId,
+                uploadedByUserId: uploadedByUserId,
+                deepLink: `circles://moment/${momentId}`
+              }
+            });
+          } catch (notificationError) {
+            console.warn('Failed to send moment upload push notification:', notificationError);
+          }
+        })();
+      }
     });
     
     console.log(`✅ Tracked moment upload for place ${placeName}`);
@@ -1159,6 +1336,7 @@ const trackCheckIn = async (placeId, placeName, circleId, circleName, checkedInB
         ? connectionData.connectedUserId 
         : connectionData.userId;
       
+      // Send SSE events to all connections (for real-time updates)
       SSEService.sendEvent(otherUserId, {
         type: 'check_in',
         data: {
@@ -1184,6 +1362,32 @@ const trackCheckIn = async (placeId, placeName, circleId, circleName, checkedInB
           timestamp: new Date().toISOString()
         }
       });
+      
+      // Send push notification only if enabled for this connection
+      if (connectionData.activityNotificationsEnabled === true) { // Explicit opt-in required
+        (async () => {
+          try {
+            // Get checker's display name
+            const checkerDoc = await db.collection(COLLECTIONS.USERS).doc(checkedInByUserId).get();
+            const checkerName = checkerDoc.exists ? checkerDoc.data().displayName : 'Someone';
+            
+            await notificationService.sendToUser(otherUserId, {
+              type: 'activity_notification',
+              title: 'Check-in Update',
+              body: `${checkerName} checked in at ${placeName}`,
+              data: {
+                type: 'check_in',
+                placeId: placeId,
+                circleId: circleId,
+                checkedInByUserId: checkedInByUserId,
+                deepLink: `circles://place/${placeId}?circleId=${circleId}`
+              }
+            });
+          } catch (notificationError) {
+            console.warn('Failed to send check-in push notification:', notificationError);
+          }
+        })();
+      }
     });
     
     console.log(`✅ Tracked check-in at ${placeName}`);
@@ -1262,6 +1466,938 @@ const trackComment = async (targetType, targetId, targetName, commentId, comment
   }
 };
 
+// Track when a user likes a place
+const trackPlaceLiked = async (placeId, placeName, circleId, circleName, likedByUserId, placeOwnerId) => {
+  try {
+    // Don't track if user likes their own place
+    if (likedByUserId === placeOwnerId) {
+      return;
+    }
+
+    // Create activity record
+    await createActivity(
+      'place_liked',
+      likedByUserId,
+      'place',
+      placeId,
+      placeName,
+      {
+        placeId: placeId,
+        placeName: placeName,
+        circleId: circleId,
+        circleName: circleName,
+        likedByUserId: likedByUserId
+      }
+    );
+
+    // Send real-time notification to place owner
+    SSEService.sendEvent(placeOwnerId, {
+      type: 'place_liked',
+      data: {
+        placeId: placeId,
+        placeName: placeName,
+        circleId: circleId,
+        circleName: circleName,
+        likedByUserId: likedByUserId,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+    // Also send new_activity event for activity feed
+    SSEService.sendEvent(placeOwnerId, {
+      type: 'new_activity',
+      data: {
+        type: 'place_liked',
+        actorId: likedByUserId,
+        entityType: 'place',
+        entityId: placeId,
+        entityName: placeName,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+    // Send activity to connections who have opted in
+    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', likedByUserId)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', likedByUserId)
+        .where('status', '==', 'accepted')
+        .get()
+    ]);
+    
+    const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
+    
+    allConnections.forEach(doc => {
+      const connectionData = doc.data();
+      const otherUserId = connectionData.userId === likedByUserId 
+        ? connectionData.connectedUserId 
+        : connectionData.userId;
+      
+      // Skip if this is the place owner (they already got the notification above)
+      if (otherUserId === placeOwnerId) {
+        return;
+      }
+      
+      // Send SSE events for real-time updates
+      SSEService.sendEvent(otherUserId, {
+        type: 'connection_place_liked',
+        data: {
+          placeId: placeId,
+          placeName: placeName,
+          circleId: circleId,
+          circleName: circleName,
+          likedByUserId: likedByUserId,
+          timestamp: new Date().toISOString()
+        }
+      });
+      
+      // Send push notification only if enabled for this connection
+      if (connectionData.activityNotificationsEnabled === true) { // Explicit opt-in required
+        (async () => {
+          try {
+            // Get liker's display name
+            const likerDoc = await db.collection(COLLECTIONS.USERS).doc(likedByUserId).get();
+            const likerName = likerDoc.exists ? likerDoc.data().displayName : 'Someone';
+            
+            await notificationService.sendToUser(otherUserId, {
+              type: 'activity_notification',
+              title: 'Connection Activity',
+              body: `${likerName} liked a place: ${placeName}`,
+              data: {
+                type: 'place_liked',
+                placeId: placeId,
+                circleId: circleId,
+                likedByUserId: likedByUserId,
+                deepLink: `circles://place/${placeId}?circleId=${circleId}`
+              }
+            });
+          } catch (notificationError) {
+            console.warn('Failed to send place like connection push notification:', notificationError);
+          }
+        })();
+      }
+    });
+
+    console.log(`✅ Tracked place like for ${placeName}`);
+  } catch (error) {
+    console.error('Error tracking place like:', error);
+  }
+};
+
+// Track when a user likes a video/moment
+const trackVideoLiked = async (videoId, placeId, placeName, likedByUserId, videoOwnerId) => {
+  try {
+    // Don't track if user likes their own video
+    if (likedByUserId === videoOwnerId) {
+      return;
+    }
+
+    // Create activity record
+    await createActivity(
+      'video_liked',
+      likedByUserId,
+      'video',
+      videoId,
+      `Moment at ${placeName}`,
+      {
+        videoId: videoId,
+        placeId: placeId,
+        placeName: placeName,
+        likedByUserId: likedByUserId
+      }
+    );
+
+    // Send real-time notification to video owner
+    SSEService.sendEvent(videoOwnerId, {
+      type: 'video_liked',
+      data: {
+        videoId: videoId,
+        placeId: placeId,
+        placeName: placeName,
+        likedByUserId: likedByUserId,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+    // Also send new_activity event for activity feed
+    SSEService.sendEvent(videoOwnerId, {
+      type: 'new_activity',
+      data: {
+        type: 'video_liked',
+        actorId: likedByUserId,
+        entityType: 'video',
+        entityId: videoId,
+        entityName: `Moment at ${placeName}`,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+    // Send activity to connections who have opted in
+    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', likedByUserId)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', likedByUserId)
+        .where('status', '==', 'accepted')
+        .get()
+    ]);
+    
+    const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
+    
+    allConnections.forEach(doc => {
+      const connectionData = doc.data();
+      const otherUserId = connectionData.userId === likedByUserId 
+        ? connectionData.connectedUserId 
+        : connectionData.userId;
+      
+      // Skip if this is the video owner (they already got the notification above)
+      if (otherUserId === videoOwnerId) {
+        return;
+      }
+      
+      // Send SSE events for real-time updates
+      SSEService.sendEvent(otherUserId, {
+        type: 'connection_video_liked',
+        data: {
+          videoId: videoId,
+          placeId: placeId,
+          placeName: placeName,
+          likedByUserId: likedByUserId,
+          timestamp: new Date().toISOString()
+        }
+      });
+      
+      // Send push notification only if enabled for this connection
+      if (connectionData.activityNotificationsEnabled === true) { // Explicit opt-in required
+        (async () => {
+          try {
+            // Get liker's display name
+            const likerDoc = await db.collection(COLLECTIONS.USERS).doc(likedByUserId).get();
+            const likerName = likerDoc.exists ? likerDoc.data().displayName : 'Someone';
+            
+            await notificationService.sendToUser(otherUserId, {
+              type: 'activity_notification',
+              title: 'Connection Activity',
+              body: `${likerName} liked a moment at ${placeName}`,
+              data: {
+                type: 'video_liked',
+                videoId: videoId,
+                placeId: placeId,
+                likedByUserId: likedByUserId,
+                deepLink: `circles://moment/${videoId}`
+              }
+            });
+          } catch (notificationError) {
+            console.warn('Failed to send video like connection push notification:', notificationError);
+          }
+        })();
+      }
+    });
+
+    console.log(`✅ Tracked video like for moment at ${placeName}`);
+  } catch (error) {
+    console.error('Error tracking video like:', error);
+  }
+};
+
+// Track when a user likes a Global Place upload
+const trackGlobalPlaceLiked = async (uploadId, globalPlaceId, placeName, likedByUserId, uploadOwnerId) => {
+  try {
+    // Don't track if user likes their own upload
+    if (likedByUserId === uploadOwnerId) {
+      return;
+    }
+
+    // Create activity record
+    await createActivity(
+      'global_place_liked',
+      likedByUserId,
+      'global_place',
+      uploadId,
+      placeName,
+      {
+        uploadId: uploadId,
+        globalPlaceId: globalPlaceId,
+        placeName: placeName,
+        likedByUserId: likedByUserId
+      }
+    );
+
+    // Send real-time notification to upload owner
+    SSEService.sendEvent(uploadOwnerId, {
+      type: 'global_place_liked',
+      data: {
+        uploadId: uploadId,
+        globalPlaceId: globalPlaceId,
+        placeName: placeName,
+        likedByUserId: likedByUserId,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+    // Send activity to connections who have opted in
+    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', likedByUserId)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', likedByUserId)
+        .where('status', '==', 'accepted')
+        .get()
+    ]);
+    
+    const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
+    
+    allConnections.forEach(doc => {
+      const connectionData = doc.data();
+      const otherUserId = connectionData.userId === likedByUserId 
+        ? connectionData.connectedUserId 
+        : connectionData.userId;
+      
+      // Skip if this is the upload owner (they already got the notification above)
+      if (otherUserId === uploadOwnerId) {
+        return;
+      }
+      
+      // Send SSE events for real-time updates
+      SSEService.sendEvent(otherUserId, {
+        type: 'connection_global_place_liked',
+        data: {
+          uploadId: uploadId,
+          globalPlaceId: globalPlaceId,
+          placeName: placeName,
+          likedByUserId: likedByUserId,
+          timestamp: new Date().toISOString()
+        }
+      });
+      
+      // Send push notification only if enabled for this connection
+      if (connectionData.activityNotificationsEnabled === true) { // Explicit opt-in required
+        (async () => {
+          try {
+            // Get liker's display name
+            const likerDoc = await db.collection(COLLECTIONS.USERS).doc(likedByUserId).get();
+            const likerName = likerDoc.exists ? likerDoc.data().displayName : 'Someone';
+            
+            await notificationService.sendToUser(otherUserId, {
+              type: 'activity_notification',
+              title: 'Connection Activity',
+              body: `${likerName} liked a Global Place upload: ${placeName}`,
+              data: {
+                type: 'global_place_liked',
+                uploadId: uploadId,
+                globalPlaceId: globalPlaceId,
+                likedByUserId: likedByUserId,
+                deepLink: `circles://global-place/${globalPlaceId}`
+              }
+            });
+          } catch (notificationError) {
+            console.warn('Failed to send Global Place like connection push notification:', notificationError);
+          }
+        })();
+      }
+    });
+
+    console.log(`✅ Tracked Global Place like for ${placeName}`);
+  } catch (error) {
+    console.error('Error tracking Global Place like:', error);
+  }
+};
+
+// ===========================================================================
+// PHASE 5: DISCOVERY ACTIVITIES - New place suggestions and discovery features
+// ===========================================================================
+
+// Track when a user sends a place suggestion to another user
+const trackSuggestionSent = async (suggestionId, placeId, placeName, fromUserId, toUserId, message = null) => {
+  try {
+    // Create activity record
+    await createActivity(
+      'suggestion_sent',
+      fromUserId,
+      'suggestion',
+      suggestionId,
+      placeName,
+      {
+        suggestionId: suggestionId,
+        placeId: placeId,
+        placeName: placeName,
+        toUserId: toUserId,
+        message: message ? message.substring(0, 100) : null
+      }
+    );
+
+    // Send real-time notification to recipient
+    SSEService.sendEvent(toUserId, {
+      type: 'suggestion_received',
+      data: {
+        suggestionId: suggestionId,
+        placeId: placeId,
+        placeName: placeName,
+        fromUserId: fromUserId,
+        message: message,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+    // Send activity to connections who have opted in
+    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', fromUserId)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', fromUserId)
+        .where('status', '==', 'accepted')
+        .get()
+    ]);
+    
+    const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
+    
+    allConnections.forEach(doc => {
+      const connectionData = doc.data();
+      const otherUserId = connectionData.userId === fromUserId 
+        ? connectionData.connectedUserId 
+        : connectionData.userId;
+      
+      // Skip if this is the suggestion recipient (they already got the direct notification above)
+      if (otherUserId === toUserId) {
+        return;
+      }
+      
+      // Send SSE events for real-time updates to other connections
+      SSEService.sendEvent(otherUserId, {
+        type: 'connection_suggestion_sent',
+        data: {
+          suggestionId: suggestionId,
+          placeId: placeId,
+          placeName: placeName,
+          fromUserId: fromUserId,
+          toUserId: toUserId,
+          timestamp: new Date().toISOString()
+        }
+      });
+      
+      // Send push notification only if enabled for this connection
+      if (connectionData.activityNotificationsEnabled === true) { // Explicit opt-in required
+        (async () => {
+          try {
+            // Get sender's display name
+            const senderDoc = await db.collection(COLLECTIONS.USERS).doc(fromUserId).get();
+            const senderName = senderDoc.exists ? senderDoc.data().displayName : 'Someone';
+            
+            // Get recipient's display name
+            const recipientDoc = await db.collection(COLLECTIONS.USERS).doc(toUserId).get();
+            const recipientName = recipientDoc.exists ? recipientDoc.data().displayName : 'someone';
+            
+            await notificationService.sendToUser(otherUserId, {
+              type: 'activity_notification',
+              title: 'Connection Activity',
+              body: `${senderName} suggested ${placeName} to ${recipientName}`,
+              data: {
+                type: 'suggestion_sent',
+                suggestionId: suggestionId,
+                placeId: placeId,
+                fromUserId: fromUserId,
+                deepLink: `circles://place/${placeId}`
+              }
+            });
+          } catch (notificationError) {
+            console.warn('Failed to send suggestion activity push notification:', notificationError);
+          }
+        })();
+      }
+    });
+
+    // Send push notification to suggestion recipient (always)
+    try {
+      const senderDoc = await db.collection(COLLECTIONS.USERS).doc(fromUserId).get();
+      const senderName = senderDoc.exists ? senderDoc.data().displayName : 'Someone';
+      
+      await notificationService.sendToUser(toUserId, {
+        type: 'suggestion_notification',
+        title: 'New Place Suggestion',
+        body: message 
+          ? `${senderName} suggests ${placeName}: "${message.substring(0, 50)}..."`
+          : `${senderName} suggests you check out ${placeName}`,
+        data: {
+          type: 'suggestion_received',
+          suggestionId: suggestionId,
+          placeId: placeId,
+          fromUserId: fromUserId,
+          deepLink: `circles://suggestion/${suggestionId}`
+        }
+      });
+    } catch (notificationError) {
+      console.warn('Failed to send suggestion push notification to recipient:', notificationError);
+    }
+
+    console.log(`✅ Tracked suggestion sent: ${placeName}`);
+  } catch (error) {
+    console.error('Error tracking suggestion sent:', error);
+  }
+};
+
+// Track when a user accepts/acts on a place suggestion
+const trackSuggestionAccepted = async (suggestionId, placeId, placeName, acceptedByUserId, suggestedByUserId) => {
+  try {
+    // Create activity record
+    await createActivity(
+      'suggestion_accepted',
+      acceptedByUserId,
+      'suggestion',
+      suggestionId,
+      placeName,
+      {
+        suggestionId: suggestionId,
+        placeId: placeId,
+        placeName: placeName,
+        suggestedByUserId: suggestedByUserId
+      }
+    );
+
+    // Send real-time notification to original suggester
+    SSEService.sendEvent(suggestedByUserId, {
+      type: 'suggestion_accepted',
+      data: {
+        suggestionId: suggestionId,
+        placeId: placeId,
+        placeName: placeName,
+        acceptedByUserId: acceptedByUserId,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+    // Send push notification to original suggester (always)
+    try {
+      const accepterDoc = await db.collection(COLLECTIONS.USERS).doc(acceptedByUserId).get();
+      const accepterName = accepterDoc.exists ? accepterDoc.data().displayName : 'Someone';
+      
+      await notificationService.sendToUser(suggestedByUserId, {
+        type: 'suggestion_feedback_notification',
+        title: 'Suggestion Accepted!',
+        body: `${accepterName} added your suggestion ${placeName} to their collection`,
+        data: {
+          type: 'suggestion_accepted',
+          suggestionId: suggestionId,
+          placeId: placeId,
+          acceptedByUserId: acceptedByUserId,
+          deepLink: `circles://place/${placeId}`
+        }
+      });
+    } catch (notificationError) {
+      console.warn('Failed to send suggestion accepted push notification:', notificationError);
+    }
+
+    console.log(`✅ Tracked suggestion accepted: ${placeName}`);
+  } catch (error) {
+    console.error('Error tracking suggestion accepted:', error);
+  }
+};
+
+// Track when a user discovers a new place (from search, recommendations, etc.)
+const trackPlaceDiscovered = async (placeId, placeName, discoveredByUserId, discoverySource = 'search', metadata = {}) => {
+  try {
+    // Create activity record
+    await createActivity(
+      'place_discovered',
+      discoveredByUserId,
+      'place',
+      placeId,
+      placeName,
+      {
+        placeId: placeId,
+        placeName: placeName,
+        discoverySource: discoverySource, // 'search', 'recommendation', 'trending', 'nearby'
+        ...metadata
+      }
+    );
+
+    // Send activity to connections who have opted in
+    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', discoveredByUserId)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', discoveredByUserId)
+        .where('status', '==', 'accepted')
+        .get()
+    ]);
+    
+    const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
+    
+    allConnections.forEach(doc => {
+      const connectionData = doc.data();
+      const otherUserId = connectionData.userId === discoveredByUserId 
+        ? connectionData.connectedUserId 
+        : connectionData.userId;
+      
+      // Send SSE events for real-time updates
+      SSEService.sendEvent(otherUserId, {
+        type: 'connection_place_discovered',
+        data: {
+          placeId: placeId,
+          placeName: placeName,
+          discoveredByUserId: discoveredByUserId,
+          discoverySource: discoverySource,
+          timestamp: new Date().toISOString()
+        }
+      });
+      
+      // Send push notification only if enabled for this connection
+      if (connectionData.activityNotificationsEnabled === true) { // Explicit opt-in required
+        (async () => {
+          try {
+            // Get discoverer's display name
+            const discovererDoc = await db.collection(COLLECTIONS.USERS).doc(discoveredByUserId).get();
+            const discovererName = discovererDoc.exists ? discovererDoc.data().displayName : 'Someone';
+            
+            let sourceText = '';
+            switch (discoverySource) {
+              case 'search': sourceText = 'discovered'; break;
+              case 'recommendation': sourceText = 'found through recommendations'; break;
+              case 'trending': sourceText = 'found in trending places'; break;
+              case 'nearby': sourceText = 'discovered nearby'; break;
+              default: sourceText = 'discovered'; break;
+            }
+            
+            await notificationService.sendToUser(otherUserId, {
+              type: 'activity_notification',
+              title: 'New Discovery',
+              body: `${discovererName} ${sourceText}: ${placeName}`,
+              data: {
+                type: 'place_discovered',
+                placeId: placeId,
+                discoveredByUserId: discoveredByUserId,
+                deepLink: `circles://place/${placeId}`
+              }
+            });
+          } catch (notificationError) {
+            console.warn('Failed to send place discovery push notification:', notificationError);
+          }
+        })();
+      }
+    });
+
+    console.log(`✅ Tracked place discovery: ${placeName} via ${discoverySource}`);
+  } catch (error) {
+    console.error('Error tracking place discovery:', error);
+  }
+};
+
+// Track when a user follows/unfollows another user
+const trackUserFollowed = async (followedUserId, followerUserId, action = 'followed') => {
+  try {
+    // Don't track if user follows themselves
+    if (followedUserId === followerUserId) {
+      return;
+    }
+
+    // Create activity record
+    const activityType = action === 'followed' ? 'user_followed' : 'user_unfollowed';
+    
+    // Get followed user's display name
+    const followedUserDoc = await db.collection(COLLECTIONS.USERS).doc(followedUserId).get();
+    const followedUserName = followedUserDoc.exists ? followedUserDoc.data().displayName : 'Unknown User';
+    
+    await createActivity(
+      activityType,
+      followerUserId,
+      'user',
+      followedUserId,
+      followedUserName,
+      {
+        followedUserId: followedUserId,
+        followerUserId: followerUserId,
+        action: action
+      }
+    );
+
+    // Send real-time notification to followed user (only for follows, not unfollows)
+    if (action === 'followed') {
+      SSEService.sendEvent(followedUserId, {
+        type: 'user_followed',
+        data: {
+          followedUserId: followedUserId,
+          followerUserId: followerUserId,
+          timestamp: new Date().toISOString()
+        }
+      });
+
+      // Send push notification to followed user (always for follows)
+      try {
+        const followerDoc = await db.collection(COLLECTIONS.USERS).doc(followerUserId).get();
+        const followerName = followerDoc.exists ? followerDoc.data().displayName : 'Someone';
+        
+        await notificationService.sendToUser(followedUserId, {
+          type: 'social_notification',
+          title: 'New Follower',
+          body: `${followerName} started following you`,
+          data: {
+            type: 'user_followed',
+            followerUserId: followerUserId,
+            deepLink: `circles://profile/${followerUserId}`
+          }
+        });
+      } catch (notificationError) {
+        console.warn('Failed to send follow push notification:', notificationError);
+      }
+    }
+
+    // Send activity to mutual connections who have opted in
+    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', followerUserId)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', followerUserId)
+        .where('status', '==', 'accepted')
+        .get()
+    ]);
+    
+    const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
+    
+    allConnections.forEach(doc => {
+      const connectionData = doc.data();
+      const otherUserId = connectionData.userId === followerUserId 
+        ? connectionData.connectedUserId 
+        : connectionData.userId;
+      
+      // Skip if this is the followed user (they already got the direct notification above)
+      if (otherUserId === followedUserId) {
+        return;
+      }
+      
+      // Send SSE events for real-time updates to mutual connections
+      SSEService.sendEvent(otherUserId, {
+        type: 'connection_user_followed',
+        data: {
+          followedUserId: followedUserId,
+          followerUserId: followerUserId,
+          action: action,
+          timestamp: new Date().toISOString()
+        }
+      });
+      
+      // Send push notification only if enabled for this connection and it's a follow
+      if (connectionData.activityNotificationsEnabled === true && action === 'followed') { // Explicit opt-in required
+        (async () => {
+          try {
+            // Get both users' display names
+            const followerDoc = await db.collection(COLLECTIONS.USERS).doc(followerUserId).get();
+            const followerName = followerDoc.exists ? followerDoc.data().displayName : 'Someone';
+            
+            await notificationService.sendToUser(otherUserId, {
+              type: 'activity_notification',
+              title: 'Connection Activity',
+              body: `${followerName} started following ${followedUserName}`,
+              data: {
+                type: 'user_followed',
+                followedUserId: followedUserId,
+                followerUserId: followerUserId,
+                deepLink: `circles://profile/${followedUserId}`
+              }
+            });
+          } catch (notificationError) {
+            console.warn('Failed to send follow activity push notification:', notificationError);
+          }
+        })();
+      }
+    });
+
+    console.log(`✅ Tracked user ${action}: ${followedUserName}`);
+  } catch (error) {
+    console.error(`Error tracking user ${action}:`, error);
+  }
+};
+
+// Track when a user updates their profile (bio, picture, etc.)
+const trackProfileUpdated = async (userId, updateType = 'profile', updateDetails = {}) => {
+  try {
+    // Get user's display name
+    const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+    const userName = userDoc.exists ? userDoc.data().displayName : 'Unknown User';
+    
+    // Create activity record
+    await createActivity(
+      'profile_updated',
+      userId,
+      'user',
+      userId,
+      userName,
+      {
+        updateType: updateType, // 'bio', 'picture', 'name', 'general'
+        ...updateDetails
+      }
+    );
+
+    // Send activity to connections who have opted in
+    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', userId)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', userId)
+        .where('status', '==', 'accepted')
+        .get()
+    ]);
+    
+    const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
+    
+    allConnections.forEach(doc => {
+      const connectionData = doc.data();
+      const otherUserId = connectionData.userId === userId 
+        ? connectionData.connectedUserId 
+        : connectionData.userId;
+      
+      // Send SSE events for real-time updates
+      SSEService.sendEvent(otherUserId, {
+        type: 'connection_profile_updated',
+        data: {
+          userId: userId,
+          userName: userName,
+          updateType: updateType,
+          timestamp: new Date().toISOString()
+        }
+      });
+      
+      // Send push notification only if enabled for this connection
+      if (connectionData.activityNotificationsEnabled === true) { // Explicit opt-in required
+        (async () => {
+          try {
+            let updateText = '';
+            switch (updateType) {
+              case 'bio': updateText = 'updated their bio'; break;
+              case 'picture': updateText = 'updated their profile picture'; break;
+              case 'name': updateText = 'updated their name'; break;
+              default: updateText = 'updated their profile'; break;
+            }
+            
+            await notificationService.sendToUser(otherUserId, {
+              type: 'activity_notification',
+              title: 'Profile Update',
+              body: `${userName} ${updateText}`,
+              data: {
+                type: 'profile_updated',
+                userId: userId,
+                updateType: updateType,
+                deepLink: `circles://profile/${userId}`
+              }
+            });
+          } catch (notificationError) {
+            console.warn('Failed to send profile update push notification:', notificationError);
+          }
+        })();
+      }
+    });
+
+    console.log(`✅ Tracked profile update: ${updateType} for ${userName}`);
+  } catch (error) {
+    console.error('Error tracking profile update:', error);
+  }
+};
+
+// Track when a user joins a new circle or becomes active after a period
+const trackUserActivity = async (userId, activityType = 'active', metadata = {}) => {
+  try {
+    // Get user's display name
+    const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+    const userName = userDoc.exists ? userDoc.data().displayName : 'Unknown User';
+    
+    // Create activity record
+    await createActivity(
+      'user_activity',
+      userId,
+      'user',
+      userId,
+      userName,
+      {
+        activityType: activityType, // 'active', 'joined', 'milestone'
+        ...metadata
+      }
+    );
+
+    // Send activity to connections who have opted in (only for significant activities)
+    if (['joined', 'milestone'].includes(activityType)) {
+      const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
+        db.collection(COLLECTIONS.CONNECTIONS)
+          .where('connectedUserId', '==', userId)
+          .where('status', '==', 'accepted')
+          .get(),
+        db.collection(COLLECTIONS.CONNECTIONS)
+          .where('userId', '==', userId)
+          .where('status', '==', 'accepted')
+          .get()
+      ]);
+      
+      const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
+      
+      allConnections.forEach(doc => {
+        const connectionData = doc.data();
+        const otherUserId = connectionData.userId === userId 
+          ? connectionData.connectedUserId 
+          : connectionData.userId;
+        
+        // Send SSE events for real-time updates
+        SSEService.sendEvent(otherUserId, {
+          type: 'connection_user_activity',
+          data: {
+            userId: userId,
+            userName: userName,
+            activityType: activityType,
+            metadata: metadata,
+            timestamp: new Date().toISOString()
+          }
+        });
+        
+        // Send push notification only if enabled for this connection
+        if (connectionData.activityNotificationsEnabled === true) { // Explicit opt-in required
+          (async () => {
+            try {
+              let activityText = '';
+              switch (activityType) {
+                case 'joined': activityText = 'joined Circles'; break;
+                case 'milestone': 
+                  const milestone = metadata.milestone || 'achievement';
+                  activityText = `reached a new ${milestone}`;
+                  break;
+                default: activityText = 'became active'; break;
+              }
+              
+              await notificationService.sendToUser(otherUserId, {
+                type: 'activity_notification',
+                title: 'Connection Update',
+                body: `${userName} ${activityText}`,
+                data: {
+                  type: 'user_activity',
+                  userId: userId,
+                  activityType: activityType,
+                  deepLink: `circles://profile/${userId}`
+                }
+              });
+            } catch (notificationError) {
+              console.warn('Failed to send user activity push notification:', notificationError);
+            }
+          })();
+        }
+      });
+    }
+
+    console.log(`✅ Tracked user activity: ${activityType} for ${userName}`);
+  } catch (error) {
+    console.error('Error tracking user activity:', error);
+  }
+};
+
 module.exports = {
   trackCircleCreated,
   trackPlaceAdded,
@@ -1270,10 +2406,21 @@ module.exports = {
   trackPlaceView,
   trackCircleLiked,
   trackCircleCommented,
+  trackPhotoUploaded,
   trackMomentUpload,
   trackReaction,
   trackCheckIn,
   trackComment,
+  trackPlaceLiked,
+  trackVideoLiked,
+  trackGlobalPlaceLiked,
+  // Phase 5: Discovery Activities
+  trackSuggestionSent,
+  trackSuggestionAccepted,
+  trackPlaceDiscovered,
+  trackUserFollowed,
+  trackProfileUpdated,
+  trackUserActivity,
   clearActivityNotification,
   getConnectionsWithStats,
   cleanupOldActivity,

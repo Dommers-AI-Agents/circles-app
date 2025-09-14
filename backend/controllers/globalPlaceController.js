@@ -16,7 +16,8 @@ const {
   validatePublicReview,
   calculateDataCompleteness,
   calculateQualityScore,
-  mergeGooglePlaceData
+  mergeGooglePlaceData,
+  generatePlaceKey
 } = require('../models/GlobalPlace');
 
 const { serializeDoc, serializeQuerySnapshot } = require('../models/FirestoreModels');
@@ -29,11 +30,76 @@ const db = getFirestore();
 exports.getGlobalPlace = async (req, res, next) => {
   try {
     const placeId = req.params.placeId;
+    console.log(`🔍 [GlobalPlace API] Starting lookup for placeId: ${placeId}`);
     
     // Get global place document
-    const placeDoc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).get();
+    let placeDoc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).get();
+    console.log(`📍 [GlobalPlace API] Direct lookup result: ${placeDoc.exists ? 'FOUND' : 'NOT FOUND'}`);
+    
+    // If not found by direct ID, try to find by legacy place lookup
+    if (!placeDoc.exists) {
+      console.log(`🔍 [GlobalPlace API] Not found by direct ID, starting legacy place lookup...`);
+      
+      // Look up the legacy place to get its details
+      const legacyPlaceDoc = await db.collection('places').doc(placeId).get();
+      console.log(`📄 [GlobalPlace API] Legacy place lookup: ${legacyPlaceDoc.exists ? 'FOUND' : 'NOT FOUND'}`);
+      
+      if (legacyPlaceDoc.exists) {
+        const legacyPlace = legacyPlaceDoc.data();
+        console.log(`📍 [GlobalPlace API] Found legacy place: "${legacyPlace.name}"`);
+        console.log(`📷 [GlobalPlace API] Legacy place has ${legacyPlace.photos?.length || 0} photos`);
+        
+        // Generate deduplication key for the legacy place
+        const legacyDeduplicationKey = generatePlaceKey(legacyPlace);
+        console.log(`🔑 [GlobalPlace API] Generated deduplication key: "${legacyDeduplicationKey}"`);
+        
+        // First, try to find GlobalPlace that contains this legacy place ID
+        console.log(`🔍 [GlobalPlace API] Searching for GlobalPlace with legacy ID mapping...`);
+        const legacyIdQuery = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES)
+          .where('legacyPlaceIds', 'array-contains', placeId)
+          .limit(1)
+          .get();
+        
+        if (!legacyIdQuery.empty) {
+          placeDoc = legacyIdQuery.docs[0];
+          const globalPlaceData = placeDoc.data();
+          console.log(`✅ [GlobalPlace API] Found GlobalPlace by legacy ID mapping: ${placeDoc.id}`);
+          console.log(`📷 [GlobalPlace API] GlobalPlace has ${globalPlaceData.photos?.length || 0} attributed photos`);
+          if (globalPlaceData.photos && globalPlaceData.photos.length > 0) {
+            const firstPhoto = globalPlaceData.photos[0];
+            console.log(`📸 [GlobalPlace API] First photo attribution: "${firstPhoto.uploadedByName || 'Unknown'}"`);
+          }
+        } else {
+          console.log(`🔍 [GlobalPlace API] No legacy ID mapping found, trying deduplication key search...`);
+          // Fallback: Search by deduplication key
+          const keyQuery = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES)
+            .where('deduplicationKey', '==', legacyDeduplicationKey)
+            .limit(1)
+            .get();
+          
+          if (!keyQuery.empty) {
+            placeDoc = keyQuery.docs[0];
+            const globalPlaceData = placeDoc.data();
+            console.log(`✅ [GlobalPlace API] Found GlobalPlace by deduplication key: ${placeDoc.id}`);
+            console.log(`📷 [GlobalPlace API] GlobalPlace has ${globalPlaceData.photos?.length || 0} attributed photos`);
+            
+            // Update the GlobalPlace to include this legacy place ID
+            await placeDoc.ref.update({
+              legacyPlaceIds: admin.firestore.FieldValue.arrayUnion(placeId),
+              updatedAt: new Date().toISOString()
+            });
+            console.log(`🔗 [GlobalPlace API] Added legacy place ID ${placeId} to GlobalPlace ${placeDoc.id}`);
+          } else {
+            console.log(`❌ [GlobalPlace API] No GlobalPlace found for legacy place: "${legacyPlace.name}" (key: "${legacyDeduplicationKey}")`);
+          }
+        }
+      } else {
+        console.log(`❌ [GlobalPlace API] Legacy place ${placeId} not found in places collection`);
+      }
+    }
     
     if (!placeDoc.exists) {
+      console.log(`❌ [GlobalPlace API] Final result: NO PLACE FOUND for ${placeId}`);
       return res.status(404).json({
         success: false,
         message: 'Place not found'
@@ -41,6 +107,8 @@ exports.getGlobalPlace = async (req, res, next) => {
     }
     
     const placeData = serializeDoc(placeDoc);
+    console.log(`✅ [GlobalPlace API] Successfully found place: "${placeData.name}" (ID: ${placeDoc.id})`);
+    console.log(`📷 [GlobalPlace API] Returning ${placeData.photos?.length || 0} photos with attribution`);
     
     // Get user's relationship to this place if they have one
     let userRelation = null;
@@ -81,6 +149,11 @@ exports.getGlobalPlace = async (req, res, next) => {
         userName: usersMap[review.userId]?.displayName || review.userName || 'Unknown User',
         userPhoto: usersMap[review.userId]?.profilePicture || review.userPhoto
       }));
+    }
+    
+    console.log(`🚀 [GlobalPlace API] Sending response for "${placeData.name}"`);
+    if (placeData.photos && placeData.photos.length > 0) {
+      console.log(`📸 [GlobalPlace API] Sample attribution: "${placeData.photos[0].uploadedByName || 'Unknown'}"`);
     }
     
     res.status(200).json({
@@ -369,14 +442,24 @@ exports.uploadPlaceMedia = async (req, res, next) => {
     let incrementField;
     
     if (mediaType === 'photo') {
+      // Use standard ISO timestamp for compatibility
+      const uploadedAt = new Date().toISOString();
+      
       attributedMedia = createAttributedPhoto({
         url: mediaUrl,
         uploadedBy: req.user.id,
         uploadedByName: req.user.displayName,
-        source: source
+        source: source,
+        uploadedAt: uploadedAt
       });
       updateField = 'photos';
       incrementField = 'userContributions.totalPhotos';
+      
+      console.log(`📸 [UploadMedia] Creating photo for place ${placeId}:`);
+      console.log(`📸 [UploadMedia] - Photo ID: ${attributedMedia.id}`);
+      console.log(`📸 [UploadMedia] - Photo URL: ${mediaUrl}`);
+      console.log(`📸 [UploadMedia] - Uploaded by: ${req.user.displayName} (${req.user.id})`);
+      console.log(`📸 [UploadMedia] - Timestamp: ${attributedMedia.uploadedAt}`);
     } else if (mediaType === 'video') {
       attributedMedia = createAttributedVideo({
         videoUrl: mediaUrl,
@@ -395,7 +478,13 @@ exports.uploadPlaceMedia = async (req, res, next) => {
       });
     }
     
+    // Get current photo count before update
+    const beforeUpdate = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).get();
+    const beforePhotoCount = beforeUpdate.data()?.photos?.length || 0;
+    console.log(`📊 [UploadMedia] Photos before update: ${beforePhotoCount}`);
+    
     // Add media to place
+    console.log(`🔄 [UploadMedia] Adding ${mediaType} to ${updateField} array using arrayUnion...`);
     await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).update({
       [updateField]: admin.firestore.FieldValue.arrayUnion(attributedMedia),
       [incrementField]: admin.firestore.FieldValue.increment(1),
@@ -404,8 +493,51 @@ exports.uploadPlaceMedia = async (req, res, next) => {
       updatedAt: new Date().toISOString()
     });
     
+    // Verify the update worked
+    const afterUpdate = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).get();
+    const afterPhotoCount = afterUpdate.data()?.photos?.length || 0;
+    const allPhotos = afterUpdate.data()?.photos || [];
+    console.log(`📊 [UploadMedia] Photos after update: ${afterPhotoCount}`);
+    console.log(`✅ [UploadMedia] Photo count changed from ${beforePhotoCount} to ${afterPhotoCount}`);
+    
+    // Check if our specific photo was added
+    const ourPhotoAdded = allPhotos.find(photo => photo.id === attributedMedia.id);
+    if (ourPhotoAdded) {
+      console.log(`🎯 [UploadMedia] ✅ Confirmed our photo with ID ${attributedMedia.id} was added successfully`);
+    } else {
+      console.log(`🚨 [UploadMedia] ❌ WARNING: Our photo with ID ${attributedMedia.id} was NOT found in the photos array!`);
+      console.log(`🚨 [UploadMedia] Current photo IDs: ${allPhotos.map(p => p.id).join(', ')}`);
+    }
+    
     // Update quality score
     await updateGlobalPlaceStats(placeId);
+    
+    // Track photo upload activity (only for photos, not videos)
+    if (mediaType === 'photo') {
+      try {
+        const placeData = placeDoc.data();
+        const placeName = placeData.name || 'Unknown Place';
+        
+        console.log(`🎯 [UploadMedia] Tracking photo upload activity...`);
+        console.log(`🎯 [UploadMedia] - Photo ID: ${attributedMedia.id}`);
+        console.log(`🎯 [UploadMedia] - Place: ${placeName} (${placeId})`);
+        
+        await trackPhotoUploaded(
+          attributedMedia.id,
+          placeId,
+          placeName,
+          mediaUrl,
+          req.user.id
+        );
+        
+        console.log(`✅ [UploadMedia] Photo upload activity tracked successfully`);
+      } catch (activityError) {
+        console.error('❌ [UploadMedia] Failed to track photo upload activity:', activityError);
+        // Don't fail the upload if activity tracking fails
+      }
+    }
+    
+    console.log(`📤 [UploadMedia] Sending response with photo ID: ${attributedMedia.id}`);
     
     res.status(201).json({
       success: true,
@@ -518,6 +650,195 @@ async function updateGlobalPlaceStats(placeId) {
   }
 }
 
+// @desc    Get all images uploaded by a user to Global Places
+// @route   GET /api/users/:userId/uploads
+// @access  Private
+exports.getUserUploads = async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const { limit = 20, offset = 0 } = req.query;
+    
+    console.log(`🔍 [GlobalPlace API] Getting uploads for user: ${userId}`);
+    console.log(`📊 [GlobalPlace API] Limit: ${limit}, Offset: ${offset}`);
+    
+    // Query all global places to find user's photos
+    // We'll filter in memory to avoid complex index requirements
+    const globalPlacesQuery = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES)
+      .orderBy('updatedAt', 'desc')
+      .limit(500) // Reasonable limit to avoid loading too much data
+      .get();
+    
+    console.log(`📍 [GlobalPlace API] Found ${globalPlacesQuery.size} global places with user photos`);
+    
+    // Extract user's photos from global places
+    let userUploads = [];
+    
+    for (const placeDoc of globalPlacesQuery.docs) {
+      const placeData = placeDoc.data();
+      const placePhotos = placeData.photos || [];
+      
+      // Filter photos uploaded by this user
+      const userPhotos = placePhotos.filter(photo => 
+        photo.uploadedBy === userId
+      );
+      
+      // Add place context to each photo
+      userPhotos.forEach(photo => {
+        userUploads.push({
+          _id: photo.id || `${placeDoc.id}_${photo.url.hashCode || Date.now()}`,
+          url: photo.url,
+          place_name: placeData.name,
+          place_id: placeDoc.id,
+          uploaded_at: photo.uploadedAt,
+          width: photo.width,
+          height: photo.height,
+          file_size: photo.fileSize,
+          place_address: placeData.address,
+          place_category: placeData.category
+        });
+      });
+    }
+    
+    // Sort by upload date (newest first)
+    userUploads.sort((a, b) => {
+      const dateA = new Date(a.uploaded_at);
+      const dateB = new Date(b.uploaded_at);
+      return dateB - dateA;
+    });
+    
+    // Apply pagination
+    const startIndex = parseInt(offset);
+    const endIndex = startIndex + parseInt(limit);
+    const paginatedUploads = userUploads.slice(startIndex, endIndex);
+    
+    const hasMore = userUploads.length > endIndex;
+    
+    console.log(`📸 [GlobalPlace API] Returning ${paginatedUploads.length} uploads (total: ${userUploads.length})`);
+    
+    res.status(200).json({
+      success: true,
+      data: paginatedUploads,
+      total: userUploads.length,
+      has_more: hasMore
+    });
+    
+  } catch (error) {
+    console.error('❌ [GlobalPlace API] Error getting user uploads:', error);
+    next(error);
+  }
+};
+
+// @desc    Get photos debug info for a Global Place
+// @route   GET /api/places/global/:placeId/photos-debug
+// @access  Private  
+exports.getPhotosDebug = async (req, res, next) => {
+  try {
+    const placeId = req.params.placeId;
+    
+    // Get place document
+    const placeDoc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).get();
+    if (!placeDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Place not found'
+      });
+    }
+    
+    const placeData = placeDoc.data();
+    const photos = placeData.photos || [];
+    
+    console.log(`🔍 [PhotosDebug] Place ${placeId} (${placeData.name}) has ${photos.length} photos:`);
+    photos.forEach((photo, index) => {
+      console.log(`🔍 [PhotosDebug] Photo ${index + 1}: ID=${photo.id}, URL=${photo.url}, UploadedBy=${photo.uploadedBy}, Timestamp=${photo.uploadedAt}`);
+    });
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        placeId: placeId,
+        placeName: placeData.name,
+        totalPhotos: photos.length,
+        photos: photos.map(photo => ({
+          id: photo.id,
+          url: photo.url,
+          uploadedBy: photo.uploadedBy,
+          uploadedByName: photo.uploadedByName,
+          uploadedAt: photo.uploadedAt,
+          source: photo.source
+        }))
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Delete a user's photo from a Global Place
+// @route   DELETE /api/places/global/:placeId/media/:photoId
+// @access  Private
+exports.deleteUserPhoto = async (req, res, next) => {
+  try {
+    const { placeId, photoId } = req.params;
+    const currentUserId = req.userId;
+    
+    console.log(`🗑️ [GlobalPlace API] Deleting photo ${photoId} from place ${placeId} for user ${currentUserId}`);
+    
+    // Get the global place document
+    const placeDoc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).get();
+    
+    if (!placeDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Place not found'
+      });
+    }
+    
+    const placeData = placeDoc.data();
+    const photos = placeData.photos || [];
+    
+    // Find the photo to delete and verify ownership
+    const photoIndex = photos.findIndex(photo => 
+      (photo.id === photoId || photo.url.includes(photoId)) && 
+      photo.uploadedBy === currentUserId
+    );
+    
+    if (photoIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: 'Photo not found or not owned by user'
+      });
+    }
+    
+    const photoToDelete = photos[photoIndex];
+    console.log(`📸 [GlobalPlace API] Found photo to delete: ${photoToDelete.url}`);
+    
+    // Remove photo from array
+    photos.splice(photoIndex, 1);
+    
+    // Update place document
+    await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).update({
+      photos: photos,
+      'userContributions.totalPhotos': Math.max(0, (placeData.userContributions?.totalPhotos || 1) - 1),
+      updatedAt: new Date().toISOString()
+    });
+    
+    // Update place statistics
+    await updateGlobalPlaceStats(placeId);
+    
+    console.log(`✅ [GlobalPlace API] Successfully deleted photo ${photoId} from place ${placeId}`);
+    
+    res.status(200).json({
+      success: true,
+      data: 'Photo deleted successfully',
+      message: 'Photo removed from place'
+    });
+    
+  } catch (error) {
+    console.error('❌ [GlobalPlace API] Error deleting user photo:', error);
+    next(error);
+  }
+};
+
 // Helper function to calculate distance between two points
 function calculateDistance(lat1, lng1, lat2, lng2) {
   const R = 6371; // Earth's radius in km
@@ -531,14 +852,158 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
   return R * c;
 }
 
-module.exports = {
-  getGlobalPlace,
-  searchGlobalPlaces,
-  createOrGetGlobalPlace,
-  createUserPlaceRelation,
-  addPublicReview,
-  uploadPlaceMedia,
-  getUserPlaceRelation,
-  updateUserPlaceRelation,
-  updateGlobalPlaceStats
+// Import activity tracking
+const { trackGlobalPlaceLiked, trackPhotoUploaded } = require('../services/activityService');
+
+// @desc    Like a Global Place upload (photo)
+// @route   POST /api/places/global/:placeId/media/:photoId/like
+// @access  Private
+exports.likeGlobalPlaceUpload = async (req, res, next) => {
+  try {
+    const { placeId, photoId } = req.params;
+    const userId = req.user.uid;
+    
+    console.log(`👍 [GlobalPlace API] User ${userId} attempting to like photo ${photoId} in place ${placeId}`);
+    
+    // Get the global place
+    const placeDoc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).get();
+    if (!placeDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Global place not found'
+      });
+    }
+    
+    const placeData = placeDoc.data();
+    const photos = placeData.photos || [];
+    
+    // Find the photo
+    const photo = photos.find(p => p.id === photoId);
+    if (!photo) {
+      return res.status(404).json({
+        success: false,
+        message: 'Photo not found'
+      });
+    }
+    
+    // Check if already liked
+    const likes = photo.likes || [];
+    const alreadyLiked = likes.includes(userId);
+    
+    if (alreadyLiked) {
+      return res.status(400).json({
+        success: false,
+        message: 'Photo already liked'
+      });
+    }
+    
+    // Add like
+    const updatedLikes = [...likes, userId];
+    const updatedPhotos = photos.map(p => 
+      p.id === photoId 
+        ? { ...p, likes: updatedLikes, likesCount: updatedLikes.length }
+        : p
+    );
+    
+    // Update the place document
+    await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).update({
+      photos: updatedPhotos,
+      updatedAt: new Date().toISOString()
+    });
+    
+    // Track comprehensive activity (includes connection notifications)
+    if (photo.uploadedBy && photo.uploadedBy !== userId) {
+      await trackGlobalPlaceLiked(
+        photoId,
+        placeId,
+        placeData.name || 'Unknown Place',
+        userId,
+        photo.uploadedBy
+      );
+    }
+    
+    console.log(`✅ [GlobalPlace API] Successfully liked photo ${photoId}`);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Photo liked successfully',
+      likesCount: updatedLikes.length
+    });
+    
+  } catch (error) {
+    console.error('❌ [GlobalPlace API] Error liking Global Place upload:', error);
+    next(error);
+  }
 };
+
+// @desc    Unlike a Global Place upload (photo)
+// @route   DELETE /api/places/global/:placeId/media/:photoId/like
+// @access  Private
+exports.unlikeGlobalPlaceUpload = async (req, res, next) => {
+  try {
+    const { placeId, photoId } = req.params;
+    const userId = req.user.uid;
+    
+    console.log(`👎 [GlobalPlace API] User ${userId} attempting to unlike photo ${photoId} in place ${placeId}`);
+    
+    // Get the global place
+    const placeDoc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).get();
+    if (!placeDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Global place not found'
+      });
+    }
+    
+    const placeData = placeDoc.data();
+    const photos = placeData.photos || [];
+    
+    // Find the photo
+    const photo = photos.find(p => p.id === photoId);
+    if (!photo) {
+      return res.status(404).json({
+        success: false,
+        message: 'Photo not found'
+      });
+    }
+    
+    // Check if not liked
+    const likes = photo.likes || [];
+    const alreadyLiked = likes.includes(userId);
+    
+    if (!alreadyLiked) {
+      return res.status(400).json({
+        success: false,
+        message: 'Photo not liked yet'
+      });
+    }
+    
+    // Remove like
+    const updatedLikes = likes.filter(id => id !== userId);
+    const updatedPhotos = photos.map(p => 
+      p.id === photoId 
+        ? { ...p, likes: updatedLikes, likesCount: updatedLikes.length }
+        : p
+    );
+    
+    // Update the place document
+    await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).update({
+      photos: updatedPhotos,
+      updatedAt: new Date().toISOString()
+    });
+    
+    console.log(`✅ [GlobalPlace API] Successfully unliked photo ${photoId}`);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Photo unliked successfully',
+      likesCount: updatedLikes.length
+    });
+    
+  } catch (error) {
+    console.error('❌ [GlobalPlace API] Error unliking Global Place upload:', error);
+    next(error);
+  }
+};
+
+// Functions are already exported using exports.functionName above

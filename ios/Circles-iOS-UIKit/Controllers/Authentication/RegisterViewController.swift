@@ -185,16 +185,11 @@ class RegisterViewController: BaseViewController {
         return container
     }()
     
-    private let appleSignInButton: ASAuthorizationAppleIDButton = {
-        let button = ASAuthorizationAppleIDButton(authorizationButtonType: .signUp, authorizationButtonStyle: .black)
-        button.cornerRadius = 8
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private lazy var appleSignInButton = UIButton.appleSignInButton()
     
     private let appleSignInSubtitleLabel: UILabel = {
         let label = UILabel()
-        label.text = "Real email required - 'Hide My Email' not supported"
+        label.text = "For the best experience, we recommend sharing your email"
         label.font = UIFont.systemFont(ofSize: 10)
         label.textColor = UIColor.white.withAlphaComponent(0.6)
         label.textAlignment = .center
@@ -218,8 +213,7 @@ class RegisterViewController: BaseViewController {
     // MARK: - Properties
     private var isRegistering = false {
         didSet {
-            // Apple Sign-In temporarily disabled - removed from buttons array
-            let buttons = [registerButton, googleSignInButton, facebookSignInButton]
+            let buttons = [registerButton, appleSignInButton, googleSignInButton, facebookSignInButton]
             buttons.forEach { $0.isEnabled = !isRegistering }
             
             let textFields = [emailTextField, passwordTextField, confirmPasswordTextField, referralCodeTextField]
@@ -259,15 +253,13 @@ class RegisterViewController: BaseViewController {
     
     // MARK: - UI Setup
     private func setupUI() {
-        // Configure Apple sign-in container (commented out for now)
-        // appleSignInContainerView.addSubview(appleSignInButton)
-        // appleSignInContainerView.addSubview(appleSignInSubtitleLabel)
+        // Configure Apple sign-in container
+        appleSignInContainerView.addSubview(appleSignInButton)
         
         // Configure social stack view - match LoginViewController order
         socialStackView.addArrangedSubview(googleSignInButton)
         socialStackView.addArrangedSubview(facebookSignInButton)
-        // Apple Sign-In temporarily disabled
-        // socialStackView.addArrangedSubview(appleSignInContainerView)
+        socialStackView.addArrangedSubview(appleSignInContainerView)
         
         // Setup password field right views
         passwordTextField.rightView = togglePasswordButton
@@ -402,21 +394,16 @@ class RegisterViewController: BaseViewController {
             socialStackView.topAnchor.constraint(equalTo: orContainerView.bottomAnchor, constant: Constants.Spacing.large),
             socialStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             socialStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            socialStackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
+            socialStackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large),
             
-            // Apple sign-in container constraints commented out
-            // appleSignInContainerView.heightAnchor.constraint(equalToConstant: 50),
+            // Apple sign-in container constraints
+            appleSignInContainerView.heightAnchor.constraint(equalToConstant: 50),
             
             // Apple sign-in button within container
-            // appleSignInButton.topAnchor.constraint(equalTo: appleSignInContainerView.topAnchor),
-            // appleSignInButton.leadingAnchor.constraint(equalTo: appleSignInContainerView.leadingAnchor),
-            // appleSignInButton.trailingAnchor.constraint(equalTo: appleSignInContainerView.trailingAnchor),
-            // appleSignInButton.bottomAnchor.constraint(equalTo: appleSignInContainerView.bottomAnchor),
-            
-            // Apple sign-in subtitle label
-            // appleSignInSubtitleLabel.leadingAnchor.constraint(equalTo: appleSignInContainerView.leadingAnchor, constant: 10),
-            // appleSignInSubtitleLabel.trailingAnchor.constraint(equalTo: appleSignInContainerView.trailingAnchor, constant: -10),
-            // appleSignInSubtitleLabel.bottomAnchor.constraint(equalTo: appleSignInContainerView.bottomAnchor, constant: -4)
+            appleSignInButton.topAnchor.constraint(equalTo: appleSignInContainerView.topAnchor),
+            appleSignInButton.leadingAnchor.constraint(equalTo: appleSignInContainerView.leadingAnchor),
+            appleSignInButton.trailingAnchor.constraint(equalTo: appleSignInContainerView.trailingAnchor),
+            appleSignInButton.bottomAnchor.constraint(equalTo: appleSignInContainerView.bottomAnchor)
         ])
     }
     
@@ -428,8 +415,7 @@ class RegisterViewController: BaseViewController {
     
     private func setupActions() {
         registerButton.addTarget(self, action: #selector(registerButtonTapped), for: .touchUpInside)
-        // Apple Sign-In temporarily disabled
-        // appleSignInButton.addTarget(self, action: #selector(appleSignInButtonTapped), for: .touchUpInside)
+        appleSignInButton.addTarget(self, action: #selector(appleSignInButtonTapped), for: .touchUpInside)
         googleSignInButton.addTarget(self, action: #selector(googleSignInButtonTapped), for: .touchUpInside)
         facebookSignInButton.addTarget(self, action: #selector(facebookSignInButtonTapped), for: .touchUpInside)
         togglePasswordButton.addTarget(self, action: #selector(togglePasswordVisibility), for: .touchUpInside)
@@ -521,12 +507,12 @@ class RegisterViewController: BaseViewController {
     }
     
     @objc private func appleSignInButtonTapped() {
-        print("🍎 Apple Sign-In button tapped in RegisterViewController")
+        print("🍎 Apple Sign-In button tapped in RegisterViewController - Action triggered successfully!")
         
-        // Show warning about private relay before proceeding
+        // Show informative message about email options
         let alert = UIAlertController(
-            title: "Important: Email Requirements",
-            message: "When signing in with Apple, you must choose 'Share My Email' instead of 'Hide My Email'.\n\nCircles requires your real email to send daily summaries and important updates.\n\nDo you want to continue?",
+            title: "Apple Sign-In Options",
+            message: "You can choose 'Hide My Email' or 'Share My Email' with Apple Sign-In.\n\nSharing your email enables:\n• Daily activity summaries\n• Important account notifications\n• Better app experience\n\nHide My Email works too, but with limited notifications.\n\nReady to continue?",
             preferredStyle: .alert
         )
         
@@ -554,12 +540,7 @@ class RegisterViewController: BaseViewController {
                 case .failure(let error):
                     print("🍎 Apple Sign-In Failed with error: \(error.localizedDescription)")
                     
-                    // Check if it's a private relay error
-                    if let authError = error as? AuthError, authError == .privateRelayNotAllowed {
-                        self?.showPrivateRelayGuidance()
-                    } else {
-                        self?.showError("Apple Sign-In Failed: \(error.localizedDescription)")
-                    }
+                    self?.showError("Apple Sign-In Failed: \(error.localizedDescription)")
                 }
             }
         }
@@ -624,12 +605,7 @@ class RegisterViewController: BaseViewController {
                     print("Successfully registered with social auth: \(user.displayName)")
                     self?.showSuccessMessage()
                 case .failure(let error):
-                    // Check if it's a private relay error
-                    if let authError = error as? AuthError, authError == .privateRelayNotAllowed {
-                        self?.showPrivateRelayGuidance()
-                    } else {
-                        self?.showError(error)
-                    }
+                    self?.showError(error)
                 }
             }
         }

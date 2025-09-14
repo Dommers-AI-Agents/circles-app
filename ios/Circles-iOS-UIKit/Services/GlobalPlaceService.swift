@@ -14,20 +14,47 @@ class GlobalPlaceService {
     ///   - placeId: The global place ID
     ///   - completion: Completion handler with GlobalPlaceResponse
     func getGlobalPlace(id placeId: String, completion: @escaping (Result<GlobalPlaceResponse, Error>) -> Void) {
-        let endpoint = "/api/places/global/\(placeId)"
+        let endpoint = "places/global/\(placeId)"
+        print("🔍 [GlobalPlaceService] Requesting GlobalPlace for ID: \(placeId)")
+        print("📍 [GlobalPlaceService] API endpoint: \(endpoint)")
         
-        apiService.request<GlobalPlaceDetailResponse>(
+        apiService.request(
             endpoint: endpoint,
-            method: .get
-        ) { result in
+            method: .get,
+            queryParams: nil,
+            body: nil,
+            headers: nil,
+            requiresAuth: true
+        ) { (result: Result<GlobalPlaceDetailResponse, APIError>) in
             switch result {
             case .success(let response):
+                print("✅ [GlobalPlaceService] API call successful")
                 if response.success {
+                    let globalPlace = response.data.globalPlace
+                    print("📍 [GlobalPlaceService] GlobalPlace found: \(globalPlace.name)")
+                    print("📷 [GlobalPlaceService] Photos count: \(globalPlace.photos?.count ?? 0)")
+                    print("📝 [GlobalPlaceService] PublicReviews count: \(globalPlace.publicReviews?.count ?? 0)")
+                    
+                    if let photos = globalPlace.photos, !photos.isEmpty {
+                        let firstPhoto = photos[0]
+                        print("📸 [GlobalPlaceService] First photo attribution: '\(firstPhoto.uploadedByName ?? "Unknown")'")
+                    }
+                    
+                    if let reviews = globalPlace.publicReviews, !reviews.isEmpty {
+                        let firstReview = reviews[0]
+                        print("💬 [GlobalPlaceService] First review text: '\(firstReview.text)'")
+                        print("👍 [GlobalPlaceService] First review likes: \(firstReview.likesCount)")
+                        print("⭐ [GlobalPlaceService] First review rating: \(firstReview.rating ?? -1)")
+                    }
+                    
+                    print("📊 [GlobalPlaceService] UserContributions - Reviews: \(globalPlace.userContributions.totalReviews), Photos: \(globalPlace.userContributions.totalPhotos), Videos: \(globalPlace.userContributions.totalVideos)")
                     completion(.success(response.data))
                 } else {
+                    print("❌ [GlobalPlaceService] API returned success=false")
                     completion(.failure(APIError.serverError))
                 }
             case .failure(let error):
+                print("❌ [GlobalPlaceService] API call failed: \(error)")
                 completion(.failure(error))
             }
         }
@@ -67,13 +94,16 @@ class GlobalPlaceService {
             queryParams["lng"] = "\(location.lng)"
         }
         
-        let endpoint = "/api/places/global/search"
+        let endpoint = "places/global/search"
         
-        apiService.request<GlobalPlaceSearchResponse>(
+        apiService.request(
             endpoint: endpoint,
             method: .get,
-            queryParams: queryParams
-        ) { result in
+            queryParams: queryParams,
+            body: nil,
+            headers: nil,
+            requiresAuth: true
+        ) { (result: Result<GlobalPlaceSearchResponse, APIError>) in
             switch result {
             case .success(let response):
                 if response.success {
@@ -95,13 +125,16 @@ class GlobalPlaceService {
         placeData: [String: Any],
         completion: @escaping (Result<(place: GlobalPlace, created: Bool), Error>) -> Void
     ) {
-        let endpoint = "/api/places/global"
+        let endpoint = "places/global"
         
-        apiService.request<CreateGlobalPlaceResponse>(
+        apiService.request(
             endpoint: endpoint,
             method: .post,
-            body: placeData
-        ) { result in
+            queryParams: nil,
+            body: placeData,
+            headers: nil,
+            requiresAuth: true
+        ) { (result: Result<CreateGlobalPlaceResponse, APIError>) in
             switch result {
             case .success(let response):
                 if response.success {
@@ -131,7 +164,7 @@ class GlobalPlaceService {
         privacy: PlacePrivacy = .followCirclePrivacy,
         completion: @escaping (Result<UserPlaceRelation, Error>) -> Void
     ) {
-        let endpoint = "/api/places/global/\(placeId)/relations"
+        let endpoint = "places/global/\(placeId)/relations"
         
         let requestData: [String: Any] = [
             "circleId": circleId,
@@ -140,11 +173,14 @@ class GlobalPlaceService {
             "privacy": privacy.rawValue
         ]
         
-        apiService.request<StandardResponse<UserPlaceRelation>>(
+        apiService.request(
             endpoint: endpoint,
             method: .post,
-            body: requestData
-        ) { result in
+            queryParams: nil,
+            body: requestData,
+            headers: nil,
+            requiresAuth: true
+        ) { (result: Result<StandardResponse<UserPlaceRelation>, APIError>) in
             switch result {
             case .success(let response):
                 if response.success {
@@ -172,7 +208,7 @@ class GlobalPlaceService {
         photos: [String]? = nil,
         completion: @escaping (Result<PublicReview, Error>) -> Void
     ) {
-        let endpoint = "/api/places/global/\(placeId)/reviews"
+        let endpoint = "places/global/\(placeId)/reviews"
         
         let requestData: [String: Any] = [
             "text": text,
@@ -180,11 +216,14 @@ class GlobalPlaceService {
             "photos": photos as Any
         ]
         
-        apiService.request<StandardResponse<PublicReview>>(
+        apiService.request(
             endpoint: endpoint,
             method: .post,
-            body: requestData
-        ) { result in
+            queryParams: nil,
+            body: requestData,
+            headers: nil,
+            requiresAuth: true
+        ) { (result: Result<StandardResponse<PublicReview>, APIError>) in
             switch result {
             case .success(let response):
                 if response.success {
@@ -216,7 +255,7 @@ class GlobalPlaceService {
         description: String? = nil,
         completion: @escaping (Result<AttributedPhoto, Error>) -> Void
     ) {
-        let endpoint = "/api/places/global/\(placeId)/media"
+        let endpoint = "places/global/\(placeId)/media"
         
         let requestData: [String: Any] = [
             "mediaType": mediaType,
@@ -228,11 +267,14 @@ class GlobalPlaceService {
         
         // For media upload, we'll return a generic success response
         // since the specific media type varies
-        apiService.request<StandardResponse<AttributedPhoto>>(
+        apiService.request(
             endpoint: endpoint,
             method: .post,
-            body: requestData
-        ) { result in
+            queryParams: nil,
+            body: requestData,
+            headers: nil,
+            requiresAuth: true
+        ) { (result: Result<StandardResponse<AttributedPhoto>, APIError>) in
             switch result {
             case .success(let response):
                 if response.success {
@@ -254,12 +296,16 @@ class GlobalPlaceService {
         placeId: String,
         completion: @escaping (Result<[UserPlaceRelation], Error>) -> Void
     ) {
-        let endpoint = "/api/places/global/\(placeId)/user-relation"
+        let endpoint = "places/global/\(placeId)/user-relation"
         
-        apiService.request<StandardResponse<[UserPlaceRelation]>>(
+        apiService.request(
             endpoint: endpoint,
-            method: .get
-        ) { result in
+            method: .get,
+            queryParams: nil,
+            body: nil,
+            headers: nil,
+            requiresAuth: true
+        ) { (result: Result<StandardResponse<[UserPlaceRelation]>, APIError>) in
             switch result {
             case .success(let response):
                 if response.success {
@@ -285,13 +331,16 @@ class GlobalPlaceService {
         updates: [String: Any],
         completion: @escaping (Result<UserPlaceRelation, Error>) -> Void
     ) {
-        let endpoint = "/api/places/global/\(placeId)/relations/\(relationId)"
+        let endpoint = "places/global/\(placeId)/relations/\(relationId)"
         
-        apiService.request<StandardResponse<UserPlaceRelation>>(
+        apiService.request(
             endpoint: endpoint,
             method: .put,
-            body: updates
-        ) { result in
+            queryParams: nil,
+            body: updates,
+            headers: nil,
+            requiresAuth: true
+        ) { (result: Result<StandardResponse<UserPlaceRelation>, APIError>) in
             switch result {
             case .success(let response):
                 if response.success {
@@ -389,6 +438,94 @@ extension GlobalPlaceService {
         // and gradually migrate circles to use global places
         
         completion(.failure(APIError.serverError))
+    }
+    
+    // MARK: - User Uploads
+    
+    /// Get all images uploaded by a user to Global Places
+    /// - Parameters:
+    ///   - userId: User ID (nil for current user)
+    ///   - limit: Maximum number of results (default: 20)
+    ///   - offset: Pagination offset (default: 0)
+    ///   - completion: Completion handler with UserUploadsResponse
+    func getUserUploads(
+        userId: String? = nil,
+        limit: Int = 20,
+        offset: Int = 0,
+        completion: @escaping (Result<UserUploadsResponse, Error>) -> Void
+    ) {
+        // Use current user's ID if not specified
+        let targetUserId = userId ?? AuthService.shared.getUserId() ?? ""
+        
+        let endpoint = "users/\(targetUserId)/uploads"
+        let queryParams = [
+            "limit": "\(limit)",
+            "offset": "\(offset)"
+        ]
+        
+        print("🔍 [GlobalPlaceService] Requesting user uploads for ID: \(targetUserId)")
+        print("📍 [GlobalPlaceService] API endpoint: \(endpoint)")
+        print("📊 [GlobalPlaceService] Query params: limit=\(limit), offset=\(offset)")
+        
+        apiService.request(
+            endpoint: endpoint,
+            method: .get,
+            queryParams: queryParams,
+            body: nil,
+            headers: nil,
+            requiresAuth: true
+        ) { (result: Result<UserUploadsResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                print("✅ [GlobalPlaceService] User uploads API call successful")
+                if response.success {
+                    print("📷 [GlobalPlaceService] Found \(response.data.count) uploads (total: \(response.total))")
+                    completion(.success(response))
+                } else {
+                    print("❌ [GlobalPlaceService] API returned success=false")
+                    completion(.failure(APIError.serverError))
+                }
+            case .failure(let error):
+                print("❌ [GlobalPlaceService] User uploads API call failed: \(error)")
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    /// Delete a user's uploaded photo from a Global Place
+    /// - Parameters:
+    ///   - upload: The UserUploadedPhoto to delete
+    ///   - completion: Completion handler
+    func deleteUpload(
+        _ upload: UserUploadedPhoto,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        let endpoint = "places/global/\(upload.placeId)/media/\(upload.id)"
+        
+        print("🗑️ [GlobalPlaceService] Deleting upload: \(upload.id) from place: \(upload.placeId)")
+        
+        apiService.request(
+            endpoint: endpoint,
+            method: .delete,
+            queryParams: nil,
+            body: nil,
+            headers: nil,
+            requiresAuth: true
+        ) { (result: Result<StandardResponse<String>, APIError>) in
+            switch result {
+            case .success(let response):
+                if response.success {
+                    print("✅ [GlobalPlaceService] Successfully deleted upload: \(upload.id)")
+                    completion(.success(()))
+                } else {
+                    print("❌ [GlobalPlaceService] Delete failed - API returned success=false")
+                    completion(.failure(APIError.serverError))
+                }
+            case .failure(let error):
+                print("❌ [GlobalPlaceService] Delete upload failed: \(error)")
+                completion(.failure(error))
+            }
+        }
     }
 }
 

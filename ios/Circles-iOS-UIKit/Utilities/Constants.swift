@@ -85,6 +85,15 @@ struct Constants {
                 return UIColor(red: 0.26, green: 0.6, blue: 0.88, alpha: 1.0) // #4299E1
             }
         }
+        
+        // Bright orange for pending connection requests - more visible than system orange
+        static let brightOrange = UIColor { traitCollection in
+            if traitCollection.userInterfaceStyle == .dark {
+                return UIColor(red: 1.0, green: 0.65, blue: 0.0, alpha: 1.0) // #FFA500 for dark mode
+            } else {
+                return UIColor(red: 1.0, green: 0.52, blue: 0.0, alpha: 1.0) // #FF8500 for light mode
+            }
+        }
     }
     
     struct FontSize {

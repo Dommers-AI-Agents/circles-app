@@ -1670,6 +1670,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                 description: description.isEmpty ? nil : description,
                 circleId: selectedCircleId,
                 notes: privateNotes,
+                publicNotes: publicNotes,
                 googlePlaceId: nil,
                 preUploadedPhotoUrls: self.uploadedPhotoUrls.isEmpty ? nil : self.uploadedPhotoUrls,
                 force: force
@@ -1873,6 +1874,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             description: description.isEmpty ? nil : description,
             circleId: selectedCircleId,
             notes: privateNotes,
+            publicNotes: publicNotes,
             googlePlaceId: googleDetails.placeID.isEmpty ? nil : googleDetails.placeID,
             preUploadedPhotoUrls: self.uploadedPhotoUrls.isEmpty ? nil : self.uploadedPhotoUrls,
             rating: googleDetails.rating,
@@ -1896,14 +1898,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                             for (index, url) in uploadedUrls.enumerated() {
                                 print("  Uploaded \(index + 1): \(url)")
                             }
-                        }
-                        
-                        // TODO: Update place with publicNotes if provided
-                        // Currently addPlaceFromPOI only supports privateNotes through the 'notes' parameter
-                        // A separate update call would be needed for publicNotes
-                        if let publicNotes = publicNotes, !publicNotes.isEmpty {
-                            print("⚠️ Public notes were provided but not saved: \(publicNotes)")
-                            // PlaceService.shared.updatePlace(id: place.id, publicNotes: publicNotes) { _ in }
                         }
                         
                         // Post notification that a place was added

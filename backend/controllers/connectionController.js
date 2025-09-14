@@ -1405,6 +1405,72 @@ const getActiveRelationships = async (req, res) => {
   }
 };
 
+// @desc    Update connection notification preferences
+// @route   PUT /api/connections/:connectionId/notifications
+// @access  Private
+const updateConnectionNotificationPreferences = async (req, res) => {
+  try {
+    const userId = req.user.firebaseDocId || req.user.uid;
+    const { connectionId } = req.params;
+    const { activityNotificationsEnabled } = req.body;
+    
+    console.log(`🔔 updateConnectionNotificationPreferences - userId: ${userId}, connectionId: ${connectionId}, enabled: ${activityNotificationsEnabled}`);
+
+    // Validate input
+    if (typeof activityNotificationsEnabled !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'activityNotificationsEnabled must be a boolean value'
+      });
+    }
+
+    // Get the connection document
+    const connectionDoc = await db.collection(COLLECTIONS.CONNECTIONS).doc(connectionId).get();
+    
+    if (!connectionDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Connection not found'
+      });
+    }
+
+    const connection = connectionDoc.data();
+    
+    // Verify user is part of this connection
+    if (!isSameUser(connection.userId, userId) && !isSameUser(connection.connectedUserId, userId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to update this connection'
+      });
+    }
+
+    // Update the connection document
+    await db.collection(COLLECTIONS.CONNECTIONS).doc(connectionId).update({
+      activityNotificationsEnabled: activityNotificationsEnabled,
+      updatedAt: new Date().toISOString()
+    });
+
+    console.log(`✅ Connection notification preference updated - Connection: ${connectionId}, Enabled: ${activityNotificationsEnabled}`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Notification preferences updated successfully',
+      data: {
+        connectionId: connectionId,
+        activityNotificationsEnabled: activityNotificationsEnabled
+      }
+    });
+
+  } catch (error) {
+    console.error('Error updating connection notification preferences:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getConnections,
   getConnectionById,
@@ -1417,5 +1483,6 @@ module.exports = {
   getActiveConnections,
   getActiveRelationships,
   clearConnectionActivity,
-  trackConnectionView
+  trackConnectionView,
+  updateConnectionNotificationPreferences
 };

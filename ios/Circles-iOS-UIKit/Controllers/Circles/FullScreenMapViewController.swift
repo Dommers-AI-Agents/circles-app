@@ -479,46 +479,127 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     
     // MARK: - Map Annotations
     private func addAnnotationsToMap() {
-        // Clear existing annotations
-        mapView.removeAnnotations(mapView.annotations)
-        annotationPlaceMap.removeAll()
-        
-        var mapRect = MKMapRect.null
-        var placesWithLocation = 0
-        var placesWithoutLocation = 0
-        
-        // Add annotations for each place
-        for place in filteredPlaces {
-            guard let location = place.location?.clLocation else { 
-                placesWithoutLocation += 1
-                print("⚠️ Skipping place without location: '\(place.name)' (id: \(place.id))")
-                continue 
-            }
-            
-            placesWithLocation += 1
-            let annotation = PlaceAnnotation(place: place)
-            mapView.addAnnotation(annotation)
-            
-            // Store the place reference using ObjectIdentifier
-            annotationPlaceMap[ObjectIdentifier(annotation)] = place
-            
-            // Update map rect
-            let point = MKMapPoint(location.coordinate)
-            let rect = MKMapRect(x: point.x, y: point.y, width: 0, height: 0)
-            mapRect = mapRect.union(rect)
-        }
-        
-        // Log summary
-        print("📍 Map Update Summary:")
-        print("   Total filtered places: \(filteredPlaces.count)")
-        print("   Places with location: \(placesWithLocation)")
-        print("   Places without location: \(placesWithoutLocation)")
-        
-        // Adjust region based on user location and places
-        adjustMapRegion()
+        // Use smooth differential update instead of clearing everything
+        updateMapAnnotationsSmooth()
     }
     
-    private func adjustMapRegion() {
+    // MARK: - Smooth Map Loading Implementation
+    
+    private func updateMapAnnotationsSmooth() {
+        let startTime = CFAbsoluteTimeGetCurrent()
+        print("🗺️ [SmoothMap] Starting smooth annotation update...")
+        
+        // Get places that should be on the map
+        let placesWithLocation = filteredPlaces.filter { $0.location?.clLocation != nil }
+        let newPlaceIds = Set(placesWithLocation.map { $0.id })
+        
+        // Get current annotations and their place IDs
+        let currentAnnotations = mapView.annotations.compactMap { $0 as? PlaceAnnotation }
+        let currentPlaceIds = Set(currentAnnotations.compactMap { annotationPlaceMap[ObjectIdentifier($0)]?.id })
+        
+        // Calculate differences
+        let placesToAdd = placesWithLocation.filter { !currentPlaceIds.contains($0.id) }
+        let annotationsToRemove = currentAnnotations.filter { 
+            guard let place = annotationPlaceMap[ObjectIdentifier($0)] else { return true }
+            return !newPlaceIds.contains(place.id)
+        }
+        
+        print("🗺️ [SmoothMap] Differential update:")
+        print("   Current: \(currentAnnotations.count) annotations")
+        print("   To add: \(placesToAdd.count) places")
+        print("   To remove: \(annotationsToRemove.count) annotations")
+        
+        // Remove obsolete annotations smoothly
+        if !annotationsToRemove.isEmpty {
+            // Clean up annotation mapping
+            for annotation in annotationsToRemove {
+                annotationPlaceMap.removeValue(forKey: ObjectIdentifier(annotation))
+            }
+            
+            // Remove with animation
+            mapView.removeAnnotations(annotationsToRemove)
+        }
+        
+        // Add new annotations in batches for smooth loading
+        if !placesToAdd.isEmpty {
+            addAnnotationsBatched(placesToAdd)
+        } else {
+            // If no new places to add, just adjust region
+            adjustMapRegion()
+        }
+        
+        let loadTime = CFAbsoluteTimeGetCurrent() - startTime
+        print("🗺️ [SmoothMap] Update completed in \(String(format: "%.3f", loadTime))s")
+    }
+    
+    private func addAnnotationsBatched(_ places: [Place]) {
+        let batchSize = 15 // Optimal batch size for smooth animation
+        let batches = places.chunked(into: batchSize)
+        
+        print("🗺️ [SmoothMap] Adding \(places.count) annotations in \(batches.count) batches")
+        
+        var batchIndex = 0
+        var addedCount = 0
+        
+        func addNextBatch() {
+            guard batchIndex < batches.count else {
+                // All batches processed - adjust map region
+                print("🗺️ [SmoothMap] All batches loaded (\(addedCount) annotations)")
+                DispatchQueue.main.async { [weak self] in
+                    self?.adjustMapRegion()
+                }
+                return
+            }
+            
+            let batch = batches[batchIndex]
+            let batchAnnotations = batch.compactMap { place -> PlaceAnnotation? in
+                guard place.location?.clLocation != nil else {
+                    print("⚠️ Skipping place without location: '\(place.name)'")
+                    return nil
+                }
+                return PlaceAnnotation(place: place)
+            }
+            
+            // Add batch to map with smooth animation
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                
+                // Store place references
+                for annotation in batchAnnotations {
+                    if let place = batch.first(where: { $0.id == annotation.place.id }) {
+                        self.annotationPlaceMap[ObjectIdentifier(annotation)] = place
+                    }
+                }
+                
+                // Add to map - MapKit will animate automatically
+                self.mapView.addAnnotations(batchAnnotations)
+                addedCount += batchAnnotations.count
+                
+                print("🗺️ [SmoothMap] Batch \(batchIndex + 1)/\(batches.count): +\(batchAnnotations.count) annotations")
+                
+                batchIndex += 1
+                
+                // Schedule next batch with small delay for smooth visual progression
+                if batchIndex < batches.count {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        addNextBatch()
+                    }
+                } else {
+                    // Final batch - adjust region
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        addNextBatch() // This will trigger adjustMapRegion
+                    }
+                }
+            }
+        }
+        
+        // Start batch processing
+        addNextBatch()
+    }
+    
+    // MARK: - Helper Extensions
+    
+    func adjustMapRegion() {
         // Prevent concurrent adjustments
         guard !isAdjustingRegion else { 
             print("📍 adjustMapRegion: Skipping - already adjusting")
@@ -682,8 +763,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             
             // Create detail button with explicit target-action as a workaround
             let detailButton = UIButton(type: .detailDisclosure)
-            detailButton.tag = 999 // Tag to identify it
-            detailButton.addTarget(self, action: #selector(detailButtonTapped(_:)), for: .touchUpInside)
+            // Remove custom target-action to prevent double presentation
+            // The standard calloutAccessoryControlTapped delegate method will handle this
             annotationView?.rightCalloutAccessoryView = detailButton
             
             // Ensure the annotation view is interactive
@@ -692,10 +773,10 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         } else {
             annotationView?.annotation = annotation
             // Ensure button is still there and interactive
-            if let button = annotationView?.rightCalloutAccessoryView as? UIButton, button.tag != 999 {
+            if annotationView?.rightCalloutAccessoryView == nil {
                 let detailButton = UIButton(type: .detailDisclosure)
-                detailButton.tag = 999
-                detailButton.addTarget(self, action: #selector(detailButtonTapped(_:)), for: .touchUpInside)
+                // Remove custom target-action to prevent double presentation
+                // The standard calloutAccessoryControlTapped delegate method will handle this
                 annotationView?.rightCalloutAccessoryView = detailButton
             }
         }
@@ -710,21 +791,25 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     }
     
     func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView, calloutAccessoryControlTapped control: UIControl) {
-        print("🔵 Info button tapped!")
+        let timestamp = Date().timeIntervalSince1970
+        print("🔵 [DEBUG-\(timestamp)] Info button tapped!")
         guard let placeAnnotation = view.annotation as? PlaceAnnotation else { 
-            print("❌ Failed to cast annotation to PlaceAnnotation")
+            print("❌ [DEBUG-\(timestamp)] Failed to cast annotation to PlaceAnnotation")
             return 
         }
         
-        print("✅ Place: \(placeAnnotation.place.name)")
-        print("📱 Delegate exists: \(delegate != nil)")
+        print("✅ [DEBUG-\(timestamp)] Place: \(placeAnnotation.place.name)")
+        print("📱 [DEBUG-\(timestamp)] Delegate exists: \(delegate != nil)")
+        print("🗺️ [DEBUG-\(timestamp)] View mode: \(viewMode)")
+        print("📍 [DEBUG-\(timestamp)] isPresentedModally: \(isPresentedModally)")
         
         // Notify delegate
         if let delegate = delegate {
-            print("🎯 Calling delegate.mapViewController")
+            print("🎯 [DEBUG-\(timestamp)] Calling delegate.mapViewController for place: \(placeAnnotation.place.name)")
             delegate.mapViewController(self, didSelectPlace: placeAnnotation.place)
+            print("🎯 [DEBUG-\(timestamp)] Delegate call completed")
         } else {
-            print("⚠️ No delegate set!")
+            print("⚠️ [DEBUG-\(timestamp)] No delegate set!")
         }
         
         // Dismiss if not in allPlaces mode
@@ -977,37 +1062,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         dismiss(animated: true)
     }
     
-    @objc private func detailButtonTapped(_ sender: UIButton) {
-        print("🔵 Detail button tapped via target-action!")
-        
-        // Find the annotation view that contains this button
-        var view: UIView? = sender
-        while view != nil && !(view is MKAnnotationView) {
-            view = view?.superview
-        }
-        
-        guard let annotationView = view as? MKAnnotationView,
-              let placeAnnotation = annotationView.annotation as? PlaceAnnotation else {
-            print("❌ Could not find annotation view or place annotation")
-            return
-        }
-        
-        print("✅ Place: \(placeAnnotation.place.name)")
-        print("📱 Delegate exists: \(delegate != nil)")
-        
-        // Notify delegate
-        if let delegate = delegate {
-            print("🎯 Calling delegate.mapViewController")
-            delegate.mapViewController(self, didSelectPlace: placeAnnotation.place)
-        } else {
-            print("⚠️ No delegate set!")
-        }
-        
-        // Dismiss if not in allPlaces mode
-        if viewMode != .allPlaces {
-            dismiss(animated: true)
-        }
-    }
+    // Removed detailButtonTapped method - using standard calloutAccessoryControlTapped delegate method instead
+    // to prevent double presentation of PlaceDetailViewController
     
     @objc private func categoryFilterButtonTapped() {
         toggleDropdown()
@@ -1050,9 +1106,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     }
     
     private func showDropdown() {
-        // Calculate dropdown height based on number of categories
-        let categories = PlaceCategory.allCases
-        let dropdownHeight = min(CGFloat(categories.count + 1) * 44, 300) // +1 for "All Categories"
+        // Calculate dropdown height based on number of available categories
+        let dropdownHeight = min(CGFloat(availableCategories.count + 1) * 44, 300) // +1 for "All Categories"
         
         dropdownHeightConstraint?.constant = dropdownHeight
         dropdownContainer.isHidden = false
@@ -1200,17 +1255,40 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             }
         }
         
+        // Update available categories based on connection-filtered places
+        updateAvailableCategories(from: placesToFilter)
+        
         // Apply category filter
         filteredPlaces = placesToFilter.filtered(by: selectedCategory)
         print("  Final filtered places: \(filteredPlaces.count)")
         
         updatePlacesCount()
         addAnnotationsToMap()
+        
+        // Ensure map region adjusts when filters are applied
+        // This is especially important when only removing annotations (category filtering)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.adjustMapRegion()
+        }
     }
     
-    private func updateAvailableCategories() {
-        // Use centralized utility to get unique categories
-        availableCategories = PlaceCategory.uniqueCategories(from: places)
+    private func updateAvailableCategories(from placesToAnalyze: [Place]? = nil) {
+        // Use centralized utility to get unique categories from the specified places
+        let placesForAnalysis = placesToAnalyze ?? places
+        availableCategories = PlaceCategory.uniqueCategories(from: placesForAnalysis)
+        
+        // Reload category table if dropdown is open
+        if isDropdownOpen {
+            categoryTableView.reloadData()
+            
+            // Update dropdown height to match new category count
+            let dropdownHeight = min(CGFloat(availableCategories.count + 1) * 44, 300) // +1 for "All Categories"
+            dropdownHeightConstraint?.constant = dropdownHeight
+            
+            UIView.animate(withDuration: 0.3) {
+                self.view.layoutIfNeeded()
+            }
+        }
     }
     
     private func updatePlacesCount() {

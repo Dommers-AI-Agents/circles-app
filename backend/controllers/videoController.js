@@ -1125,63 +1125,145 @@ exports.getReelsFeed = async (req, res) => {
     const videos = [];
     const seenVideoIds = new Set();
     
-    // 1. Following/connections videos (40%)
+    // 1. Recent videos from ALL connections/following (prioritize recency)
     if (allUserIds.size > 1) {
-      // Fetch videos from connections (can see both public and network)
-      const connectionArray = Array.from(connectionIds);
-      if (connectionArray.length > 1) {
-        const selectedConnections = connectionArray.length > 10 
-          ? connectionArray.sort(() => 0.5 - Math.random()).slice(0, 10)
-          : connectionArray;
+      // First, get most recent videos from ALL connections to ensure newest content appears
+      const allUserIdsArray = Array.from(allUserIds);
+      
+      // Handle Firestore IN query limit (30 values max) with batching
+      let recentVideos = [];
+      
+      if (allUserIdsArray.length <= 30) {
+        // Split visibility query to avoid too many disjunctions
+        const [publicQuery, networkQuery] = await Promise.all([
+          db.collection(COLLECTIONS.PLACE_VIDEOS)
+            .where('userId', 'in', allUserIdsArray)
+            .where('uploadStatus', '==', 'ready')
+            .where('deletedAt', '==', null)
+            .where('visibility', '==', 'public')
+            .orderBy('createdAt', 'desc')
+            .limit(8)
+            .get(),
+          db.collection(COLLECTIONS.PLACE_VIDEOS)
+            .where('userId', 'in', allUserIdsArray)
+            .where('uploadStatus', '==', 'ready')
+            .where('deletedAt', '==', null)
+            .where('visibility', '==', 'network')
+            .orderBy('createdAt', 'desc')
+            .limit(8)
+            .get()
+        ]);
         
-        console.log(`📹 Fetching reels from ${selectedConnections.length} connections`);
+        // Combine and sort results, then take top 8
+        const allVideos = [...publicQuery.docs, ...networkQuery.docs];
+        recentVideos = allVideos
+          .sort((a, b) => {
+            const dateA = a.data().createdAt;
+            const dateB = b.data().createdAt;
+            return new Date(dateB) - new Date(dateA);
+          })
+          .slice(0, 8);
+      } else {
+        // Batch queries for users with large networks
+        const userBatches = [];
+        for (let i = 0; i < allUserIdsArray.length; i += 30) {
+          userBatches.push(allUserIdsArray.slice(i, i + 30));
+        }
         
-        const connectionVideos = await db.collection(COLLECTIONS.PLACE_VIDEOS)
-          .where('userId', 'in', selectedConnections)
-          .where('uploadStatus', '==', 'ready')
-          .where('deletedAt', '==', null)
-          .where('visibility', 'in', ['public', 'network'])
-          .orderBy('createdAt', 'desc')
-          .limit(5)
-          .get();
+        const batchPromises = userBatches.flatMap(batch => [
+          db.collection(COLLECTIONS.PLACE_VIDEOS)
+            .where('userId', 'in', batch)
+            .where('uploadStatus', '==', 'ready')
+            .where('deletedAt', '==', null)
+            .where('visibility', '==', 'public')
+            .orderBy('createdAt', 'desc')
+            .limit(4) // Limit per batch to avoid too many results
+            .get(),
+          db.collection(COLLECTIONS.PLACE_VIDEOS)
+            .where('userId', 'in', batch)
+            .where('uploadStatus', '==', 'ready')
+            .where('deletedAt', '==', null)
+            .where('visibility', '==', 'network')
+            .orderBy('createdAt', 'desc')
+            .limit(4)
+            .get()
+        ]);
         
-        connectionVideos.docs.forEach(doc => {
-          if (!seenVideoIds.has(doc.id)) {
-            videos.push({ ...serializeDoc(doc), algorithm: 'connections' });
-            seenVideoIds.add(doc.id);
-          }
-        });
+        const batchResults = await Promise.all(batchPromises);
+        const allDocs = batchResults.flatMap(result => result.docs);
+        
+        // Sort all results by createdAt and take top 8
+        recentVideos = allDocs
+          .sort((a, b) => {
+            const dateA = a.data().createdAt;
+            const dateB = b.data().createdAt;
+            return new Date(dateB) - new Date(dateA);
+          })
+          .slice(0, 8);
       }
       
-      // Fetch videos from following (can only see public)
-      const followingArray = Array.from(followingIds).filter(id => !connectionIds.has(id));
-      if (followingArray.length > 0) {
-        const selectedFollowing = followingArray.length > 10 
-          ? followingArray.sort(() => 0.5 - Math.random()).slice(0, 10)
-          : followingArray;
-        
-        console.log(`📹 Fetching reels from ${selectedFollowing.length} followed users`);
-        
-        const followingVideos = await db.collection(COLLECTIONS.PLACE_VIDEOS)
-          .where('userId', 'in', selectedFollowing)
-          .where('uploadStatus', '==', 'ready')
-          .where('deletedAt', '==', null)
-          .where('visibility', '==', 'public')  // Following can only see public
-          .orderBy('createdAt', 'desc')
-          .limit(3)
-          .get();
-        
-        followingVideos.docs.forEach(doc => {
-          if (!seenVideoIds.has(doc.id)) {
-            videos.push({ ...serializeDoc(doc), algorithm: 'following' });
-            seenVideoIds.add(doc.id);
-          }
-        });
+      console.log(`📹 Found ${recentVideos.length} most recent videos from network`);
+      
+      recentVideos.forEach(doc => {
+        if (!seenVideoIds.has(doc.id)) {
+          videos.push({ ...serializeDoc(doc), algorithm: 'recent' });
+          seenVideoIds.add(doc.id);
+        }
+      });
+      
+      // 2. Additional videos from connections (if we need more variety)
+      if (videos.length < 12) {
+        const connectionArray = Array.from(connectionIds);
+        if (connectionArray.length > 1) {
+          // Use deterministic selection instead of random to ensure consistency
+          const selectedConnections = connectionArray.length > 10 
+            ? connectionArray.slice(0, 10) // Take first 10 instead of random
+            : connectionArray;
+          
+          console.log(`📹 Fetching additional reels from ${selectedConnections.length} connections`);
+          
+          // Split visibility query to avoid too many disjunctions
+          const [publicConnVideos, networkConnVideos] = await Promise.all([
+            db.collection(COLLECTIONS.PLACE_VIDEOS)
+              .where('userId', 'in', selectedConnections)
+              .where('uploadStatus', '==', 'ready')
+              .where('deletedAt', '==', null)
+              .where('visibility', '==', 'public')
+              .orderBy('createdAt', 'desc')
+              .limit(6)
+              .get(),
+            db.collection(COLLECTIONS.PLACE_VIDEOS)
+              .where('userId', 'in', selectedConnections)
+              .where('uploadStatus', '==', 'ready')
+              .where('deletedAt', '==', null)
+              .where('visibility', '==', 'network')
+              .orderBy('createdAt', 'desc')
+              .limit(6)
+              .get()
+          ]);
+          
+          const connectionVideos = {
+            docs: [...publicConnVideos.docs, ...networkConnVideos.docs]
+              .sort((a, b) => {
+                const dateA = a.data().createdAt;
+                const dateB = b.data().createdAt;
+                return new Date(dateB) - new Date(dateA);
+              })
+              .slice(0, 6)
+          };
+          
+          connectionVideos.docs.forEach(doc => {
+            if (!seenVideoIds.has(doc.id)) {
+              videos.push({ ...serializeDoc(doc), algorithm: 'connections' });
+              seenVideoIds.add(doc.id);
+            }
+          });
+        }
       }
     }
     
-    // 2. More videos from connections if we don't have enough
-    if (videos.length < 10 && connectionIds.size > 1) {
+    // Final check: if we still don't have enough videos, fetch more from any network user
+    if (videos.length < 10 && allUserIds.size > 1) {
       const connectionArray = Array.from(connectionIds);
       // Limit to 10 users to avoid Firestore query limits
       const limitedConnections = connectionArray.length > 10 
@@ -1189,14 +1271,35 @@ exports.getReelsFeed = async (req, res) => {
         : connectionArray;
       console.log(`📹 Fetching additional reels from ${limitedConnections.length} connections`);
       
-      const moreConnectionVideos = await db.collection(COLLECTIONS.PLACE_VIDEOS)
-        .where('userId', 'in', limitedConnections)
-        .where('uploadStatus', '==', 'ready')
-        .where('deletedAt', '==', null)
-        .where('visibility', 'in', ['public', 'network'])
-        .orderBy('createdAt', 'desc')
-        .limit(20)
-        .get();
+      // Split visibility query to avoid too many disjunctions
+      const [publicMoreVideos, networkMoreVideos] = await Promise.all([
+        db.collection(COLLECTIONS.PLACE_VIDEOS)
+          .where('userId', 'in', limitedConnections)
+          .where('uploadStatus', '==', 'ready')
+          .where('deletedAt', '==', null)
+          .where('visibility', '==', 'public')
+          .orderBy('createdAt', 'desc')
+          .limit(20)
+          .get(),
+        db.collection(COLLECTIONS.PLACE_VIDEOS)
+          .where('userId', 'in', limitedConnections)
+          .where('uploadStatus', '==', 'ready')
+          .where('deletedAt', '==', null)
+          .where('visibility', '==', 'network')
+          .orderBy('createdAt', 'desc')
+          .limit(20)
+          .get()
+      ]);
+      
+      const moreConnectionVideos = {
+        docs: [...publicMoreVideos.docs, ...networkMoreVideos.docs]
+          .sort((a, b) => {
+            const dateA = a.data().createdAt;
+            const dateB = b.data().createdAt;
+            return new Date(dateB) - new Date(dateA);
+          })
+          .slice(0, 20)
+      };
       
       moreConnectionVideos.docs.forEach(doc => {
         if (!seenVideoIds.has(doc.id)) {
@@ -1543,6 +1646,7 @@ exports.getPlaceReels = async (req, res) => {
 
 // Like a reel
 const sseService = require('../services/sseService');
+const { trackVideoLiked } = require('../services/activityService');
 
 exports.likeReel = async (req, res) => {
   try {
@@ -1576,22 +1680,36 @@ exports.likeReel = async (req, res) => {
       likeCount: FieldValue.increment(1)
     });
     
-    // Get video details for SSE notification
+    // Get video details and track comprehensive activity
     const videoDoc = await videoRef.get();
     if (videoDoc.exists) {
       const videoData = videoDoc.data();
       
-      // Notify video owner of the like (if not self-like)
-      if (videoData.userId && videoData.userId !== userId) {
-        sseService.notifyUser(videoData.userId, 'video_liked', {
-          videoId,
-          likedBy: userId,
-          videoTitle: videoData.title,
-          timestamp: new Date().toISOString()
-        });
+      // Get place information for activity tracking
+      let placeName = 'Unknown Place';
+      if (videoData.placeId) {
+        try {
+          const placeDoc = await db.collection(COLLECTIONS.PLACES).doc(videoData.placeId).get();
+          if (placeDoc.exists) {
+            placeName = placeDoc.data().name || 'Unknown Place';
+          }
+        } catch (placeError) {
+          console.warn('Could not fetch place name for video like tracking:', placeError);
+        }
       }
       
-      // Broadcast to all users viewing this video
+      // Use comprehensive activity tracking (includes connection notifications)
+      if (videoData.userId && videoData.userId !== userId) {
+        await trackVideoLiked(
+          videoId,
+          videoData.placeId || null,
+          placeName,
+          userId,
+          videoData.userId
+        );
+      }
+      
+      // Still broadcast engagement for real-time UI updates
       sseService.broadcastVideoEngagement(videoId, 'like', {
         userId,
         videoId,

@@ -80,16 +80,11 @@ class LoginViewController: BaseViewController {
         return container
     }()
     
-    private let appleSignInButton: ASAuthorizationAppleIDButton = {
-        let button = ASAuthorizationAppleIDButton(authorizationButtonType: .signIn, authorizationButtonStyle: .black)
-        button.cornerRadius = 8
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private lazy var appleSignInButton = UIButton.appleSignInButton()
     
     private let appleSignInSubtitleLabel: UILabel = {
         let label = UILabel()
-        label.text = "Real email required - 'Hide My Email' not supported"
+        label.text = "For the best experience, we recommend sharing your email"
         label.font = UIFont.systemFont(ofSize: 10)
         label.textColor = UIColor.white.withAlphaComponent(0.6)
         label.textAlignment = .center
@@ -177,9 +172,8 @@ class LoginViewController: BaseViewController {
         // Subtitle removed for cleaner layout
         // backgroundView.addSubview(subtitleLabel)
         
-        // Configure Apple sign-in container (commented out for now)
-        // appleSignInContainerView.addSubview(appleSignInButton)
-        // appleSignInContainerView.addSubview(appleSignInSubtitleLabel)
+        // Configure Apple sign-in container
+        appleSignInContainerView.addSubview(appleSignInButton)
         
         // Configure buttons stack - social login first (Facebook, then Google)
         buttonsStackView.addArrangedSubview(facebookSignInButton)
@@ -200,8 +194,7 @@ class LoginViewController: BaseViewController {
         buttonsStackView.addArrangedSubview(spacerView2)
         
         buttonsStackView.addArrangedSubview(emailSignUpButton)
-        // Apple Sign-In temporarily disabled
-        // buttonsStackView.addArrangedSubview(appleSignInContainerView)
+        buttonsStackView.addArrangedSubview(appleSignInContainerView)
         
         // Set height constraint for "or" divider to be smaller than buttons
         orDividerLabel.heightAnchor.constraint(equalToConstant: 20).isActive = true
@@ -255,28 +248,22 @@ class LoginViewController: BaseViewController {
             // Privacy label
             privacyLabel.leadingAnchor.constraint(equalTo: backgroundView.leadingAnchor, constant: 40),
             privacyLabel.trailingAnchor.constraint(equalTo: backgroundView.trailingAnchor, constant: -40),
-            privacyLabel.bottomAnchor.constraint(equalTo: backgroundView.safeAreaLayoutGuide.bottomAnchor, constant: -20)
+            privacyLabel.bottomAnchor.constraint(equalTo: backgroundView.safeAreaLayoutGuide.bottomAnchor, constant: -20),
             
-            // Apple sign-in container constraints commented out
-            // appleSignInContainerView.heightAnchor.constraint(equalToConstant: 50),
+            // Apple sign-in container constraints
+            appleSignInContainerView.heightAnchor.constraint(equalToConstant: 50),
             
             // Apple sign-in button within container
-            // appleSignInButton.topAnchor.constraint(equalTo: appleSignInContainerView.topAnchor),
-            // appleSignInButton.leadingAnchor.constraint(equalTo: appleSignInContainerView.leadingAnchor),
-            // appleSignInButton.trailingAnchor.constraint(equalTo: appleSignInContainerView.trailingAnchor),
-            // appleSignInButton.bottomAnchor.constraint(equalTo: appleSignInContainerView.bottomAnchor),
-            
-            // Apple sign-in subtitle label
-            // appleSignInSubtitleLabel.leadingAnchor.constraint(equalTo: appleSignInContainerView.leadingAnchor, constant: 10),
-            // appleSignInSubtitleLabel.trailingAnchor.constraint(equalTo: appleSignInContainerView.trailingAnchor, constant: -10),
-            // appleSignInSubtitleLabel.bottomAnchor.constraint(equalTo: appleSignInContainerView.bottomAnchor, constant: -4)
+            appleSignInButton.topAnchor.constraint(equalTo: appleSignInContainerView.topAnchor),
+            appleSignInButton.leadingAnchor.constraint(equalTo: appleSignInContainerView.leadingAnchor),
+            appleSignInButton.trailingAnchor.constraint(equalTo: appleSignInContainerView.trailingAnchor),
+            appleSignInButton.bottomAnchor.constraint(equalTo: appleSignInContainerView.bottomAnchor)
         ])
     }
     
     private func setupActions() {
         // Social login buttons
-        // Apple Sign-In temporarily disabled
-        // appleSignInButton.addTarget(self, action: #selector(appleSignInButtonTapped), for: .touchUpInside)
+        appleSignInButton.addTarget(self, action: #selector(appleSignInButtonTapped), for: .touchUpInside)
         googleSignInButton.addTarget(self, action: #selector(googleSignInButtonTapped), for: .touchUpInside)
         facebookSignInButton.addTarget(self, action: #selector(facebookSignInButtonTapped), for: .touchUpInside)
         
@@ -290,8 +277,7 @@ class LoginViewController: BaseViewController {
     }
     
     private func updateButtonStates() {
-        // Apple Sign-In temporarily disabled - removed from buttons array
-        let buttons = [googleSignInButton, facebookSignInButton, emailSignUpButton, loginLinkButton]
+        let buttons = [appleSignInButton, googleSignInButton, facebookSignInButton, emailSignUpButton, loginLinkButton]
         buttons.forEach { $0.isEnabled = !isLoggingIn }
         
         // Show/hide loading state
@@ -314,12 +300,12 @@ class LoginViewController: BaseViewController {
     }
     
     @objc private func appleSignInButtonTapped() {
-        print("🍎 Apple Sign-In button tapped in LoginViewController")
+        print("🍎 Apple Sign-In button tapped in LoginViewController - Action triggered successfully!")
         
-        // Show warning about private relay before proceeding
+        // Show informative message about email options
         let alert = UIAlertController(
-            title: "Important: Email Requirements",
-            message: "When signing in with Apple, you must choose 'Share My Email' instead of 'Hide My Email'.\n\nCircles requires your real email to send daily summaries and important updates.\n\nDo you want to continue?",
+            title: "Apple Sign-In Options",
+            message: "You can choose 'Hide My Email' or 'Share My Email' with Apple Sign-In.\n\nSharing your email enables:\n• Daily activity summaries\n• Important account notifications\n• Better app experience\n\nHide My Email works too, but with limited notifications.\n\nReady to continue?",
             preferredStyle: .alert
         )
         
@@ -347,12 +333,7 @@ class LoginViewController: BaseViewController {
                 case .failure(let error):
                     print("🍎 Apple Sign-In Failed with error: \(error.localizedDescription)")
                     
-                    // Check if it's a private relay error
-                    if let authError = error as? AuthError, authError == .privateRelayNotAllowed {
-                        self?.showPrivateRelayGuidance()
-                    } else {
-                        self?.showError("Apple Sign-In Failed: \(error.localizedDescription)")
-                    }
+                    self?.showError("Apple Sign-In Failed: \(error.localizedDescription)")
                 }
             }
         }

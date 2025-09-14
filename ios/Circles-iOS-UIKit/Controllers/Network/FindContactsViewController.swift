@@ -573,6 +573,7 @@ extension FindContactsViewController: UITableViewDataSource {
             let user = matchedUsers[indexPath.row]
             cell.configure(with: user)
             cell.showSelectionCheckmark = selectedUsers.contains(user.id)
+            cell.delegate = self
             
             // Since we're filtering out connected users, all should be selectable
             cell.isUserInteractionEnabled = true
@@ -646,7 +647,24 @@ extension FindContactsViewController: MFMessageComposeViewControllerDelegate {
     }
 }
 
+// MARK: - FindContactsUserCellDelegate
+extension FindContactsViewController: FindContactsUserCellDelegate {
+    func findContactsUserCellDidTapInfo(_ cell: FindContactsUserCell) {
+        let alert = UIAlertController(
+            title: "Connection Request",
+            message: "You've sent a connection request to this user. They'll be notified and can accept or decline your request. Once accepted, you'll be able to see each other's full network and send messages.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+}
+
 // MARK: - Cell Classes
+protocol FindContactsUserCellDelegate: AnyObject {
+    func findContactsUserCellDidTapInfo(_ cell: FindContactsUserCell)
+}
+
 class FindContactsUserCell: UITableViewCell {
     static let reuseIdentifier = "FindContactsUserCell"
     
@@ -655,6 +673,8 @@ class FindContactsUserCell: UITableViewCell {
             checkmarkImageView.isHidden = !showSelectionCheckmark
         }
     }
+    
+    weak var delegate: FindContactsUserCellDelegate?
     
     private let containerView: UIView = {
         let view = UIView()
@@ -708,6 +728,16 @@ class FindContactsUserCell: UITableViewCell {
         return imageView
     }()
     
+    private lazy var infoButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "info.circle"), for: .normal)
+        button.tintColor = Constants.Colors.brightOrange
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isHidden = true
+        button.addTarget(self, action: #selector(infoButtonTapped), for: .touchUpInside)
+        return button
+    }()
+    
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
         setupUI()
@@ -727,6 +757,7 @@ class FindContactsUserCell: UITableViewCell {
         containerView.addSubview(detailLabel)
         containerView.addSubview(statusLabel)
         containerView.addSubview(checkmarkImageView)
+        containerView.addSubview(infoButton)
         
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
@@ -747,8 +778,13 @@ class FindContactsUserCell: UITableViewCell {
             detailLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
             detailLabel.trailingAnchor.constraint(lessThanOrEqualTo: statusLabel.leadingAnchor, constant: -8),
             
-            statusLabel.trailingAnchor.constraint(equalTo: checkmarkImageView.leadingAnchor, constant: -8),
+            statusLabel.trailingAnchor.constraint(equalTo: infoButton.leadingAnchor, constant: -4),
             statusLabel.centerYAnchor.constraint(equalTo: detailLabel.centerYAnchor),
+            
+            infoButton.trailingAnchor.constraint(equalTo: checkmarkImageView.leadingAnchor, constant: -8),
+            infoButton.centerYAnchor.constraint(equalTo: statusLabel.centerYAnchor),
+            infoButton.widthAnchor.constraint(equalToConstant: 16),
+            infoButton.heightAnchor.constraint(equalToConstant: 16),
             
             checkmarkImageView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
             checkmarkImageView.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
@@ -769,11 +805,14 @@ class FindContactsUserCell: UITableViewCell {
         if user.connectionStatus == "accepted" {
             statusLabel.text = "Connected"
             statusLabel.textColor = .systemGreen
+            infoButton.isHidden = true
         } else if user.connectionStatus == "pending" {
-            statusLabel.text = "Pending"
-            statusLabel.textColor = .systemOrange
+            statusLabel.text = "Request Sent"
+            statusLabel.textColor = Constants.Colors.brightOrange
+            infoButton.isHidden = false
         } else {
             statusLabel.text = ""
+            infoButton.isHidden = true
         }
         
         // Load profile image
@@ -785,6 +824,10 @@ class FindContactsUserCell: UITableViewCell {
             profileImageView.image = UIImage(systemName: "person.circle.fill")
             profileImageView.tintColor = Constants.Colors.secondaryLabel
         }
+    }
+    
+    @objc private func infoButtonTapped() {
+        delegate?.findContactsUserCellDidTapInfo(self)
     }
 }
 

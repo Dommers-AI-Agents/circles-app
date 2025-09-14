@@ -254,6 +254,8 @@ const createConnection = (userId, connectedUserId, message = null) => {
     hasNewActivity: false, // Flag for red dot notification
     viewCount: 0, // Number of times this connection's profile was viewed
     lastViewedAt: null, // Last time this connection was viewed
+    // Notification preferences
+    activityNotificationsEnabled: false, // Whether user wants push notifications for this connection's activities (default OFF - user must opt-in)
     createdAt: now,
     acceptedAt: null,
     updatedAt: now
