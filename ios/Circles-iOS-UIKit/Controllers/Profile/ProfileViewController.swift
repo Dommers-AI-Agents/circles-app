@@ -920,7 +920,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         let checkInButton = UIBarButtonItem(image: UIImage(systemName: "checkmark.circle"), style: .plain, target: self, action: #selector(checkInButtonTapped))
         let rewardsButton = UIBarButtonItem(image: UIImage(systemName: "star.circle"), style: .plain, target: self, action: #selector(rewardsButtonTapped))
         navigationItem.rightBarButtonItems = [settingsButton, videoButton, checkInButton, rewardsButton]
-        
+        addStorefrontButtonIfEligible()
+
         // Add subviews
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
@@ -1537,6 +1538,43 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     @objc private func rewardsButtonTapped() {
         let rewardsVC = RewardsViewController()
         navigationController?.pushViewController(rewardsVC, animated: true)
+    }
+
+    private var storefrontOpensVenueAdmin = false
+
+    /// Store owners (and super-users) get a storefront button on their own
+    /// profile — the entry point to venue management. Normal users never see
+    /// it, and the consumer rewards page stays merchant-free.
+    private func addStorefrontButtonIfEligible() {
+        RewardsService.shared.getRewardsProfile { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self,
+                      self.user?.id == AuthService.shared.getUserId(),
+                      case .success(let profile) = result else { return }
+                let isSuper = profile.isSuperUser
+                guard isSuper || profile.ownsVenues == true else { return }
+                self.storefrontOpensVenueAdmin = isSuper
+
+                let existing = self.navigationItem.rightBarButtonItems ?? []
+                guard !existing.contains(where: { $0.accessibilityLabel == "My Storefront" }) else { return }
+
+                let storefrontButton = UIBarButtonItem(
+                    image: UIImage(systemName: "storefront"),
+                    style: .plain,
+                    target: self,
+                    action: #selector(self.storefrontButtonTapped)
+                )
+                storefrontButton.accessibilityLabel = "My Storefront"
+                self.navigationItem.rightBarButtonItems = existing + [storefrontButton]
+            }
+        }
+    }
+
+    @objc private func storefrontButtonTapped() {
+        let destination: UIViewController = storefrontOpensVenueAdmin
+            ? VenueAdminViewController()
+            : OwnerVenuesViewController()
+        navigationController?.pushViewController(destination, animated: true)
     }
     
     @objc private func videoButtonTapped() {
@@ -2936,6 +2974,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             let checkInButton = UIBarButtonItem(image: UIImage(systemName: "checkmark.circle"), style: .plain, target: self, action: #selector(checkInButtonTapped))
             let rewardsButton = UIBarButtonItem(image: UIImage(systemName: "star.circle"), style: .plain, target: self, action: #selector(rewardsButtonTapped))
             navigationItem.rightBarButtonItems = [settingsButton, videoButton, checkInButton, rewardsButton]
+            addStorefrontButtonIfEligible()
         } else {
             // Other user - no navigation bar buttons
             navigationItem.rightBarButtonItems = []

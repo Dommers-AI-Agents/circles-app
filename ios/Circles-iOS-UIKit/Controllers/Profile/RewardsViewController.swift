@@ -158,19 +158,6 @@ class RewardsViewController: BaseViewController {
     override func loadData(completion: (() -> Void)? = nil) {
         loadOffers(completion: completion)
         loadHistory()
-
-        // Super users and venue owners get a storefront entry in the nav bar
-        RewardsService.shared.getRewardsProfile { [weak self] result in
-            DispatchQueue.main.async {
-                if case .success(let profile) = result {
-                    if profile.isSuperUser {
-                        self?.showStorefrontButton(superUser: true)
-                    } else if profile.ownsVenues == true {
-                        self?.showStorefrontButton(superUser: false)
-                    }
-                }
-            }
-        }
     }
 
     // MARK: - Offers loading (with best-effort location for the Nearby section)
@@ -225,28 +212,6 @@ class RewardsViewController: BaseViewController {
                 }
             }
         }
-    }
-
-    private func showStorefrontButton(superUser: Bool) {
-        guard navigationItem.rightBarButtonItem == nil else { return }
-        let button = UIBarButtonItem(
-            image: UIImage(systemName: "storefront"),
-            style: .plain,
-            target: self,
-            action: superUser ? #selector(venueAdminTapped) : #selector(myVenuesTapped)
-        )
-        button.accessibilityLabel = superUser ? "Venue Admin" : "My Venues"
-        navigationItem.rightBarButtonItem = button
-    }
-
-    @objc private func venueAdminTapped() {
-        let venueAdminVC = VenueAdminViewController()
-        navigationController?.pushViewController(venueAdminVC, animated: true)
-    }
-
-    @objc private func myVenuesTapped() {
-        let ownerVC = OwnerVenuesViewController()
-        navigationController?.pushViewController(ownerVC, animated: true)
     }
 
     // MARK: - Setup
