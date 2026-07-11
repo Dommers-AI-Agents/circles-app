@@ -211,6 +211,14 @@ const syncContacts = async (req, res) => {
 };
 
 // Get suggested users (users with most places saved)
+// Core users who are always suggested first — the most content-rich accounts,
+// so a brand-new user immediately has great places to discover
+const CORE_SUGGESTED_EMAILS = [
+  'sgroiwes@gmail.com',      // Wes
+  'brittanyvans@gmail.com',  // Brittany
+  'salasgroi@gmail.com'      // Sal
+];
+
 const getSuggestedUsers = async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -222,19 +230,38 @@ const getSuggestedUsers = async (req, res) => {
     const usersQuery = await db.collection(COLLECTIONS.USERS)
       .limit(50) // Get more users to filter from
       .get();
-    
-    console.log(`📊 Found ${usersQuery.size} total users in database`);
-    
-    // Get existing connections for the user
-    const connectionsQuery = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', userId)
+
+    // Always include the core users, even if they fall outside the scan window
+    const coreSnap = await db.collection(COLLECTIONS.USERS)
+      .where('email', 'in', CORE_SUGGESTED_EMAILS)
       .get();
+    const coreUserIds = new Set(coreSnap.docs.map(doc => doc.id));
+    const candidateDocs = [
+      ...coreSnap.docs,
+      ...usersQuery.docs.filter(doc => !coreUserIds.has(doc.id))
+    ];
+
+    console.log(`📊 Found ${usersQuery.size} total users in database (+${coreSnap.size} core)`);
     
+    // Get existing connections for the user — BOTH directions, and include
+    // pending requests so we don't suggest people the user already reached out
+    // to (or who reached out to them)
+    const [connectionsQuery1, connectionsQuery2] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', userId).get(),
+      db.collection(COLLECTIONS.CONNECTIONS).where('connectedUserId', '==', userId).get()
+    ]);
+
     const connectedUserIds = new Set();
-    connectionsQuery.forEach(doc => {
+    connectionsQuery1.forEach(doc => {
       const connection = doc.data();
-      if (connection.status === 'accepted') {
+      if (connection.status === 'accepted' || connection.status === 'pending') {
         connectedUserIds.add(connection.connectedUserId);
+      }
+    });
+    connectionsQuery2.forEach(doc => {
+      const connection = doc.data();
+      if (connection.status === 'accepted' || connection.status === 'pending') {
+        connectedUserIds.add(connection.userId);
       }
     });
 
@@ -244,7 +271,7 @@ const getSuggestedUsers = async (req, res) => {
     const userCandidates = [];
     
     // First pass: collect all eligible users
-    for (const doc of usersQuery.docs) {
+    for (const doc of candidateDocs) {
       const userData = doc.data();
       
       if (doc.id === userId) {
@@ -285,7 +312,8 @@ const getSuggestedUsers = async (req, res) => {
           followersCount: userData.followersCount || 0,
           connectionsCount: userData.connectionsCount || 0,
           isVerified: userData.isVerified || false,
-          _actualPlacesCount: totalPlaces // For sorting
+          _actualPlacesCount: totalPlaces, // For sorting
+          _isCore: coreUserIds.has(doc.id) // Core users pin to the front
         });
       } else {
         console.log(`⏭️ Skipping user with 0 places: ${userData.displayName}`);
@@ -293,10 +321,14 @@ const getSuggestedUsers = async (req, res) => {
       }
     }
     
-    // Sort by actual places count and take the limit
-    userCandidates.sort((a, b) => b._actualPlacesCount - a._actualPlacesCount);
+    // Sort: core users first, then by actual places count; take the limit
+    userCandidates.sort((a, b) => {
+      if (a._isCore !== b._isCore) return a._isCore ? -1 : 1;
+      return b._actualPlacesCount - a._actualPlacesCount;
+    });
     const topUsers = userCandidates.slice(0, limit).map(user => {
-      delete user._actualPlacesCount; // Remove sorting field
+      delete user._actualPlacesCount; // Remove sorting fields
+      delete user._isCore;
       return user;
     });
 
@@ -351,6 +383,10 @@ const inviteContacts = async (req, res) => {
       failed: []
     };
 
+    // Connect link: opens the app and auto-connects when installed,
+    // otherwise redirects to the App Store (served by GET /connect/:userId)
+    const inviteLink = `https://circles-backend-196924649787.us-central1.run.app/connect/${userId}`;
+
     // Send invitations
     for (const invite of invites) {
       try {
@@ -359,14 +395,15 @@ const inviteContacts = async (req, res) => {
           await emailService.sendAppInvitation(
             invite.email,
             inviterName,
-            invite.contactName
+            invite.contactName,
+            inviteLink
           );
           results.sent.push({ type: 'email', recipient: invite.email });
-          
+
         } else if (invite.type === 'sms' && invite.phoneNumber) {
           // For SMS, we'll return the formatted message and let the client handle it
           // since SMS sending requires additional setup (Twilio, etc.)
-          const message = `${inviterName} invited you to join Circles - the app for sharing your favorite places! Download: https://circles-app.com/download`;
+          const message = `${inviterName} invited you to join Circles - the app for sharing your favorite places! Join and connect with me: ${inviteLink}`;
           results.sent.push({ 
             type: 'sms', 
             recipient: invite.phoneNumber,

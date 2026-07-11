@@ -1,19 +1,24 @@
 import Foundation
 import Security
+import LocalAuthentication
 
 class KeychainService {
     static let shared = KeychainService()
-    
+
     private init() {}
-    
+
     private let service = "com.favcircles.circles"
-    
+
     // Account identifiers for different token types
     private let authTokenAccount = "authToken"
     private let refreshTokenAccount = "refreshToken"
     private let tokenExpirationAccount = "tokenExpiration"
     private let userIdAccount = "userId"
     private let authProviderAccount = "authProvider"
+
+    // Account identifiers for saved credentials (with biometric protection)
+    private let savedEmailAccount = "savedEmail"
+    private let savedPasswordAccount = "savedPassword"
     
     // MARK: - Token Management
     
@@ -77,7 +82,42 @@ class KeychainService {
         delete(account: userIdAccount)
         delete(account: authProviderAccount)
     }
-    
+
+    // MARK: - Saved Credentials (with Biometric Protection)
+
+    /// Save email and password with biometric protection
+    func saveCredentials(email: String, password: String) {
+        // Save email without biometric (we need to show it on login screen)
+        save(email, account: savedEmailAccount)
+
+        // Save password with biometric protection
+        saveBiometricProtected(password, account: savedPasswordAccount)
+
+        print("🔐 KeychainService: Saved credentials with biometric protection")
+    }
+
+    /// Retrieve saved email (no biometric required)
+    func getSavedEmail() -> String? {
+        return retrieve(account: savedEmailAccount)
+    }
+
+    /// Retrieve saved password (requires biometric authentication)
+    func getSavedPassword(completion: @escaping (String?) -> Void) {
+        retrieveBiometricProtected(account: savedPasswordAccount, completion: completion)
+    }
+
+    /// Check if credentials are saved
+    func hasStoredCredentials() -> Bool {
+        return getSavedEmail() != nil
+    }
+
+    /// Clear saved credentials
+    func clearSavedCredentials() {
+        delete(account: savedEmailAccount)
+        delete(account: savedPasswordAccount)
+        print("🔐 KeychainService: Cleared saved credentials")
+    }
+
     // MARK: - Private Helper Methods
     
     private func save(_ value: String, account: String) {
@@ -130,10 +170,83 @@ class KeychainService {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account
         ]
-        
+
         SecItemDelete(query as CFDictionary)
     }
-    
+
+    // MARK: - Biometric Protected Storage
+
+    /// Save a value with biometric protection (Face ID / Touch ID required to retrieve)
+    private func saveBiometricProtected(_ value: String, account: String) {
+        guard let data = value.data(using: .utf8) else { return }
+
+        // Delete any existing item
+        delete(account: account)
+
+        // Create an access control object that requires biometric authentication
+        var error: Unmanaged<CFError>?
+        guard let accessControl = SecAccessControlCreateWithFlags(
+            kCFAllocatorDefault,
+            kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            .biometryCurrentSet, // Requires biometric and invalidates if biometrics change
+            &error
+        ) else {
+            print("❌ KeychainService: Failed to create access control: \(String(describing: error))")
+            return
+        }
+
+        // Create query for adding new item with biometric protection
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecValueData as String: data,
+            kSecAttrAccessControl as String: accessControl
+        ]
+
+        // Add item to keychain
+        let status = SecItemAdd(query as CFDictionary, nil)
+
+        if status != errSecSuccess {
+            print("❌ KeychainService: Error saving biometric-protected \(account): \(status)")
+        } else {
+            print("✅ KeychainService: Successfully saved biometric-protected \(account)")
+        }
+    }
+
+    /// Retrieve a biometric-protected value (requires Face ID / Touch ID)
+    private func retrieveBiometricProtected(account: String, completion: @escaping (String?) -> Void) {
+        let context = LAContext()
+        context.localizedReason = "Authenticate to access your saved password"
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecUseAuthenticationContext as String: context
+        ]
+
+        // Perform retrieval on background queue
+        DispatchQueue.global(qos: .userInitiated).async {
+            var dataTypeRef: AnyObject?
+            let status = SecItemCopyMatching(query as CFDictionary, &dataTypeRef)
+
+            DispatchQueue.main.async {
+                if status == errSecSuccess,
+                   let data = dataTypeRef as? Data,
+                   let value = String(data: data, encoding: .utf8) {
+                    print("✅ KeychainService: Successfully retrieved biometric-protected \(account)")
+                    completion(value)
+                } else {
+                    print("❌ KeychainService: Failed to retrieve biometric-protected \(account): \(status)")
+                    completion(nil)
+                }
+            }
+        }
+    }
+
     // MARK: - Migration from UserDefaults
     
     func migrateFromUserDefaults() {

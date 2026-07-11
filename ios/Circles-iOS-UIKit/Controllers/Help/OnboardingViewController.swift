@@ -2,8 +2,14 @@ import UIKit
 import AVKit
 
 class OnboardingViewController: UIViewController {
-    
+
     // MARK: - Properties
+
+    /// When set, the carousel acts as the post-signup welcome flow: on finish
+    /// or skip it dismisses and invokes this so the caller can chain the next
+    /// onboarding step (instead of marking the whole tutorial complete)
+    var onCompletion: (() -> Void)?
+
     private var currentPage = 0
     private let pages: [OnboardingPage] = [
         OnboardingPage(
@@ -279,11 +285,15 @@ class OnboardingViewController: UIViewController {
     }
     
     private func completeOnboarding() {
-        // Mark onboarding as completed
-        OnboardingManager.shared.completeOnboarding()
-        
-        // Dismiss
-        dismiss(animated: true)
+        if let onCompletion = onCompletion {
+            // Presented as the post-signup welcome flow: dismiss and let the
+            // caller chain the next onboarding step (permissions, tutorial)
+            dismiss(animated: true) { onCompletion() }
+        } else {
+            // Standalone use: mark the whole onboarding as completed
+            OnboardingManager.shared.completeOnboarding()
+            dismiss(animated: true)
+        }
     }
 }
 

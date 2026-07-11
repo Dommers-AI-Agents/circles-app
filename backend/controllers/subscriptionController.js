@@ -108,6 +108,19 @@ exports.verifySubscription = async (req, res) => {
             appleOriginalTransactionId: latestReceiptInfo.original_transaction_id
         };
 
+        // Never let a stale/expired device receipt downgrade a manually verified
+        // premium user — keep their existing status and expiry
+        const existingDoc = await userRef.get();
+        const existingData = existingDoc.data() || {};
+        const existingExpiry = existingData.subscriptionExpiryDate ? new Date(existingData.subscriptionExpiryDate) : null;
+        const hasManualPremium = (existingData.manuallyVerified === true || existingData.isPremium === true) &&
+            (!existingExpiry || existingExpiry > new Date());
+
+        if (hasManualPremium && subscriptionStatus !== 'active' && subscriptionStatus !== 'trial') {
+            delete updateData.subscriptionStatus;
+            delete updateData.subscriptionExpiryDate;
+        }
+
         // If it's a trial, record trial dates
         if (isTrialPeriod && subscriptionStatus === 'trial') {
             const userData = await userRef.get();
@@ -168,16 +181,24 @@ exports.getSubscriptionStatus = async (req, res) => {
         }
 
         const userData = userDoc.data();
-        
+
         // Check if subscription is expired
         let status = userData.subscriptionStatus || 'none';
-        if (userData.subscriptionExpiryDate) {
-            const expiryDate = new Date(userData.subscriptionExpiryDate);
-            if (expiryDate < new Date() && status !== 'none') {
-                status = 'expired';
-                // Update status in database
-                await userDoc.ref.update({ subscriptionStatus: 'expired' });
+        const expiryDate = userData.subscriptionExpiryDate ? new Date(userData.subscriptionExpiryDate) : null;
+        // Manually verified premium users (isPremium/manuallyVerified) stay active
+        // until their expiry date regardless of receipt state
+        const hasManualPremium = (userData.manuallyVerified === true || userData.isPremium === true) &&
+            (!expiryDate || expiryDate > new Date());
+
+        if (hasManualPremium) {
+            status = 'active';
+            if (userData.subscriptionStatus !== 'active') {
+                await userDoc.ref.update({ subscriptionStatus: 'active' });
             }
+        } else if (expiryDate && expiryDate < new Date() && status !== 'none') {
+            status = 'expired';
+            // Update status in database
+            await userDoc.ref.update({ subscriptionStatus: 'expired' });
         }
 
         res.json({

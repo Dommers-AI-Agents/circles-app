@@ -1,5 +1,4 @@
 import UIKit
-import FirebaseAuth
 
 class PasswordResetViewController: BaseViewController {
     
@@ -181,28 +180,19 @@ class PasswordResetViewController: BaseViewController {
         isSendingReset = true
         successMessageView.isHidden = true
         
-        // Use Firebase Auth to send password reset email
-        Auth.auth().sendPasswordReset(withEmail: email) { [weak self] error in
+        // Send the branded reset email via our backend (own SMTP domain for
+        // deliverability) instead of the Firebase default sender
+        AuthService.shared.requestPasswordReset(email: email) { [weak self] result in
             DispatchQueue.main.async {
                 self?.isSendingReset = false
-                
-                if let error = error {
-                    // Handle specific Firebase errors
-                    let nsError = error as NSError
-                    if nsError.code == AuthErrorCode.userNotFound.rawValue {
-                        self?.showError("No account found with this email address")
-                    } else if nsError.code == AuthErrorCode.invalidEmail.rawValue {
-                        self?.showError("Please enter a valid email address")
-                    } else if nsError.code == AuthErrorCode.networkError.rawValue {
-                        self?.showError("Network error. Please check your connection and try again.")
-                    } else {
-                        self?.showError("Failed to send reset email: \(error.localizedDescription)")
-                    }
-                } else {
-                    // Success - show success message
+
+                switch result {
+                case .success:
                     self?.showSuccessMessage()
                     self?.emailTextField.text = ""
                     self?.emailTextField.resignFirstResponder()
+                case .failure(let error):
+                    self?.showError("Failed to send reset email: \(error.localizedDescription)")
                 }
             }
         }

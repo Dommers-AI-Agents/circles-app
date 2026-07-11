@@ -107,42 +107,46 @@ const POPULAR_PLACES = {
     }
   ],
 
-  // National chains as fallbacks
-  'national_chains': [
+  // Belmar, NJ defaults used when we don't have city-specific places
+  'belmar': [
     {
       name: "Starbucks",
       category: "cafe",
       description: "Popular coffee chain",
-      coordinates: [0, 0], // Will be updated based on user location
+      address: "1799 River Rd, Belmar, NJ 07719",
+      coordinates: [-74.0407, 40.1771],
       website: "https://starbucks.com"
     },
     {
-      name: "Chipotle Mexican Grill",
-      category: "restaurant", 
-      description: "Fast-casual Mexican food",
-      coordinates: [0, 0],
-      website: "https://chipotle.com"
+      name: "Playa Bowls",
+      category: "cafe",
+      description: "Acai bowls and smoothies - the original location",
+      address: "806 Main St, Belmar, NJ 07719",
+      coordinates: [-74.0256, 40.1802],
+      website: "https://playabowls.com"
     },
     {
-      name: "Whole Foods Market",
-      category: "retail",
-      description: "Organic grocery store",
-      coordinates: [0, 0],
-      website: "https://wholefoodsmarket.com"
+      name: "Federico's Pizza & Restaurant",
+      category: "restaurant",
+      description: "Family-owned Jersey Shore pizza spot",
+      address: "700 Main St, Belmar, NJ 07719",
+      coordinates: [-74.0254, 40.1817],
+      website: "https://federicospizza.com"
     },
     {
-      name: "Target",
-      category: "retail",
-      description: "Department store chain",
-      coordinates: [0, 0],
-      website: "https://target.com"
+      name: "D'Jais Oceanview Bar & Cafe",
+      category: "restaurant",
+      description: "Iconic Belmar beach bar and restaurant",
+      address: "1801 Ocean Ave, Belmar, NJ 07719",
+      coordinates: [-74.0165, 40.1703],
+      website: "https://djais.com"
     },
     {
-      name: "Trader Joe's",
-      category: "retail",
-      description: "Unique grocery chain",
-      coordinates: [0, 0],
-      website: "https://traderjoes.com"
+      name: "Belmar Boardwalk",
+      category: "attraction",
+      description: "Classic Jersey Shore boardwalk and beach",
+      address: "Ocean Ave, Belmar, NJ 07719",
+      coordinates: [-74.0137, 40.1765]
     }
   ]
 };
@@ -175,9 +179,9 @@ const getPlacesForCity = (cityName) => {
   return POPULAR_PLACES[normalizedCity] || [];
 };
 
-// Function to get national chain places as fallback
+// Function to get Belmar, NJ default places as fallback
 const getNationalChains = () => {
-  return POPULAR_PLACES.national_chains;
+  return POPULAR_PLACES.belmar;
 };
 
 // Function to get a random local place for onboarding
@@ -200,13 +204,14 @@ const getRandomLocalPlace = (userLocation = null) => {
     return places[randomIndex];
   }
   
-  // Ultimate fallback
+  // Ultimate fallback - Starbucks in Belmar, NJ
   return {
-    name: "Sample Restaurant",
-    category: "restaurant",
-    description: "A great local spot to get you started",
-    address: "Your neighborhood",
-    coordinates: [0, 0]
+    name: "Starbucks",
+    category: "cafe",
+    description: "Popular coffee chain",
+    address: "1799 River Rd, Belmar, NJ 07719",
+    coordinates: [-74.0407, 40.1771],
+    website: "https://starbucks.com"
   };
 };
 

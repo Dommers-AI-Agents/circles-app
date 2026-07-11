@@ -7,7 +7,8 @@ const {
   getMe,
   updateProfile,
   refreshToken,
-  facebookDataDeletion
+  facebookDataDeletion,
+  forgotPassword
 } = require('../controllers/firebaseAuthController');
 const { protect } = require('../middleware/firebaseAuth');
 const { 
@@ -22,6 +23,7 @@ router.post('/register', validateUserRegistration, register);
 router.post('/login', validateUserLogin, login);
 router.post('/firebase', firebaseAuth);
 router.post('/refresh-token', refreshToken);
+router.post('/forgot-password', forgotPassword);
 router.post('/facebook-deauthorize', facebookDataDeletion);
 
 // Protected routes

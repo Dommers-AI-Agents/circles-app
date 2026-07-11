@@ -1965,8 +1965,13 @@ class PlaceDetailViewController: BaseViewController {
             shareText += "\n🗺️ View on Google Maps: \(googleMapsURL)"
         }
         
-        // Add deep link and web link
-        shareText += "\n\n📱 Open in Circles: circles://place/\(place.id)"
+        // Add deep link and web link (with share attribution so the sharer
+        // earns reward points if the recipient adds this place)
+        var placeLink = "circles://place/\(place.id)"
+        if let currentUserId = AuthService.shared.getUserId() {
+            placeLink += "?ref=\(currentUserId)"
+        }
+        shareText += "\n\n📱 Open in Circles: \(placeLink)"
         
         // Add App Store link
         shareText += "\n\n🔗 Get Circles App: https://apps.apple.com/us/app/favcircles/id6746807095"

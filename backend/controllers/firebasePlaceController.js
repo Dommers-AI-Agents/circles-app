@@ -8,12 +8,15 @@ const {
   serializeQuerySnapshot 
 } = require('../models/FirestoreModels');
 const { Client } = require('@googlemaps/google-maps-services-js');
+const geofire = require('geofire-common');
+const { normalizeUserId, isSameUser } = require('../services/idService');
 const { googleMapsApiKey } = require('../config/config');
 const notificationService = require('../services/notificationService');
 const { trackPlaceAdded, trackPlaceView, trackPlaceLiked } = require('../services/activityService');
 const placeCache = require('../services/placeCache');
 const requestDeduplicator = require('../services/requestDeduplicator');
 const subscriptionLimitService = require('../services/subscriptionLimitService');
+const rewardService = require('../services/rewardService');
 
 const db = getFirestore();
 const googleMapsClient = new Client({});
@@ -1049,6 +1052,11 @@ exports.createPlace = async (req, res, next) => {
     // Track activity for network connections
     await trackPlaceAdded(placeRef.id, circleId, place.name, circle.name, req.user.uid);
 
+    // Sticker rewards: if this add came from a shared place link, credit the sharer
+    if (req.body.refUserId) {
+      rewardService.awardShareConversion(req.body.refUserId, req.user.uid, place.googlePlaceId);
+    }
+
     // Send notifications to interested users
     try {
       // Get users who should be notified
@@ -1154,6 +1162,9 @@ exports.updatePlace = async (req, res, next) => {
           (longitude === -180 && latitude === -180)) {
         console.warn('⚠️ Invalid coordinates rejected in update:', { longitude, latitude, placeId: req.params.id });
         delete updateData.location; // Remove invalid location from update
+      } else {
+        // Keep the geohash in sync with the location (geofire expects [lat, lng])
+        updateData.geohash = geofire.geohashForLocation([latitude, longitude]);
       }
     }
     
@@ -1736,6 +1747,17 @@ exports.updatePlaceAddress = async (req, res, next) => {
     if (location) {
       updateData.location = location;
       console.log(`📍 Updating location for place ${req.params.id} to:`, location.coordinates);
+
+      // Keep the geohash in sync with the location (geofire expects [lat, lng])
+      if (Array.isArray(location.coordinates)) {
+        const [longitude, latitude] = location.coordinates;
+        if (typeof longitude === 'number' && typeof latitude === 'number' &&
+            longitude >= -180 && longitude <= 180 &&
+            latitude >= -90 && latitude <= 90 &&
+            !(longitude === -180 && latitude === -180)) {
+          updateData.geohash = geofire.geohashForLocation([latitude, longitude]);
+        }
+      }
     }
     
     // Update the place
@@ -3204,7 +3226,25 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
     const currentUserId = req.user.uid;
     const allPlaces = [];
     const processedCircles = new Set();
-    
+
+    // Resolve the user's accepted connections ONCE (both directions), storing
+    // normalized ids. The previous per-circle exact-match connection queries
+    // silently denied myNetwork circles whose owner id used a different format
+    // than the connection doc (e.g. Apple Sign-In complex ids).
+    const [connSnap1, connSnap2] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', currentUserId)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', currentUserId)
+        .where('status', '==', 'accepted')
+        .get()
+    ]);
+    const connectedUserIds = new Set();
+    connSnap1.docs.forEach(doc => connectedUserIds.add(normalizeUserId(doc.data().connectedUserId)));
+    connSnap2.docs.forEach(doc => connectedUserIds.add(normalizeUserId(doc.data().userId)));
+
     // Process circles in chunks to avoid overwhelming the database
     const chunkSize = 10;
     for (let i = 0; i < circleIds.length; i += chunkSize) {
@@ -3224,29 +3264,16 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
         }
         processedCircles.add(circle.id);
         
-        // Check permissions
-        const isOwner = circle.owner === currentUserId;
+        // Check permissions (id comparisons are normalized to tolerate
+        // mixed id formats between circles, users, and connections)
+        const isOwner = isSameUser(circle.owner, currentUserId);
         const isSharedWith = circle.sharedWith && circle.sharedWith.includes(currentUserId);
         const isPublic = circle.privacy === 'public';
-        
-        // For myNetwork privacy, check if users are connected
+
+        // For myNetwork privacy, check the pre-resolved connection set
         let isConnected = false;
         if (circle.privacy === 'myNetwork' && !isOwner) {
-          const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
-            .where('userId', '==', currentUserId)
-            .where('connectedUserId', '==', circle.owner)
-            .where('status', '==', 'accepted')
-            .limit(1)
-            .get();
-            
-          const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
-            .where('userId', '==', circle.owner)
-            .where('connectedUserId', '==', currentUserId)
-            .where('status', '==', 'accepted')
-            .limit(1)
-            .get();
-            
-          isConnected = !connection1.empty || !connection2.empty;
+          isConnected = connectedUserIds.has(normalizeUserId(circle.owner));
         }
         
         // Skip if user doesn't have access

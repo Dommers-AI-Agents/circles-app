@@ -93,6 +93,8 @@ async function enrichPlaceWithGoogleData(placeName, location) {
       params: {
         place_id: placeId,
         fields: ['name', 'formatted_address', 'photos', 'types', 'rating', 'price_level', 'website', 'formatted_phone_number', 'opening_hours'],
+        // Pin to English so weekday_text day names match the dayIndex map below
+        language: 'en',
         key: googleMapsApiKey
       }
     });
@@ -136,7 +138,18 @@ async function enrichPlaceWithGoogleData(placeName, location) {
       priceLevel: placeDetails.price_level || null,
       website: placeDetails.website || null,
       phoneNumber: placeDetails.formatted_phone_number || null,
-      openingHours: placeDetails.opening_hours ? placeDetails.opening_hours.weekday_text : null
+      // Convert Google's weekday_text strings to { day, hours } objects -
+      // the iOS OpeningHour model requires an integer `day` and fails to
+      // decode plain strings (which breaks any response containing the place)
+      openingHours: placeDetails.opening_hours && placeDetails.opening_hours.weekday_text
+        ? placeDetails.opening_hours.weekday_text.map((text, i) => {
+            const dayIndex = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+            const dayName = text.split(':')[0].trim().toLowerCase();
+            // weekday_text is Monday-first; iOS uses 0=Sunday, so the positional
+            // fallback (unrecognized day name) is (i + 1) % 7
+            return { day: dayIndex[dayName] != null ? dayIndex[dayName] : (i + 1) % 7, hours: text };
+          })
+        : null
     };
   } catch (error) {
     console.error('Error enriching place with Google data:', error);

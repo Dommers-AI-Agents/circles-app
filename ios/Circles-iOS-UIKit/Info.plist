@@ -77,6 +77,47 @@
 			</array>
 		</dict>
 	</array>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Place Export File</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.comma-separated-values-text</string>
+				<string>public.json</string>
+				<string>com.favcircles.circles.geojson</string>
+			</array>
+		</dict>
+	</array>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.favcircles.circles.geojson</string>
+			<key>UTTypeDescription</key>
+			<string>GeoJSON File</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>geojson</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/geo+json</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 	<key>FacebookAppID</key>
 	<string>971348948407685</string>
 	<key>FacebookClientToken</key>
@@ -151,6 +192,8 @@
 	<string>Circles needs access to your photo library to select photos for your places.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Circles would like to save your profile QR code to your photo library.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Circles uses Face ID to securely sign you in and protect your account.</string>
 	<key>FacebookAutoLogAppEventsEnabled</key>
 	<false/>
 	<key>FacebookAdvertiserIDCollectionEnabled</key>

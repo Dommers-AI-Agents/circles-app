@@ -21,16 +21,18 @@ class EmailLoginViewController: BaseViewController {
         textField.autocorrectionType = .no
         textField.keyboardType = .emailAddress
         textField.returnKeyType = .next
+        textField.textContentType = .emailAddress // Enable AutoFill
         textField.translatesAutoresizingMaskIntoConstraints = false
         return textField
     }()
-    
+
     private let passwordTextField: UITextField = {
         let textField = UITextField()
         textField.placeholder = "Password"
         textField.borderStyle = .roundedRect
         textField.isSecureTextEntry = true
         textField.returnKeyType = .done
+        textField.textContentType = .password // Enable AutoFill
         textField.translatesAutoresizingMaskIntoConstraints = false
         return textField
     }()
@@ -205,16 +207,22 @@ class EmailLoginViewController: BaseViewController {
                     print("Successfully logged in user: \(user.displayName)")
                     AnalyticsService.shared.trackLogin(method: "email")
                     self?.saveEmail(email)
-                    
+
                     // Save credentials if remember me is checked
                     if self?.rememberMeCheckbox.isSelected == true {
                         KeychainManager.shared.saveCredentials(email: email, password: password)
                     } else {
                         KeychainManager.shared.deleteCredentials()
                     }
-                    
+
+                    // Offer biometric login if available and not already enabled
+                    if BiometricAuthService.shared.isBiometricAvailable &&
+                       !BiometricAuthService.shared.isBiometricLoginEnabled {
+                        self?.offerBiometricLogin(email: email, password: password)
+                    }
+
                     // Authentication state listener in SceneDelegate will handle UI update
-                    
+
                 case .failure(let error):
                     if let authError = error as? AuthError, authError == .emailNotVerified {
                         self?.showEmailVerificationAlert(email: email)
@@ -261,6 +269,8 @@ class EmailLoginViewController: BaseViewController {
             if let savedEmail = UserDefaults.standard.string(forKey: savedEmailKey) {
                 emailTextField.text = savedEmail
             }
+            // Default to remembering credentials so users stay logged in
+            rememberMeCheckbox.isSelected = true
         }
     }
     
@@ -281,6 +291,24 @@ class EmailLoginViewController: BaseViewController {
             title: "Check Your Email",
             message: "A verification email was sent when you registered. Please check your inbox and spam folder for the verification link.",
             from: self
+        )
+    }
+
+    private func offerBiometricLogin(email: String, password: String) {
+        let biometricType = BiometricAuthService.shared.biometricType()
+
+        AlertPresenter.showConfirmation(
+            title: "Enable \(biometricType.displayName)?",
+            message: "Sign in faster next time using \(biometricType.displayName) instead of typing your password.",
+            confirmTitle: "Enable",
+            cancelTitle: "Not Now",
+            from: self,
+            onConfirm: {
+                // Save credentials with biometric protection
+                KeychainManager.shared.saveCredentialsWithBiometric(email: email, password: password)
+                BiometricAuthService.shared.enableBiometricLogin()
+                print("🔐 Biometric login enabled for user")
+            }
         )
     }
 }

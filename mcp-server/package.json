@@ -1,0 +1,23 @@
+{
+  "name": "favcircles-mcp-server",
+  "version": "0.4.0",
+  "description": "MCP server exposing FavCircles circles and places (Phase 1: local stdio)",
+  "type": "module",
+  "private": true,
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "smoke": "node scripts/smoke-test.cjs",
+    "test:auth": "node scripts/auth-test.cjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "jose": "^6.2.3",
+    "zod": "^3.25.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}

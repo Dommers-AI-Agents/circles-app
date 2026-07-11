@@ -31,6 +31,9 @@ class PreloadManager {
     
     // Cache properties
     private let cacheExpiryInterval: TimeInterval = 900 // 15 minutes (reduced from 5)
+    // Window in which stale cached data may still paint the UI at launch;
+    // the home screen refetches immediately, so this only bounds the first frame.
+    private let staleCacheMaxAge: TimeInterval = 7 * 24 * 3600 // 7 days
     private var cacheKey: String {
         guard let userId = AuthService.shared.getUserId() else {
             return "PreloadedDataCache_Unknown"
@@ -118,11 +121,21 @@ class PreloadManager {
                 case .failure(let error):
                     print("❌ PreloadManager: Token refresh failed: \(error)")
                     self.isPreloading = false
-                    let refreshError = NSError(domain: "PreloadManager", code: -3, userInfo: [
-                        NSLocalizedDescriptionKey: "Your session has expired. Please log in again.",
-                        NSUnderlyingErrorKey: error
-                    ])
-                    completion(.failure(refreshError))
+                    if AuthService.isDefinitiveAuthFailure(error) {
+                        // Server rejected the token - session is genuinely dead
+                        let refreshError = NSError(domain: "PreloadManager", code: -3, userInfo: [
+                            NSLocalizedDescriptionKey: "Your session has expired. Please log in again.",
+                            NSUnderlyingErrorKey: error
+                        ])
+                        completion(.failure(refreshError))
+                    } else {
+                        // Transient failure (network/server): the token may still be valid
+                        // server-side (client-side expiry uses a conservative fallback).
+                        // Proceed optimistically; if the token is truly dead, individual
+                        // requests will 401 and the APIService handler takes over.
+                        print("⚠️ PreloadManager: Transient refresh failure, proceeding with existing token")
+                        self.performPreloadAfterTokenRefresh(progressHandler: progressHandler, completion: completion)
+                    }
                 }
             }
             return
@@ -132,8 +145,42 @@ class PreloadManager {
         continuePreloadProcess(progressHandler: progressHandler, completion: completion)
     }
     
-    func getPreloadedData() -> PreloadedData? {
-        return preloadedData
+    /// Memory-or-disk cached data for instant launch. Never hits the network.
+    /// allowStale widens the acceptance window to staleCacheMaxAge - callers using
+    /// it must refresh in the background (the home screen refetches on appear).
+    func getCachedData(allowStale: Bool = false) -> PreloadedData? {
+        if let data = preloadedData {
+            return data
+        }
+        if let disk = loadFromCache(maxAge: allowStale ? staleCacheMaxAge : nil) {
+            preloadedData = disk
+            return disk
+        }
+        return nil
+    }
+
+    /// Re-runs the preload pipeline silently, bypassing the cache-hit early return,
+    /// to rewrite the memory + disk cache for the next launch. No UI is updated -
+    /// the home screen fetches its own fresh content on appear. Failures are
+    /// silent: a definitive 401 already routes through APIService's token handling.
+    func refreshInBackground() {
+        guard !isPreloading else {
+            print("🔄 PreloadManager: Already preloading, skipping background refresh")
+            return
+        }
+        print("🔄 PreloadManager: Starting silent background refresh")
+        isPreloading = true
+        completedTasks = 0
+        taskErrors.removeAll()
+        taskCompletionTimes.removeAll()
+        retryAttempts.removeAll()
+        continuePreloadProcess(progressHandler: { _, _ in }) { result in
+            if case .success = result {
+                print("✅ PreloadManager: Background refresh complete, cache updated")
+            } else {
+                print("⚠️ PreloadManager: Background refresh failed (silent)")
+            }
+        }
     }
     
     func clearPreloadedData() {
@@ -170,12 +217,19 @@ class PreloadManager {
         }
     }
     
-    private func loadFromCache() -> PreloadedData? {
+    private func loadFromCache(maxAge: TimeInterval? = nil) -> PreloadedData? {
         // Check cache timestamp
-        guard let timestamp = UserDefaults.standard.object(forKey: cacheTimestampKey) as? Date,
-              Date().timeIntervalSince(timestamp) < cacheExpiryInterval else {
-            print("⏰ PreloadManager: Cache expired or not found")
-            clearCache()
+        guard let timestamp = UserDefaults.standard.object(forKey: cacheTimestampKey) as? Date else {
+            print("📭 PreloadManager: No cache timestamp found")
+            return nil
+        }
+        let age = Date().timeIntervalSince(timestamp)
+        guard age < (maxAge ?? cacheExpiryInterval) else {
+            print("⏰ PreloadManager: Cache expired (age: \(Int(age))s)")
+            // Only physically delete once the data is too old even for stale display
+            if age >= staleCacheMaxAge {
+                clearCache()
+            }
             return nil
         }
         
@@ -221,28 +275,15 @@ class PreloadManager {
         print("🗑️ PreloadManager: Cleared cache for user \(AuthService.shared.getUserId() ?? "Unknown")")
     }
     
+    /// True when the disk cache is within the freshness window - used at launch
+    /// to decide whether a background cache refresh is worth the network traffic.
     func isCacheValid() -> Bool {
         guard let timestamp = UserDefaults.standard.object(forKey: cacheTimestampKey) as? Date else {
             return false
         }
         return Date().timeIntervalSince(timestamp) < cacheExpiryInterval
     }
-    
-    func refreshCacheIfNeeded(progressHandler: @escaping (Double, String) -> Void,
-                             completion: @escaping (Result<PreloadedData, Error>) -> Void) {
-        // If cache is still valid, use it
-        if isCacheValid(), let cachedData = preloadedData {
-            print("✅ PreloadManager: Cache still valid, using existing data")
-            completion(.success(cachedData))
-            return
-        }
-        
-        // Otherwise, reload data
-        print("🔄 PreloadManager: Cache expired or not available, reloading data")
-        clearPreloadedData()
-        preloadAllData(progressHandler: progressHandler, completion: completion)
-    }
-    
+
     // MARK: - Private Methods
     
     private func performPreloadAfterTokenRefresh(progressHandler: @escaping (Double, String) -> Void,
@@ -277,12 +318,15 @@ class PreloadManager {
         
         // Create dispatch group for parallel loading
         let loadGroup = DispatchGroup()
+        // Critical subset: user + circles. The splash only truly blocks on these;
+        // everything else gets a short grace period and the home screen fetches
+        // whatever is missing on demand.
+        let criticalGroup = DispatchGroup()
         
         // Variables to store loaded data
         var loadedUser: User?
         var loadedCircles: [Circle] = []
         var loadedNetworkCircles: [Circle] = []
-        var loadedPlaces: [Place] = []
         var loadedConnections: [Connection] = []
         var loadedActivities: [Activity] = []
         var loadedMoments: [PlaceVideo] = []
@@ -290,34 +334,70 @@ class PreloadManager {
         var pendingCount = 0
         
         var loadError: Error?
-        
-        // Add timeout protection - 45 seconds (extended to handle slow networks)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 45) { [weak self] in
+        var didFinish = false
+
+        // Single completion funnel: first caller wins (full completion, critical-
+        // group grace period, or timeout), later callers are no-ops.
+        func finishPreload() {
+            guard !didFinish else { return }
+            didFinish = true
+
+            if let error = loadError {
+                self.isPreloading = false
+                print("❌ PreloadManager: Preload failed with error: \(error)")
+                self.logDetailedErrorInfo()
+                completion(.failure(error))
+                return
+            }
+
+            // Places are intentionally NOT loaded here: the home screen discards
+            // preloaded places and refetches them itself, so blocking the splash
+            // on the heaviest network call was pure waste.
+            self.completePreload(
+                user: loadedUser,
+                circles: loadedCircles,
+                networkCircles: loadedNetworkCircles,
+                places: [],
+                connections: loadedConnections,
+                unreadCount: unreadCount,
+                pendingCount: pendingCount,
+                activities: loadedActivities,
+                moments: loadedMoments,
+                completion: completion
+            )
+        }
+
+        // Timeout protection - 30 seconds (only guards the critical user+circles wave)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
             guard let self = self else { return }
-            guard self.isPreloading else { return }
-            
-            print("⏰ PreloadManager: Loading timeout reached (45 seconds)")
+            guard !didFinish else { return }
+
+            print("⏰ PreloadManager: Loading timeout reached (30 seconds)")
             self.logDetailedErrorInfo()
-            
+
+            didFinish = true
             self.isPreloading = false
             let error = NSError(domain: "PreloadManager", code: -1, userInfo: [
                 NSLocalizedDescriptionKey: "Loading is taking longer than expected. This may be due to a slow network connection."
             ])
             completion(.failure(error))
         }
-        
-        // [Rest of the preload logic goes here - copy from original preloadAllData method]
-        // 1. Load User Profile (with retry)
+
+        // 1. Load User Profile (with retry) - critical
         loadGroup.enter()
+        criticalGroup.enter()
         let userStartTime = Date()
-        
+
         retryTask(taskName: "user", operation: { completion in
             AuthService.shared.fetchCurrentUser(completion: completion)
         }) { [weak self] result in
-            defer { loadGroup.leave() }
+            defer {
+                loadGroup.leave()
+                criticalGroup.leave()
+            }
             let duration = Date().timeIntervalSince(userStartTime)
             self?.taskCompletionTimes["user"] = Date()
-            
+
             switch result {
             case .success(let user):
                 loadedUser = user
@@ -329,18 +409,22 @@ class PreloadManager {
                 print("❌ PreloadManager: Failed to load user profile: \(error.localizedDescription)")
             }
         }
-        
-        // 2. Load Circles (with retry)
+
+        // 2. Load Circles (with retry) - critical
         loadGroup.enter()
+        criticalGroup.enter()
         let circlesStartTime = Date()
-        
+
         retryTask(taskName: "circles", operation: { completion in
             CircleService.shared.fetchUserCircles(completion: completion)
         }) { [weak self] result in
-            defer { loadGroup.leave() }
+            defer {
+                loadGroup.leave()
+                criticalGroup.leave()
+            }
             let duration = Date().timeIntervalSince(circlesStartTime)
             self?.taskCompletionTimes["circles"] = Date()
-            
+
             switch result {
             case .success(let circles):
                 loadedCircles = circles
@@ -416,8 +500,9 @@ class PreloadManager {
                 print("✅ PreloadManager: Loaded \(loadedConnections.count) connections")
             case .failure(let error):
                 self?.taskErrors["connections"] = error
-                loadError = error
-                print("❌ PreloadManager: Failed to load connections")
+                // Non-fatal: the home screen reloads connections on appear
+                // (userListView.refresh()), so don't sink the whole preload.
+                print("⚠️ PreloadManager: Failed to load connections, continuing without them")
             }
         }
         
@@ -501,58 +586,25 @@ class PreloadManager {
             }
         }
         
-        // Wait for initial tasks to complete
-        loadGroup.notify(queue: .main) { [weak self] in
-            guard let self = self else { return }
-            
-            let mainTasksDuration = Date().timeIntervalSince(self.startTime)
-            print("🏁 PreloadManager: Main tasks completed")
-            
-            // Check for errors first
-            if let error = loadError {
-                self.isPreloading = false
-                print("❌ PreloadManager: Preload failed with error: \(error)")
-                self.logDetailedErrorInfo()
-                completion(.failure(error))
+        // Ideal path: everything (including non-critical tasks) finished.
+        loadGroup.notify(queue: .main) {
+            print("🏁 PreloadManager: All tasks completed")
+            finishPreload()
+        }
+
+        // Fast path: once the critical tasks (user + circles) are done, give the
+        // non-critical stragglers a short grace period, then finish with whatever
+        // has arrived. The home screen fetches anything missing on demand.
+        criticalGroup.notify(queue: .main) {
+            if loadError != nil {
+                finishPreload() // fail fast - no point waiting for stragglers
                 return
             }
-            
-            // Now load places based on the circles we got (both user's and network circles)
-            let allCircles = loadedCircles + loadedNetworkCircles
-            if !allCircles.isEmpty {
-                self.progressHandler?(0.9, "Loading places from your circles...")
-                self.fetchAllPlacesFromCircles(circles: allCircles) { places in
-                    loadedPlaces = places
-                    print("✅ PreloadManager: Loaded \(places.count) places from \(allCircles.count) circles")
-                    
-                    // Complete the preload
-                    self.completePreload(
-                        user: loadedUser,
-                        circles: loadedCircles,
-                        networkCircles: loadedNetworkCircles,
-                        places: loadedPlaces,
-                        connections: loadedConnections,
-                        unreadCount: unreadCount,
-                        pendingCount: pendingCount,
-                        activities: loadedActivities,
-                        moments: loadedMoments,
-                        completion: completion
-                    )
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                if !didFinish {
+                    print("⏳ PreloadManager: Grace period elapsed, finishing with partial non-critical data")
                 }
-            } else {
-                // No circles, complete without places
-                self.completePreload(
-                    user: loadedUser,
-                    circles: loadedCircles,
-                    networkCircles: loadedNetworkCircles,
-                    places: loadedPlaces,
-                    connections: loadedConnections,
-                    unreadCount: unreadCount,
-                    pendingCount: pendingCount,
-                    activities: loadedActivities,
-                    moments: loadedMoments,
-                    completion: completion
-                )
+                finishPreload()
             }
         }
     }
@@ -608,78 +660,7 @@ class PreloadManager {
         print("   - Activities: \(activities.count)")
         print("   - Moments: \(moments.count)")
         
-        // Add small delay to ensure UI updates are visible
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            completion(.success(preloadedData))
-        }
-    }
-    
-    private func fetchAllPlacesFromCircles(circles: [Circle], completion: @escaping ([Place]) -> Void) {
-        print("🔍 PreloadManager: Starting to fetch places from \(circles.count) circles")
-        
-        // If no circles or all circles are empty, complete immediately
-        let circlesWithPlaces = circles.filter { circle in
-            let placeCount = circle.placesCount ?? circle.places?.count ?? 0
-            return placeCount > 0
-        }
-        
-        guard !circlesWithPlaces.isEmpty else {
-            print("ℹ️ PreloadManager: No circles with places, completing with empty array")
-            completion([])
-            return
-        }
-        
-        // Use the new batch endpoint to fetch all places in one request
-        let circleIds = circlesWithPlaces.map { $0.id }
-        print("🚀 PreloadManager: Using batch endpoint to fetch places from \(circleIds.count) circles")
-        
-        let startTime = Date()
-        PlaceService.shared.fetchPlacesByMultipleCircles(circleIds: circleIds) { result in
-            let duration = Date().timeIntervalSince(startTime)
-            
-            switch result {
-            case .success(let places):
-                print("✅ PreloadManager: Loaded \(places.count) places")
-                completion(places)
-            case .failure(let error):
-                print("❌ PreloadManager: Failed to batch fetch places: \(error)")
-                // Fallback to sequential loading
-                print("⚠️ PreloadManager: Falling back to sequential place loading")
-                self.fallbackSequentialPlaceLoading(circles: circlesWithPlaces, completion: completion)
-            }
-        }
-    }
-    
-    private func fallbackSequentialPlaceLoading(circles: [Circle], completion: @escaping ([Place]) -> Void) {
-        let placeGroup = DispatchGroup()
-        var allPlaces: [Place] = []
-        let placesLock = NSLock()
-        var loadedCount = 0
-        
-        for circle in circles {
-            placeGroup.enter()
-            print("🔄 PreloadManager: Fetching places for circle: \(circle.name)")
-            
-            PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
-                defer { placeGroup.leave() }
-                
-                switch result {
-                case .success(let places):
-                    placesLock.lock()
-                    allPlaces.append(contentsOf: places)
-                    loadedCount += 1
-                    placesLock.unlock()
-                    print("✅ PreloadManager: Loaded \(places.count) places from circle \(circle.name) (\(loadedCount)/\(circles.count))")
-                case .failure(let error):
-                    print("❌ PreloadManager: Failed to fetch places for circle \(circle.name): \(error)")
-                }
-            }
-        }
-        
-        placeGroup.notify(queue: .main) {
-            print("🏁 PreloadManager: Finished loading all places. Total: \(allPlaces.count)")
-            completion(allPlaces)
-        }
+        completion(.success(preloadedData))
     }
     
     // MARK: - Retry Logic Methods

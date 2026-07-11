@@ -121,6 +121,29 @@ router.post('/weekend-recommendations', verifyCloudScheduler, async (req, res) =
 });
 
 // Engagement reminders endpoint (3 PM daily)
+// Reengagement/winback endpoint (weekly) — nudges users inactive 7-14 days
+router.post('/reengagement', verifyCloudScheduler, async (req, res) => {
+  try {
+    console.log('📱 Reengagement notifications triggered via API');
+
+    const result = await scheduledNotifications.sendReengagementNotifications();
+
+    res.json({
+      success: true,
+      message: 'Reengagement notifications sent successfully',
+      result: result,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error in reengagement endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to send reengagement notifications',
+      details: error.message
+    });
+  }
+});
+
 router.post('/engagement-reminders', verifyCloudScheduler, async (req, res) => {
   try {
     console.log('📱 Engagement reminders triggered via API');
@@ -248,6 +271,61 @@ router.post('/special-event/:eventType', verifyCloudScheduler, async (req, res) 
     res.status(500).json({ 
       success: false, 
       error: 'Failed to send special event notifications',
+      details: error.message
+    });
+  }
+});
+
+// Monthly sticker-program report emails to venues (run on the 1st of each month)
+router.post('/send-venue-reports', verifyCloudScheduler, async (req, res) => {
+  try {
+    console.log('🏪 Venue sticker reports triggered via API');
+    const { getFirestore } = require('../config/firebase');
+    const { STICKER_COLLECTIONS } = require('../models/StickerModels');
+    const emailService = require('../services/emailService');
+    const db = getFirestore();
+
+    // Report on the previous calendar month
+    const now = new Date();
+    const prevMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+    const monthKey = prevMonth.toISOString().slice(0, 7);
+
+    const snapshot = await db.collection(STICKER_COLLECTIONS.STICKER_VENUES)
+      .where('active', '==', true)
+      .get();
+
+    let sent = 0;
+    let skipped = 0;
+    const failures = [];
+
+    for (const doc of snapshot.docs) {
+      const venue = { venueId: doc.id, ...doc.data() };
+      if (!venue.contactEmail) {
+        skipped++;
+        continue;
+      }
+      try {
+        const stats = (venue.statsMonthly && venue.statsMonthly[monthKey]) || {};
+        await emailService.sendVenueReportEmail(venue, monthKey, stats);
+        await doc.ref.update({ lastReportSentAt: new Date().toISOString() });
+        sent++;
+      } catch (error) {
+        console.error(`❌ Venue report failed for ${venue.venueName}:`, error.message);
+        failures.push(venue.venueName);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Venue reports for ${monthKey}: ${sent} sent, ${skipped} skipped (no email), ${failures.length} failed`,
+      failures,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error in venue reports endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to send venue reports',
       details: error.message
     });
   }

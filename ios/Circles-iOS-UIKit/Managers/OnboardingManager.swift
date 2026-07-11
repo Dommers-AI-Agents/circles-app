@@ -34,7 +34,7 @@ enum TutorialStep: String, CaseIterable {
         case .createCircle:
             return "Give your circle a unique name like 'Best Coffee Shops' or 'Date Night Spots' and choose a category"
         case .addPlace:
-            return "Add your favorite places to any circle. Search for a place or browse nearby locations"
+            return "Add your favorite places to any circle. Tap a place on the map or use the search bar"
         case .exploreNetwork:
             return "Connect with friends to discover their favorite places and share yours"
         case .privacySettings:
@@ -57,6 +57,8 @@ class OnboardingManager {
     private let hasShownVisitTrackingPermissionKey = "hasShownVisitTrackingPermission"
     private let visitTrackingPermissionResponseKey = "visitTrackingPermissionResponse"
     private let hasShownAddPlaceTutorialKey = "hasShownAddPlaceTutorial"
+    private let hasShownAddPlaceMapHintKey = "hasShownAddPlaceMapHint"
+    private let hasShownConnectionAvatarHintKey = "hasShownConnectionAvatarHint"
     
     // Current tutorial state
     private var completedSteps: Set<String> {
@@ -84,6 +86,8 @@ class OnboardingManager {
         UserDefaults.standard.removeObject(forKey: hasShownVisitTrackingPermissionKey)
         UserDefaults.standard.removeObject(forKey: visitTrackingPermissionResponseKey)
         UserDefaults.standard.removeObject(forKey: hasShownAddPlaceTutorialKey)
+        UserDefaults.standard.removeObject(forKey: hasShownAddPlaceMapHintKey)
+        UserDefaults.standard.removeObject(forKey: hasShownConnectionAvatarHintKey)
         // Ensure the flag returns to default state (true)
         shouldShowSuggestedUsers = true
         Logger.info("Onboarding state reset for new user")
@@ -230,8 +234,8 @@ class OnboardingManager {
         case .addPlace:
             // After adding place, navigate to network tab to show connections
             if let tabBar = viewController.tabBarController {
-                // Switch to Network tab (index 3)
-                tabBar.selectedIndex = 3
+                // Switch to My Network tab (tab order: 0 Home, 1 My Network, 2 Messages, 3 Me)
+                tabBar.selectedIndex = 1
                 
                 // Show network tutorial after tab switch
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -246,8 +250,8 @@ class OnboardingManager {
         case .exploreNetwork:
             // After network exploration, show privacy settings in profile
             if let tabBar = viewController.tabBarController {
-                // Switch to Profile tab (index 4)
-                tabBar.selectedIndex = 4
+                // Switch to Me tab (tab order: 0 Home, 1 My Network, 2 Messages, 3 Me)
+                tabBar.selectedIndex = 3
                 
                 // Show privacy tutorial after tab switch
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
@@ -380,6 +384,33 @@ class OnboardingManager {
     func markAddPlaceTutorialShown() {
         UserDefaults.standard.set(true, forKey: hasShownAddPlaceTutorialKey)
         Logger.info("Add place tutorial marked as shown")
+    }
+
+    /// Check if user should see the "tap the map or search" hint bubble in the Add Place view
+    func shouldShowAddPlaceMapHint() -> Bool {
+        return !UserDefaults.standard.bool(forKey: hasShownAddPlaceMapHintKey)
+    }
+
+    func markAddPlaceMapHintShown() {
+        UserDefaults.standard.set(true, forKey: hasShownAddPlaceMapHintKey)
+        Logger.info("Add place map hint marked as shown")
+    }
+
+    /// Re-arm the one-time Add Place hints so a replayed welcome tour shows them again
+    func resetAddPlaceHints() {
+        UserDefaults.standard.removeObject(forKey: hasShownAddPlaceTutorialKey)
+        UserDefaults.standard.removeObject(forKey: hasShownAddPlaceMapHintKey)
+    }
+
+    /// Check if user should see the tap/long-press hint bubble on the home
+    /// screen's connection avatar row
+    func shouldShowConnectionAvatarHint() -> Bool {
+        return !UserDefaults.standard.bool(forKey: hasShownConnectionAvatarHintKey)
+    }
+
+    func markConnectionAvatarHintShown() {
+        UserDefaults.standard.set(true, forKey: hasShownConnectionAvatarHintKey)
+        Logger.info("Connection avatar hint marked as shown")
     }
     
     // MARK: - Contacts Onboarding

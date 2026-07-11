@@ -1,6 +1,7 @@
 // Backend Background Data Aggregation Service
 const { admin, getFirestore } = require('../config/firebase');
 const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../models/FirestoreModels');
+const { fetchActivitiesByActors } = require('./activityFeedService');
 const db = getFirestore();
 
 class BackgroundAggregationService {
@@ -44,8 +45,7 @@ class BackgroundAggregationService {
                 myCirclesSnapshot,
                 connections1,
                 connections2,
-                currentUserDoc,
-                activitiesSnapshot
+                currentUserDoc
             ] = await Promise.all([
                 // User's circles
                 db.collection(COLLECTIONS.CIRCLES)
@@ -53,28 +53,22 @@ class BackgroundAggregationService {
                     .orderBy('updatedAt', 'desc')
                     .limit(50) // Reasonable limit for background processing
                     .get(),
-                
+
                 // Connections (both directions)
                 db.collection(COLLECTIONS.CONNECTIONS)
                     .where('userId', '==', userId)
                     .where('status', '==', 'accepted')
                     .limit(100) // Limit for performance
                     .get(),
-                
+
                 db.collection(COLLECTIONS.CONNECTIONS)
                     .where('connectedUserId', '==', userId)
                     .where('status', '==', 'accepted')
                     .limit(100) // Limit for performance
                     .get(),
-                
+
                 // User data
-                db.collection(COLLECTIONS.USERS).doc(userId).get(),
-                
-                // Recent activities
-                db.collection(COLLECTIONS.ACTIVITIES)
-                    .orderBy('timestamp', 'desc')
-                    .limit(100) // Get more for filtering
-                    .get()
+                db.collection(COLLECTIONS.USERS).doc(userId).get()
             ]);
 
             // Process connections
@@ -124,12 +118,10 @@ class BackgroundAggregationService {
                 userIdsToFetch.add(circle.owner);
             });
 
-            // Process and filter activities
-            const allActivities = serializeQuerySnapshot(activitiesSnapshot);
+            // Fetch activities scoped to network actors - scales with network
+            // size, not platform activity volume
             const networkUserIds = new Set([...connectedUserIds, userId]);
-            const filteredActivities = allActivities
-                .filter(activity => networkUserIds.has(activity.actorId))
-                .slice(0, 30); // Keep top 30 for background aggregation
+            const filteredActivities = await fetchActivitiesByActors(networkUserIds, 30);
 
             // Add activity actors to fetch list
             filteredActivities.forEach(activity => userIdsToFetch.add(activity.actorId));

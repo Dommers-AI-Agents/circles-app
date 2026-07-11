@@ -91,6 +91,62 @@ gcloud scheduler jobs create http weekend-recommendations \
   --headers="Content-Type=application/json,X-Cloudscheduler=true" \
   --attempt-deadline=180s
 
+# 5. Engagement Reminders - 6:30 PM EST daily (users inactive today)
+echo -e "${GREEN}Creating engagement reminders job...${NC}"
+gcloud scheduler jobs delete engagement-reminders --location=$REGION --quiet 2>/dev/null || true
+gcloud scheduler jobs create http engagement-reminders \
+  --location=$REGION \
+  --schedule="30 18 * * *" \
+  --uri="${SERVICE_URL}/api/tasks/engagement-reminders" \
+  --http-method=POST \
+  --oidc-service-account-email=$SERVICE_ACCOUNT \
+  --time-zone=$TIME_ZONE \
+  --description="Send engagement reminders to users who were not active today" \
+  --headers="Content-Type=application/json,X-Cloudscheduler=true" \
+  --attempt-deadline=180s
+
+# 6. Weekly Summary - Mondays 9:00 AM EST
+echo -e "${GREEN}Creating weekly summary job...${NC}"
+gcloud scheduler jobs delete weekly-summary --location=$REGION --quiet 2>/dev/null || true
+gcloud scheduler jobs create http weekly-summary \
+  --location=$REGION \
+  --schedule="0 9 * * 1" \
+  --uri="${SERVICE_URL}/api/tasks/weekly-summary" \
+  --http-method=POST \
+  --oidc-service-account-email=$SERVICE_ACCOUNT \
+  --time-zone=$TIME_ZONE \
+  --description="Send weekly activity summaries on Monday mornings" \
+  --headers="Content-Type=application/json,X-Cloudscheduler=true" \
+  --attempt-deadline=180s
+
+# 7. Network Growth Alerts - Sundays 11:00 AM EST
+echo -e "${GREEN}Creating network growth job...${NC}"
+gcloud scheduler jobs delete network-growth --location=$REGION --quiet 2>/dev/null || true
+gcloud scheduler jobs create http network-growth \
+  --location=$REGION \
+  --schedule="0 11 * * 0" \
+  --uri="${SERVICE_URL}/api/tasks/network-growth" \
+  --http-method=POST \
+  --oidc-service-account-email=$SERVICE_ACCOUNT \
+  --time-zone=$TIME_ZONE \
+  --description="Send weekly network growth alerts" \
+  --headers="Content-Type=application/json,X-Cloudscheduler=true" \
+  --attempt-deadline=180s
+
+# 8. Reengagement/Winback - Wednesdays 12:00 PM EST (users inactive 7-14 days)
+echo -e "${GREEN}Creating reengagement job...${NC}"
+gcloud scheduler jobs delete reengagement --location=$REGION --quiet 2>/dev/null || true
+gcloud scheduler jobs create http reengagement \
+  --location=$REGION \
+  --schedule="0 12 * * 3" \
+  --uri="${SERVICE_URL}/api/tasks/reengagement" \
+  --http-method=POST \
+  --oidc-service-account-email=$SERVICE_ACCOUNT \
+  --time-zone=$TIME_ZONE \
+  --description="Send winback notifications to users inactive 7-14 days" \
+  --headers="Content-Type=application/json,X-Cloudscheduler=true" \
+  --attempt-deadline=180s
+
 echo -e "${GREEN}✅ All scheduler jobs created successfully!${NC}"
 echo ""
 echo "View all jobs:"

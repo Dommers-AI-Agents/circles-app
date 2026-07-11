@@ -72,7 +72,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     // Hint label
     private let hintLabel: UILabel = {
         let label = UILabel()
-        label.text = "Search for a place, select a category, or tap markers on the map"
+        label.text = "Tap a place on the map or use the search bar to add it"
         label.font = UIFont.systemFont(ofSize: 14, weight: .medium)
         label.textColor = .systemGray
         label.textAlignment = .center
@@ -520,9 +520,29 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     
     // MARK: - Lifecycle
     
-    init(circleId: String) {
+    /// Pass `circles` when the caller already has them in memory (e.g. the home
+    /// screen) to skip the redundant circles/me network fetch.
+    init(circleId: String, circles: [Circle]? = nil) {
         self.selectedCircleId = circleId
+        self.injectedCircles = circles
         super.init(nibName: nil, bundle: nil)
+    }
+
+    private let injectedCircles: [Circle]?
+
+    /// Manual "empty map" tap handling is delayed so a POI/annotation selection
+    /// (which arrives through the map's own gesture handling) can cancel it -
+    /// otherwise the reverse-geocode callback clears the form the selection
+    /// just filled.
+    private var pendingManualMapTap: DispatchWorkItem?
+    /// Dedup guard: feature selection can arrive through both didSelect variants
+    private var lastHandledPOIName: String?
+    private var lastPOISelectionTime: Date?
+
+    /// Per-user UserDefaults key remembering the last circle a place was saved to,
+    /// so the home quick-add button can skip the circle picker.
+    static var lastUsedCircleKey: String {
+        "lastUsedCircleId_\(AuthService.shared.getUserId() ?? "unknown")"
     }
     
     required init?(coder: NSCoder) {
@@ -564,8 +584,12 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         
         // Don't set initial region - wait for user location
         
-        // Load user circles
-        loadUserCircles()
+        // Load user circles - use injected circles when available (no network call)
+        if let injected = injectedCircles, !injected.isEmpty {
+            applyUserCircles(injected)
+        } else {
+            loadUserCircles()
+        }
     }
     
     override func viewDidAppear(_ animated: Bool) {
@@ -575,13 +599,13 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         mapView.setNeedsDisplay()
         
         // Show add place tutorial if needed (only if progressing through tutorial)
-        if OnboardingManager.shared.shouldShowTutorial && 
+        if OnboardingManager.shared.shouldShowTutorial &&
            OnboardingManager.shared.hasCompletedStep(.createCircle) &&
            !OnboardingManager.shared.hasCompletedStep(.addPlace) {
             // Give a slight delay for the UI to settle
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 guard let self = self else { return }
-                
+
                 OnboardingManager.shared.showTutorialStep(
                     .addPlace,
                     targetView: self.searchBar,
@@ -589,9 +613,42 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                     arrowDirection: .top
                 )
             }
+        } else if OnboardingManager.shared.shouldShowAddPlaceMapHint() {
+            // One-time hint bubble for new users explaining how to add a place
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.showAddPlaceMapHintBubble()
+            }
         }
         
         // Check current authorization status
+        checkLocationAuthorizationOnAppear()
+    }
+
+    /// One-time bubble pointing at the search bar (hovering over the map)
+    /// telling new users how to add a place. Marked as shown immediately so
+    /// it only ever appears once.
+    private func showAddPlaceMapHintBubble() {
+        guard OnboardingManager.shared.shouldShowAddPlaceMapHint() else { return }
+        OnboardingManager.shared.markAddPlaceMapHintShown()
+
+        let bubble = BubbleView()
+        bubble.configureHint(
+            title: "Add a Place",
+            description: "Tap a place on the map or use the search bar",
+            arrowDirection: .top
+        )
+        bubble.onNext = { [weak bubble] in
+            bubble?.dismiss {
+                bubble?.removeFromSuperview()
+            }
+        }
+
+        view.addSubview(bubble)
+        bubble.pointTo(searchBar, in: view)
+        bubble.show()
+    }
+
+    private func checkLocationAuthorizationOnAppear() {
         switch locationManager.authorizationStatus {
         case .authorizedWhenInUse, .authorizedAlways:
             // Already authorized, start updating location
@@ -982,24 +1039,66 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     @objc private func handleMapTap(_ gesture: UITapGestureRecognizer) {
         let location = gesture.location(in: mapView)
         let coordinate = mapView.convert(location, toCoordinateFrom: mapView)
-        handleMapTapAtCoordinate(coordinate)
+
+        // Delay the manual-location handling so a POI/annotation selection
+        // triggered by this same tap can cancel it. Without this, the manual
+        // path's reverse geocode wipes the form the POI selection just filled.
+        pendingManualMapTap?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.handleMapTapAtCoordinate(coordinate)
+        }
+        pendingManualMapTap = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: workItem)
     }
     
     private func handleMapTapAtCoordinate(_ coordinate: CLLocationCoordinate2D) {
+        // Tapping the map should select the place at that spot, not drop a bare
+        // pin - find the nearest POI around the tap and treat it as a selection.
+        // Only when nothing is nearby does it fall back to a manual location pin.
+        let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: 100)
+        let search = MKLocalSearch(request: request)
+        search.start { [weak self] response, _ in
+            guard let self = self else { return }
+
+            let tapLocation = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+            let nearest = response?.mapItems.min { a, b in
+                let distanceA = tapLocation.distance(from: CLLocation(latitude: a.placemark.coordinate.latitude,
+                                                                      longitude: a.placemark.coordinate.longitude))
+                let distanceB = tapLocation.distance(from: CLLocation(latitude: b.placemark.coordinate.latitude,
+                                                                      longitude: b.placemark.coordinate.longitude))
+                return distanceA < distanceB
+            }
+
+            DispatchQueue.main.async {
+                if let mapItem = nearest {
+                    print("📍 Map tap selected nearest place: \(mapItem.name ?? "Unknown")")
+                    self.enableManualEntry()
+                    self.fillFormWithMapItem(mapItem)
+                } else {
+                    print("📍 No place found near tap - using manual location")
+                    self.handleManualLocationTap(at: coordinate)
+                }
+            }
+        }
+    }
+
+    /// Fallback when no POI exists near the tapped point: drop a pin and
+    /// reverse geocode the address for manual entry.
+    private func handleManualLocationTap(at coordinate: CLLocationCoordinate2D) {
         // Remove any existing "Selected Location" annotations
         let selectedAnnotations = mapView.annotations.filter { ($0 as? PlaceSearchAnnotation)?.title == "Selected Location" }
         mapView.removeAnnotations(selectedAnnotations)
-        
+
         // Add new annotation
         let annotation = PlaceSearchAnnotation()
         annotation.coordinate = coordinate
         annotation.title = "Selected Location"
         annotation.subtitle = "Tap here to add this place"
         annotation.isTemporary = true
-        
+
         mapView.addAnnotation(annotation)
         annotations.append(annotation)
-        
+
         // Reverse geocode to get address
         let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
         let geocoder = CLGeocoder()
@@ -3362,12 +3461,13 @@ extension AddPlaceViewController: CLLocationManagerDelegate {
         guard let location = locations.last else { return }
         
         userLocation = location
-        
-        // Center map on user location with wider zoom
+
+        // Zoom in close to the user - they're most likely standing at the
+        // place they want to add, and POI labels only render at street-level zoom
         let region = MKCoordinateRegion(
             center: location.coordinate,
-            latitudinalMeters: 2000,
-            longitudinalMeters: 2000
+            latitudinalMeters: 300,
+            longitudinalMeters: 300
         )
         
         // Use dispatch to ensure map renders properly
@@ -3433,12 +3533,12 @@ extension AddPlaceViewController {
         
         let region = MKCoordinateRegion(
             center: location.coordinate,
-            latitudinalMeters: 1000,
-            longitudinalMeters: 1000
+            latitudinalMeters: 300,
+            longitudinalMeters: 300
         )
         mapView.setRegion(region, animated: true)
     }
-    
+
     private func scrollToFormTop() {
         // Calculate the offset to show the form nicely
         let formY = formContainer.frame.origin.y - 20 // Add some padding
@@ -3496,7 +3596,17 @@ extension AddPlaceViewController: MKMapViewDelegate {
         let poiName = featureAnnotation.title ?? "Unknown Place"
         let poiSubtitle = featureAnnotation.subtitle ?? ""
         let coordinate = featureAnnotation.coordinate
-        
+
+        // Dedup: the same selection can arrive via both didSelect variants
+        if lastHandledPOIName == poiName,
+           let lastTime = lastPOISelectionTime,
+           Date().timeIntervalSince(lastTime) < 1.0 {
+            print("🏪 POI selection deduped: \(poiName)")
+            return
+        }
+        lastHandledPOIName = poiName
+        lastPOISelectionTime = Date()
+
         print("🏪 POI selected: \(poiName)")
         print("📍 POI subtitle: \(poiSubtitle)")
         print("📍 POI coordinate: \(coordinate.latitude), \(coordinate.longitude)")
@@ -3672,7 +3782,22 @@ extension AddPlaceViewController: MKMapViewDelegate {
         }
     }
     
+    /// iOS 16+ annotation-based selection callback. Map feature (POI) selections
+    /// can arrive through this variant instead of the view-based one, so both
+    /// forward to the same handler (deduped inside handlePOISelection).
+    @available(iOS 16.0, *)
+    func mapView(_ mapView: MKMapView, didSelect annotation: MKAnnotation) {
+        pendingManualMapTap?.cancel()
+        if let featureAnnotation = annotation as? MKMapFeatureAnnotation {
+            handlePOISelection(featureAnnotation)
+        }
+    }
+
     func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
+        // A selection means this tap wasn't an empty-map tap - stop the manual
+        // handler from wiping the form
+        pendingManualMapTap?.cancel()
+
         // Handle POI selection for iOS 16+
         if #available(iOS 16.0, *) {
             if let featureAnnotation = view.annotation as? MKMapFeatureAnnotation {
@@ -3680,7 +3805,7 @@ extension AddPlaceViewController: MKMapViewDelegate {
                 return
             }
         }
-        
+
         guard let placeAnnotation = view.annotation as? PlaceSearchAnnotation else { return }
         
         // Skip user location and "Selected Location" markers
@@ -4152,34 +4277,25 @@ extension AddPlaceViewController {
 
 extension AddPlaceViewController: UIGestureRecognizerDelegate {
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        // Handle map tap gesture
+        // Handle map tap gesture: always receive it. POI/annotation detection
+        // via hitTest is unreliable (MKMapView is composed of internal subviews),
+        // so instead the manual-tap action is DELAYED and gets cancelled by
+        // didSelect when the same tap selected a POI or annotation.
         if gestureRecognizer is UITapGestureRecognizer && gestureRecognizer.view == mapView {
+            // Still skip taps that land on an existing annotation view - the
+            // map handles those synchronously via selection
             let location = touch.location(in: mapView)
-            
-            // Check if tap is on a POI (iOS 16+)
-            if #available(iOS 16.0, *) {
-                // Check if any subview was hit (which could be a POI marker)
-                if let hitView = mapView.hitTest(location, with: nil), hitView != mapView {
-                    print("🚫 Tap on POI detected, allowing map to handle it")
-                    return false // Let the map handle POI selection
-                }
-            }
-            
-            // Check if tap is on an annotation view
             for annotation in mapView.annotations {
-                if let annotationView = mapView.view(for: annotation) {
+                if mapView.view(for: annotation) != nil {
                     let annotationPoint = mapView.convert(annotation.coordinate, toPointTo: mapView)
                     let annotationRect = CGRect(x: annotationPoint.x - 22, y: annotationPoint.y - 22, width: 44, height: 44)
-                    
                     if annotationRect.contains(location) {
                         print("🚫 Tap on annotation detected, allowing map to handle it")
-                        return false // Let the map handle annotation selection
+                        return false
                     }
                 }
             }
-            
-            print("✅ Tap on empty map area, handling manual location selection")
-            return true // Handle tap for manual location selection
+            return true
         }
         
         // Handle circle dropdown tap
@@ -4456,27 +4572,10 @@ extension AddPlaceViewController {
     private func loadUserCircles() {
         CircleService.shared.fetchUserCircles { [weak self] result in
             guard let self = self else { return }
-            
+
             switch result {
             case .success(let circles):
-                // Sort circles alphabetically for easy finding
-                self.userCircles = circles.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-                
-                // Find and set the current circle
-                if let currentCircle = self.userCircles.first(where: { $0.id == self.selectedCircleId }) {
-                    self.selectedCircle = currentCircle
-                    DispatchQueue.main.async {
-                        self.circleButton.setTitle(currentCircle.name, for: .normal)
-                    }
-                } else if let firstCircle = circles.first {
-                    // Fallback to first circle if the selected one is not found
-                    self.selectedCircle = firstCircle
-                    self.selectedCircleId = firstCircle.id
-                    DispatchQueue.main.async {
-                        self.circleButton.setTitle(firstCircle.name, for: .normal)
-                    }
-                }
-                
+                self.applyUserCircles(circles)
             case .failure(let error):
                 print("❌ Failed to load circles: \(error)")
                 // Still try to show the circle name if we have the ID
@@ -4486,9 +4585,33 @@ extension AddPlaceViewController {
             }
         }
     }
+
+    private func applyUserCircles(_ circles: [Circle]) {
+        // Sort circles alphabetically for easy finding
+        userCircles = circles.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+
+        // Find and set the current circle
+        if let currentCircle = userCircles.first(where: { $0.id == selectedCircleId }) {
+            selectedCircle = currentCircle
+            DispatchQueue.main.async {
+                self.circleButton.setTitle(currentCircle.name, for: .normal)
+            }
+        } else if let firstCircle = circles.first {
+            // Fallback to first circle if the selected one is not found
+            selectedCircle = firstCircle
+            selectedCircleId = firstCircle.id
+            DispatchQueue.main.async {
+                self.circleButton.setTitle(firstCircle.name, for: .normal)
+            }
+        }
+    }
     
     // MARK: - Navigation Helpers
     private func navigateToCircleDetail() {
+        // Reached only after a successful save - remember the circle so the home
+        // quick-add button can skip the circle picker next time
+        UserDefaults.standard.set(selectedCircleId, forKey: Self.lastUsedCircleKey)
+
         // Check if this view controller is being presented modally
         let isModal = self.presentingViewController != nil
         

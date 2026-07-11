@@ -710,15 +710,22 @@ class APIService {
                                 retryCount: retryCount + 1,
                                 completion: completion
                             )
-                        case .failure(let error):
+                        case .failure(let refreshError):
                             if self.logLevel >= .errors {
-                                print("❌ ERROR APIService: Token refresh failed: \(error)")
+                                print("❌ ERROR APIService: Token refresh failed: \(refreshError)")
                             }
-                            // Clear tokens on refresh failure
-                            self.clearTokens()
-                            // Notify AuthService that tokens expired
-                            AuthService.shared.handleTokenExpired()
-                            completion(.failure(.unauthorized))
+                            // Only clear tokens when the refresh endpoint definitively
+                            // rejected the token. A transport/server error means the
+                            // session may still be valid - keep tokens and let the
+                            // caller retry. Single policy shared with SceneDelegate
+                            // and PreloadManager.
+                            if AuthService.isDefinitiveAuthFailure(refreshError) {
+                                self.clearTokens()
+                                AuthService.shared.handleTokenExpired()
+                                completion(.failure(.unauthorized))
+                            } else {
+                                completion(.failure(.requestFailed(refreshError)))
+                            }
                         }
                     }
                     return
@@ -1278,6 +1285,7 @@ class APIService {
 struct RefreshTokenResponse: Decodable {
     let success: Bool
     let token: String?
+    let expiresIn: Int?
 }
 
 // MARK: - Daily Summary Response Types

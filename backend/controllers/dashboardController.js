@@ -3,6 +3,7 @@ const { admin, getFirestore } = require('../config/firebase');
 const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../models/FirestoreModels');
 const backgroundAggregationService = require('../services/backgroundAggregationService');
 const cacheInvalidationService = require('../services/cacheInvalidationService');
+const { fetchActivitiesByActors } = require('../services/activityFeedService');
 const db = getFirestore();
 
 // Helper function to calculate map center from places
@@ -71,34 +72,27 @@ exports.getDashboard = async (req, res, next) => {
       myCirclesSnapshot,
       connections1,
       connections2,
-      currentUserDoc,
-      activitiesSnapshot
+      currentUserDoc
     ] = await Promise.all([
       // User's own circles
       db.collection(COLLECTIONS.CIRCLES)
         .where('userId', '==', userId)
         .orderBy('updatedAt', 'desc')
         .get(),
-      
+
       // Connections (both directions)
       db.collection(COLLECTIONS.CONNECTIONS)
         .where('userId', '==', userId)
         .where('status', '==', 'accepted')
         .get(),
-      
+
       db.collection(COLLECTIONS.CONNECTIONS)
         .where('connectedUserId', '==', userId)
         .where('status', '==', 'accepted')
         .get(),
-      
+
       // Current user data
-      db.collection(COLLECTIONS.USERS).doc(userId).get(),
-      
-      // Recent activities (will filter later)
-      db.collection(COLLECTIONS.ACTIVITIES)
-        .orderBy('timestamp', 'desc')
-        .limit(parseInt(activityLimit) * 3) // Fetch extra to account for filtering
-        .get()
+      db.collection(COLLECTIONS.USERS).doc(userId).get()
     ]);
     
     // Build connected users set
@@ -149,13 +143,12 @@ exports.getDashboard = async (req, res, next) => {
       userIdsToFetch.add(circle.owner);
     });
     
-    // Process and filter activities
-    const allActivities = serializeQuerySnapshot(activitiesSnapshot);
+    // Fetch activities scoped to network actors - scales with network size,
+    // not platform activity volume. Extra fetched for privacy filtering below.
     const networkUserIds = new Set([...connectedUserIds, ...followedUserIds, userId]);
-    
-    // Filter activities to only those from network
-    const filteredActivities = allActivities.filter(activity => 
-      networkUserIds.has(activity.actorId)
+    const filteredActivities = await fetchActivitiesByActors(
+      networkUserIds,
+      parseInt(activityLimit) * 3
     );
     
     // Add activity actors to fetch list
@@ -386,8 +379,7 @@ exports.getHomeScreen = async (req, res, next) => {
     const [
       connections1,
       connections2,
-      currentUserDoc,
-      recentActivitiesSnapshot
+      currentUserDoc
     ] = await Promise.all([
       // Connections (both directions) - essential for user list
       db.collection(COLLECTIONS.CONNECTIONS)
@@ -395,21 +387,15 @@ exports.getHomeScreen = async (req, res, next) => {
         .where('status', '==', 'accepted')
         .limit(25) // Limit for speed
         .get(),
-      
+
       db.collection(COLLECTIONS.CONNECTIONS)
         .where('connectedUserId', '==', userId)
         .where('status', '==', 'accepted')
         .limit(25) // Limit for speed
         .get(),
-      
+
       // Current user data
-      db.collection(COLLECTIONS.USERS).doc(userId).get(),
-      
-      // Only most recent activities for immediate feed
-      db.collection(COLLECTIONS.ACTIVITIES)
-        .orderBy('timestamp', 'desc')
-        .limit(15) // Smaller limit for ultra-fast loading
-        .get()
+      db.collection(COLLECTIONS.USERS).doc(userId).get()
     ]);
     
     // Build connected users set
@@ -460,13 +446,12 @@ exports.getHomeScreen = async (req, res, next) => {
         isOnline: user.lastSeen ? (Date.now() - new Date(user.lastSeen).getTime()) < 300000 : false
       }));
     
-    // Process recent activities (simplified)
-    const allActivities = serializeQuerySnapshot(recentActivitiesSnapshot);
+    // Fetch recent activities scoped to network actors - scales with network
+    // size, not platform activity volume
     const networkUserIds = new Set([...connectedUserIds, userId]);
-    
-    const recentActivities = allActivities
-      .filter(activity => networkUserIds.has(activity.actorId))
-      .slice(0, 10) // Just top 10 for immediate display
+    const networkActivities = await fetchActivitiesByActors(networkUserIds, 10);
+
+    const recentActivities = networkActivities
       .map(activity => {
         // Convert timestamp
         if (activity.timestamp && activity.timestamp._seconds) {

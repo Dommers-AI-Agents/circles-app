@@ -169,7 +169,15 @@ class BubbleView: UIView {
         // Show arrow by default (will be hidden in centerInView if needed)
         arrowView.isHidden = false
     }
-    
+
+    /// Configure as a standalone one-off hint with a single dismiss button
+    /// (no Skip/Next tutorial flow). The dismiss button fires `onNext`.
+    func configureHint(title: String, description: String, buttonTitle: String = "Got it", arrowDirection: ArrowDirection) {
+        configure(title: title, description: description, arrowDirection: arrowDirection)
+        skipButton.isHidden = true
+        nextButton.setTitle(buttonTitle, for: .normal)
+    }
+
     // MARK: - Positioning
     func pointTo(_ targetView: UIView?, in parentView: UIView) {
         // If no target view, center the bubble

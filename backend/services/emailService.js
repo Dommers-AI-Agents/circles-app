@@ -130,7 +130,7 @@ class EmailService {
                   <li>Send messages and suggestions</li>
                 </ul>
                 <p style="text-align: center;">
-                  <a href="${process.env.APP_URL || 'https://circles-app.com'}/connections" class="button">View Request</a>
+                  <a href="${process.env.APP_LINK_BASE || 'https://api.favcircles.com'}/app/open?path=network" class="button">View Request</a>
                 </p>
                 <p>Or open the Circles app on your phone to respond to this request.</p>
               </div>
@@ -187,7 +187,7 @@ class EmailService {
                   <li>Send messages and suggestions</li>
                 </ul>
                 <p style="text-align: center;">
-                  <a href="${process.env.APP_URL || 'https://circles-app.com'}/network" class="button">View Connection</a>
+                  <a href="${process.env.APP_LINK_BASE || 'https://api.favcircles.com'}/app/open?path=network" class="button">View Connection</a>
                 </p>
               </div>
               <div class="footer">
@@ -275,10 +275,60 @@ class EmailService {
     }
   }
 
-  async sendAppInvitation(toEmail, inviterName, recipientName = null) {
+  async sendWelcomeEmail(toEmail, name = null) {
     try {
+      const greeting = name ? `Hi ${name},` : 'Hi there,';
+      const subject = 'Welcome to Circles! 🎉 Here\'s how to get started';
+
+      const htmlContent = `
+        <div style="font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1a202c;">
+          <h1 style="font-size: 22px;">Welcome to Circles! 🎉</h1>
+          <p style="font-size: 15px; line-height: 1.6;">${greeting}</p>
+          <p style="font-size: 15px; line-height: 1.6;">
+            Circles is where you and your friends share the places you actually love —
+            no strangers' reviews, just recommendations from people you trust.
+          </p>
+          <p style="font-size: 15px; line-height: 1.6;"><strong>Two quick things to do first:</strong></p>
+          <ol style="font-size: 15px; line-height: 1.9; padding-left: 20px;">
+            <li><strong>Add a few of your favorite places</strong> — tap "Add Your Places" on the home screen. Your go-to restaurant, coffee spot, anywhere you'd tell a friend about.</li>
+            <li><strong>Find your friends</strong> — the more people you connect with, the more great places show up on your map.</li>
+          </ol>
+          <p style="font-size: 15px; line-height: 1.6;">
+            That's it. Everything else — circles, the map, sharing — builds from there.
+          </p>
+          <p style="font-size: 15px; line-height: 1.6;">— Wesley &amp; the Circles team</p>
+        </div>`;
+
+      const textContent = `Welcome to Circles! 🎉
+
+${greeting}
+
+Circles is where you and your friends share the places you actually love — no strangers' reviews, just recommendations from people you trust.
+
+Two quick things to do first:
+1. Add a few of your favorite places — tap "Add Your Places" on the home screen.
+2. Find your friends — the more people you connect with, the more great places show up on your map.
+
+That's it. Everything else builds from there.
+
+— Wesley & the Circles team`;
+
+      await this.sendEmail({ to: toEmail, subject, html: htmlContent, text: textContent });
+      console.log(`✅ Welcome email sent to ${toEmail}`);
+      return { success: true };
+    } catch (error) {
+      console.error('❌ Error sending welcome email:', error);
+      throw error;
+    }
+  }
+
+  async sendAppInvitation(toEmail, inviterName, recipientName = null, inviteLink = null) {
+    try {
+      // The connect link opens the app and auto-connects when installed,
+      // otherwise it redirects to the App Store
+      const joinUrl = inviteLink || 'https://apps.apple.com/us/app/favcircles/id6746807095';
       const subject = `${inviterName} invited you to join Circles`;
-      
+
       const greeting = recipientName ? `Hi ${recipientName},` : 'Hi there,';
       
       const htmlContent = `
@@ -316,7 +366,7 @@ class EmailService {
                 <p>Join ${inviterName} and start sharing the places you love!</p>
                 
                 <center>
-                  <a href="${process.env.APP_URL || 'https://circles-app.com'}/join?referrer=${encodeURIComponent(inviterName)}" class="button">Join Circles</a>
+                  <a href="${joinUrl}" class="button">Join Circles</a>
                 </center>
                 
                 <p style="margin-top: 20px; font-size: 14px; color: #666;">
@@ -347,7 +397,7 @@ With Circles, you can:
 
 Join ${inviterName} and start sharing the places you love!
 
-Join Circles: ${process.env.APP_URL || 'https://circles-app.com'}/join?referrer=${encodeURIComponent(inviterName)}
+Join Circles: ${joinUrl}
 
 Tired of endless reviews? Trust yourself and your friends. Create a Circle and add your favorite places.
 
@@ -355,7 +405,10 @@ This invitation was sent by ${inviterName} via Circles.
 © ${new Date().getFullYear()} Circles. All rights reserved.
       `;
 
-      await this.sendEmail(toEmail, subject, textContent, htmlContent);
+      // NOTE: sendEmail takes an options object — the old positional call
+      // passed a string, destructured to `to: undefined`, and every email
+      // invitation silently failed
+      await this.sendEmail({ to: toEmail, subject, html: htmlContent, text: textContent });
       
       console.log(`✅ App invitation email sent to ${toEmail} from ${inviterName}`);
       return { success: true, message: 'Invitation email sent successfully' };
@@ -363,6 +416,137 @@ This invitation was sent by ${inviterName} via Circles.
       console.error('❌ Error sending app invitation email:', error);
       throw error;
     }
+  }
+
+  // Branded password reset email, sent from our own SMTP domain instead of
+  // Firebase's default noreply@<project>.firebaseapp.com (which lands in spam)
+  async sendPasswordResetEmail(toEmail, resetLink, displayName = null) {
+    const subject = 'Reset your FavCircles password';
+    const greeting = displayName ? `Hi ${displayName},` : 'Hi,';
+
+    const html = `
+      <div style="font-family:-apple-system,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;padding:20px">
+        <h2 style="color:#3182CE;margin-bottom:8px">Reset your password</h2>
+        <p>${greeting}</p>
+        <p>We received a request to reset the password for your FavCircles account
+        (<strong>${toEmail}</strong>). Tap the button below to choose a new one:</p>
+        <p style="text-align:center;margin:28px 0">
+          <a href="${resetLink}"
+             style="background:#3182CE;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
+            Reset Password
+          </a>
+        </p>
+        <p style="color:#666;font-size:14px">This link expires in 1 hour. After resetting, you can sign in
+        with your email and new password — and if you usually use Google or Apple sign-in, those still
+        work too. It's all the same account.</p>
+        <p style="color:#888;font-size:13px">Didn't request this? You can safely ignore this email —
+        your password won't change.</p>
+        <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
+        <p style="color:#aaa;font-size:12px">FavCircles · Save the places you love</p>
+      </div>`;
+
+    const text = `${greeting}
+
+We received a request to reset the password for your FavCircles account (${toEmail}).
+
+Reset it here (link expires in 1 hour):
+${resetLink}
+
+If you didn't request this, you can safely ignore this email — your password won't change.
+
+FavCircles · Save the places you love`;
+
+    return this.sendEmail({ to: toEmail, subject, html, text });
+  }
+
+  // Sticker QR codes for a newly created venue, sent to the super user for printing
+  async sendStickerQREmail(toEmail, venue, windowQRBuffer, registerQRBuffer) {
+    if (!this.transporter || !this.transporter.sendMail) {
+      throw new Error('Email service not configured');
+    }
+
+    const subject = `Sticker QR codes for ${venue.venueName} — ready to print`;
+    const html = `
+      <div style="font-family:-apple-system,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto">
+        <h2 style="color:#3182CE">QR codes for ${venue.venueName}</h2>
+        <p>Both codes are attached at print resolution (1200px ≈ 4in at 300dpi).</p>
+        <table style="border-collapse:collapse;width:100%;background:#fafafa;border-radius:8px">
+          <tr>
+            <td style="padding:10px 16px;border-bottom:1px solid #eee"><strong>Window sticker</strong><br>
+            Goes in the front window. Code: <code>${venue.windowCode}</code></td>
+          </tr>
+          <tr>
+            <td style="padding:10px 16px"><strong>Register card</strong><br>
+            Stays behind the counter, shown with a purchase. Code: <code>${venue.registerCode}</code></td>
+          </tr>
+        </table>
+        <p style="margin-top:16px"><strong>Print tips:</strong> keep the white margin around each QR,
+        print at least 1.5×1.5 in, use weatherproof vinyl for the window (front-adhesive for
+        inside-glass mounting) and a laminated card for the register.</p>
+        <p style="color:#888;font-size:13px">Verify on-site before leaving: scan the window QR with the
+        iPhone Camera, and the register QR from a logged-in account.</p>
+      </div>`;
+
+    const mailOptions = {
+      from: `"${this.fromName}" <${this.fromAddress}>`,
+      to: toEmail,
+      subject,
+      html,
+      text: `QR codes for ${venue.venueName}. Window code: ${venue.windowCode}. Register code: ${venue.registerCode}. Print-resolution PNGs attached.`,
+      attachments: [
+        { filename: `window-${venue.windowCode}.png`, content: windowQRBuffer },
+        { filename: `register-${venue.registerCode}.png`, content: registerQRBuffer }
+      ]
+    };
+
+    const result = await this.transporter.sendMail(mailOptions);
+    console.log(`✅ Sticker QR email sent to ${toEmail} for ${venue.venueName}`);
+    return { success: true, messageId: result.messageId };
+  }
+
+  // Monthly performance report for a sticker-program venue
+  async sendVenueReportEmail(venue, monthKey, stats) {
+    const safeStats = {
+      scans: stats?.scans || 0,
+      signups: stats?.signups || 0,
+      saves: stats?.saves || 0,
+      visits: stats?.visits || 0,
+      redemptions: stats?.redemptions || 0
+    };
+
+    const subject = `Your FavCircles sticker results for ${monthKey} — ${venue.venueName}`;
+
+    const row = (label, value) => `
+      <tr>
+        <td style="padding:10px 16px;border-bottom:1px solid #eee;color:#444">${label}</td>
+        <td style="padding:10px 16px;border-bottom:1px solid #eee;text-align:right;font-weight:600;color:#111">${value}</td>
+      </tr>`;
+
+    const html = `
+      <div style="font-family:-apple-system,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto">
+        <h2 style="color:#3182CE">FavCircles Sticker Report — ${monthKey}</h2>
+        <p>Hi${venue.contactName ? ' ' + venue.contactName : ''},</p>
+        <p>Here's how the FavCircles sticker at <strong>${venue.venueName}</strong> performed last month:</p>
+        <table style="border-collapse:collapse;width:100%;background:#fafafa;border-radius:8px">
+          ${row('QR scans', safeStats.scans)}
+          ${row('New app signups from your sticker', safeStats.signups)}
+          ${row('People who saved your place', safeStats.saves)}
+          ${row('Verified repeat visits', safeStats.visits)}
+          ${row('Rewards redeemed at your counter', safeStats.redemptions)}
+        </table>
+        <p style="margin-top:16px">Every save means a customer who won't forget you — and every reward
+        redemption is a customer who came back. Thanks for being part of FavCircles!</p>
+        <p style="color:#888;font-size:13px">Questions or want to change your offers? Just reply to this email.</p>
+      </div>`;
+
+    const text = `FavCircles Sticker Report ${monthKey} — ${venue.venueName}
+QR scans: ${safeStats.scans}
+New signups: ${safeStats.signups}
+Place saves: ${safeStats.saves}
+Verified repeat visits: ${safeStats.visits}
+Rewards redeemed: ${safeStats.redemptions}`;
+
+    return this.sendEmail({ to: venue.contactEmail, subject, html, text });
   }
 
   // Generic email sending method

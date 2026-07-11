@@ -4,6 +4,7 @@
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS, createCircle, createPlace } = require('../models/FirestoreModels');
 const { DEFAULT_CIRCLES, getRandomLocalPlace } = require('../data/popularPlaces');
+const PlaceDiscoveryService = require('./placeDiscoveryService');
 
 const db = getFirestore();
 
@@ -36,6 +37,20 @@ class OnboardingService {
         };
       }
       
+      // Resolve the sample place BEFORE the transaction (network calls are not
+      // allowed mid-transaction). Prefer a real place near the user's zipcode
+      // so the sample is something they recognize; fall back to curated lists.
+      const userCity = (userData.location || '').split(',')[0].trim() || userLocation?.city || null;
+      let resolvedSamplePlace = await PlaceDiscoveryService.findNearbyPlace({
+        zipcode: userData.zipcode || userLocation?.zipcode,
+        coordinates: userData.lastKnownLocation || userLocation?.coordinates,
+        city: userCity
+      });
+      if (!resolvedSamplePlace) {
+        resolvedSamplePlace = getRandomLocalPlace(userCity ? { city: userCity } : userLocation);
+        console.log(`📍 Onboarding: Using curated fallback place "${resolvedSamplePlace.name}"`);
+      }
+
       // Create default circles and sample place in a transaction
       console.log(`🔄 Starting transaction for user ${userId}`);
       const result = await db.runTransaction(async (transaction) => {
@@ -67,20 +82,24 @@ class OnboardingService {
         if (favoriteLocalSpotsIndex !== -1) {
           const favoriteCircleId = circleIds[favoriteLocalSpotsIndex];
           
-          // Get a random local place
-          samplePlaceData = getRandomLocalPlace(userLocation);
-          
+          // Use the place resolved before the transaction (nearby search or
+          // curated fallback)
+          samplePlaceData = resolvedSamplePlace;
+
           // Create sample place
           const placeRef = db.collection(COLLECTIONS.PLACES).doc();
           const placeData = createPlace({
             name: samplePlaceData.name,
             description: samplePlaceData.description,
-            address: samplePlaceData.address || "Local area",
+            address: samplePlaceData.address || "Belmar, NJ",
             location: {
-              coordinates: samplePlaceData.coordinates || [0, 0]
+              // Fallback: Starbucks, 1799 River Rd, Belmar, NJ ([lng, lat])
+              coordinates: samplePlaceData.coordinates || [-74.0407, 40.1771]
             },
             category: samplePlaceData.category || "restaurant",
             website: samplePlaceData.website || null,
+            rating: samplePlaceData.rating || null,
+            googlePlaceId: samplePlaceData.googlePlaceId || null,
             notes: "Added during onboarding - feel free to edit or remove!"
           }, favoriteCircleId, userId);
           
@@ -181,16 +200,18 @@ class OnboardingService {
       // Add a few more sample places to "Want to Try"
       const additionalPlaces = [
         {
-          name: "Local Coffee Shop",
+          name: "Playa Bowls",
           category: "cafe",
-          description: "Cozy neighborhood coffee spot",
-          address: "Your area"
+          description: "Acai bowls and smoothies - the original location",
+          address: "806 Main St, Belmar, NJ 07719",
+          coordinates: [-74.0256, 40.1802]
         },
         {
-          name: "New Restaurant",
-          category: "restaurant", 
-          description: "Trending spot everyone's talking about",
-          address: "Your area"
+          name: "Federico's Pizza & Restaurant",
+          category: "restaurant",
+          description: "Family-owned Jersey Shore pizza spot",
+          address: "700 Main St, Belmar, NJ 07719",
+          coordinates: [-74.0254, 40.1817]
         }
       ];
       
@@ -201,7 +222,7 @@ class OnboardingService {
         const placeRef = db.collection(COLLECTIONS.PLACES).doc();
         const fullPlaceData = createPlace({
           ...placeData,
-          location: { coordinates: [0, 0] },
+          location: { coordinates: placeData.coordinates },
           notes: "Sample place - edit or remove as needed"
         }, wantToTryCircle.id, userId);
         

@@ -2,6 +2,7 @@
 // Firestore collection models and validation
 
 const { getFirestore } = require('../config/firebase');
+const geofire = require('geofire-common');
 
 // Collection names
 const COLLECTIONS = {
@@ -30,7 +31,9 @@ const COLLECTIONS = {
   USER_VIDEO_QUOTAS: 'userVideoQuotas',
   VIDEO_LIKES: 'videoLikes',
   VIDEO_VIEWS: 'videoViews',
-  CIRCLE_GROUPS: 'circleGroups'
+  CIRCLE_GROUPS: 'circleGroups',
+  STICKER_VENUES: 'stickerVenues',
+  REWARD_EVENTS: 'rewardEvents'
 };
 
 // User model structure
@@ -172,9 +175,10 @@ const createPlace = (placeData, circleId, addedBy) => {
   
   // Validate and sanitize location coordinates
   let location = null;
+  let geohash = null;
   if (placeData.location && placeData.location.coordinates) {
     const [longitude, latitude] = placeData.location.coordinates;
-    
+
     // Validate coordinates are within valid ranges
     if (typeof longitude === 'number' && typeof latitude === 'number' &&
         longitude >= -180 && longitude <= 180 &&
@@ -185,16 +189,19 @@ const createPlace = (placeData, circleId, addedBy) => {
         type: 'Point',
         coordinates: [longitude, latitude]
       };
+      // geofire expects [lat, lng]; GeoJSON stores [lng, lat]
+      geohash = geofire.geohashForLocation([latitude, longitude]);
     } else {
       console.warn('⚠️ Invalid coordinates rejected:', { longitude, latitude, placeName: placeData.name });
     }
   }
-  
+
   return {
     name: placeData.name,
     description: placeData.description || null,
     address: placeData.address,
     location: location,
+    geohash: geohash,
     website: placeData.website || null,
     phone: placeData.phone || null,
     googlePlaceId: placeData.googlePlaceId || null,
@@ -218,6 +225,9 @@ const createPlace = (placeData, circleId, addedBy) => {
     addedBy: addedBy,
     privacy: placeData.privacy || 'followCircle', // followCircle, public, myNetwork, private
     addedViaCheckIn: placeData.addedViaCheckIn || false, // Track places created from check-ins
+    importSource: placeData.importSource || null, // 'mapstr', 'google_maps', 'swarm' when imported from another platform
+    sourceExternalId: placeData.sourceExternalId || null, // Stable per-source id (fsq:<venueId>, cid:<hexCid>, pin:<lat>,<lng>, mapstr:<hash>) for re-import idempotency
+    importedAt: placeData.importSource ? now : null,
     deletedAt: null, // Soft delete timestamp
     lastRefreshedAt: placeData.lastRefreshedAt || null, // Last time data was refreshed from Google Places API
     createdAt: now,

@@ -167,8 +167,8 @@ class HelpViewController: BaseViewController {
                 // Reset the onboarding flags temporarily
                 OnboardingManager.shared.enableSuggestedUsersOverlay()
                 
-                // Reset add place tutorial flag
-                UserDefaults.standard.removeObject(forKey: "hasShownAddPlaceTutorial")
+                // Reset add place tutorial + map hint flags so the tour shows them again
+                OnboardingManager.shared.resetAddPlaceHints()
                 
                 // Post notification to trigger the overlays
                 NotificationCenter.default.post(

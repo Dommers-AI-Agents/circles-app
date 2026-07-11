@@ -284,6 +284,9 @@ class PaywallViewController: BaseViewController {
         case .exportData:
             titleLabel.text = "Export Your Data"
             subtitleLabel.text = "Download all your circles and places as a CSV file with Premium"
+        case .importFeature:
+            titleLabel.text = "Import Your Places"
+            subtitleLabel.text = "Bring your saved places over from Google Maps, Mapstr, and Swarm with Premium"
         case .generalUpgrade:
             titleLabel.text = "Unlock Circles Premium"
             subtitleLabel.text = "Get unlimited access to all features"

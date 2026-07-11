@@ -32,7 +32,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Check if there's a deep link to handle
         if let url = connectionOptions.urlContexts.first?.url {
             Logger.debug("SceneDelegate: URL received on launch: \(url.absoluteString)")
-            
+
+            if url.isFileURL {
+                // Export file opened with Circles at cold launch — wait for the
+                // main interface to be installed before presenting the import flow
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                    self?.handleImportFile(url)
+                }
+            } else
             // Check if it's a LinkedIn callback
             if url.scheme == "com.favcircles.circles" && url.absoluteString.contains("linkedin") {
                 Logger.debug("LinkedIn callback detected on app launch")
@@ -45,26 +52,19 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             }
         }
         
-        // Show main interface immediately if user is logged in (faster loading)
+        // Note: the root view controller is installed by the auth state listener below.
+        // addAuthStateListener invokes its listener SYNCHRONOUSLY with the current state
+        // (AuthService.addAuthStateListener), so updateRootViewController runs before
+        // makeKeyAndVisible() - no blank window, and the cache-first fast path applies.
         if AuthService.shared.isLoggedIn {
-            // Check if we have cached data - if so, show main interface immediately
-            if PreloadManager.shared.getPreloadedData() != nil {
-                Logger.debug("Cached data available, showing main interface immediately")
-                let mainTabController = CirclesTabBarController()
-                window?.rootViewController = mainTabController
-            } else {
-                // No cached data, show splash screen
-                let splashVC = SplashScreenViewController()
-                window?.rootViewController = splashVC
-            }
-            
             // Perform token refresh on app launch if user is logged in
             Logger.debug("User is logged in, checking token validity")
-            
+
             // Check if token is expired first
             if AuthService.shared.isTokenExpired() {
-                Logger.info("Token is expired, logging out immediately")
-                AuthService.shared.logout()
+                Logger.info("Token is expired, attempting in-place refresh")
+                // Refresh in place; only a definitive server rejection logs out
+                revalidateExpiredTokenNonDestructively()
             } else if AuthService.shared.shouldRefreshToken() {
                 // Token is not expired but should be refreshed soon
                 Logger.info("Token needs refresh, refreshing...")
@@ -119,7 +119,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             print("📱 SceneDelegate: URL host: \(url.host ?? "nil")")
             print("📱 SceneDelegate: URL path: \(url.path)")
             print("📱 SceneDelegate: URL pathComponents: \(url.pathComponents)")
-            
+
+            // Export files opened with Circles ("Open in" from Mail/Files) —
+            // route into the place import flow
+            if url.isFileURL {
+                handleImportFile(url)
+                return
+            }
+
             // First check if it's a Facebook callback
             if ApplicationDelegate.shared.application(UIApplication.shared, open: url, sourceApplication: nil, annotation: nil) {
                 print("📘 Handled by Facebook SDK")
@@ -156,15 +163,171 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         print("📱 SceneDelegate: URL host: \(url.host ?? "nil")")
         print("📱 SceneDelegate: URL path: \(url.path)")
         
-        // Handle Universal Links from our backend
-        if url.host == "circles-backend-196924649787.us-central1.run.app" {
+        // Handle Universal Links from our backend (branded domain and the
+        // legacy run.app host - old shared links must keep working)
+        let universalLinkHosts = [
+            "api.favcircles.com",
+            "circles-backend-196924649787.us-central1.run.app"
+        ]
+        if let host = url.host, universalLinkHosts.contains(host) {
             handleUniversalLink(url)
         }
     }
     
+    /// Post-launch side effects that must run once the main interface is installed,
+    /// regardless of whether launch went through the splash screen or the cache-first
+    /// fast path: pending deep links, connection invites, onboarding, and tutorial.
+    private func runPostLaunchSideEffects() {
+        handlePendingDeepLink()
+        NetworkManager.shared.processPendingConnectionInvite()
+        redeemPendingStickerCodeIfNeeded()
+
+        if UserDefaults.standard.bool(forKey: "pendingWelcomeCarousel") {
+            // Brand-new signup: welcome carousel first, which chains into the
+            // contacts and notification prompts
+            showWelcomeCarousel()
+        } else if OnboardingManager.shared.shouldShowContactsOnboarding() {
+            showContactsOnboarding()
+        } else if shouldShowNotificationOnboarding() {
+            showNotificationOnboarding()
+        } else {
+            OnboardingManager.shared.checkIfUserNeedsTutorial { needsTutorial in
+                if needsTutorial {
+                    OnboardingManager.shared.startTutorial()
+                    Logger.info("New user detected - starting onboarding tutorial")
+                }
+            }
+        }
+    }
+
+    /// Handles a place-export file opened with Circles (Mapstr GeoJSON from
+    /// Mail, Google Takeout CSV from Files). Copies it out of the inbox and
+    /// presents the import flow.
+    private func handleImportFile(_ url: URL) {
+        guard let tabBarController = window?.rootViewController as? CirclesTabBarController else {
+            print("📥 Import file received before main interface is ready — ignoring")
+            return
+        }
+
+        // Files arriving via "Open in" may be security-scoped; copy to tmp
+        // before the scope closes
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(url.lastPathComponent)
+        try? FileManager.default.removeItem(at: tempURL)
+        do {
+            try FileManager.default.copyItem(at: url, to: tempURL)
+        } catch {
+            print("📥 Failed to copy import file: \(error)")
+            return
+        }
+
+        let source: ImportSource = url.pathExtension.lowercased() == "csv" ? .googleMaps : .mapstr
+
+        var presenter: UIViewController = tabBarController
+        while let presented = presenter.presentedViewController {
+            presenter = presented
+        }
+
+        if !SubscriptionManager.shared.isSubscribed {
+            SubscriptionManager.shared.showPaywall(from: presenter, reason: .importFeature)
+            return
+        }
+
+        let importVC = ImportSourceSelectionViewController()
+        let navController = UINavigationController(rootViewController: importVC)
+        navController.modalPresentationStyle = .fullScreen
+        presenter.present(navController, animated: true) {
+            importVC.importFiles(at: [tempURL], source: source)
+        }
+    }
+
+    /// Shows the five-page welcome carousel once right after signup, then
+    /// continues the onboarding chain (contacts → notifications → tutorial).
+    private func showWelcomeCarousel() {
+        guard let tabBarController = window?.rootViewController as? CirclesTabBarController else { return }
+        UserDefaults.standard.set(false, forKey: "pendingWelcomeCarousel")
+
+        let welcomeVC = OnboardingViewController()
+        welcomeVC.modalPresentationStyle = .fullScreen
+        welcomeVC.onCompletion = { [weak self] in
+            guard let self = self else { return }
+            if OnboardingManager.shared.shouldShowContactsOnboarding() {
+                self.showContactsOnboarding()
+            } else {
+                self.continueOnboardingAfterContacts()
+            }
+        }
+        tabBarController.present(welcomeVC, animated: true)
+        Logger.info("Showing welcome carousel for new user")
+    }
+
+    /// Builds the tab bar, injects preloaded data into the home screen, installs it
+    /// as the window root (with an optional cross-dissolve), then runs post-launch
+    /// side effects.
+    private func installMainInterface(with data: PreloadedData?, transitionDuration: TimeInterval) {
+        let mainTabController = CirclesTabBarController()
+
+        if let data = data,
+           let navController = mainTabController.viewControllers?.first as? UINavigationController,
+           let circlesVC = navController.topViewController as? CirclesHomeViewController {
+            circlesVC.setPreloadedData(data)
+        }
+
+        if transitionDuration > 0, window?.rootViewController != nil {
+            UIView.transition(with: window!, duration: transitionDuration, options: .transitionCrossDissolve, animations: {
+                self.window?.rootViewController = mainTabController
+            }, completion: { _ in
+                self.runPostLaunchSideEffects()
+            })
+        } else {
+            window?.rootViewController = mainTabController
+            DispatchQueue.main.async {
+                self.runPostLaunchSideEffects()
+            }
+        }
+    }
+
+    /// Tries to refresh an expired token in place. Logs out ONLY when the server
+    /// definitively rejects the token; transient network failures keep the session
+    /// so the user isn't kicked to the login screen over a connectivity blip.
+    private func revalidateExpiredTokenNonDestructively() {
+        AuthService.shared.refreshToken { [weak self] result in
+            if case .failure(let error) = result {
+                if AuthService.isDefinitiveAuthFailure(error) {
+                    Logger.info("Token definitively rejected, starting re-auth flow")
+                    DispatchQueue.main.async { self?.handleAutoLogoutAndReauth() }
+                } else {
+                    Logger.warning("Transient token refresh failure, keeping session: \(error)")
+                    // API-level 401 handling covers the case where the token is truly dead
+                }
+            }
+        }
+    }
+
     private func updateRootViewController(isLoggedIn: Bool) {
         if isLoggedIn {
-            // Show splash screen with preloading
+            // Cache-first fast path: if we have cached data (even stale, up to 7 days),
+            // install the home screen immediately and refresh silently in the background.
+            // The home screen refetches places/connections on appear, so stale content
+            // is visible for roughly one network round trip.
+            if let cached = PreloadManager.shared.getCachedData(allowStale: true) {
+                Logger.info("Cache-first launch: installing home immediately")
+                installMainInterface(with: cached, transitionDuration: window?.rootViewController == nil ? 0 : 0.3)
+                // The home screen refetches its own content on appear. Rewrite the
+                // launch cache only when it has gone stale - a fresh cache makes a
+                // background re-run pure duplicate traffic (the requests fire well
+                // outside APIService's short GET-dedup window).
+                if !PreloadManager.shared.isCacheValid() {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                        PreloadManager.shared.refreshInBackground()
+                    }
+                }
+                return
+            }
+
+            // No usable cache: show splash screen with preloading
             let splashVC = SplashScreenViewController()
             
             // Animate transition if there's an existing view controller
@@ -176,34 +339,38 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 window?.rootViewController = splashVC
             }
             
-            // Add failsafe timeout for splash screen - reduced to 10 seconds
+            // Failsafe watchdog: only fires if the preload completion never runs at all.
+            // PreloadManager surfaces its own 45s timeout through the failure branch below,
+            // so this deadline must stay above that to avoid racing a slow-but-successful load.
             var hasCompleted = false
-            DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self, weak splashVC] in
+            let timeoutWorkItem = DispatchWorkItem { [weak self, weak splashVC] in
                 guard let self = self, let splashVC = splashVC else { return }
                 guard !hasCompleted else { return } // Already completed normally
-                
-                print("⏰ SceneDelegate: Splash screen timeout reached (10 seconds)")
-                
-                // Show error with retry option
+
+                print("⏰ SceneDelegate: Splash screen timeout reached (60 seconds)")
+
+                // Show error with retry option. A timeout is never an auth failure,
+                // so this always offers Retry - the user decides when to give up.
                 let alert = UIAlertController(
                     title: "Loading Timeout",
                     message: "The app is taking longer than expected to load. This might be due to network issues.",
                     preferredStyle: .alert
                 )
-                
+
                 alert.addAction(UIAlertAction(title: "Retry", style: .default) { _ in
                     print("🔄 User chose to retry from splash screen timeout")
                     self.updateRootViewController(isLoggedIn: true)
                 })
-                
+
                 alert.addAction(UIAlertAction(title: "Logout", style: .destructive) { _ in
                     print("🚪 User chose to logout from splash screen timeout")
                     AuthService.shared.logout()
                 })
-                
+
                 splashVC.present(alert, animated: true)
             }
-            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 60, execute: timeoutWorkItem)
+
             // Start preloading all data
             PreloadManager.shared.preloadAllData(
                 progressHandler: { progress, status in
@@ -212,81 +379,64 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 },
                 completion: { [weak self] result in
                     hasCompleted = true // Mark as completed to prevent timeout handler
+                    timeoutWorkItem.cancel()
                     print("🚦 PreloadManager completion called")
                     switch result {
                     case .success(let preloadedData):
                         // Data loaded successfully, show main interface
                         print("🚦 Success - showing main interface")
                         DispatchQueue.main.async {
-                            guard let self = self else { 
+                            guard let self = self else {
                                 print("❌ Self is nil in completion")
-                                return 
+                                return
                             }
-                            
-                            let mainTabController = CirclesTabBarController()
-                            
-                            // Pass preloaded data to the circles home view controller
-                            if let navController = mainTabController.viewControllers?[0] as? UINavigationController,
-                               let circlesVC = navController.topViewController as? CirclesHomeViewController {
-                                circlesVC.setPreloadedData(preloadedData)
-                            }
-                            
+
+                            // Dismiss any watchdog alert still showing so the transition
+                            // never happens underneath a live modal
+                            splashVC.presentedViewController?.dismiss(animated: false)
+
                             // Complete splash animation and transition
                             splashVC.completeLoading {
-                                UIView.transition(with: self.window!, duration: 0.5, options: .transitionCrossDissolve, animations: {
-                                    self.window?.rootViewController = mainTabController
-                                }, completion: { _ in
-                                    // Check for pending deep links after login
-                                    self.handlePendingDeepLink()
-                                    // Process any pending connection invites
-                                    NetworkManager.shared.processPendingConnectionInvite()
-                                    
-                                    // Check if user is new and should see onboarding
-                                    if OnboardingManager.shared.shouldShowContactsOnboarding() {
-                                        self.showContactsOnboarding()
-                                    } else if self.shouldShowNotificationOnboarding() {
-                                        // Show notification onboarding for users who haven't seen it
-                                        self.showNotificationOnboarding()
-                                    } else {
-                                        // Check if user needs tutorial
-                                        OnboardingManager.shared.checkIfUserNeedsTutorial { needsTutorial in
-                                            if needsTutorial {
-                                                OnboardingManager.shared.startTutorial()
-                                                Logger.info("New user detected - starting onboarding tutorial")
-                                            }
-                                        }
-                                    }
-                                })
+                                self.installMainInterface(with: preloadedData, transitionDuration: 0.5)
                             }
                         }
                         
                     case .failure(let error):
                         // Failed to load data, show error and logout
                         print("Failed to preload data: \(error)")
-                        
-                        // If it's a user not found error, logout immediately
-                        if error is AuthError && (error as! AuthError) == .userNotFound {
-                            AuthService.shared.logout()
+
+                        guard let self = self else { return }
+
+                        // Check if it's a token expiration error or user not found error
+                        let isTokenExpired = (error is AuthError && (error as! AuthError) == .tokenExpired)
+                        let isUserNotFound = (error is AuthError && (error as! AuthError) == .userNotFound)
+
+                        // Check for session expired errors from PreloadManager
+                        var isSessionExpired = false
+                        if let nsError = error as? NSError, nsError.domain == "PreloadManager" {
+                            if nsError.code == -2 || nsError.code == -3 {
+                                isSessionExpired = true
+                            }
+                        }
+
+                        // If token expired or session expired, auto-logout and attempt re-auth
+                        if isTokenExpired || isUserNotFound || isSessionExpired {
+                            print("🚪 SceneDelegate: Token/session expired - auto-logging out and attempting re-auth")
+                            self.handleAutoLogoutAndReauth()
                         } else {
-                            // For other errors, show an alert with more details
-                            DispatchQueue.main.async { [weak self] in
-                                guard let self = self else { return }
-                                
+                            // For other errors, show an alert with retry option.
+                            // Network/timeout failures are never auth failures, so
+                            // Retry stays available indefinitely - no auto-logout.
+                            DispatchQueue.main.async {
+
                                 // Provide more specific error messages
                                 var message = "Unable to load your data. Please try again."
-                                var showRetry = true
-                                
+
                                 if let nsError = error as? NSError {
                                     if nsError.domain == "PreloadManager" {
                                         switch nsError.code {
                                         case -1:
                                             message = "Loading is taking longer than expected. This may be due to a slow network connection."
-                                        case -2:
-                                            message = "You are not logged in. Please log in again."
-                                            showRetry = false
-                                        case -3:
-                                            message = "Your session has expired. Please log in again."
-                                            showRetry = false
                                         default:
                                             message = nsError.localizedDescription
                                         }
@@ -294,23 +444,22 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                                         message = "Network connection error. Please check your internet connection and try again."
                                     }
                                 }
-                                
+
                                 let alert = UIAlertController(
                                     title: "Loading Error",
                                     message: message,
                                     preferredStyle: .alert
                                 )
-                                
-                                if showRetry {
-                                    alert.addAction(UIAlertAction(title: "Retry", style: .default) { _ in
-                                        self.updateRootViewController(isLoggedIn: true)
-                                    })
-                                }
-                                
+
+                                alert.addAction(UIAlertAction(title: "Retry", style: .default) { _ in
+                                    print("🔄 User chose to retry from preload error")
+                                    self.updateRootViewController(isLoggedIn: true)
+                                })
+
                                 alert.addAction(UIAlertAction(title: "Logout", style: .destructive) { _ in
                                     AuthService.shared.logout()
                                 })
-                                
+
                                 splashVC.present(alert, animated: true)
                             }
                         }
@@ -387,6 +536,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         } else if pathComponents.first == "connect" && pathComponents.count >= 2 {
             let userId = pathComponents[1]
             handleConnectionInvite(from: userId)
+        } else if pathComponents.first == "s" && pathComponents.count >= 2 {
+            // Physical sticker QR code: https://<backend>/s/<code>
+            let code = pathComponents[1]
+            handleStickerCode(code)
         }
     }
     
@@ -394,8 +547,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Handle specific paths
         if path == "settings/notifications" {
             navigateToNotificationSettings()
-        } else if path == "network/find-friends" {
-            // Navigate to find friends
+        } else if path == "network" || path == "network/find-friends" {
             guard let tabBarController = window?.rootViewController as? CirclesTabBarController else { return }
             tabBarController.selectedIndex = 1 // Network tab
         } else if path == "add-place" {
@@ -465,6 +617,18 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 }
             }
             
+            // Handle sticker deep links (e.g., circles://sticker?code=AB12CD)
+            // used by the sticker landing page fallback for in-app browsers
+            if url.host == "sticker" {
+                print("📱 SceneDelegate: Detected 'sticker' as host")
+                if let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
+                   let code = urlComponents.queryItems?.first(where: { $0.name == "code" })?.value {
+                    print("📱 SceneDelegate: Found sticker code: \(code)")
+                    self.handleStickerCode(code)
+                    return
+                }
+            }
+
             // Handle daily summary deep link (e.g., circles://daily-summary)
             if url.host == "daily-summary" {
                 print("📱 SceneDelegate: Detected 'daily-summary' deep link")
@@ -517,9 +681,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     let shareId = components[3]
                     self.handleSharedCircle(shareId: shareId)
                 } else if components[1] == "place" && components.count >= 3 {
-                    // Example: circles://place/place_123
+                    // Example: circles://place/place_123?ref=user_456
                     let placeId = components[2]
-                    self.navigateToPlace(placeId: placeId)
+                    let refUserId = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                        .queryItems?.first(where: { $0.name == "ref" })?.value
+                    self.navigateToPlace(placeId: placeId, refUserId: refUserId)
                 } else if components[1] == "user" && components.count >= 3 {
                     // Example: circles://user/user_123
                     let userId = components[2]
@@ -562,19 +728,26 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
     }
     
-    private func navigateToPlace(placeId: String) {
+    private func navigateToPlace(placeId: String, refUserId: String? = nil) {
         guard AuthService.shared.isLoggedIn,
               let tabBarController = window?.rootViewController as? CirclesTabBarController else {
             // Store the deep link target to navigate after login
             UserDefaults.standard.set("place:\(placeId)", forKey: "pendingDeepLink")
             return
         }
-        
+
         // Find place data and navigate
         PlaceService.shared.fetchPlaceById(id: placeId) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let place):
+                    // Remember who shared this place so they earn points if it gets added
+                    if let refUserId = refUserId {
+                        RewardsService.shared.storeShareAttribution(
+                            googlePlaceId: place.googlePlaceId,
+                            refUserId: refUserId
+                        )
+                    }
                     if let navController = tabBarController.selectedViewController as? UINavigationController {
                         let detailVC = PlaceDetailViewController(place: place)
                         navController.pushViewController(detailVC, animated: true)
@@ -837,16 +1010,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             
             // Proactively check and refresh token if needed
             if AuthService.shared.isTokenExpired() {
-                print("🔄 SceneDelegate: Token expired, refreshing proactively on scene activation")
-                AuthService.shared.refreshToken { result in
-                    switch result {
-                    case .success():
-                        print("✅ SceneDelegate: Token refreshed successfully on activation")
-                    case .failure(let error):
-                        print("❌ SceneDelegate: Failed to refresh token on activation: \(error)")
-                        // Don't force logout here, let the user continue and handle errors when they occur
-                    }
-                }
+                print("🔄 SceneDelegate: Token expired, attempting in-place refresh on scene activation")
+                // Refresh in place; only a definitive server rejection logs out
+                revalidateExpiredTokenNonDestructively()
             }
             
             // Ensure push token is registered
@@ -915,9 +1081,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     // Refresh connections list to ensure UI is updated
                     NetworkManager.shared.loadConnections()
                     
-                    // Navigate to the network tab
+                    // Navigate to the My Network tab (tab order: 0 Home, 1 My Network, 2 Messages, 3 Me)
                     if let tabBarController = self?.window?.rootViewController as? CirclesTabBarController {
-                        tabBarController.selectedIndex = 2 // Network tab
+                        tabBarController.selectedIndex = 1 // My Network tab
                         
                         // Show success message
                         let banner = UIView()
@@ -1092,31 +1258,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Create contacts permission view controller
         let contactsPermissionVC = ContactsPermissionViewController()
         
-        // Configure callbacks
+        // Configure callbacks — both paths continue the onboarding chain
+        // (notification prompt, then tutorial) on this same launch
         contactsPermissionVC.configure(
             onPermissionGranted: { [weak self] in
-                // User completed contacts flow
                 Logger.info("User completed contacts onboarding flow")
-                
-                // Check if we should show tutorial
-                OnboardingManager.shared.checkIfUserNeedsTutorial { needsTutorial in
-                    if needsTutorial {
-                        OnboardingManager.shared.startTutorial()
-                        Logger.info("Starting tutorial after contacts onboarding")
-                    }
-                }
+                self?.continueOnboardingAfterContacts()
             },
             onSkip: { [weak self] in
-                // User skipped contacts permission
                 Logger.info("User skipped contacts onboarding")
-                
-                // Check if we should show tutorial
-                OnboardingManager.shared.checkIfUserNeedsTutorial { needsTutorial in
-                    if needsTutorial {
-                        OnboardingManager.shared.startTutorial()
-                        Logger.info("Starting tutorial after skipping contacts")
-                    }
-                }
+                self?.continueOnboardingAfterContacts()
             }
         )
         
@@ -1128,6 +1279,26 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         tabBarController.present(navController, animated: true)
     }
     
+    /// Continues the first-launch onboarding chain after the contacts modal:
+    /// notification prompt next (previously an else-if meant brand-new users
+    /// saw contacts OR notifications, never both), then the tutorial.
+    private func continueOnboardingAfterContacts() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            guard let self = self else { return }
+            if self.shouldShowNotificationOnboarding() {
+                // Its onCompletion callback chains into the tutorial
+                self.showNotificationOnboarding()
+            } else {
+                OnboardingManager.shared.checkIfUserNeedsTutorial { needsTutorial in
+                    if needsTutorial {
+                        OnboardingManager.shared.startTutorial()
+                        Logger.info("Starting tutorial after contacts onboarding")
+                    }
+                }
+            }
+        }
+    }
+
     private func shouldShowNotificationOnboarding() -> Bool {
         // Check if we've already shown notification onboarding
         let hasShownOnboarding = UserDefaults.standard.bool(forKey: "hasShownNotificationOnboarding")
@@ -1289,6 +1460,52 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
     }
     
+    // MARK: - Sticker Code Handling
+
+    private func handleStickerCode(_ code: String) {
+        print("📱 SceneDelegate: handleStickerCode called with code: \(code)")
+
+        // If the user is not logged in, save the code — it's redeemed right
+        // after signup/login via runPostLaunchSideEffects (all auth routes)
+        guard AuthService.shared.isLoggedIn else {
+            print("📱 SceneDelegate: User not logged in, saving sticker code for later")
+            RewardsService.shared.savePendingStickerCode(code)
+
+            let alert = UIAlertController(
+                title: "Rewards Waiting! 🎁",
+                message: "Sign up for FavCircles to save this place and earn reward points you can use on your next visit.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Sign Up", style: .default) { _ in
+                // The auth state listener will handle showing the auth screen
+            })
+            alert.addAction(UIAlertAction(title: "Later", style: .cancel))
+
+            if let topVC = window?.rootViewController {
+                topVC.present(alert, animated: true)
+            }
+            return
+        }
+
+        StickerRewardCoordinator.shared.handleScannedCode(code)
+    }
+
+    /// Redeems a sticker code that was scanned before the user was logged in.
+    /// Runs for every auth route (email + social), unlike the referral replay
+    /// which only covers email signup.
+    private func redeemPendingStickerCodeIfNeeded() {
+        guard AuthService.shared.isLoggedIn,
+              let code = RewardsService.shared.getPendingStickerCode() else { return }
+
+        RewardsService.shared.clearPendingStickerCode()
+        print("📱 SceneDelegate: Redeeming pending sticker code: \(code)")
+
+        // Give the main interface (and any onboarding modals) a moment to settle
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            StickerRewardCoordinator.shared.handleScannedCode(code)
+        }
+    }
+
     // MARK: - Video Deep Link Handling
     
     private func handleVideoDeepLink(videoId: String) {
@@ -1434,19 +1651,274 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             // Show login screen
             let loginVC = LoginViewController()
             loginVC.modalPresentationStyle = .fullScreen
-            
+
             // Find the top view controller
             if let window = self?.window,
                var topController = window.rootViewController {
                 while let presentedViewController = topController.presentedViewController {
                     topController = presentedViewController
                 }
-                
+
                 // Present login
                 topController.present(loginVC, animated: true) {
                     print("💎 Login screen presented for promoted purchase")
                 }
             }
+        }
+    }
+
+    // MARK: - Auto-Logout and Re-authentication
+
+    /// Returns the top-most presented view controller, for presenting alerts
+    private func topViewController() -> UIViewController? {
+        guard var topController = window?.rootViewController else { return nil }
+        while let presented = topController.presentedViewController {
+            topController = presented
+        }
+        return topController
+    }
+
+    /// Handles automatic logout after max retry attempts and attempts to re-authenticate for social auth users
+    private func handleAutoLogoutAndReauth() {
+        print("🔐 SceneDelegate: Handling auto-logout and re-authentication")
+
+        // Get the auth provider before logging out
+        let authProvider = AuthService.shared.getAuthProvider()
+        print("🔐 SceneDelegate: Auth provider: \(authProvider ?? "none")")
+
+        // Show a loading message
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+
+            // Check if we can attempt silent re-authentication
+            if let provider = authProvider, provider == "email" {
+                // For email/password users, check if biometric is enabled
+                if BiometricAuthService.shared.isBiometricLoginEnabled {
+                    print("🔐 SceneDelegate: Email user with biometric enabled - attempting biometric re-auth")
+                    self.attemptEmailBiometricReauth()
+                } else {
+                    // No biometric - try silent re-login with saved credentials
+                    // before falling back to the login screen
+                    print("🔐 SceneDelegate: Email/password user - attempting silent re-login")
+                    self.attemptSilentCredentialReauth()
+                }
+            } else if let provider = authProvider {
+                // For social auth providers, attempt silent re-authentication
+                self.attemptSilentReauth(provider: provider)
+            } else {
+                // No auth provider, just logout
+                print("🔐 SceneDelegate: No auth provider - logging out")
+                AuthService.shared.logout { success in
+                    if success {
+                        print("🔐 SceneDelegate: Logout successful, showing login screen")
+                    }
+                }
+            }
+        }
+    }
+
+    /// Attempts silent re-authentication for social auth providers
+    private func attemptSilentReauth(provider: String) {
+        print("🔐 SceneDelegate: Attempting silent re-authentication for provider: \(provider)")
+
+        // Show a temporary loading message
+        var loadingAlert: UIAlertController?
+        if let topController = topViewController() {
+            loadingAlert = AlertPresenter.showLoading(
+                message: "Please wait while we refresh your session...",
+                from: topController
+            )
+        }
+
+        // Logout first to clear expired session
+        AuthService.shared.logout { [weak self] success in
+            guard let self = self else { return }
+
+            // Dismiss loading alert, then continue (the next step may present
+            // its own alert, so wait for the dismissal to finish)
+            DispatchQueue.main.async {
+                let continueReauth = {
+                    switch provider {
+                    case "google":
+                        self.attemptGoogleReauth()
+                    case "apple":
+                        self.attemptAppleReauth()
+                    case "facebook":
+                        self.attemptFacebookReauth()
+                    default:
+                        print("🔐 SceneDelegate: No silent re-auth available for provider: \(provider)")
+                        // Just show login screen
+                    }
+                }
+                if let loadingAlert = loadingAlert {
+                    loadingAlert.dismiss(animated: true, completion: continueReauth)
+                } else {
+                    continueReauth()
+                }
+            }
+        }
+    }
+
+    /// Attempts to silently re-authenticate with Google
+    private func attemptGoogleReauth() {
+        print("🔐 SceneDelegate: Attempting Google re-authentication")
+
+        // Show a loading indicator
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+
+            var loadingAlert: UIAlertController?
+            if let topController = self.topViewController() {
+                loadingAlert = AlertPresenter.showLoading(
+                    message: "Signing you back in...",
+                    from: topController
+                )
+            }
+
+            SocialAuthService.shared.restoreGoogleSignInSession { [weak self] result in
+                // Dismiss loading alert
+                DispatchQueue.main.async {
+                    let handleResult = {
+                        switch result {
+                        case .success:
+                            print("🔐 SceneDelegate: Google session restored and logged in successfully")
+                            // The session is restored and login was triggered
+                            // The auth state listener will handle showing the main interface
+
+                        case .failure(let error):
+                            print("🔐 SceneDelegate: Google re-auth failed: \(error)")
+                            // Show a message to the user
+                            self?.showReauthFailedMessage()
+                        }
+                    }
+                    if let loadingAlert = loadingAlert {
+                        loadingAlert.dismiss(animated: true, completion: handleResult)
+                    } else {
+                        handleResult()
+                    }
+                }
+            }
+        }
+    }
+
+    /// Attempts to silently re-authenticate with Apple
+    private func attemptAppleReauth() {
+        print("🔐 SceneDelegate: Apple re-auth not implemented - showing login screen")
+        // Apple Sign In doesn't support silent re-authentication
+        // User needs to manually sign in again
+        showReauthFailedMessage()
+    }
+
+    /// Attempts to silently re-authenticate with Facebook
+    private func attemptFacebookReauth() {
+        print("🔐 SceneDelegate: Facebook re-auth not implemented - showing login screen")
+        // Facebook re-auth would need to check if there's an active token
+        // For now, just show login screen
+        showReauthFailedMessage()
+    }
+
+    /// Attempts a silent re-login with credentials saved in the keychain (no biometric required)
+    private func attemptSilentCredentialReauth() {
+        guard let credentials = KeychainManager.shared.retrieveCredentials() else {
+            print("🔐 SceneDelegate: No saved credentials - logging out")
+            AuthService.shared.logout { success in
+                if success {
+                    print("🔐 SceneDelegate: Logout successful, showing login screen")
+                }
+            }
+            return
+        }
+
+        print("🔐 SceneDelegate: Found saved credentials, attempting silent re-login")
+        AuthService.shared.login(email: credentials.email, password: credentials.password) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    print("🔐 SceneDelegate: Silent re-login successful")
+                    // Auth state listener will refresh the UI
+                case .failure(let error):
+                    print("🔐 SceneDelegate: Silent re-login failed: \(error) - logging out")
+                    AuthService.shared.logout { _ in }
+                    self?.showReauthFailedMessage()
+                }
+            }
+        }
+    }
+
+    /// Attempts to re-authenticate email/password user with biometric
+    private func attemptEmailBiometricReauth() {
+        print("🔐 SceneDelegate: Attempting email biometric re-authentication")
+
+        // Show a loading message
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+
+            var loadingAlert: UIAlertController?
+            if let topController = self.topViewController() {
+                loadingAlert = AlertPresenter.showLoading(
+                    message: BiometricAuthService.shared.getBiometricPrompt(),
+                    from: topController
+                )
+            }
+
+            let finish: (@escaping () -> Void) -> Void = { action in
+                DispatchQueue.main.async {
+                    if let loadingAlert = loadingAlert {
+                        loadingAlert.dismiss(animated: true, completion: action)
+                    } else {
+                        action()
+                    }
+                }
+            }
+
+            // Logout first to clear expired session
+            AuthService.shared.logout { [weak self] success in
+                guard let self = self else { return }
+
+                // The biometric keychain read blocks while Face ID is showing,
+                // so keep it off the main thread
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let credentials = KeychainManager.shared.retrieveCredentialsWithBiometric(
+                        reason: BiometricAuthService.shared.getBiometricPrompt()
+                    )
+
+                    guard let credentials = credentials else {
+                        print("🔐 SceneDelegate: Failed to retrieve credentials with biometric")
+                        finish {
+                            self.showReauthFailedMessage()
+                        }
+                        return
+                    }
+
+                    print("🔐 SceneDelegate: Retrieved credentials with biometric, attempting login")
+                    AuthService.shared.login(email: credentials.email, password: credentials.password) { [weak self] result in
+                        finish {
+                            switch result {
+                            case .success:
+                                print("🔐 SceneDelegate: Email biometric re-auth successful")
+                                // Auth state listener will handle showing main interface
+
+                            case .failure(let error):
+                                print("🔐 SceneDelegate: Email biometric re-auth failed: \(error)")
+                                self?.showReauthFailedMessage()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Shows a message when automatic re-authentication fails
+    private func showReauthFailedMessage() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, let topController = self.topViewController() else { return }
+
+            AlertPresenter.showError(
+                title: "Session Expired",
+                message: "Your session has expired. Please log in again to continue.",
+                from: topController
+            )
         }
     }
 }

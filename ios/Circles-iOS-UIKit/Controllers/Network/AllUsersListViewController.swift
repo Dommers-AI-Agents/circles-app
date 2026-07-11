@@ -78,6 +78,14 @@ class AllUsersListViewController: UIViewController {
     
     private let cellIdentifier = "UserCell"
     private var searchQuery: String = ""
+
+    // Collapsible pending-request sections: collapsed by default so actual
+    // connections are visible without scrolling past requests. An active
+    // search expands them so matches aren't hidden.
+    private var isPendingIncomingExpanded = false
+    private var isPendingOutgoingExpanded = false
+    private var isSearchActive: Bool { !searchQuery.isEmpty }
+
     private var isLoadingData = false
     private var hasLoadedInitialData = false
     private static var hasEverLoadedConnections = false
@@ -414,156 +422,138 @@ class AllUsersListViewController: UIViewController {
 
 // MARK: - UITableViewDataSource
 extension AllUsersListViewController: UITableViewDataSource {
+
+    // MARK: Section Model
+    private enum NetworkListSection {
+        case pendingIncoming
+        case pendingOutgoing
+        case connected
+        case others
+    }
+
+    private var visibleSections: [NetworkListSection] {
+        var sections: [NetworkListSection] = []
+        if !filteredPendingIncomingUsers.isEmpty { sections.append(.pendingIncoming) }
+        if !filteredPendingOutgoingUsers.isEmpty { sections.append(.pendingOutgoing) }
+        if !filteredConnectedUsers.isEmpty { sections.append(.connected) }
+        if !filteredNonConnectedUsers.isEmpty { sections.append(.others) }
+        return sections
+    }
+
+    private func users(for section: NetworkListSection) -> [User] {
+        switch section {
+        case .pendingIncoming:
+            return (isPendingIncomingExpanded || isSearchActive) ? filteredPendingIncomingUsers : []
+        case .pendingOutgoing:
+            return (isPendingOutgoingExpanded || isSearchActive) ? filteredPendingOutgoingUsers : []
+        case .connected:
+            return filteredConnectedUsers
+        case .others:
+            return filteredNonConnectedUsers
+        }
+    }
+
     func numberOfSections(in tableView: UITableView) -> Int {
         // Don't show sections while loading
         if isLoadingData && !hasLoadedInitialData {
             return 0
         }
-        
-        var sections = 0
-        if !filteredPendingIncomingUsers.isEmpty { sections += 1 }
-        if !filteredPendingOutgoingUsers.isEmpty { sections += 1 }
-        if !filteredConnectedUsers.isEmpty { sections += 1 }
-        if !filteredNonConnectedUsers.isEmpty { sections += 1 }
-        return sections
+        return visibleSections.count
     }
-    
+
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        // Determine which section this is based on what's visible
-        var currentSection = 0
-        
-        if !filteredPendingIncomingUsers.isEmpty {
-            if section == currentSection {
-                return filteredPendingIncomingUsers.count
-            }
-            currentSection += 1
-        }
-        
-        if !filteredPendingOutgoingUsers.isEmpty {
-            if section == currentSection {
-                return filteredPendingOutgoingUsers.count
-            }
-            currentSection += 1
-        }
-        
-        if !filteredConnectedUsers.isEmpty {
-            if section == currentSection {
-                return filteredConnectedUsers.count
-            }
-            currentSection += 1
-        }
-        
-        return filteredNonConnectedUsers.count
+        guard section < visibleSections.count else { return 0 }
+        return users(for: visibleSections[section]).count
     }
-    
+
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        // Determine which section this is based on what's visible
-        var currentSection = 0
-        
-        if !filteredPendingIncomingUsers.isEmpty {
-            if section == currentSection {
-                return "Pending Requests"
-            }
-            currentSection += 1
+        guard section < visibleSections.count else { return nil }
+        switch visibleSections[section] {
+        case .pendingIncoming, .pendingOutgoing:
+            return nil // Collapsible custom headers
+        case .connected:
+            return "Your Connections"
+        case .others:
+            return "Other Users"
         }
-        
-        if !filteredPendingOutgoingUsers.isEmpty {
-            if section == currentSection {
-                return nil // Custom view will handle this
-            }
-            currentSection += 1
-        }
-        
-        if !filteredConnectedUsers.isEmpty {
-            if section == currentSection {
-                return "Your Connections"
-            }
-            currentSection += 1
-        }
-        
-        return "Other Users"
     }
-    
+
     func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
-        // Determine which section this is based on what's visible
-        var currentSection = 0
-        
-        if !filteredPendingIncomingUsers.isEmpty {
-            if section == currentSection {
-                return nil // Use default header
-            }
-            currentSection += 1
+        guard section < visibleSections.count else { return nil }
+        switch visibleSections[section] {
+        case .pendingIncoming:
+            return makeCollapsibleHeader(
+                title: "PENDING REQUESTS",
+                count: filteredPendingIncomingUsers.count,
+                color: Constants.Colors.brightOrange,
+                isExpanded: isPendingIncomingExpanded || isSearchActive,
+                action: #selector(togglePendingIncomingSection)
+            )
+        case .pendingOutgoing:
+            return makeCollapsibleHeader(
+                title: "CONNECTION REQUESTS PENDING",
+                count: filteredPendingOutgoingUsers.count,
+                color: Constants.Colors.brightOrange,
+                isExpanded: isPendingOutgoingExpanded || isSearchActive,
+                action: #selector(togglePendingOutgoingSection)
+            )
+        case .connected, .others:
+            return nil // Default title-based headers
         }
-        
-        if !filteredPendingOutgoingUsers.isEmpty {
-            if section == currentSection {
-                // Create custom orange header for "Connection Requests Pending"
-                let headerView = UIView()
-                headerView.backgroundColor = .clear
-                
-                let label = UILabel()
-                label.text = "CONNECTION REQUESTS PENDING"
-                label.font = .systemFont(ofSize: 13, weight: .medium)
-                label.textColor = Constants.Colors.brightOrange
-                label.translatesAutoresizingMaskIntoConstraints = false
-                
-                headerView.addSubview(label)
-                NSLayoutConstraint.activate([
-                    label.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 16),
-                    label.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -16),
-                    label.topAnchor.constraint(equalTo: headerView.topAnchor, constant: 8),
-                    label.bottomAnchor.constraint(equalTo: headerView.bottomAnchor, constant: -8)
-                ])
-                
-                return headerView
-            }
-            currentSection += 1
-        }
-        
-        // Use default header for other sections
-        return nil
     }
-    
+
+    private func makeCollapsibleHeader(title: String, count: Int, color: UIColor, isExpanded: Bool, action: Selector) -> UIView {
+        let headerView = UIView()
+        headerView.backgroundColor = .clear
+
+        let button = UIButton(type: .system)
+        var config = UIButton.Configuration.plain()
+        var attributedTitle = AttributedString("\(title) (\(count))")
+        attributedTitle.font = UIFont.systemFont(ofSize: 13, weight: .medium)
+        config.attributedTitle = attributedTitle
+        config.image = UIImage(
+            systemName: isExpanded ? "chevron.up" : "chevron.down",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
+        )
+        config.imagePlacement = .trailing
+        config.imagePadding = 6
+        config.baseForegroundColor = color
+        config.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16)
+        button.configuration = config
+        button.contentHorizontalAlignment = .leading
+        button.addTarget(self, action: action, for: .touchUpInside)
+        button.translatesAutoresizingMaskIntoConstraints = false
+
+        headerView.addSubview(button)
+        NSLayoutConstraint.activate([
+            button.topAnchor.constraint(equalTo: headerView.topAnchor),
+            button.leadingAnchor.constraint(equalTo: headerView.leadingAnchor),
+            button.trailingAnchor.constraint(equalTo: headerView.trailingAnchor),
+            button.bottomAnchor.constraint(equalTo: headerView.bottomAnchor)
+        ])
+
+        return headerView
+    }
+
+    @objc private func togglePendingIncomingSection() {
+        isPendingIncomingExpanded.toggle()
+        tableView.reloadData()
+    }
+
+    @objc private func togglePendingOutgoingSection() {
+        isPendingOutgoingExpanded.toggle()
+        tableView.reloadData()
+    }
+
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: cellIdentifier, for: indexPath) as! AllUsersCell
-        
-        let user: User
-        var currentSection = 0
-        
-        if !filteredPendingIncomingUsers.isEmpty {
-            if indexPath.section == currentSection {
-                user = filteredPendingIncomingUsers[indexPath.row]
-                cell.configure(with: user)
-                cell.delegate = self
-                return cell
-            }
-            currentSection += 1
-        }
-        
-        if !filteredPendingOutgoingUsers.isEmpty {
-            if indexPath.section == currentSection {
-                user = filteredPendingOutgoingUsers[indexPath.row]
-                cell.configure(with: user)
-                cell.delegate = self
-                return cell
-            }
-            currentSection += 1
-        }
-        
-        if !filteredConnectedUsers.isEmpty {
-            if indexPath.section == currentSection {
-                user = filteredConnectedUsers[indexPath.row]
-                cell.configure(with: user)
-                cell.delegate = self
-                return cell
-            }
-            currentSection += 1
-        }
-        
-        user = filteredNonConnectedUsers[indexPath.row]
-        cell.configure(with: user)
+
+        guard indexPath.section < visibleSections.count else { return cell }
+        let sectionUsers = users(for: visibleSections[indexPath.section])
+        guard indexPath.row < sectionUsers.count else { return cell }
+
+        cell.configure(with: sectionUsers[indexPath.row])
         cell.delegate = self
-        
         return cell
     }
 }

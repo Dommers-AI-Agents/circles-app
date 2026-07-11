@@ -27,6 +27,21 @@ class UserActivityCell: UICollectionViewCell {
         view.backgroundColor = .clear
         view.layer.borderColor = UIColor.systemBlue.cgColor
         view.layer.borderWidth = 2.5
+        // Ring size is fixed (avatar 56 + 8) — set the radius up front so the
+        // ring is circular even before the first layout pass
+        view.layer.cornerRadius = 32
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isHidden = true
+        return view
+    }()
+
+    // Solid blue ring shown around the avatar of the currently selected connection
+    private let selectionRingView: UIView = {
+        let view = UIView()
+        view.backgroundColor = .clear
+        view.layer.borderColor = Constants.Colors.primary.cgColor
+        view.layer.borderWidth = 3
+        view.layer.cornerRadius = 32
         view.translatesAutoresizingMaskIntoConstraints = false
         view.isHidden = true
         return view
@@ -57,6 +72,7 @@ class UserActivityCell: UICollectionViewCell {
         contentView.addSubview(containerView)
         containerView.addSubview(profileImageView)
         containerView.addSubview(activityRingView)
+        containerView.addSubview(selectionRingView)
         contentView.addSubview(nameLabel)
         
         NSLayoutConstraint.activate([
@@ -77,6 +93,12 @@ class UserActivityCell: UICollectionViewCell {
             activityRingView.centerYAnchor.constraint(equalTo: profileImageView.centerYAnchor),
             activityRingView.widthAnchor.constraint(equalTo: profileImageView.widthAnchor, constant: 8),
             activityRingView.heightAnchor.constraint(equalTo: profileImageView.heightAnchor, constant: 8),
+
+            // Selection ring (surrounds profile image, slightly larger)
+            selectionRingView.centerXAnchor.constraint(equalTo: profileImageView.centerXAnchor),
+            selectionRingView.centerYAnchor.constraint(equalTo: profileImageView.centerYAnchor),
+            selectionRingView.widthAnchor.constraint(equalTo: profileImageView.widthAnchor, constant: 8),
+            selectionRingView.heightAnchor.constraint(equalTo: profileImageView.heightAnchor, constant: 8),
             
             // Name label
             nameLabel.topAnchor.constraint(equalTo: containerView.bottomAnchor, constant: 4),
@@ -91,11 +113,18 @@ class UserActivityCell: UICollectionViewCell {
         profileImageView.layer.borderColor = Constants.Colors.lightGray.cgColor
     }
     
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        
-        // Make activity ring circular
-        activityRingView.layer.cornerRadius = activityRingView.frame.width / 2
+    // Note: ring corner radii are fixed at init (size is a constant 64pt).
+    // Do NOT recompute them in layoutSubviews — an early layout pass with a
+    // zero frame would reset the radius to 0 and draw square rings.
+
+    /// Shows/hides the blue selection ring. Selection takes visual priority
+    /// over the activity ring so the selected avatar is unambiguous.
+    func setSelectedHighlight(_ isSelected: Bool) {
+        selectionRingView.isHidden = !isSelected
+        if isSelected {
+            activityRingView.isHidden = true
+            activityRingView.layer.removeAllAnimations()
+        }
     }
     
     // MARK: - Configuration
@@ -205,6 +234,7 @@ class UserActivityCell: UICollectionViewCell {
         profileImageView.image = nil
         activityRingView.isHidden = true
         activityRingView.layer.removeAllAnimations()
+        selectionRingView.isHidden = true
         nameLabel.text = nil
     }
     

@@ -2,6 +2,8 @@ import UIKit
 
 protocol HorizontalUserListViewDelegate: AnyObject {
     func didSelectUser(_ user: User, connectionId: String)
+    /// Long-press on an avatar - opens the connection's profile
+    func didLongPressUser(_ user: User, connectionId: String)
 }
 
 class HorizontalUserListView: UIView {
@@ -11,6 +13,15 @@ class HorizontalUserListView: UIView {
     private var connections: [Connection] = []
     private var loadRetryCount = 0
     private let maxRetries = 3
+
+    /// User id of the currently selected connection (map filter); the matching
+    /// avatar shows a blue selection ring
+    var selectedUserId: String? {
+        didSet {
+            guard oldValue != selectedUserId else { return }
+            collectionView.reloadData()
+        }
+    }
     
     // MARK: - Pagination Properties
     private var currentPage = 0
@@ -194,11 +205,31 @@ class HorizontalUserListView: UIView {
         collectionView.delegate = self
         collectionView.dataSource = self
         collectionView.register(UserActivityCell.self, forCellWithReuseIdentifier: UserActivityCell.reuseIdentifier)
-        
+
         // Add pull-to-refresh
         let refreshControl = UIRefreshControl()
         refreshControl.addTarget(self, action: #selector(handlePullToRefresh), for: .valueChanged)
         collectionView.refreshControl = refreshControl
+
+        // Long-press an avatar to open that connection's profile
+        // (a tap filters the map to their places instead)
+        let longPress = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
+        longPress.minimumPressDuration = 0.4
+        collectionView.addGestureRecognizer(longPress)
+    }
+
+    @objc private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
+        guard gesture.state == .began else { return }
+
+        let location = gesture.location(in: collectionView)
+        guard let indexPath = collectionView.indexPathForItem(at: location),
+              indexPath.item < connections.count else { return }
+
+        let connection = connections[indexPath.item]
+        guard let user = connection.connectedUser else { return }
+
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        delegate?.didLongPressUser(user, connectionId: connection.id)
     }
     
     @objc private func handlePullToRefresh() {
@@ -224,7 +255,10 @@ class HorizontalUserListView: UIView {
     
     // MARK: - Data Loading
     private func loadActiveConnections() {
-        if currentPage == 0 {
+        // Only blank the UI when nothing is displayed yet. If avatars are already
+        // visible, refresh silently and swap the data in when it arrives -
+        // hiding a populated row behind a spinner reads as everything vanishing.
+        if currentPage == 0 && connections.isEmpty {
             loadingIndicator.startAnimating()
             collectionView.isHidden = true
             emptyStateView.isHidden = true
@@ -481,10 +515,13 @@ class HorizontalUserListView: UIView {
     
     // MARK: - Shared Display Logic
     private func displayConnections(_ connectionList: [Connection], alreadySorted: Bool = false, allowEmptyState: Bool = true) {
-        // Keep loading state visible while we process and sort connections
-        loadingIndicator.startAnimating()
-        collectionView.isHidden = true
-        emptyStateView.isHidden = true
+        // Only show the loading state when nothing is displayed yet; otherwise
+        // keep the current avatars visible while the new data is processed
+        if connections.isEmpty {
+            loadingIndicator.startAnimating()
+            collectionView.isHidden = true
+            emptyStateView.isHidden = true
+        }
         
         // Process connections on a background queue to prevent UI blocking
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -729,7 +766,16 @@ extension HorizontalUserListView: UICollectionViewDataSource {
     
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: UserActivityCell.reuseIdentifier, for: indexPath) as! UserActivityCell
-        cell.configure(with: connections[indexPath.item])
+        let connection = connections[indexPath.item]
+        cell.configure(with: connection)
+
+        let isSelected: Bool
+        if let selectedUserId = selectedUserId, let userId = connection.connectedUser?.id {
+            isSelected = IDNormalizer.isSameUser(selectedUserId, userId)
+        } else {
+            isSelected = false
+        }
+        cell.setSelectedHighlight(isSelected)
         return cell
     }
 }

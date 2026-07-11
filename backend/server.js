@@ -156,6 +156,54 @@ app.get('/apple-app-site-association', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'apple-app-site-association'));
 });
 
+// Connection invite link. With the Circles app installed, iOS opens this URL
+// directly as a Universal Link (AASA paths include /connect/*) and
+// auto-connects the two users — this handler is never hit. Without the app,
+// the page tries the custom scheme (covers in-app browsers) then falls back
+// to the App Store.
+app.get('/connect/:userId', async (req, res) => {
+  const userId = String(req.params.userId).replace(/[^a-zA-Z0-9_-]/g, '');
+  const appStoreUrl = 'https://apps.apple.com/us/app/favcircles/id6746807095';
+
+  // Personalize the page and its link preview (OpenGraph) with the inviter's
+  // name. Best-effort: any failure falls back to a generic invite.
+  let inviterName = null;
+  try {
+    const { getFirestore } = require('./config/firebase');
+    const userDoc = await getFirestore().collection('users').doc(userId).get();
+    if (userDoc.exists) {
+      inviterName = (userDoc.data().displayName || '').trim() || null;
+    }
+  } catch (e) {
+    console.warn('Connect page: could not load inviter name:', e.message);
+  }
+
+  // Escape for safe embedding in HTML
+  const safeName = inviterName
+    ? inviterName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+    : null;
+  const ogTitle = safeName ? `Connect with ${safeName} on Circles` : 'Join me on Circles';
+  const heading = safeName ? `${safeName} invited you to Circles` : 'Opening Circles…';
+
+  res.send(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${ogTitle}</title>
+<meta property="og:title" content="${ogTitle}">
+<meta property="og:description" content="Share and discover favorite places together on Circles.">
+<meta property="og:site_name" content="Circles">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://api.favcircles.com/connect/${userId}">
+</head>
+<body style="font-family:-apple-system,Helvetica,Arial,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#3182CE;color:#fff;text-align:center">
+<div><h1>${heading}</h1><p>If nothing happens, get the app and join ${safeName ? 'them' : 'me'}:</p>
+<a href="${appStoreUrl}" style="background:#fff;color:#3182CE;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">Download Circles</a></div>
+<script>
+  window.location = 'circles://connect/${userId}';
+  setTimeout(function(){ if (!document.hidden) window.location = '${appStoreUrl}'; }, 1500);
+</script>
+</body></html>`);
+});
+
 // Route debug middleware (reduced logging)
 app.use('/api/users', (req, res, next) => {
   next();
@@ -174,6 +222,7 @@ app.use('/api/circles', firebaseCircleRoutes);
 app.use('/api/places', globalPlaceRoutes); // Global places routes (must come first - more specific)
 app.use('/api/places', firebasePlaceRoutes);
 app.use('/api/upload', uploadLimiter, uploadRoutes);
+app.use('/api/import', require('./routes/importRoutes')); // Import places from other platforms (Mapstr, Google, Swarm)
 app.use('/api/connections', connectionRoutes);
 app.use('/api/network', networkRoutes);
 app.use('/api/messages', messageLimiter, messagingRoutes);
@@ -185,6 +234,7 @@ app.use('/api/app', require('./routes/appRoutes'));
 app.use('/api/email', emailTestRoutes);
 app.use('/api/diagnostics', require('./routes/diagnosticRoutes'));
 app.use('/api/tasks', taskRoutes);
+app.use('/api/trash', require('./routes/trashRoutes'));
 app.use('/api/visits', visitRoutes);
 app.use('/api/check-ins', checkInRoutes);
 app.use('/api/videos', videoRoutes);
@@ -195,6 +245,7 @@ app.get('/share/video/:videoId', (req, res) => {
 });
 app.use('/api/users/subscription', require('./routes/subscriptionRoutes'));
 app.use('/api/users/referral', require('./routes/referralRoutes'));
+app.use('/api/rewards', require('./routes/rewardRoutes'));
 app.use('/api/home', require('./routes/dashboardRoutes'));
 
 // Notification test routes (development only)
@@ -210,6 +261,9 @@ app.use('/', linkedinCallback);
 // App redirect routes for deep linking from emails
 const appRedirectRoutes = require('./routes/appRedirectRoutes');
 app.use('/app', appRedirectRoutes);
+
+// Physical sticker QR landing pages (public; AASA covers /s/* for Universal Links)
+app.use('/s', require('./routes/stickerPublicRoutes'));
 
 // Special route for circle-specific places
 app.get('/api/circles/:circleId/places', protect, getPlacesByCircleId);

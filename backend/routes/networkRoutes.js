@@ -7,12 +7,17 @@ const {
   getUsersWithCircles,
   getUserCircles
 } = require('../controllers/circleSharingController');
+const { getNetworkPlacesInViewport } = require('../controllers/networkPlacesController');
 const { protect } = require('../middleware/firebaseAuth');
 
 const router = express.Router();
 
 // Apply authentication middleware to all routes
 router.use(protect);
+
+// Get network places within a map viewport (center + radius)
+router.route('/places/viewport')
+  .get(getNetworkPlacesInViewport);
 
 // Network overview routes
 router.route('/shared-circles')

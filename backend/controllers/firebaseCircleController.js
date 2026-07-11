@@ -656,24 +656,37 @@ exports.deleteCircle = async (req, res, next) => {
       });
     }
 
-    // Delete all places in this circle first
+    // Soft delete: move the circle to the deletedCircles trash collection and
+    // mark its live places deleted (deletedViaCircleDelete lets a restore
+    // bring back exactly the places this deletion removed). Recoverable via
+    // POST /api/trash/circles/:id/restore until permanently deleted.
+    const now = new Date().toISOString();
     const placesSnapshot = await db.collection(COLLECTIONS.PLACES)
       .where('circleId', '==', req.params.id)
       .get();
-    
+
+    const livePlaceDocs = placesSnapshot.docs.filter(doc => doc.data().deletedAt == null);
+    // Firestore batches cap at 500 ops — chunk the place updates.
+    for (let i = 0; i < livePlaceDocs.length; i += 400) {
+      const placeBatch = db.batch();
+      livePlaceDocs.slice(i, i + 400).forEach(doc => {
+        placeBatch.update(doc.ref, { deletedAt: now, deletedViaCircleDelete: true, updatedAt: now });
+      });
+      await placeBatch.commit();
+    }
+
     const batch = db.batch();
-    placesSnapshot.docs.forEach(doc => {
-      batch.delete(doc.ref);
+    batch.set(db.collection('deletedCircles').doc(req.params.id), {
+      ...circleDoc.data(),
+      deletedAt: now
     });
-    
-    // Delete the circle
     batch.delete(circleRef);
-    
     await batch.commit();
 
     res.status(200).json({
       success: true,
-      message: 'Circle deleted successfully'
+      message: 'Circle moved to trash (restorable via /api/trash)',
+      deletedPlaces: livePlaceDocs.length
     });
   } catch (error) {
     console.error('Error deleting circle:', error);

@@ -1,6 +1,12 @@
 import UIKit
 
 struct Constants {
+    struct Auth {
+        // Fallback token lifetime when the backend doesn't send expiresIn.
+        // Matches the backend JWT_EXPIRE of 30 days.
+        static let defaultTokenLifetime = 30 * 24 * 60 * 60
+    }
+
     struct Colors {
         // Primary brand colors - using dynamic colors for better dark mode support
         static let primary = UIColor { traitCollection in

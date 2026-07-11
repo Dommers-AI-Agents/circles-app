@@ -1,0 +1,25 @@
+{
+  "name": "favcircles-mcp-worker",
+  "version": "0.4.0",
+  "description": "FavCircles remote MCP server — Cloudflare Worker, Streamable HTTP (Phase 3)",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "smoke": "node scripts/http-smoke.cjs"
+  },
+  "dependencies": {
+    "@cloudflare/workers-oauth-provider": "^0.8.1",
+    "@modelcontextprotocol/sdk": "^1.23.0",
+    "agents": "^0.2.0",
+    "jose": "^6.2.3",
+    "zod": "^3.25.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260706.1",
+    "typescript": "^5.6.0",
+    "wrangler": "^4.0.0"
+  }
+}

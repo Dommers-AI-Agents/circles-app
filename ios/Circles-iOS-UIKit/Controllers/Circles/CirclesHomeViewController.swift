@@ -56,6 +56,29 @@ struct HomeScreenContent: Codable {
     let userList: [UserListItem]
     let mapData: MapData?
     let stats: HomeScreenStats
+
+    init(myCircles: [Circle], networkCircles: [Circle], activities: [Activity],
+         userList: [UserListItem], mapData: MapData?, stats: HomeScreenStats) {
+        self.myCircles = myCircles
+        self.networkCircles = networkCircles
+        self.activities = activities
+        self.userList = userList
+        self.mapData = mapData
+        self.stats = stats
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.myCircles = try container.decode(LossyDecodableArray<Circle>.self, forKey: .myCircles).elements
+        self.networkCircles = try container.decode(LossyDecodableArray<Circle>.self, forKey: .networkCircles).elements
+        // Lossy + drop unknown types: one malformed or unrecognized activity
+        // must not blank the whole feed
+        self.activities = try container.decode(LossyDecodableArray<Activity>.self, forKey: .activities).elements
+            .filter { $0.type != .unknown }
+        self.userList = try container.decode(LossyDecodableArray<UserListItem>.self, forKey: .userList).elements
+        self.mapData = try container.decodeIfPresent(MapData.self, forKey: .mapData)
+        self.stats = try container.decode(HomeScreenStats.self, forKey: .stats)
+    }
 }
 
 struct UserListItem: Codable {
@@ -111,6 +134,14 @@ struct HomeScreenData: Codable {
     let userList: [UserListItem]?
     let recentActivities: [Activity]?
     let stats: FastAPIStats?
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.userList = (try? container.decode(LossyDecodableArray<UserListItem>.self, forKey: .userList))?.elements
+        self.recentActivities = (try? container.decode(LossyDecodableArray<Activity>.self, forKey: .recentActivities))?.elements
+            .filter { $0.type != .unknown }
+        self.stats = try container.decodeIfPresent(FastAPIStats.self, forKey: .stats)
+    }
 }
 
 struct FastAPIStats: Codable {
@@ -213,7 +244,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     // Instance-based cache with expiry
     private var placesCacheExpiry: Date?
     private var cachedPlaces: [Place] = []
-    private var userOwnPlaces: [Place] = [] // Separate array for user's own places only
+    private var userOwnPlaces: [Place] = [] { // Separate array for user's own places only
+        didSet {
+            // Keep the embedded map informed so it can center on the user's favorites
+            mapViewController?.ownPlaceIds = Set(userOwnPlaces.map { $0.id })
+        }
+    }
     
     // MARK: - Helper Methods
     /// Helper function to create a type-safe completion handler for API requests
@@ -235,11 +271,20 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     private var preloadedConnections: [Connection]? // Store preloaded connections for userListView
     private var notificationBadgeLabel: UILabel? // Badge label for notification count
     private var notificationBarButton: UIBarButtonItem? // Store reference to notification button
+    private var rewardsBadgeLabel: UILabel? // Badge label showing reward points balance
+    private var rewardsBarButton: UIBarButtonItem? // Store reference to rewards ($) button
     
     // Search scope properties
     private var currentSearchScope: SearchScope = .myPlaces
     private var networkPlaces: [Place] = [] // Cache for network places
     private var isLoadingNetworkPlaces = false
+
+    // MARK: - Viewport-Based Network Place Loading
+    // When true, network places load on demand for the visible map region
+    // instead of the per-circle fan-out. Flip to false to restore old behavior.
+    private let useViewportNetworkLoading = true
+    private var fetchedViewportCircles: [(center: CLLocationCoordinate2D, radiusM: Double)] = []
+    private var isFetchingViewport = false
     
     // Suggested users overlay
     private var suggestedUsersOverlay: SuggestedUsersOverlayView?
@@ -465,6 +510,21 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
+
+    // Direct CTAs so a brand-new user can act from the empty state
+    private lazy var emptyStateButtonsStack: UIStackView = {
+        let addButton = UIButton.smallActionButton(title: "Add Your Places", style: .primary)
+        addButton.addTarget(self, action: #selector(openQuickStartAddPlaces), for: .touchUpInside)
+
+        let findButton = UIButton.smallActionButton(title: "Find Friends", style: .secondary)
+        findButton.addTarget(self, action: #selector(emptyStateFindFriendsTapped), for: .touchUpInside)
+
+        let stack = UIStackView(arrangedSubviews: [addButton, findButton])
+        stack.axis = .horizontal
+        stack.spacing = 12
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        return stack
+    }()
     
     
     private let quickAddPlaceButton: UIButton = {
@@ -560,57 +620,83 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         let stack = UIStackView()
         stack.axis = .horizontal
         stack.spacing = 6
-        stack.distribution = .fillEqually
+        stack.distribution = .fill
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.isHidden = false
         return stack
     }()
     
-    private let connectionFilterButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("All Connections", for: .normal)
-        button.setImage(UIImage(systemName: "chevron.down"), for: .normal)
-        button.semanticContentAttribute = .forceRightToLeft
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 12, weight: .medium)
+    private lazy var mapMenuButton: UIButton = {
+        let button = UIButton.iconButton(systemName: "line.3.horizontal", pointSize: 15)
         button.backgroundColor = Constants.Colors.secondaryBackground.withAlphaComponent(0.9)
         button.layer.cornerRadius = 14
         button.layer.borderWidth = 1
         button.layer.borderColor = Constants.Colors.separator.cgColor
-        button.contentEdgeInsets = UIEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
-        button.translatesAutoresizingMaskIntoConstraints = false
+        button.showsMenuAsPrimaryAction = true
+        button.menu = UIMenu(children: [
+            UIDeferredMenuElement.uncached { [weak self] completion in
+                guard let self = self else {
+                    completion([])
+                    return
+                }
+                completion(self.buildMapMenuElements())
+            }
+        ])
         return button
     }()
-    
-    private let connectionDropdownView: UIView = {
-        let view = UIView()
-        view.backgroundColor = Constants.Colors.secondaryBackground
-        view.layer.cornerRadius = 12
-        view.layer.shadowColor = UIColor.black.cgColor
-        view.layer.shadowOpacity = 0.15
-        view.layer.shadowOffset = CGSize(width: 0, height: 4)
-        view.layer.shadowRadius = 8
-        view.isHidden = true
-        view.alpha = 0
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
+
+    // Toggles between the map and a distance-sorted list of the same places
+    private lazy var listToggleButton: UIButton = {
+        let button = UIButton.iconButton(systemName: "list.bullet", pointSize: 15)
+        button.backgroundColor = Constants.Colors.secondaryBackground.withAlphaComponent(0.9)
+        button.layer.cornerRadius = 14
+        button.layer.borderWidth = 1
+        button.layer.borderColor = Constants.Colors.separator.cgColor
+        button.addTarget(self, action: #selector(listToggleTapped), for: .touchUpInside)
+        return button
     }()
-    
-    private let connectionDropdownTableView: UITableView = {
+
+    private lazy var placesListTableView: UITableView = {
         let tableView = UITableView()
-        tableView.backgroundColor = .clear
+        tableView.backgroundColor = Constants.Colors.secondaryBackground
         tableView.separatorStyle = .none
-        tableView.rowHeight = UITableView.automaticDimension
-        tableView.estimatedRowHeight = 44
-        tableView.showsVerticalScrollIndicator = true
+        tableView.isHidden = true
+        // Start content below the floating filter chips (12pt inset + 36pt chips + 8pt gap)
+        tableView.contentInset = UIEdgeInsets(top: 56, left: 0, bottom: 0, right: 0)
+        tableView.verticalScrollIndicatorInsets = UIEdgeInsets(top: 56, left: 0, bottom: 0, right: 0)
+        tableView.register(QuickAccessPlaceCell.self, forCellReuseIdentifier: "HomePlaceListCell")
         tableView.translatesAutoresizingMaskIntoConstraints = false
-        tableView.layer.cornerRadius = 12
-        tableView.clipsToBounds = true
         return tableView
     }()
-    
-    private var isConnectionDropdownOpen = false
-    private var connectionDropdownHeightConstraint: NSLayoutConstraint?
+
+    private var isShowingPlacesList = false
+    private var distanceSortedPlaces: [(place: Place, distance: CLLocationDistance?)] = []
+    private let listDistanceFormatter = MKDistanceFormatter()
+
+    private lazy var myPlacesToggleButton: UIButton = {
+        // Icon stacked over a "Me" label, matching the main navigation's profile tab
+        var config = UIButton.Configuration.plain()
+        config.imagePlacement = .top
+        config.imagePadding = 0
+        config.contentInsets = NSDirectionalEdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0)
+        config.image = UIImage(systemName: "person", withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .medium))
+        var title = AttributedString("Me")
+        title.font = UIFont.systemFont(ofSize: 9, weight: .medium)
+        config.attributedTitle = title
+        config.baseForegroundColor = Constants.Colors.label
+
+        let button = UIButton(configuration: config)
+        button.backgroundColor = Constants.Colors.secondaryBackground.withAlphaComponent(0.9)
+        button.layer.cornerRadius = 14
+        button.layer.borderWidth = 1
+        button.layer.borderColor = Constants.Colors.separator.cgColor
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(myPlacesToggleTapped), for: .touchUpInside)
+        return button
+    }()
+
     private var selectedConnectionId: String? = nil // Default to All Connections
+    private var selectedConnectionUser: User? = nil // Set only when a specific connection is filtered
     
     // Search results table view
     let searchResultsTableView: UITableView = {
@@ -629,26 +715,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }()
     
     var searchResultsHeightConstraint: NSLayoutConstraint?
-    
-    private let categoryFilterButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("All Categories", for: .normal)
-        button.setImage(UIImage(systemName: "chevron.down"), for: .normal)
-        button.semanticContentAttribute = .forceRightToLeft
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 12, weight: .medium)
-        button.backgroundColor = Constants.Colors.secondaryBackground.withAlphaComponent(0.9)
-        button.layer.cornerRadius = 14
-        button.layer.borderWidth = 1
-        button.layer.borderColor = Constants.Colors.separator.cgColor
-        button.contentEdgeInsets = UIEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-    
-    // Dropdown views for filters
-    
-    
-    
     
     private let locationStatusLabel: UILabel = {
         let label = UILabel()
@@ -698,36 +764,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return view
     }()
     
-    private let categoryDropdownView: UIView = {
-        let view = UIView()
-        view.backgroundColor = Constants.Colors.secondaryBackground
-        view.layer.cornerRadius = 12
-        view.layer.shadowColor = UIColor.black.cgColor
-        view.layer.shadowOpacity = 0.15
-        view.layer.shadowOffset = CGSize(width: 0, height: 4)
-        view.layer.shadowRadius = 8
-        view.isHidden = true
-        view.alpha = 0
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
-    
-    private let categoryDropdownTableView: UITableView = {
-        let tableView = UITableView()
-        tableView.backgroundColor = .clear
-        tableView.separatorStyle = .none
-        tableView.rowHeight = UITableView.automaticDimension
-        tableView.estimatedRowHeight = 44
-        tableView.showsVerticalScrollIndicator = true
-        tableView.translatesAutoresizingMaskIntoConstraints = false
-        tableView.layer.cornerRadius = 12
-        tableView.clipsToBounds = true
-        return tableView
-    }()
-    
-    private var isCategoryDropdownOpen = false
     private var availableCategories: [UnifiedCategory] = []
-    private var categoryDropdownHeightConstraint: NSLayoutConstraint?
     private var mapHeightConstraint: NSLayoutConstraint?
     
     // Search scope dropdown properties
@@ -1674,6 +1711,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         print("🔔 CirclesHomeViewController: Updating notification badge on viewWillAppear")
         updateNotificationBadge()
         startNotificationBadgeRefresh()
+        updateRewardsBadge()
         
         // Update navigation bar for subscription status
         updateNavigationBarForSubscription()
@@ -1864,12 +1902,17 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Check tutorial status from backend
         OnboardingManager.shared.checkIfUserNeedsTutorial { [weak self] needsTutorial in
-            guard let self = self, needsTutorial else { 
+            guard let self = self, needsTutorial else {
                 // If no tutorial needed and not already shown overlay, check for suggested users
                 if NetworkManager.shared.connections.count > 0 {
                     self?.checkAndShowSuggestedUsers()
                 }
-                return 
+                // One-time hint explaining avatar tap vs long press (skipped if
+                // the suggested-users overlay took the screen)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self?.maybeShowConnectionAvatarHint()
+                }
+                return
             }
             
             // User needs tutorial - start it
@@ -1913,6 +1956,34 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
+    /// One-time bubble pointing at the connections avatar row explaining the
+    /// two gestures: tap shows that person's places on the map, long press
+    /// opens their profile. Marked as shown immediately so it only ever
+    /// appears once.
+    private func maybeShowConnectionAvatarHint() {
+        guard OnboardingManager.shared.shouldShowConnectionAvatarHint(),
+              !userListView.isHidden,
+              userListView.connectionCount > 0,
+              suggestedUsersOverlay == nil else { return }
+        OnboardingManager.shared.markConnectionAvatarHintShown()
+
+        let bubble = BubbleView()
+        bubble.configureHint(
+            title: "Your Connections",
+            description: "Tap an avatar to see that person's places on the map. Long press to view their profile.",
+            arrowDirection: .top
+        )
+        bubble.onNext = { [weak bubble] in
+            bubble?.dismiss {
+                bubble?.removeFromSuperview()
+            }
+        }
+
+        view.addSubview(bubble)
+        bubble.pointTo(userListView, in: view)
+        bubble.show()
+    }
+
     private func showSuggestedUsersOverlay() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
@@ -2031,8 +2102,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         homeCard.layer.borderColor = Constants.Colors.separator.cgColor
         workCard.layer.borderColor = Constants.Colors.separator.cgColor
         quickAccessContainer.layer.shadowColor = Constants.Colors.label.cgColor
-        categoryFilterButton.layer.borderColor = Constants.Colors.separator.cgColor
-        connectionFilterButton.layer.borderColor = Constants.Colors.separator.cgColor
+        mapMenuButton.layer.borderColor = Constants.Colors.separator.cgColor
+        listToggleButton.layer.borderColor = Constants.Colors.separator.cgColor
+        updateMyPlacesToggleAppearance()
     }
     
     // MARK: - UI Setup
@@ -2048,6 +2120,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Setup empty state view
         emptyStateView.addSubview(emptyStateImageView)
         emptyStateView.addSubview(emptyStateLabel)
+        emptyStateView.addSubview(emptyStateButtonsStack)
         
         // Setup quick access buttons
         setupQuickAccessButtons()
@@ -2086,12 +2159,14 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         mapLoadingView.addSubview(mapLoadingProgressView)
         contentView.addSubview(mapExpandButton)
         contentView.addSubview(mapPlaceCountLabel)
+        contentView.addSubview(placesListTableView)
         
         // Add small loading indicator directly to map container for better UX
         mapContainerView.addSubview(mapLoadingIndicator)
         contentView.addSubview(locationStatusLabel)
-        filterStackView.addArrangedSubview(categoryFilterButton)
-        filterStackView.addArrangedSubview(connectionFilterButton)
+        filterStackView.addArrangedSubview(mapMenuButton)
+        filterStackView.addArrangedSubview(myPlacesToggleButton)
+        filterStackView.addArrangedSubview(listToggleButton)
         contentView.addSubview(emptyStateView)
         
         // Add activity feed section
@@ -2114,12 +2189,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         loadingContainerView.addSubview(loadingContentView)
         loadingContentView.addSubview(loadingIndicator)
         loadingContentView.addSubview(loadingLabel)
-        
-        // Add dropdown views
-        view.addSubview(categoryDropdownView)
-        view.addSubview(connectionDropdownView)
-        categoryDropdownView.addSubview(categoryDropdownTableView)
-        connectionDropdownView.addSubview(connectionDropdownTableView)
         
         // Add search results table view
         view.addSubview(searchResultsTableView)
@@ -2308,7 +2377,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             emptyStateLabel.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
             emptyStateLabel.leadingAnchor.constraint(equalTo: emptyStateView.leadingAnchor),
             emptyStateLabel.trailingAnchor.constraint(equalTo: emptyStateView.trailingAnchor),
-            emptyStateLabel.bottomAnchor.constraint(equalTo: emptyStateView.bottomAnchor),
+
+            emptyStateButtonsStack.topAnchor.constraint(equalTo: emptyStateLabel.bottomAnchor, constant: Constants.Spacing.medium),
+            emptyStateButtonsStack.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
+            emptyStateButtonsStack.bottomAnchor.constraint(equalTo: emptyStateView.bottomAnchor),
             
             // Loading container constraints - full screen overlay
             loadingContainerView.topAnchor.constraint(equalTo: view.topAnchor),
@@ -2331,29 +2403,16 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             loadingLabel.bottomAnchor.constraint(lessThanOrEqualTo: loadingContentView.bottomAnchor, constant: -20),
             
             // Filter button width constraints
-            categoryFilterButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 120),
-            connectionFilterButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 140),
-            
-            // Category dropdown
-            categoryDropdownView.topAnchor.constraint(equalTo: categoryFilterButton.bottomAnchor, constant: 4),
-            categoryDropdownView.leadingAnchor.constraint(equalTo: categoryFilterButton.leadingAnchor),
-            categoryDropdownView.widthAnchor.constraint(equalToConstant: 200),
-            
-            categoryDropdownTableView.topAnchor.constraint(equalTo: categoryDropdownView.topAnchor),
-            categoryDropdownTableView.leadingAnchor.constraint(equalTo: categoryDropdownView.leadingAnchor),
-            categoryDropdownTableView.trailingAnchor.constraint(equalTo: categoryDropdownView.trailingAnchor),
-            categoryDropdownTableView.bottomAnchor.constraint(equalTo: categoryDropdownView.bottomAnchor),
-            
-            // Connection dropdown
-            connectionDropdownView.topAnchor.constraint(equalTo: connectionFilterButton.bottomAnchor, constant: 4),
-            connectionDropdownView.leadingAnchor.constraint(equalTo: connectionFilterButton.leadingAnchor),
-            connectionDropdownView.widthAnchor.constraint(equalToConstant: 200),
-            
-            connectionDropdownTableView.topAnchor.constraint(equalTo: connectionDropdownView.topAnchor),
-            connectionDropdownTableView.leadingAnchor.constraint(equalTo: connectionDropdownView.leadingAnchor),
-            connectionDropdownTableView.trailingAnchor.constraint(equalTo: connectionDropdownView.trailingAnchor),
-            connectionDropdownTableView.bottomAnchor.constraint(equalTo: connectionDropdownView.bottomAnchor),
-            
+            mapMenuButton.widthAnchor.constraint(equalToConstant: 36),
+            myPlacesToggleButton.widthAnchor.constraint(equalToConstant: 36),
+            listToggleButton.widthAnchor.constraint(equalToConstant: 36),
+
+            // Places list overlays the map exactly
+            placesListTableView.topAnchor.constraint(equalTo: mapContainerView.topAnchor),
+            placesListTableView.leadingAnchor.constraint(equalTo: mapContainerView.leadingAnchor),
+            placesListTableView.trailingAnchor.constraint(equalTo: mapContainerView.trailingAnchor),
+            placesListTableView.bottomAnchor.constraint(equalTo: mapContainerView.bottomAnchor),
+
             // Location status label
             locationStatusLabel.topAnchor.constraint(equalTo: mapContainerView.topAnchor, constant: 16),
             locationStatusLabel.trailingAnchor.constraint(equalTo: mapContainerView.trailingAnchor, constant: -16),
@@ -2420,12 +2479,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         activityTableHeightConstraint = activityTableView.heightAnchor.constraint(equalToConstant: 600)
         activityTableHeightConstraint?.isActive = true
         
-        categoryDropdownHeightConstraint = categoryDropdownView.heightAnchor.constraint(equalToConstant: 0)
-        categoryDropdownHeightConstraint?.isActive = true
-        
-        connectionDropdownHeightConstraint = connectionDropdownView.heightAnchor.constraint(equalToConstant: 0)
-        connectionDropdownHeightConstraint?.isActive = true
-        
         // Search results table view constraints
         NSLayoutConstraint.activate([
             searchResultsTableView.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 8),
@@ -2459,8 +2512,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         quickAddPlaceButton.addTarget(self, action: #selector(quickAddPlaceButtonTapped), for: .touchUpInside)
         mapExpandButton.addTarget(self, action: #selector(expandMapButtonTapped), for: .touchUpInside)
-        categoryFilterButton.addTarget(self, action: #selector(categoryFilterButtonTapped), for: .touchUpInside)
-        connectionFilterButton.addTarget(self, action: #selector(connectionFilterButtonTapped), for: .touchUpInside)
         searchScopeButton.addTarget(self, action: #selector(searchScopeButtonTapped), for: .touchUpInside)
         
         setupMapView()
@@ -2471,6 +2522,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         let mapVC = FullScreenMapViewController()
         mapVC.viewMode = .allPlaces
         mapVC.delegate = self
+        mapVC.ownPlaceIds = Set(userOwnPlaces.map { $0.id })
         
         addChild(mapVC)
         mapContainerView.addSubview(mapVC.view)
@@ -2492,19 +2544,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     private func setupDropdownViews() {
-        // Setup dropdown table views
-        categoryDropdownTableView.delegate = self
-        categoryDropdownTableView.dataSource = self
-        categoryDropdownTableView.register(UITableViewCell.self, forCellReuseIdentifier: "CategoryDropdownCell")
-        categoryDropdownTableView.delaysContentTouches = false
-        categoryDropdownTableView.canCancelContentTouches = true
-        
-        connectionDropdownTableView.delegate = self
-        connectionDropdownTableView.dataSource = self
-        connectionDropdownTableView.register(UITableViewCell.self, forCellReuseIdentifier: "ConnectionDropdownCell")
-        connectionDropdownTableView.delaysContentTouches = false
-        connectionDropdownTableView.canCancelContentTouches = true
-        
+        // Distance-sorted places list (map/list toggle)
+        placesListTableView.delegate = self
+        placesListTableView.dataSource = self
+
         // Also configure search results table view
         searchResultsTableView.delegate = self
         searchResultsTableView.dataSource = self
@@ -2715,8 +2758,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             
             // Set default filter (All Connections)
             self.selectedConnectionId = nil
-            self.connectionFilterButton.setTitle("All Connections", for: .normal)
-            
+            self.selectedConnectionUser = nil
+
             // Don't mark as ready - we need to fetch places
             self.isMapDataReady = false
             
@@ -2736,7 +2779,16 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             if !self.reels.isEmpty {
                 self.reelsCollectionView.reloadData()
             }
-            
+
+            // A slimmed preload may complete before the non-critical feed calls
+            // finish; fetch whatever is missing so the feed never stays empty.
+            if self.activities.isEmpty {
+                self.fetchActivities()
+            }
+            if self.reels.isEmpty {
+                self.fetchReels()
+            }
+
             print("✅ Preloaded data applied successfully")
             print("   - Circles: \(self.circles.count)")
             print("   - Places: \(self.allPlaces.count) (INCOMPLETE - need to fetch all)")
@@ -2922,7 +2974,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         activityLoadingContainer.isHidden = true
         
         // Only show table view if Activity tab is selected
-        if contentSegmentedControl.selectedSegmentIndex == 2 {
+        if contentSegmentedControl.selectedSegmentIndex == 0 {
             activityTableView.isHidden = false
         }
         
@@ -3263,8 +3315,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             self.updateEmptyState()
             self.updateActivityFeed()
             
-            // Now fetch places from all circles in parallel
-            let allCircles = myCirclesResult + networkCirclesResult
+            // Now fetch places from all circles in parallel.
+            // With viewport loading, network circle places arrive on demand for the
+            // visible map region instead — only own circles are fan-out fetched.
+            let allCircles = self.useViewportNetworkLoading ? myCirclesResult : myCirclesResult + networkCirclesResult
             guard !allCircles.isEmpty else {
                 self.isMapDataReady = true
                 self.updateMapWhenReady()
@@ -3548,8 +3602,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             // Cached places are temporary - will be replaced with full data
             print("🗺️ [Progressive] Showing \(places.count) cached places temporarily")
         } else {
-            // Full place data
-            self.allPlaces = places
+            // Full place data. With viewport loading, merge instead of replacing
+            // so already-fetched viewport (network) places aren't wiped out.
+            if useViewportNetworkLoading {
+                self.allPlaces = removeDuplicatePlaces(places + self.allPlaces)
+            } else {
+                self.allPlaces = places
+            }
             self.userOwnPlaces = places.filter { place in
                 circles.contains { circle in
                     circle.places?.contains(place.id) == true
@@ -3561,18 +3620,18 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             self.updateAvailableCategories()
         }
         
-        // Apply filters and update map
-        let placesToDisplay = applyFiltersToPlaces(places)
+        // Apply filters and update map (include merged viewport places, not just the incoming batch)
+        let placesToDisplay = applyFiltersToPlaces((useViewportNetworkLoading && !isFromCache) ? allPlaces : places)
         self.filteredPlaces = placesToDisplay
-        
+
         // Update map with current places
         self.mapViewController?.updatePlaces(placesToDisplay)
-        
+
         // Trigger map region adjustment for progressive updates
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             self?.mapViewController?.adjustMapRegion()
         }
-        
+
         updatePlaceCountLabel(count: placesToDisplay.count)
         
         // If we have full data, hide loading state
@@ -3924,18 +3983,21 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 case .success(let response):
                     self?.networkCircles = response.data
                     // Now fetch places from network circles
-                    for circle in response.data {
-                        group.enter()
-                        PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
-                            switch result {
-                            case .success(let places):
-                                print("✅ Found \(places.count) places in network circle: \(circle.name)")
-                                print("   Circle owner ID: \(circle.owner)")
-                                allFetchedPlaces.append(contentsOf: places)
-                            case .failure(let error):
-                                print("Failed to fetch places for network circle \(circle.id): \(error)")
+                    // (skipped with viewport loading — places arrive per visible region)
+                    if self?.useViewportNetworkLoading != true {
+                        for circle in response.data {
+                            group.enter()
+                            PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
+                                switch result {
+                                case .success(let places):
+                                    print("✅ Found \(places.count) places in network circle: \(circle.name)")
+                                    print("   Circle owner ID: \(circle.owner)")
+                                    allFetchedPlaces.append(contentsOf: places)
+                                case .failure(let error):
+                                    print("Failed to fetch places for network circle \(circle.id): \(error)")
+                                }
+                                group.leave()
                             }
-                            group.leave()
                         }
                     }
                 case .failure(let error):
@@ -3949,7 +4011,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 }
                 group.leave()
             }
-        } else {
+        } else if !useViewportNetworkLoading {
             // Use existing network circles
             for circle in networkCircles {
                 print("📍 Fetching places for network circle: \(circle.name) (\(circle.id))")
@@ -4070,7 +4132,14 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             self.isLoadingPlaces = false
             self.isPerformingInitialLoad = false // Reset initial load flag
             self.hideLoadingState()
-            
+
+            // With viewport loading, re-fetch network places for the current
+            // region so refresh paths (place added/edited) pick up changes
+            if self.useViewportNetworkLoading, let mapVC = self.mapViewController {
+                self.fetchedViewportCircles.removeAll()
+                self.fetchViewportPlaces(region: mapVC.currentRegion, for: mapVC)
+            }
+
             // Mark that we've loaded data only if we actually have data
             if !self.circles.isEmpty || !allFetchedPlaces.isEmpty {
                 CirclesHomeViewController.hasLoadedInitialData = true
@@ -4131,43 +4200,67 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             target: self,
             action: #selector(helpButtonTapped)
         )
-        navigationItem.leftBarButtonItem = helpButton
+
+        // Invite/connect button (same share-invite flow as the My Network tab)
+        let inviteButton = UIBarButtonItem(
+            image: UIImage(systemName: "person.badge.plus"),
+            style: .plain,
+            target: self,
+            action: #selector(inviteButtonTapped)
+        )
+        inviteButton.accessibilityLabel = "Invite Connections"
+
+        navigationItem.leftBarButtonItems = [helpButton, inviteButton]
         
-        // Create check-in button
+        Task { @MainActor in
+            navigationItem.rightBarButtonItems = makeRightBarButtons()
+        }
+    }
+
+    /// Builds the right nav-bar buttons for BOTH construction sites
+    /// (setupNavigationBar and updateNavigationBarForSubscription) so the two
+    /// can't drift. Reuses the stored notification/rewards buttons to keep
+    /// their badge custom views alive across rebuilds.
+    @MainActor
+    private func makeRightBarButtons() -> [UIBarButtonItem] {
         let checkInButton = UIBarButtonItem(
             image: UIImage(systemName: "checkmark.circle"),
             style: .plain,
             target: self,
             action: #selector(checkInButtonTapped)
         )
-        
-        // Create notification button with bell icon
-        let notificationButton = UIBarButtonItem(
+
+        let rewardsButton = self.rewardsBarButton ?? UIBarButtonItem(
+            image: UIImage(systemName: "dollarsign.circle"),
+            style: .plain,
+            target: self,
+            action: #selector(rewardsButtonTapped)
+        )
+        rewardsButton.accessibilityLabel = "Rewards"
+        self.rewardsBarButton = rewardsButton
+
+        let notificationButton = self.notificationBarButton ?? UIBarButtonItem(
             image: UIImage(systemName: "bell"),
             style: .plain,
             target: self,
             action: #selector(notificationButtonTapped)
         )
         self.notificationBarButton = notificationButton
-        
-        // Create upgrade button for free users
-        var rightBarButtons = [checkInButton, notificationButton]
-        
-        // Check if user is not subscribed
-        Task { @MainActor in
-            if !SubscriptionManager.shared.isSubscribed {
-                let upgradeButton = UIBarButtonItem(
-                    image: UIImage(systemName: "crown.fill"),
-                    style: .plain,
-                    target: self,
-                    action: #selector(upgradeButtonTapped)
-                )
-                upgradeButton.tintColor = Constants.Colors.primary
-                rightBarButtons.insert(upgradeButton, at: 0) // Add as first button
-            }
-            
-            navigationItem.rightBarButtonItems = rightBarButtons
+
+        var rightBarButtons = [checkInButton, rewardsButton, notificationButton]
+
+        if !SubscriptionManager.shared.isSubscribed {
+            let upgradeButton = UIBarButtonItem(
+                image: UIImage(systemName: "crown.fill"),
+                style: .plain,
+                target: self,
+                action: #selector(upgradeButtonTapped)
+            )
+            upgradeButton.tintColor = Constants.Colors.primary
+            rightBarButtons.insert(upgradeButton, at: 0) // Add as first button
         }
+
+        return rightBarButtons
     }
     
     // MARK: - Notifications
@@ -4178,6 +4271,23 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             self,
             selector: #selector(handleCircleDeleted(_:)),
             name: .circleDeleted,
+            object: nil
+        )
+
+        // Refresh the $ badge the moment points are earned or spent
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleRewardBalanceChanged),
+            name: .rewardBalanceChanged,
+            object: nil
+        )
+
+        // Refresh when the quick-start flow adds places (it's modal, so the
+        // usual pop-triggered viewWillAppear refresh doesn't fire)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleQuickStartPlaceAdded),
+            name: Notification.Name("PlaceAdded"),
             object: nil
         )
         
@@ -4283,7 +4393,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             print("✅ Removing \(indexPathsToRemove.count) activity(ies) from feed")
             
             // Update UI if activity feed is visible
-            if contentSegmentedControl.selectedSegmentIndex == 2 { // Activity tab
+            if contentSegmentedControl.selectedSegmentIndex == 0 { // Activity tab
                 // Use performBatchUpdates for proper animation and consistency
                 activityTableView.performBatchUpdates({
                     activityTableView.deleteRows(at: indexPathsToRemove, with: .fade)
@@ -4292,7 +4402,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     self?.activityEmptyStateLabel.isHidden = !(self?.activities.isEmpty ?? true)
                 }
             } else {
-                // If not visible, just update the empty state
+                // Not visible: keep the hidden table's row count in sync with the
+                // shrunk data source so it can't crash when shown again
+                activityTableView.reloadData()
                 activityEmptyStateLabel.isHidden = activities.isEmpty
             }
         }
@@ -4336,24 +4448,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     private func updateNavigationBarForSubscription() {
         Task { @MainActor in
-            let checkInButton = UIBarButtonItem(image: UIImage(systemName: "checkmark.circle"), style: .plain, target: self, action: #selector(checkInButtonTapped))
-            let notificationButton = self.notificationBarButton ?? UIBarButtonItem(image: UIImage(systemName: "bell"), style: .plain, target: self, action: #selector(notificationButtonTapped))
-            
-            var rightBarButtons = [checkInButton, notificationButton]
-            
-            // Check if user is not subscribed
-            if !SubscriptionManager.shared.isSubscribed {
-                let upgradeButton = UIBarButtonItem(
-                    image: UIImage(systemName: "crown.fill"),
-                    style: .plain,
-                    target: self,
-                    action: #selector(upgradeButtonTapped)
-                )
-                upgradeButton.tintColor = Constants.Colors.primary
-                rightBarButtons.insert(upgradeButton, at: 0) // Add as first button
-            }
-            
-            navigationItem.rightBarButtonItems = rightBarButtons
+            navigationItem.rightBarButtonItems = makeRightBarButtons()
         }
     }
     
@@ -4378,10 +4473,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     private func presentFullScreenMapWithCurrentState() {
-        // Present full screen map with current filter states
+        // Present full screen map with current filter states, opening at the
+        // same region the embedded map is showing
         let fullScreenMap = FullScreenMapViewController(
             places: allPlaces,
-            initialRegion: nil,
+            initialRegion: mapViewController?.currentRegion,
             selectedCategory: selectedCategory,  // Pass current category filter
             selectedConnectionId: selectedConnectionId  // Pass current connection filter
         )
@@ -4451,6 +4547,55 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         present(fullScreenMap, animated: true)
     }
     
+    @objc private func emptyStateFindFriendsTapped() {
+        // Jump to My Network and open the contacts import flow
+        tabBarController?.selectedIndex = 1
+        NotificationCenter.default.post(name: Notification.Name("ShowContactsImport"), object: nil)
+    }
+
+    @objc private func handleQuickStartPlaceAdded() {
+        // Debounced full refetch (places were added outside the normal flow)
+        updateMapPlaces()
+    }
+
+    /// Opens the lightweight "add 3 places" flow, seeding the default circles
+    /// first if the account has none yet.
+    @objc private func openQuickStartAddPlaces() {
+        if let circle = circles.first(where: { $0.name == "Favorite Local Spots" }) ?? circles.first {
+            presentQuickStart(with: circle)
+            return
+        }
+
+        // No circles: retry the (idempotent) server-side default seeding first
+        APIService.shared.request(
+            endpoint: "users/me/complete-onboarding",
+            method: .post,
+            body: [:]
+        ) { [weak self] (_: Result<SimpleAPIResponse, APIError>) in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                CircleService.shared.fetchUserCircles { circlesResult in
+                    DispatchQueue.main.async {
+                        if case .success(let fetched) = circlesResult, !fetched.isEmpty {
+                            self.circles = fetched
+                            let target = fetched.first(where: { $0.name == "Favorite Local Spots" }) ?? fetched[0]
+                            self.presentQuickStart(with: target)
+                        } else {
+                            self.promptCreateFirstCircle()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func presentQuickStart(with circle: Circle) {
+        let quickStartVC = QuickStartAddPlacesViewController(targetCircle: circle)
+        let navController = UINavigationController(rootViewController: quickStartVC)
+        navController.modalPresentationStyle = .pageSheet
+        present(navController, animated: true)
+    }
+
     @objc private func quickAddPlaceButtonTapped() {
         // Debug: Log current circle state
         print("🔍 DEBUG quickAddPlaceButtonTapped - circles.count: \(circles.count)")
@@ -4463,26 +4608,19 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             print("🔍 DEBUG quickAddPlaceButtonTapped - No circles found! This is why picker isn't showing")
         }
         
-        // If user has circles, show circle picker. Otherwise, prompt to create a circle
+        // If user has circles, show circle picker. Otherwise, silently seed the
+        // default circles and continue — no "create a circle first" wall
         if circles.isEmpty {
-            let alert = UIAlertController(
-                title: "No Circles Yet",
-                message: "You need to create a circle first before adding places.",
-                preferredStyle: .alert
-            )
-            alert.addAction(UIAlertAction(title: "Create Circle", style: .default) { [weak self] _ in
-                guard let self = self else { return }
-                let createCircleVC = CreateCircleViewController()
-                createCircleVC.delegate = self
-                let navController = UINavigationController(rootViewController: createCircleVC)
-                navController.modalPresentationStyle = .pageSheet
-                self.present(navController, animated: true)
-            })
-            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-            present(alert, animated: true)
+            recoverCirclesThenAddPlace()
         } else if circles.count == 1 {
             // If only one circle, go directly to add place
-            let addPlaceVC = AddPlaceViewController(circleId: circles[0].id)
+            let addPlaceVC = AddPlaceViewController(circleId: circles[0].id, circles: circles)
+            navigationController?.pushViewController(addPlaceVC, animated: true)
+        } else if let lastUsedId = UserDefaults.standard.string(forKey: AddPlaceViewController.lastUsedCircleKey),
+                  circles.contains(where: { $0.id == lastUsedId }) {
+            // Skip the picker: default to the circle the user last added a place to.
+            // The add screen's circle dropdown still lets them switch.
+            let addPlaceVC = AddPlaceViewController(circleId: lastUsedId, circles: circles)
             navigationController?.pushViewController(addPlaceVC, animated: true)
         } else {
             // Show circle picker
@@ -4490,13 +4628,65 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
+    /// Ensures at least one circle exists (the server-side default seeding is
+    /// idempotent), then continues straight into the add-place flow. Only if
+    /// seeding fails does the user see the create-circle prompt.
+    private func recoverCirclesThenAddPlace() {
+        APIService.shared.request(
+            endpoint: "users/me/complete-onboarding",
+            method: .post,
+            body: [:]
+        ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success:
+                    CircleService.shared.fetchUserCircles { [weak self] circlesResult in
+                        DispatchQueue.main.async {
+                            guard let self = self else { return }
+                            if case .success(let fetched) = circlesResult, !fetched.isEmpty {
+                                self.circles = fetched
+                                let target = fetched.first(where: { $0.name == "Favorite Local Spots" }) ?? fetched[0]
+                                let addPlaceVC = AddPlaceViewController(circleId: target.id, circles: fetched)
+                                self.navigationController?.pushViewController(addPlaceVC, animated: true)
+                            } else {
+                                self.promptCreateFirstCircle()
+                            }
+                        }
+                    }
+                case .failure(let error):
+                    Logger.debug("Onboarding retry before add-place failed: \(error)")
+                    self.promptCreateFirstCircle()
+                }
+            }
+        }
+    }
+
+    private func promptCreateFirstCircle() {
+        let alert = UIAlertController(
+            title: "No Circles Yet",
+            message: "You need to create a circle first before adding places.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Create Circle", style: .default) { [weak self] _ in
+            guard let self = self else { return }
+            let createCircleVC = CreateCircleViewController()
+            createCircleVC.delegate = self
+            let navController = UINavigationController(rootViewController: createCircleVC)
+            navController.modalPresentationStyle = .pageSheet
+            self.present(navController, animated: true)
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
+    }
+
     private func showCirclePicker() {
         // Sort circles alphabetically for easy finding
         let sortedCircles = circles.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         
         let circlePickerVC = CirclePickerViewController(circles: sortedCircles)
         circlePickerVC.onCircleSelected = { [weak self] circle in
-            let addPlaceVC = AddPlaceViewController(circleId: circle.id)
+            let addPlaceVC = AddPlaceViewController(circleId: circle.id, circles: sortedCircles)
             self?.navigationController?.pushViewController(addPlaceVC, animated: true)
         }
         circlePickerVC.onCreateNewCircle = { [weak self] in
@@ -4597,9 +4787,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     private func fetchNetworkPlacesAndCombineWithCached() {
         var networkPlaces: [Place] = []
         let group = DispatchGroup()
-        
+
         // Fetch places from network circles
-        for circle in networkCircles {
+        // (skipped with viewport loading — places arrive per visible region)
+        for circle in (useViewportNetworkLoading ? [] : networkCircles) {
             group.enter()
             PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
                 switch result {
@@ -4796,99 +4987,283 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// 
     /// This fixes the issue where selecting categories (like "Coffee work") would 
     /// trigger a full data refetch, losing the applied filter state
-    private func refreshMapDisplay() {
+    private func refreshMapDisplay(adjustRegion: Bool = true) {
         print("🗺️ [RefreshMapDisplay] Refreshing map with current filters")
-        
+
         // Skip if we don't have data yet
         if allPlaces.isEmpty {
             print("🗺️ [RefreshMapDisplay] No places data available, skipping refresh")
             return
         }
-        
+
         // Apply current filters to existing data
         let placesToDisplay = applyFiltersToPlaces(allPlaces)
-        
+
         print("🗺️ [RefreshMapDisplay] Displaying \(placesToDisplay.count) filtered places (from \(allPlaces.count) total)")
-        
-        // Update the map immediately (no debouncing needed for filters)
-        mapViewController?.updatePlaces(placesToDisplay)
-        
-        // Trigger map region adjustment to fit all filtered results (like full-screen map)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            self?.mapViewController?.adjustMapRegion()
+
+        // Update the map immediately (no debouncing needed for filters).
+        // updatePlaces zooms exactly once via the annotation pipeline when
+        // adjustRegion is true — no extra delayed adjustMapRegion here.
+        mapViewController?.updatePlaces(placesToDisplay, adjustRegion: adjustRegion)
+
+        // Keep the distance-sorted list in sync when it's visible
+        if isShowingPlacesList {
+            rebuildDistanceSortedPlaces()
+            placesListTableView.reloadData()
         }
-        
+
         // Update place count label
         updatePlaceCountLabel(count: placesToDisplay.count)
     }
-    
-    
-    @objc private func categoryFilterButtonTapped() {
-        // Don't allow opening dropdown if no categories are available
-        if availableCategories.isEmpty {
-            print("🏷️ [Categories] No categories available, dropdown disabled")
+
+    // MARK: - Viewport-Based Network Place Loading
+
+    /// Fetches network places for the given map region and merges them into
+    /// `allPlaces`. Called (debounced) whenever the map's visible region changes.
+    private func fetchViewportPlaces(region: MKCoordinateRegion, for controller: FullScreenMapViewController) {
+        guard useViewportNetworkLoading else { return }
+
+        // Region → covering circle: half the bounding-box diagonal, +10% pad
+        let latMeters = region.span.latitudeDelta * 111_320.0
+        let lngMeters = region.span.longitudeDelta * 111_320.0 * cos(region.center.latitude * .pi / 180)
+        var radiusM = ((latMeters * latMeters + lngMeters * lngMeters).squareRoot() / 2) * 1.1
+        radiusM = min(max(radiusM, 100), 100_000) // match server clamp
+
+        // Skip if an earlier fetch already fully covered this area
+        let center = CLLocation(latitude: region.center.latitude, longitude: region.center.longitude)
+        for fetched in fetchedViewportCircles {
+            let prevCenter = CLLocation(latitude: fetched.center.latitude, longitude: fetched.center.longitude)
+            if prevCenter.distance(from: center) + radiusM <= fetched.radiusM {
+                print("🗺️ [Viewport] Region already covered, skipping fetch")
+                return
+            }
+        }
+
+        guard !isFetchingViewport else { return }
+        isFetchingViewport = true
+
+        let requestLimit = 200
+        print("🗺️ [Viewport] Fetching places: center=(\(region.center.latitude), \(region.center.longitude)) radius=\(Int(radiusM))m")
+
+        PlaceService.shared.fetchNetworkPlacesInViewport(
+            centerLat: region.center.latitude,
+            centerLng: region.center.longitude,
+            radiusM: radiusM,
+            limit: requestLimit
+        ) { [weak self, weak controller] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.isFetchingViewport = false
+
+                switch result {
+                case .success(let places):
+                    print("🗺️ [Viewport] Received \(places.count) places")
+
+                    // Record coverage only when the result wasn't truncated by the limit
+                    if places.count < requestLimit {
+                        self.fetchedViewportCircles.append((center: region.center, radiusM: radiusM))
+                        if self.fetchedViewportCircles.count > 50 {
+                            self.fetchedViewportCircles.removeFirst()
+                        }
+                    }
+
+                    guard !places.isEmpty else { return }
+
+                    // Merge (never replace) so nothing already loaded disappears
+                    let countBefore = self.allPlaces.count
+                    self.allPlaces = self.removeDuplicatePlaces(self.allPlaces + places)
+                    guard self.allPlaces.count > countBefore else { return }
+
+                    self.cachedPlaces = self.allPlaces
+                    self.placesCacheExpiry = Date().addingTimeInterval(self.cacheExpiryMinutes * 60)
+                    self.updateAvailableCategories()
+
+                    // Refresh pins without moving the map (prevents a fetch loop)
+                    self.refreshMapDisplay(adjustRegion: false)
+
+                    // If the notifying map is the modal instance, push places to it too
+                    if let controller = controller, controller !== self.mapViewController {
+                        controller.updatePlaces(self.applyFiltersToPlaces(self.allPlaces), adjustRegion: false)
+                    }
+                case .failure(let error):
+                    // Non-fatal: a later pan retries the fetch
+                    print("🗺️ [Viewport] Fetch failed: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    /// Fetches ALL places for one connection (not viewport-bounded) so the map
+    /// can zoom to their places when they're selected as the filter.
+    /// Uses the same user-circles + per-circle path as the profile map — the
+    /// places/batch endpoint re-checks connections by exact id and can silently
+    /// drop circles when connection docs and circle owners use different id formats.
+    private func fetchAllPlacesForConnection(_ connectionId: String) {
+        print("📍 Fetching circles for connection \(connectionId)")
+        APIService.shared.request(
+            endpoint: "network/user-circles/\(connectionId)",
+            method: .get,
+            requiresAuth: true
+        ) { [weak self] (result: Result<UserCirclesResponse, APIError>) in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success(let response):
+                    let connectionCircles = response.data.circles
+                    // Register these circles so the connection/category filters
+                    // and owner mapping recognize their places
+                    let knownIds = Set(self.networkCircles.map { $0.id })
+                    self.networkCircles.append(contentsOf: connectionCircles.filter { !knownIds.contains($0.id) })
+
+                    // Adopt the canonical user id the endpoint resolved, so the
+                    // owner-matching filter lines up with these circles' owner
+                    let canonicalId = response.data.user.id
+                    if self.selectedConnectionId == connectionId && canonicalId != connectionId {
+                        self.selectedConnectionId = canonicalId
+                        self.mapViewController?.setConnectionFilterContext(canonicalId)
+                        self.userListView.selectedUserId = canonicalId
+                    }
+
+                    // The endpoint already embeds each circle's places - use them
+                    // directly instead of refetching one request per circle
+                    let embeddedPlaces = connectionCircles.flatMap { $0.placesWithDetails ?? [] }
+                    if !embeddedPlaces.isEmpty {
+                        self.allPlaces = self.removeDuplicatePlaces(self.allPlaces + embeddedPlaces)
+                    }
+
+                    // Only fetch circles whose places weren't embedded in the response
+                    let circlesMissingPlaces = connectionCircles.filter { circle in
+                        circle.placesWithDetails == nil && (circle.placesCount ?? circle.places?.count ?? 0) > 0
+                    }
+                    if circlesMissingPlaces.isEmpty {
+                        self.updateAvailableCategories()
+                        // Zoom is wanted here - the map should frame this connection's places
+                        self.refreshMapDisplay()
+                    } else {
+                        self.fetchPlacesForConnectionCircles(circlesMissingPlaces)
+                    }
+                case .failure(let error):
+                    print("❌ Failed to fetch circles for connection \(connectionId): \(error.localizedDescription)")
+                    self.refreshMapDisplay()
+                }
+            }
+        }
+    }
+
+    private func fetchPlacesForConnectionCircles(_ connectionCircles: [Circle]) {
+        guard !connectionCircles.isEmpty else {
+            refreshMapDisplay()
             return
         }
-        
-        isCategoryDropdownOpen.toggle()
-        
-        if isCategoryDropdownOpen {
-            // Close other dropdowns if open
-            if isConnectionDropdownOpen {
-                isConnectionDropdownOpen = false
-                hideConnectionDropdown()
+
+        print("📍 Fetching places for \(connectionCircles.count) connection circles")
+        var fetchedPlaces: [Place] = []
+        let lock = NSLock()
+        let group = DispatchGroup()
+
+        for circle in connectionCircles {
+            group.enter()
+            PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
+                if case .success(let places) = result {
+                    lock.lock()
+                    fetchedPlaces.append(contentsOf: places)
+                    lock.unlock()
+                }
+                group.leave()
             }
-            showCategoryDropdown()
-        } else {
-            hideCategoryDropdown()
+        }
+
+        group.notify(queue: .main) { [weak self] in
+            guard let self = self else { return }
+            print("📍 Connection places fetched: \(fetchedPlaces.count)")
+            self.allPlaces = self.removeDuplicatePlaces(self.allPlaces + fetchedPlaces)
+            self.updateAvailableCategories()
+            // Zoom is wanted here — the map should frame this connection's places
+            self.refreshMapDisplay()
         }
     }
     
-    private func showCategoryDropdown() {
-        // Calculate available categories from all places
+    
+    private func buildMapMenuElements() -> [UIMenuElement] {
+        var elements: [UIMenuElement] = []
+
+        // Connection filter submenu
+        let currentUserId = AuthService.shared.getUserId() ?? ""
+        var connectionActions: [UIAction] = [
+            UIAction(title: "All Connections", state: selectedConnectionId == nil ? .on : .off) { [weak self] _ in
+                self?.selectConnection(id: nil, user: nil)
+            },
+            UIAction(title: "My Places Only", state: selectedConnectionId == "my_places_only" ? .on : .off) { [weak self] _ in
+                self?.selectConnection(id: "my_places_only", user: nil)
+            }
+        ]
+        for connection in NetworkManager.shared.connections {
+            let otherUserId = connection.otherUserId(currentUserId: currentUserId)
+            connectionActions.append(
+                UIAction(
+                    title: connection.connectedUser?.displayName ?? "Unknown",
+                    state: selectedConnectionId == otherUserId ? .on : .off
+                ) { [weak self] _ in
+                    self?.selectConnection(id: otherUserId, user: connection.connectedUser)
+                }
+            )
+        }
+        let connectionSubtitle = selectedConnectionUser?.displayName
+            ?? (selectedConnectionId == "my_places_only" ? "My Places Only" : "All Connections")
+        elements.append(UIMenu(
+            title: "Connections",
+            subtitle: connectionSubtitle,
+            image: UIImage(systemName: "person.2"),
+            children: connectionActions
+        ))
+
+        // Recompute categories so the menu always reflects the current connection filter
         updateAvailableCategories()
-        
-        // Calculate dropdown height
-        let numberOfRows = availableCategories.count + 1 // +1 for "All Categories"
-        let maxHeight: CGFloat = 300
-        let calculatedHeight = CGFloat(numberOfRows) * 44
-        let dropdownHeight = min(calculatedHeight, maxHeight)
-        
-        categoryDropdownView.isHidden = false
-        categoryDropdownHeightConstraint?.constant = dropdownHeight
-        
-        // Enable scrolling if content exceeds max height
-        categoryDropdownTableView.isScrollEnabled = calculatedHeight > maxHeight
-        
-        // Reload table data
-        categoryDropdownTableView.reloadData()
-        
-        // Animate dropdown appearance
-        UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.9, initialSpringVelocity: 0.5, options: .curveEaseInOut) {
-            self.categoryDropdownView.alpha = 1
-            self.view.layoutIfNeeded()
-            
-            // Rotate arrow
-            self.categoryFilterButton.imageView?.transform = CGAffineTransform(rotationAngle: .pi)
+
+        if availableCategories.isEmpty {
+            let noCategories = UIAction(title: "No Categories", attributes: .disabled) { _ in }
+            elements.append(UIMenu(title: "Category", image: UIImage(systemName: "square.grid.2x2"), children: [noCategories]))
+        } else {
+            var categoryActions: [UIAction] = [
+                UIAction(title: "All Categories", state: selectedCategory == nil ? .on : .off) { [weak self] _ in
+                    self?.selectCategory(nil)
+                }
+            ]
+            for category in availableCategories {
+                categoryActions.append(
+                    UIAction(title: category.displayName, state: selectedCategory == category ? .on : .off) { [weak self] _ in
+                        self?.selectCategory(category)
+                    }
+                )
+            }
+            elements.append(UIMenu(
+                title: "Category",
+                subtitle: selectedCategory?.displayName ?? "All Categories",
+                image: UIImage(systemName: "square.grid.2x2"),
+                children: categoryActions
+            ))
         }
-        
-        // Bring dropdown to front
-        view.bringSubviewToFront(categoryDropdownView)
-    }
-    
-    private func hideCategoryDropdown() {
-        UIView.animate(withDuration: 0.2, animations: {
-            self.categoryDropdownView.alpha = 0
-            self.categoryDropdownHeightConstraint?.constant = 0
-            self.view.layoutIfNeeded()
-            
-            // Rotate arrow back
-            self.categoryFilterButton.imageView?.transform = .identity
-        }) { _ in
-            self.categoryDropdownView.isHidden = true
+
+        // View Profile: the filtered connection's profile, or the user's own when none is selected
+        let profileTitle: String
+        if let name = selectedConnectionUser?.displayName, !name.isEmpty {
+            profileTitle = "View \(name)'s Profile"
+        } else {
+            profileTitle = "View My Profile"
         }
+        elements.append(UIAction(title: profileTitle, image: UIImage(systemName: "person.crop.circle")) { [weak self] _ in
+            self?.openProfileFromMapMenu()
+        })
+
+        return elements
     }
-    
+
+    private func selectCategory(_ category: UnifiedCategory?) {
+        selectedCategory = category
+        print("📍 Category filter changed to: \(selectedCategory?.displayName ?? "All Categories")")
+        refreshMapDisplay()
+    }
+
     private func updateAvailableCategories() {
         print("🏷️ [Categories] Updating available categories with connection filter: \(selectedConnectionId ?? "none")")
         print("🏷️ [Categories] Total allPlaces count: \(allPlaces.count)")
@@ -4918,9 +5293,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             print("🏷️ [Categories] Previously selected category '\(selectedCategory.displayName)' no longer available, clearing selection")
             self.selectedCategory = nil
         }
-        
-        // Update the category filter button title based on available categories
-        updateCategoryFilterButtonTitle()
     }
     
     // Helper method to apply only connection filtering (without category filter)
@@ -4981,95 +5353,152 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return filteredPlaces
     }
     
-    private func updateCategoryFilterButtonTitle() {
-        if availableCategories.isEmpty {
-            categoryFilterButton.setTitle("No Categories", for: .normal)
-            categoryFilterButton.isEnabled = false
-            categoryFilterButton.alpha = 0.6
-        } else {
-            categoryFilterButton.setTitle(selectedCategory?.displayName ?? "All Categories", for: .normal)
-            categoryFilterButton.isEnabled = true
-            categoryFilterButton.alpha = 1.0
+    private func openProfileFromMapMenu() {
+        let profileVC = ProfileViewController()
+        // Without a configured user, ProfileViewController shows the current user's own profile
+        if let user = selectedConnectionUser {
+            profileVC.configureWith(user: user)
         }
+        navigationController?.pushViewController(profileVC, animated: true)
     }
-    
-    private func updateCategoryDropdownHeight() {
-        // Calculate dropdown height based on available categories
-        let numberOfRows = availableCategories.count + 1 // +1 for "All Categories"
-        let maxHeight: CGFloat = 300
-        let calculatedHeight = CGFloat(numberOfRows) * 44
-        let dropdownHeight = min(calculatedHeight, maxHeight)
-        
-        // Update height constraint if dropdown is visible
-        if !categoryDropdownView.isHidden {
-            categoryDropdownHeightConstraint?.constant = dropdownHeight
-            categoryDropdownTableView.isScrollEnabled = calculatedHeight > maxHeight
-            categoryDropdownTableView.reloadData()
-            
-            // Animate the height change
-            UIView.animate(withDuration: 0.2) {
-                self.view.layoutIfNeeded()
+
+    @objc private func listToggleTapped() {
+        isShowingPlacesList.toggle()
+
+        // Flip the icon: show what tapping will switch to
+        let iconName = isShowingPlacesList ? "map" : "list.bullet"
+        let config = UIImage.SymbolConfiguration(pointSize: 15, weight: .medium)
+        listToggleButton.setImage(UIImage(systemName: iconName, withConfiguration: config), for: .normal)
+
+        if isShowingPlacesList {
+            rebuildDistanceSortedPlaces()
+            placesListTableView.reloadData()
+            // Open at the top, below the floating chips
+            placesListTableView.setContentOffset(CGPoint(x: 0, y: -placesListTableView.contentInset.top), animated: false)
+        }
+
+        // The list fully covers the map; map-only controls hide with it
+        placesListTableView.isHidden = !isShowingPlacesList
+        mapExpandButton.isHidden = isShowingPlacesList
+        mapPlaceCountLabel.isHidden = isShowingPlacesList
+    }
+
+    /// Rebuilds the distance-sorted data source for the places list from the
+    /// currently filtered places. Places without a location sort last.
+    private func rebuildDistanceSortedPlaces() {
+        let filtered = applyFiltersToPlaces(allPlaces)
+        let referenceLocation = mapViewController?.currentUserLocation
+            ?? mapViewController.map { CLLocation(latitude: $0.currentRegion.center.latitude, longitude: $0.currentRegion.center.longitude) }
+
+        distanceSortedPlaces = filtered.map { place in
+            let distance: CLLocationDistance?
+            if let reference = referenceLocation, let placeLocation = place.location?.clLocation {
+                distance = reference.distance(from: placeLocation)
+            } else {
+                distance = nil
+            }
+            return (place: place, distance: distance)
+        }.sorted { lhs, rhs in
+            switch (lhs.distance, rhs.distance) {
+            case let (l?, r?): return l < r
+            case (_?, nil): return true
+            case (nil, _?): return false
+            case (nil, nil): return lhs.place.name.localizedCaseInsensitiveCompare(rhs.place.name) == .orderedAscending
             }
         }
-    }
-    
-    @objc private func connectionFilterButtonTapped() {
-        isConnectionDropdownOpen.toggle()
-        
-        if isConnectionDropdownOpen {
-            // Close other dropdowns if open
-            if isCategoryDropdownOpen {
-                isCategoryDropdownOpen = false
-                hideCategoryDropdown()
-            }
-            showConnectionDropdown()
+
+        // Simple empty state
+        if distanceSortedPlaces.isEmpty {
+            let emptyLabel = UILabel()
+            emptyLabel.text = "No places to show"
+            emptyLabel.font = UIFont.systemFont(ofSize: 15, weight: .medium)
+            emptyLabel.textColor = Constants.Colors.secondaryLabel
+            emptyLabel.textAlignment = .center
+            placesListTableView.backgroundView = emptyLabel
         } else {
-            hideConnectionDropdown()
+            placesListTableView.backgroundView = nil
         }
     }
-    
-    private func showConnectionDropdown() {
-        // Get connections
-        let connections = NetworkManager.shared.connections
-        
-        // Calculate dropdown height
-        let numberOfRows = connections.count + 2 // +2 for "All Connections" and "My Places Only"
-        let maxHeight: CGFloat = 300
-        let calculatedHeight = CGFloat(numberOfRows) * 44
-        let dropdownHeight = min(calculatedHeight, maxHeight)
-        
-        connectionDropdownView.isHidden = false
-        connectionDropdownHeightConstraint?.constant = dropdownHeight
-        
-        // Enable scrolling if content exceeds max height
-        connectionDropdownTableView.isScrollEnabled = calculatedHeight > maxHeight
-        
-        // Reload table data
-        connectionDropdownTableView.reloadData()
-        
-        // Animate dropdown appearance
-        UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.9, initialSpringVelocity: 0.5, options: .curveEaseInOut) {
-            self.connectionDropdownView.alpha = 1
-            self.view.layoutIfNeeded()
-            
-            // Rotate arrow
-            self.connectionFilterButton.imageView?.transform = CGAffineTransform(rotationAngle: .pi)
-        }
-        
-        // Bring dropdown to front
-        view.bringSubviewToFront(connectionDropdownView)
+
+    /// Resolves the circle a place belongs to: circleId back-reference first
+    /// (always present, even when a circle's places array is stale), then
+    /// places-array membership. Shared by map pin callouts and the places list.
+    private func resolveCircle(for place: Place) -> Circle? {
+        return circles.first(where: { $0.id == place.circleId })
+            ?? circles.first(where: { $0.places?.contains(place.id) == true })
+            ?? networkCircles.first(where: { $0.id == place.circleId })
+            ?? networkCircles.first(where: { $0.places?.contains(place.id) == true })
     }
-    
-    private func hideConnectionDropdown() {
-        UIView.animate(withDuration: 0.2, animations: {
-            self.connectionDropdownView.alpha = 0
-            self.connectionDropdownHeightConstraint?.constant = 0
-            self.view.layoutIfNeeded()
-            
-            // Rotate arrow back
-            self.connectionFilterButton.imageView?.transform = .identity
-        }) { _ in
-            self.connectionDropdownView.isHidden = true
+
+    /// Pushes the detail screen for a place (used by the places list).
+    private func presentDetailForPlace(_ place: Place) {
+        guard let circle = resolveCircle(for: place) else {
+            print("⚠️ Place not found in any circle (circleId: \(place.circleId ?? "nil"))")
+            return
+        }
+
+        let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
+        navigationController?.pushViewController(placeDetailVC, animated: true)
+    }
+
+    @objc private func myPlacesToggleTapped() {
+        if selectedConnectionId == "my_places_only" {
+            selectConnection(id: nil, user: nil)
+        } else {
+            selectConnection(id: "my_places_only", user: nil)
+        }
+    }
+
+    private func updateMyPlacesToggleAppearance() {
+        let isActive = selectedConnectionId == "my_places_only"
+        var config = myPlacesToggleButton.configuration ?? .plain()
+        config.image = UIImage(
+            systemName: isActive ? "person.fill" : "person",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+        )
+        config.baseForegroundColor = isActive ? .white : Constants.Colors.label
+        myPlacesToggleButton.configuration = config
+        myPlacesToggleButton.backgroundColor = isActive ? Constants.Colors.primary : Constants.Colors.secondaryBackground.withAlphaComponent(0.9)
+        myPlacesToggleButton.layer.borderColor = isActive ? Constants.Colors.primary.cgColor : Constants.Colors.separator.cgColor
+    }
+
+    private func selectConnection(id: String?, user: User?) {
+        selectedConnectionId = id
+        selectedConnectionUser = user
+        updateMyPlacesToggleAppearance()
+
+        // Highlight the selected connection's avatar (nil clears the highlight)
+        userListView.selectedUserId = (id == nil || id == "my_places_only") ? nil : id
+
+        print("📍 Connection filter changed to: \(selectedConnectionId ?? "All Connections")")
+
+        // Tell the embedded map so it zooms to the selected connection's places
+        mapViewController?.setConnectionFilterContext(selectedConnectionId)
+
+        // Update available categories based on new connection filter
+        updateAvailableCategories()
+
+        if let connectionId = id, connectionId != "my_places_only" {
+            if networkCircles.isEmpty {
+                print("📍 Need to fetch network circles for connection filtering")
+                fetchNetworkCircles { [weak self] in
+                    guard let self = self else { return }
+                    self.updateAvailableCategories()
+                    if self.useViewportNetworkLoading {
+                        // Ensure ALL of this connection's places are loaded (not viewport-bounded)
+                        self.fetchAllPlacesForConnection(connectionId)
+                    } else {
+                        self.updateMapPlaces()
+                    }
+                }
+            } else if useViewportNetworkLoading {
+                fetchAllPlacesForConnection(connectionId)
+            } else {
+                refreshMapDisplay()
+            }
+        } else {
+            // All Connections / My Places Only: refresh with what's loaded
+            refreshMapDisplay()
         }
     }
     
@@ -5124,33 +5553,16 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
         
         // Then handle dropdown dismissal
-        if isCategoryDropdownOpen {
-            isCategoryDropdownOpen = false
-            hideCategoryDropdown()
-        }
-        if isConnectionDropdownOpen {
-            isConnectionDropdownOpen = false
-            hideConnectionDropdown()
-        }
         if isSearchScopeDropdownOpen {
             isSearchScopeDropdownOpen = false
             hideSearchScopeDropdown()
         }
     }
-    
+
     @objc private func searchScopeButtonTapped() {
         isSearchScopeDropdownOpen.toggle()
-        
+
         if isSearchScopeDropdownOpen {
-            // Close other dropdowns if open
-            if isCategoryDropdownOpen {
-                isCategoryDropdownOpen = false
-                hideCategoryDropdown()
-            }
-            if isConnectionDropdownOpen {
-                isConnectionDropdownOpen = false
-                hideConnectionDropdown()
-            }
             showSearchScopeDropdown()
         } else {
             hideSearchScopeDropdown()
@@ -5257,6 +5669,22 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         navController.modalPresentationStyle = .fullScreen
         present(navController, animated: true)
     }
+
+    @objc private func inviteButtonTapped() {
+        // Same share-invite flow as the My Network tab's person.badge.plus button
+        let shareItems = NetworkManager.shared.shareConnectionInvite()
+        let activityViewController = UIActivityViewController(
+            activityItems: shareItems,
+            applicationActivities: nil
+        )
+
+        // For iPad: anchor the popover to the invite bar button
+        if let popover = activityViewController.popoverPresentationController {
+            popover.barButtonItem = navigationItem.leftBarButtonItems?.last
+        }
+
+        present(activityViewController, animated: true)
+    }
     
     @objc private func notificationButtonTapped() {
         let notificationsVC = NotificationsViewController()
@@ -5299,30 +5727,22 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     private func updateNotificationBadge() {
-        print("🔔 [updateNotificationBadge] Starting badge update...")
-        print("🔔 [updateNotificationBadge] Badge label exists: \(notificationBadgeLabel != nil)")
-        print("🔔 [updateNotificationBadge] Notification button exists: \(notificationBarButton != nil)")
-        
         // Always ensure badge is set up first
         if notificationBadgeLabel == nil {
-            print("🔔 [updateNotificationBadge] Badge label is nil, setting up badge")
             setupNotificationBadge()
         }
-        
+
         NotificationService.shared.getUnreadNotificationCount { [weak self] result in
-            guard let self = self else { 
-                print("🔔 [updateNotificationBadge] Self is nil, aborting")
-                return 
+            guard let self = self else {
+                return
             }
             DispatchQueue.main.async {
                 switch result {
                 case .success(let count):
-                    print("🔔 [updateNotificationBadge] Got unread count: \(count)")
                     if count > 0 {
                         self.notificationBadgeLabel?.text = count > 99 ? "99+" : "\(count)"
                         self.notificationBadgeLabel?.isHidden = false
-                        print("🔔 [updateNotificationBadge] Badge shown with count: \(count)")
-                        
+
                         // Adjust width constraint if needed
                         if count > 9 {
                             self.notificationBadgeLabel?.constraints.forEach { constraint in
@@ -5332,7 +5752,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                             }
                         }
                     } else {
-                        print("🔔 [updateNotificationBadge] No unread notifications, hiding badge")
                         self.notificationBadgeLabel?.isHidden = true
                     }
                 case .failure(let error):
@@ -5343,6 +5762,71 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
+    @objc private func rewardsButtonTapped() {
+        let rewardsVC = RewardsViewController()
+        navigationController?.pushViewController(rewardsVC, animated: true)
+    }
+
+    @objc private func handleRewardBalanceChanged() {
+        updateRewardsBadge()
+    }
+
+    private func setupRewardsBadge() {
+        // Custom button with a badge, mirroring the notification bell badge
+        let button = UIButton(type: .custom)
+        button.setImage(UIImage(systemName: "dollarsign.circle"), for: .normal)
+        button.addTarget(self, action: #selector(rewardsButtonTapped), for: .touchUpInside)
+        button.frame = CGRect(x: 0, y: 0, width: 30, height: 30)
+        button.accessibilityLabel = "Rewards"
+
+        // Points balance — brand color rather than red: it's a balance, not an alert
+        let badgeLabel = UILabel()
+        badgeLabel.backgroundColor = Constants.Colors.primary
+        badgeLabel.textColor = .white
+        badgeLabel.font = .systemFont(ofSize: 10, weight: .medium)
+        badgeLabel.textAlignment = .center
+        badgeLabel.layer.cornerRadius = 8
+        badgeLabel.layer.masksToBounds = true
+        badgeLabel.isHidden = true
+        badgeLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        button.addSubview(badgeLabel)
+
+        NSLayoutConstraint.activate([
+            badgeLabel.topAnchor.constraint(equalTo: button.topAnchor, constant: -4),
+            badgeLabel.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: 8),
+            badgeLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 16),
+            badgeLabel.heightAnchor.constraint(equalToConstant: 16)
+        ])
+
+        self.rewardsBadgeLabel = badgeLabel
+        rewardsBarButton?.customView = button
+    }
+
+    private func updateRewardsBadge() {
+        if rewardsBadgeLabel == nil {
+            setupRewardsBadge()
+        }
+
+        RewardsService.shared.getBalance { [weak self] result in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let data):
+                    if data.balance > 0 {
+                        self.rewardsBadgeLabel?.text = data.balance > 999 ? "999+" : "\(data.balance)"
+                        self.rewardsBadgeLabel?.isHidden = false
+                    } else {
+                        self.rewardsBadgeLabel?.isHidden = true
+                    }
+                case .failure:
+                    // Keep whatever was last shown; the badge is best-effort
+                    break
+                }
+            }
+        }
+    }
+
     private func navigateToQuickAccess(type: QuickAccessType) {
         let key = type == .home ? "userHomeAddress" : "userWorkAddress"
         let savedAddress = UserDefaults.standard.string(forKey: key)
@@ -5799,11 +6283,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 // MARK: - Dropdown TableView Delegate & DataSource
 extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        if tableView == categoryDropdownTableView {
-            // Always show at least "All Categories", even if no specific categories available
-            return max(1, availableCategories.count + 1) // +1 for "All Categories"
-        } else if tableView == connectionDropdownTableView {
-            return NetworkManager.shared.connections.count + 2 // +2 for "All Connections" and "My Places Only"
+        if tableView == placesListTableView {
+            return distanceSortedPlaces.count
         } else if tableView == searchScopeTableView {
             return SearchScope.allCases.count
         } else if tableView == searchResultsTableView {
@@ -5815,80 +6296,12 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        if tableView == categoryDropdownTableView {
-            let cell = tableView.dequeueReusableCell(withIdentifier: "CategoryDropdownCell") ?? UITableViewCell(style: .default, reuseIdentifier: "CategoryDropdownCell")
-            
-            cell.backgroundColor = .clear
-            cell.textLabel?.font = UIFont.systemFont(ofSize: 15, weight: .medium)
-            cell.selectionStyle = .default
-            
-            // Set selection background color
-            let selectedView = UIView()
-            selectedView.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.1)
-            cell.selectedBackgroundView = selectedView
-            
-            if indexPath.row == 0 {
-                if availableCategories.isEmpty {
-                    // No categories available, only show "All Categories"
-                    cell.textLabel?.text = "All Categories (No filtered categories available)"
-                    cell.textLabel?.textColor = Constants.Colors.label
-                    cell.accessoryType = .checkmark
-                    cell.selectionStyle = .none // Disable selection since it's the only option
-                } else {
-                    // Normal "All Categories" option
-                    cell.textLabel?.text = "All Categories"
-                    cell.textLabel?.textColor = selectedCategory == nil ? Constants.Colors.primary : Constants.Colors.label
-                    cell.accessoryType = selectedCategory == nil ? .checkmark : .none
-                }
-            } else {
-                // Add bounds check
-                let categoryIndex = indexPath.row - 1
-                guard categoryIndex < availableCategories.count else {
-                    return cell
-                }
-                let category = availableCategories[categoryIndex]
-                cell.textLabel?.text = category.displayName
-                cell.textLabel?.textColor = selectedCategory == category ? Constants.Colors.primary : Constants.Colors.label
-                cell.accessoryType = selectedCategory == category ? .checkmark : .none
-            }
-            
-            return cell
-        } else if tableView == connectionDropdownTableView {
-            let cell = tableView.dequeueReusableCell(withIdentifier: "ConnectionDropdownCell") ?? UITableViewCell(style: .default, reuseIdentifier: "ConnectionDropdownCell")
-            
-            cell.backgroundColor = .clear
-            cell.textLabel?.font = UIFont.systemFont(ofSize: 15, weight: .medium)
-            cell.selectionStyle = .default
-            
-            // Set selection background color
-            let selectedView = UIView()
-            selectedView.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.1)
-            cell.selectedBackgroundView = selectedView
-            
-            if indexPath.row == 0 {
-                cell.textLabel?.text = "All Connections"
-                cell.textLabel?.textColor = selectedConnectionId == nil ? Constants.Colors.primary : Constants.Colors.label
-                cell.accessoryType = selectedConnectionId == nil ? .checkmark : .none
-            } else if indexPath.row == 1 {
-                cell.textLabel?.text = "My Places Only"
-                cell.textLabel?.textColor = selectedConnectionId == "my_places_only" ? Constants.Colors.primary : Constants.Colors.label
-                cell.accessoryType = selectedConnectionId == "my_places_only" ? .checkmark : .none
-            } else {
-                // Add bounds check
-                let connectionIndex = indexPath.row - 2
-                guard connectionIndex < NetworkManager.shared.connections.count else {
-                    return cell
-                }
-                let connection = NetworkManager.shared.connections[connectionIndex]
-                let userName = connection.connectedUser?.displayName ?? "Unknown"
-                cell.textLabel?.text = userName
-                // Compare with the other user's ID
-                let currentUserId = AuthService.shared.getUserId() ?? ""
-                let otherUserId = connection.otherUserId(currentUserId: currentUserId)
-                cell.textLabel?.textColor = selectedConnectionId == otherUserId ? Constants.Colors.primary : Constants.Colors.label
-                cell.accessoryType = selectedConnectionId == otherUserId ? .checkmark : .none
-            }
-            
+        if tableView == placesListTableView {
+            let cell = tableView.dequeueReusableCell(withIdentifier: "HomePlaceListCell", for: indexPath) as! QuickAccessPlaceCell
+            guard indexPath.row < distanceSortedPlaces.count else { return cell }
+            let entry = distanceSortedPlaces[indexPath.row]
+            let distanceText = entry.distance.map { listDistanceFormatter.string(fromDistance: $0) }
+            cell.configure(with: entry.place, isSelected: false, distanceText: distanceText)
             return cell
         } else if tableView == searchScopeTableView {
             let cell = tableView.dequeueReusableCell(withIdentifier: "SearchScopeCell") ?? UITableViewCell(style: .default, reuseIdentifier: "SearchScopeCell")
@@ -6015,95 +6428,23 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
     }
     
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
+        if tableView == placesListTableView {
+            return 72 // QuickAccessPlaceCell's designed row height
+        }
         // Use automatic dimensions for all table views to avoid constraint conflicts
         return UITableView.automaticDimension
     }
     
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        
-        if tableView == categoryDropdownTableView {
-            // Don't allow selection if no categories are available
-            if availableCategories.isEmpty && indexPath.row == 0 {
-                // Only "All Categories" is available and it's already selected, do nothing
-                hideCategoryDropdown()
-                isCategoryDropdownOpen = false
-                return
-            }
-            
-            if indexPath.row == 0 {
-                // All Categories selected
-                selectedCategory = nil
-                categoryFilterButton.setTitle("All Categories", for: .normal)
-            } else {
-                // Specific category selected
-                let categoryIndex = indexPath.row - 1
-                guard categoryIndex < availableCategories.count else { return }
-                selectedCategory = availableCategories[categoryIndex]
-                categoryFilterButton.setTitle(selectedCategory?.displayName ?? "All Categories", for: .normal)
-            }
-            
-            // Update UI and hide dropdown
-            print("📍 Category filter changed to: \(selectedCategory?.displayName ?? "All Categories")")
-            refreshMapDisplay()
-            hideCategoryDropdown()
-            isCategoryDropdownOpen = false
-            
-        } else if tableView == connectionDropdownTableView {
-            if indexPath.row == 0 {
-                // All Connections selected
-                selectedConnectionId = nil
-                connectionFilterButton.setTitle("All Connections", for: .normal)
-            } else if indexPath.row == 1 {
-                // My Places Only selected
-                selectedConnectionId = "my_places_only"
-                connectionFilterButton.setTitle("My Places Only", for: .normal)
-            } else {
-                // Specific connection selected
-                let connectionIndex = indexPath.row - 2
-                guard connectionIndex < NetworkManager.shared.connections.count else { return }
-                let connection = NetworkManager.shared.connections[connectionIndex]
-                // Use the other user's ID (not the current user's ID)
-                let currentUserId = AuthService.shared.getUserId() ?? ""
-                selectedConnectionId = connection.otherUserId(currentUserId: currentUserId)
-                let userName = connection.connectedUser?.displayName ?? "Unknown"
-                connectionFilterButton.setTitle(userName, for: .normal)
-                
-                // Debug logging
-                print("📍 CONNECTION SELECTED:")
-                print("   Connection ID: \(connection.id)")
-                print("   Connection userId: \(connection.userId)")
-                print("   Connection connectedUserId: \(connection.connectedUserId)")
-                print("   Current user ID: \(currentUserId)")
-                print("   Selected connection ID (otherUserId): \(selectedConnectionId ?? "nil")")
-                print("   Connected user name: \(userName)")
-                print("   Connected user ID from object: \(connection.connectedUser?.id ?? "nil")")
-            }
-            
-            // Update UI and hide dropdown
-            print("📍 Connection filter changed to: \(selectedConnectionId ?? "All Connections")")
-            
-            // Update available categories based on new connection filter
-            updateAvailableCategories()
-            
-            // Refresh category dropdown height in case number of categories changed
-            updateCategoryDropdownHeight()
-            
-            // If a specific connection is selected and we don't have network circles, fetch them
-            if selectedConnectionId != nil && selectedConnectionId != "my_places_only" && networkCircles.isEmpty {
-                print("📍 Need to fetch network circles for connection filtering")
-                fetchNetworkCircles { [weak self] in
-                    // After fetching new network data, update categories again and refresh map
-                    self?.updateAvailableCategories()
-                    self?.updateMapPlaces()
-                }
-            } else {
-                // We have all the data needed, just refresh the display with current filters
-                refreshMapDisplay()
-            }
-            hideConnectionDropdown()
-            isConnectionDropdownOpen = false
-        } else if tableView == searchScopeTableView {
+
+        if tableView == placesListTableView {
+            guard indexPath.row < distanceSortedPlaces.count else { return }
+            presentDetailForPlace(distanceSortedPlaces[indexPath.row].place)
+            return
+        }
+
+        if tableView == searchScopeTableView {
             // Add bounds check
             guard indexPath.row < SearchScope.allCases.count else { return }
             
@@ -6137,18 +6478,29 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             
             // Navigate based on activity type
             switch activity.type {
-            case .placeAdded, .placeLiked, .placeCommented, .commentLiked, .photoUploaded:
+            case .placeAdded, .placeLiked, .placeCommented, .commentLiked, .photoUploaded, .placeDiscovered:
                 // Navigate to the place
                 navigateToPlace(withId: activity.targetId)
-            case .circleCreated:
+            case .circleCreated, .circleLiked, .circleCommented:
                 // Navigate to the circle
                 navigateToCircle(withId: activity.targetId)
             case .checkIn:
                 // Navigate to the check-in place
                 navigateToCheckInPlace(activity: activity)
-            case .videoUploaded:
+            case .videoUploaded, .videoLiked:
                 // Navigate to the video (targetId is the video ID for video activities)
                 navigateToVideo(withId: activity.targetId)
+            case .commentAdded:
+                // Target varies (place, circle, moment) - only navigate when it's a known kind
+                if activity.targetType == "circle" {
+                    navigateToCircle(withId: activity.targetId)
+                } else if activity.targetType == "place" {
+                    navigateToPlace(withId: activity.targetId)
+                }
+            case .globalPlaceLiked, .suggestionSent, .suggestionAccepted,
+                 .profileUpdated, .userActivity, .reactionAdded, .unknown:
+                // No reliable local destination for these
+                break
             }
         }
     }
@@ -6196,6 +6548,19 @@ extension CirclesHomeViewController: EditCircleDelegate {
 
 // MARK: - FullScreenMapViewControllerDelegate
 extension CirclesHomeViewController: FullScreenMapViewControllerDelegate {
+    func mapViewController(_ controller: FullScreenMapViewController, regionDidChangeTo region: MKCoordinateRegion) {
+        guard useViewportNetworkLoading else { return }
+
+        // While filtered to a specific connection, their places are already
+        // fully loaded and everyone else's are filtered out — a viewport fetch
+        // would just cause pointless network traffic and pin churn after zooms
+        if let connectionId = selectedConnectionId, connectionId != "my_places_only" {
+            return
+        }
+
+        fetchViewportPlaces(region: region, for: controller)
+    }
+
     func mapViewController(_ controller: FullScreenMapViewController, didSelectPlace place: Place) {
         let timestamp = Date().timeIntervalSince1970
         print("🎯 [DEBUG-\(timestamp)] CirclesHomeViewController.mapViewController called for place: \(place.name)")
@@ -6212,22 +6577,15 @@ extension CirclesHomeViewController: FullScreenMapViewControllerDelegate {
         lastPresentedPlaceId = place.id
         lastPresentationTime = timestamp
         
-        // First check user's own circles
-        if let circle = circles.first(where: { $0.places?.contains(place.id) == true }) {
-            print("✅ [DEBUG-\(timestamp)] Found place in user circle: \(circle.name)")
-            let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
-            print("📱 [DEBUG-\(timestamp)] Created PlaceDetailViewController - presenting...")
-            presentPlaceDetail(placeDetailVC, from: controller)
-        } 
-        // Then check network circles
-        else if let networkCircle = networkCircles.first(where: { $0.places?.contains(place.id) == true }) {
-            print("✅ [DEBUG-\(timestamp)] Found place in network circle: \(networkCircle.name)")
-            let placeDetailVC = PlaceDetailViewController(place: place, circle: networkCircle)
-            print("📱 [DEBUG-\(timestamp)] Created PlaceDetailViewController - presenting...")
-            presentPlaceDetail(placeDetailVC, from: controller)
-        } else {
-            print("⚠️ [DEBUG-\(timestamp)] Place not found in any circle")
+        guard let circle = resolveCircle(for: place) else {
+            print("⚠️ [DEBUG-\(timestamp)] Place not found in any circle (circleId: \(place.circleId ?? "nil"))")
+            return
         }
+
+        print("✅ [DEBUG-\(timestamp)] Found place in circle: \(circle.name)")
+        let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
+        print("📱 [DEBUG-\(timestamp)] Created PlaceDetailViewController - presenting...")
+        presentPlaceDetail(placeDetailVC, from: controller)
     }
     
     private func presentPlaceDetail(_ placeDetailVC: PlaceDetailViewController, from controller: FullScreenMapViewController) {
@@ -6410,7 +6768,27 @@ extension CirclesHomeViewController {
 // MARK: - HorizontalUserListViewDelegate
 extension CirclesHomeViewController: HorizontalUserListViewDelegate {
     func didSelectUser(_ user: User, connectionId: String) {
-        // Navigate to user's profile
+        // Selecting a connection zooms the map to their places — switch back
+        // to map view if the list is currently showing
+        if isShowingPlacesList {
+            listToggleTapped()
+        }
+
+        // Tapping a connection's avatar repopulates the map with their places.
+        // Tapping the already-selected avatar opens their profile instead —
+        // returning to your own places is what the "Me" button is for.
+        if selectedConnectionId == user.id {
+            let profileVC = ProfileViewController()
+            profileVC.configureWith(user: user)
+            navigationController?.pushViewController(profileVC, animated: true)
+        } else {
+            selectConnection(id: user.id, user: user)
+        }
+    }
+
+    func didLongPressUser(_ user: User, connectionId: String) {
+        // Long-press opens the connection's profile directly - quicker than
+        // going through the map menu
         let profileVC = ProfileViewController()
         profileVC.configureWith(user: user)
         navigationController?.pushViewController(profileVC, animated: true)
@@ -7218,21 +7596,13 @@ extension CirclesHomeViewController: UIGestureRecognizerDelegate {
         }
         
         // Don't intercept touches on the dropdown table views
-        if touchView.isDescendant(of: categoryDropdownTableView) ||
-           touchView.isDescendant(of: connectionDropdownTableView) ||
-           touchView.isDescendant(of: searchScopeTableView) ||
+        if touchView.isDescendant(of: searchScopeTableView) ||
            touchView.isDescendant(of: searchResultsTableView) {
             return false
         }
-        
+
         // Don't intercept touches on the dropdown containers themselves
         let location = touch.location(in: view)
-        if !categoryDropdownView.isHidden && categoryDropdownView.frame.contains(location) {
-            return false
-        }
-        if !connectionDropdownView.isHidden && connectionDropdownView.frame.contains(location) {
-            return false
-        }
         if !searchScopeDropdownView.isHidden && searchScopeDropdownView.frame.contains(location) {
             return false
         }
@@ -8058,15 +8428,12 @@ extension CirclesHomeViewController: VideoReelCellDelegate {
     private func startNotificationBadgeRefresh() {
         // Invalidate existing timer
         notificationBadgeTimer?.invalidate()
-        
+
         // Start a timer that refreshes notification badge every 30 seconds
         // This ensures the badge stays current even if SSE events are missed
         notificationBadgeTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
-            print("🔔 [Timer] Periodic notification badge refresh")
             self?.updateNotificationBadge()
         }
-        
-        print("🔔 [Timer] Started periodic notification badge refresh (30s interval)")
     }
     
     private func stopNotificationBadgeRefresh() {

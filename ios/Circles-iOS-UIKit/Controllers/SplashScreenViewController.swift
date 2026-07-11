@@ -298,29 +298,18 @@ class SplashScreenViewController: BaseViewController {
     
     func completeLoading(completion: @escaping () -> Void) {
         print("🎬 SplashScreenViewController: completeLoading called")
-        
-        // Ensure minimum display time of 0.5 seconds
-        let minimumDisplayTime: TimeInterval = 0.5
-        let currentTime = CACurrentMediaTime()
-        let startTime = view.layer.presentation()?.animationKeys()?.first != nil ? currentTime - 1.0 : currentTime
-        let remainingTime = max(0, minimumDisplayTime - (currentTime - startTime))
-        
-        print("🎬 Remaining time before transition: \(remainingTime)")
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + remainingTime) { [weak self] in
-            print("🎬 Starting final animations")
-            // Final animations
-            UIView.animate(withDuration: 0.2, animations: {
-                self?.logoImageView.transform = CGAffineTransform(scaleX: 1.1, y: 1.1)
-                self?.logoImageView.alpha = 0
-                self?.appNameLabel.alpha = 0
-                self?.taglineLabel.alpha = 0
-                self?.loadingDotsContainer.alpha = 0
-                self?.statusLabel.alpha = 0
-            }) { _ in
-                print("🎬 Final animations complete, calling completion")
-                completion()
-            }
+
+        // No artificial minimum display time - transition as soon as data is ready
+        UIView.animate(withDuration: 0.2, animations: { [weak self] in
+            self?.logoImageView.transform = CGAffineTransform(scaleX: 1.1, y: 1.1)
+            self?.logoImageView.alpha = 0
+            self?.appNameLabel.alpha = 0
+            self?.taglineLabel.alpha = 0
+            self?.loadingDotsContainer.alpha = 0
+            self?.statusLabel.alpha = 0
+        }) { _ in
+            print("🎬 Final animations complete, calling completion")
+            completion()
         }
     }
 }

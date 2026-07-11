@@ -3,6 +3,21 @@
 
 const { getFirestore } = require('../config/firebase');
 
+// Word-prefix tokens for search: every prefix of every word in the name, so
+// an array-contains query matches "pizza" or "colv" anywhere in the name.
+// A 3-word name yields ~25 short strings — well under Firestore's limits.
+const buildSearchTokens = (name) => {
+  const tokens = new Set();
+  const words = (name || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  for (const word of words) {
+    const w = word.slice(0, 20);
+    for (let i = 1; i <= w.length; i++) {
+      tokens.add(w.slice(0, i));
+    }
+  }
+  return [...tokens];
+};
+
 // Global Place model structure for normalized place data
 const createGlobalPlace = (placeData) => {
   const now = new Date().toISOString();
@@ -13,6 +28,8 @@ const createGlobalPlace = (placeData) => {
     deduplicationKey: placeData.deduplicationKey, // Key used to identify and merge duplicate places
     legacyPlaceIds: placeData.legacyPlaceIds || [], // Array of original place IDs that were merged into this global place
     name: placeData.name,
+    nameLower: (placeData.name || '').toLowerCase(), // case-insensitive prefix search
+    searchTokens: buildSearchTokens(placeData.name), // word-prefix tokens for array-contains search
     address: placeData.address,
     location: placeData.location, // GeoPoint { type: 'Point', coordinates: [lng, lat] }
     category: placeData.category,
@@ -362,6 +379,7 @@ const GLOBAL_COLLECTIONS = {
 
 module.exports = {
   GLOBAL_COLLECTIONS,
+  buildSearchTokens,
   createGlobalPlace,
   createAttributedPhoto,
   createAttributedVideo,

@@ -10,6 +10,17 @@ const { firebaseApiKey } = require('../config/config');
 const db = getFirestore();
 const auth = getAuth();
 
+// JWT lifetime in seconds, parsed from JWT_EXPIRE (e.g. "30d", "12h", "3600").
+// Returned to clients as expiresIn so they don't have to guess token lifetime.
+function getTokenExpiresInSeconds() {
+  const value = process.env.JWT_EXPIRE || '30d';
+  const match = String(value).trim().match(/^(\d+)\s*([smhd]?)$/i);
+  if (!match) return 30 * 24 * 60 * 60;
+  const amount = parseInt(match[1], 10);
+  const unitSeconds = { '': 1, s: 1, m: 60, h: 3600, d: 86400 }[match[2].toLowerCase()];
+  return amount * unitSeconds;
+}
+
 // Load zipcode database
 let zipcodeDatabase = null;
 try {
@@ -40,40 +51,37 @@ async function geocodeZipcode(zipcode) {
       return getGenericLocationByZipcode(zipcode);
     }
 
+    // Use the Places API find-place endpoint (the Geocoding API is not enabled
+    // on this Google Cloud project). formatted_address comes back as
+    // "City, ST 12345" for US zipcodes.
     const response = await fetch(
-      `https://maps.googleapis.com/maps/api/geocode/json?address=${zipcode}&key=${apiKey}`
+      `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${zipcode}%20USA&inputtype=textquery&fields=geometry,formatted_address&key=${apiKey}`
     );
-    
+
     const data = await response.json();
-    
-    if (data.status === 'OK' && data.results && data.results.length > 0) {
-      const result = data.results[0];
-      const components = result.address_components;
-      
+
+    if (data.status === 'OK' && data.candidates && data.candidates.length > 0) {
+      const candidate = data.candidates[0];
+
       let city = null;
       let state = null;
-      
-      // Extract city and state from address components
-      components.forEach(component => {
-        if (component.types.includes('locality')) {
-          city = component.long_name;
-        }
-        if (component.types.includes('administrative_area_level_1')) {
-          state = component.short_name;
-        }
-      });
-      
+      const match = (candidate.formatted_address || '').match(/^(.+?),\s*([A-Z]{2})\b/);
+      if (match) {
+        city = match[1];
+        state = match[2];
+      }
+
       return {
         city,
         state,
-        coordinates: {
-          latitude: result.geometry.location.lat,
-          longitude: result.geometry.location.lng,
+        coordinates: candidate.geometry ? {
+          latitude: candidate.geometry.location.lat,
+          longitude: candidate.geometry.location.lng,
           timestamp: new Date().toISOString()
-        }
+        } : null
       };
     }
-    
+
     // If Google API fails, use generic fallback
     return getGenericLocationByZipcode(zipcode);
   } catch (error) {
@@ -633,8 +641,21 @@ exports.firebaseAuth = async (req, res, next) => {
         // Complete onboarding for new user (synchronously)
         try {
           console.log(`🎯 Starting onboarding for new user ${simpleUid}...`);
-          await OnboardingService.completeUserOnboarding(simpleUid);
-          console.log(`✅ Onboarding completed for user ${simpleUid}`);
+          // Social signups usually have no zipcode, but pass the city when we
+          // have one so the sample place is local to the user
+          const userCity = (user.location || '').split(',')[0].trim();
+          await OnboardingService.completeUserOnboarding(
+            simpleUid,
+            userCity ? { city: userCity } : null
+          );
+          console.log(`✅ Onboarding completed for user ${simpleUid}${userCity ? ` (city: ${userCity})` : ''}`);
+
+          // Welcome email (fire-and-forget; never blocks signup)
+          if (user.email) {
+            const emailService = require('../services/emailService');
+            emailService.sendWelcomeEmail(user.email, user.displayName)
+              .catch(err => console.error('Welcome email failed:', err.message));
+          }
         } catch (error) {
           console.error(`❌ Onboarding failed for user ${simpleUid}:`, error);
           // Don't fail the registration if onboarding fails
@@ -683,6 +704,7 @@ exports.firebaseAuth = async (req, res, next) => {
       success: true,
       token,
       refreshToken: token, // For now, use same token as refresh token
+      expiresIn: getTokenExpiresInSeconds(),
       user: {
         _id: responseUserId, // Always normalized ID
         email: user.email || '',
@@ -905,8 +927,21 @@ exports.register = async (req, res, next) => {
       
       try {
         console.log(`🎯 Starting onboarding for new user ${userId}...`);
-        const onboardingResult = await OnboardingService.completeUserOnboarding(userId);
-        console.log(`✅ Onboarding completed for user ${userId}`);
+        // Pass the user's city (from geocoded zipcode) so the onboarding
+        // sample place is local to them instead of the generic fallback
+        const userCity = (user.location || '').split(',')[0].trim();
+        const onboardingResult = await OnboardingService.completeUserOnboarding(
+          userId,
+          userCity ? { city: userCity } : null
+        );
+        console.log(`✅ Onboarding completed for user ${userId}${userCity ? ` (city: ${userCity})` : ''}`);
+
+        // Welcome email (fire-and-forget; never blocks signup)
+        if (user.email) {
+          const emailService = require('../services/emailService');
+          emailService.sendWelcomeEmail(user.email, user.displayName)
+            .catch(err => console.error('Welcome email failed:', err.message));
+        }
         
         // After onboarding, fetch the created circles to get accurate counts
         if (onboardingResult.success) {
@@ -954,6 +989,7 @@ exports.register = async (req, res, next) => {
       success: true,
       token,
       refreshToken: token,
+      expiresIn: getTokenExpiresInSeconds(),
       user: {
         _id: normalizedId, // Always normalized ID
         email: user.email,
@@ -1151,6 +1187,7 @@ exports.login = async (req, res, next) => {
       success: true,
       token,
       refreshToken: token,
+      expiresIn: getTokenExpiresInSeconds(),
       user: {
         _id: normalizedId, // Always normalized ID
         email: user.email,
@@ -1310,6 +1347,70 @@ exports.updateProfile = async (req, res, next) => {
   }
 };
 
+// @desc    Send a branded password reset email (works for social-login accounts
+//          too — completing the reset adds email/password sign-in to the same
+//          account). Sent via our own SMTP for deliverability instead of
+//          Firebase's default noreply@<project>.firebaseapp.com sender.
+// @route   POST /api/auth/forgot-password
+// @access  Public
+exports.forgotPassword = async (req, res) => {
+  // Always respond success so the endpoint can't be used to probe which
+  // emails have accounts
+  const genericResponse = {
+    success: true,
+    message: 'If an account exists for that email, a reset link has been sent.'
+  };
+
+  try {
+    const { email } = req.body;
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ success: false, message: 'A valid email is required' });
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    // Check existence explicitly: generatePasswordResetLink throws an opaque
+    // "INTERNAL ASSERT FAILED" (not auth/user-not-found) for unknown emails,
+    // and a different status code would leak which emails have accounts
+    try {
+      await auth.getUserByEmail(normalizedEmail);
+    } catch (error) {
+      if (error.code === 'auth/user-not-found') {
+        console.log(`🔑 Password reset requested for unknown email: ${normalizedEmail}`);
+        return res.json(genericResponse);
+      }
+      throw error;
+    }
+
+    const resetLink = await auth.generatePasswordResetLink(normalizedEmail);
+
+    // Personalize with the display name when we have one
+    let displayName = null;
+    try {
+      const db = getFirestore();
+      const snapshot = await db.collection(COLLECTIONS.USERS)
+        .where('email', '==', normalizedEmail)
+        .limit(1)
+        .get();
+      if (!snapshot.empty) {
+        displayName = snapshot.docs[0].data().displayName || null;
+      }
+    } catch (lookupError) {
+      console.warn('Password reset: name lookup failed:', lookupError.message);
+    }
+
+    const emailService = require('../services/emailService');
+    await emailService.sendPasswordResetEmail(normalizedEmail, resetLink, displayName);
+    console.log(`🔑 Branded password reset email sent to ${normalizedEmail}`);
+
+    res.json(genericResponse);
+  } catch (error) {
+    console.error('❌ Forgot password error:', error);
+    // Still generic — don't leak whether the account exists or why it failed
+    res.status(500).json({ success: false, message: 'Failed to send reset email. Please try again.' });
+  }
+};
+
 // @desc    Refresh JWT token
 // @route   POST /api/auth/refresh-token
 // @access  Public
@@ -1406,7 +1507,8 @@ exports.refreshToken = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      token
+      token,
+      expiresIn: getTokenExpiresInSeconds()
     });
   } catch (error) {
     console.error('Refresh token error:', error);

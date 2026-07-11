@@ -671,83 +671,71 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         return view
     }()
     
-    private lazy var categoryFilterButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("All Categories", for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 14)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        
-        // Style as dropdown button
-        button.backgroundColor = UIColor.systemBackground
+    // Overlay control chips for the map filter bar — same controls as the
+    // home page map (hamburger menu, Me toggle, list/map toggle)
+    private lazy var mapMenuChipButton: UIButton = {
+        let button = UIButton.iconButton(systemName: "line.3.horizontal", pointSize: 15)
+        button.backgroundColor = Constants.Colors.secondaryBackground.withAlphaComponent(0.9)
+        button.layer.cornerRadius = 14
         button.layer.borderWidth = 1
-        button.layer.borderColor = UIColor.systemGray4.cgColor
-        button.layer.cornerRadius = 8
-        button.contentHorizontalAlignment = .left
-        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 32)
-        
-        // Add chevron down icon
-        let chevronImage = UIImage(systemName: "chevron.down")
-        button.setImage(chevronImage, for: .normal)
-        button.semanticContentAttribute = .forceRightToLeft
-        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: -12)
-        
+        button.layer.borderColor = Constants.Colors.separator.cgColor
         button.showsMenuAsPrimaryAction = true
-        button.changesSelectionAsPrimaryAction = false
-        
+        button.menu = UIMenu(children: [
+            UIDeferredMenuElement.uncached { [weak self] completion in
+                completion(self?.buildProfileMapMenuElements() ?? [])
+            }
+        ])
         return button
     }()
-    
-    private lazy var cityFilterButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("All Cities", for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 14)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        
-        // Style as dropdown button
-        button.backgroundColor = UIColor.systemBackground
+
+    private lazy var mapMyPlacesChipButton: UIButton = {
+        var config = UIButton.Configuration.plain()
+        config.imagePlacement = .top
+        config.imagePadding = 0
+        config.contentInsets = NSDirectionalEdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0)
+        config.image = UIImage(systemName: "person", withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .medium))
+        var title = AttributedString("Me")
+        title.font = UIFont.systemFont(ofSize: 9, weight: .medium)
+        config.attributedTitle = title
+        config.baseForegroundColor = Constants.Colors.label
+
+        let button = UIButton(configuration: config)
+        button.backgroundColor = Constants.Colors.secondaryBackground.withAlphaComponent(0.9)
+        button.layer.cornerRadius = 14
         button.layer.borderWidth = 1
-        button.layer.borderColor = UIColor.systemGray4.cgColor
-        button.layer.cornerRadius = 8
-        button.contentHorizontalAlignment = .left
-        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 32)
-        
-        // Add chevron down icon
-        let chevronImage = UIImage(systemName: "chevron.down")
-        button.setImage(chevronImage, for: .normal)
-        button.semanticContentAttribute = .forceRightToLeft
-        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: -12)
-        
-        button.showsMenuAsPrimaryAction = true
-        button.changesSelectionAsPrimaryAction = false
-        
+        button.layer.borderColor = Constants.Colors.separator.cgColor
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(mapMyPlacesChipTapped), for: .touchUpInside)
         return button
     }()
-    
-    private lazy var connectionFilterButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("All Connections", for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 14)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        
-        // Style as dropdown button
-        button.backgroundColor = UIColor.systemBackground
+
+    private lazy var mapListChipButton: UIButton = {
+        let button = UIButton.iconButton(systemName: "list.bullet", pointSize: 15)
+        button.backgroundColor = Constants.Colors.secondaryBackground.withAlphaComponent(0.9)
+        button.layer.cornerRadius = 14
         button.layer.borderWidth = 1
-        button.layer.borderColor = UIColor.systemGray4.cgColor
-        button.layer.cornerRadius = 8
-        button.contentHorizontalAlignment = .left
-        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 32)
-        
-        // Add chevron down icon
-        let chevronImage = UIImage(systemName: "chevron.down")
-        button.setImage(chevronImage, for: .normal)
-        button.semanticContentAttribute = .forceRightToLeft
-        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: -12)
-        
-        button.showsMenuAsPrimaryAction = true
-        button.changesSelectionAsPrimaryAction = false
-        
+        button.layer.borderColor = Constants.Colors.separator.cgColor
+        button.addTarget(self, action: #selector(mapListChipTapped), for: .touchUpInside)
         return button
     }()
+
+    // Distance-sorted places list shown by the list/map toggle
+    private lazy var mapPlacesListTableView: UITableView = {
+        let tableView = UITableView()
+        tableView.backgroundColor = Constants.Colors.secondaryBackground
+        tableView.separatorStyle = .none
+        tableView.rowHeight = 72
+        tableView.isHidden = true
+        tableView.register(QuickAccessPlaceCell.self, forCellReuseIdentifier: "ProfilePlaceListCell")
+        tableView.delegate = self
+        tableView.dataSource = self
+        tableView.translatesAutoresizingMaskIntoConstraints = false
+        return tableView
+    }()
+
+    private var isShowingMapPlacesList = false
+    private var mapDistanceSortedPlaces: [(place: Place, distance: CLLocationDistance?)] = []
+    private let mapListDistanceFormatter = MKDistanceFormatter()
     
     // State tracking for other users
     private var isFollowing: Bool = false
@@ -778,8 +766,11 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
     
     override func viewDidLoad() {
-        super.viewDidLoad()
+        // Build the view hierarchy BEFORE super.viewDidLoad(): BaseViewController
+        // kicks off loadData() -> loadUserProfile() -> displayUser() there, which
+        // mutates header/collection constraints that only exist after setupUI().
         setupUI()
+        super.viewDidLoad()
         setupActions()
         displayAppVersion()
         setupNotificationObservers()
@@ -927,7 +918,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         let settingsButton = UIBarButtonItem(image: UIImage(systemName: "gear"), style: .plain, target: self, action: #selector(settingsButtonTapped))
         let videoButton = UIBarButtonItem(image: UIImage(systemName: "video.fill"), style: .plain, target: self, action: #selector(videoButtonTapped))
         let checkInButton = UIBarButtonItem(image: UIImage(systemName: "checkmark.circle"), style: .plain, target: self, action: #selector(checkInButtonTapped))
-        navigationItem.rightBarButtonItems = [settingsButton, videoButton, checkInButton]
+        let rewardsButton = UIBarButtonItem(image: UIImage(systemName: "star.circle"), style: .plain, target: self, action: #selector(rewardsButtonTapped))
+        navigationItem.rightBarButtonItems = [settingsButton, videoButton, checkInButton, rewardsButton]
         
         // Add subviews
         view.addSubview(scrollView)
@@ -981,10 +973,11 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         // Add map container (initially hidden)
         contentView.addSubview(mapContainerView)
         mapContainerView.addSubview(filterContainerView)
-        filterContainerView.addSubview(categoryFilterButton)
-        filterContainerView.addSubview(cityFilterButton)
-        filterContainerView.addSubview(connectionFilterButton)
+        filterContainerView.addSubview(mapMenuChipButton)
+        filterContainerView.addSubview(mapMyPlacesChipButton)
+        filterContainerView.addSubview(mapListChipButton)
         mapContainerView.addSubview(mapView)
+        mapContainerView.addSubview(mapPlacesListTableView)
         mapContainerView.addSubview(mapExpandButton)
         mapContainerView.addSubview(locationButton)
         
@@ -1240,29 +1233,33 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             filterContainerView.trailingAnchor.constraint(equalTo: mapContainerView.trailingAnchor),
             filterContainerView.heightAnchor.constraint(equalToConstant: 44),
             
-            // Category filter button
-            categoryFilterButton.leadingAnchor.constraint(equalTo: filterContainerView.leadingAnchor, constant: Constants.Spacing.medium),
-            categoryFilterButton.centerYAnchor.constraint(equalTo: filterContainerView.centerYAnchor),
-            categoryFilterButton.heightAnchor.constraint(equalToConstant: 36),
-            categoryFilterButton.widthAnchor.constraint(equalToConstant: 140),
-            
-            // City filter button
-            cityFilterButton.leadingAnchor.constraint(equalTo: categoryFilterButton.trailingAnchor, constant: Constants.Spacing.medium),
-            cityFilterButton.centerYAnchor.constraint(equalTo: filterContainerView.centerYAnchor),
-            cityFilterButton.heightAnchor.constraint(equalToConstant: 36),
-            cityFilterButton.widthAnchor.constraint(equalToConstant: 120),
-            
-            // Connection filter button
-            connectionFilterButton.leadingAnchor.constraint(equalTo: cityFilterButton.trailingAnchor, constant: Constants.Spacing.medium),
-            connectionFilterButton.centerYAnchor.constraint(equalTo: filterContainerView.centerYAnchor),
-            connectionFilterButton.heightAnchor.constraint(equalToConstant: 36),
-            connectionFilterButton.widthAnchor.constraint(equalToConstant: 140),
-            
+            // Overlay control chips (hamburger, Me, list — same as home map)
+            mapMenuChipButton.leadingAnchor.constraint(equalTo: filterContainerView.leadingAnchor, constant: Constants.Spacing.medium),
+            mapMenuChipButton.centerYAnchor.constraint(equalTo: filterContainerView.centerYAnchor),
+            mapMenuChipButton.widthAnchor.constraint(equalToConstant: 36),
+            mapMenuChipButton.heightAnchor.constraint(equalToConstant: 36),
+
+            mapMyPlacesChipButton.leadingAnchor.constraint(equalTo: mapMenuChipButton.trailingAnchor, constant: 8),
+            mapMyPlacesChipButton.centerYAnchor.constraint(equalTo: filterContainerView.centerYAnchor),
+            mapMyPlacesChipButton.widthAnchor.constraint(equalToConstant: 36),
+            mapMyPlacesChipButton.heightAnchor.constraint(equalToConstant: 36),
+
+            mapListChipButton.leadingAnchor.constraint(equalTo: mapMyPlacesChipButton.trailingAnchor, constant: 8),
+            mapListChipButton.centerYAnchor.constraint(equalTo: filterContainerView.centerYAnchor),
+            mapListChipButton.widthAnchor.constraint(equalToConstant: 36),
+            mapListChipButton.heightAnchor.constraint(equalToConstant: 36),
+
             // Map view
             mapView.topAnchor.constraint(equalTo: filterContainerView.bottomAnchor),
             mapView.leadingAnchor.constraint(equalTo: mapContainerView.leadingAnchor),
             mapView.trailingAnchor.constraint(equalTo: mapContainerView.trailingAnchor),
             mapView.bottomAnchor.constraint(equalTo: mapContainerView.bottomAnchor),
+
+            // Distance-sorted places list overlays the map area
+            mapPlacesListTableView.topAnchor.constraint(equalTo: mapView.topAnchor),
+            mapPlacesListTableView.leadingAnchor.constraint(equalTo: mapView.leadingAnchor),
+            mapPlacesListTableView.trailingAnchor.constraint(equalTo: mapView.trailingAnchor),
+            mapPlacesListTableView.bottomAnchor.constraint(equalTo: mapView.bottomAnchor),
             
             // Map expand button
             mapExpandButton.topAnchor.constraint(equalTo: mapView.topAnchor, constant: 8),
@@ -1356,11 +1353,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             floatingAddButton.isHidden = true
         }
         
-        // Setup filter menus
-        setupCategoryFilterMenu()
-        setupCityFilterMenu()
-        setupConnectionFilterMenu()
-        
+        // Map filter menus are built on demand by the hamburger chip
+
         // Setup collection views
         circlesCollectionView.delegate = self
         circlesCollectionView.dataSource = self
@@ -1539,6 +1533,11 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         let settingsVC = SettingsViewController()
         navigationController?.pushViewController(settingsVC, animated: true)
     }
+
+    @objc private func rewardsButtonTapped() {
+        let rewardsVC = RewardsViewController()
+        navigationController?.pushViewController(rewardsVC, animated: true)
+    }
     
     @objc private func videoButtonTapped() {
         let contentUploadVC = ContentUploadViewController()
@@ -1712,56 +1711,156 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         // Note: We don't save view mode preference - always default to list view
     }
     
-    private func setupCategoryFilterMenu() {
-        var menuActions: [UIAction] = []
-        
-        // Add "All Categories" option
-        let allCategoriesAction = UIAction(title: "All Categories") { [weak self] _ in
-            guard let self = self else { return }
-            self.selectedCategory = nil
-            self.categoryFilterButton.setTitle("All Categories", for: .normal)
-            self.filterPlaces()
-            // Refresh the menu to update checkmarks
-            self.setupCategoryFilterMenu()
-        }
-        
-        // Add checkmark for selected category
-        if selectedCategory == nil {
-            allCategoriesAction.state = .on
-        }
-        menuActions.append(allCategoriesAction)
-        
-        // Add available categories
+    /// Builds the hamburger chip's menu: Connections, Category and City
+    /// submenus — the same structure as the home page map's menu, with the
+    /// profile-specific City filter added. Rebuilt fresh on every open.
+    private func buildProfileMapMenuElements() -> [UIMenuElement] {
+        var elements: [UIMenuElement] = []
+
+        // Connections submenu
+        let connectionActions: [UIAction] = [
+            UIAction(title: "All Connections", state: selectedConnectionId == nil ? .on : .off) { [weak self] _ in
+                self?.selectedConnectionId = nil
+                self?.updateMapMyPlacesChipAppearance()
+                self?.filterPlaces()
+            },
+            UIAction(title: "My Places Only", state: selectedConnectionId == "my_places_only" ? .on : .off) { [weak self] _ in
+                self?.selectedConnectionId = "my_places_only"
+                self?.updateMapMyPlacesChipAppearance()
+                self?.filterPlaces()
+            }
+        ]
+        elements.append(UIMenu(
+            title: "Connections",
+            subtitle: selectedConnectionId == "my_places_only" ? "My Places Only" : "All Connections",
+            image: UIImage(systemName: "person.2"),
+            children: connectionActions
+        ))
+
+        // Category submenu
+        var categoryActions: [UIAction] = [
+            UIAction(title: "All Categories", state: selectedCategory == nil ? .on : .off) { [weak self] _ in
+                self?.selectedCategory = nil
+                self?.filterPlaces()
+            }
+        ]
         for category in availableCategories {
-            let isSelected: Bool
-            switch category {
-            case .standard(let placeCategory):
-                isSelected = selectedCategory == placeCategory
-            case .custom:
-                isSelected = false // Custom categories not supported in current selectedCategory
-            }
-            
-            let action = UIAction(title: category.displayName) { [weak self] _ in
-                guard let self = self else { return }
-                // For now, only support standard categories in filter
-                if case .standard(let placeCategory) = category {
-                    self.selectedCategory = placeCategory
-                    self.categoryFilterButton.setTitle(category.displayName, for: .normal)
-                    self.filterPlaces()
-                    // Refresh the menu to update checkmarks
-                    self.setupCategoryFilterMenu()
+            // For now, only standard categories are filterable here
+            guard case .standard(let placeCategory) = category else { continue }
+            categoryActions.append(
+                UIAction(title: category.displayName, state: selectedCategory == placeCategory ? .on : .off) { [weak self] _ in
+                    self?.selectedCategory = placeCategory
+                    self?.filterPlaces()
                 }
-            }
-            
-            // Add checkmark for selected category
-            if isSelected {
-                action.state = .on
-            }
-            
-            menuActions.append(action)
+            )
         }
-        
-        categoryFilterButton.menu = UIMenu(title: "", children: menuActions)
+        elements.append(UIMenu(
+            title: "Category",
+            subtitle: selectedCategory.map { UnifiedCategory.standard($0).displayName } ?? "All Categories",
+            image: UIImage(systemName: "square.grid.2x2"),
+            children: categoryActions
+        ))
+
+        // City submenu (profile-specific)
+        var cityPlaceCount: [String: Int] = [:]
+        for place in allPlaces {
+            if let city = extractCityFromAddress(place.address) {
+                cityPlaceCount[city, default: 0] += 1
+            }
+        }
+        var cityActions: [UIAction] = [
+            UIAction(title: "All Cities", state: selectedCity == nil ? .on : .off) { [weak self] _ in
+                self?.selectedCity = nil
+                self?.filterPlaces()
+            }
+        ]
+        for city in cityPlaceCount.keys.sorted() {
+            let count = cityPlaceCount[city] ?? 0
+            cityActions.append(
+                UIAction(title: "\(city) (\(count))", state: selectedCity == city ? .on : .off) { [weak self] _ in
+                    self?.selectedCity = city
+                    self?.filterPlaces()
+                }
+            )
+        }
+        elements.append(UIMenu(
+            title: "City",
+            subtitle: selectedCity ?? "All Cities",
+            image: UIImage(systemName: "building.2"),
+            children: cityActions
+        ))
+
+        return elements
+    }
+
+    @objc private func mapMyPlacesChipTapped() {
+        selectedConnectionId = (selectedConnectionId == "my_places_only") ? nil : "my_places_only"
+        updateMapMyPlacesChipAppearance()
+        filterPlaces()
+    }
+
+    private func updateMapMyPlacesChipAppearance() {
+        let isActive = selectedConnectionId == "my_places_only"
+        var config = mapMyPlacesChipButton.configuration ?? .plain()
+        config.image = UIImage(
+            systemName: isActive ? "person.fill" : "person",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+        )
+        config.baseForegroundColor = isActive ? .white : Constants.Colors.label
+        mapMyPlacesChipButton.configuration = config
+        mapMyPlacesChipButton.backgroundColor = isActive ? Constants.Colors.primary : Constants.Colors.secondaryBackground.withAlphaComponent(0.9)
+        mapMyPlacesChipButton.layer.borderColor = isActive ? Constants.Colors.primary.cgColor : Constants.Colors.separator.cgColor
+    }
+
+    @objc private func mapListChipTapped() {
+        isShowingMapPlacesList.toggle()
+
+        // Flip the icon: show what tapping will switch to
+        let config = UIImage.SymbolConfiguration(pointSize: 15, weight: .medium)
+        mapListChipButton.setImage(
+            UIImage(systemName: isShowingMapPlacesList ? "map" : "list.bullet", withConfiguration: config),
+            for: .normal
+        )
+
+        if isShowingMapPlacesList {
+            rebuildMapDistanceSortedPlaces()
+            mapPlacesListTableView.reloadData()
+        }
+
+        // The list covers the map; map-only controls hide with it
+        mapPlacesListTableView.isHidden = !isShowingMapPlacesList
+        mapExpandButton.isHidden = isShowingMapPlacesList
+        locationButton.isHidden = isShowingMapPlacesList
+    }
+
+    /// Rebuilds the distance-sorted data source for the places list from the
+    /// currently filtered places. Places without a location sort last.
+    private func rebuildMapDistanceSortedPlaces() {
+        let reference = mapView.userLocation.location
+            ?? CLLocation(latitude: mapView.region.center.latitude, longitude: mapView.region.center.longitude)
+
+        mapDistanceSortedPlaces = filteredPlaces.map { place in
+            let distance = place.location?.clLocation.map { reference.distance(from: $0) }
+            return (place: place, distance: distance)
+        }.sorted { lhs, rhs in
+            switch (lhs.distance, rhs.distance) {
+            case let (l?, r?): return l < r
+            case (_?, nil): return true
+            case (nil, _?): return false
+            case (nil, nil): return lhs.place.name.localizedCaseInsensitiveCompare(rhs.place.name) == .orderedAscending
+            }
+        }
+
+        if mapDistanceSortedPlaces.isEmpty {
+            let emptyLabel = UILabel()
+            emptyLabel.text = "No places to show"
+            emptyLabel.font = UIFont.systemFont(ofSize: 15, weight: .medium)
+            emptyLabel.textColor = Constants.Colors.secondaryLabel
+            emptyLabel.textAlignment = .center
+            mapPlacesListTableView.backgroundView = emptyLabel
+        } else {
+            mapPlacesListTableView.backgroundView = nil
+        }
     }
     
     private func extractCityFromAddress(_ address: String) -> String? {
@@ -1816,97 +1915,6 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         
         return nil
     }
-    
-    private func setupCityFilterMenu() {
-        // Get unique cities and count places per city
-        var cityPlaceCount: [String: Int] = [:]
-        
-        for place in allPlaces {
-            if let city = extractCityFromAddress(place.address) {
-                cityPlaceCount[city, default: 0] += 1
-            }
-        }
-        
-        // Sort cities alphabetically
-        let sortedCities = cityPlaceCount.keys.sorted()
-        
-        // Create menu options with place counts
-        let cityOptions: [String?] = [nil] + sortedCities
-        var cityNames: [String] = ["All Cities"]
-        
-        for city in sortedCities {
-            let count = cityPlaceCount[city] ?? 0
-            let pluralSuffix = count == 1 ? "place" : "places"
-            cityNames.append("\(city) (\(count) \(pluralSuffix))")
-        }
-        
-        var menuActions: [UIAction] = []
-        
-        for (index, city) in cityOptions.enumerated() {
-            let action = UIAction(title: cityNames[index]) { [weak self] _ in
-                guard let self = self else { return }
-                self.selectedCity = city
-                // Update button title - use shorter version without count for selected item
-                if let city = city {
-                    self.cityFilterButton.setTitle(city, for: .normal)
-                } else {
-                    self.cityFilterButton.setTitle("All Cities", for: .normal)
-                }
-                self.filterPlaces()
-                // Refresh the menu to update checkmarks
-                self.setupCityFilterMenu()
-            }
-            
-            // Add checkmark for selected city
-            if city == selectedCity {
-                action.state = .on
-            }
-            
-            menuActions.append(action)
-        }
-        
-        cityFilterButton.menu = UIMenu(title: "", children: menuActions)
-    }
-    
-    private func setupConnectionFilterMenu() {
-        var menuActions: [UIAction] = []
-        
-        // Add "All Connections" option
-        let allConnectionsAction = UIAction(title: "All Connections") { [weak self] _ in
-            guard let self = self else { return }
-            self.selectedConnectionId = nil
-            self.connectionFilterButton.setTitle("All Connections", for: .normal)
-            self.filterPlaces()
-            self.setupConnectionFilterMenu() // Refresh to update checkmarks
-        }
-        
-        // Add checkmark for "All Connections" when no specific connection is selected
-        if selectedConnectionId == nil {
-            allConnectionsAction.state = .on
-        }
-        menuActions.append(allConnectionsAction)
-        
-        // Add "My Places Only" option
-        let myPlacesAction = UIAction(title: "My Places Only") { [weak self] _ in
-            guard let self = self else { return }
-            self.selectedConnectionId = "my_places_only"
-            self.connectionFilterButton.setTitle("My Places Only", for: .normal)
-            self.filterPlaces()
-            self.setupConnectionFilterMenu() // Refresh to update checkmarks
-        }
-        
-        // Add checkmark for "My Places Only"
-        if selectedConnectionId == "my_places_only" {
-            myPlacesAction.state = .on
-        }
-        menuActions.append(myPlacesAction)
-        
-        // TODO: Add individual connections when we have that data available
-        // For now, we'll keep it simple with just All Connections and My Places Only
-        
-        connectionFilterButton.menu = UIMenu(title: "", children: menuActions)
-    }
-    
     
     @objc private func followersStatTapped() {
         guard let user = user else { return }
@@ -2531,8 +2539,6 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                     case .success(let places):
                         self.allPlaces.append(contentsOf: places)
                         self.filterPlaces()
-                        // Update city filter menu with new places
-                        self.setupCityFilterMenu()
                     case .failure(let error):
                         print("Failed to load places for circle \(circle.name): \(error)")
                     }
@@ -2555,6 +2561,12 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         
         // Update map pins
         updateMapPins()
+
+        // Keep the distance-sorted list in sync when it's visible
+        if isShowingMapPlacesList {
+            rebuildMapDistanceSortedPlaces()
+            mapPlacesListTableView.reloadData()
+        }
     }
     
     private func updateMapPins() {
@@ -2922,7 +2934,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             let settingsButton = UIBarButtonItem(image: UIImage(systemName: "gear"), style: .plain, target: self, action: #selector(settingsButtonTapped))
             let videoButton = UIBarButtonItem(image: UIImage(systemName: "video.fill"), style: .plain, target: self, action: #selector(videoButtonTapped))
             let checkInButton = UIBarButtonItem(image: UIImage(systemName: "checkmark.circle"), style: .plain, target: self, action: #selector(checkInButtonTapped))
-            navigationItem.rightBarButtonItems = [settingsButton, videoButton, checkInButton]
+            let rewardsButton = UIBarButtonItem(image: UIImage(systemName: "star.circle"), style: .plain, target: self, action: #selector(rewardsButtonTapped))
+            navigationItem.rightBarButtonItems = [settingsButton, videoButton, checkInButton, rewardsButton]
         } else {
             // Other user - no navigation bar buttons
             navigationItem.rightBarButtonItems = []
@@ -4080,9 +4093,8 @@ extension ProfileViewController: UICollectionViewDropDelegate {
             print("  \(index + 1). \(category.displayName) (\(category.isCustom ? "custom" : "standard"))")
         }
         
-        // Update the category filter menu
-        setupCategoryFilterMenu()
-        print("🔍 [Categories Debug] Category filter menu updated")
+        // The hamburger chip's menu rebuilds itself on every open, so no
+        // explicit menu refresh is needed here
     }
 }
 
@@ -4240,21 +4252,39 @@ extension ProfileViewController: UITableViewDataSource, UITableViewDelegate {
         if tableView == searchResultsTableView {
             return numberOfRowsInSearchResults()
         }
+        if tableView == mapPlacesListTableView {
+            return mapDistanceSortedPlaces.count
+        }
         return 0
     }
-    
+
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         if tableView == searchResultsTableView {
             let cell = tableView.dequeueReusableCell(withIdentifier: "SearchResultCell", for: indexPath)
             configureSearchResultCell(cell, at: indexPath)
             return cell
         }
+        if tableView == mapPlacesListTableView {
+            let cell = tableView.dequeueReusableCell(withIdentifier: "ProfilePlaceListCell", for: indexPath) as! QuickAccessPlaceCell
+            guard indexPath.row < mapDistanceSortedPlaces.count else { return cell }
+            let entry = mapDistanceSortedPlaces[indexPath.row]
+            let distanceText = entry.distance.map { mapListDistanceFormatter.string(fromDistance: $0) }
+            cell.configure(with: entry.place, isSelected: false, distanceText: distanceText)
+            return cell
+        }
         return UITableViewCell()
     }
-    
+
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         if tableView == searchResultsTableView {
             handleSearchResultSelection(at: indexPath)
+        }
+        if tableView == mapPlacesListTableView {
+            tableView.deselectRow(at: indexPath, animated: true)
+            guard indexPath.row < mapDistanceSortedPlaces.count else { return }
+            // Same destination as tapping a pin's callout on this map
+            let placeDetailVC = PlaceDetailViewController(place: mapDistanceSortedPlaces[indexPath.row].place)
+            navigationController?.pushViewController(placeDetailVC, animated: true)
         }
     }
 }

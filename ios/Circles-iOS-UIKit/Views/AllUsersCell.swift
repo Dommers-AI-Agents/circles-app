@@ -16,6 +16,8 @@ class AllUsersCell: UITableViewCell {
     // Constraint outlets for dynamic layout
     private var nameTrailingConstraint: NSLayoutConstraint?
     private var emailTrailingConstraint: NSLayoutConstraint?
+    private var actionButtonTrailingConstraint: NSLayoutConstraint?
+    private var followButtonTrailingConstraint: NSLayoutConstraint?
     
     private let profileImageView: UIImageView = {
         let imageView = UIImageView()
@@ -40,30 +42,42 @@ class AllUsersCell: UITableViewCell {
         let label = UILabel()
         label.font = .systemFont(ofSize: 16, weight: .medium)
         label.textColor = .label
+        label.numberOfLines = 2
+        label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
         return label
     }()
-    
+
     private let userInfoLabel: UILabel = {
         let label = UILabel()
         label.font = .systemFont(ofSize: 14)
         label.textColor = .secondaryLabel
+        label.numberOfLines = 1
+        label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return label
     }()
     
     private let actionButton: UIButton = {
         let button = UIButton(type: .system)
-        button.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
+        button.titleLabel?.font = .systemFont(ofSize: 13, weight: .semibold)
+        button.titleLabel?.adjustsFontSizeToFitWidth = true
+        button.titleLabel?.minimumScaleFactor = 0.8
         button.layer.cornerRadius = 6
+        button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
-    
+
     private let followButton: UIButton = {
         let button = UIButton(type: .system)
-        button.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
+        button.titleLabel?.font = .systemFont(ofSize: 13, weight: .semibold)
+        button.titleLabel?.adjustsFontSizeToFitWidth = true
+        button.titleLabel?.minimumScaleFactor = 0.8
         button.layer.cornerRadius = 6
+        button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.isHidden = true
         return button
@@ -128,7 +142,9 @@ class AllUsersCell: UITableViewCell {
         // Create the trailing constraints for dynamic updates
         nameTrailingConstraint = nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: followButton.leadingAnchor, constant: -8)
         emailTrailingConstraint = userInfoLabel.trailingAnchor.constraint(lessThanOrEqualTo: followButton.leadingAnchor, constant: -8)
-        
+        actionButtonTrailingConstraint = actionButton.trailingAnchor.constraint(equalTo: removeButton.leadingAnchor, constant: -6)
+        followButtonTrailingConstraint = followButton.trailingAnchor.constraint(equalTo: actionButton.leadingAnchor, constant: -6)
+
         NSLayoutConstraint.activate([
             highlightView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
             highlightView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 8),
@@ -149,23 +165,23 @@ class AllUsersCell: UITableViewCell {
             emailTrailingConstraint!,
             
             removeButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            removeButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            removeButton.widthAnchor.constraint(equalToConstant: 70),
+            removeButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
+            removeButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 70),
             removeButton.heightAnchor.constraint(equalToConstant: 32),
-            
+
             declineButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            declineButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            declineButton.widthAnchor.constraint(equalToConstant: 70),
+            declineButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
+            declineButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 70),
             declineButton.heightAnchor.constraint(equalToConstant: 32),
-            
+
             actionButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            actionButton.trailingAnchor.constraint(equalTo: removeButton.leadingAnchor, constant: -8),
-            actionButton.widthAnchor.constraint(equalToConstant: 95),
+            actionButtonTrailingConstraint!,
+            actionButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 75),
             actionButton.heightAnchor.constraint(equalToConstant: 32),
-            
+
             followButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            followButton.trailingAnchor.constraint(equalTo: actionButton.leadingAnchor, constant: -8),
-            followButton.widthAnchor.constraint(equalToConstant: 70),
+            followButtonTrailingConstraint!,
+            followButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 68),
             followButton.heightAnchor.constraint(equalToConstant: 32)
         ])
         
@@ -179,7 +195,31 @@ class AllUsersCell: UITableViewCell {
         // Deactivate current constraints
         nameTrailingConstraint?.isActive = false
         emailTrailingConstraint?.isActive = false
-        
+        actionButtonTrailingConstraint?.isActive = false
+        followButtonTrailingConstraint?.isActive = false
+
+        // Determine the rightmost visible button
+        let rightmostButton: UIView
+        if !removeButton.isHidden {
+            rightmostButton = removeButton
+        } else if !declineButton.isHidden {
+            rightmostButton = declineButton
+        } else {
+            rightmostButton = contentView
+        }
+
+        // Update action button position based on what's visible
+        if rightmostButton == contentView {
+            // No remove/decline button, action button goes to edge
+            actionButtonTrailingConstraint = actionButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4)
+        } else {
+            // Position action button before remove/decline button
+            actionButtonTrailingConstraint = actionButton.trailingAnchor.constraint(equalTo: rightmostButton.leadingAnchor, constant: -6)
+        }
+
+        // Update follow button position
+        followButtonTrailingConstraint = followButton.trailingAnchor.constraint(equalTo: actionButton.leadingAnchor, constant: -6)
+
         // Determine the leftmost visible button to constrain text to
         let constraintTarget: UIView
         if !followButton.isHidden {
@@ -191,21 +231,23 @@ class AllUsersCell: UITableViewCell {
         } else if !declineButton.isHidden {
             constraintTarget = declineButton
         } else {
-            // Fallback to content view if no buttons are visible
             constraintTarget = contentView
         }
-        
-        // Create and activate new constraints
+
+        // Create and activate new constraints for labels
         if constraintTarget == contentView {
-            nameTrailingConstraint = nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -16)
-            emailTrailingConstraint = userInfoLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -16)
+            nameTrailingConstraint = nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -4)
+            emailTrailingConstraint = userInfoLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -4)
         } else {
             nameTrailingConstraint = nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: constraintTarget.leadingAnchor, constant: -8)
             emailTrailingConstraint = userInfoLabel.trailingAnchor.constraint(lessThanOrEqualTo: constraintTarget.leadingAnchor, constant: -8)
         }
-        
+
+        // Activate all constraints
         nameTrailingConstraint?.isActive = true
         emailTrailingConstraint?.isActive = true
+        actionButtonTrailingConstraint?.isActive = true
+        followButtonTrailingConstraint?.isActive = true
     }
     
     func configure(with user: User) {
@@ -240,16 +282,25 @@ class AllUsersCell: UITableViewCell {
                     // Fallback to the symbol name directly
                     profileImageView.image = UIImage(systemName: symbolName)
                     profileImageView.tintColor = .systemGray3
+                    profileImageView.backgroundColor = .systemGray5
                     profileImageView.contentMode = .scaleAspectFit
                 }
             } else {
-                // Regular image URL - use profile-specific loading to prevent cache collisions
+                // Regular image URL - show a placeholder while loading and clear
+                // any styling left over from a previous user's default avatar
+                profileImageView.image = UIImage(systemName: "person.circle.fill")
+                profileImageView.tintColor = .systemGray3
+                profileImageView.backgroundColor = .systemGray5
+                profileImageView.contentMode = .scaleAspectFit
                 ImageService.shared.loadProfileImage(for: user.id, from: profilePicture) { [weak self] image in
                     DispatchQueue.main.async {
-                        self?.profileImageView.image = image ?? UIImage(systemName: "person.circle.fill")
-                        self?.profileImageView.contentMode = image != nil ? .scaleAspectFill : .scaleAspectFit
+                        // The cell may have been reused for a different user while
+                        // the image loaded — only apply if it's still the same user
+                        guard let self = self, self.user?.id == user.id else { return }
+                        self.profileImageView.image = image ?? UIImage(systemName: "person.circle.fill")
+                        self.profileImageView.contentMode = image != nil ? .scaleAspectFill : .scaleAspectFit
                         if image == nil {
-                            self?.profileImageView.tintColor = .systemGray3
+                            self.profileImageView.tintColor = .systemGray3
                         }
                     }
                 }
@@ -257,6 +308,7 @@ class AllUsersCell: UITableViewCell {
         } else {
             profileImageView.image = UIImage(systemName: "person.circle.fill")
             profileImageView.tintColor = .systemGray3
+            profileImageView.backgroundColor = .systemGray5
             profileImageView.contentMode = .scaleAspectFit
         }
         

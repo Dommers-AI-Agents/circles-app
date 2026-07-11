@@ -43,10 +43,12 @@ class SettingsViewController: BaseTableViewController {
     }
     
     private enum DataRow: Int, CaseIterable {
+        case importPlaces
         case exportData
-        
+
         var title: String {
             switch self {
+            case .importPlaces: return "Import Places"
             case .exportData: return "Export My Data"
             }
         }
@@ -406,6 +408,17 @@ class SettingsViewController: BaseTableViewController {
         )
     }
     
+    private func showPlaceImport() {
+        if !SubscriptionManager.shared.isSubscribed {
+            SubscriptionManager.shared.showPaywall(from: self, reason: .importFeature)
+        } else {
+            let importVC = ImportSourceSelectionViewController()
+            let navController = UINavigationController(rootViewController: importVC)
+            navController.modalPresentationStyle = .fullScreen
+            present(navController, animated: true)
+        }
+    }
+
     private func showDataExport() {
         // Check if user is subscribed
         if !SubscriptionManager.shared.isSubscribed {
@@ -548,13 +561,14 @@ extension SettingsViewController {
         case .data:
             if let row = DataRow(rawValue: indexPath.row) {
                 switch row {
-                case .exportData:
+                case .importPlaces, .exportData:
                     cell.textLabel?.text = row.title
                     cell.accessoryType = .disclosureIndicator
-                    
+
                     // Add icon
                     let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
-                    let icon = UIImage(systemName: "square.and.arrow.down", withConfiguration: config)
+                    let symbolName = row == .importPlaces ? "square.and.arrow.down.on.square" : "square.and.arrow.down"
+                    let icon = UIImage(systemName: symbolName, withConfiguration: config)
                     let iconView = UIImageView(image: icon)
                     iconView.tintColor = Constants.Colors.primary
                     iconView.translatesAutoresizingMaskIntoConstraints = false
@@ -728,6 +742,8 @@ extension SettingsViewController {
         case .data:
             if let row = DataRow(rawValue: indexPath.row) {
                 switch row {
+                case .importPlaces:
+                    showPlaceImport()
                 case .exportData:
                     showDataExport()
                 }

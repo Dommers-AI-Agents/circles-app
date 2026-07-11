@@ -108,10 +108,38 @@ class AuthService {
             // If no expiration date, don't refresh
             return false
         }
-        
+
         // Refresh if token expires in less than 5 minutes
         let timeUntilExpiration = expiration.timeIntervalSinceNow
         return timeUntilExpiration < 300 // 5 minutes
+    }
+
+    /// True only when the server definitively rejected the user's credentials or identity.
+    /// Transport errors, timeouts, 5xx, and rate limits are NOT definitive — the session
+    /// may still be valid, so callers must never clear tokens for those.
+    static func isDefinitiveAuthFailure(_ error: Error) -> Bool {
+        if let authError = error as? AuthError {
+            switch authError {
+            case .tokenExpired, .invalidCredentials, .userNotFound, .accountNotFound:
+                return true
+            default:
+                return false
+            }
+        }
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .unauthorized:
+                return true
+            case .httpError(let code, _):
+                // 4xx from an auth endpoint = the server understood the request
+                // and rejected the credentials/token
+                return (400...404).contains(code)
+            default:
+                return false
+            }
+        }
+        // NSURLErrorDomain and anything unrecognized: assume transient
+        return false
     }
     
     private init() {
@@ -149,6 +177,8 @@ class AuthService {
         ) { [weak self] (result: Result<AuthResponse, APIError>) in
             switch result {
             case .success(let response):
+                // Brand-new account: queue the welcome carousel for first launch
+                UserDefaults.standard.set(true, forKey: "pendingWelcomeCarousel")
                 self?.handleAuthResponse(response, completion: completion)
             case .failure(let error):
                 let authError = self?.mapAPIErrorToAuthError(error, context: .register)
@@ -157,6 +187,26 @@ class AuthService {
         }
     }
     
+    /// Requests a branded password reset email from our backend (sent via the
+    /// FavCircles SMTP domain instead of Firebase's default sender, which
+    /// tends to land in spam). Works for Google/Apple accounts too —
+    /// completing the reset adds password login to the same account.
+    func requestPasswordReset(email: String, completion: @escaping (Result<String, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "auth/forgot-password",
+            method: .post,
+            body: ["email": email],
+            requiresAuth: false
+        ) { (result: Result<SimpleAPIResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.message ?? "Reset link sent — check your email."))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
     func login(email: String, password: String, completion: @escaping (Result<User, Error>) -> Void) {
         let body: [String: Any] = [
             "email": email,
@@ -259,7 +309,12 @@ class AuthService {
             switch result {
             case .success(let response):
                 if let token = response.token {
-                    self?.saveToken(token)
+                    // Save the new expiration too — otherwise the old (possibly past)
+                    // expiration date sticks around and the app keeps treating the
+                    // fresh token as expired, forcing users back to the login screen.
+                    let expiresIn = response.expiresIn ?? Constants.Auth.defaultTokenLifetime
+                    let expiration = Date().addingTimeInterval(TimeInterval(expiresIn))
+                    self?.saveToken(token, expiration: expiration)
                     APIService.shared.setAuthToken(token)
                     completion(.success(()))
                 } else {
@@ -268,32 +323,6 @@ class AuthService {
             case .failure(let error):
                 let authError = self?.mapAPIErrorToAuthError(error, context: .refreshToken)
                 completion(.failure(authError ?? error))
-            }
-        }
-    }
-    
-    // MARK: - Password Reset
-    
-    func requestPasswordReset(email: String, completion: @escaping (Result<Void, AuthError>) -> Void) {
-        // Since we're using Firebase Auth directly in the PasswordResetViewController,
-        // this method is optional and provided for consistency with the AuthService interface
-        
-        Auth.auth().sendPasswordReset(withEmail: email) { error in
-            if let error = error {
-                let nsError = error as NSError
-                
-                switch nsError.code {
-                case AuthErrorCode.userNotFound.rawValue:
-                    completion(.failure(.userNotFound))
-                case AuthErrorCode.invalidEmail.rawValue:
-                    completion(.failure(.invalidEmail))
-                case AuthErrorCode.networkError.rawValue:
-                    completion(.failure(.networkError(error)))
-                default:
-                    completion(.failure(.unknown(error.localizedDescription)))
-                }
-            } else {
-                completion(.success(()))
             }
         }
     }
@@ -488,8 +517,9 @@ class AuthService {
             if let expiresIn = response.expiresIn {
                 expiration = Date().addingTimeInterval(TimeInterval(expiresIn))
             } else {
-                // Default to 24 hours if no expiration provided
-                expiration = Date().addingTimeInterval(24 * 60 * 60)
+                // Backend JWTs live for 30 days (JWT_EXPIRE=30d); assuming 24 hours
+                // here used to force users back to the login screen every day.
+                expiration = Date().addingTimeInterval(TimeInterval(Constants.Auth.defaultTokenLifetime))
             }
             saveToken(response.token, expiration: expiration)
             print("🔐 Token saved with expiration: \(expiration?.description ?? "none")")
@@ -524,6 +554,13 @@ class AuthService {
                 print("🔐 No saved FCM token found")
             }
             
+            // Refresh subscription status now that we're authenticated.
+            // SubscriptionManager.initialize() only runs at app launch, so a user who
+            // logs in after launch would otherwise appear as a free user until restart.
+            Task {
+                await SubscriptionManager.shared.initialize()
+            }
+
             // Check for deferred promoted purchase
             Task { @MainActor in
                 if StoreKitObserver.shared.hasDeferredPurchase {
@@ -633,7 +670,12 @@ class AuthService {
         for key in userDefaultsKeys {
             UserDefaults.standard.removeObject(forKey: key)
         }
-        
+
+        // Clear per-user remembered add-place circles (keys are user-suffixed)
+        for key in UserDefaults.standard.dictionaryRepresentation().keys where key.hasPrefix("lastUsedCircleId_") {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+
         // Clear NetworkManager's pending connection invite
         NetworkManager.clearPendingConnectionInvite()
         
@@ -664,6 +706,13 @@ class AuthService {
     private func mapAPIErrorToAuthError(_ error: APIError, context: AuthContext) -> AuthError {
         switch error {
         case .httpError(let statusCode, let data):
+            // A 4xx from the refresh endpoint is always a definitive rejection of
+            // the token - map it to a definitive AuthError regardless of whether
+            // the body decodes, so isDefinitiveAuthFailure classifies it correctly
+            if context == .refreshToken && (400...404).contains(statusCode) {
+                return .tokenExpired
+            }
+
             // Parse error message from response data if available
             if let data = data, let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
                 

@@ -289,21 +289,91 @@ class ScheduledNotifications {
     }
   }
 
+  // Get the ids of a user's accepted connections. Connection docs use
+  // userId/connectedUserId fields — NOT a participants array (that field is
+  // on circleGroups); the old participants query silently matched nothing.
+  async getAcceptedConnectionIds(userId) {
+    const [asUser, asConnected] = await Promise.all([
+      db.collection('connections')
+        .where('userId', '==', userId)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection('connections')
+        .where('connectedUserId', '==', userId)
+        .where('status', '==', 'accepted')
+        .get()
+    ]);
+    const ids = new Set();
+    asUser.forEach(doc => ids.add(doc.data().connectedUserId));
+    asConnected.forEach(doc => ids.add(doc.data().userId));
+    return Array.from(ids);
+  }
+
+  // Winback: one push to users who lapsed 7-14 days ago (runs weekly, so each
+  // lapse window gets at most one nudge). Respects the
+  // notificationPreferences.reengagement toggle.
+  async sendReengagementNotifications() {
+    try {
+      const now = new Date();
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+
+      const usersSnapshot = await db.collection('users').get();
+      let sent = 0;
+      let skipped = 0;
+
+      for (const doc of usersSnapshot.docs) {
+        const user = { id: doc.id, ...doc.data() };
+        try {
+          if (user.notificationPreferences?.reengagement === false) { skipped++; continue; }
+          if (!user.lastLogin) { skipped++; continue; }
+
+          const lastLogin = new Date(user.lastLogin);
+          if (isNaN(lastLogin.getTime()) || lastLogin > sevenDaysAgo || lastLogin < fourteenDaysAgo) {
+            skipped++;
+            continue;
+          }
+
+          // Personalize with fresh network activity when there is any
+          let body = 'Your favorite places are waiting — add a new spot you love!';
+          const connectionIds = await this.getAcceptedConnectionIds(user.id);
+          if (connectionIds.length > 0) {
+            const placesSnapshot = await db.collection('places')
+              .where('addedBy', 'in', connectionIds.slice(0, 10))
+              .where('createdAt', '>=', sevenDaysAgo.toISOString())
+              .limit(10)
+              .get();
+            if (placesSnapshot.size > 0) {
+              const count = placesSnapshot.size;
+              body = `Your friends added ${count} new place${count === 1 ? '' : 's'} this week — come see what's new!`;
+            }
+          }
+
+          await notificationService.sendToUser(user.id, {
+            type: 'reengagement',
+            title: 'We miss you on Circles 👋',
+            body: body,
+            data: { type: 'reengagement' }
+          });
+          sent++;
+        } catch (error) {
+          console.error(`Reengagement failed for user ${user.id}:`, error.message);
+        }
+      }
+
+      console.log(`✅ Reengagement notifications: ${sent} sent, ${skipped} skipped`);
+      return { sent, skipped };
+    } catch (error) {
+      console.error('Error sending reengagement notifications:', error);
+      throw error;
+    }
+  }
+
   // Send discovery prompt to individual user
   async sendDiscoveryPromptToUser(user, timeOfDay) {
     try {
       // Get recent places from user's network
-      const connectionsSnapshot = await db.collection('connections')
-        .where('participants', 'array-contains', user.id)
-        .where('status', '==', 'accepted')
-        .get();
-
-      const connectionIds = [];
-      connectionsSnapshot.forEach(doc => {
-        const connection = doc.data();
-        const otherUserId = connection.participants.find(id => id !== user.id);
-        if (otherUserId) connectionIds.push(otherUserId);
-      });
+      const connectionIds = await this.getAcceptedConnectionIds(user.id);
 
       if (connectionIds.length === 0) return;
 
@@ -375,18 +445,8 @@ class ScheduledNotifications {
           const weekAgo = new Date();
           weekAgo.setDate(weekAgo.getDate() - 7);
 
-          // Get user's connections
-          const connectionsSnapshot = await db.collection('connections')
-            .where('participants', 'array-contains', user.id)
-            .where('status', '==', 'accepted')
-            .get();
-
-          const connectionIds = [];
-          connectionsSnapshot.forEach(doc => {
-            const connection = doc.data();
-            const otherUserId = connection.participants.find(id => id !== user.id);
-            if (otherUserId) connectionIds.push(otherUserId);
-          });
+          // Get user's connections (userId/connectedUserId fields, both directions)
+          const connectionIds = await this.getAcceptedConnectionIds(user.id);
 
           if (connectionIds.length === 0) continue;
 

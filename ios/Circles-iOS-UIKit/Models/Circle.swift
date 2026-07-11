@@ -66,7 +66,9 @@ struct Circle: Codable, Identifiable {
         editorsDetails = try container.decodeIfPresent([User].self, forKey: .editorsDetails)
         places = try container.decodeIfPresent([String].self, forKey: .places)
         placesCount = try container.decodeIfPresent(Int.self, forKey: .placesCount)
-        placesWithDetails = try container.decodeIfPresent([Place].self, forKey: .placesWithDetails)
+        // Lossy: one malformed place must not fail the whole circle (and with it
+        // the entire circles response for profile/check-in screens)
+        placesWithDetails = try container.decodeIfPresent(LossyDecodableArray<Place>.self, forKey: .placesWithDetails)?.elements
         privacy = try container.decode(PrivacyLevel.self, forKey: .privacy)
         allowNetworkEdit = try container.decodeIfPresent(Bool.self, forKey: .allowNetworkEdit)
         category = try container.decode(CircleCategory.self, forKey: .category)

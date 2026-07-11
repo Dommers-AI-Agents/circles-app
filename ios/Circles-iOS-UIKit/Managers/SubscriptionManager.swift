@@ -20,12 +20,15 @@ class SubscriptionManager {
     }
     
     // MARK: - Initialization
-    
+
     func initialize() async {
         // Load products
         do {
             try await service.loadProducts()
             await service.updateSubscriptionStatus()
+
+            // Sync with backend on app launch to ensure subscription status is up-to-date
+            await service.syncCurrentSubscriptionWithBackend()
         } catch {
             print("❌ Failed to initialize subscription service: \(error)")
         }
@@ -127,15 +130,16 @@ class SubscriptionManager {
         case placeLimit
         case exportFeature
         case exportData  // Alias for exportFeature, specifically for data export
+        case importFeature
         case generalUpgrade
-        
+
         var title: String {
             switch self {
             case .circleLimit:
                 return "Circle Limit Reached"
             case .placeLimit:
                 return "Place Limit Reached"
-            case .exportFeature, .exportData:
+            case .exportFeature, .exportData, .importFeature:
                 return "Premium Feature"
             case .generalUpgrade:
                 return "Upgrade to Premium"
@@ -152,6 +156,8 @@ class SubscriptionManager {
                 return "Export and advanced sharing features are available to Premium members."
             case .exportData:
                 return "Export your data to CSV and keep a backup of all your places and circles. Available to Premium members only."
+            case .importFeature:
+                return "Bring your saved places over from Google Maps, Mapstr, and Swarm. Available to Premium members only."
             case .generalUpgrade:
                 return "Unlock all features with Circles Premium!"
             }

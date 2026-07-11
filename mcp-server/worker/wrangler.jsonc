@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "favcircles-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-03-10",
+  // global_fetch_strictly_public is required for CIMD client registration
+  // (URL-formatted client_ids, ChatGPT's preferred method).
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  // Custom domain: Cloudflare creates the DNS record + TLS for mcp.favcircles.com
+  // automatically on deploy (zone favcircles.com is already on Cloudflare).
+  "routes": [{ "pattern": "mcp.favcircles.com", "custom_domain": true }],
+  "observability": { "enabled": true },
+  // The agents package dynamically imports the optional "ai" peer from its MCP
+  // *client* code, which this server-only Worker never executes — stub it out.
+  "alias": { "ai": "./src/stubs/ai.ts" },
+  "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "e396098948994727b682d7dbee723470" }],
+  "vars": {
+    // Call Cloud Run directly: api.favcircles.com is a grey-cloud CNAME in this
+    // Worker's own zone, and same-zone fetches loop on Google's https redirect.
+    "FAVCIRCLES_API": "https://circles-backend-kcyohp6zra-uc.a.run.app/api"
+  }
+  // Secrets (set once, not in this file):
+  //   npx wrangler secret put FAVCIRCLES_JWT_SECRET   <- backend JWT_SECRET
+  // Optional vars (defaults in code): MCP_AUDIENCE, FAVCIRCLES_API
+}

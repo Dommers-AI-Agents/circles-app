@@ -22,4 +22,7 @@ extension Notification.Name {
     // Suggestions notifications
     static let clearSuggestionsBadge = Notification.Name("clearSuggestionsBadge")
     static let suggestionsBadgeUpdate = Notification.Name("suggestionsBadgeUpdate")
+
+    // Rewards notifications
+    static let rewardBalanceChanged = Notification.Name("RewardBalanceChanged")
 }

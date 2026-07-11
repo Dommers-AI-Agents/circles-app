@@ -1,33 +1,125 @@
 {
   "indexes": [
     {
-      "collectionGroup": "circles",
+      "collectionGroup": "activities",
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "owner",
+          "fieldPath": "actorId",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "privacy",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "updatedAt",
+          "fieldPath": "timestamp",
           "order": "DESCENDING"
         }
       ]
     },
     {
-      "collectionGroup": "circles",
+      "collectionGroup": "activityComments",
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "owner",
+          "fieldPath": "activityId",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "updatedAt",
+          "fieldPath": "parentCommentId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "activityReactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "activityId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "circle_shares",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "circleId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "circle_shares",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "circleId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sharedWith",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "shareType",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "circle_shares",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "sharedBy",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "circle_shares",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "sharedBy",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sharedWith",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "shareType",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "circleComments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "circleId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
           "order": "DESCENDING"
         }
       ]
@@ -65,6 +157,38 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
+          "fieldPath": "owner",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "privacy",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "circles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "owner",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "circles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
           "fieldPath": "privacy",
           "order": "ASCENDING"
         },
@@ -93,80 +217,16 @@
       ]
     },
     {
-      "collectionGroup": "circle_shares",
+      "collectionGroup": "comments",
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "circleId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "sharedWith",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "shareType",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "circle_shares",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "circleId",
+          "fieldPath": "suggestionId",
           "order": "ASCENDING"
         },
         {
           "fieldPath": "createdAt",
           "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "circle_shares",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "sharedBy",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "circle_shares",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "sharedBy",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "sharedWith",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "shareType",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "connections",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "userId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
         }
       ]
     },
@@ -180,20 +240,6 @@
         },
         {
           "fieldPath": "status",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "connections",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "userId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "connectedUserId",
           "order": "ASCENDING"
         }
       ]
@@ -217,7 +263,7 @@
       ]
     },
     {
-      "collectionGroup": "suggestions",
+      "collectionGroup": "connections",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -225,25 +271,21 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
+          "fieldPath": "connectedUserId",
+          "order": "ASCENDING"
         }
       ]
     },
     {
-      "collectionGroup": "suggestions",
+      "collectionGroup": "connections",
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "isRead",
+          "fieldPath": "userId",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "toUserId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
+          "fieldPath": "status",
           "order": "ASCENDING"
         }
       ]
@@ -258,20 +300,6 @@
         },
         {
           "fieldPath": "lastMessageTime",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "messages",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "conversationId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
           "order": "DESCENDING"
         }
       ]
@@ -313,131 +341,57 @@
       ]
     },
     {
-      "collectionGroup": "comments",
+      "collectionGroup": "globalPlaces",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "suggestionId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "placeComments",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "placeId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "circleComments",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "circleId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "places",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "circleId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "places",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "circleId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "deletedAt",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "places",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "addedBy",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "places",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "addedBy",
-          "order": "ASCENDING"
-        },
         {
           "fieldPath": "category",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "createdAt",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "activities",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "actorId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "timestamp",
+          "fieldPath": "qualityScore",
           "order": "DESCENDING"
         }
       ]
     },
     {
-      "collectionGroup": "notifications",
+      "collectionGroup": "globalPlaces",
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "userId",
+          "fieldPath": "category",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchTokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "qualityScore",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "globalPlaces",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "searchTokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "qualityScore",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "conversationId",
           "order": "ASCENDING"
         },
         {
@@ -465,15 +419,11 @@
       ]
     },
     {
-      "collectionGroup": "activityComments",
+      "collectionGroup": "notifications",
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "activityId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "parentCommentId",
+          "fieldPath": "userId",
           "order": "ASCENDING"
         },
         {
@@ -483,11 +433,19 @@
       ]
     },
     {
-      "collectionGroup": "activityReactions",
+      "collectionGroup": "place_videos",
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "activityId",
+          "fieldPath": "deletedAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "uploadStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "visibility",
           "order": "ASCENDING"
         },
         {
@@ -523,28 +481,6 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "deletedAt",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "uploadStatus",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "visibility",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "place_videos",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
           "fieldPath": "userId",
           "order": "ASCENDING"
         },
@@ -563,16 +499,172 @@
       ]
     },
     {
-      "collectionGroup": "video_comments",
+      "collectionGroup": "placeComments",
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "videoId",
+          "fieldPath": "placeId",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "parentCommentId",
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "places",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "addedBy",
           "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "category",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "places",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "addedBy",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "places",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "addedBy",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "googlePlaceId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "deletedAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "places",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "circleId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "places",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "circleId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "deletedAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "places",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "circleId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "geohash",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "rewardEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "suggestions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "isRead",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "toUserId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "suggestions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "suggestions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "expiresAt",
+          "order": "DESCENDING"
         },
         {
           "fieldPath": "createdAt",
@@ -591,6 +683,24 @@
         {
           "fieldPath": "createdAt",
           "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "video_comments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "videoId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "parentCommentId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
         }
       ]
     },

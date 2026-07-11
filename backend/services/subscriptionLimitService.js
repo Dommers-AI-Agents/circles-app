@@ -24,16 +24,21 @@ class SubscriptionLimitService {
       }
       
       const userData = userDoc.data();
-      
+
       // Check if subscription is expired
       let status = userData.subscriptionStatus || 'none';
-      if (userData.subscriptionExpiryDate) {
-        const expiryDate = new Date(userData.subscriptionExpiryDate);
-        if (expiryDate < new Date() && status !== 'none') {
-          status = 'expired';
-          // Update status in database
-          await userDoc.ref.update({ subscriptionStatus: 'expired' });
-        }
+      const expiryDate = userData.subscriptionExpiryDate ? new Date(userData.subscriptionExpiryDate) : null;
+      // Manually verified premium users (isPremium/manuallyVerified) stay active
+      // until their expiry date regardless of receipt state
+      const hasManualPremium = (userData.manuallyVerified === true || userData.isPremium === true) &&
+        (!expiryDate || expiryDate > new Date());
+
+      if (hasManualPremium) {
+        status = 'active';
+      } else if (expiryDate && expiryDate < new Date() && status !== 'none') {
+        status = 'expired';
+        // Update status in database
+        await userDoc.ref.update({ subscriptionStatus: 'expired' });
       }
       
       // Check if trial is expired
@@ -181,6 +186,34 @@ class SubscriptionLimitService {
       // Deny export on error (fail closed for premium features)
       return {
         canExport: false,
+        error: 'Unable to verify subscription status'
+      };
+    }
+  }
+
+  /**
+   * Check if user can import places from other platforms
+   * @param {string} userId - The user's ID
+   * @returns {Promise<Object>} Result with canImport flag and error message if applicable
+   */
+  async canImport(userId) {
+    try {
+      const subscriptionData = await this.getUserSubscriptionData(userId);
+      const tier = getTierForStatus(subscriptionData.subscriptionStatus);
+
+      if (!tier.CAN_IMPORT) {
+        return {
+          canImport: false,
+          error: LIMIT_ERROR_MESSAGES.IMPORT_LIMIT
+        };
+      }
+
+      return { canImport: true };
+    } catch (error) {
+      console.error('Error checking import permission:', error);
+      // Deny import on error (fail closed for premium features)
+      return {
+        canImport: false,
         error: 'Unable to verify subscription status'
       };
     }

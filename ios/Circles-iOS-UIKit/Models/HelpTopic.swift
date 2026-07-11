@@ -234,8 +234,8 @@ class HelpContentProvider {
                 **From Home Screen:**
                 1. Tap the **+** button
                 2. Select "Add Place"
-                3. Search or browse nearby
-                4. Select the place
+                3. The map zooms to your location - tap a place to select it
+                4. Or use the search bar to find it by name
                 5. Choose which circle(s) to add it to
                 6. Add optional notes
                 

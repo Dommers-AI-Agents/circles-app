@@ -190,14 +190,17 @@ exports.searchGlobalPlaces = async (req, res, next) => {
       placesQuery = placesQuery.where('category', '==', category);
     }
     
-    // Text search on name (simple contains - in production would use Algolia/Elasticsearch)
+    // Text search via word-prefix tokens (searchTokens on each doc): matches
+    // any word in the name ("pizza" finds "Colvitto's Pizza & Bakery").
+    // Firestore allows one array-contains per query, so anchor on the most
+    // selective (longest) token and filter the remaining tokens in memory.
+    let queryTokens = [];
     if (query && query.trim()) {
-      // Note: Firestore doesn't have full-text search, so this is a basic implementation
-      // In production, we'd use a search service like Algolia
-      const queryLower = query.toLowerCase();
-      placesQuery = placesQuery
-        .where('name', '>=', queryLower)
-        .where('name', '<=', queryLower + '\uf8ff');
+      queryTokens = query.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).map(t => t.slice(0, 20));
+      if (queryTokens.length > 0) {
+        const anchor = queryTokens.reduce((a, b) => (b.length > a.length ? b : a));
+        placesQuery = placesQuery.where('searchTokens', 'array-contains', anchor);
+      }
     }
     
     // Order by quality score for best results first
@@ -208,7 +211,17 @@ exports.searchGlobalPlaces = async (req, res, next) => {
     
     const placesSnapshot = await placesQuery.get();
     let places = serializeQuerySnapshot(placesSnapshot);
-    
+
+    // Every query token must match, not just the anchored one
+    if (queryTokens.length > 1) {
+      places = places.filter(place =>
+        queryTokens.every(token => (place.searchTokens || []).includes(token))
+      );
+    }
+
+    // Internal search fields don't belong in the response payload
+    places = places.map(({ searchTokens, nameLower, ...rest }) => rest);
+
     // Apply geolocation filtering if provided
     if (lat && lng) {
       const centerLat = parseFloat(lat);

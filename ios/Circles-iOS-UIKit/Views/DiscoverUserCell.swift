@@ -54,23 +54,32 @@ class DiscoverUserCell: UITableViewCell {
         let label = UILabel()
         label.font = .systemFont(ofSize: 16, weight: .semibold)
         label.textColor = Constants.Colors.label
+        label.numberOfLines = 2
+        label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
         return label
     }()
-    
+
     private let detailLabel: UILabel = {
         let label = UILabel()
         label.font = .systemFont(ofSize: 14)
         label.textColor = Constants.Colors.secondaryLabel
+        label.numberOfLines = 1
+        label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return label
     }()
-    
+
     private let discoveryReasonLabel: UILabel = {
         let label = UILabel()
         label.font = .systemFont(ofSize: 12)
         label.textColor = Constants.Colors.primary
+        label.numberOfLines = 1
+        label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return label
     }()
     
@@ -161,11 +170,18 @@ class DiscoverUserCell: UITableViewCell {
         
         // Profile image - use profile-specific loading to prevent cache collisions
         if let profilePicture = user.profilePicture, !profilePicture.isEmpty {
+            // Show a placeholder while loading so a reused cell never keeps
+            // the previous user's photo
+            profileImageView.image = UIImage(systemName: "person.circle.fill")
+            profileImageView.tintColor = Constants.Colors.secondaryLabel
             ImageService.shared.loadProfileImage(for: user.id, from: profilePicture) { [weak self] image in
                 DispatchQueue.main.async {
-                    self?.profileImageView.image = image ?? UIImage(systemName: "person.circle.fill")
+                    // The cell may have been reused for a different user while
+                    // the image loaded — only apply if it's still the same user
+                    guard let self = self, self.user?.id == user.id else { return }
+                    self.profileImageView.image = image ?? UIImage(systemName: "person.circle.fill")
                     if image == nil {
-                        self?.profileImageView.tintColor = Constants.Colors.secondaryLabel
+                        self.profileImageView.tintColor = Constants.Colors.secondaryLabel
                     }
                 }
             }

@@ -10,6 +10,26 @@ enum ActivityType: String, Codable {
     case checkIn = "check_in"
     case videoUploaded = "video_uploaded"
     case photoUploaded = "photo_uploaded"
+    case placeDiscovered = "place_discovered"
+    case globalPlaceLiked = "global_place_liked"
+    case videoLiked = "video_liked"
+    case commentAdded = "comment_added"
+    case circleLiked = "circle_liked"
+    case circleCommented = "circle_commented"
+    case suggestionSent = "suggestion_sent"
+    case suggestionAccepted = "suggestion_accepted"
+    case profileUpdated = "profile_updated"
+    case userActivity = "user_activity"
+    case reactionAdded = "reaction_added"
+    /// Fallback for activity types this build doesn't know. The backend adds
+    /// types over time; an unknown one must not fail the decode of an entire
+    /// home screen response and blank the feed.
+    case unknown
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = ActivityType(rawValue: raw) ?? .unknown
+    }
 }
 
 // MARK: - Activity Model
@@ -100,6 +120,30 @@ extension Activity {
             return "uploaded a video at \(targetName)"
         case .photoUploaded:
             return "uploaded a photo at \(targetName)"
+        case .placeDiscovered:
+            return "discovered \(targetName)"
+        case .globalPlaceLiked:
+            return "liked \(targetName)"
+        case .videoLiked:
+            return "liked \(targetName)"
+        case .commentAdded:
+            return "commented on \(targetName)"
+        case .circleLiked:
+            return "liked the circle \(targetName)"
+        case .circleCommented:
+            return "commented on the circle \(targetName)"
+        case .suggestionSent:
+            return "suggested \(targetName)"
+        case .suggestionAccepted:
+            return "accepted a suggestion for \(targetName)"
+        case .profileUpdated:
+            return "updated their profile"
+        case .userActivity:
+            return "was active"
+        case .reactionAdded:
+            return "reacted to \(targetName)"
+        case .unknown:
+            return "shared an update"
         }
     }
     

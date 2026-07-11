@@ -8,6 +8,7 @@ const SUBSCRIPTION_LIMITS = {
     MAX_PLACES_PER_CIRCLE: 15,         // Maximum places per circle for free users
     MAX_TOTAL_PLACES: 90,              // Total theoretical max (6 circles × 15 places)
     CAN_EXPORT: false,                 // Export functionality
+    CAN_IMPORT: false,                 // Importing places from other platforms
     CAN_SHARE_WITHOUT_WATERMARK: false // Sharing without watermark
   },
   
@@ -17,15 +18,17 @@ const SUBSCRIPTION_LIMITS = {
     MAX_PLACES_PER_CIRCLE: Infinity,    // Unlimited places per circle
     MAX_TOTAL_PLACES: Infinity,         // Unlimited total places
     CAN_EXPORT: true,
+    CAN_IMPORT: true,
     CAN_SHARE_WITHOUT_WATERMARK: true
   },
-  
+
   // Premium tier (paid subscription)
   PREMIUM: {
     MAX_CIRCLES: Infinity,              // Unlimited circles
     MAX_PLACES_PER_CIRCLE: Infinity,    // Unlimited places per circle
     MAX_TOTAL_PLACES: Infinity,         // Unlimited total places
     CAN_EXPORT: true,
+    CAN_IMPORT: true,
     CAN_SHARE_WITHOUT_WATERMARK: true
   }
 };
@@ -51,6 +54,7 @@ const LIMIT_ERROR_MESSAGES = {
   CIRCLE_LIMIT: 'Free users can create up to 6 circles. Upgrade to Premium for unlimited circles!',
   PLACE_LIMIT: 'Free users can add up to 15 places per circle. Upgrade to Premium for unlimited places!',
   EXPORT_LIMIT: 'Export functionality is available to Premium members only.',
+  IMPORT_LIMIT: 'Importing places from other apps is available to Premium members only.',
   WATERMARK_LIMIT: 'Share without watermarks with Premium membership.'
 };
 

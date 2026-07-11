@@ -415,10 +415,13 @@ class FindContactsViewController: BaseViewController {
         let recipients = invites.compactMap { $0.phoneNumber }
         messageVC.recipients = recipients
         
-        // Set message body
+        // Set message body — the connect link opens the app and auto-connects
+        // when installed, otherwise redirects to the App Store
         let userName = AuthService.shared.currentUser?.displayName ?? "A friend"
-        messageVC.body = "\(userName) invited you to join Circles - the app for sharing your favorite places! Download: https://circles-app.com/download"
-        
+        let inviteLink = NetworkManager.shared.connectionInviteLink()
+            ?? "https://apps.apple.com/us/app/favcircles/id6746807095"
+        messageVC.body = "\(userName) invited you to join Circles - the app for sharing your favorite places! Join and connect with me: \(inviteLink)"
+
         present(messageVC, animated: true)
     }
     
@@ -547,12 +550,13 @@ class FindContactsViewController: BaseViewController {
         let messageVC = MFMessageComposeViewController()
         messageVC.messageComposeDelegate = self
         
-        // Set message body with invite link
+        // Set message body with invite link — opens the app and auto-connects
+        // when installed, otherwise redirects to the App Store
         let userName = AuthService.shared.currentUser?.displayName ?? "A friend"
-        let userId = AuthService.shared.currentUser?.id ?? ""
-        let inviteLink = "https://circles-app.com/join?inviter=\(userId)"
-        messageVC.body = "\(userName) invited you to join Circles - the app for sharing your favorite places!\n\nJoin using this link and we'll automatically connect: \(inviteLink)"
-        
+        let inviteLink = NetworkManager.shared.connectionInviteLink()
+            ?? "https://apps.apple.com/us/app/favcircles/id6746807095"
+        messageVC.body = "\(userName) invited you to join Circles - the app for sharing your favorite places!\n\nJoin using this link and we'll connect: \(inviteLink)"
+
         present(messageVC, animated: true)
     }
 }

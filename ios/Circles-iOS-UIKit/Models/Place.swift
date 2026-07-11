@@ -52,6 +52,32 @@ struct AnyCodable: Codable {
     }
 }
 
+/// Decodes array elements individually, dropping any that fail instead of
+/// failing the entire array. One malformed record in a list response must not
+/// blank a whole screen - this has bitten twice (a place with a location
+/// missing its GeoJSON type broke profiles; string-format openingHours broke
+/// check-in).
+struct LossyDecodableArray<Element: Decodable>: Decodable {
+    let elements: [Element]
+
+    private struct AnyDecodableValue: Decodable {}
+
+    init(from decoder: Decoder) throws {
+        var container = try decoder.unkeyedContainer()
+        var decoded: [Element] = []
+        while !container.isAtEnd {
+            if let element = try? container.decode(Element.self) {
+                decoded.append(element)
+            } else {
+                // Skip the malformed element and keep going
+                _ = try? container.decode(AnyDecodableValue.self)
+                print("⚠️ LossyDecodableArray: dropped malformed \(Element.self) element")
+            }
+        }
+        self.elements = decoded
+    }
+}
+
 struct Place: Codable, Identifiable {
     let id: String
     let globalPlaceId: String? // Reference to Global Place system
@@ -157,7 +183,9 @@ struct Place: Codable, Identifiable {
         self.publicNotes = try container.decodeIfPresent(String.self, forKey: .publicNotes)
         self.tags = try container.decodeIfPresent([String].self, forKey: .tags)
         self.reviews = try container.decodeIfPresent([PlaceReview].self, forKey: .reviews)
-        self.openingHours = try container.decodeIfPresent([OpeningHour].self, forKey: .openingHours)
+        // Lenient: legacy places stored openingHours as plain strings; a malformed
+        // entry should drop the field, not fail the entire response decode
+        self.openingHours = (try? container.decodeIfPresent([OpeningHour].self, forKey: .openingHours)) ?? nil
         
         // Special handling for priceLevel to ignore invalid values like -1
         if let priceLevelInt = try container.decodeIfPresent(Int.self, forKey: .priceLevel),

@@ -292,6 +292,18 @@ class QuickAccessPlaceCell: UITableViewCell {
         imageView.translatesAutoresizingMaskIntoConstraints = false
         return imageView
     }()
+
+    // Optional right-aligned distance text (e.g. "2.3 mi"), hidden when not provided
+    private let distanceLabel: UILabel = {
+        let label = UILabel()
+        label.font = .systemFont(ofSize: 13, weight: .medium)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.textAlignment = .right
+        label.setContentHuggingPriority(.required, for: .horizontal)
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
     
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -311,8 +323,12 @@ class QuickAccessPlaceCell: UITableViewCell {
         containerView.addSubview(nameLabel)
         containerView.addSubview(addressLabel)
         containerView.addSubview(checkmarkImageView)
-        
+        containerView.addSubview(distanceLabel)
+
         NSLayoutConstraint.activate([
+            distanceLabel.trailingAnchor.constraint(equalTo: checkmarkImageView.leadingAnchor, constant: -4),
+            distanceLabel.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
+
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
             containerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
             containerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
@@ -325,7 +341,7 @@ class QuickAccessPlaceCell: UITableViewCell {
             
             nameLabel.leadingAnchor.constraint(equalTo: iconImageView.trailingAnchor, constant: 12),
             nameLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 14),
-            nameLabel.trailingAnchor.constraint(equalTo: checkmarkImageView.leadingAnchor, constant: -8),
+            nameLabel.trailingAnchor.constraint(equalTo: distanceLabel.leadingAnchor, constant: -8),
             
             addressLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
             addressLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
@@ -338,11 +354,13 @@ class QuickAccessPlaceCell: UITableViewCell {
         ])
     }
     
-    func configure(with place: Place, isSelected: Bool) {
+    func configure(with place: Place, isSelected: Bool, distanceText: String? = nil) {
         nameLabel.text = place.name
         addressLabel.text = place.address
         checkmarkImageView.isHidden = !isSelected
-        
+        distanceLabel.text = distanceText
+        distanceLabel.isHidden = (distanceText == nil)
+
         // Set icon based on category
         let iconName = place.category.systemIconName
         iconImageView.image = UIImage(systemName: iconName)

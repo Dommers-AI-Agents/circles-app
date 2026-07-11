@@ -14,7 +14,8 @@
           "/video/*",
           "/circle/*",
           "/connect/*",
-          "/daily-summary"
+          "/daily-summary",
+          "/s/*"
         ]
       }
     ]

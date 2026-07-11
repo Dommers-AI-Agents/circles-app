@@ -133,10 +133,13 @@ class SubscriptionService: ObservableObject {
     }
     
     // MARK: - Restore Purchases
-    
+
     func restorePurchases() async throws {
         try await AppStore.sync()
         await updateSubscriptionStatus()
+
+        // Sync with backend after restore
+        await syncCurrentSubscriptionWithBackend()
     }
     
     // MARK: - Check Subscription Status
@@ -259,11 +262,11 @@ class SubscriptionService: ObservableObject {
             print("❌ No receipt found")
             return
         }
-        
+
         do {
             let receiptData = try Data(contentsOf: appStoreReceiptURL)
             let receiptString = receiptData.base64EncodedString()
-            
+
             let body: [String: Any] = [
                 "receipt": receiptString,
                 "transactionId": transaction.id,
@@ -272,7 +275,7 @@ class SubscriptionService: ObservableObject {
                 "purchaseDate": ISO8601DateFormatter().string(from: transaction.purchaseDate),
                 "expirationDate": transaction.expirationDate.map { ISO8601DateFormatter().string(from: $0) } ?? nil
             ]
-            
+
             APIService.shared.request(
                 endpoint: "users/subscription/verify",
                 method: .post,
@@ -289,6 +292,45 @@ class SubscriptionService: ObservableObject {
             }
         } catch {
             print("❌ Failed to read receipt: \(error)")
+        }
+    }
+
+    /// Sync current subscription with backend (called on app launch and restore)
+    func syncCurrentSubscriptionWithBackend() async {
+        print("🔄 Syncing current subscription with backend...")
+
+        // Skip if user is not logged in
+        guard AuthService.shared.isLoggedIn else {
+            print("💎 Skipping subscription sync - user not logged in")
+            return
+        }
+
+        // Get the latest transaction for any active subscription
+        var latestTransaction: Transaction? = nil
+
+        for await result in Transaction.currentEntitlements {
+            guard case .verified(let transaction) = result else {
+                continue
+            }
+
+            guard transaction.productType == .autoRenewable else {
+                continue
+            }
+
+            // Find the most recent transaction
+            if latestTransaction == nil || transaction.purchaseDate > latestTransaction!.purchaseDate {
+                latestTransaction = transaction
+            }
+        }
+
+        // If we have an active subscription, sync it
+        if let transaction = latestTransaction {
+            print("📱 Found active subscription, syncing with backend...")
+            await syncSubscriptionWithBackend(transaction: transaction)
+        } else {
+            print("💎 No active subscription found - checking backend status...")
+            // Even if no local subscription, check backend in case it has valid data
+            await checkTrialStatus()
         }
     }
     

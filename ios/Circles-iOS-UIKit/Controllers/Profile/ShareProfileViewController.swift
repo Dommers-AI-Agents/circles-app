@@ -125,7 +125,10 @@ class ShareProfileViewController: BaseViewController {
             simpleUserId = user.id
         }
         
-        self.deepLink = "circles://connect/\(simpleUserId)"
+        // https universal link: works when scanned with the Camera app (opens
+        // Circles if installed, App Store otherwise) - a circles:// scheme QR
+        // is a dead end for anyone without the app
+        self.deepLink = "https://api.favcircles.com/connect/\(simpleUserId)"
         super.init(nibName: nil, bundle: nil)
     }
     
@@ -450,10 +453,17 @@ class ShareProfileViewController: BaseViewController {
     @objc private func shareButtonTapped() {
         guard let qrImage = qrCodeImage else { return }
         
-        let shareText = "\(user.displayName) wants to connect with you on Circles!\n\n📱 Scan this QR code or use this link:\n\(deepLink)\n\nDon't have Circles? Download here:\nhttps://apps.apple.com/us/app/favcircles/id6746807095"
-        
+        // Share the URL as its own item so Messages renders a tappable rich
+        // link; the link itself handles app-open vs App Store fallback
+        let shareText = "\(user.displayName) wants to connect with you on Circles! Scan the QR code or tap the link to connect."
+
+        var activityItems: [Any] = [shareText, qrImage]
+        if let inviteURL = URL(string: deepLink) {
+            activityItems.append(inviteURL)
+        }
+
         let activityViewController = UIActivityViewController(
-            activityItems: [shareText, qrImage],
+            activityItems: activityItems,
             applicationActivities: nil
         )
         

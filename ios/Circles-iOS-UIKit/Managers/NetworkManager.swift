@@ -236,37 +236,40 @@ class NetworkManager {
         return inviteLink
     }
     
-    func shareConnectionInvite() -> [Any] {
-        guard let currentUser = AuthService.shared.currentUser else {
-            return ["Join me on Circles!"]
-        }
-        
-        let userId = currentUser.id
-        let userName = currentUser.displayName
-        
+    /// The current user's shareable connect link. With the app installed the
+    /// link opens Circles directly (Universal Link) and auto-connects the two
+    /// users; without it, the backend page redirects to the App Store.
+    func connectionInviteLink() -> String? {
+        guard let currentUser = AuthService.shared.currentUser else { return nil }
+
         // Parse the user ID to ensure we use simple format in the link
-        var simpleUserId = userId
-        if userId.contains(".") {
-            let components = userId.components(separatedBy: ".")
+        var simpleUserId = currentUser.id
+        if simpleUserId.contains(".") {
+            let components = simpleUserId.components(separatedBy: ".")
             if components.count >= 2 {
                 simpleUserId = components[1] // Extract the Firebase UID part
-                print("🔗 NetworkManager: shareConnectionInvite - Extracted simple ID \(simpleUserId) from complex ID \(userId)")
             }
         }
-        
-        // Create invite text
-        var shareText = "\(userName) wants to connect with you on Circles!"
-        shareText += "\n\n🔗 Join my network to share favorite places and discover new ones together."
-        
-        // Add deep link with simple user ID
-        let deepLink = "circles://connect/\(simpleUserId)"
-        shareText += "\n\n📱 Connect with me: \(deepLink)"
-        
-        // Add app store link
-        let appStoreLink = "https://apps.apple.com/us/app/favcircles/id6746807095"
-        shareText += "\n\nDon't have Circles? Download here: \(appStoreLink)"
-        
-        return [shareText]
+
+        // Branded domain (Cloud Run domain mapping to the same backend) - reads
+        // far better in messages than the raw run.app URL
+        return "https://api.favcircles.com/connect/\(simpleUserId)"
+    }
+
+    func shareConnectionInvite() -> [Any] {
+        guard let currentUser = AuthService.shared.currentUser,
+              let inviteLink = connectionInviteLink(),
+              let inviteURL = URL(string: inviteLink) else {
+            return ["Join me on Circles!"]
+        }
+
+        // Share the URL as its own item (not embedded in the text) so Messages
+        // renders a tappable rich-link preview instead of plain text. One link
+        // does everything: opens the app and auto-connects when installed,
+        // otherwise redirects to the App Store.
+        let shareText = "\(currentUser.displayName) wants to connect with you on Circles! Tap the link to connect and share favorite places."
+
+        return [shareText, inviteURL]
     }
     
     func sendConnectionRequest(to userId: String, message: String? = nil, autoAccept: Bool = false, completion: @escaping (Result<Connection, Error>) -> Void) {

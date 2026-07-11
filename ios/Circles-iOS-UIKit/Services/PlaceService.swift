@@ -109,6 +109,38 @@ class PlaceService {
         )
     }
     
+    /// Fetches network places within a map viewport (center + radius in meters).
+    /// The query string is embedded in the endpoint (not queryParams) so that
+    /// APIService's duplicate-request suppression — which keys on the endpoint
+    /// string only — treats different regions as different requests.
+    func fetchNetworkPlacesInViewport(
+        centerLat: Double,
+        centerLng: Double,
+        radiusM: Double,
+        limit: Int = 200,
+        completion: @escaping (Result<[Place], Error>) -> Void
+    ) {
+        let lat = String(format: "%.5f", centerLat)
+        let lng = String(format: "%.5f", centerLng)
+        let endpoint = "network/places/viewport?centerLat=\(lat)&centerLng=\(lng)&radiusM=\(Int(radiusM))&limit=\(limit)"
+
+        let apiCompletion = createAPICompletion { (result: Result<PlacesResponse, Error>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.places))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+
+        APIService.shared.request(
+            endpoint: endpoint,
+            method: .get,
+            requiresAuth: true,
+            completion: apiCompletion
+        )
+    }
+
     func fetchPlacesByMultipleCircles(circleIds: [String], completion: @escaping (Result<[Place], Error>) -> Void) {
         let body: [String: Any] = [
             "circleIds": circleIds
@@ -251,7 +283,7 @@ class PlaceService {
             requiresAuth: true,
             completion: createAPICompletion { (result: Result<MyPlacesResponse, Error>) in
                 if case .success(let response) = result {
-                    completion(.success(response.data))
+                    completion(.success(response.data.elements))
                 } else if case .failure(let error) = result {
                     completion(.failure(error))
                 }
@@ -536,7 +568,13 @@ class PlaceService {
             body["force"] = true
             Logger.debug("Force flag set in performCreatePlace - will bypass duplicate validation")
         }
-        
+
+        // Sticker rewards: if this place was opened from a shared link, credit the sharer
+        if let googlePlaceIdInBody = body["googlePlaceId"] as? String,
+           let refUserId = RewardsService.shared.consumeShareAttribution(forGooglePlaceId: googlePlaceIdInBody) {
+            body["refUserId"] = refUserId
+        }
+
         APIService.shared.request(
             endpoint: "places",
             method: .post,
@@ -814,7 +852,14 @@ class PlaceService {
         if let photos = body["photos"] as? [String] {
             print("  Photos in request: \(photos.count)")
         }
-        
+
+        // Sticker rewards: if this place was opened from a shared link, credit the sharer
+        var body = body
+        if let googlePlaceId = body["googlePlaceId"] as? String,
+           let refUserId = RewardsService.shared.consumeShareAttribution(forGooglePlaceId: googlePlaceId) {
+            body["refUserId"] = refUserId
+        }
+
         APIService.shared.request(
             endpoint: "places",
             method: .post,
@@ -1515,7 +1560,8 @@ struct PlaceResponse: Decodable {
 
 struct MyPlacesResponse: Decodable {
     let success: Bool
-    let data: [Place]
+    // Lossy: one malformed place must not blank the whole check-in list
+    let data: LossyDecodableArray<Place>
 }
 
 struct PlaceCommentsResponse: Decodable {

@@ -2155,10 +2155,35 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
         
         let configuration = UISwipeActionsConfiguration(actions: [deleteAction, moveAction])
         configuration.performsFirstActionWithFullSwipe = false
-        
+
         return configuration
     }
-    
+
+    func tableView(_ tableView: UITableView, contextMenuConfigurationForRowAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
+        // Long-press menu mirroring the swipe actions
+        guard circle.canEdit else { return nil }
+        let place = filteredPlaces[indexPath.row]
+
+        return UIContextMenuConfiguration(identifier: indexPath as NSCopying, previewProvider: nil) { [weak self] _ in
+            let moveAction = UIAction(
+                title: "Move to Another Circle",
+                image: UIImage(systemName: "arrow.right.circle")
+            ) { _ in
+                self?.movePlaceToCircle(at: indexPath)
+            }
+
+            let deleteAction = UIAction(
+                title: "Delete",
+                image: UIImage(systemName: "trash"),
+                attributes: .destructive
+            ) { _ in
+                self?.confirmDeletePlace(at: indexPath) { _ in }
+            }
+
+            return UIMenu(title: place.name, children: [moveAction, deleteAction])
+        }
+    }
+
     private func confirmDeletePlace(at indexPath: IndexPath, completion: @escaping (Bool) -> Void) {
         let place = filteredPlaces[indexPath.row]
         
