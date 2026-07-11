@@ -126,6 +126,39 @@ class VenueAdminViewController: BaseViewController {
         }
     }
 
+    /// Link the venue to its owner's FavCircles account so they can manage
+    /// offers and earn rates themselves (their profile gains the storefront
+    /// button). The email must belong to an existing account.
+    private func assignOwner(for venue: AdminVenue) {
+        AlertPresenter.showTextInput(
+            title: "Assign Owner",
+            message: "Email of the FavCircles account that owns \(venue.venueName). They'll be able to manage its offers, earn rate, and QR codes.",
+            placeholder: "owner@example.com",
+            initialText: venue.contactEmail,
+            keyboardType: .emailAddress,
+            from: self
+        ) { [weak self] email in
+            guard let self = self,
+                  let email = email?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !email.isEmpty else { return }
+
+            let loading = AlertPresenter.showLoading(message: "Assigning...", from: self)
+            RewardsService.shared.assignVenueOwner(venueId: venue.venueId, email: email) { [weak self] result in
+                DispatchQueue.main.async {
+                    loading.dismiss(animated: true) {
+                        guard let self = self else { return }
+                        switch result {
+                        case .success(let ownerEmail):
+                            AlertPresenter.showSuccess("\(ownerEmail) now owns \(venue.venueName)", from: self)
+                        case .failure(let error):
+                            self.showError(error)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private func emailQR(for venue: AdminVenue) {
         let loading = AlertPresenter.showLoading(message: "Sending QR codes...", from: self)
         RewardsService.shared.emailVenueQR(venueId: venue.venueId) { [weak self] result in
@@ -182,6 +215,9 @@ extension VenueAdminViewController: UITableViewDataSource, UITableViewDelegate {
                 (title: "Manage offers & earn rate", style: .default, handler: { [weak self] in
                     let manageVC = VenueManageViewController(venue: venue)
                     self?.navigationController?.pushViewController(manageVC, animated: true)
+                }),
+                (title: "Assign owner", style: .default, handler: { [weak self] in
+                    self?.assignOwner(for: venue)
                 }),
                 (title: "Email QR codes to me", style: .default, handler: { [weak self] in
                     self?.emailQR(for: venue)

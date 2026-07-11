@@ -224,6 +224,23 @@ class RewardsService {
         }
     }
 
+    /// Super-user: link a venue to its owner's account by email
+    func assignVenueOwner(venueId: String, email: String, completion: @escaping (Result<String, Error>) -> Void) {
+        apiService.request(
+            endpoint: "rewards/venues/\(venueId)/owner",
+            method: .post,
+            body: ["email": email],
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<VenueOwnerData>, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data.ownerEmail))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
     // MARK: - Super user (in-app venue management)
 
     func getRewardsProfile(completion: @escaping (Result<RewardsProfile, Error>) -> Void) {
@@ -512,6 +529,11 @@ struct RotatedRegisterCode: Codable {
     let registerCode: String
     let registerCardUrl: String
     let earnRate: Int
+}
+
+struct VenueOwnerData: Codable {
+    let venueId: String
+    let ownerEmail: String
 }
 
 struct VenueDraft {

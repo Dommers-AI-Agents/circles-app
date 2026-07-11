@@ -918,7 +918,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         let settingsButton = UIBarButtonItem(image: UIImage(systemName: "gear"), style: .plain, target: self, action: #selector(settingsButtonTapped))
         let videoButton = UIBarButtonItem(image: UIImage(systemName: "video.fill"), style: .plain, target: self, action: #selector(videoButtonTapped))
         let checkInButton = UIBarButtonItem(image: UIImage(systemName: "checkmark.circle"), style: .plain, target: self, action: #selector(checkInButtonTapped))
-        let rewardsButton = UIBarButtonItem(image: UIImage(systemName: "star.circle"), style: .plain, target: self, action: #selector(rewardsButtonTapped))
+        let rewardsButton = UIBarButtonItem(image: UIImage(systemName: "dollarsign.circle"), style: .plain, target: self, action: #selector(rewardsButtonTapped))
         navigationItem.rightBarButtonItems = [settingsButton, videoButton, checkInButton, rewardsButton]
         addStorefrontButtonIfEligible()
 
@@ -2972,7 +2972,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             let settingsButton = UIBarButtonItem(image: UIImage(systemName: "gear"), style: .plain, target: self, action: #selector(settingsButtonTapped))
             let videoButton = UIBarButtonItem(image: UIImage(systemName: "video.fill"), style: .plain, target: self, action: #selector(videoButtonTapped))
             let checkInButton = UIBarButtonItem(image: UIImage(systemName: "checkmark.circle"), style: .plain, target: self, action: #selector(checkInButtonTapped))
-            let rewardsButton = UIBarButtonItem(image: UIImage(systemName: "star.circle"), style: .plain, target: self, action: #selector(rewardsButtonTapped))
+            let rewardsButton = UIBarButtonItem(image: UIImage(systemName: "dollarsign.circle"), style: .plain, target: self, action: #selector(rewardsButtonTapped))
             navigationItem.rightBarButtonItems = [settingsButton, videoButton, checkInButton, rewardsButton]
             addStorefrontButtonIfEligible()
         } else {
