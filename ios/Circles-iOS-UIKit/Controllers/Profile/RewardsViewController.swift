@@ -150,7 +150,6 @@ class RewardsViewController: BaseViewController {
         super.viewDidLoad()
         title = "Rewards"
         view.backgroundColor = .systemBackground
-        locationManager.delegate = self
         setupUI()
     }
 
@@ -178,6 +177,10 @@ class RewardsViewController: BaseViewController {
 
     private func loadOffers(completion: (() -> Void)?) {
         offersCompletion = completion
+        // BaseViewController.viewDidLoad() triggers loadData() before this
+        // class's viewDidLoad body runs, so the delegate MUST be assigned here:
+        // requestLocation() with a nil delegate is a runtime assertion crash.
+        locationManager.delegate = self
         switch locationManager.authorizationStatus {
         case .authorizedWhenInUse, .authorizedAlways:
             locationManager.requestLocation()
