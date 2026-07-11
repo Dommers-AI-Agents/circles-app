@@ -85,7 +85,29 @@ class VoucherViewController: BaseViewController {
         return label
     }()
 
-    private let doneButton = UIButton.secondaryButton(title: "Done")
+    private let closeButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        let config = UIImage.SymbolConfiguration(pointSize: 28, weight: .semibold)
+        button.setImage(UIImage(systemName: "xmark.circle.fill", withConfiguration: config), for: .normal)
+        button.tintColor = .white
+        button.accessibilityLabel = "Close"
+        return button
+    }()
+
+    // The factory secondaryButton is primary-on-clear — invisible against this
+    // screen's primary-colored background, so style the close action manually
+    private let doneButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Done", for: .normal)
+        button.setTitleColor(Constants.Colors.primary, for: .normal)
+        button.backgroundColor = .white
+        button.layer.cornerRadius = 10
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.heightAnchor.constraint(equalToConstant: 50).isActive = true
+        return button
+    }()
 
     // MARK: - Init
 
@@ -133,10 +155,17 @@ class VoucherViewController: BaseViewController {
         cardView.addSubview(codeLabel)
         cardView.addSubview(staffInstructionLabel)
         view.addSubview(doneButton)
+        view.addSubview(closeButton)
 
         doneButton.addTarget(self, action: #selector(doneTapped), for: .touchUpInside)
+        closeButton.addTarget(self, action: #selector(doneTapped), for: .touchUpInside)
 
         NSLayoutConstraint.activate([
+            closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+            closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            closeButton.widthAnchor.constraint(equalToConstant: 40),
+            closeButton.heightAnchor.constraint(equalToConstant: 40),
+
             countdownLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 30),
             countdownLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
 
