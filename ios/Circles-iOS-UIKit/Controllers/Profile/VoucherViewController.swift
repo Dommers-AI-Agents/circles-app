@@ -68,7 +68,7 @@ class VoucherViewController: BaseViewController {
     private let staffInstructionLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "Show this screen to staff\nbefore it expires"
+        label.text = "Show this screen to staff before it expires.\nYou can close this and reopen it from the Rewards page — the timer keeps running."
         label.font = UIFont.systemFont(ofSize: 15)
         label.textColor = .gray
         label.textAlignment = .center
@@ -91,16 +91,7 @@ class VoucherViewController: BaseViewController {
 
     init(voucher: RewardVoucher) {
         self.voucher = voucher
-
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: voucher.expiresAt) {
-            self.expiryDate = date
-        } else {
-            formatter.formatOptions = [.withInternetDateTime]
-            self.expiryDate = formatter.date(from: voucher.expiresAt) ?? Date().addingTimeInterval(5 * 60)
-        }
-
+        self.expiryDate = voucher.expiryDate ?? Date().addingTimeInterval(5 * 60)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -198,6 +189,7 @@ class VoucherViewController: BaseViewController {
             countdownLabel.text = "Expired"
             codeLabel.textColor = .lightGray
             offerLabel.textColor = .lightGray
+            RewardsService.shared.clearActiveVoucher()
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
                 self?.dismiss(animated: true)

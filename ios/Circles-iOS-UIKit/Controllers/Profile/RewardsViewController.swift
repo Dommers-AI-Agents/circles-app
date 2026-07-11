@@ -65,6 +65,40 @@ class RewardsViewController: BaseViewController {
         return label
     }()
 
+    // Tappable banner for a voucher that's still counting down — lets users
+    // leave the voucher screen and get back to it
+    private let activeVoucherBanner: UIControl = {
+        let control = UIControl()
+        control.translatesAutoresizingMaskIntoConstraints = false
+        control.backgroundColor = .systemGreen
+        control.layer.cornerRadius = 12
+        control.clipsToBounds = true
+        control.isHidden = true
+        return control
+    }()
+
+    private let voucherBannerTitleLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
+        label.textColor = .white
+        label.numberOfLines = 1
+        return label
+    }()
+
+    private let voucherBannerTimeLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = UIFont.monospacedDigitSystemFont(ofSize: 15, weight: .bold)
+        label.textColor = .white
+        label.setContentHuggingPriority(.required, for: .horizontal)
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        return label
+    }()
+
+    private var voucherBannerHeight: NSLayoutConstraint?
+    private var voucherBannerTimer: Timer?
+
     private let savedOffersLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -225,6 +259,11 @@ class RewardsViewController: BaseViewController {
         headerView.addSubview(balanceLabel)
         headerView.addSubview(balanceCaptionLabel)
 
+        contentView.addSubview(activeVoucherBanner)
+        activeVoucherBanner.addSubview(voucherBannerTitleLabel)
+        activeVoucherBanner.addSubview(voucherBannerTimeLabel)
+        activeVoucherBanner.addTarget(self, action: #selector(activeVoucherBannerTapped), for: .touchUpInside)
+
         contentView.addSubview(savedOffersLabel)
         contentView.addSubview(savedOffersStack)
         contentView.addSubview(nearbyOffersLabel)
@@ -262,7 +301,18 @@ class RewardsViewController: BaseViewController {
             balanceCaptionLabel.topAnchor.constraint(equalTo: balanceLabel.bottomAnchor, constant: 2),
             balanceCaptionLabel.centerXAnchor.constraint(equalTo: headerView.centerXAnchor),
 
-            savedOffersLabel.topAnchor.constraint(equalTo: headerView.bottomAnchor, constant: 24),
+            activeVoucherBanner.topAnchor.constraint(equalTo: headerView.bottomAnchor, constant: 16),
+            activeVoucherBanner.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            activeVoucherBanner.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+
+            voucherBannerTitleLabel.leadingAnchor.constraint(equalTo: activeVoucherBanner.leadingAnchor, constant: 14),
+            voucherBannerTitleLabel.centerYAnchor.constraint(equalTo: activeVoucherBanner.centerYAnchor),
+            voucherBannerTitleLabel.trailingAnchor.constraint(lessThanOrEqualTo: voucherBannerTimeLabel.leadingAnchor, constant: -10),
+
+            voucherBannerTimeLabel.trailingAnchor.constraint(equalTo: activeVoucherBanner.trailingAnchor, constant: -14),
+            voucherBannerTimeLabel.centerYAnchor.constraint(equalTo: activeVoucherBanner.centerYAnchor),
+
+            savedOffersLabel.topAnchor.constraint(equalTo: activeVoucherBanner.bottomAnchor, constant: 16),
             savedOffersLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             savedOffersLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
 
@@ -295,6 +345,62 @@ class RewardsViewController: BaseViewController {
             activityStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
             activityStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -30)
         ])
+
+        // Collapsed by default; expands when a live voucher exists
+        voucherBannerHeight = activeVoucherBanner.heightAnchor.constraint(equalToConstant: 0)
+        voucherBannerHeight?.isActive = true
+    }
+
+    // MARK: - Active voucher banner
+
+    private func updateActiveVoucherBanner() {
+        voucherBannerTimer?.invalidate()
+        voucherBannerTimer = nil
+
+        guard let voucher = RewardsService.shared.getActiveVoucher() else {
+            activeVoucherBanner.isHidden = true
+            voucherBannerHeight?.constant = 0
+            return
+        }
+
+        voucherBannerTitleLabel.text = "🎟 Active voucher — \(voucher.offerTitle)"
+        activeVoucherBanner.isHidden = false
+        voucherBannerHeight?.constant = 52
+        updateVoucherBannerTime()
+        voucherBannerTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.updateVoucherBannerTime()
+        }
+    }
+
+    private func updateVoucherBannerTime() {
+        guard let expiry = RewardsService.shared.getActiveVoucher()?.expiryDate else {
+            // Expired since the last tick — collapse the banner
+            updateActiveVoucherBanner()
+            return
+        }
+        let remaining = max(0, Int(expiry.timeIntervalSinceNow))
+        voucherBannerTimeLabel.text = String(format: "%d:%02d ▸", remaining / 60, remaining % 60)
+    }
+
+    @objc private func activeVoucherBannerTapped() {
+        guard let voucher = RewardsService.shared.getActiveVoucher() else {
+            updateActiveVoucherBanner()
+            return
+        }
+        let voucherVC = VoucherViewController(voucher: voucher)
+        voucherVC.modalPresentationStyle = .fullScreen
+        present(voucherVC, animated: true)
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        updateActiveVoucherBanner()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        voucherBannerTimer?.invalidate()
+        voucherBannerTimer = nil
     }
 
     // MARK: - UI Updates
@@ -479,8 +585,10 @@ class RewardsViewController: BaseViewController {
                         let voucherVC = VoucherViewController(voucher: redeem.voucher)
                         voucherVC.modalPresentationStyle = .fullScreen
                         self.present(voucherVC, animated: true)
-                        // Refresh balance, affordability, and history behind the voucher
+                        // Refresh balance, affordability, history, and the
+                        // active-voucher banner behind the voucher screen
                         self.loadData()
+                        self.updateActiveVoucherBanner()
                     case .failure(let error):
                         self.showError(error)
                     }

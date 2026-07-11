@@ -100,11 +100,41 @@ class RewardsService {
             switch result {
             case .success(let response):
                 RewardsService.postBalanceChanged()
+                self.storeActiveVoucher(response.data.voucher)
                 completion(.success(response.data))
             case .failure(let error):
                 completion(.failure(error))
             }
         }
+    }
+
+    // MARK: - Active voucher
+    // The voucher outlives the voucher screen: users can dismiss it, use the
+    // app, and reopen it from the Rewards page until the expiry passes.
+
+    private var kActiveVoucher: String { "active_reward_voucher" }
+
+    func storeActiveVoucher(_ voucher: RewardVoucher) {
+        if let data = try? JSONEncoder().encode(voucher) {
+            userDefaults.set(data, forKey: kActiveVoucher)
+        }
+    }
+
+    /// Returns the stored voucher if it hasn't expired; clears it otherwise.
+    func getActiveVoucher() -> RewardVoucher? {
+        guard let data = userDefaults.data(forKey: kActiveVoucher),
+              let voucher = try? JSONDecoder().decode(RewardVoucher.self, from: data) else {
+            return nil
+        }
+        guard let expiry = voucher.expiryDate, expiry > Date() else {
+            clearActiveVoucher()
+            return nil
+        }
+        return voucher
+    }
+
+    func clearActiveVoucher() {
+        userDefaults.removeObject(forKey: kActiveVoucher)
     }
 
     // MARK: - Browse offers (participating venues, saved + nearby)
@@ -473,6 +503,14 @@ struct RewardVoucher: Codable {
     let pointsCost: Int
     let venueName: String
     let expiresAt: String
+
+    var expiryDate: Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: expiresAt) { return date }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: expiresAt)
+    }
 }
 
 struct RewardRedeemData: Codable {
