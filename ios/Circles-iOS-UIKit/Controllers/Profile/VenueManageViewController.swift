@@ -11,12 +11,14 @@ class VenueManageViewController: BaseViewController {
     private let venueId: String
     private let venueName: String
     private var offers: [RewardOffer]
+    private var announcements: [VenueAnnouncement]
     private var earnRate: Int
     private var registerCode: String
 
     private enum Section: Int, CaseIterable {
         case earnRate
         case offers
+        case announcements
         case registerCode
     }
 
@@ -36,10 +38,15 @@ class VenueManageViewController: BaseViewController {
         self.venueId = venue.venueId
         self.venueName = venue.venueName
         self.offers = venue.offers ?? []
+        self.announcements = venue.announcements ?? []
         self.earnRate = venue.earnRate ?? 25
         self.registerCode = venue.registerCode
+        self.venuePlaceId = venue.globalPlaceId ?? venue.googlePlaceId
         super.init(nibName: nil, bundle: nil)
     }
+
+    /// Place identity for the "view public page" jump (globalPlaceId preferred)
+    private let venuePlaceId: String?
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
@@ -52,6 +59,18 @@ class VenueManageViewController: BaseViewController {
         title = venueName
         view.backgroundColor = .systemBackground
 
+        // Round trip to the public place page - the same page customers see
+        if venuePlaceId != nil {
+            let viewPageButton = UIBarButtonItem(
+                image: UIImage(systemName: "eye"),
+                style: .plain,
+                target: self,
+                action: #selector(viewPublicPageTapped)
+            )
+            viewPageButton.accessibilityLabel = "View public page"
+            navigationItem.rightBarButtonItem = viewPageButton
+        }
+
         tableView.dataSource = self
         tableView.delegate = self
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "ManageCell")
@@ -63,6 +82,27 @@ class VenueManageViewController: BaseViewController {
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
+    }
+
+    // MARK: - Public page
+
+    @objc private func viewPublicPageTapped() {
+        guard let placeId = venuePlaceId else { return }
+        let loading = AlertPresenter.showLoading(message: "Loading...", from: self)
+        PlaceService.shared.fetchPlaceById(id: placeId) { [weak self] result in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: true) {
+                    guard let self = self else { return }
+                    switch result {
+                    case .success(let place):
+                        let placeVC = PlaceDetailViewController(place: place)
+                        self.navigationController?.pushViewController(placeVC, animated: true)
+                    case .failure(let error):
+                        self.showError(error)
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Earn rate
@@ -201,6 +241,189 @@ class VenueManageViewController: BaseViewController {
         }
     }
 
+    // MARK: - Announcements
+
+    private func addAnnouncement() {
+        showTextInput(
+            title: "New Announcement",
+            message: "A short headline shown on your place's page (e.g. \"Happy Hour\", \"Live Music Friday\")",
+            placeholder: "Headline"
+        ) { [weak self] title in
+            guard let self = self,
+                  let title = title?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !title.isEmpty else { return }
+
+            self.showTextInput(
+                title: "Message",
+                message: "The details visitors see under \"\(title)\"",
+                placeholder: "e.g. 2-for-1 drinks, 3–5pm weekdays"
+            ) { [weak self] message in
+                guard let self = self,
+                      let message = message?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !message.isEmpty else { return }
+
+                self.pickExpiry(title: "When should it expire?") { [weak self] expiresAt, _ in
+                    guard let self = self else { return }
+                    let loading = AlertPresenter.showLoading(message: "Posting...", from: self)
+                    RewardsService.shared.addAnnouncement(
+                        venueId: self.venueId,
+                        title: title,
+                        message: message,
+                        expiresAt: expiresAt
+                    ) { [weak self] result in
+                        self?.handleAnnouncementsResult(result, loading: loading)
+                    }
+                }
+            }
+        }
+    }
+
+    private func manageAnnouncement(_ announcement: VenueAnnouncement) {
+        showActionSheet(
+            title: announcement.title,
+            message: announcement.message,
+            actions: [
+                (title: "Edit headline", style: .default, handler: { [weak self] in
+                    self?.editAnnouncementTitle(announcement)
+                }),
+                (title: "Edit message", style: .default, handler: { [weak self] in
+                    self?.editAnnouncementMessage(announcement)
+                }),
+                (title: "Change expiry", style: .default, handler: { [weak self] in
+                    self?.changeAnnouncementExpiry(announcement)
+                }),
+                (title: "Delete", style: .destructive, handler: { [weak self] in
+                    self?.confirmDeleteAnnouncement(announcement)
+                })
+            ]
+        )
+    }
+
+    private func editAnnouncementTitle(_ announcement: VenueAnnouncement) {
+        showTextInput(title: "Edit Headline", placeholder: "Headline", initialText: announcement.title) { [weak self] title in
+            guard let self = self,
+                  let title = title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty else { return }
+            let loading = AlertPresenter.showLoading(message: "Updating...", from: self)
+            RewardsService.shared.updateAnnouncement(
+                venueId: self.venueId,
+                announcementId: announcement.announcementId,
+                title: title
+            ) { [weak self] result in
+                self?.handleAnnouncementsResult(result, loading: loading)
+            }
+        }
+    }
+
+    private func editAnnouncementMessage(_ announcement: VenueAnnouncement) {
+        showTextInput(title: "Edit Message", placeholder: "Message", initialText: announcement.message) { [weak self] message in
+            guard let self = self,
+                  let message = message?.trimmingCharacters(in: .whitespacesAndNewlines), !message.isEmpty else { return }
+            let loading = AlertPresenter.showLoading(message: "Updating...", from: self)
+            RewardsService.shared.updateAnnouncement(
+                venueId: self.venueId,
+                announcementId: announcement.announcementId,
+                message: message
+            ) { [weak self] result in
+                self?.handleAnnouncementsResult(result, loading: loading)
+            }
+        }
+    }
+
+    private func changeAnnouncementExpiry(_ announcement: VenueAnnouncement) {
+        pickExpiry(title: "New expiry") { [weak self] expiresAt, clearExpiry in
+            guard let self = self else { return }
+            let loading = AlertPresenter.showLoading(message: "Updating...", from: self)
+            RewardsService.shared.updateAnnouncement(
+                venueId: self.venueId,
+                announcementId: announcement.announcementId,
+                expiresAt: expiresAt,
+                clearExpiry: clearExpiry
+            ) { [weak self] result in
+                self?.handleAnnouncementsResult(result, loading: loading)
+            }
+        }
+    }
+
+    private func confirmDeleteAnnouncement(_ announcement: VenueAnnouncement) {
+        showConfirmation(
+            title: "Delete \"\(announcement.title)\"?",
+            message: "It disappears from your place's page immediately.",
+            confirmTitle: "Delete",
+            isDestructive: true
+        ) { [weak self] in
+            guard let self = self else { return }
+            let loading = AlertPresenter.showLoading(message: "Deleting...", from: self)
+            RewardsService.shared.deleteAnnouncement(
+                venueId: self.venueId,
+                announcementId: announcement.announcementId
+            ) { [weak self] result in
+                self?.handleAnnouncementsResult(result, loading: loading)
+            }
+        }
+    }
+
+    /// Expiry picker shared by add/change flows. Calls back with an ISO8601
+    /// string (or nil for no expiry) plus a clear-expiry flag for updates.
+    private func pickExpiry(title: String, completion: @escaping (String?, Bool) -> Void) {
+        let iso = ISO8601DateFormatter()
+        let fromNow: (TimeInterval) -> String = { iso.string(from: Date().addingTimeInterval($0)) }
+
+        showActionSheet(
+            title: title,
+            message: "Expired announcements hide automatically.",
+            actions: [
+                (title: "No expiry", style: .default, handler: { completion(nil, true) }),
+                (title: "1 day", style: .default, handler: { completion(fromNow(24 * 60 * 60), false) }),
+                (title: "1 week", style: .default, handler: { completion(fromNow(7 * 24 * 60 * 60), false) }),
+                (title: "1 month", style: .default, handler: { completion(fromNow(30 * 24 * 60 * 60), false) }),
+                (title: "Custom date...", style: .default, handler: { [weak self] in
+                    self?.pickCustomExpiry(completion: completion)
+                })
+            ]
+        )
+    }
+
+    private func pickCustomExpiry(completion: @escaping (String?, Bool) -> Void) {
+        showTextInput(
+            title: "Expiry Date",
+            message: "The announcement stays up through this day (YYYY-MM-DD).",
+            placeholder: "2026-08-01"
+        ) { [weak self] value in
+            guard let self = self,
+                  let value = value?.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+
+            let parser = DateFormatter()
+            parser.dateFormat = "yyyy-MM-dd"
+            parser.timeZone = .current
+            guard let day = parser.date(from: value) else {
+                self.showError("Enter the date as YYYY-MM-DD (e.g. 2026-08-01).")
+                return
+            }
+            // End of the chosen day, so "through this day" means what it says
+            let endOfDay = Calendar.current.date(byAdding: DateComponents(day: 1, second: -1), to: Calendar.current.startOfDay(for: day)) ?? day
+            guard endOfDay > Date() else {
+                self.showError("The expiry date must be in the future.")
+                return
+            }
+            completion(ISO8601DateFormatter().string(from: endOfDay), false)
+        }
+    }
+
+    private func handleAnnouncementsResult(_ result: Result<[VenueAnnouncement], Error>, loading: UIAlertController) {
+        DispatchQueue.main.async {
+            loading.dismiss(animated: true) { [weak self] in
+                guard let self = self else { return }
+                switch result {
+                case .success(let announcements):
+                    self.announcements = announcements
+                    self.tableView.reloadData()
+                case .failure(let error):
+                    self.showError(error)
+                }
+            }
+        }
+    }
+
     // MARK: - Register QR
 
     private func rotateRegisterCode() {
@@ -280,6 +503,7 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
         switch Section(rawValue: section)! {
         case .earnRate: return "Points per purchase"
         case .offers: return "Offers"
+        case .announcements: return "Announcements"
         case .registerCode: return "Register QR card"
         }
     }
@@ -290,6 +514,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             return "Customers earn these points each time they scan your register card after a purchase (once per day)."
         case .offers:
             return "Offers are what customers redeem their points for at your counter."
+        case .announcements:
+            return "Announcements show on your place's page to everyone — deals, happy hours, events. Expired ones hide automatically."
         case .registerCode:
             return "Generating a new QR immediately invalidates the old printed card — useful if a code leaks."
         }
@@ -299,6 +525,7 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
         switch Section(rawValue: section)! {
         case .earnRate: return 1
         case .offers: return offers.count + 1 // + "Add offer" row
+        case .announcements: return announcements.count + 1 // + "Add announcement" row
         case .registerCode: return 2 // rotate + email
         }
     }
@@ -327,6 +554,32 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
                 cell.accessoryType = .disclosureIndicator
             } else {
                 config.text = "Add offer"
+                config.textProperties.color = Constants.Colors.primary
+                config.image = UIImage(systemName: "plus.circle")
+                config.imageProperties.tintColor = Constants.Colors.primary
+            }
+
+        case .announcements:
+            if indexPath.row < announcements.count {
+                let announcement = announcements[indexPath.row]
+                let expired = announcement.isExpired
+                var detail = announcement.message
+                if let expiry = announcement.expiryDate {
+                    let formatter = DateFormatter()
+                    formatter.dateStyle = .medium
+                    formatter.timeStyle = .none
+                    detail += expired
+                        ? " · expired \(formatter.string(from: expiry))"
+                        : " · until \(formatter.string(from: expiry))"
+                }
+                config.text = announcement.title
+                config.secondaryText = detail
+                config.textProperties.color = expired ? .secondaryLabel : .label
+                config.image = UIImage(systemName: expired ? "megaphone" : "megaphone.fill")
+                config.imageProperties.tintColor = expired ? .systemGray3 : .systemOrange
+                cell.accessoryType = .disclosureIndicator
+            } else {
+                config.text = "Add announcement"
                 config.textProperties.color = Constants.Colors.primary
                 config.image = UIImage(systemName: "plus.circle")
                 config.imageProperties.tintColor = Constants.Colors.primary
@@ -362,6 +615,12 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
                 manageOffer(offers[indexPath.row])
             } else {
                 addOffer()
+            }
+        case .announcements:
+            if indexPath.row < announcements.count {
+                manageAnnouncement(announcements[indexPath.row])
+            } else {
+                addAnnouncement()
             }
         case .registerCode:
             if indexPath.row == 0 {

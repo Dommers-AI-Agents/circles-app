@@ -125,6 +125,57 @@ class RewardService {
     }
   }
 
+  // Single write path for ownership — used by the super-user assign-by-email
+  // endpoint and by claim approval, so both stamp the same fields.
+  async assignVenueOwner(venueId, { ownerUserId, ownerEmail }) {
+    await this.db.collection(STICKER_COLLECTIONS.STICKER_VENUES)
+      .doc(venueId)
+      .update({
+        ownerUserId,
+        ownerEmail: (ownerEmail || '').trim().toLowerCase() || null,
+        updatedAt: new Date().toISOString()
+      });
+  }
+
+  // Announcements shown to place-page visitors: unexpired only, newest first.
+  activeAnnouncements(venue) {
+    const now = new Date();
+    return (venue.announcements || [])
+      .filter((a) => !a.expiresAt || new Date(a.expiresAt) > now)
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  }
+
+  // Find the (active) venue for a place the app is showing. Tries the ids the
+  // place view has on hand; the last tier covers legacy save-doc ids whose
+  // googlePlaceId isn't known client-side.
+  async findVenueByPlace(placeId, googlePlaceId) {
+    const venues = this.db.collection(STICKER_COLLECTIONS.STICKER_VENUES);
+    const lookup = async (field, value) => {
+      if (!value) return null;
+      const hit = await venues.where(field, '==', value).limit(1).get();
+      if (hit.empty) return null;
+      const venue = { venueId: hit.docs[0].id, ...hit.docs[0].data() };
+      return venue.active === false ? null : venue;
+    };
+
+    let venue = await lookup('globalPlaceId', placeId)
+      || await lookup('googlePlaceId', placeId)
+      || await lookup('googlePlaceId', googlePlaceId);
+    if (venue) return venue;
+
+    try {
+      const legacyDoc = await this.db.collection(COLLECTIONS.PLACES).doc(placeId).get();
+      if (legacyDoc.exists) {
+        const legacy = legacyDoc.data();
+        venue = await lookup('globalPlaceId', legacy.globalPlaceId)
+          || await lookup('googlePlaceId', legacy.googlePlaceId);
+      }
+    } catch (error) {
+      console.error('⚠️ Venue-by-place legacy lookup failed:', error.message);
+    }
+    return venue || null;
+  }
+
   // Replace the register card's code (e.g. after a leak, or to bind a new
   // points value to a freshly printed card). The old code stops resolving
   // immediately because scans look venues up by field value.

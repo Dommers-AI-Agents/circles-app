@@ -9,6 +9,13 @@ class VenueAdminViewController: BaseViewController {
 
     private var venues: [AdminVenue] = []
 
+    private lazy var claimsButton = UIBarButtonItem(
+        image: UIImage(systemName: "tray.full"),
+        style: .plain,
+        target: self,
+        action: #selector(claimsTapped)
+    )
+
     override var enablesPullToRefresh: Bool { true }
     override var emptyStateMessage: String? { "No venues yet.\nTap + to sign up your first place." }
 
@@ -31,7 +38,8 @@ class VenueAdminViewController: BaseViewController {
 
         let addButton = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(addVenueTapped))
         let grantButton = UIBarButtonItem(image: UIImage(systemName: "person.badge.plus"), style: .plain, target: self, action: #selector(grantTapped))
-        navigationItem.rightBarButtonItems = [addButton, grantButton]
+        claimsButton.accessibilityLabel = "Ownership claims"
+        navigationItem.rightBarButtonItems = [addButton, grantButton, claimsButton]
 
         tableView.dataSource = self
         tableView.delegate = self
@@ -70,9 +78,31 @@ class VenueAdminViewController: BaseViewController {
                 }
             }
         }
+        updateClaimsBadge()
+    }
+
+    /// Show the pending-claims count on the tray button so new claims are
+    /// noticeable without opening the list
+    private func updateClaimsBadge() {
+        RewardsService.shared.listClaims(status: "pending") { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self, case .success(let claims) = result else { return }
+                if claims.isEmpty {
+                    self.claimsButton.image = UIImage(systemName: "tray.full")
+                    self.claimsButton.title = nil
+                } else {
+                    self.claimsButton.image = nil
+                    self.claimsButton.title = "Claims (\(claims.count))"
+                }
+            }
+        }
     }
 
     // MARK: - Actions
+
+    @objc private func claimsTapped() {
+        navigationController?.pushViewController(VenueClaimsViewController(), animated: true)
+    }
 
     @objc private func addVenueTapped() {
         let createVC = CreateVenueViewController()

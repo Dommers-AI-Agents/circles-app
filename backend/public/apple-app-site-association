@@ -3,7 +3,10 @@
     "apps": [],
     "details": [
       {
-        "appID": "LQ4B3G6TQT.com.favcircles.circles",
+        "appIDs": [
+          "67E8B4E8HV.com.favcircles.circles",
+          "LQ4B3G6TQT.com.favcircles.circles"
+        ],
         "paths": [
           "/app/*",
           "/app/daily-summary",
@@ -21,6 +24,9 @@
     ]
   },
   "webcredentials": {
-    "apps": ["LQ4B3G6TQT.com.favcircles.circles"]
+    "apps": [
+      "67E8B4E8HV.com.favcircles.circles",
+      "LQ4B3G6TQT.com.favcircles.circles"
+    ]
   }
 }

@@ -6,8 +6,16 @@ const rewardConfig = require('../config/rewardConfig');
 
 const STICKER_COLLECTIONS = {
   STICKER_VENUES: 'stickerVenues',
-  REWARD_EVENTS: 'rewardEvents'
+  REWARD_EVENTS: 'rewardEvents',
+  VENUE_CLAIM_REQUESTS: 'venueClaimRequests'
 };
+
+const CLAIM_STATUSES = ['pending', 'approved', 'denied'];
+
+// Owner announcements shown on the venue's place page (deals, happy hours,
+// events). Embedded on the venue doc like offers[]; expired ones are hidden
+// from public reads and pruned from the doc well after expiry.
+const MAX_ANNOUNCEMENTS = 20;
 
 const REWARD_EVENT_TYPES = [
   'sticker_signup',
@@ -51,6 +59,7 @@ const createStickerVenue = (data, windowCode, registerCode) => {
       pointsCost: offer.pointsCost,
       active: offer.active !== false
     })),
+    announcements: [],
     stats: { ...emptyStats },
     // { "2026-07": { scans: 3, ... } } — fed into the monthly venue report email
     statsMonthly: {},
@@ -72,6 +81,67 @@ const validateOfferInput = (offer, label = 'offer') => {
     errors.push(`${label}.pointsCost must be a positive integer`);
   }
   return errors;
+};
+
+// Shared announcement field rules for the owner add/update endpoints.
+// `expiresAt` may be null (no expiry) or a future ISO date string.
+const validateAnnouncementInput = (announcement, label = 'announcement') => {
+  const errors = [];
+  if (announcement.title !== undefined) {
+    const title = String(announcement.title || '').trim();
+    if (!title) errors.push(`${label}.title must not be empty`);
+    if (title.length > 80) errors.push(`${label}.title must be 80 characters or fewer`);
+  }
+  if (announcement.message !== undefined) {
+    const message = String(announcement.message || '').trim();
+    if (!message) errors.push(`${label}.message must not be empty`);
+    if (message.length > 500) errors.push(`${label}.message must be 500 characters or fewer`);
+  }
+  if (announcement.expiresAt !== undefined && announcement.expiresAt !== null) {
+    const expiry = new Date(announcement.expiresAt);
+    if (Number.isNaN(expiry.getTime())) {
+      errors.push(`${label}.expiresAt must be an ISO date string or null`);
+    } else if (expiry <= new Date()) {
+      errors.push(`${label}.expiresAt must be in the future`);
+    }
+  }
+  return errors;
+};
+
+// Ownership claim filed from a place page. Doc ID is `${venueId}_${userId}`
+// (or `place_${placeKey}_${userId}` when no rewards venue is enrolled yet),
+// so a user can only ever hold one claim per business.
+// The claimer supplies contact info; the admin is emailed for verification.
+const createVenueClaimRequest = ({
+  venueId, venueName, userId, userEmail, userDisplayName, message,
+  contactName, contactEmail, contactPhone,
+  placeId, globalPlaceId, googlePlaceId, placeName, placeAddress
+}) => {
+  const now = new Date().toISOString();
+  return {
+    venueId: venueId || null,
+    venueName: venueName || placeName || null,
+    userId,
+    userEmail: (userEmail || '').trim().toLowerCase() || null,
+    userDisplayName: userDisplayName || null,
+    message: (message || '').trim() || null,
+    // Contact info entered by the claimer — how the admin verifies ownership
+    contactName: (contactName || '').trim() || null,
+    contactEmail: (contactEmail || '').trim().toLowerCase() || null,
+    contactPhone: (contactPhone || '').trim() || null,
+    // Place references, for claims on businesses not yet in the sticker program
+    placeId: placeId || null,
+    globalPlaceId: globalPlaceId || null,
+    googlePlaceId: googlePlaceId || null,
+    placeName: placeName || null,
+    placeAddress: placeAddress || null,
+    status: 'pending',
+    resolvedBy: null,
+    resolvedAt: null,
+    denialReason: null,
+    createdAt: now,
+    updatedAt: now
+  };
 };
 
 const validateEarnRate = (earnRate) => {
@@ -134,10 +204,14 @@ const sanitizeKeyPart = (part) => String(part).replace(/[/.]/g, '_');
 module.exports = {
   STICKER_COLLECTIONS,
   REWARD_EVENT_TYPES,
+  CLAIM_STATUSES,
+  MAX_ANNOUNCEMENTS,
   createStickerVenue,
   validateStickerVenue,
   validateOfferInput,
+  validateAnnouncementInput,
   validateEarnRate,
   createRewardEvent,
+  createVenueClaimRequest,
   sanitizeKeyPart
 };

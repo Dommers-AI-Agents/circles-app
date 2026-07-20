@@ -479,32 +479,134 @@ class RewardsViewController: BaseViewController {
         detailLabel.textColor = .secondaryLabel
         detailLabel.numberOfLines = 1
 
+        let chevron = UIImageView(image: UIImage(systemName: "chevron.right"))
+        chevron.translatesAutoresizingMaskIntoConstraints = false
+        chevron.tintColor = .tertiaryLabel
+        chevron.contentMode = .scaleAspectFit
+        chevron.setContentHuggingPriority(.required, for: .horizontal)
+
+        // The name/detail header opens the venue's place page; the redeem
+        // buttons below keep their own tap targets.
+        let headerControl = UIControl()
+        headerControl.translatesAutoresizingMaskIntoConstraints = false
+        headerControl.addAction(UIAction { [weak self] _ in
+            self?.openVenuePlace(venue)
+        }, for: .touchUpInside)
+        headerControl.addSubview(nameLabel)
+        headerControl.addSubview(detailLabel)
+        headerControl.addSubview(chevron)
+        nameLabel.isUserInteractionEnabled = false
+        detailLabel.isUserInteractionEnabled = false
+        chevron.isUserInteractionEnabled = false
+
         let offersStack = UIStackView()
         offersStack.translatesAutoresizingMaskIntoConstraints = false
         offersStack.axis = .vertical
         offersStack.spacing = 8
         venue.offers.forEach { offersStack.addArrangedSubview(makeOfferRow($0, venue: venue)) }
 
-        card.addSubview(nameLabel)
-        card.addSubview(detailLabel)
+        card.addSubview(headerControl)
         card.addSubview(offersStack)
 
         NSLayoutConstraint.activate([
-            nameLabel.topAnchor.constraint(equalTo: card.topAnchor, constant: 12),
-            nameLabel.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 12),
-            nameLabel.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -12),
+            headerControl.topAnchor.constraint(equalTo: card.topAnchor, constant: 12),
+            headerControl.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 12),
+            headerControl.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -12),
+
+            nameLabel.topAnchor.constraint(equalTo: headerControl.topAnchor),
+            nameLabel.leadingAnchor.constraint(equalTo: headerControl.leadingAnchor),
+            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: chevron.leadingAnchor, constant: -8),
+
+            chevron.centerYAnchor.constraint(equalTo: headerControl.centerYAnchor),
+            chevron.trailingAnchor.constraint(equalTo: headerControl.trailingAnchor),
+            chevron.widthAnchor.constraint(equalToConstant: 14),
 
             detailLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 2),
             detailLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
-            detailLabel.trailingAnchor.constraint(equalTo: nameLabel.trailingAnchor),
+            detailLabel.trailingAnchor.constraint(lessThanOrEqualTo: chevron.leadingAnchor, constant: -8),
+            detailLabel.bottomAnchor.constraint(equalTo: headerControl.bottomAnchor),
 
-            offersStack.topAnchor.constraint(equalTo: detailLabel.bottomAnchor, constant: 10),
-            offersStack.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
-            offersStack.trailingAnchor.constraint(equalTo: nameLabel.trailingAnchor),
+            offersStack.topAnchor.constraint(equalTo: headerControl.bottomAnchor, constant: 10),
+            offersStack.leadingAnchor.constraint(equalTo: headerControl.leadingAnchor),
+            offersStack.trailingAnchor.constraint(equalTo: headerControl.trailingAnchor),
             offersStack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -12)
         ])
 
         return card
+    }
+
+    // MARK: - Venue → place page
+
+    /// Opens the place page for a venue card. Resolves the canonical global
+    /// place when an id is available; otherwise falls back to a minimal Place
+    /// built from the venue's own fields (PlaceDetail refreshes what it can).
+    private func openVenuePlace(_ venue: OfferVenue) {
+        guard let placeId = venue.globalPlaceId ?? venue.googlePlaceId else {
+            pushVenuePlaceFallback(venue)
+            return
+        }
+
+        let loading = AlertPresenter.showLoading(message: "Loading place...", from: self)
+        GlobalPlaceService.shared.getGlobalPlace(id: placeId) { [weak self] result in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: true) {
+                    guard let self = self else { return }
+                    switch result {
+                    case .success(let response):
+                        let place = response.globalPlace.toLegacyPlace(withRelation: response.userRelation)
+                        let detailVC = PlaceDetailViewController(place: place)
+                        self.navigationController?.pushViewController(detailVC, animated: true)
+                    case .failure:
+                        self.pushVenuePlaceFallback(venue)
+                    }
+                }
+            }
+        }
+    }
+
+    private func pushVenuePlaceFallback(_ venue: OfferVenue) {
+        var location: GeoLocation?
+        if let coordinate = venue.location {
+            // GeoJSON order: [longitude, latitude]
+            location = GeoLocation(type: "Point", coordinates: [coordinate.lng, coordinate.lat])
+        }
+
+        let place = Place(
+            id: venue.globalPlaceId ?? venue.googlePlaceId ?? venue.venueId,
+            globalPlaceId: venue.globalPlaceId,
+            name: venue.placeName ?? venue.venueName,
+            description: nil,
+            address: venue.placeAddress ?? "",
+            location: location,
+            website: nil,
+            phone: nil,
+            googlePlaceId: venue.googlePlaceId,
+            photos: nil,
+            videos: nil,
+            category: PlaceCategory(rawValue: venue.category ?? "") ?? .restaurant,
+            customCategoryId: nil,
+            subcategory: nil,
+            rating: nil,
+            userRatingsTotal: nil,
+            notes: nil,
+            privateNotes: nil,
+            publicNotes: nil,
+            tags: nil,
+            reviews: nil,
+            openingHours: nil,
+            priceLevel: nil,
+            likes: nil,
+            likesCount: nil,
+            commentsCount: nil,
+            circleId: nil,
+            addedBy: "",
+            addedByUser: nil,
+            privacy: .public,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+        let detailVC = PlaceDetailViewController(place: place)
+        navigationController?.pushViewController(detailVC, animated: true)
     }
 
     private func makeOfferRow(_ offer: RewardOffer, venue: OfferVenue) -> UIView {
@@ -565,35 +667,11 @@ class RewardsViewController: BaseViewController {
     // MARK: - Redemption
 
     private func confirmRedeem(_ offer: RewardOffer, venue: OfferVenue) {
-        showConfirmation(
-            title: "Redeem \(offer.title)?",
-            message: "This uses \(offer.pointsCost) points and shows a 5-minute voucher — redeem it at the counter at \(venue.venueName)."
-        ) { [weak self] in
-            self?.redeem(offer, venue: venue)
-        }
-    }
-
-    private func redeem(_ offer: RewardOffer, venue: OfferVenue) {
-        let loading = AlertPresenter.showLoading(message: "Redeeming...", from: self)
-
-        RewardsService.shared.redeemOffer(venueId: venue.venueId, offerId: offer.offerId) { [weak self] result in
-            DispatchQueue.main.async {
-                loading.dismiss(animated: true) {
-                    guard let self = self else { return }
-                    switch result {
-                    case .success(let redeem):
-                        let voucherVC = VoucherViewController(voucher: redeem.voucher)
-                        voucherVC.modalPresentationStyle = .fullScreen
-                        self.present(voucherVC, animated: true)
-                        // Refresh balance, affordability, history, and the
-                        // active-voucher banner behind the voucher screen
-                        self.loadData()
-                        self.updateActiveVoucherBanner()
-                    case .failure(let error):
-                        self.showError(error)
-                    }
-                }
-            }
+        confirmAndRedeemOffer(offer, venueId: venue.venueId, venueName: venue.venueName) { [weak self] _ in
+            // Refresh balance, affordability, history, and the
+            // active-voucher banner behind the voucher screen
+            self?.loadData()
+            self?.updateActiveVoucherBanner()
         }
     }
 

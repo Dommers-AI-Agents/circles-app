@@ -160,6 +160,175 @@ class RewardsService {
         }
     }
 
+    // MARK: - Place-page rewards (venue offers + announcements on a place)
+
+    /// Rewards data for a place's detail page. `data.venue == nil` means the
+    /// place has no enrolled venue — the common case, not an error.
+    func getVenueByPlace(placeId: String, googlePlaceId: String? = nil, completion: @escaping (Result<PlaceVenueData, Error>) -> Void) {
+        let encodedId = placeId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? placeId
+        var endpoint = "rewards/venues/by-place/\(encodedId)"
+        if let googlePlaceId = googlePlaceId,
+           let encoded = googlePlaceId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            endpoint += "?googlePlaceId=\(encoded)"
+        }
+
+        apiService.request(
+            endpoint: endpoint,
+            method: .get,
+            body: nil,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<PlaceVenueData>, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
+    /// Claim a business from its place page. Works whether or not the place
+    /// is enrolled in the sticker program — the contact info is emailed to
+    /// the admin, who verifies and approves.
+    func claimPlace(placeId: String, googlePlaceId: String? = nil, contactName: String? = nil, contactEmail: String? = nil, contactPhone: String? = nil, message: String? = nil, completion: @escaping (Result<VenueClaim, Error>) -> Void) {
+        var body: [String: Any] = [:]
+        if let googlePlaceId = googlePlaceId { body["googlePlaceId"] = googlePlaceId }
+        if let contactName = contactName, !contactName.isEmpty { body["contactName"] = contactName }
+        if let contactEmail = contactEmail, !contactEmail.isEmpty { body["contactEmail"] = contactEmail }
+        if let contactPhone = contactPhone, !contactPhone.isEmpty { body["contactPhone"] = contactPhone }
+        if let message = message, !message.isEmpty { body["message"] = message }
+
+        apiService.request(
+            endpoint: "rewards/places/\(placeId)/claim",
+            method: .post,
+            body: body,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<ClaimResponseData>, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data.claim))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
+    // MARK: - Venue owner announcements
+
+    func addAnnouncement(venueId: String, title: String, message: String, expiresAt: String? = nil, completion: @escaping (Result<[VenueAnnouncement], Error>) -> Void) {
+        var body: [String: Any] = ["title": title, "message": message]
+        if let expiresAt = expiresAt { body["expiresAt"] = expiresAt }
+
+        apiService.request(
+            endpoint: "rewards/venues/\(venueId)/announcements",
+            method: .post,
+            body: body,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<VenueAnnouncementsData>, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data.announcements))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
+    /// Pass `clearExpiry: true` to remove an expiry date (sends an explicit null)
+    func updateAnnouncement(venueId: String, announcementId: String, title: String? = nil, message: String? = nil, expiresAt: String? = nil, clearExpiry: Bool = false, completion: @escaping (Result<[VenueAnnouncement], Error>) -> Void) {
+        var body: [String: Any] = [:]
+        if let title = title { body["title"] = title }
+        if let message = message { body["message"] = message }
+        if clearExpiry {
+            body["expiresAt"] = NSNull()
+        } else if let expiresAt = expiresAt {
+            body["expiresAt"] = expiresAt
+        }
+
+        apiService.request(
+            endpoint: "rewards/venues/\(venueId)/announcements/\(announcementId)",
+            method: .put,
+            body: body,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<VenueAnnouncementsData>, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data.announcements))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
+    func deleteAnnouncement(venueId: String, announcementId: String, completion: @escaping (Result<[VenueAnnouncement], Error>) -> Void) {
+        apiService.request(
+            endpoint: "rewards/venues/\(venueId)/announcements/\(announcementId)",
+            method: .delete,
+            body: nil,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<VenueAnnouncementsData>, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data.announcements))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
+    // MARK: - Ownership claims (super-user review)
+
+    func listClaims(status: String = "pending", completion: @escaping (Result<[VenueClaim], Error>) -> Void) {
+        apiService.request(
+            endpoint: "rewards/claims?status=\(status)",
+            method: .get,
+            body: nil,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<VenueClaimList>, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data.claims))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
+    func approveClaim(claimId: String, completion: @escaping (Result<VenueClaim, Error>) -> Void) {
+        apiService.request(
+            endpoint: "rewards/claims/\(claimId)/approve",
+            method: .post,
+            body: nil,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<ClaimResponseData>, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data.claim))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
+    func denyClaim(claimId: String, reason: String? = nil, completion: @escaping (Result<VenueClaim, Error>) -> Void) {
+        var body: [String: Any] = [:]
+        if let reason = reason, !reason.isEmpty { body["reason"] = reason }
+
+        apiService.request(
+            endpoint: "rewards/claims/\(claimId)/deny",
+            method: .post,
+            body: body,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<ClaimResponseData>, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data.claim))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
     // MARK: - Venue owner (self-service offers + earn rate)
 
     func getMyVenues(completion: @escaping (Result<[AdminVenue], Error>) -> Void) {
@@ -531,6 +700,8 @@ struct OfferVenue: Codable {
     let placeName: String?
     let placeAddress: String?
     let category: String?
+    let googlePlaceId: String?
+    let globalPlaceId: String?
     let location: RewardCoordinate?
     let earnRate: Int?
     let savedByUser: Bool?
@@ -543,6 +714,92 @@ struct OfferVenue: Codable {
         if miles < 0.1 { return "nearby" }
         return String(format: "%.1f mi", miles)
     }
+}
+
+// MARK: - Place-page venue models (offers + announcements shown on a place)
+
+/// Rewards data for one place's page. `venue == nil` means the place has no
+/// enrolled venue — the whole rewards section should be hidden.
+struct PlaceVenueData: Codable {
+    let venue: PlaceVenue?
+    let offers: [RewardOffer]?
+    let announcements: [VenueAnnouncement]?
+    let balance: Int?
+    let isOwner: Bool?
+    let claim: PlaceVenueClaim?
+}
+
+struct PlaceVenue: Codable {
+    let venueId: String
+    let venueName: String
+    let placeName: String?
+    let placeAddress: String?
+    let category: String?
+    let googlePlaceId: String?
+    let globalPlaceId: String?
+    let location: RewardCoordinate?
+    let earnRate: Int?
+}
+
+struct PlaceVenueClaim: Codable {
+    let canClaim: Bool
+    let myClaimStatus: String? // "pending" | "approved" | "denied" | nil
+}
+
+struct VenueAnnouncement: Codable {
+    let announcementId: String
+    let title: String
+    let message: String
+    let expiresAt: String?
+    let createdAt: String?
+
+    var expiryDate: Date? {
+        guard let expiresAt = expiresAt else { return nil }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: expiresAt) { return date }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: expiresAt)
+    }
+
+    var isExpired: Bool {
+        guard let expiry = expiryDate else { return false }
+        return expiry <= Date()
+    }
+}
+
+struct VenueAnnouncementsData: Codable {
+    let announcements: [VenueAnnouncement]
+}
+
+// MARK: - Ownership claim models
+
+struct VenueClaim: Codable {
+    let claimId: String
+    let venueId: String?   // nil for claims on places not yet in the sticker program
+    let venueName: String?
+    let userId: String
+    let userEmail: String?
+    let userDisplayName: String?
+    let message: String?
+    // Contact info the claimer entered — the admin's verification channel
+    let contactName: String?
+    let contactEmail: String?
+    let contactPhone: String?
+    let placeName: String?
+    let placeAddress: String?
+    let status: String
+    let denialReason: String?
+    let createdAt: String?
+}
+
+struct VenueClaimList: Codable {
+    let claims: [VenueClaim]
+    let count: Int
+}
+
+struct ClaimResponseData: Codable {
+    let claim: VenueClaim
 }
 
 // MARK: - Super user & venue owner models
@@ -619,6 +876,10 @@ struct AdminVenue: Codable {
     // response shapes still decode
     let earnRate: Int?
     let offers: [RewardOffer]?
+    let announcements: [VenueAnnouncement]?
+    // Place identity, for jumping from the manage hub to the public place page
+    let googlePlaceId: String?
+    let globalPlaceId: String?
 }
 
 struct AdminVenueStats: Codable {

@@ -184,10 +184,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
         if UserDefaults.standard.bool(forKey: "pendingWelcomeCarousel") {
             // Brand-new signup: welcome carousel first, which chains into the
-            // contacts and notification prompts
+            // notification prompt. (Contacts onboarding was intentionally cut
+            // from first-run — Find Contacts lives in the My Network tab.)
             showWelcomeCarousel()
-        } else if OnboardingManager.shared.shouldShowContactsOnboarding() {
-            showContactsOnboarding()
         } else if shouldShowNotificationOnboarding() {
             showNotificationOnboarding()
         } else {
@@ -244,7 +243,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     /// Shows the five-page welcome carousel once right after signup, then
-    /// continues the onboarding chain (contacts → notifications → tutorial).
+    /// continues the onboarding chain (notifications → tutorial).
     private func showWelcomeCarousel() {
         guard let tabBarController = window?.rootViewController as? CirclesTabBarController else { return }
         UserDefaults.standard.set(false, forKey: "pendingWelcomeCarousel")
@@ -252,12 +251,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         let welcomeVC = OnboardingViewController()
         welcomeVC.modalPresentationStyle = .fullScreen
         welcomeVC.onCompletion = { [weak self] in
-            guard let self = self else { return }
-            if OnboardingManager.shared.shouldShowContactsOnboarding() {
-                self.showContactsOnboarding()
-            } else {
-                self.continueOnboardingAfterContacts()
-            }
+            self?.continueOnboardingAfterContacts()
         }
         tabBarController.present(welcomeVC, animated: true)
         Logger.info("Showing welcome carousel for new user")
@@ -633,6 +627,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             if url.host == "daily-summary" {
                 print("📱 SceneDelegate: Detected 'daily-summary' deep link")
                 self.navigateToDailySummary()
+                return
+            }
+
+            // Handle network deep link (e.g., circles://network) — used by the
+            // connection-accepted email's "View Connection" button
+            if url.host == "network" {
+                print("📱 SceneDelegate: Detected 'network' deep link")
+                self.navigateToMyNetwork()
                 return
             }
             
@@ -1154,7 +1156,20 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         
         // Clear the pending link
         UserDefaults.standard.removeObject(forKey: "pendingDeepLink")
-        
+
+        // Single-token links carry no colon-separated payload and would be
+        // dropped by the components.count >= 2 parse below
+        if pendingLink == "network" || pendingLink == "daily-summary" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                if pendingLink == "network" {
+                    self.navigateToMyNetwork()
+                } else {
+                    self.navigateToDailySummary()
+                }
+            }
+            return
+        }
+
         // Parse and handle the link
         let components = pendingLink.split(separator: ":")
         if components.count >= 2 {
@@ -1600,8 +1615,21 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Present the DailySummaryViewController modally
         let summaryVC = DailySummaryViewController()
         tabBarController.present(summaryVC, animated: true)
-        
+
         print("📱 SceneDelegate: Presented DailySummaryViewController from daily-summary deep link")
+    }
+
+    /// Switch to the My Network tab (tab order: 0 Home, 1 My Network, 2 Messages, 3 Me)
+    private func navigateToMyNetwork() {
+        guard AuthService.shared.isLoggedIn,
+              let tabBarController = window?.rootViewController as? CirclesTabBarController else {
+            // Store the deep link target to navigate after login
+            UserDefaults.standard.set("network", forKey: "pendingDeepLink")
+            return
+        }
+
+        tabBarController.selectedIndex = 1
+        print("📱 SceneDelegate: Switched to My Network tab from network deep link")
     }
     
     // MARK: - Notification Settings Navigation
