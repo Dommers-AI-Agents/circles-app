@@ -2,6 +2,7 @@ import Foundation
 
 struct UserPreferences: Codable {
     let defaultHomeView: String? // "list" or "map"
+    let enabledNewsSources: [String]? // News tab source ids; nil = never configured
 }
 
 struct NotificationPreferences: Codable {

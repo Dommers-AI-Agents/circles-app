@@ -3,6 +3,7 @@ import CoreLocation
 import UniformTypeIdentifiers
 import MapKit
 import AVFoundation
+import SafariServices
 
 // MARK: - Array Extension for Chunking
 extension Array {
@@ -615,6 +616,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }()
     
     private var mapViewController: FullScreenMapViewController?
+    // The modally-presented full map (weak: auto-clears on dismissal). Data
+    // refreshes must reach it too, not just the embedded child above.
+    private weak var presentedFullScreenMap: FullScreenMapViewController?
     
     private let filterStackView: UIStackView = {
         let stack = UIStackView()
@@ -772,7 +776,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     private var searchScopeDropdownHeightConstraint: NSLayoutConstraint?
     
     // Activity Feed Properties
-    private var activities: [Activity] = []
+    // Any mutation re-derives the grouped feed rows — several load paths
+    // (cache apply, fast-path load) reload the table without going through
+    // updateActivityFeed(), and the table renders from feedItems
+    private var activities: [Activity] = [] {
+        didSet { regroupActivities() }
+    }
     private var isLoadingActivities = false
     private var activityTableHeightConstraint: NSLayoutConstraint?
     
@@ -815,9 +824,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return label
     }()
     
-    // Segmented control for Activity/Moments tabs
+    // Segmented control for Activity/Moments/Feeds tabs
     let contentSegmentedControl: UISegmentedControl = {
-        let items = ["Activity", "Moments"]
+        let items = ["Activity", "Moments", "Feeds"]
         let control = UISegmentedControl(items: items)
         control.selectedSegmentIndex = 0
         control.translatesAutoresizingMaskIntoConstraints = false
@@ -852,6 +861,39 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         tableView.translatesAutoresizingMaskIntoConstraints = false
         return tableView
     }()
+
+    // News tab: merged publisher-RSS headlines (fetched via the backend)
+    private let newsFeedTableView: UITableView = {
+        let tableView = UITableView()
+        tableView.backgroundColor = Constants.Colors.background
+        tableView.separatorStyle = .none
+        tableView.rowHeight = UITableView.automaticDimension
+        tableView.estimatedRowHeight = 100
+        tableView.showsVerticalScrollIndicator = true
+        tableView.translatesAutoresizingMaskIntoConstraints = false
+        tableView.isHidden = true // Hidden until the News tab is selected
+        return tableView
+    }()
+
+    // Gear overlay on the News tab — reopens the source picker
+    private let newsSettingsButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "gearshape"), for: .normal)
+        button.tintColor = Constants.Colors.primary
+        button.isHidden = true // Shown only on the News tab
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.accessibilityLabel = "Feed sources"
+        return button
+    }()
+
+    private var newsArticles: [NewsArticle] = []
+    private var isLoadingNews = false
+    private var newsSourceCatalog: [NewsSource] = []
+    private var newsEnabledSourceIds: [String]? = nil // nil = never configured
+    private var hasAutoPresentedNewsPicker = false
+    // Suppresses the reset-to-Activity-on-appear when a modal presented over
+    // the Feeds tab (article sheet, source picker) is dismissed
+    private var skipTabResetOnNextAppear = false
     
     // Reels collection view for vertical video feed
     private let reelsCollectionView: UICollectionView = {
@@ -1719,8 +1761,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Check for daily summary data
         checkForDailySummary()
         
-        // Ensure Activity tab is selected when returning to home
-        if contentSegmentedControl.selectedSegmentIndex != 0 {
+        // Ensure Activity tab is selected when returning to home — but not
+        // when this appearance is just a modal (e.g. an article's Safari
+        // sheet) being dismissed over the Feeds tab
+        if skipTabResetOnNextAppear {
+            skipTabResetOnNextAppear = false
+        } else if contentSegmentedControl.selectedSegmentIndex != 0 {
             contentSegmentedControl.selectedSegmentIndex = 0
             contentSegmentChanged()
         }
@@ -1780,9 +1826,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        
+
         // Check if onboarding needs to be retried
         checkAndRetryOnboardingIfNeeded()
+
+        // Surface the sign-in-time duplicate-account hint (once per login)
+        promptForDuplicateAccountsIfNeeded()
         
         // Listen for connections to be loaded before checking tutorial/overlay
         NotificationCenter.default.addObserver(
@@ -2002,9 +2051,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     private func showAddPlaceTutorialIfNeeded() {
         // Check if should show add place tutorial
+        // (Visit-tracking card intentionally removed from first-run onboarding)
         guard OnboardingManager.shared.shouldShowAddPlaceTutorial() else {
-            // Continue with visit tracking permission
-            showVisitTrackingPermissionIfNeeded()
             return
         }
         
@@ -2176,6 +2224,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         activityFeedSection.addSubview(momentsCameraButton)
         activityFeedSection.addSubview(activityTableView)
         activityFeedSection.addSubview(reelsCollectionView)
+        activityFeedSection.addSubview(newsFeedTableView)
+        activityFeedSection.addSubview(newsSettingsButton)
         activityFeedSection.addSubview(activityEmptyStateLabel)
         activityFeedSection.addSubview(activityLoadingContainer)
         
@@ -2183,6 +2233,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         activityFeedSection.bringSubviewToFront(activityLoadingContainer)
         // Ensure camera button is on top of segmented control
         activityFeedSection.bringSubviewToFront(momentsCameraButton)
+        activityFeedSection.bringSubviewToFront(newsSettingsButton)
         
         // Add loading container
         view.addSubview(loadingContainerView)
@@ -2451,7 +2502,19 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             reelsCollectionView.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor),
             reelsCollectionView.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor),
             reelsCollectionView.bottomAnchor.constraint(equalTo: activityFeedSection.bottomAnchor),
-            
+
+            // News feed table (same slot as the other two content views)
+            newsFeedTableView.topAnchor.constraint(equalTo: contentSegmentedControl.bottomAnchor, constant: Constants.Spacing.small),
+            newsFeedTableView.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor),
+            newsFeedTableView.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor),
+            newsFeedTableView.bottomAnchor.constraint(equalTo: activityFeedSection.bottomAnchor),
+
+            // News settings gear - overlay on the right side of the News segment
+            newsSettingsButton.centerYAnchor.constraint(equalTo: contentSegmentedControl.centerYAnchor),
+            newsSettingsButton.trailingAnchor.constraint(equalTo: contentSegmentedControl.trailingAnchor, constant: -5),
+            newsSettingsButton.widthAnchor.constraint(equalToConstant: 32),
+            newsSettingsButton.heightAnchor.constraint(equalToConstant: 32),
+
             // Activity empty state
             activityEmptyStateLabel.centerXAnchor.constraint(equalTo: activityFeedSection.centerXAnchor),
             activityEmptyStateLabel.centerYAnchor.constraint(equalTo: activityTableView.centerYAnchor),
@@ -2576,7 +2639,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         reelsCollectionView.delegate = self
         reelsCollectionView.dataSource = self
         reelsCollectionView.register(VideoReelCell.self, forCellWithReuseIdentifier: "VideoReelCell")
-        
+
+        // Setup news feed table view
+        newsFeedTableView.delegate = self
+        newsFeedTableView.dataSource = self
+        newsFeedTableView.register(NewsArticleCell.self, forCellReuseIdentifier: NewsArticleCell.identifier)
+        newsSettingsButton.addTarget(self, action: #selector(newsSettingsTapped), for: .touchUpInside)
+
         // Setup segmented control
         contentSegmentedControl.addTarget(self, action: #selector(contentSegmentChanged), for: .valueChanged)
         
@@ -2810,10 +2879,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         checkForDailySummary()
         
         // Refresh content based on selected tab
-        if contentSegmentedControl.selectedSegmentIndex == 0 {
+        switch contentSegmentedControl.selectedSegmentIndex {
+        case 0:
             fetchActivities()
-        } else {
+        case 1:
             fetchReels()
+        default:
+            fetchNewsFeed(force: true)
         }
         
         // Also refresh circles data for consistency
@@ -2826,52 +2898,175 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     @objc func contentSegmentChanged() {
         let selectedIndex = contentSegmentedControl.selectedSegmentIndex
-        
-        if selectedIndex == 0 {
+
+        switch selectedIndex {
+        case 0:
             // Show Activity feed
             activityTableView.isHidden = false
             reelsCollectionView.isHidden = true
+            newsFeedTableView.isHidden = true
             momentsCameraButton.isHidden = true
+            newsSettingsButton.isHidden = true
             activityHeaderLabel.text = "Recent Activity"
-            
+
             // Pause any playing videos
             pauseAllVideos()
-            
+
             // Load activities if needed
             if activities.isEmpty {
                 fetchActivities()
             }
-        } else {
+        case 1:
             // Show Reels feed
             activityTableView.isHidden = true
             reelsCollectionView.isHidden = false
-            
+            newsFeedTableView.isHidden = true
+            newsSettingsButton.isHidden = true
+
             // Reset to first video
             currentReelIndex = 0
-            
+
             // Force layout update before showing collection view
             view.layoutIfNeeded()
-            
+
             // Invalidate layout to ensure proper sizing
             reelsCollectionView.collectionViewLayout.invalidateLayout()
-            
+
             // Reset collection view to top to fix Y offset issue
             reelsCollectionView.setContentOffset(.zero, animated: false)
-            
+
             // Scroll to first item explicitly
             if !reels.isEmpty {
                 let firstIndexPath = IndexPath(item: 0, section: 0)
                 reelsCollectionView.scrollToItem(at: firstIndexPath, at: .top, animated: false)
             }
-            
+
             momentsCameraButton.isHidden = false
             activityHeaderLabel.text = "Moments"
-            
+
             // Always refresh reels when switching to Moments tab to get latest videos
             fetchReels()
-            
+
             // Note: fetchReels will handle playing the first video after loading
+        default:
+            // Show News feed
+            activityTableView.isHidden = true
+            reelsCollectionView.isHidden = true
+            newsFeedTableView.isHidden = false
+            momentsCameraButton.isHidden = true
+            newsSettingsButton.isHidden = false
+            activityHeaderLabel.text = "Feeds"
+
+            // Pause any playing videos (may be arriving from Moments)
+            pauseAllVideos()
+
+            // Load once; pull-to-refresh refetches
+            if newsArticles.isEmpty {
+                fetchNewsFeed()
+            }
         }
+    }
+
+    // MARK: - News Feed Methods
+
+    private func fetchNewsFeed(force: Bool = false) {
+        guard !isLoadingNews else { return }
+        isLoadingNews = true
+
+        if newsArticles.isEmpty {
+            activityLoadingContainer.isHidden = false
+            activityLoadingIndicator.startAnimating()
+            activityEmptyStateLabel.isHidden = true
+        }
+
+        NewsService.shared.fetchFeed { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.isLoadingNews = false
+                self.activityLoadingIndicator.stopAnimating()
+                self.activityLoadingContainer.isHidden = true
+                self.scrollView.refreshControl?.endRefreshing()
+
+                // Only touch shared UI if News is still the visible tab
+                let onNewsTab = self.contentSegmentedControl.selectedSegmentIndex == 2
+
+                switch result {
+                case .success(let response):
+                    self.newsArticles = response.articles
+                    self.newsFeedTableView.reloadData()
+
+                    if !response.configured {
+                        // Never configured (or explicitly no sources)
+                        if onNewsTab {
+                            self.activityEmptyStateLabel.text = "Choose your feeds to get started"
+                            self.activityEmptyStateLabel.isHidden = false
+                        }
+                        // First-run: open the picker automatically, once
+                        if !self.hasAutoPresentedNewsPicker && onNewsTab {
+                            self.hasAutoPresentedNewsPicker = true
+                            self.presentNewsSourcePicker()
+                        }
+                    } else if response.articles.isEmpty {
+                        if onNewsTab {
+                            self.activityEmptyStateLabel.text = "No articles right now — pull to refresh"
+                            self.activityEmptyStateLabel.isHidden = false
+                        }
+                    } else if onNewsTab {
+                        self.activityEmptyStateLabel.isHidden = true
+                    }
+
+                case .failure:
+                    if self.newsArticles.isEmpty && onNewsTab {
+                        self.activityEmptyStateLabel.text = "Couldn't load your feeds — pull to refresh"
+                        self.activityEmptyStateLabel.isHidden = false
+                    }
+                }
+            }
+        }
+    }
+
+    @objc private func newsSettingsTapped() {
+        presentNewsSourcePicker()
+    }
+
+    private func presentNewsSourcePicker() {
+        guard presentedViewController == nil else { return }
+
+        NewsService.shared.fetchSources { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success(let response):
+                    self.newsSourceCatalog = response.sources
+                    self.newsEnabledSourceIds = response.enabledSourceIds
+
+                    let picker = NewsSourcePickerViewController(
+                        sources: response.sources,
+                        enabledIds: response.enabledSourceIds
+                    )
+                    picker.onSave = { [weak self] ids in
+                        guard let self = self else { return }
+                        self.newsEnabledSourceIds = ids
+                        self.newsArticles = []
+                        self.newsFeedTableView.reloadData()
+                        self.fetchNewsFeed(force: true)
+                    }
+                    let nav = UINavigationController(rootViewController: picker)
+                    nav.modalPresentationStyle = .pageSheet
+                    self.present(nav, animated: true)
+                case .failure(let error):
+                    self.showError(error)
+                }
+            }
+        }
+    }
+
+    private func openNewsArticle(_ article: NewsArticle) {
+        guard let url = URL(string: article.link), url.scheme?.hasPrefix("http") == true else { return }
+        let safari = SFSafariViewController(url: url)
+        safari.preferredControlTintColor = Constants.Colors.primary
+        skipTabResetOnNextAppear = true // stay on Feeds when the sheet closes
+        present(safari, animated: true)
     }
     
     private func fetchActivities(loadMore: Bool = false, completion: ((Bool) -> Void)? = nil) {
@@ -2937,8 +3132,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     print("✅ Successfully fetched \(response.activities.count) activities")
                     
                     if loadMore {
-                        // Append to existing activities
-                        self.activities.append(contentsOf: response.activities)
+                        // Append to existing activities, skipping any already
+                        // shown — SSE prepends shift the pagination offset, so
+                        // the next page can overlap what's on screen
+                        let existingIds = Set(self.activities.map { $0.id })
+                        let newActivities = response.activities.filter { !existingIds.contains($0.id) }
+                        self.activities.append(contentsOf: newActivities)
                     } else {
                         // Replace activities
                         self.activities = response.activities
@@ -2968,7 +3167,97 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
+    // MARK: - Activity Feed Grouping
+
+    /// A feed row: either one activity, or a burst of activities by the same
+    /// actor within an hour, collapsed into a summary row.
+    enum ActivityFeedItem {
+        case single(Activity)
+        case group([Activity])
+    }
+
+    /// Derived render model for the activity table. Rebuilt from `activities`
+    /// in updateActivityFeed() — never mutated directly.
+    private var feedItems: [ActivityFeedItem] = []
+    /// Groups the user has expanded inline, keyed by the group's first activity id
+    private var expandedGroupKeys: Set<String> = []
+
+    /// Place-added rows are the feed's core content — never grouped
+    private func isStandaloneActivity(_ activity: Activity) -> Bool {
+        return activity.type == .placeAdded || activity.type == .checkIn
+    }
+
+    /// Collapses consecutive same-actor activities (rolling 60-minute window)
+    /// into groups of ≥2. Standalone rows interleaved in a burst don't break
+    /// the surrounding group: the group is inserted back at the position of
+    /// its newest member.
+    private func regroupActivities() {
+        var items: [ActivityFeedItem] = []
+        var pendingGroup: [Activity] = []
+        var pendingStartIndex: Int?
+
+        func flushGroup() {
+            guard !pendingGroup.isEmpty else { return }
+            let insertAt = min(pendingStartIndex ?? items.count, items.count)
+            if pendingGroup.count >= 2 {
+                var groupRows: [ActivityFeedItem] = [.group(pendingGroup)]
+                if expandedGroupKeys.contains(pendingGroup[0].id) {
+                    groupRows.append(contentsOf: pendingGroup.map { .single($0) })
+                }
+                items.insert(contentsOf: groupRows, at: insertAt)
+            } else {
+                items.insert(.single(pendingGroup[0]), at: insertAt)
+            }
+            pendingGroup = []
+            pendingStartIndex = nil
+        }
+
+        for activity in activities {
+            if isStandaloneActivity(activity) {
+                items.append(.single(activity))
+                continue
+            }
+            if let last = pendingGroup.last {
+                // Feed is newest-first: `activity` is older than `last`
+                let sameActor = activity.actorId == pendingGroup[0].actorId
+                let withinWindow = last.timestamp.timeIntervalSince(activity.timestamp) <= 3600
+                if sameActor && withinWindow {
+                    pendingGroup.append(activity)
+                    continue
+                }
+                flushGroup()
+            }
+            pendingStartIndex = items.count
+            pendingGroup.append(activity)
+        }
+        flushGroup()
+
+        feedItems = items
+    }
+
+    private func activityFeedItem(at row: Int) -> ActivityFeedItem? {
+        return row < feedItems.count ? feedItems[row] : nil
+    }
+
+    /// The single activity backing a row, or nil for group summary rows
+    private func singleActivity(at row: Int) -> Activity? {
+        if case .single(let activity)? = activityFeedItem(at: row) {
+            return activity
+        }
+        return nil
+    }
+
+    private func toggleActivityGroup(withKey key: String) {
+        if expandedGroupKeys.contains(key) {
+            expandedGroupKeys.remove(key)
+        } else {
+            expandedGroupKeys.insert(key)
+        }
+        updateActivityFeed()
+    }
+
     private func updateActivityFeed() {
+        regroupActivities()
         isLoadingActivities = false
         activityLoadingIndicator.stopAnimating()
         activityLoadingContainer.isHidden = true
@@ -3535,8 +3824,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         filterContainer.isHidden = false
         mapExpandButton.isHidden = false
         
-        // Show place count now that loading is complete with animation
-        mapViewController?.showPlaceCount()
+        // Show place count now that loading is complete with animation.
+        // (Only the home's own pill — the embedded map's internal pill stays
+        // hidden so two counts never stack in the same corner.)
         mapPlaceCountLabel.alpha = 0
         mapPlaceCountLabel.isHidden = false
         UIView.animate(withDuration: 0.3) {
@@ -4486,64 +4776,16 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         fullScreenMap.delegate = self  // Set delegate to handle place selection
         
         // Separate user places from connection places
-        var userPlaces: [Place] = []
-        var connectionPlacesMap: [String: [Place]] = [:]
-        let currentUserId = AuthService.shared.getUserId() ?? ""
-        let userCircleIds = Set(circles.map { $0.id })
-        
-        // Get connections from NetworkManager
-        let connections = NetworkManager.shared.connections
-        
-        // Build a map of circle owner IDs to connection otherUserIds
-        // This handles the ID normalization and connection data issues
-        var ownerToConnectionId: [String: String] = [:]
-        for connection in connections {
-            let otherUserId = connection.otherUserId(currentUserId: currentUserId)
-            // Try to find this connection's circles in networkCircles
-            for circle in networkCircles {
-                if IDNormalizer.isSameUser(circle.owner, otherUserId) {
-                    ownerToConnectionId[circle.owner] = otherUserId
-                }
-            }
-        }
-        
-        for place in allPlaces {
-            // Check if this is a user's place
-            if let circleId = place.circleId, userCircleIds.contains(circleId) {
-                userPlaces.append(place)
-            } else if let circleId = place.circleId, let circle = networkCircles.first(where: { $0.id == circleId }) {
-                // Check if the circle owner is the current user (handles user circles in networkCircles)
-                if IDNormalizer.isSameUser(circle.owner, currentUserId) {
-                    userPlaces.append(place)
-                } else {
-                    // This is a connection's place
-                    // Use the normalized connection ID as the key
-                    let mapKey = ownerToConnectionId[circle.owner] ?? circle.owner
-                    if connectionPlacesMap[mapKey] == nil {
-                        connectionPlacesMap[mapKey] = []
-                    }
-                    connectionPlacesMap[mapKey]?.append(place)
-                }
-            }
-        }
-        
-        // Debug connection data
-        print("🔍 DEBUG: Checking connections before passing to full screen map")
-        print("🔍 Connection places map keys: \(connectionPlacesMap.keys.sorted())")
-        for (index, connection) in connections.enumerated() {
-            let otherUserId = connection.otherUserId(currentUserId: currentUserId)
-            let placeCount = connectionPlacesMap[otherUserId]?.count ?? 0
-            print("  \(index): \(connection.connectedUser?.displayName ?? "Unknown") - \(placeCount) places")
-            print("     - otherUserId: \(otherUserId)")
-        }
-        
+        let buckets = buildConnectionPlaceBuckets()
+
         // Update the full screen map with connections data
         fullScreenMap.updatePlacesWithConnections(
-            userPlaces,
-            connections: connections,
-            connectionPlaces: connectionPlacesMap
+            buckets.userPlaces,
+            connections: NetworkManager.shared.connections,
+            connectionPlaces: buckets.connectionPlaces
         )
         fullScreenMap.modalPresentationStyle = .fullScreen
+        presentedFullScreenMap = fullScreenMap
         present(fullScreenMap, animated: true)
     }
     
@@ -4920,6 +5162,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                             connectionFilteredPlaces.append(place)
                             print("   ✅ Found place '\(place.name)' from circle '\(circle.name)' owned by connection")
                         }
+                    } else if IDNormalizer.isSameUser(place.addedBy, connectionId) {
+                        // Circle metadata not loaded (e.g. viewport-fetched
+                        // place) — match by who added it instead of dropping it
+                        connectionFilteredPlaces.append(place)
                     }
                 }
                 
@@ -4987,6 +5233,65 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// 
     /// This fixes the issue where selecting categories (like "Coffee work") would 
     /// trigger a full data refetch, losing the applied filter state
+    /// Buckets allPlaces into the user's own places and per-connection lists
+    /// using circle-owner mapping — the owner id is authoritative here, since
+    /// place.addedBy can carry a connection's legacy account id.
+    private func buildConnectionPlaceBuckets() -> (userPlaces: [Place], connectionPlaces: [String: [Place]]) {
+        var userPlaces: [Place] = []
+        var connectionPlacesMap: [String: [Place]] = [:]
+        let currentUserId = AuthService.shared.getUserId() ?? ""
+        let userCircleIds = Set(circles.map { $0.id })
+        let connections = NetworkManager.shared.connections
+
+        // Map circle owner IDs to connection otherUserIds — handles the ID
+        // normalization and connection data issues
+        var ownerToConnectionId: [String: String] = [:]
+        for connection in connections {
+            let otherUserId = connection.otherUserId(currentUserId: currentUserId)
+            for circle in networkCircles {
+                if IDNormalizer.isSameUser(circle.owner, otherUserId) {
+                    ownerToConnectionId[circle.owner] = otherUserId
+                }
+            }
+        }
+
+        for place in allPlaces {
+            if let circleId = place.circleId, userCircleIds.contains(circleId) {
+                userPlaces.append(place)
+            } else if let circleId = place.circleId, let circle = networkCircles.first(where: { $0.id == circleId }) {
+                if IDNormalizer.isSameUser(circle.owner, currentUserId) {
+                    userPlaces.append(place)
+                } else {
+                    let mapKey = ownerToConnectionId[circle.owner] ?? circle.owner
+                    connectionPlacesMap[mapKey, default: []].append(place)
+                }
+            }
+        }
+
+        return (userPlaces, connectionPlacesMap)
+    }
+
+    /// If the backend flagged a possible second account at sign-in, offer the
+    /// merge flow. Consuming the suggestion means the user is asked at most
+    /// once per login.
+    private func promptForDuplicateAccountsIfNeeded() {
+        guard let suggestion = AuthService.shared.consumeDuplicateSuggestion(),
+              let candidate = suggestion.duplicateAccounts.first else { return }
+
+        let hint = candidate.displayName ?? candidate.email ?? "another account"
+        AlertPresenter.showConfirmation(
+            title: "Is this you?",
+            message: "It looks like you might have another Circles account (\(hint)). You can merge it so all your places and connections live in one account.",
+            confirmTitle: "Review & Merge",
+            cancelTitle: "Not Now",
+            from: self,
+            onConfirm: { [weak self] in
+                let mergeVC = AccountMergeViewController()
+                self?.navigationController?.pushViewController(mergeVC, animated: true)
+            }
+        )
+    }
+
     private func refreshMapDisplay(adjustRegion: Bool = true) {
         print("🗺️ [RefreshMapDisplay] Refreshing map with current filters")
 
@@ -5005,6 +5310,21 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // updatePlaces zooms exactly once via the annotation pipeline when
         // adjustRegion is true — no extra delayed adjustMapRegion here.
         mapViewController?.updatePlaces(placesToDisplay, adjustRegion: adjustRegion)
+
+        // The presented full map applies its own connection/category filters,
+        // so it gets the UNFILTERED set (e.g. a connection's places fetched
+        // after it was presented). Refresh its owner-mapped buckets first so
+        // late-arriving places filter correctly (addedBy alone misses places
+        // saved under a connection's legacy account id). Re-frame only for a
+        // specific connection — its adjustMapRegion keeps the camera when pins
+        // are already in view, and zooms out (worldwide if needed) when none are.
+        if let modal = presentedFullScreenMap {
+            let modalShouldZoom = adjustRegion
+                && selectedConnectionId != nil
+                && selectedConnectionId != "my_places_only"
+            modal.updateConnectionBuckets(buildConnectionPlaceBuckets().connectionPlaces)
+            modal.updatePlaces(allPlaces, adjustRegion: modalShouldZoom)
+        }
 
         // Keep the distance-sorted list in sync when it's visible
         if isShowingPlacesList {
@@ -5078,13 +5398,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     self.placesCacheExpiry = Date().addingTimeInterval(self.cacheExpiryMinutes * 60)
                     self.updateAvailableCategories()
 
-                    // Refresh pins without moving the map (prevents a fetch loop)
+                    // Refresh pins without moving the map (prevents a fetch
+                    // loop). This also pushes the unfiltered set to the
+                    // presented full map, which filters for itself.
                     self.refreshMapDisplay(adjustRegion: false)
-
-                    // If the notifying map is the modal instance, push places to it too
-                    if let controller = controller, controller !== self.mapViewController {
-                        controller.updatePlaces(self.applyFiltersToPlaces(self.allPlaces), adjustRegion: false)
-                    }
                 case .failure(let error):
                     // Non-fatal: a later pan retries the fetch
                     print("🗺️ [Viewport] Fetch failed: \(error.localizedDescription)")
@@ -5121,6 +5438,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     if self.selectedConnectionId == connectionId && canonicalId != connectionId {
                         self.selectedConnectionId = canonicalId
                         self.mapViewController?.setConnectionFilterContext(canonicalId)
+                        // The presented full map filters independently - without
+                        // the canonical id its added-by match finds nothing
+                        self.presentedFullScreenMap?.setConnectionFilterContext(canonicalId)
                         self.userListView.selectedUserId = canonicalId
                     }
 
@@ -6290,7 +6610,9 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
         } else if tableView == searchResultsTableView {
             return numberOfRowsInSearchResults()
         } else if tableView == activityTableView {
-            return activities.count
+            return feedItems.count
+        } else if tableView == newsFeedTableView {
+            return newsArticles.count
         }
         return 0
     }
@@ -6412,18 +6734,27 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             return cell
         } else if tableView == activityTableView {
             let cell = tableView.dequeueReusableCell(withIdentifier: ActivityFeedCell.identifier, for: indexPath) as! ActivityFeedCell
-            
-            // Add bounds check
-            guard indexPath.row < activities.count else {
+
+            guard let item = activityFeedItem(at: indexPath.row) else {
                 return cell
             }
-            
-            let activity = activities[indexPath.row]
+
             cell.delegate = self
-            cell.configure(with: activity)
+            switch item {
+            case .single(let activity):
+                cell.configure(with: activity)
+            case .group(let groupActivities):
+                cell.configure(withGroup: groupActivities,
+                               isExpanded: expandedGroupKeys.contains(groupActivities[0].id))
+            }
+            return cell
+        } else if tableView == newsFeedTableView {
+            let cell = tableView.dequeueReusableCell(withIdentifier: NewsArticleCell.identifier, for: indexPath) as! NewsArticleCell
+            guard indexPath.row < newsArticles.count else { return cell }
+            cell.configure(with: newsArticles[indexPath.row])
             return cell
         }
-        
+
         return UITableViewCell()
     }
     
@@ -6441,6 +6772,12 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
         if tableView == placesListTableView {
             guard indexPath.row < distanceSortedPlaces.count else { return }
             presentDetailForPlace(distanceSortedPlaces[indexPath.row].place)
+            return
+        }
+
+        if tableView == newsFeedTableView {
+            guard indexPath.row < newsArticles.count else { return }
+            openNewsArticle(newsArticles[indexPath.row])
             return
         }
 
@@ -6472,15 +6809,26 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             guard indexPath.row < filteredPlaces.count else { return }
             handleSearchResultSelection(at: indexPath)
         } else if tableView == activityTableView {
-            // Add bounds check
-            guard indexPath.row < activities.count else { return }
-            let activity = activities[indexPath.row]
-            
+            guard let item = activityFeedItem(at: indexPath.row) else { return }
+
+            // Group summary rows expand/collapse in place
+            guard case .single(let activity) = item else {
+                if case .group(let groupActivities) = item {
+                    toggleActivityGroup(withKey: groupActivities[0].id)
+                }
+                return
+            }
+
             // Navigate based on activity type
             switch activity.type {
-            case .placeAdded, .placeLiked, .placeCommented, .commentLiked, .photoUploaded, .placeDiscovered:
+            case .placeAdded, .placeLiked, .placeCommented, .photoUploaded, .placeDiscovered:
                 // Navigate to the place
                 navigateToPlace(withId: activity.targetId)
+            case .commentLiked:
+                // targetId is the COMMENT id for these; the place lives in metadata
+                if let placeId = activity.metadata?.placeId {
+                    navigateToPlace(withId: placeId)
+                }
             case .circleCreated, .circleLiked, .circleCommented:
                 // Navigate to the circle
                 navigateToCircle(withId: activity.targetId)
@@ -6559,6 +6907,23 @@ extension CirclesHomeViewController: FullScreenMapViewControllerDelegate {
         }
 
         fetchViewportPlaces(region: region, for: controller)
+    }
+
+    func mapViewController(_ controller: FullScreenMapViewController, didChangeConnectionFilter connectionId: String?) {
+        // Only mirror the full-screen (modal) map — the embedded child's filter
+        // is driven BY this controller, not the other way around
+        guard controller.isPresentedModally else { return }
+
+        let user: User? = {
+            guard let id = connectionId, id != "my_places_only" else { return nil }
+            let currentUserId = AuthService.shared.getUserId() ?? ""
+            return NetworkManager.shared.connections.first(where: {
+                IDNormalizer.isSameUser($0.otherUserId(currentUserId: currentUserId), id)
+            })?.connectedUser
+        }()
+
+        print("🗺️ Mirroring full-screen map connection filter: \(connectionId ?? "All Connections")")
+        selectConnection(id: connectionId, user: user)
     }
 
     func mapViewController(_ controller: FullScreenMapViewController, didSelectPlace place: Place) {
@@ -6957,6 +7322,13 @@ extension CirclesHomeViewController: ActivityFeedCellDelegate {
         default:
             break
         }
+    }
+
+    func didTapActivityGroup(activities: [Activity]) {
+        // Expand/collapse the summary row so every activity in the burst is
+        // visible as its own tappable row beneath it
+        guard let first = activities.first else { return }
+        toggleActivityGroup(withKey: first.id)
     }
     
     func didTapPlaceImage(activity: Activity) {
@@ -7418,11 +7790,9 @@ extension CirclesHomeViewController {
     func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
         // Only handle swipe actions for activity table
         guard tableView == activityTableView else { return nil }
-        
-        // Add bounds check
-        guard indexPath.row < activities.count else { return nil }
-        
-        let activity = activities[indexPath.row]
+
+        // Individual rows only — group summary rows aren't deletable
+        guard let activity = singleActivity(at: indexPath.row) else { return nil }
         let currentUserId = AuthService.shared.getUserId() ?? ""
         
         // Only allow deletion of user's own activities
@@ -7444,12 +7814,10 @@ extension CirclesHomeViewController {
     
     // Helper method to confirm and delete activity
     private func confirmDeleteActivity(at indexPath: IndexPath, completion: @escaping (Bool) -> Void) {
-        guard indexPath.row < activities.count else {
+        guard let activity = singleActivity(at: indexPath.row) else {
             completion(false)
             return
         }
-        
-        let activity = activities[indexPath.row]
         
         // Show confirmation alert
         let alert = UIAlertController(
@@ -7486,14 +7854,10 @@ extension CirclesHomeViewController {
                 
                 switch result {
                 case .success:
-                    // Remove activity from array
-                    self.activities.remove(at: indexPath.row)
-                    
-                    // Update table view
-                    self.activityTableView.deleteRows(at: [indexPath], with: .automatic)
-                    
-                    // Update empty state if needed
-                    self.activityEmptyStateLabel.isHidden = !self.activities.isEmpty
+                    // Remove by id and re-derive the grouped rows (row indexes
+                    // don't map 1:1 to activities anymore)
+                    self.activities.removeAll { $0.id == activity.id }
+                    self.updateActivityFeed()
                     
                     // Show success feedback
                     let successAlert = UIAlertController(
@@ -7717,16 +8081,12 @@ extension CirclesHomeViewController {
                     }
                     
                     if !addedActivities.isEmpty {
-                        // Insert new activities at the beginning
+                        // Insert new activities at the beginning, then go
+                        // through the grouped-feed pipeline — a direct
+                        // insertRows would desync rows from feedItems
                         self.activities.insert(contentsOf: addedActivities, at: 0)
-                        
-                        // Update table view with animation
-                        let indexPaths = (0..<addedActivities.count).map { IndexPath(row: $0, section: 0) }
-                        self.activityTableView.insertRows(at: indexPaths, with: .automatic)
-                        
-                        // Update empty state
-                        self.activityEmptyStateLabel.isHidden = !self.activities.isEmpty
-                        
+                        self.updateActivityFeed()
+
                         Logger.info("Added \(addedActivities.count) new activities to feed via SSE")
                     }
                     
@@ -7857,12 +8217,9 @@ extension CirclesHomeViewController: AddFirstPlaceTutorialViewDelegate {
         } else {
             // Normal flow - mark tutorial as shown
             OnboardingManager.shared.markAddPlaceTutorialShown()
-            
-            // Continue with visit tracking permission
-            showVisitTrackingPermissionIfNeeded()
         }
     }
-    
+
     func didTapSkipTutorial() {
         // Clean up overlay reference
         addPlaceTutorialOverlay = nil
@@ -7874,9 +8231,6 @@ extension CirclesHomeViewController: AddFirstPlaceTutorialViewDelegate {
         } else {
             // Normal flow - mark tutorial as shown
             OnboardingManager.shared.markAddPlaceTutorialShown()
-            
-            // Continue with visit tracking permission
-            showVisitTrackingPermissionIfNeeded()
         }
     }
 }

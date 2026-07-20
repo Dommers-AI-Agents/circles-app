@@ -247,6 +247,7 @@ app.use('/api/users/subscription', require('./routes/subscriptionRoutes'));
 app.use('/api/users/referral', require('./routes/referralRoutes'));
 app.use('/api/rewards', require('./routes/rewardRoutes'));
 app.use('/api/home', require('./routes/dashboardRoutes'));
+app.use('/api/news', require('./routes/newsRoutes'));
 
 // Notification test routes (development only)
 if (process.env.NODE_ENV !== 'production') {

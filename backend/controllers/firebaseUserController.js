@@ -105,6 +105,7 @@ exports.getUser = async (req, res, next) => {
       profileData.followers = user.followers;
       profileData.following = user.following;
       profileData.deviceTokens = user.deviceTokens; // Include device tokens for own profile
+      profileData.preferences = user.preferences || null;
     } else {
       // For other users, check if current user is following them
       const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(req.user.uid).get();
@@ -198,8 +199,8 @@ exports.getUser = async (req, res, next) => {
 // @access  Private
 exports.updateUser = async (req, res, next) => {
   try {
-    const { displayName, firstName, lastName, phoneNumber, bio, location, profilePicture } = req.body;
-    
+    const { displayName, firstName, lastName, phoneNumber, bio, location, profilePicture, preferences } = req.body;
+
     const updateData = {
       updatedAt: new Date().toISOString()
     };
@@ -214,6 +215,21 @@ exports.updateUser = async (req, res, next) => {
     if (phoneNumber !== undefined) updateData.phoneNumber = phoneNumber;
     if (bio !== undefined) updateData.bio = bio;
     if (location !== undefined) updateData.location = location;
+
+    // App preferences: allowlisted keys only, written as dot-path updates so a
+    // partial preference write never clobbers sibling preference keys
+    if (preferences && typeof preferences === 'object' && !Array.isArray(preferences)) {
+      if (preferences.defaultHomeView !== undefined && typeof preferences.defaultHomeView === 'string') {
+        updateData['preferences.defaultHomeView'] = preferences.defaultHomeView;
+      }
+      if (preferences.enabledNewsSources !== undefined) {
+        const { isValidSourceId } = require('../services/newsService');
+        const sources = Array.isArray(preferences.enabledNewsSources)
+          ? preferences.enabledNewsSources.filter((id) => typeof id === 'string' && isValidSourceId(id))
+          : [];
+        updateData['preferences.enabledNewsSources'] = sources;
+      }
+    }
     if (profilePicture !== undefined) {
       updateData.profilePicture = profilePicture;
       // Mark that user has uploaded a custom profile picture
@@ -296,6 +312,7 @@ exports.updateUser = async (req, res, next) => {
         location: user.location,
         followersCount: user.followersCount || 0,
         followingCount: user.followingCount || 0,
+        preferences: user.preferences || null,
         createdAt: user.createdAt
       }
     });
@@ -2647,9 +2664,12 @@ exports.mergeUserAccounts = async (req, res, next) => {
       bio: primaryUser.bio || secondaryUser.bio,
       location: primaryUser.location || secondaryUser.location,
       
-      // Merge arrays
-      followers: [...(primaryUser.followers || []), ...(secondaryUser.followers || [])].filter((id, index, arr) => arr.indexOf(id) === index),
-      following: [...(primaryUser.following || []), ...(secondaryUser.following || [])].filter((id, index, arr) => arr.indexOf(id) === index),
+      // Merge arrays (dropping both account ids — the accounts may have
+      // followed each other, and nobody should follow themselves post-merge)
+      followers: [...(primaryUser.followers || []), ...(secondaryUser.followers || [])]
+        .filter((id, index, arr) => arr.indexOf(id) === index && id !== primaryAccountId && id !== secondaryAccountId),
+      following: [...(primaryUser.following || []), ...(secondaryUser.following || [])]
+        .filter((id, index, arr) => arr.indexOf(id) === index && id !== primaryAccountId && id !== secondaryAccountId),
       deviceTokens: [...(primaryUser.deviceTokens || []), ...(secondaryUser.deviceTokens || [])].filter((token, index, arr) => arr.indexOf(token) === index),
       pinnedPlaces: [...(primaryUser.pinnedPlaces || []), ...(secondaryUser.pinnedPlaces || [])].slice(0, 6), // Max 6
       
@@ -2667,32 +2687,99 @@ exports.mergeUserAccounts = async (req, res, next) => {
     mergedData.followersCount = mergedData.followers.length;
     mergedData.followingCount = mergedData.following.length;
     
-    // Use transaction to ensure consistency
+    // Rewrite every reference from the secondary id to the primary id.
+    // Batched writes (450/commit, under Firestore's 500 limit); re-running the
+    // merge resumes cleanly since the queries only match docs still pointing
+    // at the secondary id.
+    let batch = db.batch();
+    let pendingOps = 0;
+    const commitIfFull = async () => {
+      if (pendingOps >= 450) {
+        await batch.commit();
+        batch = db.batch();
+        pendingOps = 0;
+      }
+    };
+    const remapField = async (query, buildUpdate) => {
+      const snapshot = await query.get();
+      for (const doc of snapshot.docs) {
+        batch.update(doc.ref, buildUpdate(doc));
+        pendingOps++;
+        await commitIfFull();
+      }
+      return snapshot.size;
+    };
+    // Array fields swap the id in place (computed in JS — Firestore can't
+    // arrayRemove + arrayUnion the same field in one update) and dedupe in
+    // case both accounts were already in the array
+    const remapArrayField = async (query, field, extraUpdates = null) => {
+      const snapshot = await query.get();
+      for (const doc of snapshot.docs) {
+        const current = field.split('.').reduce((obj, key) => (obj || {})[key], doc.data()) || [];
+        const remapped = [...new Set(current.map(id => id === secondaryAccountId ? primaryAccountId : id))];
+        const updates = { [field]: remapped, ...(extraUpdates ? extraUpdates(remapped) : {}) };
+        batch.update(doc.ref, updates);
+        pendingOps++;
+        await commitIfFull();
+      }
+      return snapshot.size;
+    };
+
+    const now = new Date().toISOString();
+    const remapped = {};
+
+    // Ownership + authorship
+    remapped.circles = await remapField(
+      db.collection(COLLECTIONS.CIRCLES).where('owner', '==', secondaryAccountId),
+      () => ({ owner: primaryAccountId, updatedAt: now }));
+    remapped.places = await remapField(
+      db.collection(COLLECTIONS.PLACES).where('addedBy', '==', secondaryAccountId),
+      () => ({ addedBy: primaryAccountId, updatedAt: now }));
+    remapped.comments = await remapField(
+      db.collection('placeComments').where('userId', '==', secondaryAccountId),
+      () => ({ userId: primaryAccountId }));
+    remapped.activities = await remapField(
+      db.collection(COLLECTIONS.ACTIVITIES).where('actorId', '==', secondaryAccountId),
+      () => ({ actorId: primaryAccountId }));
+    remapped.messages = await remapField(
+      db.collection('messages').where('senderId', '==', secondaryAccountId),
+      () => ({ senderId: primaryAccountId }));
+
+    // Connections (both directions)
+    remapped.connections = await remapField(
+      db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', secondaryAccountId),
+      () => ({ userId: primaryAccountId }));
+    remapped.connections += await remapField(
+      db.collection(COLLECTIONS.CONNECTIONS).where('connectedUserId', '==', secondaryAccountId),
+      () => ({ connectedUserId: primaryAccountId }));
+
+    // Array memberships: circle shares, venue likes/contributors, social graph
+    remapped.sharedCircles = await remapArrayField(
+      db.collection(COLLECTIONS.CIRCLES).where('sharedWith', 'array-contains', secondaryAccountId),
+      'sharedWith');
+    remapped.venueLikes = await remapArrayField(
+      db.collection('globalPlaces').where('likes', 'array-contains', secondaryAccountId),
+      'likes',
+      likes => ({ likesCount: likes.length })); // Deduped count when both ids had liked
+    remapped.venueContributions = await remapArrayField(
+      db.collection('globalPlaces').where('userContributions.contributors', 'array-contains', secondaryAccountId),
+      'userContributions.contributors');
+    remapped.followerRefs = await remapArrayField(
+      db.collection(COLLECTIONS.USERS).where('followers', 'array-contains', secondaryAccountId),
+      'followers');
+    remapped.followingRefs = await remapArrayField(
+      db.collection(COLLECTIONS.USERS).where('following', 'array-contains', secondaryAccountId),
+      'following');
+
+    if (pendingOps > 0) {
+      await batch.commit();
+    }
+    console.log('🔄 Reference remap complete:', remapped);
+
+    // Finalize the user docs last, so a crash mid-remap leaves the merge
+    // re-runnable rather than half-marked
     await db.runTransaction(async (transaction) => {
-      // Update primary account with merged data
       transaction.update(primaryRef, mergedData);
-      
-      // Update all connections that point to secondary account
-      const connectionsQuery = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', secondaryAccountId)
-        .get();
-      
-      const connectedToQuery = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', secondaryAccountId)
-        .get();
-      
-      // Update connections where secondary was the user
-      connectionsQuery.forEach(doc => {
-        transaction.update(doc.ref, { userId: primaryAccountId });
-      });
-      
-      // Update connections where secondary was the connected user
-      connectedToQuery.forEach(doc => {
-        transaction.update(doc.ref, { connectedUserId: primaryAccountId });
-      });
-      
-      // TODO: Also update circles, places, messages, etc. that belong to secondary account
-      // For now, we'll just mark the secondary account as merged
       transaction.update(secondaryRef, {
         mergedInto: primaryAccountId,
         mergedAt: new Date().toISOString(),

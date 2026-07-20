@@ -207,6 +207,28 @@ class UserService {
         }
     }
     
+    /// Persist which News tab sources the user has enabled (synced via the
+    /// user doc so it follows them across devices)
+    func updateNewsSourcePreferences(_ sourceIds: [String], completion: @escaping (Result<User, Error>) -> Void) {
+        let body: [String: Any] = ["preferences": ["enabledNewsSources": sourceIds]]
+
+        APIService.shared.request(
+            endpoint: "users/me",
+            method: .put,
+            body: body,
+            requiresAuth: true
+        ) { [weak self] (result: Result<UserResponse, APIError>) in
+            guard let self = self else { return }
+
+            switch result {
+            case .success(let response):
+                completion(.success(response.user))
+            case .failure(let error):
+                completion(.failure(self.mapAPIErrorToUserError(error)))
+            }
+        }
+    }
+
     func updateNotificationPreferences(_ preferences: NotificationPreferences, completion: @escaping (Result<User, Error>) -> Void) {
         let body: [String: Any] = [
             "notificationPreferences": [
