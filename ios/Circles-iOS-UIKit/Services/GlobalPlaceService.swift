@@ -9,6 +9,37 @@ class GlobalPlaceService {
     
     // MARK: - API Endpoints
     
+    /// Does this venue already exist in our canonical database? Called
+    /// before fetching photos from Google Places so duplicate adds reuse the
+    /// canonical record's googlePlaceId + photos instead of re-querying
+    /// Google. Returns nil match when the place is new to us.
+    func matchKnownPlace(name: String, latitude: Double?, longitude: Double?, address: String?, completion: @escaping (Result<KnownPlaceMatch?, Error>) -> Void) {
+        var params = "name=\(name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name)"
+        if let latitude = latitude, let longitude = longitude {
+            params += "&lat=\(latitude)&lng=\(longitude)"
+        }
+        if let address = address,
+           let encoded = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            params += "&address=\(encoded)"
+        }
+
+        apiService.request(
+            endpoint: "places/global/match?\(params)",
+            method: .get,
+            queryParams: nil,
+            body: nil,
+            headers: nil,
+            requiresAuth: true
+        ) { (result: Result<KnownPlaceMatchResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data.match))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
     /// Get global place by ID with all public content
     /// - Parameters:
     ///   - placeId: The global place ID
@@ -527,6 +558,44 @@ extension GlobalPlaceService {
             }
         }
     }
+
+    /// Like or unlike a photo on a Global Place. Accepts a legacy place id or a
+    /// global place id (the backend resolves both). Idempotent server-side.
+    func setPhotoLiked(
+        placeId: String,
+        photoId: String,
+        liked: Bool,
+        completion: @escaping (Result<Int?, Error>) -> Void
+    ) {
+        let endpoint = "places/global/\(placeId)/media/\(photoId)/like"
+
+        apiService.request(
+            endpoint: endpoint,
+            method: liked ? .post : .delete,
+            queryParams: nil,
+            body: liked ? [:] : nil,
+            headers: nil,
+            requiresAuth: true
+        ) { (result: Result<PhotoLikeResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                if response.success {
+                    completion(.success(response.likesCount))
+                } else {
+                    completion(.failure(APIError.serverError))
+                }
+            case .failure(let error):
+                print("❌ [GlobalPlaceService] setPhotoLiked(\(liked)) failed: \(error)")
+                completion(.failure(error))
+            }
+        }
+    }
+}
+
+// MARK: - Photo Like Response
+struct PhotoLikeResponse: Codable {
+    let success: Bool
+    let likesCount: Int?
 }
 
 // MARK: - Standard Response Model

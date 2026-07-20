@@ -1667,6 +1667,7 @@ exports.copyCircle = async (req, res, next) => {
             name: sourcePlace.name,
             address: sourcePlace.address,
             googlePlaceId: sourcePlace.googlePlaceId,
+            globalPlaceId: sourcePlace.globalPlaceId || null, // Same canonical venue
             appleMapItemId: sourcePlace.appleMapItemId,
             category: sourcePlace.category,
             phone: sourcePlace.phone || null,

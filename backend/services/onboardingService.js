@@ -48,7 +48,11 @@ class OnboardingService {
       });
       if (!resolvedSamplePlace) {
         resolvedSamplePlace = getRandomLocalPlace(userCity ? { city: userCity } : userLocation);
-        console.log(`📍 Onboarding: Using curated fallback place "${resolvedSamplePlace.name}"`);
+        if (resolvedSamplePlace) {
+          console.log(`📍 Onboarding: Using curated fallback place "${resolvedSamplePlace.name}"`);
+        } else {
+          console.log('📍 Onboarding: No location known — skipping sample place');
+        }
       }
 
       // Create default circles and sample place in a transaction
@@ -79,11 +83,12 @@ class OnboardingService {
           circle => circle.name === "Favorite Local Spots"
         );
         
-        if (favoriteLocalSpotsIndex !== -1) {
+        if (favoriteLocalSpotsIndex !== -1 && resolvedSamplePlace && resolvedSamplePlace.coordinates) {
           const favoriteCircleId = circleIds[favoriteLocalSpotsIndex];
-          
+
           // Use the place resolved before the transaction (nearby search or
-          // curated fallback)
+          // curated fallback). Without a resolved place we skip seeding rather
+          // than plant a place from the wrong city.
           samplePlaceData = resolvedSamplePlace;
 
           // Create sample place
@@ -91,10 +96,9 @@ class OnboardingService {
           const placeData = createPlace({
             name: samplePlaceData.name,
             description: samplePlaceData.description,
-            address: samplePlaceData.address || "Belmar, NJ",
+            address: samplePlaceData.address,
             location: {
-              // Fallback: Starbucks, 1799 River Rd, Belmar, NJ ([lng, lat])
-              coordinates: samplePlaceData.coordinates || [-74.0407, 40.1771]
+              coordinates: samplePlaceData.coordinates
             },
             category: samplePlaceData.category || "restaurant",
             website: samplePlaceData.website || null,

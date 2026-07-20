@@ -48,41 +48,53 @@ class PlaceDetailViewController: BaseViewController {
         return (place.circleId == nil || place.circleId?.isEmpty == true) && (place.id == "home-place" || place.id == "work-place")
     }
     private var isLoadingPhoto = false
-    private var placePhotos: [UIImage] = []
+    // Locally held photos with their storage URL (when known) so the carousel
+    // can dedupe them against server-provided photo lists
+    private var placePhotos: [(image: UIImage, url: String?)] = []
     private var currentPhotoIndex = 0
     
     private func updateMediaCarousel() {
         print("📸 [PlaceDetailViewController] updateMediaCarousel() called for place: \(place.name)")
         var mediaItems: [MediaItem] = []
         
-        // Prioritize GlobalPlace photos with attribution data
-        if let globalPlace = self.globalPlace, let attributedPhotos = globalPlace.photos, !attributedPhotos.isEmpty {
-            print("✅ [PlaceDetailViewController] Using GlobalPlace attributed photos - count: \(attributedPhotos.count)")
-            for (index, attributedPhoto) in attributedPhotos.enumerated() {
-                mediaItems.append(.attributedPhoto(
-                    url: attributedPhoto.url,
-                    uploadedBy: attributedPhoto.uploadedByName ?? "Unknown User",
-                    source: attributedPhoto.source
-                ))
-                print("  📸 Added attributed photo \(index + 1): by '\(attributedPhoto.uploadedByName ?? "Unknown")'")
+        // Merge all photo sources, deduped by URL. Attributed GlobalPlace photos
+        // come first (they carry uploader attribution), then legacy place.photos
+        // not represented there, then freshly captured local images. The old
+        // exclusive-priority logic hid legacy photos whenever the GlobalPlace
+        // doc had any photos at all.
+        var seenUrls = Set<String>()
+
+        if let attributedPhotos = globalPlace?.photos {
+            print("📸 [PlaceDetailViewController] GlobalPlace attributed photos: \(attributedPhotos.count)")
+            for attributedPhoto in attributedPhotos {
+                mediaItems.append(.attributedPhoto(photo: attributedPhoto))
+                seenUrls.insert(attributedPhoto.url)
             }
         }
-        // Fallback to loaded UIImages
-        else if !placePhotos.isEmpty {
-            print("📸 [PlaceDetailViewController] Using loaded UIImages - count: \(placePhotos.count)")
-            for (index, photo) in placePhotos.enumerated() {
-                mediaItems.append(.photoImage(image: photo))
-                print("  📸 Added UIImage \(index + 1) to mediaItems")
+
+        if let photos = place.photos {
+            for photoUrl in photos where !seenUrls.contains(photoUrl) {
+                seenUrls.insert(photoUrl)
+                // Prefer an already-downloaded image over re-fetching the URL
+                if let local = placePhotos.first(where: { $0.url == photoUrl }) {
+                    mediaItems.append(.photoImage(image: local.image))
+                } else {
+                    mediaItems.append(.photo(url: photoUrl))
+                }
             }
         }
-        // Fallback to legacy photo URLs
-        else if let photos = place.photos, !photos.isEmpty {
-            print("📸 [PlaceDetailViewController] Using legacy photo URLs - count: \(photos.count)")
-            for (index, photoUrl) in photos.enumerated() {
-                mediaItems.append(.photo(url: photoUrl))
-                print("  📸 Added legacy photo URL \(index + 1): \(photoUrl)")
+
+        // Local images not yet reflected in either server list (e.g. an upload
+        // whose refresh hasn't landed)
+        for local in placePhotos {
+            if let url = local.url {
+                guard !seenUrls.contains(url) else { continue }
+                seenUrls.insert(url)
             }
-        } else {
+            mediaItems.append(.photoImage(image: local.image))
+        }
+
+        if mediaItems.isEmpty {
             print("📸 DEBUG: No photos available, will use placeholder")
         }
         
@@ -177,21 +189,6 @@ class PlaceDetailViewController: BaseViewController {
     }()
     */
     
-    private let updateAddressButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Update Address", for: .normal)
-        button.setImage(UIImage(systemName: "location.circle.fill"), for: .normal)
-        button.backgroundColor = UIColor.systemBlue
-        button.setTitleColor(.white, for: .normal)
-        button.tintColor = .white
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
-        button.layer.cornerRadius = 6
-        button.contentEdgeInsets = UIEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.isHidden = true  // Hidden by default
-        return button
-    }()
-    
     private let infoContainerView: UIView = {
         let view = UIView()
         view.backgroundColor = Constants.Colors.background
@@ -258,6 +255,91 @@ class PlaceDetailViewController: BaseViewController {
         return label
     }()
     
+    // Saved-by row: facepile + count, taps through to the savers list
+    private let savedByView: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.secondaryBackground
+        view.layer.cornerRadius = 8
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isUserInteractionEnabled = true
+        view.isHidden = true // Shown once savers are loaded
+        return view
+    }()
+
+    private let savedByFacepileView: UIStackView = {
+        let stackView = UIStackView()
+        stackView.axis = .horizontal
+        stackView.spacing = -8 // Overlapping avatars
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        return stackView
+    }()
+
+    private let savedByLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small, weight: .medium)
+        label.textColor = Constants.Colors.label
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    private let savedByChevron: UIImageView = {
+        let imageView = UIImageView(image: UIImage(systemName: "chevron.right"))
+        imageView.tintColor = Constants.Colors.gray
+        imageView.contentMode = .scaleAspectFit
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        return imageView
+    }()
+
+    private var savedByHeightConstraint: NSLayoutConstraint?
+
+    // Add-to-Circle CTA collapses entirely when hidden (see setAddToCircleVisible)
+    private var addToCircleTopConstraint: NSLayoutConstraint?
+    private var addToCircleHeightConstraint: NSLayoutConstraint?
+
+    /// Shows/hides the Add-to-Circle button WITHOUT leaving a blank band:
+    /// hidden views keep their constraints, so the height and top gap must
+    /// collapse alongside isHidden.
+    private func setAddToCircleVisible(_ visible: Bool) {
+        addToCircleButton.isHidden = !visible
+        addToCircleHeightConstraint?.constant = visible ? 44 : 0
+        addToCircleTopConstraint?.constant = visible ? Constants.Spacing.medium : 0
+    }
+
+    // Venue rewards section (offers + owner announcements); collapsed until
+    // the by-place lookup finds an enrolled venue
+    private let venueRewardsView = PlaceVenueRewardsView()
+    private var venueRewardsHeightConstraint: NSLayoutConstraint?
+    private var venueRewardsTopConstraint: NSLayoutConstraint?
+    private var placeVenueData: PlaceVenueData?
+
+    // Practical actions row: Directions / Website / Call / Edit
+    private let practicalButtonsStackView: UIStackView = {
+        let stackView = UIStackView()
+        stackView.axis = .horizontal
+        stackView.distribution = .fillEqually
+        stackView.spacing = 10
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        return stackView
+    }()
+
+    private static func practicalButton(title: String, systemName: String) -> UIButton {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: systemName), for: .normal)
+        button.setTitle(" \(title)", for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
+        button.tintColor = Constants.Colors.primary
+        button.setTitleColor(Constants.Colors.primary, for: .normal)
+        button.backgroundColor = Constants.Colors.secondaryBackground
+        button.layer.cornerRadius = 10
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }
+
+    private let directionsRowButton = PlaceDetailViewController.practicalButton(title: "Directions", systemName: "location.north.line")
+    private let editPlaceRowButton = PlaceDetailViewController.practicalButton(title: "Edit", systemName: "pencil")
+    // Google-backed places aren't user-editable — viewers report bad info instead
+    private let flagPlaceRowButton = PlaceDetailViewController.practicalButton(title: "Report", systemName: "flag")
+
     // Add to Circle button
     private let addToCircleButton: UIButton = {
         let button = UIButton(type: .system)
@@ -300,7 +382,7 @@ class PlaceDetailViewController: BaseViewController {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
         label.textColor = Constants.Colors.gray
-        label.text = "0"
+        label.text = ""
         label.translatesAutoresizingMaskIntoConstraints = false
         label.isUserInteractionEnabled = true
         return label
@@ -318,7 +400,7 @@ class PlaceDetailViewController: BaseViewController {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
         label.textColor = Constants.Colors.gray
-        label.text = "0"
+        label.text = ""
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -369,14 +451,6 @@ class PlaceDetailViewController: BaseViewController {
         return button
     }()
     
-    private let directionsButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "location.north.line"), for: .normal)
-        button.tintColor = Constants.Colors.gray
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-    
     private let ratingImageView: UIImageView = {
         let imageView = UIImageView()
         imageView.image = UIImage(systemName: "star.fill")
@@ -401,15 +475,6 @@ class PlaceDetailViewController: BaseViewController {
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         label.isUserInteractionEnabled = true
-        return label
-    }()
-    
-    private let addressTitleLabel: UILabel = {
-        let label = UILabel()
-        label.text = "Address"
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .bold)
-        label.textColor = Constants.Colors.darkGray
-        label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
     
@@ -441,25 +506,6 @@ class PlaceDetailViewController: BaseViewController {
         mapView.clipsToBounds = true
         mapView.translatesAutoresizingMaskIntoConstraints = false
         return mapView
-    }()
-    
-    private let navigateButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Navigate", for: .normal)
-        button.setImage(UIImage(systemName: "location.fill"), for: .normal)
-        button.setTitleColor(.white, for: .normal)
-        button.backgroundColor = Constants.Colors.primary
-        button.layer.cornerRadius = 25
-        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
-        button.contentEdgeInsets = UIEdgeInsets(top: 12, left: 24, bottom: 12, right: 24)
-        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 0)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        // Add shadow for better visibility
-        button.layer.shadowColor = UIColor.black.cgColor
-        button.layer.shadowOpacity = 0.2
-        button.layer.shadowOffset = CGSize(width: 0, height: 2)
-        button.layer.shadowRadius = 4
-        return button
     }()
     
     private let notesTitleLabel: UILabel = {
@@ -615,35 +661,9 @@ class PlaceDetailViewController: BaseViewController {
     }()
     
     
-    private let websiteButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Visit Website", for: .normal)
-        button.setImage(UIImage(systemName: "globe"), for: .normal)
-        button.backgroundColor = UIColor.black.withAlphaComponent(0.7)
-        button.setTitleColor(.white, for: .normal)
-        button.tintColor = .white
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
-        button.layer.cornerRadius = 18
-        button.contentEdgeInsets = UIEdgeInsets(top: 10, left: 16, bottom: 10, right: 16)
-        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 0)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-    
-    private let phoneButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Call", for: .normal)
-        button.setImage(UIImage(systemName: "phone"), for: .normal)
-        button.backgroundColor = UIColor.black.withAlphaComponent(0.7)
-        button.setTitleColor(.white, for: .normal)
-        button.tintColor = .white
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
-        button.layer.cornerRadius = 18
-        button.contentEdgeInsets = UIEdgeInsets(top: 10, left: 16, bottom: 10, right: 16)
-        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 0)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private let websiteButton = PlaceDetailViewController.practicalButton(title: "Website", systemName: "globe")
+
+    private let phoneButton = PlaceDetailViewController.practicalButton(title: "Call", systemName: "phone")
     
     private let circleInfoView: UIView = {
         let view = UIView()
@@ -714,7 +734,17 @@ class PlaceDetailViewController: BaseViewController {
         
         // Try to load GlobalPlace data for better attribution
         loadGlobalPlaceData()
-        
+
+        // Rewards venue (offers + announcements), if this place has one
+        loadVenueRewards()
+
+        // Load who saved this place for the saved-by row
+        loadPlaceSavers()
+
+        // The place object handed in by the parent list can be stale (lists
+        // don't refetch) — refresh it so photos added elsewhere show up
+        refreshPlaceFromServer()
+
         setupUI()
         configureUI()
         setupMap()
@@ -754,7 +784,7 @@ class PlaceDetailViewController: BaseViewController {
         // Place was successfully added from the modal AddPlaceViewController
         // Hide the add button since the place is now in user's circle
         DispatchQueue.main.async { [weak self] in
-            self?.addToCircleButton.isHidden = true
+            self?.setAddToCircleVisible(false)
             self?.updateAddressTitleConstraint()
             
             // Show a subtle success message
@@ -926,14 +956,22 @@ class PlaceDetailViewController: BaseViewController {
         let creatorTapGesture = UITapGestureRecognizer(target: self, action: #selector(creatorLabelTapped(_:)))
         creatorLabel.addGestureRecognizer(creatorTapGesture)
         
+        // Saved-by row (tap shows the full savers list)
+        infoContainerView.addSubview(savedByView)
+        savedByView.addSubview(savedByFacepileView)
+        savedByView.addSubview(savedByLabel)
+        savedByView.addSubview(savedByChevron)
+        let savedByTapGesture = UITapGestureRecognizer(target: self, action: #selector(showSaversList))
+        savedByView.addGestureRecognizer(savedByTapGesture)
+
         infoContainerView.addSubview(addToCircleButton)
-        infoContainerView.addSubview(addressTitleLabel)
+        infoContainerView.addSubview(practicalButtonsStackView)
         infoContainerView.addSubview(addressLabel)
-        infoContainerView.addSubview(updateAddressButton)
         infoContainerView.addSubview(hoursLabel)
         infoContainerView.addSubview(mapView)
-        infoContainerView.addSubview(navigateButton)
-        
+        infoContainerView.addSubview(venueRewardsView)
+        venueRewardsView.delegate = self
+
         // Always add notes labels - visibility will be controlled in configureUI
         infoContainerView.addSubview(notesTitleLabel)
         infoContainerView.addSubview(notesButtonsStackView)
@@ -955,17 +993,30 @@ class PlaceDetailViewController: BaseViewController {
             infoContainerView.addSubview(tagsStackView)
         }
         
-        // Add contact buttons directly to imageView if available  
+        // Practical actions row: Directions / Website / Call / Edit
+        practicalButtonsStackView.addArrangedSubview(directionsRowButton)
+        directionsRowButton.addTarget(self, action: #selector(directionsButtonTapped), for: .touchUpInside)
+
         if place.website != nil {
-            mediaCarouselView.addSubview(websiteButton)
+            practicalButtonsStackView.addArrangedSubview(websiteButton)
             websiteButton.addTarget(self, action: #selector(websiteButtonTapped), for: .touchUpInside)
         }
-        
+
         if place.phone != nil {
-            mediaCarouselView.addSubview(phoneButton)
+            practicalButtonsStackView.addArrangedSubview(phoneButton)
             phoneButton.addTarget(self, action: #selector(phoneButtonTapped), for: .touchUpInside)
         }
-        
+
+        if canEdit {
+            practicalButtonsStackView.addArrangedSubview(editPlaceRowButton)
+            editPlaceRowButton.addTarget(self, action: #selector(editButtonTapped), for: .touchUpInside)
+        } else if place.googlePlaceId != nil {
+            // Non-editors can't fix venue info (Google is the source of
+            // truth), but they can flag it for review
+            practicalButtonsStackView.addArrangedSubview(flagPlaceRowButton)
+            flagPlaceRowButton.addTarget(self, action: #selector(flagPlaceInfoTapped), for: .touchUpInside)
+        }
+
         // Add action buttons container before circle info
         infoContainerView.addSubview(actionButtonsContainer)
         actionButtonsContainer.addSubview(likeButton)
@@ -973,20 +1024,18 @@ class PlaceDetailViewController: BaseViewController {
         actionButtonsContainer.addSubview(commentButton)
         actionButtonsContainer.addSubview(commentCountLabel)
         actionButtonsContainer.addSubview(shareButton)
-        
+
         // Add comments section
         infoContainerView.addSubview(commentsSection)
         commentsSection.addSubview(commentsSectionTitle)
         commentsSection.addSubview(viewAllCommentsButton)
         commentsSection.addSubview(commentsStackView)
-        actionButtonsContainer.addSubview(directionsButton)
-        
+
         // Add targets for action buttons
         likeButton.addTarget(self, action: #selector(likeButtonTapped), for: .touchUpInside)
         commentButton.addTarget(self, action: #selector(commentButtonTapped), for: .touchUpInside)
         viewAllCommentsButton.addTarget(self, action: #selector(commentButtonTapped), for: .touchUpInside)
         shareButton.addTarget(self, action: #selector(shareButtonTapped), for: .touchUpInside)
-        directionsButton.addTarget(self, action: #selector(directionsButtonTapped), for: .touchUpInside)
         
         // Add tap gesture to like count label to show likes list
         let likeCountTapGesture = UITapGestureRecognizer(target: self, action: #selector(showLikesList))
@@ -1004,14 +1053,8 @@ class PlaceDetailViewController: BaseViewController {
         // Add target for update info button
         // updateInfoButton.addTarget(self, action: #selector(updateInfoButtonTapped), for: .touchUpInside) // Commented - automatic migration
         
-        // Add target for update address button
-        updateAddressButton.addTarget(self, action: #selector(updateAddressButtonTapped), for: .touchUpInside)
-        
         // Add target for edit image button
-        editImageButton.addTarget(self, action: #selector(editImageButtonTapped), for: .touchUpInside)
-        
-        // Add target for navigate button
-        navigateButton.addTarget(self, action: #selector(directionsButtonTapped), for: .touchUpInside)
+        editImageButton.addTarget(self, action: #selector(editImageButtonTapped(_:)), for: .touchUpInside)
         
         // Add target for notes edit button
         notesEditButton.addTarget(self, action: #selector(notesEditButtonTapped), for: .touchUpInside)
@@ -1020,8 +1063,8 @@ class PlaceDetailViewController: BaseViewController {
         addNotesButton.addTarget(self, action: #selector(addNotesButtonTapped), for: .touchUpInside)
         
         // Add target for photo buttons
-        photosEditButton.addTarget(self, action: #selector(editImageButtonTapped), for: .touchUpInside)
-        addPhotoButton.addTarget(self, action: #selector(editImageButtonTapped), for: .touchUpInside)
+        photosEditButton.addTarget(self, action: #selector(editImageButtonTapped(_:)), for: .touchUpInside)
+        addPhotoButton.addTarget(self, action: #selector(editImageButtonTapped(_:)), for: .touchUpInside)
         
         ratingView.addSubview(ratingImageView)
         ratingView.addSubview(ratingLabel)
@@ -1030,12 +1073,10 @@ class PlaceDetailViewController: BaseViewController {
         let ratingTapGesture = UITapGestureRecognizer(target: self, action: #selector(ratingViewTapped))
         ratingView.addGestureRecognizer(ratingTapGesture)
         
-        // Add navigation bar buttons
-        let directionButton = UIBarButtonItem(image: UIImage(systemName: "map"), style: .plain, target: self, action: #selector(directionsButtonTapped))
-        let moveButton = UIBarButtonItem(image: UIImage(systemName: "arrow.right.circle"), style: .plain, target: self, action: #selector(moveToCircleButtonTapped))
+        // Add navigation bar buttons — everything else lives in the ••• menu
         let moreButton = UIBarButtonItem(image: UIImage(systemName: "ellipsis.circle"), style: .plain, target: self, action: #selector(moreButtonTapped))
         // shareButton already added to navigationItem.rightBarButtonItem above
-        navigationItem.rightBarButtonItems = [moreButton, moveButton, navigationItem.rightBarButtonItem!, directionButton]
+        navigationItem.rightBarButtonItems = [moreButton, navigationItem.rightBarButtonItem!]
         
         // Layout constraints
         NSLayoutConstraint.activate([
@@ -1099,19 +1140,62 @@ class PlaceDetailViewController: BaseViewController {
             categoryEditButton.widthAnchor.constraint(equalToConstant: 24),
             categoryEditButton.heightAnchor.constraint(equalToConstant: 24),
             
+            // Rating view - directly under the name, hidden if no rating
+            ratingView.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: Constants.Spacing.small),
+            ratingView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
+            ratingView.heightAnchor.constraint(equalToConstant: 26),
+
+            // Rating image view
+            ratingImageView.leadingAnchor.constraint(equalTo: ratingView.leadingAnchor, constant: Constants.Spacing.small),
+            ratingImageView.centerYAnchor.constraint(equalTo: ratingView.centerYAnchor),
+            ratingImageView.widthAnchor.constraint(equalToConstant: 18),
+            ratingImageView.heightAnchor.constraint(equalToConstant: 18),
+
+            // Rating label
+            ratingLabel.leadingAnchor.constraint(equalTo: ratingImageView.trailingAnchor, constant: Constants.Spacing.small),
+            ratingLabel.trailingAnchor.constraint(equalTo: ratingView.trailingAnchor, constant: -Constants.Spacing.small),
+            ratingLabel.centerYAnchor.constraint(equalTo: ratingView.centerYAnchor),
+
+            // Address label - one-liner under the rating
+            addressLabel.topAnchor.constraint(equalTo: ratingView.bottomAnchor, constant: Constants.Spacing.small),
+            addressLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
+            addressLabel.trailingAnchor.constraint(lessThanOrEqualTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
+
+            // Hours label - will be hidden if no hours available
+            hoursLabel.topAnchor.constraint(equalTo: addressLabel.bottomAnchor, constant: Constants.Spacing.small),
+            hoursLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
+            hoursLabel.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
+
             // Creator info view
-            creatorInfoView.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: Constants.Spacing.small),
+            creatorInfoView.topAnchor.constraint(equalTo: hoursLabel.bottomAnchor, constant: Constants.Spacing.medium),
             creatorInfoView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
             creatorInfoView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
             creatorInfoView.heightAnchor.constraint(equalToConstant: 24),
-            
+
             // Creator label
             creatorLabel.leadingAnchor.constraint(equalTo: creatorInfoView.leadingAnchor, constant: Constants.Spacing.small),
             creatorLabel.trailingAnchor.constraint(equalTo: creatorInfoView.trailingAnchor, constant: -Constants.Spacing.small),
             creatorLabel.centerYAnchor.constraint(equalTo: creatorInfoView.centerYAnchor),
-            
+
+            // Saved-by row - collapses to zero height until savers load
+            savedByView.topAnchor.constraint(equalTo: creatorInfoView.bottomAnchor, constant: Constants.Spacing.small),
+            savedByView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
+            savedByView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
+
+            savedByFacepileView.leadingAnchor.constraint(equalTo: savedByView.leadingAnchor, constant: Constants.Spacing.small),
+            savedByFacepileView.centerYAnchor.constraint(equalTo: savedByView.centerYAnchor),
+
+            savedByLabel.leadingAnchor.constraint(equalTo: savedByFacepileView.trailingAnchor, constant: Constants.Spacing.small),
+            savedByLabel.centerYAnchor.constraint(equalTo: savedByView.centerYAnchor),
+            savedByLabel.trailingAnchor.constraint(lessThanOrEqualTo: savedByChevron.leadingAnchor, constant: -Constants.Spacing.small),
+
+            savedByChevron.trailingAnchor.constraint(equalTo: savedByView.trailingAnchor, constant: -Constants.Spacing.small),
+            savedByChevron.centerYAnchor.constraint(equalTo: savedByView.centerYAnchor),
+            savedByChevron.widthAnchor.constraint(equalToConstant: 14),
+            savedByChevron.heightAnchor.constraint(equalToConstant: 14),
+
             // Action buttons container
-            actionButtonsContainer.topAnchor.constraint(equalTo: creatorInfoView.bottomAnchor, constant: Constants.Spacing.medium),
+            actionButtonsContainer.topAnchor.constraint(equalTo: savedByView.bottomAnchor, constant: Constants.Spacing.small),
             actionButtonsContainer.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor),
             actionButtonsContainer.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor),
             actionButtonsContainer.heightAnchor.constraint(equalToConstant: 44),
@@ -1140,80 +1224,62 @@ class PlaceDetailViewController: BaseViewController {
             shareButton.widthAnchor.constraint(equalToConstant: 30),
             shareButton.heightAnchor.constraint(equalToConstant: 30),
             
-            // Directions button on the right
-            directionsButton.trailingAnchor.constraint(equalTo: actionButtonsContainer.trailingAnchor, constant: -Constants.Spacing.medium),
-            directionsButton.centerYAnchor.constraint(equalTo: actionButtonsContainer.centerYAnchor),
-            directionsButton.widthAnchor.constraint(equalToConstant: 30),
-            directionsButton.heightAnchor.constraint(equalToConstant: 30),
-            
-            // Rating view - will be hidden if no rating
-            ratingView.topAnchor.constraint(equalTo: actionButtonsContainer.bottomAnchor, constant: Constants.Spacing.small),
-            ratingView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
-            ratingView.heightAnchor.constraint(equalToConstant: 26),
-            
-            // Rating image view
-            ratingImageView.leadingAnchor.constraint(equalTo: ratingView.leadingAnchor, constant: Constants.Spacing.small),
-            ratingImageView.centerYAnchor.constraint(equalTo: ratingView.centerYAnchor),
-            ratingImageView.widthAnchor.constraint(equalToConstant: 18),
-            ratingImageView.heightAnchor.constraint(equalToConstant: 18),
-            
-            // Rating label
-            ratingLabel.leadingAnchor.constraint(equalTo: ratingImageView.trailingAnchor, constant: Constants.Spacing.small),
-            ratingLabel.trailingAnchor.constraint(equalTo: ratingView.trailingAnchor, constant: -Constants.Spacing.small),
-            ratingLabel.centerYAnchor.constraint(equalTo: ratingView.centerYAnchor),
-            
-            // Rating view trailing constraint - let it size based on content
-            ratingView.trailingAnchor.constraint(equalTo: ratingLabel.trailingAnchor, constant: Constants.Spacing.small),
-            
-            // Description label - always anchor to rating view
-            descriptionLabel.topAnchor.constraint(equalTo: ratingView.bottomAnchor, constant: Constants.Spacing.small),
+            // Add to Circle button - the single primary CTA; height + top gap
+            // are stored below and collapse while hidden so no blank band
+            // remains (hidden views keep their constraints)
+            addToCircleButton.centerXAnchor.constraint(equalTo: infoContainerView.centerXAnchor),
+            addToCircleButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 200),
+
+            // Practical actions row
+            practicalButtonsStackView.topAnchor.constraint(equalTo: addToCircleButton.bottomAnchor, constant: Constants.Spacing.medium),
+            practicalButtonsStackView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
+            practicalButtonsStackView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
+            practicalButtonsStackView.heightAnchor.constraint(equalToConstant: 44),
+
+            // Description label
+            descriptionLabel.topAnchor.constraint(equalTo: practicalButtonsStackView.bottomAnchor, constant: Constants.Spacing.medium),
             descriptionLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
             descriptionLabel.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
-            
-            // Add to Circle button - always in the layout flow, visibility controlled by isHidden
-            addToCircleButton.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: Constants.Spacing.medium),
-            addToCircleButton.centerXAnchor.constraint(equalTo: infoContainerView.centerXAnchor),
-            addToCircleButton.heightAnchor.constraint(equalToConstant: 44),
-            addToCircleButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 200),
-            
-            // Address title label
-            addressTitleLabel.topAnchor.constraint(equalTo: addToCircleButton.bottomAnchor, constant: Constants.Spacing.large),
-            addressTitleLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
-            
-            // Address label
-            addressLabel.topAnchor.constraint(equalTo: addressTitleLabel.bottomAnchor, constant: Constants.Spacing.tiny),
-            addressLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
-            addressLabel.trailingAnchor.constraint(lessThanOrEqualTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
-            
-            // Update Address button - positioned to the right of address label
-            updateAddressButton.centerYAnchor.constraint(equalTo: addressLabel.centerYAnchor),
-            updateAddressButton.leadingAnchor.constraint(greaterThanOrEqualTo: addressLabel.trailingAnchor, constant: Constants.Spacing.small),
-            updateAddressButton.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
-            updateAddressButton.heightAnchor.constraint(equalToConstant: 28),
-            updateAddressButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 110),
-            
-            // Hours label - will be hidden if no hours available
-            hoursLabel.topAnchor.constraint(equalTo: addressLabel.bottomAnchor, constant: Constants.Spacing.small),
-            hoursLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
-            hoursLabel.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
-            
-            // Map view
-            mapView.topAnchor.constraint(equalTo: hoursLabel.bottomAnchor, constant: Constants.Spacing.medium),
+
+            // Map view - tap opens directions
+            mapView.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: Constants.Spacing.medium),
             mapView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
             mapView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
-            mapView.heightAnchor.constraint(equalToConstant: 160),
-            
-            // Navigate button
-            navigateButton.topAnchor.constraint(equalTo: mapView.bottomAnchor, constant: Constants.Spacing.medium),
-            navigateButton.centerXAnchor.constraint(equalTo: infoContainerView.centerXAnchor),
-            navigateButton.heightAnchor.constraint(equalToConstant: 50),
-            navigateButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 160)
+            mapView.heightAnchor.constraint(equalToConstant: 160)
         ])
-        
+
+        // Saved-by row collapses until savers are loaded
+        let savedByHeight = savedByView.heightAnchor.constraint(equalToConstant: 0)
+        savedByHeight.isActive = true
+        savedByHeightConstraint = savedByHeight
+
+        // Add-to-Circle button collapses (height + top gap) while hidden,
+        // mirroring the savedByView pattern. Starts collapsed; shown by
+        // setAddToCircleVisible(true) when the place can be added.
+        let addToCircleTop = addToCircleButton.topAnchor.constraint(equalTo: actionButtonsContainer.bottomAnchor, constant: 0)
+        let addToCircleHeight = addToCircleButton.heightAnchor.constraint(equalToConstant: 0)
+        NSLayoutConstraint.activate([addToCircleTop, addToCircleHeight])
+        addToCircleTopConstraint = addToCircleTop
+        addToCircleHeightConstraint = addToCircleHeight
+
+        // Venue rewards section sits between the map and the notes; collapsed
+        // (zero height, zero top gap) until a venue is found, mirroring the
+        // savedByView pattern above
+        let venueTop = venueRewardsView.topAnchor.constraint(equalTo: mapView.bottomAnchor, constant: 0)
+        let venueHeight = venueRewardsView.heightAnchor.constraint(equalToConstant: 0)
+        NSLayoutConstraint.activate([
+            venueTop,
+            venueRewardsView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
+            venueRewardsView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
+            venueHeight
+        ])
+        venueRewardsTopConstraint = venueTop
+        venueRewardsHeightConstraint = venueHeight
+
         // Dynamic constraints based on available data
-        var lastAnchor: NSLayoutYAxisAnchor = navigateButton.bottomAnchor
+        var lastAnchor: NSLayoutYAxisAnchor = venueRewardsView.bottomAnchor
         var additionalSpacing: CGFloat = Constants.Spacing.medium
-        
+
         // Always set up notes constraints - visibility controlled in configureUI
         NSLayoutConstraint.activate([
             notesTitleLabel.topAnchor.constraint(equalTo: lastAnchor, constant: additionalSpacing),
@@ -1254,34 +1320,6 @@ class PlaceDetailViewController: BaseViewController {
             ])
             
             lastAnchor = tagsStackView.bottomAnchor
-        }
-        
-        // Add contact button constraints - positioned on the image
-        if place.website != nil && place.phone != nil {
-            // Both buttons - position side by side
-            NSLayoutConstraint.activate([
-                websiteButton.leadingAnchor.constraint(equalTo: mediaCarouselView.leadingAnchor, constant: 16),
-                websiteButton.bottomAnchor.constraint(equalTo: mediaCarouselView.bottomAnchor, constant: -16),
-                websiteButton.heightAnchor.constraint(equalToConstant: 36),
-                
-                phoneButton.leadingAnchor.constraint(equalTo: websiteButton.trailingAnchor, constant: 8),
-                phoneButton.bottomAnchor.constraint(equalTo: mediaCarouselView.bottomAnchor, constant: -16),
-                phoneButton.heightAnchor.constraint(equalToConstant: 36)
-            ])
-        } else if place.website != nil {
-            // Only website button
-            NSLayoutConstraint.activate([
-                websiteButton.leadingAnchor.constraint(equalTo: mediaCarouselView.leadingAnchor, constant: 16),
-                websiteButton.bottomAnchor.constraint(equalTo: mediaCarouselView.bottomAnchor, constant: -16),
-                websiteButton.heightAnchor.constraint(equalToConstant: 36)
-            ])
-        } else if place.phone != nil {
-            // Only phone button
-            NSLayoutConstraint.activate([
-                phoneButton.leadingAnchor.constraint(equalTo: mediaCarouselView.leadingAnchor, constant: 16),
-                phoneButton.bottomAnchor.constraint(equalTo: mediaCarouselView.bottomAnchor, constant: -16),
-                phoneButton.heightAnchor.constraint(equalToConstant: 36)
-            ])
         }
         
         // Add comments section constraints
@@ -1327,12 +1365,6 @@ class PlaceDetailViewController: BaseViewController {
         }
         
         // Ensure all buttons on imageView are interactive
-        if place.website != nil {
-            mediaCarouselView.bringSubviewToFront(websiteButton)
-        }
-        if place.phone != nil {
-            mediaCarouselView.bringSubviewToFront(phoneButton)
-        }
         mediaCarouselView.bringSubviewToFront(streetViewToggleButton)
         mediaCarouselView.bringSubviewToFront(editImageButton)
         // mediaCarouselView.bringSubviewToFront(updateInfoButton) // Commented - automatic migration
@@ -1351,9 +1383,15 @@ class PlaceDetailViewController: BaseViewController {
         // Add to Circle button
         configureAddToCircleButton()
         
-        // Category
-        categoryLabel.text = "  \(place.displayCategory)  " // Add padding with spaces
-        
+        // Category - "Other" is noise, so hide the chip for it
+        if place.displayCategory == "Other" {
+            categoryLabel.text = ""
+            categoryLabel.isHidden = true
+        } else {
+            categoryLabel.text = "  \(place.displayCategory)  " // Add padding with spaces
+            categoryLabel.isHidden = false
+        }
+
         // Set category color using centralized property
         categoryLabel.backgroundColor = place.category.color
         
@@ -1362,7 +1400,11 @@ class PlaceDetailViewController: BaseViewController {
         
         // Update edit button visibility based on whether user can edit this place
         let canEdit = place.isAddedByCurrentUser || isHomeOrWorkPlace
-        editImageButton.isHidden = !canEdit
+        // Anyone who can view the place can contribute photos — they're stored
+        // in the shared Global Place system with "Photo by [name]" attribution,
+        // and users can only delete their own. Owner-only actions (Street View
+        // image, Remove Photo) are gated inside the action sheet instead.
+        editImageButton.isHidden = false
         categoryEditButton.isHidden = !canEdit
         
         // Update photo section buttons visibility
@@ -1394,10 +1436,6 @@ class PlaceDetailViewController: BaseViewController {
         // Show button if showing default icon AND either has googlePlaceId OR has location coordinates
         let canSearchGooglePlaces = place.googlePlaceId != nil || place.location != nil
         // updateInfoButton.isHidden = !isShowingDefaultIcon || !canSearchGooglePlaces // Commented - automatic migration
-        
-        // Show Update Address button if place has location coordinates
-        let hasLocation = place.location?.clLocation != nil
-        updateAddressButton.isHidden = !hasLocation
         
         // Description - only show if available
         print("🔍 [PlaceDetailViewController] Place ID: \(place.id)")
@@ -1483,15 +1521,6 @@ class PlaceDetailViewController: BaseViewController {
             setupTagsView(tags: tags)
         }
         
-        // Website and phone buttons
-        if let website = place.website {
-            websiteButton.setTitle("Visit Website", for: .normal)
-        }
-        
-        if let phone = place.phone {
-            phoneButton.setTitle("Call", for: .normal)
-        }
-        
         // Price Level
         if let priceLevel = place.priceLevel {
             let priceString = String(repeating: "$", count: priceLevel.rawValue + 1)
@@ -1516,8 +1545,7 @@ class PlaceDetailViewController: BaseViewController {
         updateLikeButton()
         
         // Update comment count immediately from place data
-        let commentCount = place.commentsCount ?? 0
-        commentCountLabel.text = "\(commentCount)"
+        updateCommentCount(place.commentsCount ?? 0)
         
         // Fetch full comments for inline display
         fetchCommentCount()
@@ -1537,8 +1565,6 @@ class PlaceDetailViewController: BaseViewController {
             }
         }
         
-        // Hide navigate button if no location available
-        navigateButton.isHidden = (place.location == nil)
     }
     
     private func updateCircleInfo() {
@@ -1649,6 +1675,10 @@ class PlaceDetailViewController: BaseViewController {
             
             // Select the annotation to show callout
             mapView.selectAnnotation(annotation, animated: false)
+
+            // Tapping the map opens directions (replaces the old Navigate button)
+            let mapTapGesture = UITapGestureRecognizer(target: self, action: #selector(directionsButtonTapped))
+            mapView.addGestureRecognizer(mapTapGesture)
         }
     }
     
@@ -1762,38 +1792,77 @@ class PlaceDetailViewController: BaseViewController {
         
         if place.addedBy == currentUserId {
             // User created this place
-            addToCircleButton.isHidden = true
+            setAddToCircleVisible(false)
             return
         }
         
-        // Check if user already has this place
+        // Check if user already has this place. Matching by save-doc id is
+        // not enough: arriving from the activity feed, this screen holds
+        // ANOTHER user's copy (different doc id) of a venue the current user
+        // may also have saved — compare by venue identity instead.
         CircleService.shared.fetchUserCircles { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                
+
                 switch result {
                 case .success(let userCircles):
-                    // Check if any of user's circles contain this place
-                    let hasPlace = userCircles.contains { circle in
-                        circle.places?.contains(self.place.id) ?? false
+                    guard !userCircles.isEmpty else {
+                        // User has no circles to add to
+                        self.setAddToCircleVisible(false)
+                        return
                     }
-                    
-                    if hasPlace {
-                        self.addToCircleButton.isHidden = true
-                    } else if userCircles.isEmpty {
-                        // User has no circles
-                        self.addToCircleButton.isHidden = true
-                    } else {
-                        // Show the button
-                        self.addToCircleButton.isHidden = false
-                        self.addToCircleButton.addTarget(self, action: #selector(self.addToCircleButtonTapped), for: .touchUpInside)
+
+                    // Same doc id in a circle = definitely already saved
+                    if userCircles.contains(where: { $0.places?.contains(self.place.id) ?? false }) {
+                        self.setAddToCircleVisible(false)
+                        return
                     }
-                    
+
+                    PlaceService.shared.fetchPlacesByMultipleCircles(circleIds: userCircles.map(\.id)) { [weak self] placesResult in
+                        DispatchQueue.main.async {
+                            guard let self = self else { return }
+                            switch placesResult {
+                            case .success(let myPlaces):
+                                if myPlaces.contains(where: { self.isSameVenue(as: $0) }) {
+                                    self.setAddToCircleVisible(false)
+                                } else {
+                                    self.setAddToCircleVisible(true)
+                                    self.addToCircleButton.addTarget(self, action: #selector(self.addToCircleButtonTapped), for: .touchUpInside)
+                                }
+                            case .failure:
+                                // Can't verify — keep the button so adding stays
+                                // possible (the add flow has its own duplicate check)
+                                self.setAddToCircleVisible(true)
+                                self.addToCircleButton.addTarget(self, action: #selector(self.addToCircleButtonTapped), for: .touchUpInside)
+                            }
+                        }
+                    }
+
                 case .failure:
-                    self.addToCircleButton.isHidden = true
+                    self.setAddToCircleVisible(false)
                 }
             }
         }
+    }
+
+    /// Is `other` (one of the current user's saved places) the same real-world
+    /// venue as the place on this screen? Ids first, then name+address.
+    private func isSameVenue(as other: Place) -> Bool {
+        if let gpid = place.googlePlaceId, !gpid.isEmpty, other.googlePlaceId == gpid {
+            return true
+        }
+        if let globalId = place.globalPlaceId, !globalId.isEmpty,
+           other.globalPlaceId == globalId || other.id == globalId {
+            return true
+        }
+        // The screen may hold a converted GlobalPlace whose id IS the global id
+        if other.globalPlaceId == place.id {
+            return true
+        }
+        let normalize = { (s: String) in s.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }
+        return normalize(other.name) == normalize(place.name)
+            && !place.address.isEmpty
+            && normalize(other.address) == normalize(place.address)
     }
     
     private func updateAddressTitleConstraint() {
@@ -1814,13 +1883,72 @@ class PlaceDetailViewController: BaseViewController {
         }
     }
     
+    /// The place handed in by the parent list can be stale — refetch it so
+    /// photos (and other fields) added since the list loaded are reflected.
+    private func refreshPlaceFromServer() {
+        guard !isHomeOrWorkPlace else { return }
+
+        PlaceService.shared.fetchPlaceById(id: place.id) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self, case .success(let updatedPlace) = result else { return }
+                self.place = updatedPlace
+                self.updateMediaCarousel()
+                // Likes/comments are global per place, so the server-refreshed
+                // copy can carry social state the stale list copy didn't have
+                self.updateLikeButton()
+                self.updateCommentCount(updatedPlace.commentsCount ?? 0)
+                if let photos = updatedPlace.photos, !photos.isEmpty, updatedPlace.isAddedByCurrentUser {
+                    self.addPhotoButton.isHidden = true
+                    self.photosEditButton.isHidden = false
+                }
+            }
+        }
+    }
+
+    // MARK: - Venue rewards (offers + announcements for this place)
+
+    private func loadVenueRewards() {
+        RewardsService.shared.getVenueByPlace(
+            placeId: place.globalPlaceId ?? place.id,
+            googlePlaceId: place.googlePlaceId
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success(let data):
+                    self.placeVenueData = data
+                    self.venueRewardsView.configure(with: data)
+                    // The card shows for enrolled venues AND for the venue-less
+                    // "Is this your store?" claim states — collapsing on
+                    // !hasVenue alone clipped the claim card to zero height
+                    let hasVenue = data.venue != nil
+                    let showsClaimCard = (data.claim?.canClaim == true) || (data.claim?.myClaimStatus != nil)
+                    let showCard = hasVenue || showsClaimCard
+                    self.venueRewardsHeightConstraint?.isActive = !showCard
+                    self.venueRewardsTopConstraint?.constant = showCard ? Constants.Spacing.medium : 0
+                    self.view.layoutIfNeeded()
+
+                    // Owners get a storefront button in the nav bar - the same
+                    // icon as the profile entry, one consistent visual language
+                    if hasVenue && data.isOwner == true {
+                        self.addStorefrontNavButtonIfNeeded()
+                    }
+                case .failure:
+                    // Additive section — a failed lookup just leaves it collapsed
+                    self.venueRewardsView.configure(with: nil)
+                }
+            }
+        }
+    }
+
     private func loadGlobalPlaceData() {
         // Try to load global place data if available
         // This provides better photo attribution and user tags
         print("🔍 [PlaceDetailViewController] Starting loadGlobalPlaceData for place: \(place.name)")
-        print("📍 [PlaceDetailViewController] Using legacy place ID: \(place.id)")
-        
-        GlobalPlaceService.shared.getGlobalPlace(id: place.id) { [weak self] result in
+
+        // Same id preference as the upload path (MediaStorageService), so reads
+        // and writes resolve to the same GlobalPlace doc
+        GlobalPlaceService.shared.getGlobalPlace(id: place.globalPlaceId ?? place.id) { [weak self] result in
             switch result {
             case .success(let globalPlaceResponse):
                 DispatchQueue.main.async {
@@ -1871,8 +1999,8 @@ class PlaceDetailViewController: BaseViewController {
     
     private func retryGlobalPlaceDataLoad() {
         print("🔄 [PlaceDetailViewController] Retrying GlobalPlace data load...")
-        
-        GlobalPlaceService.shared.getGlobalPlace(id: place.id) { [weak self] result in
+
+        GlobalPlaceService.shared.getGlobalPlace(id: place.globalPlaceId ?? place.id) { [weak self] result in
             switch result {
             case .success(let globalPlaceResponse):
                 DispatchQueue.main.async {
@@ -2078,13 +2206,21 @@ class PlaceDetailViewController: BaseViewController {
         let editAction = (title: "Edit Place", style: UIAlertAction.Style.default, handler: { [weak self] () -> Void in
             self?.editButtonTapped()
         })
-        
+
         let moveAction = (title: "Move to Different Circle", style: UIAlertAction.Style.default, handler: { [weak self] () -> Void in
             self?.moveToCircleButtonTapped()
         })
-        
+
+        var actions = [editAction, moveAction]
+
+        if place.location?.clLocation != nil {
+            actions.append((title: "Update Address", style: UIAlertAction.Style.default, handler: { [weak self] () -> Void in
+                self?.updateAddressButtonTapped()
+            }))
+        }
+
         AlertPresenter.showActionSheet(
-            actions: [editAction, moveAction],
+            actions: actions,
             from: self,
             sourceView: navigationItem.rightBarButtonItems?.first?.value(forKey: "view") as? UIView
         )
@@ -2095,6 +2231,10 @@ class PlaceDetailViewController: BaseViewController {
         editPlaceVC.delegate = self
         let navController = UINavigationController(rootViewController: editPlaceVC)
         present(navController, animated: true)
+    }
+
+    @objc private func flagPlaceInfoTapped() {
+        promptFlagPlaceInfo(placeId: place.id, placeName: place.name)
     }
     
     @objc private func moveToCircleButtonTapped() {
@@ -2158,6 +2298,68 @@ class PlaceDetailViewController: BaseViewController {
             likesVC.placeName = place.name
             navigationController?.pushViewController(likesVC, animated: true)
         }
+    }
+
+    // MARK: - Saved By
+
+    private func loadPlaceSavers() {
+        PlaceService.shared.fetchPlaceSavers(id: place.id) { [weak self] result in
+            DispatchQueue.main.async {
+                if case .success(let response) = result {
+                    self?.configureSavedByRow(with: response)
+                }
+            }
+        }
+    }
+
+    private func configureSavedByRow(with response: PlaceSaversResponse) {
+        // The adder alone isn't social proof - the creator row already covers that
+        guard response.totalCount > 1 else {
+            savedByView.isHidden = true
+            savedByHeightConstraint?.constant = 0
+            return
+        }
+
+        savedByLabel.text = "Saved by \(response.totalCount) people"
+
+        // Facepile of up to 3 saver avatars
+        savedByFacepileView.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        for user in response.savers.prefix(3) {
+            let avatarView = UIImageView()
+            avatarView.contentMode = .scaleAspectFill
+            avatarView.clipsToBounds = true
+            avatarView.layer.cornerRadius = 12
+            avatarView.layer.borderWidth = 1.5
+            avatarView.layer.borderColor = Constants.Colors.secondaryBackground.cgColor
+            avatarView.backgroundColor = Constants.Colors.tertiaryBackground
+            avatarView.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                avatarView.widthAnchor.constraint(equalToConstant: 24),
+                avatarView.heightAnchor.constraint(equalToConstant: 24)
+            ])
+            avatarView.image = UIImage(systemName: "person.circle.fill")
+            avatarView.tintColor = Constants.Colors.primary
+            if let profilePicture = user.profilePicture {
+                ImageService.shared.loadImage(from: profilePicture) { [weak avatarView] image in
+                    DispatchQueue.main.async {
+                        if let image = image {
+                            avatarView?.image = image
+                        }
+                    }
+                }
+            }
+            savedByFacepileView.addArrangedSubview(avatarView)
+        }
+
+        savedByView.isHidden = false
+        savedByHeightConstraint?.constant = 40
+    }
+
+    @objc private func showSaversList() {
+        let saversVC = PlaceSaversViewController()
+        saversVC.placeId = place.id
+        saversVC.placeName = place.name
+        navigationController?.pushViewController(saversVC, animated: true)
     }
     
     @objc private func commentButtonTapped() {
@@ -2470,10 +2672,15 @@ class PlaceDetailViewController: BaseViewController {
             DispatchQueue.main.async {
                 loadingAlert.dismiss(animated: true) {
                     switch result {
-                    case .success(_):
+                    case .success(let updatedPlace):
+                        // Keep the in-memory model in sync — the notes editor
+                        // seeds from self.place, so a stale copy would show
+                        // (and then re-save) the old text
+                        self.place = updatedPlace
+
                         // Update the UI with the new notes
                         var notesText = ""
-                        
+
                         if !publicNotes.isEmpty {
                             notesText = publicNotes
                         }
@@ -2524,7 +2731,7 @@ class PlaceDetailViewController: BaseViewController {
     
     // MARK: - Image Handling for Home/Work
     
-    @objc private func editImageButtonTapped() {
+    @objc private func editImageButtonTapped(_ sender: UIButton) {
         let actionSheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
         
         // Use MediaCaptureService for photo and video
@@ -2540,14 +2747,18 @@ class PlaceDetailViewController: BaseViewController {
             self?.mediaCaptureService.presentPhotoLibrary(from: self!, for: .both)
         })
         
+        // Owner-only entries: these mutate the place's own image via the
+        // legacy path, so only the person who added the place gets them
+        let isPlaceOwner = place.isAddedByCurrentUser || isHomeOrWorkPlace
+
         // Add street view option if available
-        if isStreetViewAvailable && streetViewImage != nil {
+        if isPlaceOwner && isStreetViewAvailable && streetViewImage != nil {
             actionSheet.addAction(UIAlertAction(title: "Use Street View", style: .default) { [weak self] _ in
                 self?.useStreetViewAsCustomImage()
             })
         }
-        
-        if customImage != nil || (place.photos != nil && !place.photos!.isEmpty) {
+
+        if isPlaceOwner && (customImage != nil || (place.photos != nil && !place.photos!.isEmpty)) {
             actionSheet.addAction(UIAlertAction(title: "Remove Photo", style: .destructive) { [weak self] _ in
                 self?.removeCustomImage()
             })
@@ -2555,12 +2766,15 @@ class PlaceDetailViewController: BaseViewController {
         
         actionSheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         
-        // For iPad
+        // Anchor to the button that was actually tapped — modern iOS pins
+        // action sheets to their source view, so anchoring to the top carousel
+        // button made the sheet appear at the top of the screen when opened
+        // from the photos-section buttons at the bottom
         if let popover = actionSheet.popoverPresentationController {
-            popover.sourceView = editImageButton
-            popover.sourceRect = editImageButton.bounds
+            popover.sourceView = sender
+            popover.sourceRect = sender.bounds
         }
-        
+
         present(actionSheet, animated: true)
     }
     
@@ -2641,7 +2855,7 @@ class PlaceDetailViewController: BaseViewController {
                     if let data = data, let image = UIImage(data: data) {
                         print("✅ PlaceDetailViewController: Successfully loaded photo \(index)")
                         DispatchQueue.main.async {
-                            self?.placePhotos.append(image)
+                            self?.placePhotos.append((image: image, url: photoUrl))
                         }
                     } else {
                         print("❌ PlaceDetailViewController: Failed to create image from data for photo \(index)")
@@ -2774,7 +2988,7 @@ class PlaceDetailViewController: BaseViewController {
                         // Clear any existing photos array to force reload if view is refreshed
                         self?.placePhotos.removeAll()
                         if let photos = updatedPlace.photos, !photos.isEmpty {
-                            self?.placePhotos.append(image)
+                            self?.placePhotos.append((image: image, url: photos.last))
                         }
                         
                     case .failure(let error):
@@ -3135,14 +3349,18 @@ extension PlaceDetailViewController: MediaCaptureServiceDelegate {
                 case .success(let storageResult):
                     // Update place with new image - add to carousel
                     self?.customImage = processedPhoto.image
-                    self?.placePhotos.append(processedPhoto.image)
-                    
+                    self?.placePhotos.append((image: processedPhoto.image, url: storageResult.storageUrls["photoUrl"]))
+
                     // Update photo section buttons
                     self?.addPhotoButton.isHidden = true
                     self?.photosEditButton.isHidden = false
-                    
+
+                    // Show the new photo immediately; the GlobalPlace refresh below
+                    // replaces it with the attributed server copy when it lands
+                    self?.updateMediaCarousel()
+
                     print("✅ [PlaceDetailViewController] Photo upload successful, refreshing Global Place data...")
-                    
+
                     // Clear any cached data and refresh Global Place data
                     self?.globalPlace = nil
                     self?.loadGlobalPlaceData()
@@ -3181,31 +3399,6 @@ extension PlaceDetailViewController: MediaCaptureServiceDelegate {
     }
 }
 
-// MARK: - PHPickerViewControllerDelegate
-extension PlaceDetailViewController: PHPickerViewControllerDelegate {
-    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-        picker.dismiss(animated: true)
-        
-        guard let result = results.first else { return }
-        
-        result.itemProvider.loadObject(ofClass: UIImage.self) { [weak self] object, error in
-            if let image = object as? UIImage {
-                DispatchQueue.main.async {
-                    self?.customImage = image
-                    self?.placePhotos.append(image)
-                    self?.updateMediaCarousel()
-                    self?.editImageButton.setTitle("Add Photo or Video", for: .normal)
-                    self?.saveImage(image)
-                    
-                    // Update photo section buttons
-                    self?.addPhotoButton.isHidden = true
-                    self?.photosEditButton.isHidden = false
-                }
-            }
-        }
-    }
-}
-
 // MARK: - MediaCarouselViewDelegate
 extension PlaceDetailViewController: MediaCarouselViewDelegate {
     func mediaCarouselView(_ carouselView: MediaCarouselView, didTapVideoAt index: Int, url: String) {
@@ -3218,6 +3411,25 @@ extension PlaceDetailViewController: MediaCarouselViewDelegate {
         
         present(playerViewController, animated: true) {
             player.play()
+        }
+    }
+
+    func mediaCarouselView(_ carouselView: MediaCarouselView, didSetPhotoLiked liked: Bool, photo: AttributedPhoto) {
+        guard let photoId = photo.photoId else { return }
+
+        // The carousel already toggled the heart optimistically — persist it,
+        // and re-sync from the server if the request fails
+        GlobalPlaceService.shared.setPhotoLiked(
+            placeId: place.globalPlaceId ?? place.id,
+            photoId: photoId,
+            liked: liked
+        ) { [weak self] result in
+            if case .failure(let error) = result {
+                print("❌ [PlaceDetailViewController] Photo like failed, re-syncing: \(error)")
+                DispatchQueue.main.async {
+                    self?.loadGlobalPlaceData()
+                }
+            }
         }
     }
 }
@@ -3262,7 +3474,7 @@ extension PlaceDetailViewController {
                             self?.navigationItem.title = newPlace.name
                             
                             // Hide the add button since this place is now in user's circle
-                            self?.addToCircleButton.isHidden = true
+                            self?.setAddToCircleVisible(false)
                             self?.updateAddressTitleConstraint()
                             
                             // Show update info button if the place needs photos
@@ -3321,9 +3533,9 @@ extension PlaceDetailViewController {
         likeButton.setImage(UIImage(systemName: heartImage), for: .normal)
         likeButton.tintColor = isLiked ? UIColor.systemRed : Constants.Colors.gray
         
-        // Update like count
+        // Update like count - blank instead of a noisy "0"
         let likeCount = place.likesCount ?? place.likes?.count ?? 0
-        likeCountLabel.text = "\(likeCount)"
+        likeCountLabel.text = likeCount > 0 ? "\(likeCount)" : ""
     }
     
     private func fetchCommentCount() {
@@ -3335,7 +3547,7 @@ extension PlaceDetailViewController {
                     self?.displayInlineComments(comments)
                 case .failure(let error):
                     Logger.error("Failed to fetch comments: \(error)")
-                    self?.commentCountLabel.text = "0"
+                    self?.commentCountLabel.text = ""
                     self?.commentsSection.isHidden = true
                 }
             }
@@ -3485,7 +3697,7 @@ extension PlaceDetailViewController {
     }
     
     private func updateCommentCount(_ count: Int) {
-        commentCountLabel.text = "\(count)"
+        commentCountLabel.text = count > 0 ? "\(count)" : ""
     }
     
     @objc private func inlineCommentLikeButtonTapped(_ sender: UIButton) {
@@ -3530,6 +3742,135 @@ extension PlaceDetailViewController {
                 case .failure(let error):
                     Logger.error("Failed to like comment: \(error)")
                     self?.showError("Failed to update like. Please try again.")
+                }
+            }
+        }
+    }
+}
+
+// MARK: - PlaceVenueRewardsViewDelegate
+extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
+
+    func placeVenueView(_ view: PlaceVenueRewardsView, didTapRedeem offer: RewardOffer, venue: PlaceVenue) {
+        confirmAndRedeemOffer(offer, venueId: venue.venueId, venueName: venue.venueName) { [weak self] _ in
+            // Refresh balance/affordability behind the voucher screen
+            self?.loadVenueRewards()
+        }
+    }
+
+    func placeVenueViewDidTapClaim(_ view: PlaceVenueRewardsView) {
+        // Ownership is verified by a human: the claimer's contact info is
+        // emailed to the admin, who approves or denies.
+        AlertPresenter.showMultiFieldInput(
+            title: "Claim \(place.name)",
+            message: "Tell us how to reach you — we'll verify that you own this business and set you up as its owner.",
+            fields: [
+                (placeholder: "Your name", keyboardType: .default, initialText: nil),
+                (placeholder: "Business email", keyboardType: .emailAddress, initialText: nil),
+                (placeholder: "Phone (optional)", keyboardType: .phonePad, initialText: nil)
+            ],
+            confirmTitle: "Submit claim",
+            from: self
+        ) { [weak self] values in
+            guard let self = self else { return }
+            let contactName = values.count > 0 ? values[0]?.trimmingCharacters(in: .whitespacesAndNewlines) : nil
+            let contactEmail = values.count > 1 ? values[1]?.trimmingCharacters(in: .whitespacesAndNewlines) : nil
+            let contactPhone = values.count > 2 ? values[2]?.trimmingCharacters(in: .whitespacesAndNewlines) : nil
+
+            guard let name = contactName, !name.isEmpty,
+                  let email = contactEmail, !email.isEmpty, email.contains("@") else {
+                self.showError("Please provide your name and a valid business email so we can verify your claim.")
+                return
+            }
+
+            let loading = AlertPresenter.showLoading(message: "Submitting...", from: self)
+            RewardsService.shared.claimPlace(
+                placeId: self.place.globalPlaceId ?? self.place.id,
+                googlePlaceId: self.place.googlePlaceId,
+                contactName: name,
+                contactEmail: email,
+                contactPhone: contactPhone
+            ) { [weak self] result in
+                DispatchQueue.main.async {
+                    loading.dismiss(animated: true) {
+                        guard let self = self else { return }
+                        switch result {
+                        case .success:
+                            self.showSuccess("Claim submitted — we'll be in touch after we verify your ownership.")
+                            self.loadVenueRewards()
+                        case .failure(let error):
+                            self.showError(error)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    func placeVenueViewDidTapManage(_ view: PlaceVenueRewardsView, venue: PlaceVenue) {
+        openVenueManagement(venue)
+    }
+
+    /// Storefront nav-bar button (owners only) — same destination as the
+    /// card's Manage Store button
+    @objc func storefrontNavButtonTapped() {
+        guard let venue = placeVenueData?.venue else { return }
+        openVenueManagement(venue)
+    }
+
+    private func addStorefrontNavButtonIfNeeded() {
+        let alreadyAdded = navigationItem.rightBarButtonItems?.contains {
+            $0.accessibilityLabel == "Manage Store"
+        } ?? false
+        guard !alreadyAdded else { return }
+
+        let storefrontButton = UIBarButtonItem(
+            image: UIImage(systemName: "storefront.fill"),
+            style: .plain,
+            target: self,
+            action: #selector(storefrontNavButtonTapped)
+        )
+        storefrontButton.accessibilityLabel = "Manage Store"
+        navigationItem.rightBarButtonItems = (navigationItem.rightBarButtonItems ?? []) + [storefrontButton]
+    }
+
+    private func openVenueManagement(_ venue: PlaceVenue) {
+        let loading = AlertPresenter.showLoading(message: "Loading...", from: self)
+        RewardsService.shared.getMyVenues { [weak self] result in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: true) {
+                    guard let self = self else { return }
+                    switch result {
+                    case .success(let venues):
+                        if let match = venues.first(where: { $0.venueId == venue.venueId }) {
+                            let manageVC = VenueManageViewController(venue: match)
+                            self.navigationController?.pushViewController(manageVC, animated: true)
+                        } else {
+                            // Super-users manage venues they don't own — fall back to the full list
+                            self.pushVenueManageFromAllVenues(venueId: venue.venueId)
+                        }
+                    case .failure(let error):
+                        self.showError(error)
+                    }
+                }
+            }
+        }
+    }
+
+    private func pushVenueManageFromAllVenues(venueId: String) {
+        RewardsService.shared.listVenues { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success(let venues):
+                    if let match = venues.first(where: { $0.venueId == venueId }) {
+                        let manageVC = VenueManageViewController(venue: match)
+                        self.navigationController?.pushViewController(manageVC, animated: true)
+                    } else {
+                        self.showError("Could not load this venue's management page.")
+                    }
+                case .failure(let error):
+                    self.showError(error)
                 }
             }
         }

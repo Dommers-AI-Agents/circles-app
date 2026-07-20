@@ -83,11 +83,18 @@ enum APIError: Error, LocalizedError {
             }
         }
         
-        // If we can't parse the response, try to extract a simple message
+        // If we can't parse the response, try to extract a simple message.
+        // Endpoints are split between {"message": ...} and {"error": ...}
+        // response shapes (rewards uses `error`) — accept both, otherwise the
+        // server's explanation is silently replaced by a generic status blurb.
         if let data = data,
-           let jsonObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let simpleMessage = jsonObject["message"] as? String {
-            return polishErrorMessage(simpleMessage)
+           let jsonObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let simpleMessage = jsonObject["message"] as? String, !simpleMessage.isEmpty {
+                return polishErrorMessage(simpleMessage)
+            }
+            if let errorText = jsonObject["error"] as? String, !errorText.isEmpty {
+                return polishErrorMessage(errorText)
+            }
         }
         
         // Fallback to user-friendly status code messages

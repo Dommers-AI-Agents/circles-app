@@ -123,10 +123,14 @@ async function createPlaceInMyMoments(userId, circleId, placeData) {
     
     // Call createPlace with correct parameter order: placeData, circleId, addedBy
     const newPlace = createPlace(placeDataForCreation, circleId, userId);
-    
+
     const placeRef = await db.collection(COLLECTIONS.PLACES).add(newPlace);
-    
-    return { id: placeRef.id, ...newPlace };
+
+    // Link the save to its canonical venue record (best-effort)
+    const { ensureGlobalPlaceLink } = require('../services/globalPlaceResolver');
+    const globalPlaceId = await ensureGlobalPlaceLink(await placeRef.get());
+
+    return { id: placeRef.id, ...newPlace, ...(globalPlaceId ? { globalPlaceId } : {}) };
   } catch (error) {
     console.error('Error creating place in My Moments:', error);
     throw error;

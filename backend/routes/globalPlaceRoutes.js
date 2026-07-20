@@ -7,6 +7,7 @@ const { protect } = require('../middleware/firebaseAuth');
 
 const {
   getGlobalPlace,
+  matchGlobalPlace,
   searchGlobalPlaces,
   createOrGetGlobalPlace,
   createUserPlaceRelation,
@@ -23,6 +24,10 @@ router.use(protect);
 // Global place routes
 router.route('/global/search')
   .get(searchGlobalPlaces);
+
+// Literal segment — must be declared before '/global/:placeId'
+router.route('/global/match')
+  .get(matchGlobalPlace);
 
 router.route('/global')
   .post(createOrGetGlobalPlace);

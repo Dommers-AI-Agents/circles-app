@@ -67,6 +67,16 @@ enum AuthError: Error, LocalizedError, Equatable {
 // Authentication service
 class AuthService {
     static let shared = AuthService()
+
+    // Sign-in-time duplicate-account hint from the backend, held until the
+    // home screen can prompt the user (consumed exactly once)
+    private(set) var pendingDuplicateSuggestion: DuplicateSuggestion?
+
+    func consumeDuplicateSuggestion() -> DuplicateSuggestion? {
+        let suggestion = pendingDuplicateSuggestion
+        pendingDuplicateSuggestion = nil
+        return suggestion
+    }
     
     private let keychainService = KeychainService.shared
     private let userDefaults = UserDefaults.standard
@@ -497,8 +507,14 @@ class AuthService {
     
     private func handleAuthResponse(_ response: AuthResponse, completion: @escaping (Result<User, Error>) -> Void) {
         print("🔐 handleAuthResponse called, success: \(response.success)")
-        
+
         if response.success {
+            // Stash any duplicate-account hint; the home screen surfaces it
+            // once after login (an alert here would be lost in the root swap)
+            if let suggestion = response.duplicateSuggestion, !suggestion.duplicateAccounts.isEmpty {
+                pendingDuplicateSuggestion = suggestion
+            }
+
             // Check if this is a different user than the last one
             let previousUserId = getUserId()
             let isNewUser = previousUserId != response.user.id
@@ -778,6 +794,23 @@ struct AuthResponse: Decodable {
     let refreshToken: String?
     let user: User
     let expiresIn: Int? // Token expiration in seconds
+    let duplicateSuggestion: DuplicateSuggestion? // Possible other account of this user
+}
+
+// The backend's sign-in-time hint that this person may have another account
+// (same display name, or their email appears on another account's alternates)
+struct DuplicateSuggestion: Decodable {
+    let message: String
+    let suggestedAction: String?
+    let duplicateAccounts: [DuplicateAccountHint]
+}
+
+struct DuplicateAccountHint: Decodable {
+    let id: String
+    let email: String?
+    let displayName: String?
+    let matchType: String?
+    let reason: String?
 }
 
 struct UserResponse: Decodable {

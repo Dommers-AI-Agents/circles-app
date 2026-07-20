@@ -12,6 +12,8 @@ enum PlaceError: Error, LocalizedError {
     case notFound
     case permissionDenied
     case invalidData
+    // The server rejected the request and said why — show its message
+    case serverRejected(String)
     case creationFailed
     case updateFailed
     case deleteFailed
@@ -19,7 +21,7 @@ enum PlaceError: Error, LocalizedError {
     case locationNotFound
     case networkError(Error)
     case unknown
-    
+
     var errorDescription: String? {
         switch self {
         case .notFound:
@@ -28,6 +30,8 @@ enum PlaceError: Error, LocalizedError {
             return "You don't have permission to access this place"
         case .invalidData:
             return "Invalid place data"
+        case .serverRejected(let message):
+            return message
         case .creationFailed:
             return "Failed to create place"
         case .updateFailed:
@@ -885,7 +889,7 @@ class PlaceService {
         )
     }
     
-    func updatePlace(id: String, name: String? = nil, description: String? = nil, address: String? = nil, category: PlaceCategory? = nil, customCategory: String? = nil, privacy: PlacePrivacy? = nil, website: String? = nil, phone: String? = nil, tags: [String]? = nil, addPhotos: [Data]? = nil, removePhotoUrls: [String]? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
+    func updatePlace(id: String, name: String? = nil, description: String? = nil, address: String? = nil, category: PlaceCategory? = nil, customCategory: String? = nil, privacy: PlacePrivacy? = nil, website: String? = nil, phone: String? = nil, tags: [String]? = nil, publicNotes: String? = nil, addPhotos: [Data]? = nil, removePhotoUrls: [String]? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
         
         var locationCoordinate: CLLocationCoordinate2D?
         var photosUrls: [String]?
@@ -945,10 +949,15 @@ class PlaceService {
             if let description = description {
                 body["description"] = description
             }
-            
+
+            // Empty string is meaningful here: it clears the notes
+            if let publicNotes = publicNotes {
+                body["publicNotes"] = publicNotes
+            }
+
             if let newAddress = address {
                 body["address"] = newAddress
-                
+
                 // Add location if geocoding was successful
                 if let location = locationCoordinate {
                     body["location"] = [
@@ -1089,8 +1098,26 @@ class PlaceService {
         )
     }
     
+    /// Report incorrect place info (venue fields are Google-sourced and
+    /// read-only — this stores a report and notifies the admin)
+    func flagPlaceInfo(placeId: String, message: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "places/\(placeId)/flag",
+            method: .post,
+            body: ["message": message],
+            requiresAuth: true
+        ) { (result: Result<FlagPlaceResponse, APIError>) in
+            switch result {
+            case .success:
+                completion(.success(()))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
     // MARK: - Helper Methods
-    
+
     func geocodeAddress(_ address: String, completion: @escaping (Result<CLLocationCoordinate2D, Error>) -> Void) {
         geocoder.geocodeAddressString(address) { placemarks, error in
             if let error = error {
@@ -1298,13 +1325,20 @@ class PlaceService {
     
     private func mapAPIErrorToPlaceError(_ error: APIError) -> PlaceError {
         switch error {
-        case .httpError(let statusCode, _):
+        case .httpError(let statusCode, let data):
             switch statusCode {
             case 403:
                 return .permissionDenied
             case 404:
                 return .notFound
             case 400:
+                // Surface the server's explanation (e.g. "This place already
+                // exists in the target circle") instead of a generic label
+                if let data = data,
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let message = json["message"] as? String, !message.isEmpty {
+                    return .serverRejected(message)
+                }
                 return .invalidData
             default:
                 return .unknown
@@ -1356,8 +1390,19 @@ class PlaceService {
         )
     }
     
+    func fetchPlaceSavers(id: String, completion: @escaping (Result<PlaceSaversResponse, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "places/\(id)/savers",
+            method: .get,
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<PlaceSaversResponse, Error>) in
+                completion(result)
+            }
+        )
+    }
+
     // MARK: - Add Existing Place to Circle
-    
+
     func addExistingPlaceToCircle(placeId: String, circleId: String, notes: String? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
         var body: [String: Any] = [:]
         
@@ -1558,6 +1603,10 @@ struct PlaceResponse: Decodable {
     let place: Place
 }
 
+struct FlagPlaceResponse: Decodable {
+    let success: Bool
+}
+
 struct MyPlacesResponse: Decodable {
     let success: Bool
     // Lossy: one malformed place must not blank the whole check-in list
@@ -1584,6 +1633,13 @@ struct PlaceLikesResponse: Decodable {
     let success: Bool
     let likes: [User]
     let count: Int
+}
+
+struct PlaceSaversResponse: Decodable {
+    let success: Bool
+    let savers: [User]
+    let count: Int
+    let totalCount: Int
 }
 
 // MARK: - PlaceComment Model

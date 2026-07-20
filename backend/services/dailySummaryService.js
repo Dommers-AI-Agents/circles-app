@@ -256,17 +256,26 @@ class DailySummaryService {
       stats.userPlaceCount = userPlaceIds.length;
 
       if (userPlaceIds.length > 0) {
-        // Get recent comments on user's places
-        const commentPromises = userPlaceIds.map(placeId =>
+        // Get recent comments on user's places. Comments are keyed by the
+        // canonical venue record (globalPlaceId); createdAt is filtered in
+        // memory to avoid needing a new composite index.
+        const userGlobalPlaceIds = [...new Set(
+          userPlacesSnapshot.docs.map(doc => doc.data().globalPlaceId).filter(Boolean)
+        )];
+        const commentPromises = userGlobalPlaceIds.map(globalPlaceId =>
           db.collection('placeComments')
-            .where('placeId', '==', placeId)
-            .where('createdAt', '>=', yesterday.toISOString())
+            .where('globalPlaceId', '==', globalPlaceId)
             .get()
         );
 
         const commentSnapshots = await Promise.all(commentPromises);
+        const cutoff = yesterday.toISOString();
         commentSnapshots.forEach(snapshot => {
-          stats.placeComments += snapshot.size;
+          snapshot.docs.forEach(doc => {
+            if (String(doc.data().createdAt || '') >= cutoff) {
+              stats.placeComments += 1;
+            }
+          });
         });
 
         // Get recent likes on user's places

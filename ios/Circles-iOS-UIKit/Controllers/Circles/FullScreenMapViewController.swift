@@ -5,11 +5,15 @@ import CoreLocation
 protocol FullScreenMapViewControllerDelegate: AnyObject {
     func mapViewController(_ controller: FullScreenMapViewController, didSelectPlace place: Place)
     func mapViewController(_ controller: FullScreenMapViewController, regionDidChangeTo region: MKCoordinateRegion)
+    /// Fired when the connection filter changes inside the full-screen map, so
+    /// the presenter can keep its own selection in sync across dismissal.
+    func mapViewController(_ controller: FullScreenMapViewController, didChangeConnectionFilter connectionId: String?)
 }
 
-// Default no-op so existing conformers don't need to handle region changes
+// Default no-ops so existing conformers don't need to handle every event
 extension FullScreenMapViewControllerDelegate {
     func mapViewController(_ controller: FullScreenMapViewController, regionDidChangeTo region: MKCoordinateRegion) {}
+    func mapViewController(_ controller: FullScreenMapViewController, didChangeConnectionFilter connectionId: String?) {}
 }
 
 enum MapViewMode {
@@ -209,8 +213,25 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     /// Syncs the connection filter selected in a parent controller (embedded mode).
     /// The parent passes already-filtered places via updatePlaces; this only tells
     /// adjustMapRegion to zoom to the filtered places instead of the user's location.
+    /// Connection avatar row overlaid on the modal map (allPlaces mode only)
+    private var userListView: HorizontalUserListView?
+
+    /// Replaces the per-connection place buckets (owner-mapped by the
+    /// presenter) without touching the place list. Callers follow up with
+    /// updatePlaces, which re-applies the filter.
+    func updateConnectionBuckets(_ buckets: [String: [Place]]) {
+        connectionPlaces = buckets
+    }
+
     func setConnectionFilterContext(_ connectionId: String?) {
+        let changed = selectedConnectionId != connectionId
         selectedConnectionId = connectionId
+        // Re-scope the pins when the presenter resolves a canonical id for the
+        // current selection. No delegate echo — this call came FROM the
+        // presenter, so notifying it back would loop.
+        if changed && isViewLoaded {
+            applyFilter()
+        }
     }
 
     func updatePlaces(_ newPlaces: [Place], adjustRegion: Bool = true) {
@@ -233,8 +254,12 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     func hidePlaceCount() {
         placesCountLabel.isHidden = true
     }
-    
+
     func showPlaceCount() {
+        // Embedded mode: the home screen shows its own (filter-accurate) count
+        // pill in the same corner — showing this one too stacked a second,
+        // stale pill on top of it (the "always 257" bug)
+        guard isPresentedModally else { return }
         placesCountLabel.isHidden = false
     }
     
@@ -320,6 +345,20 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             // List added before the chips so the chips stay tappable above it
             view.addSubview(placesListTableView)
             view.addSubview(overlayChipStack)
+
+            // Connection avatar row: same tap-to-filter row as the home screen,
+            // overlaid below the chips so connections are switchable in full view
+            if viewMode == .allPlaces {
+                let row = HorizontalUserListView(frame: .zero, initialConnections: connections)
+                row.translatesAutoresizingMaskIntoConstraints = false
+                row.backgroundColor = .clear
+                row.delegate = self
+                if let selected = selectedConnectionId, selected != "my_places_only" {
+                    row.selectedUserId = selected
+                }
+                view.addSubview(row)
+                userListView = row
+            }
         }
         
         // Setup base constraints
@@ -367,6 +406,15 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
 
             if viewMode == .allPlaces {
                 myPlacesChipButton.widthAnchor.constraint(equalToConstant: 36).isActive = true
+            }
+
+            if let row = userListView {
+                NSLayoutConstraint.activate([
+                    row.topAnchor.constraint(equalTo: overlayChipStack.bottomAnchor, constant: 8),
+                    row.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
+                    row.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
+                    row.heightAnchor.constraint(equalToConstant: 118)
+                ])
             }
         }
         
@@ -583,47 +631,33 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         print("  - shouldZoomToFilteredPlaces: \(shouldZoomToFilteredPlaces)")
         
         if shouldZoomToFilteredPlaces && filteredPlaces.count > 0 {
-            // Keep the current camera when the new selection already has places
-            // on screen — tapping through connections shouldn't change the zoom
-            // level unless the selected connection has nothing in view.
-            if hasInitiallyZoomed {
-                let visibleRect = mapView.visibleMapRect
-                let hasPlacesInView = filteredPlaces.contains { place in
-                    guard let location = place.location?.clLocation else { return false }
-                    return visibleRect.contains(MKMapPoint(location.coordinate))
-                }
-                if hasPlacesInView {
-                    print("  - Keeping current region: selection has places in view")
-                    isAdjustingRegion = false
-                    return
-                }
-            }
-
-            // Zoom to show all filtered places
+            // Every filter change re-frames the map to include ALL of the
+            // selection's places — even worldwide. The fly-over as you tap
+            // through connections is intentional; the my-location button
+            // brings the user back to their own area.
             var coordinates: [CLLocationCoordinate2D] = []
             for place in filteredPlaces {
                 if let location = place.location?.clLocation {
                     coordinates.append(location.coordinate)
                 }
             }
-            
+
             print("  - Coordinates for zoom: \(coordinates.count)")
-            
+
             if !coordinates.isEmpty {
                 // Calculate center and span to show all filtered places
                 let minLat = coordinates.map { $0.latitude }.min() ?? 0
                 let maxLat = coordinates.map { $0.latitude }.max() ?? 0
                 let minLon = coordinates.map { $0.longitude }.min() ?? 0
                 let maxLon = coordinates.map { $0.longitude }.max() ?? 0
-                
+
                 let center = CLLocationCoordinate2D(
                     latitude: (minLat + maxLat) / 2,
                     longitude: (minLon + maxLon) / 2
                 )
-                
-                // Add padding to the span, clamped to MapKit's valid limits so a
-                // connection with places spread across the world still frames all
-                // of them instead of setRegion silently rejecting the region
+
+                // Add padding to the span, clamped to MapKit's valid limits so
+                // setRegion never silently rejects the region
                 let latDelta = min(max((maxLat - minLat) * 1.3, 0.01), 180)
                 let lonDelta = min(max((maxLon - minLon) * 1.3, 0.01), 360)
                 
@@ -1149,13 +1183,19 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     }
 
     private func presentProfileFromMenu() {
-        let profileVC = ProfileViewController()
         // Without a configured user, ProfileViewController shows the current user's own profile
+        var user: User?
         if let connectionId = selectedConnectionId, connectionId != "my_places_only" {
             let currentUserId = AuthService.shared.getUserId() ?? ""
-            if let user = connections.first(where: { $0.otherUserId(currentUserId: currentUserId) == connectionId })?.connectedUser {
-                profileVC.configureWith(user: user)
-            }
+            user = connections.first(where: { $0.otherUserId(currentUserId: currentUserId) == connectionId })?.connectedUser
+        }
+        presentProfile(for: user)
+    }
+
+    private func presentProfile(for user: User?) {
+        let profileVC = ProfileViewController()
+        if let user = user {
+            profileVC.configureWith(user: user)
         }
         let navController = UINavigationController(rootViewController: profileVC)
         navController.modalPresentationStyle = .pageSheet
@@ -1195,7 +1235,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         }
 
         placesListTableView.isHidden = !isShowingPlacesList
-        placesCountLabel.isHidden = isShowingPlacesList || filteredPlaces.isEmpty
+        updatePlacesCount()
+        userListView?.isHidden = isShowingPlacesList
     }
 
     /// Rebuilds the distance-sorted data source for the places list from the
@@ -1239,6 +1280,11 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         print("🔍 FullScreenMap: selectConnection called with: \(connectionId ?? "nil")")
         selectedConnectionId = connectionId
         updateMyPlacesChipAppearance()
+        // Keep the avatar row's highlight ring in sync (also covers changes
+        // made through the hamburger menu)
+        userListView?.selectedUserId = (connectionId == nil || connectionId == "my_places_only") ? nil : connectionId
+        // Let the presenter mirror the selection so it survives dismissal
+        delegate?.mapViewController(self, didChangeConnectionFilter: connectionId)
         // A filter change is explicit user intent — allow zooming to results
         hasExplicitInitialRegion = false
         applyFilter()
@@ -1255,20 +1301,30 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // Start with all places or connection-specific places
         var placesToFilter = places
         
-        // Apply connection filter for allPlaces mode
-        if viewMode == .allPlaces {
+        // Apply connection filter for allPlaces mode. Only the MODAL filters
+        // for itself — the embedded child receives places already filtered by
+        // the home controller, and re-filtering them by addedBy drops places
+        // saved under a connection's legacy account id (circle owner and
+        // place adder can be different ids for the same person).
+        if viewMode == .allPlaces && isPresentedModally {
             if let connectionId = selectedConnectionId {
                 if connectionId == "my_places_only" {
                     // Filter to show only user's places
-                    placesToFilter = places.filter { $0.addedBy == currentUserId }
+                    placesToFilter = places.filter { IDNormalizer.isSameUser($0.addedBy, currentUserId) }
                     print("  Filtered to user's places: \(placesToFilter.count)")
-                } else if let connPlaces = connectionPlaces[connectionId] {
-                    // Use connection-specific places
-                    placesToFilter = connPlaces
-                    print("  Using connection places for \(connectionId): \(placesToFilter.count) places")
                 } else {
-                    print("  WARNING: No places found for connectionId: \(connectionId)")
-                    print("  Available connectionPlaces keys: \(connectionPlaces.keys.sorted())")
+                    // Union of the pre-bucketed list (covers circle-owner
+                    // semantics) and an added-by match over the CURRENT places
+                    // (covers viewport-fetched places that were never bucketed,
+                    // and missing buckets). Never fall through to showing
+                    // everyone's places.
+                    var connectionScoped = connectionPlaces[connectionId] ?? []
+                    let bucketedIds = Set(connectionScoped.map { $0.id })
+                    connectionScoped += places.filter {
+                        !bucketedIds.contains($0.id) && IDNormalizer.isSameUser($0.addedBy, connectionId)
+                    }
+                    placesToFilter = connectionScoped
+                    print("  Filtered to connection \(connectionId): \(placesToFilter.count) places (\(bucketedIds.count) bucketed)")
                 }
                 // If nil (All Connections), use all places
             }
@@ -1314,6 +1370,11 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         
         // Just show the count number in the circular badge
         placesCountLabel.text = "\(totalPlaces)"
+
+        // This method owns the pill's visibility: shown only on the modal map
+        // (embedded mode leaves counting to the home screen's own pill), and
+        // hidden while the list overlay is up or there's nothing to count
+        placesCountLabel.isHidden = !isPresentedModally || isShowingPlacesList || totalPlaces == 0
     }
 }
 
@@ -1463,3 +1524,29 @@ extension FullScreenMapViewController: CirclePickerSliderViewDelegate {
     }
 }
 
+
+// MARK: - HorizontalUserListViewDelegate (modal avatar row)
+
+extension FullScreenMapViewController: HorizontalUserListViewDelegate {
+    func didSelectUser(_ user: User, connectionId: String) {
+        // Filter keys in connectionPlaces are the connection's otherUserId —
+        // resolve through the connections list so the ids line up
+        let currentUserId = AuthService.shared.getUserId() ?? ""
+        let targetId = connections.first(where: {
+            IDNormalizer.isSameUser($0.otherUserId(currentUserId: currentUserId), user.id)
+        })?.otherUserId(currentUserId: currentUserId) ?? user.id
+
+        // Same behavior as the home row: tapping the already-selected avatar
+        // opens the profile; otherwise switch the filter to that connection
+        if let selected = selectedConnectionId, selected != "my_places_only",
+           IDNormalizer.isSameUser(selected, targetId) {
+            presentProfile(for: user)
+        } else {
+            selectConnection(targetId)
+        }
+    }
+
+    func didLongPressUser(_ user: User, connectionId: String) {
+        presentProfile(for: user)
+    }
+}

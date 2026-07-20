@@ -24,6 +24,125 @@ const { serializeDoc, serializeQuerySnapshot } = require('../models/FirestoreMod
 
 const db = getFirestore();
 
+const { resolveGlobalPlace, createGlobalPlaceFromLegacy } = require('../services/globalPlaceResolver');
+
+
+// Mirror an uploaded media URL into the legacy places docs so legacy readers
+// (GET /places/:id, batch, older app builds) stay consistent. Never throws.
+async function mirrorMediaToLegacyPlaces(legacyIds, field, mediaUrl) {
+  for (const id of legacyIds) {
+    try {
+      await db.collection('places').doc(id).update({
+        [field]: admin.firestore.FieldValue.arrayUnion(mediaUrl),
+        updatedAt: new Date().toISOString()
+      });
+      console.log(`🔁 [GlobalPlace] Mirrored ${field} to legacy places/${id}`);
+    } catch (e) {
+      console.error(`⚠️ [GlobalPlace] Legacy ${field} mirror failed for places/${id}:`, e.message);
+    }
+  }
+}
+
+// Remove a photo URL from the legacy places docs (arrayRemove can't match object
+// entries, so filter manually). Never throws.
+async function removePhotoFromLegacyPlaces(legacyIds, photoUrl) {
+  for (const id of legacyIds) {
+    try {
+      const doc = await db.collection('places').doc(id).get();
+      if (!doc.exists) continue;
+      const photos = doc.data().photos || [];
+      const filtered = photos.filter(p => (typeof p === 'string' ? p : p?.url) !== photoUrl);
+      if (filtered.length !== photos.length) {
+        await doc.ref.update({ photos: filtered, updatedAt: new Date().toISOString() });
+        console.log(`🔁 [GlobalPlace] Removed photo from legacy places/${id}`);
+      }
+    } catch (e) {
+      console.error(`⚠️ [GlobalPlace] Legacy photo removal failed for places/${id}:`, e.message);
+    }
+  }
+}
+
+// @desc    Does this venue already exist in our canonical database? Called by
+//          the app BEFORE fetching photos from Google Places, so a duplicate
+//          add (another user already saved this venue) reuses the canonical
+//          record's photos and googlePlaceId instead of re-querying Google.
+//          Match: exact nameLower + coordinate proximity (Apple Maps supplies
+//          name/coords before any Google call), with a normalized-address
+//          fallback when no coordinates are sent.
+// @route   GET /api/places/global/match?name=&lat=&lng=&address=
+// @access  Private
+exports.matchGlobalPlace = async (req, res) => {
+  try {
+    const { name, address } = req.query;
+    const lat = parseFloat(req.query.lat);
+    const lng = parseFloat(req.query.lng);
+    const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'name is required' });
+    }
+
+    // Query by searchTokens (word-prefix tokens, same as global search) —
+    // robust against whitespace/punctuation quirks in stored names, which an
+    // exact nameLower equality is not. Candidates are then confirmed by
+    // normalized-name equality + proximity in memory.
+    const normalizeName = (n) => String(n || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).join(' ');
+    const normalizedQueryName = normalizeName(name);
+    const queryWords = normalizedQueryName.split(' ');
+    const longestWord = queryWords.slice().sort((a, b) => b.length - a.length)[0];
+    if (!longestWord) {
+      return res.json({ success: true, data: { match: null } });
+    }
+
+    const snapshot = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES)
+      .where('searchTokens', 'array-contains', longestWord.slice(0, 20))
+      .limit(50)
+      .get();
+
+    const geofire = require('geofire-common');
+    const normalizeAddress = (a) => String(a || '').toLowerCase().trim().replace(/[^\w\s,]/g, '');
+    const MAX_DISTANCE_METERS = 250;
+
+    let match = null;
+    for (const doc of snapshot.docs) {
+      const place = { id: doc.id, ...doc.data() };
+      if (place.deletedAt) continue;
+      if (normalizeName(place.name) !== normalizedQueryName) continue;
+
+      const coords = place.location?.coordinates; // GeoJSON [lng, lat]
+      if (hasCoords && Array.isArray(coords) && coords.length === 2) {
+        const distanceM = geofire.distanceBetween([lat, lng], [coords[1], coords[0]]) * 1000;
+        if (distanceM <= MAX_DISTANCE_METERS) { match = place; break; }
+      } else if (address && normalizeAddress(place.address) === normalizeAddress(address)) {
+        match = place;
+        break;
+      }
+    }
+
+    if (!match) {
+      return res.json({ success: true, data: { match: null } });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        match: {
+          globalPlaceId: match.id,
+          googlePlaceId: match.googlePlaceId || null,
+          name: match.name,
+          address: match.address || null,
+          category: match.category || null,
+          // Firebase Storage URLs — safe for the new save doc to reference
+          photos: (match.photos || []).map((p) => (typeof p === 'string' ? p : p?.url)).filter(Boolean)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('❌ [GlobalPlace] match lookup failed:', error);
+    res.status(500).json({ success: false, message: 'Match lookup failed' });
+  }
+};
+
 // @desc    Get global place by ID with all public content
 // @route   GET /api/places/global/:placeId
 // @access  Private
@@ -32,73 +151,11 @@ exports.getGlobalPlace = async (req, res, next) => {
     const placeId = req.params.placeId;
     console.log(`🔍 [GlobalPlace API] Starting lookup for placeId: ${placeId}`);
     
-    // Get global place document
-    let placeDoc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).get();
-    console.log(`📍 [GlobalPlace API] Direct lookup result: ${placeDoc.exists ? 'FOUND' : 'NOT FOUND'}`);
-    
-    // If not found by direct ID, try to find by legacy place lookup
-    if (!placeDoc.exists) {
-      console.log(`🔍 [GlobalPlace API] Not found by direct ID, starting legacy place lookup...`);
-      
-      // Look up the legacy place to get its details
-      const legacyPlaceDoc = await db.collection('places').doc(placeId).get();
-      console.log(`📄 [GlobalPlace API] Legacy place lookup: ${legacyPlaceDoc.exists ? 'FOUND' : 'NOT FOUND'}`);
-      
-      if (legacyPlaceDoc.exists) {
-        const legacyPlace = legacyPlaceDoc.data();
-        console.log(`📍 [GlobalPlace API] Found legacy place: "${legacyPlace.name}"`);
-        console.log(`📷 [GlobalPlace API] Legacy place has ${legacyPlace.photos?.length || 0} photos`);
-        
-        // Generate deduplication key for the legacy place
-        const legacyDeduplicationKey = generatePlaceKey(legacyPlace);
-        console.log(`🔑 [GlobalPlace API] Generated deduplication key: "${legacyDeduplicationKey}"`);
-        
-        // First, try to find GlobalPlace that contains this legacy place ID
-        console.log(`🔍 [GlobalPlace API] Searching for GlobalPlace with legacy ID mapping...`);
-        const legacyIdQuery = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES)
-          .where('legacyPlaceIds', 'array-contains', placeId)
-          .limit(1)
-          .get();
-        
-        if (!legacyIdQuery.empty) {
-          placeDoc = legacyIdQuery.docs[0];
-          const globalPlaceData = placeDoc.data();
-          console.log(`✅ [GlobalPlace API] Found GlobalPlace by legacy ID mapping: ${placeDoc.id}`);
-          console.log(`📷 [GlobalPlace API] GlobalPlace has ${globalPlaceData.photos?.length || 0} attributed photos`);
-          if (globalPlaceData.photos && globalPlaceData.photos.length > 0) {
-            const firstPhoto = globalPlaceData.photos[0];
-            console.log(`📸 [GlobalPlace API] First photo attribution: "${firstPhoto.uploadedByName || 'Unknown'}"`);
-          }
-        } else {
-          console.log(`🔍 [GlobalPlace API] No legacy ID mapping found, trying deduplication key search...`);
-          // Fallback: Search by deduplication key
-          const keyQuery = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES)
-            .where('deduplicationKey', '==', legacyDeduplicationKey)
-            .limit(1)
-            .get();
-          
-          if (!keyQuery.empty) {
-            placeDoc = keyQuery.docs[0];
-            const globalPlaceData = placeDoc.data();
-            console.log(`✅ [GlobalPlace API] Found GlobalPlace by deduplication key: ${placeDoc.id}`);
-            console.log(`📷 [GlobalPlace API] GlobalPlace has ${globalPlaceData.photos?.length || 0} attributed photos`);
-            
-            // Update the GlobalPlace to include this legacy place ID
-            await placeDoc.ref.update({
-              legacyPlaceIds: admin.firestore.FieldValue.arrayUnion(placeId),
-              updatedAt: new Date().toISOString()
-            });
-            console.log(`🔗 [GlobalPlace API] Added legacy place ID ${placeId} to GlobalPlace ${placeDoc.id}`);
-          } else {
-            console.log(`❌ [GlobalPlace API] No GlobalPlace found for legacy place: "${legacyPlace.name}" (key: "${legacyDeduplicationKey}")`);
-          }
-        }
-      } else {
-        console.log(`❌ [GlobalPlace API] Legacy place ${placeId} not found in places collection`);
-      }
-    }
-    
-    if (!placeDoc.exists) {
+    // Resolve global place: direct id -> legacy id mapping -> dedup key -> google id
+    const { globalPlaceDoc: placeDoc } = await resolveGlobalPlace(placeId);
+    console.log(`📍 [GlobalPlace API] Resolution result: ${placeDoc ? `FOUND (${placeDoc.id})` : 'NOT FOUND'}`);
+
+    if (!placeDoc || !placeDoc.exists) {
       console.log(`❌ [GlobalPlace API] Final result: NO PLACE FOUND for ${placeId}`);
       return res.status(404).json({
         success: false,
@@ -440,15 +497,25 @@ exports.uploadPlaceMedia = async (req, res, next) => {
   try {
     const placeId = req.params.placeId;
     const { mediaType, mediaUrl, thumbnailUrl, title, description, source = 'user_upload' } = req.body;
-    
-    // Check if place exists
-    const placeDoc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).get();
-    if (!placeDoc.exists) {
+
+    // Resolve the target globalPlaces doc (the app may pass a legacy place id).
+    // If only the legacy place exists, auto-create its global doc so the upload
+    // always has a durable home.
+    const { globalPlaceDoc, legacyPlaceDoc } = await resolveGlobalPlace(placeId);
+    let resolvedId;
+    let resolvedData;
+    if (globalPlaceDoc) {
+      resolvedId = globalPlaceDoc.id;
+      resolvedData = globalPlaceDoc.data();
+    } else if (legacyPlaceDoc && legacyPlaceDoc.exists) {
+      ({ resolvedId, resolvedData } = await createGlobalPlaceFromLegacy(legacyPlaceDoc));
+    } else {
       return res.status(404).json({
         success: false,
         message: 'Place not found'
       });
     }
+    console.log(`🆔 [UploadMedia] Resolved ${placeId} -> globalPlaces/${resolvedId}`);
     
     let attributedMedia;
     let updateField;
@@ -492,22 +559,28 @@ exports.uploadPlaceMedia = async (req, res, next) => {
     }
     
     // Get current photo count before update
-    const beforeUpdate = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).get();
+    const beforeUpdate = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(resolvedId).get();
     const beforePhotoCount = beforeUpdate.data()?.photos?.length || 0;
     console.log(`📊 [UploadMedia] Photos before update: ${beforePhotoCount}`);
-    
+
     // Add media to place
     console.log(`🔄 [UploadMedia] Adding ${mediaType} to ${updateField} array using arrayUnion...`);
-    await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).update({
+    await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(resolvedId).update({
       [updateField]: admin.firestore.FieldValue.arrayUnion(attributedMedia),
       [incrementField]: admin.firestore.FieldValue.increment(1),
       'userContributions.contributors': admin.firestore.FieldValue.arrayUnion(req.user.id),
       lastActivityAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     });
-    
+
+    // Mirror into the legacy places docs so legacy readers (GET /places/:id,
+    // batch, older app builds) see the new media too
+    const legacyMirrorIds = new Set(resolvedData.legacyPlaceIds || []);
+    if (legacyPlaceDoc && legacyPlaceDoc.exists) legacyMirrorIds.add(legacyPlaceDoc.id);
+    await mirrorMediaToLegacyPlaces([...legacyMirrorIds], updateField, mediaUrl);
+
     // Verify the update worked
-    const afterUpdate = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).get();
+    const afterUpdate = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(resolvedId).get();
     const afterPhotoCount = afterUpdate.data()?.photos?.length || 0;
     const allPhotos = afterUpdate.data()?.photos || [];
     console.log(`📊 [UploadMedia] Photos after update: ${afterPhotoCount}`);
@@ -523,21 +596,20 @@ exports.uploadPlaceMedia = async (req, res, next) => {
     }
     
     // Update quality score
-    await updateGlobalPlaceStats(placeId);
-    
+    await updateGlobalPlaceStats(resolvedId);
+
     // Track photo upload activity (only for photos, not videos)
     if (mediaType === 'photo') {
       try {
-        const placeData = placeDoc.data();
-        const placeName = placeData.name || 'Unknown Place';
-        
+        const placeName = resolvedData.name || 'Unknown Place';
+
         console.log(`🎯 [UploadMedia] Tracking photo upload activity...`);
         console.log(`🎯 [UploadMedia] - Photo ID: ${attributedMedia.id}`);
-        console.log(`🎯 [UploadMedia] - Place: ${placeName} (${placeId})`);
-        
+        console.log(`🎯 [UploadMedia] - Place: ${placeName} (${resolvedId})`);
+
         await trackPhotoUploaded(
           attributedMedia.id,
-          placeId,
+          resolvedId,
           placeName,
           mediaUrl,
           req.user.id
@@ -792,20 +864,22 @@ exports.getPhotosDebug = async (req, res, next) => {
 exports.deleteUserPhoto = async (req, res, next) => {
   try {
     const { placeId, photoId } = req.params;
-    const currentUserId = req.userId;
+    // protect middleware populates req.user (there is no req.userId)
+    const currentUserId = req.user.id;
     
     console.log(`🗑️ [GlobalPlace API] Deleting photo ${photoId} from place ${placeId} for user ${currentUserId}`);
-    
-    // Get the global place document
-    const placeDoc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).get();
-    
-    if (!placeDoc.exists) {
+
+    // Resolve the global place (the app may pass a legacy place id)
+    const { globalPlaceDoc: placeDoc, legacyPlaceDoc } = await resolveGlobalPlace(placeId);
+
+    if (!placeDoc || !placeDoc.exists) {
       return res.status(404).json({
         success: false,
         message: 'Place not found'
       });
     }
-    
+    const resolvedId = placeDoc.id;
+
     const placeData = placeDoc.data();
     const photos = placeData.photos || [];
     
@@ -827,18 +901,24 @@ exports.deleteUserPhoto = async (req, res, next) => {
     
     // Remove photo from array
     photos.splice(photoIndex, 1);
-    
+
     // Update place document
-    await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).update({
+    await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(resolvedId).update({
       photos: photos,
       'userContributions.totalPhotos': Math.max(0, (placeData.userContributions?.totalPhotos || 1) - 1),
       updatedAt: new Date().toISOString()
     });
-    
+
+    // Remove the mirrored copy from the legacy places docs, or the merged
+    // carousel would resurrect the deleted photo from place.photos
+    const legacyRemoveIds = new Set(placeData.legacyPlaceIds || []);
+    if (legacyPlaceDoc && legacyPlaceDoc.exists) legacyRemoveIds.add(legacyPlaceDoc.id);
+    await removePhotoFromLegacyPlaces([...legacyRemoveIds], photoToDelete.url);
+
     // Update place statistics
-    await updateGlobalPlaceStats(placeId);
-    
-    console.log(`✅ [GlobalPlace API] Successfully deleted photo ${photoId} from place ${placeId}`);
+    await updateGlobalPlaceStats(resolvedId);
+
+    console.log(`✅ [GlobalPlace API] Successfully deleted photo ${photoId} from place ${resolvedId}`);
     
     res.status(200).json({
       success: true,
@@ -874,22 +954,24 @@ const { trackGlobalPlaceLiked, trackPhotoUploaded } = require('../services/activ
 exports.likeGlobalPlaceUpload = async (req, res, next) => {
   try {
     const { placeId, photoId } = req.params;
-    const userId = req.user.uid;
-    
+    // protect middleware populates req.user (there is no req.user.uid contract here)
+    const userId = req.user.id;
+
     console.log(`👍 [GlobalPlace API] User ${userId} attempting to like photo ${photoId} in place ${placeId}`);
-    
-    // Get the global place
-    const placeDoc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).get();
-    if (!placeDoc.exists) {
+
+    // Resolve the global place (the app may pass a legacy place id)
+    const { globalPlaceDoc: placeDoc } = await resolveGlobalPlace(placeId);
+    if (!placeDoc || !placeDoc.exists) {
       return res.status(404).json({
         success: false,
         message: 'Global place not found'
       });
     }
-    
+    const resolvedId = placeDoc.id;
+
     const placeData = placeDoc.data();
     const photos = placeData.photos || [];
-    
+
     // Find the photo
     const photo = photos.find(p => p.id === photoId);
     if (!photo) {
@@ -898,37 +980,36 @@ exports.likeGlobalPlaceUpload = async (req, res, next) => {
         message: 'Photo not found'
       });
     }
-    
-    // Check if already liked
+
+    // Idempotent: liking an already-liked photo is a no-op success
     const likes = photo.likes || [];
-    const alreadyLiked = likes.includes(userId);
-    
-    if (alreadyLiked) {
-      return res.status(400).json({
-        success: false,
-        message: 'Photo already liked'
+    if (likes.includes(userId)) {
+      return res.status(200).json({
+        success: true,
+        message: 'Photo already liked',
+        likesCount: likes.length
       });
     }
-    
+
     // Add like
     const updatedLikes = [...likes, userId];
-    const updatedPhotos = photos.map(p => 
-      p.id === photoId 
+    const updatedPhotos = photos.map(p =>
+      p.id === photoId
         ? { ...p, likes: updatedLikes, likesCount: updatedLikes.length }
         : p
     );
-    
+
     // Update the place document
-    await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).update({
+    await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(resolvedId).update({
       photos: updatedPhotos,
       updatedAt: new Date().toISOString()
     });
-    
+
     // Track comprehensive activity (includes connection notifications)
     if (photo.uploadedBy && photo.uploadedBy !== userId) {
       await trackGlobalPlaceLiked(
         photoId,
-        placeId,
+        resolvedId,
         placeData.name || 'Unknown Place',
         userId,
         photo.uploadedBy
@@ -955,22 +1036,24 @@ exports.likeGlobalPlaceUpload = async (req, res, next) => {
 exports.unlikeGlobalPlaceUpload = async (req, res, next) => {
   try {
     const { placeId, photoId } = req.params;
-    const userId = req.user.uid;
-    
+    // protect middleware populates req.user (there is no req.user.uid contract here)
+    const userId = req.user.id;
+
     console.log(`👎 [GlobalPlace API] User ${userId} attempting to unlike photo ${photoId} in place ${placeId}`);
-    
-    // Get the global place
-    const placeDoc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).get();
-    if (!placeDoc.exists) {
+
+    // Resolve the global place (the app may pass a legacy place id)
+    const { globalPlaceDoc: placeDoc } = await resolveGlobalPlace(placeId);
+    if (!placeDoc || !placeDoc.exists) {
       return res.status(404).json({
         success: false,
         message: 'Global place not found'
       });
     }
-    
+    const resolvedId = placeDoc.id;
+
     const placeData = placeDoc.data();
     const photos = placeData.photos || [];
-    
+
     // Find the photo
     const photo = photos.find(p => p.id === photoId);
     if (!photo) {
@@ -979,28 +1062,27 @@ exports.unlikeGlobalPlaceUpload = async (req, res, next) => {
         message: 'Photo not found'
       });
     }
-    
-    // Check if not liked
+
+    // Idempotent: unliking a not-liked photo is a no-op success
     const likes = photo.likes || [];
-    const alreadyLiked = likes.includes(userId);
-    
-    if (!alreadyLiked) {
-      return res.status(400).json({
-        success: false,
-        message: 'Photo not liked yet'
+    if (!likes.includes(userId)) {
+      return res.status(200).json({
+        success: true,
+        message: 'Photo not liked',
+        likesCount: likes.length
       });
     }
-    
+
     // Remove like
     const updatedLikes = likes.filter(id => id !== userId);
-    const updatedPhotos = photos.map(p => 
-      p.id === photoId 
+    const updatedPhotos = photos.map(p =>
+      p.id === photoId
         ? { ...p, likes: updatedLikes, likesCount: updatedLikes.length }
         : p
     );
-    
+
     // Update the place document
-    await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).update({
+    await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(resolvedId).update({
       photos: updatedPhotos,
       updatedAt: new Date().toISOString()
     });

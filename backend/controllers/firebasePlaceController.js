@@ -1,6 +1,7 @@
 // backend/controllers/firebasePlaceController.js
+const admin = require('firebase-admin');
 const { getFirestore } = require('../config/firebase');
-const { 
+const {
   COLLECTIONS, 
   createPlace, 
   validatePlace,
@@ -10,6 +11,8 @@ const {
 const { Client } = require('@googlemaps/google-maps-services-js');
 const geofire = require('geofire-common');
 const { normalizeUserId, isSameUser } = require('../services/idService');
+const { ensureGlobalPlaceLink } = require('../services/globalPlaceResolver');
+const { GLOBAL_COLLECTIONS, buildSearchTokens } = require('../models/GlobalPlace');
 const { googleMapsApiKey } = require('../config/config');
 const notificationService = require('../services/notificationService');
 const { trackPlaceAdded, trackPlaceView, trackPlaceLiked } = require('../services/activityService');
@@ -35,6 +38,133 @@ const normalizePhotosArray = (place) => {
   }
   return place;
 };
+
+// Venue data owned by the canonical globalPlaces record. Top-level fields map
+// 1:1; rating/hours/contact fields live nested under googleData on the record.
+const VENUE_TOP_FIELDS = ['name', 'address', 'location', 'category', 'subcategory'];
+const VENUE_GOOGLE_FIELDS = ['rating', 'userRatingsTotal', 'priceLevel', 'openingHours', 'website', 'phone'];
+
+// Merge canonical venue fields over a save doc's (possibly stale) copies.
+// Per-user fields (notes, tags, privacy, photos, ...) are untouched.
+const overlayVenueFields = (place, globalData) => {
+  const merged = { ...place };
+  VENUE_TOP_FIELDS.forEach(field => {
+    const value = globalData[field];
+    if (value !== undefined && value !== null && value !== '') {
+      merged[field] = value;
+    }
+  });
+  const googleData = globalData.googleData || {};
+  VENUE_GOOGLE_FIELDS.forEach(field => {
+    const value = googleData[field];
+    if (value !== undefined && value !== null && value !== '') {
+      merged[field] = value;
+    }
+  });
+  return merged;
+};
+
+// Translate legacy-shaped venue updates into a globalPlaces update payload
+const buildGlobalVenueUpdates = (updateData) => {
+  const updates = {};
+  VENUE_TOP_FIELDS.forEach(field => {
+    if (updateData[field] !== undefined) updates[field] = updateData[field];
+  });
+  VENUE_GOOGLE_FIELDS.forEach(field => {
+    if (updateData[field] !== undefined) updates[`googleData.${field}`] = updateData[field];
+  });
+  if (updates.name !== undefined) {
+    updates.nameLower = (updates.name || '').toLowerCase();
+    updates.searchTokens = buildSearchTokens(updates.name);
+  }
+  return updates;
+};
+
+// Push venue-field changes to the canonical record and keep the denormalized
+// query cache (name/address/location/geohash/category) in sync on the venue's
+// other saved copies. Runs on venue EDITS only — rare and bounded.
+const propagateVenueUpdates = async (placeId, globalPlaceId, updateData) => {
+  if (!globalPlaceId) return;
+  const globalUpdates = buildGlobalVenueUpdates(updateData);
+  if (Object.keys(globalUpdates).length === 0) return;
+  const now = new Date().toISOString();
+
+  await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(globalPlaceId)
+    .update({ ...globalUpdates, updatedAt: now })
+    .catch(err => console.error('⚠️ Failed to update canonical venue:', err.message));
+
+  const CACHE_FIELDS = ['name', 'address', 'location', 'geohash', 'category'];
+  const cacheUpdates = {};
+  CACHE_FIELDS.forEach(field => {
+    if (updateData[field] !== undefined) cacheUpdates[field] = updateData[field];
+  });
+  if (Object.keys(cacheUpdates).length === 0) return;
+
+  try {
+    const siblings = await db.collection(COLLECTIONS.PLACES)
+      .where('globalPlaceId', '==', globalPlaceId)
+      .get();
+    const batch = db.batch();
+    let pending = 0;
+    siblings.docs.forEach(doc => {
+      if (doc.id !== placeId) {
+        batch.update(doc.ref, { ...cacheUpdates, updatedAt: now });
+        pending++;
+      }
+    });
+    if (pending > 0) await batch.commit();
+  } catch (err) {
+    console.error('⚠️ Failed to sync venue cache to copies:', err.message);
+  }
+};
+
+// Social data (likes, comment counts) lives on the canonical globalPlaces
+// record shared by every saved copy of a venue. Falls back to the doc's own
+// (legacy) fields only if the place can't be linked.
+const getGlobalSocial = async (placeDoc) => {
+  const globalPlaceId = placeDoc.data().globalPlaceId || await ensureGlobalPlaceLink(placeDoc);
+  if (!globalPlaceId) {
+    return {
+      globalPlaceId: null,
+      likes: placeDoc.data().likes || [],
+      commentsCount: 0,
+      venueData: null
+    };
+  }
+  const globalDoc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(globalPlaceId).get();
+  const data = globalDoc.exists ? globalDoc.data() : {};
+  return {
+    globalPlaceId,
+    likes: data.likes || [],
+    commentsCount: data.commentsCount || 0,
+    venueData: globalDoc.exists ? data : null
+  };
+};
+
+// Batched variant for list endpoints: one getAll over the unique canonical
+// records referenced by a page of places. Returns Map<globalPlaceId, social>.
+const fetchGlobalSocialMap = async (places) => {
+  const ids = [...new Set(places.map(place => place.globalPlaceId).filter(Boolean))];
+  const map = new Map();
+  if (ids.length === 0) return map;
+  const docs = await db.getAll(...ids.map(id => db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(id)));
+  docs.forEach(doc => {
+    if (doc.exists) {
+      const data = doc.data();
+      map.set(doc.id, {
+        likes: data.likes || [],
+        commentsCount: data.commentsCount || 0,
+        venueData: data
+      });
+    }
+  });
+  return map;
+};
+
+// Shared with other controllers that return place lists (e.g. the map
+// viewport endpoint in networkPlacesController)
+exports.fetchGlobalSocialMap = fetchGlobalSocialMap;
+exports.overlayVenueFields = overlayVenueFields;
 
 // @desc    Get places by circle ID
 // @route   GET /api/circles/:circleId/places
@@ -246,15 +376,9 @@ exports.getPlacesByCircleId = async (req, res, next) => {
       }
     });
     
-    // Fetch comment counts for all places
-    const commentCountPromises = places.map(place => 
-      db.collection('placeComments')
-        .where('placeId', '==', place.id)
-        .count()
-        .get()
-    );
-    
-    const commentCounts = await Promise.all(commentCountPromises);
+    // Social data (likes, comment counts) lives on the canonical venue
+    // records — one batched read covers the whole page
+    const socialByGlobalId = await fetchGlobalSocialMap(places);
     
     // Get activity records to determine which places are new for this user
     // Look for connections where this user is connected to the circle owner
@@ -349,10 +473,12 @@ exports.getPlacesByCircleId = async (req, res, next) => {
       }
       
       // Only include privateNotes if the current user added this place
+      const social = socialByGlobalId.get(place.globalPlaceId);
       const placeData = {
-        ...place,
+        ...(social ? overlayVenueFields(place, social.venueData) : place),
+        ...(social ? { likes: social.likes, likesCount: social.likes.length } : {}),
         addedByUser: userMap.get(place.addedBy) || null,
-        commentsCount: commentCounts[index].data().count || 0,
+        commentsCount: social ? social.commentsCount : 0,
         isNew: isNew // Set the isNew flag
       };
       
@@ -795,19 +921,21 @@ exports.getPlace = async (req, res, next) => {
       console.log(`✅ Allowing access to floating place: ${place.name} (check-in place)`);
     }
 
-    // Get comment count for this place
-    const commentCountSnapshot = await db.collection('placeComments')
-      .where('placeId', '==', req.params.id)
-      .count()
-      .get();
-    
-    const commentsCount = commentCountSnapshot.data().count || 0;
-    
+    // Social and venue data come from the canonical venue record (one read,
+    // shared by every saved copy of this place)
+    const social = await getGlobalSocial(placeDoc);
+
     // Filter privateNotes - only visible to the user who added the place
-    const placeData = {
+    let placeData = {
       ...place,
-      commentsCount
+      globalPlaceId: social.globalPlaceId || place.globalPlaceId || null,
+      likes: social.likes,
+      likesCount: social.likes.length,
+      commentsCount: social.commentsCount
     };
+    if (social.venueData) {
+      placeData = overlayVenueFields(placeData, social.venueData);
+    }
     
     // Normalize photos array format for iOS compatibility
     normalizePhotosArray(placeData);
@@ -1025,10 +1153,16 @@ exports.createPlace = async (req, res, next) => {
     
     // Add to Firestore
     const placeRef = await db.collection(COLLECTIONS.PLACES).add(placeData);
-    
+
     // Get the created place with ID
     const createdPlace = await placeRef.get();
     const place = serializeDoc(createdPlace);
+
+    // Link the save to its canonical venue record (resolve-or-create)
+    const globalPlaceId = await ensureGlobalPlaceLink(createdPlace);
+    if (globalPlaceId) {
+      place.globalPlaceId = globalPlaceId;
+    }
 
     // Update circle's places array and increment count (only add if place.id is defined)
     const currentPlaces = circle.places || [];
@@ -1149,6 +1283,31 @@ exports.updatePlace = async (req, res, next) => {
     // Don't allow changing circleId or addedBy
     const { circleId, addedBy, ...updateData } = req.body;
     updateData.updatedAt = new Date().toISOString();
+
+    // Google-backed places: Google Places is the source of truth for venue
+    // fields, so users can't edit them (they can flag bad data instead —
+    // POST /places/:id/flag). Super-users can still correct anything.
+    // Manually created places (no googlePlaceId — home/work, custom spots)
+    // keep editable venue fields since there is no Google record behind them.
+    const isGoogleBacked = !!place.googlePlaceId;
+    if (isGoogleBacked && req.user.isSuperUser !== true) {
+      const lockedFields = [
+        'name', 'address', 'location', 'geohash', 'category', 'subcategory',
+        'website', 'phone', 'rating', 'userRatingsTotal', 'priceLevel',
+        'openingHours', 'googlePlaceId'
+      ];
+      const stripped = lockedFields.filter((field) => field in updateData);
+      stripped.forEach((field) => delete updateData[field]);
+      if (stripped.length > 0) {
+        console.log(`🔒 Venue fields stripped from update of Google-backed place ${req.params.id}: ${stripped.join(', ')}`);
+      }
+    }
+
+    // privateNotes belong to the person who added the place — reads already
+    // strip them for everyone else, so don't let other editors overwrite them
+    if ('privateNotes' in updateData && !isPlaceAdder) {
+      delete updateData.privateNotes;
+    }
     
     // Validate location coordinates if provided
     if (updateData.location && updateData.location.coordinates) {
@@ -1227,7 +1386,10 @@ exports.updatePlace = async (req, res, next) => {
     }
 
     await placeRef.update(updateData);
-    
+
+    // Venue-level edits update the canonical record once, for every saver
+    await propagateVenueUpdates(req.params.id, place.globalPlaceId, updateData);
+
     // Get updated place
     const updatedPlaceDoc = await placeRef.get();
     const updatedPlace = serializeDoc(updatedPlaceDoc);
@@ -1633,11 +1795,15 @@ exports.refreshPlaceFromGoogle = async (req, res, next) => {
       
       // Update the place in Firestore
       await placeRef.update(updateData);
-      
+
+      // Fresh Google data (rating, review counts) is venue-level: push it to
+      // the canonical record so every saver benefits (photos stay per-copy)
+      await propagateVenueUpdates(req.params.id, place.globalPlaceId, updateData);
+
       // Get the updated place
       const updatedDoc = await placeRef.get();
       const updatedPlace = serializeDoc(updatedDoc);
-      
+
       console.log('✅ Place refreshed successfully');
       
       res.status(200).json({
@@ -1666,6 +1832,110 @@ exports.refreshPlaceFromGoogle = async (req, res, next) => {
 // @desc    Update place address and optionally coordinates
 // @route   PUT /api/places/:id/update-address
 // @access  Private (owner or circle member)
+// @desc    Flag a place whose information looks wrong. Venue fields are
+//          read-only for users (Google Places is the source of truth), so
+//          this is the correction path: the report is stored and the admin
+//          is emailed to review it.
+// @route   POST /api/places/:id/flag
+// @access  Private
+exports.flagPlaceInfo = async (req, res) => {
+  try {
+    const message = String(req.body?.message || '').trim();
+    if (!message) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please describe what looks wrong'
+      });
+    }
+
+    // The id can be a save doc or a global place id — surface whatever we find
+    let placeName = null;
+    let placeAddress = null;
+    let globalPlaceId = null;
+    let googlePlaceId = null;
+    const placeDoc = await db.collection(COLLECTIONS.PLACES).doc(req.params.id).get();
+    if (placeDoc.exists) {
+      const place = placeDoc.data();
+      placeName = place.name;
+      placeAddress = place.address;
+      globalPlaceId = place.globalPlaceId || null;
+      googlePlaceId = place.googlePlaceId || null;
+    } else {
+      const globalDoc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(req.params.id).get();
+      if (!globalDoc.exists) {
+        return res.status(404).json({ success: false, message: 'Place not found' });
+      }
+      const place = globalDoc.data();
+      placeName = place.name;
+      placeAddress = place.address;
+      globalPlaceId = globalDoc.id;
+      googlePlaceId = place.googlePlaceId || null;
+    }
+
+    const report = {
+      type: 'place_info',
+      reporterId: req.user.uid,
+      reporterEmail: req.user.email || null,
+      reporterName: req.user.displayName || null,
+      placeId: req.params.id,
+      globalPlaceId,
+      googlePlaceId,
+      placeName,
+      placeAddress,
+      message,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    const reportRef = await db.collection(COLLECTIONS.REPORTS).add(report);
+
+    // Notify the admin; a mail failure must not fail the report
+    try {
+      const emailService = require('../services/emailService');
+      const adminEmail = process.env.ADMIN_EMAIL || 'wesley@favcircles.com';
+      await emailService.sendEmail({
+        to: adminEmail,
+        subject: `🚩 Place info flagged: ${placeName || req.params.id}`,
+        text: [
+          `A user flagged incorrect place information.`,
+          ``,
+          `Place: ${placeName || 'unknown'}`,
+          `Address: ${placeAddress || 'unknown'}`,
+          `Place ID: ${req.params.id}`,
+          `Global place ID: ${globalPlaceId || 'none'}`,
+          `Google place ID: ${googlePlaceId || 'none'}`,
+          ``,
+          `Reported by: ${report.reporterName || 'unknown'} (${report.reporterEmail || req.user.uid})`,
+          `What's wrong: ${message}`,
+          ``,
+          `Report ID: ${reportRef.id}`
+        ].join('\n'),
+        html: `
+          <h2>🚩 Place info flagged</h2>
+          <p><strong>Place:</strong> ${placeName || 'unknown'}<br>
+          <strong>Address:</strong> ${placeAddress || 'unknown'}<br>
+          <strong>Place ID:</strong> ${req.params.id}<br>
+          <strong>Global place ID:</strong> ${globalPlaceId || 'none'}<br>
+          <strong>Google place ID:</strong> ${googlePlaceId || 'none'}</p>
+          <p><strong>Reported by:</strong> ${report.reporterName || 'unknown'} (${report.reporterEmail || req.user.uid})</p>
+          <p><strong>What's wrong:</strong><br>${message}</p>
+          <p><em>Report ID: ${reportRef.id}</em></p>
+        `
+      });
+    } catch (emailError) {
+      console.error('⚠️ Flag-place admin email failed:', emailError.message);
+    }
+
+    res.status(201).json({
+      success: true,
+      data: { reportId: reportRef.id }
+    });
+  } catch (error) {
+    console.error('❌ flagPlaceInfo failed:', error);
+    res.status(500).json({ success: false, message: 'Failed to submit report' });
+  }
+};
+
 exports.updatePlaceAddress = async (req, res, next) => {
   try {
     const { address, location } = req.body;
@@ -1736,7 +2006,16 @@ exports.updatePlaceAddress = async (req, res, next) => {
         message: 'You do not have permission to update this place'
       });
     }
-    
+
+    // Google-backed places: address comes from Google Places — users flag bad
+    // data instead of editing it (same policy as updatePlace)
+    if (place.googlePlaceId && req.user.isSuperUser !== true) {
+      return res.status(403).json({
+        success: false,
+        message: "This place's information comes from Google Places and can't be edited. If it's wrong, use \"Report incorrect info\" on the place page."
+      });
+    }
+
     // Prepare update data
     const updateData = {
       address: address.trim(),
@@ -1762,7 +2041,11 @@ exports.updatePlaceAddress = async (req, res, next) => {
     
     // Update the place
     await placeRef.update(updateData);
-    
+
+    // An address correction is a venue-level fix: update the canonical record
+    // and every other saved copy of this venue
+    await propagateVenueUpdates(req.params.id, place.globalPlaceId, updateData);
+
     // Get the updated place
     const updatedDoc = await placeRef.get();
     const updatedPlace = serializeDoc(updatedDoc);
@@ -1919,33 +2202,36 @@ exports.likePlace = async (req, res, next) => {
       });
     }
     
-    // Check if already liked
-    const likes = place.likes || [];
-    const alreadyLiked = likes.includes(userId);
-    
-    let updatedLikes;
-    let updatedLikesCount;
-    
-    if (alreadyLiked) {
-      // Unlike
-      updatedLikes = likes.filter(id => id !== userId);
-      updatedLikesCount = Math.max(0, (place.likesCount || 0) - 1);
-    } else {
-      // Like
-      updatedLikes = [...likes, userId];
-      updatedLikesCount = (place.likesCount || 0) + 1;
+    // Likes live on the canonical venue record: one transaction, no matter
+    // how many saved copies of the place exist
+    const globalPlaceId = place.globalPlaceId || await ensureGlobalPlaceLink(placeDoc);
+    if (!globalPlaceId) {
+      return res.status(500).json({
+        success: false,
+        message: 'Place is not linked to a global place record'
+      });
     }
-    
-    // Update the place
-    await placeRef.update({
-      likes: updatedLikes,
-      likesCount: updatedLikesCount,
-      updatedAt: new Date().toISOString()
+
+    const globalPlaceRef = db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(globalPlaceId);
+    const { alreadyLiked, updatedLikes } = await db.runTransaction(async (transaction) => {
+      const globalDoc = await transaction.get(globalPlaceRef);
+      const likes = (globalDoc.exists && globalDoc.data().likes) || [];
+      const liked = likes.includes(userId);
+      const newLikes = liked ? likes.filter(id => id !== userId) : [...likes, userId];
+      transaction.update(globalPlaceRef, {
+        likes: newLikes,
+        likesCount: newLikes.length,
+        updatedAt: new Date().toISOString()
+      });
+      return { alreadyLiked: liked, updatedLikes: newLikes };
     });
-    
-    // Get updated place
-    const updatedDoc = await placeRef.get();
-    const updatedPlace = serializeDoc(updatedDoc);
+
+    const updatedPlace = {
+      ...place,
+      globalPlaceId,
+      likes: updatedLikes,
+      likesCount: updatedLikes.length
+    };
     
     // Send notification to place owner if someone liked their place (not unliked, and not their own place)
     if (!alreadyLiked && place.addedBy !== userId) {
@@ -2036,9 +2322,9 @@ exports.getPlaceLikes = async (req, res, next) => {
       });
     }
     
-    // Get user IDs who liked this place
-    const likes = place.likes || [];
-    
+    // Likes live on the canonical venue record
+    const { likes } = await getGlobalSocial(placeDoc);
+
     if (likes.length === 0) {
       return res.status(200).json({
         success: true,
@@ -2082,6 +2368,161 @@ exports.getPlaceLikes = async (req, res, next) => {
     
   } catch (error) {
     console.error('Error fetching place likes:', error);
+    next(error);
+  }
+};
+
+// @desc    Get users who saved this place (across all circles containing it)
+// @route   GET /api/places/:id/savers
+// @access  Private
+exports.getPlaceSavers = async (req, res, next) => {
+  try {
+    const placeId = req.params.id;
+    const userId = req.user.uid;
+
+    const placeDoc = await db.collection(COLLECTIONS.PLACES).doc(placeId).get();
+    if (!placeDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Place not found'
+      });
+    }
+    const place = serializeDoc(placeDoc);
+
+    // Find every saved copy of this place via its canonical venue link
+    // (googlePlaceId fallback for any doc the backfill missed)
+    let placeDocs = [placeDoc];
+    const saversGlobalId = place.globalPlaceId || await ensureGlobalPlaceLink(placeDoc);
+    if (saversGlobalId) {
+      const snapshot = await db.collection(COLLECTIONS.PLACES)
+        .where('globalPlaceId', '==', saversGlobalId)
+        .get();
+      if (!snapshot.empty) {
+        placeDocs = snapshot.docs;
+      }
+    } else if (place.googlePlaceId) {
+      const snapshot = await db.collection(COLLECTIONS.PLACES)
+        .where('googlePlaceId', '==', place.googlePlaceId)
+        .get();
+      if (!snapshot.empty) {
+        placeDocs = snapshot.docs;
+      }
+    }
+
+    // Group circle IDs by saver
+    const circleIdsBySaver = new Map();
+    for (const doc of placeDocs) {
+      const data = doc.data();
+      const saverId = normalizeUserId(data.addedBy);
+      if (!saverId) continue;
+      if (!circleIdsBySaver.has(saverId)) {
+        circleIdsBySaver.set(saverId, new Set());
+      }
+      if (data.circleId) {
+        circleIdsBySaver.get(saverId).add(data.circleId);
+      }
+    }
+
+    const totalCount = circleIdsBySaver.size;
+    if (totalCount === 0) {
+      return res.status(200).json({
+        success: true,
+        savers: [],
+        count: 0,
+        totalCount: 0
+      });
+    }
+
+    // Load all involved circles in one batch to check visibility
+    const circleIds = [...new Set([...circleIdsBySaver.values()].flatMap(set => [...set]))];
+    const circleRefs = circleIds.map(id => db.collection(COLLECTIONS.CIRCLES).doc(id));
+    const circleDocs = circleRefs.length ? await db.getAll(...circleRefs) : [];
+    const circlesById = new Map();
+    circleDocs.forEach(doc => {
+      if (doc.exists) circlesById.set(doc.id, serializeDoc(doc));
+    });
+
+    // Requester's connections (stored per-direction, so check both).
+    // Keep outgoing statuses so pending requests render as 'pending'.
+    const [outgoing, incomingAccepted] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', userId)
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', userId)
+        .where('status', '==', 'accepted')
+        .get()
+    ]);
+    const connectionStatusById = new Map();
+    outgoing.forEach(doc => {
+      const conn = doc.data();
+      connectionStatusById.set(normalizeUserId(conn.connectedUserId), conn.status);
+    });
+    incomingAccepted.forEach(doc => {
+      connectionStatusById.set(normalizeUserId(doc.data().userId), 'accepted');
+    });
+    const connectedIds = new Set(
+      [...connectionStatusById.entries()]
+        .filter(([, status]) => status === 'accepted')
+        .map(([id]) => id)
+    );
+
+    // A saver is visible if at least one circle holding their save is visible
+    // to the requester
+    const isCircleVisible = (circle, saverId) => {
+      if (!circle) return false;
+      if (saverId === userId || circle.owner === userId) return true;
+      if (circle.privacy === 'public') return true;
+      if (circle.sharedWith && circle.sharedWith.includes(userId)) return true;
+      if (circle.privacy === 'myNetwork' && connectedIds.has(normalizeUserId(circle.owner))) return true;
+      return false;
+    };
+
+    const visibleSaverIds = [...circleIdsBySaver.entries()]
+      .filter(([saverId, ids]) =>
+        [...ids].some(circleId => isCircleVisible(circlesById.get(circleId), saverId)))
+      .map(([saverId]) => saverId);
+
+    if (visibleSaverIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        savers: [],
+        count: 0,
+        totalCount
+      });
+    }
+
+    // Follow state for the requester, to render Follow/Connect buttons
+    const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+    const userFollowing = new Set((currentUserDoc.data() || {}).following || []);
+
+    const userRefs = visibleSaverIds.map(id => db.collection(COLLECTIONS.USERS).doc(id));
+    const userDocs = await db.getAll(...userRefs);
+    const savers = userDocs
+      .filter(doc => doc.exists)
+      .map(doc => {
+        const userData = serializeDoc(doc);
+        return {
+          _id: userData.id,
+          displayName: userData.displayName,
+          profilePicture: userData.profilePicture,
+          bio: userData.bio,
+          connectionStatus: userData.id === userId
+            ? 'self'
+            : (connectionStatusById.get(userData.id) || 'none'),
+          isFollowing: userFollowing.has(userData.id)
+        };
+      });
+
+    res.status(200).json({
+      success: true,
+      savers,
+      count: savers.length,
+      totalCount
+    });
+
+  } catch (error) {
+    console.error('Error fetching place savers:', error);
     next(error);
   }
 };
@@ -2150,17 +2591,19 @@ exports.getPlaceComments = async (req, res, next) => {
       }
     }
     
-    // Get comments (only top-level comments, not replies)
-    console.log('📋 Fetching top-level comments from placeComments collection for place:', placeId);
-    const commentsSnapshot = await db.collection('placeComments')
-      .where('placeId', '==', placeId)
-      .orderBy('createdAt', 'desc')
-      .get();
-    
-    console.log(`✅ Found ${commentsSnapshot.size} comments for place ${placeId}`);
-    
+    // Comments are keyed by the canonical venue record, shared by every copy
+    console.log('📋 Fetching top-level comments for global place of:', placeId);
+    const { globalPlaceId } = await getGlobalSocial(placeDoc);
+    const commentsSnapshot = globalPlaceId
+      ? await db.collection('placeComments').where('globalPlaceId', '==', globalPlaceId).get()
+      : await db.collection('placeComments').where('placeId', '==', placeId).get();
+    const commentDocs = [...commentsSnapshot.docs];
+    commentDocs.sort((a, b) => String(b.data().createdAt || '').localeCompare(String(a.data().createdAt || '')));
+
+    console.log(`✅ Found ${commentDocs.length} comments for place ${placeId}`);
+
     const comments = [];
-    for (const doc of commentsSnapshot.docs) {
+    for (const doc of commentDocs) {
       const comment = serializeDoc(doc);
       
       // Only include top-level comments (no parentCommentId or parentCommentId is null/undefined)
@@ -2261,16 +2704,28 @@ exports.addPlaceComment = async (req, res, next) => {
       });
     }
     
-    // Create comment using the model function
+    // Create comment using the model function. Comments are keyed by the
+    // canonical venue record (placeId kept for legacy readers like the digest)
     const { createPlaceComment } = require('../models/FirestoreModels');
-    const commentData = createPlaceComment({
-      placeId: placeId,
-      userId: userId,
-      text: text.trim()
-    });
-    
+    const commentGlobalPlaceId = place.globalPlaceId || await ensureGlobalPlaceLink(placeDoc);
+    const commentData = {
+      ...createPlaceComment({
+        placeId: placeId,
+        userId: userId,
+        text: text.trim()
+      }),
+      globalPlaceId: commentGlobalPlaceId || null
+    };
+
     console.log('💾 Saving comment to placeComments collection');
     const commentRef = await db.collection('placeComments').add(commentData);
+
+    // Keep the venue's comment counter current
+    if (commentGlobalPlaceId) {
+      await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(commentGlobalPlaceId).update({
+        commentsCount: admin.firestore.FieldValue.increment(1)
+      }).catch(err => console.error('⚠️ Failed to bump commentsCount:', err.message));
+    }
     const commentDoc = await commentRef.get();
     const comment = serializeDoc(commentDoc);
     console.log('✅ Comment saved successfully with ID:', comment.id);
@@ -2508,7 +2963,16 @@ exports.addExistingPlaceToCircle = async (req, res, next) => {
     // Get the created place document
     const newPlaceDoc = await newPlaceRef.get();
     const newPlace = serializeDoc(newPlaceDoc);
-    
+
+    // Copies inherit the source's globalPlaceId via the field spread above;
+    // this covers older source docs that were never linked
+    if (!newPlace.globalPlaceId) {
+      const linkedGlobalPlaceId = await ensureGlobalPlaceLink(newPlaceDoc);
+      if (linkedGlobalPlaceId) {
+        newPlace.globalPlaceId = linkedGlobalPlaceId;
+      }
+    }
+
     // Update circle's places array and increment count using the direct ID
     const currentPlaces = circle.places || [];
     await circleRef.update({
@@ -2567,44 +3031,55 @@ exports.deletePlaceComment = async (req, res, next) => {
     }
     
     const comment = serializeDoc(commentDoc);
-    
-    // Check if comment belongs to this place
-    if (comment.placeId !== placeId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Comment does not belong to this place'
-      });
-    }
-    
+
     // Get the place to check ownership
     const placeRef = db.collection(COLLECTIONS.PLACES).doc(placeId);
     const placeDoc = await placeRef.get();
-    
+
     if (!placeDoc.exists) {
       return res.status(404).json({
         success: false,
         message: 'Place not found'
       });
     }
-    
+
     const place = serializeDoc(placeDoc);
-    
+
+    // Comments are global per venue: the comment belongs here if it was made
+    // on this copy OR on any copy of the same venue
+    const sameVenue = comment.globalPlaceId && place.globalPlaceId &&
+      comment.globalPlaceId === place.globalPlaceId;
+    if (comment.placeId !== placeId && !sameVenue) {
+      return res.status(400).json({
+        success: false,
+        message: 'Comment does not belong to this place'
+      });
+    }
+
     // Check if user can delete the comment
     // User can delete if they are:
     // 1. The comment author
     // 2. The place owner
     const isCommentAuthor = comment.userId === userId;
     const isPlaceOwner = place.addedBy === userId;
-    
+
     if (!isCommentAuthor && !isPlaceOwner) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to delete this comment'
       });
     }
-    
+
     // Delete the comment
     await commentRef.delete();
+
+    // Keep the venue's comment counter current
+    const counterGlobalId = comment.globalPlaceId || place.globalPlaceId;
+    if (counterGlobalId) {
+      await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(counterGlobalId).update({
+        commentsCount: admin.firestore.FieldValue.increment(-1)
+      }).catch(err => console.error('⚠️ Failed to decrement commentsCount:', err.message));
+    }
     
     res.status(200).json({
       success: true,
@@ -2637,28 +3112,31 @@ exports.likeComment = async (req, res, next) => {
     }
     
     const comment = serializeDoc(commentDoc);
-    
-    // Check if comment belongs to this place
-    if (comment.placeId !== placeId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Comment does not belong to this place'
-      });
-    }
-    
+
     // Get the place to check permissions
     const placeRef = db.collection(COLLECTIONS.PLACES).doc(placeId);
     const placeDoc = await placeRef.get();
-    
+
     if (!placeDoc.exists) {
       return res.status(404).json({
         success: false,
         message: 'Place not found'
       });
     }
-    
+
     const place = serializeDoc(placeDoc);
-    
+
+    // Comments are global per venue: the comment belongs here if it was made
+    // on this copy OR on any copy of the same venue
+    const likeSameVenue = comment.globalPlaceId && place.globalPlaceId &&
+      comment.globalPlaceId === place.globalPlaceId;
+    if (comment.placeId !== placeId && !likeSameVenue) {
+      return res.status(400).json({
+        success: false,
+        message: 'Comment does not belong to this place'
+      });
+    }
+
     // Check permissions (same as viewing place)
     const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(place.circleId);
     const circleDoc = await circleRef.get();
@@ -2784,27 +3262,30 @@ exports.addPlaceCommentReply = async (req, res, next) => {
     }
     
     const parentComment = serializeDoc(parentCommentDoc);
-    
-    // Ensure the parent comment belongs to the specified place
-    if (parentComment.placeId !== placeId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Comment does not belong to this place'
-      });
-    }
-    
+
     // Get the place to check permissions
     const placeRef = db.collection(COLLECTIONS.PLACES).doc(placeId);
     const placeDoc = await placeRef.get();
-    
+
     if (!placeDoc.exists) {
       return res.status(404).json({
         success: false,
         message: 'Place not found'
       });
     }
-    
+
     const place = serializeDoc(placeDoc);
+
+    // Comments are global per venue: the parent belongs here if it was made
+    // on this copy OR on any copy of the same venue
+    const parentSameVenue = parentComment.globalPlaceId && place.globalPlaceId &&
+      parentComment.globalPlaceId === place.globalPlaceId;
+    if (parentComment.placeId !== placeId && !parentSameVenue) {
+      return res.status(400).json({
+        success: false,
+        message: 'Comment does not belong to this place'
+      });
+    }
     
     // Check if user can reply to comments on this place (same permissions as commenting)
     // Get the circle to check permissions
@@ -2850,17 +3331,29 @@ exports.addPlaceCommentReply = async (req, res, next) => {
       });
     }
     
-    // Create reply data using the new model function
+    // Create reply data using the new model function. Replies inherit the
+    // parent's venue key so they surface on every copy of the place
     const { createPlaceComment } = require('../models/FirestoreModels');
-    const replyData = createPlaceComment({
-      placeId: placeId,
-      userId: userId,
-      text: text.trim(),
-      parentCommentId: commentId
-    });
-    
+    const replyGlobalPlaceId = parentComment.globalPlaceId || place.globalPlaceId || null;
+    const replyData = {
+      ...createPlaceComment({
+        placeId: placeId,
+        userId: userId,
+        text: text.trim(),
+        parentCommentId: commentId
+      }),
+      globalPlaceId: replyGlobalPlaceId
+    };
+
     console.log('💾 Saving reply to placeComments collection');
     const replyRef = await db.collection('placeComments').add(replyData);
+
+    // Keep the venue's comment counter current (counts include replies)
+    if (replyGlobalPlaceId) {
+      await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(replyGlobalPlaceId).update({
+        commentsCount: admin.firestore.FieldValue.increment(1)
+      }).catch(err => console.error('⚠️ Failed to bump commentsCount:', err.message));
+    }
     const replyDoc = await replyRef.get();
     const reply = serializeDoc(replyDoc);
     console.log('✅ Reply saved successfully with ID:', reply.id);
@@ -2917,27 +3410,31 @@ exports.getPlaceCommentReplies = async (req, res, next) => {
     }
     
     const parentComment = serializeDoc(parentCommentDoc);
-    
-    if (parentComment.placeId !== placeId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Comment does not belong to this place'
-      });
-    }
-    
+
     // Get the place to check permissions
     const placeRef = db.collection(COLLECTIONS.PLACES).doc(placeId);
     const placeDoc = await placeRef.get();
-    
+
     if (!placeDoc.exists) {
       return res.status(404).json({
         success: false,
         message: 'Place not found'
       });
     }
-    
+
     const place = serializeDoc(placeDoc);
-    
+
+    // Comments are global per venue: the parent belongs here if it was made
+    // on this copy OR on any copy of the same venue
+    const repliesSameVenue = parentComment.globalPlaceId && place.globalPlaceId &&
+      parentComment.globalPlaceId === place.globalPlaceId;
+    if (parentComment.placeId !== placeId && !repliesSameVenue) {
+      return res.status(400).json({
+        success: false,
+        message: 'Comment does not belong to this place'
+      });
+    }
+
     // Check if user can view replies (same permissions as viewing comments)
     // Get the circle to check permissions
     const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(place.circleId);
@@ -3313,12 +3810,25 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
     }
     
     console.log(`✅ Batch fetched ${allPlaces.length} places from ${processedCircles.size} accessible circles`);
-    
+
+    // Overlay social + venue data from the canonical venue records
+    const socialByGlobalId = await fetchGlobalSocialMap(allPlaces);
+    const placesWithSocial = allPlaces.map(place => {
+      const social = socialByGlobalId.get(place.globalPlaceId);
+      if (!social) return place;
+      return {
+        ...overlayVenueFields(place, social.venueData),
+        likes: social.likes,
+        likesCount: social.likes.length,
+        commentsCount: social.commentsCount
+      };
+    });
+
     res.status(200).json({
       success: true,
-      places: allPlaces,
+      places: placesWithSocial,
       circlesProcessed: processedCircles.size,
-      totalPlaces: allPlaces.length
+      totalPlaces: placesWithSocial.length
     });
     
   } catch (error) {

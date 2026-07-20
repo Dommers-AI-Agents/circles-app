@@ -22,6 +22,9 @@ class CircleSelectionViewController: UIViewController {
     private var isCreatingNewCircle = false
     private var customTitle: String?
     private var isSearchActive = false
+    // A fast double-tap on a circle row fired the delegate twice before the
+    // sheet dismissed (double place-move requests) — only the first counts
+    private var hasDeliveredSelection = false
     
     // MARK: - UI Components
     
@@ -256,7 +259,7 @@ class CircleSelectionViewController: UIViewController {
         self.isCreatingNewCircle = true
         self.loadingIndicator.startAnimating()
         
-        CircleService.shared.createCircle(name: name, description: nil, privacy: .myNetwork, category: .other) { result in
+        CircleService.shared.createCircle(name: name, description: nil, privacy: .public, category: .other) { result in
             DispatchQueue.main.async {
                 self.isCreatingNewCircle = false
                 self.loadingIndicator.stopAnimating()
@@ -372,6 +375,9 @@ extension CircleSelectionViewController: UITableViewDelegate {
         tableView.deselectRow(at: indexPath, animated: true)
         
         if indexPath.section == 0 {
+            guard !hasDeliveredSelection else { return }
+            hasDeliveredSelection = true
+
             let selectedCircle = filteredCircles[indexPath.row]
             if let placeDelegate = delegate as? CircleSelectionWithPlaceDelegate,
                let place = placeToMove {

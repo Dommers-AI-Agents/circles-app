@@ -52,18 +52,25 @@ struct GlobalPlace: Codable, Identifiable {
 // MARK: - Attributed Media
 struct AttributedPhoto: Codable, Identifiable {
     let id = UUID()
+    /// Server-side photo id — needed for like/delete calls on this photo
+    let photoId: String?
     let url: String
-    let uploadedBy: String
+    // Nil for inherited legacy/Google photos — the backend intentionally
+    // leaves those unattributed (no one provably took them)
+    let uploadedBy: String?
     let uploadedByName: String?
     let uploadedAt: Date
     let source: MediaSource
     let width: Int?
     let height: Int?
     let fileSize: Int64?
-    
+    let likes: [String]?
+    let likesCount: Int?
+
     enum CodingKeys: String, CodingKey {
+        case photoId = "id"
         case url, uploadedBy, uploadedByName, uploadedAt, source
-        case width, height, fileSize
+        case width, height, fileSize, likes, likesCount
     }
 }
 
@@ -72,7 +79,9 @@ struct AttributedVideo: Codable, Identifiable {
     let videoUrl: String
     let thumbnailUrl: String?
     let previewUrl: String?
-    let uploadedBy: String
+    // Nil for inherited legacy videos whose owner is unknown (same contract
+    // as AttributedPhoto.uploadedBy)
+    let uploadedBy: String?
     let uploadedByName: String?
     let uploadedAt: Date
     let title: String
@@ -91,7 +100,17 @@ enum MediaSource: String, Codable {
     case userUpload = "user_upload"
     case googlePlaces = "google_places"
     case legacyMigration = "legacy_migration"
-    
+    case legacyImport = "legacy_import"
+    case unknown
+
+    // A source string this build doesn't recognize must never fail the whole
+    // place decode — fall back to .unknown (this is how "legacy_import" broke
+    // every legacy-photo place before this case existed)
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = MediaSource(rawValue: raw) ?? .unknown
+    }
+
     var displayName: String {
         switch self {
         case .userUpload:
@@ -100,6 +119,10 @@ enum MediaSource: String, Codable {
             return "Google Places"
         case .legacyMigration:
             return "Legacy Migration"
+        case .legacyImport:
+            return "Legacy Import"
+        case .unknown:
+            return "Unknown"
         }
     }
 }
@@ -225,6 +248,25 @@ struct GlobalPlaceSearchResponse: Codable {
 struct GlobalPlaceDetailResponse: Codable {
     let success: Bool
     let data: GlobalPlaceResponse
+}
+
+// Result of the "do we already know this venue?" pre-Google check
+struct KnownPlaceMatch: Codable {
+    let globalPlaceId: String
+    let googlePlaceId: String?
+    let name: String
+    let address: String?
+    let category: String?
+    let photos: [String]
+}
+
+struct KnownPlaceMatchResponse: Codable {
+    let success: Bool
+    let data: KnownPlaceMatchData
+}
+
+struct KnownPlaceMatchData: Codable {
+    let match: KnownPlaceMatch?
 }
 
 struct CreateGlobalPlaceResponse: Codable {

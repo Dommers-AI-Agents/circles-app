@@ -1392,7 +1392,24 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
+    // MARK: - Save In-Flight Guard
+
+    /// Prevents double-tapping Save (or the map callout "+") from creating
+    /// duplicate places while a create flow is in progress.
+    private var isSaving = false
+
+    private func beginSaving() {
+        isSaving = true
+        addPlaceButton.isEnabled = false
+    }
+
+    private func endSaving() {
+        isSaving = false
+        addPlaceButton.isEnabled = true
+    }
+
     @objc private func addPlaceButtonTapped() {
+        guard !isSaving else { return }
         guard let name = nameTextField.text, !name.isEmpty,
               let address = addressTextView.text, !address.isEmpty else {
             presentAlert(title: "Error", message: "Please provide a name and address")
@@ -1435,6 +1452,10 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         // Get privacy setting from segmented control
         let privacy: PlacePrivacy = privacySegmentedControl.selectedSegmentIndex == 0 ? .followCirclePrivacy : .private
         
+        // Guard the whole create flow (duplicate check -> create -> navigate)
+        // against a second tap; released on every failure/cancel path
+        beginSaving()
+
         // First check for duplicates
         let checkingAlert = UIAlertController(title: "Checking...", message: "Verifying place doesn't already exist", preferredStyle: .alert)
         present(checkingAlert, animated: true)
@@ -1472,8 +1493,10 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                             )
                         })
                         
-                        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-                        
+                        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in
+                            self?.endSaving()
+                        })
+
                         self?.present(alert, animated: true)
                     } else {
                         // No duplicate found, proceed with creation
@@ -1694,7 +1717,8 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                     if let error = error {
                         print("❌ Geocoding failed: \(error.localizedDescription)")
                         loadingAlert.dismiss(animated: true) {
-                            self.presentAlert(title: "Location Error", 
+                            self.endSaving()
+                            self.presentAlert(title: "Location Error",
                                             message: "Unable to determine location for this address. Please select a location on the map.")
                         }
                         return
@@ -1704,7 +1728,8 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                           let location = placemark.location else {
                         print("❌ No location found for address")
                         loadingAlert.dismiss(animated: true) {
-                            self.presentAlert(title: "Location Error", 
+                            self.endSaving()
+                            self.presentAlert(title: "Location Error",
                                             message: "Unable to find location for this address. Please select a location on the map.")
                         }
                         return
@@ -1803,6 +1828,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                             }
                         case .failure(let error):
                             print("❌ Failed to create place from POI: \(error)")
+                            self?.endSaving()
                             self?.presentAlert(title: "Error", message: error.localizedDescription)
                         }
                     }
@@ -1828,7 +1854,8 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                             print("⚠️ Geocoding failed: \(error.localizedDescription)")
                             // For place creation, location should be mandatory
                             loadingAlert.dismiss(animated: true) {
-                                self?.presentAlert(title: "Location Required", 
+                                self?.endSaving()
+                                self?.presentAlert(title: "Location Required",
                                                  message: "Could not determine location for this address. Please select a location on the map or try a different address.")
                             }
                             return
@@ -1939,6 +1966,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                         }
                     case .failure(let error):
                         print("❌ Failed to create place: \(error)")
+                        self?.endSaving()
                         self?.presentAlert(title: "Error", message: error.localizedDescription)
                     }
                 }
@@ -2011,6 +2039,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                         }
                     case .failure(let error):
                         print("❌ Failed to create place: \(error)")
+                        self?.endSaving()
                         self?.presentAlert(title: "Error", message: error.localizedDescription)
                     }
                 }
@@ -2518,47 +2547,15 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             print("  - Category: \(self.selectedCategory.displayName)")
             print("  - Form enabled: \(self.formContainer.isUserInteractionEnabled)")
             
-            // Search for Google Place to get photos (only for businesses, not residential)
+            // Attach googlePlaceId + photos (only for businesses, not
+            // residential). Checks our own database first — Google is only
+            // queried for venues nobody has saved yet.
             if !isResidentialAddress, let placeName = mapItem.name, !placeName.isEmpty {
-                print("🔍 Searching Google Places for: \(placeName)")
-                print("📍 With address: \(address)")
-                GooglePlacesService.shared.searchPlaceByNameAndLocation(
+                self.fetchPlaceAssets(
                     name: placeName,
                     coordinate: mapItem.placemark.coordinate,
                     address: address
-                ) { [weak self] result in
-                    switch result {
-                    case .success(let prediction):
-                        if let prediction = prediction {
-                            print("✅ Found Google Place match: \(prediction.attributedPrimaryText.string)")
-                            // Fetch place details to get photos
-                            GooglePlacesService.shared.fetchPlaceDetails(placeID: prediction.placeID) { detailsResult in
-                                switch detailsResult {
-                                case .success(let place):
-                                    let googleDetails = GooglePlaceDetails(from: place)
-                                    DispatchQueue.main.async {
-                                        // Store the Google Place details for later use
-                                        self?.selectedGooglePlaceDetails = googleDetails
-                                        // Only preload photos if we haven't already uploaded any
-                                        // This prevents duplicate uploads when selecting from Apple Maps
-                                        if self?.uploadedPhotoUrls.isEmpty == true {
-                                            print("📸 No existing uploads, calling preloadAndUploadPhotosForPlace")
-                                            self?.preloadAndUploadPhotosForPlace(googleDetails)
-                                        } else {
-                                            print("📸 Skipping preloadAndUploadPhotosForPlace - already have \(self?.uploadedPhotoUrls.count ?? 0) uploaded photos")
-                                        }
-                                    }
-                                case .failure(let error):
-                                    print("❌ Failed to fetch Google Place details: \(error)")
-                                }
-                            }
-                        } else {
-                            print("⚠️ No Google Place match found for: \(placeName)")
-                        }
-                    case .failure(let error):
-                        print("❌ Failed to search Google Places: \(error)")
-                    }
-                }
+                )
             }
             
             // Update map to show the selected place
@@ -2576,6 +2573,82 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
+    // MARK: - Place assets (googlePlaceId + photos), database-first
+
+    /// Attach a googlePlaceId and photos to the place being added. Our own
+    /// database is checked first: if another user already saved this venue,
+    /// the canonical record supplies both and Google Places is never queried.
+    private func fetchPlaceAssets(name: String, coordinate: CLLocationCoordinate2D, address: String?) {
+        GlobalPlaceService.shared.matchKnownPlace(
+            name: name,
+            latitude: coordinate.latitude,
+            longitude: coordinate.longitude,
+            address: address
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+
+                if case .success(let match?) = result, let googlePlaceId = match.googlePlaceId, !googlePlaceId.isEmpty {
+                    print("✅ Venue already in our database (\(match.globalPlaceId)) — skipping Google Places")
+                    self.selectedGooglePlaceDetails = GooglePlaceDetails(
+                        placeID: googlePlaceId,
+                        name: match.name,
+                        address: match.address ?? address,
+                        coordinate: coordinate
+                    )
+                    // Canonical photos are Firebase URLs — reuse directly,
+                    // no download/re-upload needed
+                    if self.uploadedPhotoUrls.isEmpty && !match.photos.isEmpty {
+                        self.uploadedPhotoUrls = Array(match.photos.prefix(5))
+                        print("📸 Reusing \(self.uploadedPhotoUrls.count) canonical photos")
+                    }
+                    return
+                }
+
+                self.searchGoogleForPlaceAssets(name: name, coordinate: coordinate, address: address)
+            }
+        }
+    }
+
+    /// The Google Places pipeline (Find Place → Details → photo upload),
+    /// used only when the venue is new to our database.
+    private func searchGoogleForPlaceAssets(name: String, coordinate: CLLocationCoordinate2D, address: String?) {
+        print("🔍 Searching Google Places for: \(name)")
+        GooglePlacesService.shared.searchPlaceByNameAndLocation(
+            name: name,
+            coordinate: coordinate,
+            address: address ?? ""
+        ) { [weak self] result in
+            switch result {
+            case .success(let prediction):
+                if let prediction = prediction {
+                    print("✅ Found Google Place match: \(prediction.attributedPrimaryText.string)")
+                    GooglePlacesService.shared.fetchPlaceDetails(placeID: prediction.placeID) { detailsResult in
+                        switch detailsResult {
+                        case .success(let place):
+                            let googleDetails = GooglePlaceDetails(from: place)
+                            DispatchQueue.main.async {
+                                self?.selectedGooglePlaceDetails = googleDetails
+                                // Only preload photos if we haven't already uploaded any
+                                if self?.uploadedPhotoUrls.isEmpty == true {
+                                    self?.preloadAndUploadPhotosForPlace(googleDetails)
+                                } else {
+                                    print("📸 Skipping photo preload - already have \(self?.uploadedPhotoUrls.count ?? 0) uploaded photos")
+                                }
+                            }
+                        case .failure(let error):
+                            print("❌ Failed to fetch Google Place details: \(error)")
+                        }
+                    }
+                } else {
+                    print("⚠️ No Google Place match found for: \(name)")
+                }
+            case .failure(let error):
+                print("❌ Failed to search Google Places: \(error)")
+            }
+        }
+    }
+
     private func fillFormWithGMSPlace(_ place: GMSPlace) {
         // Convert GMSPlace to GooglePlaceDetails
         let placeDetails = GooglePlaceDetails(from: place)
@@ -3129,6 +3202,10 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     }
     
     private func addGooglePlace(placeId: String, markerTitle: String) {
+        // Same double-tap guard as the Save button — the callout "+" creates too
+        guard !isSaving else { return }
+        beginSaving()
+
         // Show loading
         let loadingAlert = UIAlertController(title: "Adding Place", message: "Please wait...", preferredStyle: .alert)
         present(loadingAlert, animated: true)
@@ -3142,6 +3219,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             guard let self = self else { return }
             guard let place = place else {
                 loadingAlert.dismiss(animated: true) {
+                    self.endSaving()
                     self.showError("Failed to get place details")
                 }
                 return
@@ -3356,6 +3434,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                         
                     case .failure(let error):
                         print("❌ Failed to create place: \(error)")
+                        self.endSaving()
                         self.presentAlert(
                             title: "Error",
                             message: "Failed to add place: \(error.localizedDescription)"
@@ -3652,46 +3731,15 @@ extension AddPlaceViewController: MKMapViewDelegate {
                         self?.scrollToFormTop()
                     }
                     
-                    // Search for Google Place to get photos
+                    // Attach googlePlaceId + photos — our own database first,
+                    // Google only for venues nobody has saved yet
                     let placeName = poiData.name
                     if !placeName.isEmpty {
-                        print("🔍 Searching Google Places for POI: \(placeName)")
-                        print("📍 With address: \(poiData.address)")
-                        GooglePlacesService.shared.searchPlaceByNameAndLocation(
+                        self?.fetchPlaceAssets(
                             name: placeName,
                             coordinate: coordinate,
                             address: poiData.address
-                        ) { [weak self] result in
-                            switch result {
-                            case .success(let prediction):
-                                if let prediction = prediction {
-                                    print("✅ Found Google Place match for POI: \(prediction.attributedPrimaryText.string)")
-                                    // Fetch place details to get photos
-                                    GooglePlacesService.shared.fetchPlaceDetails(placeID: prediction.placeID) { detailsResult in
-                                        switch detailsResult {
-                                        case .success(let place):
-                                            let googleDetails = GooglePlaceDetails(from: place)
-                                            DispatchQueue.main.async {
-                                                // Store the Google Place details for later use
-                                                self?.selectedGooglePlaceDetails = googleDetails
-                                                // Preload and upload photos only if we haven't already uploaded any
-                                                if self?.uploadedPhotoUrls.isEmpty == true {
-                                                    self?.preloadAndUploadPhotosForPlace(googleDetails)
-                                                } else {
-                                                    print("📸 Skipping photo preload - already have \(self?.uploadedPhotoUrls.count ?? 0) uploaded photos")
-                                                }
-                                            }
-                                        case .failure(let error):
-                                            print("❌ Failed to fetch Google Place details for POI: \(error)")
-                                        }
-                                    }
-                                } else {
-                                    print("⚠️ No Google Place match found for POI: \(placeName)")
-                                }
-                            case .failure(let error):
-                                print("❌ Failed to search Google Places for POI: \(error)")
-                            }
-                        }
+                        )
                     }
                 }
             case .failure(let error):
@@ -3724,45 +3772,13 @@ extension AddPlaceViewController: MKMapViewDelegate {
                         self?.scrollToFormTop()
                     }
                     
-                    // Search for Google Place to get photos even in fallback case
+                    // Attach googlePlaceId + photos even in the fallback case
                     if !poiName.isEmpty {
-                        print("🔍 Searching Google Places for POI (fallback): \(poiName)")
-                        print("📍 With address (fallback): \(poiSubtitle)")
-                        GooglePlacesService.shared.searchPlaceByNameAndLocation(
+                        self?.fetchPlaceAssets(
                             name: poiName,
                             coordinate: coordinate,
                             address: poiSubtitle
-                        ) { [weak self] result in
-                            switch result {
-                            case .success(let prediction):
-                                if let prediction = prediction {
-                                    print("✅ Found Google Place match for POI (fallback): \(prediction.attributedPrimaryText.string)")
-                                    // Fetch place details to get photos
-                                    GooglePlacesService.shared.fetchPlaceDetails(placeID: prediction.placeID) { detailsResult in
-                                        switch detailsResult {
-                                        case .success(let place):
-                                            let googleDetails = GooglePlaceDetails(from: place)
-                                            DispatchQueue.main.async {
-                                                // Store the Google Place details for later use
-                                                self?.selectedGooglePlaceDetails = googleDetails
-                                                // Preload and upload photos only if we haven't already uploaded any
-                                                if self?.uploadedPhotoUrls.isEmpty == true {
-                                                    self?.preloadAndUploadPhotosForPlace(googleDetails)
-                                                } else {
-                                                    print("📸 Skipping photo preload - already have \(self?.uploadedPhotoUrls.count ?? 0) uploaded photos")
-                                                }
-                                            }
-                                        case .failure(let error):
-                                            print("❌ Failed to fetch Google Place details for POI (fallback): \(error)")
-                                        }
-                                    }
-                                } else {
-                                    print("⚠️ No Google Place match found for POI (fallback): \(poiName)")
-                                }
-                            case .failure(let error):
-                                print("❌ Failed to search Google Places for POI (fallback): \(error)")
-                            }
-                        }
+                        )
                     }
                 }
             }

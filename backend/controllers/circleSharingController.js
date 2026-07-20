@@ -884,15 +884,19 @@ const getUserCircles = async (req, res) => {
             .orderBy('createdAt', 'desc')
             .get();
             
+          // Trashed places are invisible to their owner — never show them to
+          // the owner's connections either
+          const activePlaceDocs = placesSnapshot.docs.filter(doc => !doc.data().deletedAt);
+
           // Return both place IDs and full details in separate fields
-          circle.places = placesSnapshot.docs.map(doc => doc.id);
-          circle.placesWithDetails = serializeQuerySnapshot(placesSnapshot);
-          
-          // Mark which places are new
-          circle.placesWithDetails = circle.placesWithDetails.map(place => ({
-            ...place,
-            isNew: unviewedPlaceIds.has(place._id)
-          }));
+          circle.places = activePlaceDocs.map(doc => doc.id);
+          circle.placesWithDetails = activePlaceDocs.map(doc => {
+            const place = serializeDoc(doc);
+            return {
+              ...place,
+              isNew: unviewedPlaceIds.has(place._id)
+            };
+          });
         } catch (indexError) {
           // Fallback: fetch without orderBy and sort in memory
           console.log(`Index not ready, using fallback for circle ${circle._id}`);
@@ -901,6 +905,7 @@ const getUserCircles = async (req, res) => {
             .get();
             
           const sortedDocs = placesSnapshot.docs
+            .filter(doc => !doc.data().deletedAt)
             .sort((a, b) => {
               const aDate = new Date(a.data().createdAt || 0);
               const bDate = new Date(b.data().createdAt || 0);

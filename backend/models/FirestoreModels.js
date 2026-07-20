@@ -21,6 +21,7 @@ const COLLECTIONS = {
   CIRCLE_COMMENTS: 'circleComments',
   NOTIFICATIONS: 'notifications',
   ACTIVITIES: 'activities',
+  REPORTS: 'reports',
   USER_CATEGORIES: 'userCategories',
   PLACE_VISITS: 'placeVisits',
   VISIT_DRAFTS: 'visitDrafts',
@@ -127,7 +128,7 @@ const createCircle = (circleData, ownerId) => {
     editors: circleData.editors || [], // Array of user IDs who can edit this circle
     places: circleData.places || [],
     placesCount: circleData.placesCount || 0, // Count of places for efficient display
-    privacy: circleData.privacy || 'myNetwork', // public, myNetwork, private
+    privacy: circleData.privacy || 'public', // public, myNetwork, private
     allowNetworkEdit: circleData.allowNetworkEdit || false,
     isSystemCircle: circleData.isSystemCircle || false, // Flag for system-created circles like "My Moments"
     category: circleData.category || 'other', // travel, food, services, shopping, healthcare, entertainment, other

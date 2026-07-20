@@ -193,26 +193,14 @@ const getRandomLocalPlace = (userLocation = null) => {
     places = getPlacesForCity(userLocation.city);
   }
   
-  // Fallback to national chains if no local places found
-  if (places.length === 0) {
-    places = getNationalChains();
-  }
-  
-  // Return random place or fallback
+  // Return a random place from the user's city list, or null. No wrong-city
+  // fallbacks: seeding a place from another state (the old Belmar, NJ default)
+  // is worse than seeding nothing — onboarding skips the sample place instead.
   if (places.length > 0) {
     const randomIndex = Math.floor(Math.random() * places.length);
     return places[randomIndex];
   }
-  
-  // Ultimate fallback - Starbucks in Belmar, NJ
-  return {
-    name: "Starbucks",
-    category: "cafe",
-    description: "Popular coffee chain",
-    address: "1799 River Rd, Belmar, NJ 07719",
-    coordinates: [-74.0407, 40.1771],
-    website: "https://starbucks.com"
-  };
+  return null;
 };
 
 module.exports = {

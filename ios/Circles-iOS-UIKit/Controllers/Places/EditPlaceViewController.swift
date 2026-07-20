@@ -396,6 +396,56 @@ class EditPlaceViewController: BaseViewController {
         setupLocationManager()
         setupActions()
         populateFields()
+        applyGoogleSourceLockIfNeeded()
+    }
+
+    /// Google-backed places: venue fields (name, category, address, website,
+    /// phone) come from Google Places and are read-only — users flag bad data
+    /// instead of editing it. Per-user fields (custom category, description,
+    /// privacy, notes, tags, photos) stay editable. Super-users keep full
+    /// edit access for corrections.
+    private func applyGoogleSourceLockIfNeeded() {
+        guard place.googlePlaceId != nil else { return }
+
+        let venueControls: [UIView] = [
+            nameTextField, categorySegmentedControl,
+            streetTextField, cityTextField, stateTextField, zipCodeTextField, countryTextField,
+            websiteTextField, phoneTextField,
+            refreshAddressButton, useCurrentLocationButton
+        ]
+        venueControls.forEach {
+            $0.isUserInteractionEnabled = false
+            $0.alpha = 0.55
+        }
+        nameLabel.text = "Place Name (from Google Places)"
+        addressLabel.text = "Address (from Google Places)"
+
+        // Report path replaces editing for venue data
+        let flagButton = UIBarButtonItem(
+            image: UIImage(systemName: "flag"),
+            style: .plain,
+            target: self,
+            action: #selector(flagPlaceInfoTapped)
+        )
+        flagButton.accessibilityLabel = "Report incorrect info"
+        navigationItem.rightBarButtonItems = [navigationItem.rightBarButtonItem, flagButton].compactMap { $0 }
+
+        // Super-users can still fix listings directly
+        RewardsService.shared.getRewardsProfile { [weak self] result in
+            DispatchQueue.main.async {
+                guard case .success(let profile) = result, profile.isSuperUser else { return }
+                venueControls.forEach {
+                    $0.isUserInteractionEnabled = true
+                    $0.alpha = 1.0
+                }
+                self?.nameLabel.text = "Place Name"
+                self?.addressLabel.text = "Address"
+            }
+        }
+    }
+
+    @objc private func flagPlaceInfoTapped() {
+        promptFlagPlaceInfo(placeId: place.id, placeName: place.name)
     }
     
     // MARK: - UI Setup
@@ -705,7 +755,8 @@ class EditPlaceViewController: BaseViewController {
             privacySegmentedControl.selectedSegmentIndex = index
         }
         
-        notesTextView.text = place.notes
+        // Same precedence as the place detail screen: publicNotes with legacy fallback
+        notesTextView.text = place.publicNotes ?? place.notes
         
         // Tags
         if let tags = place.tags {
@@ -733,7 +784,12 @@ class EditPlaceViewController: BaseViewController {
         dismiss(animated: true)
     }
     
+    /// Prevents double-tapping the nav-bar Save from firing a second update
+    private var isSaving = false
+
     @objc private func saveButtonTapped() {
+        guard !isSaving else { return }
+
         // Validate required fields
         guard let name = nameTextField.text, !name.isEmpty else {
             presentAlert(title: "Error", message: "Please enter a name for the place")
@@ -796,6 +852,10 @@ class EditPlaceViewController: BaseViewController {
         let privacyOptions = [PlacePrivacy.followCirclePrivacy, .public, .myNetwork, .private]
         let privacy = privacyOptions[privacyIndex]
         
+        // Guard against a second tap while the update is in flight
+        isSaving = true
+        navigationItem.rightBarButtonItem?.isEnabled = false
+
         // Show loading indicator
         let loadingAlert = UIAlertController(title: "Updating Place", message: "Please wait...", preferredStyle: .alert)
         present(loadingAlert, animated: true)
@@ -811,6 +871,7 @@ class EditPlaceViewController: BaseViewController {
             website: website,
             phone: phone,
             tags: tags,
+            notes: notes ?? "", // empty string clears the notes
             photos: nil, // Not used anymore since we're using addPhotos/removePhotoUrls
             loadingAlert: loadingAlert
         )
@@ -1022,12 +1083,13 @@ class EditPlaceViewController: BaseViewController {
         website: String?,
         phone: String?,
         tags: [String]?,
+        notes: String?,
         photos: [String]?,
         loadingAlert: UIAlertController
     ) {
         // Convert selected images to Data
         let photosData = selectedImages.compactMap { $0.jpegData(compressionQuality: 0.8) }
-        
+
         PlaceService.shared.updatePlace(
             id: place.id,
             name: name,
@@ -1039,6 +1101,7 @@ class EditPlaceViewController: BaseViewController {
             website: website,
             phone: phone,
             tags: tags,
+            publicNotes: notes,
             addPhotos: photosData.isEmpty ? nil : photosData,
             removePhotoUrls: deletedPhotoURLs.isEmpty ? nil : deletedPhotoURLs
         ) { [weak self] result in
@@ -1048,8 +1111,11 @@ class EditPlaceViewController: BaseViewController {
                     case .success(let updatedPlace):
                         self?.delegate?.didUpdatePlace(updatedPlace)
                         self?.dismiss(animated: true)
-                        
+
                     case .failure(let error):
+                        // Re-arm Save so the user can retry
+                        self?.isSaving = false
+                        self?.navigationItem.rightBarButtonItem?.isEnabled = true
                         self?.presentAlert(title: "Error", message: error.localizedDescription)
                     }
                 }
@@ -1205,7 +1271,7 @@ class EditPlaceViewController: BaseViewController {
         
         // Check notes
         let currentNotes = notesTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let originalNotes = place.notes ?? ""
+        let originalNotes = place.publicNotes ?? place.notes ?? ""
         if currentNotes != originalNotes { return true }
         
         // Check tags

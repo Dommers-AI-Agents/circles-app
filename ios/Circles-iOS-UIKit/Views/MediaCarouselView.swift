@@ -3,6 +3,9 @@ import AVKit
 
 protocol MediaCarouselViewDelegate: AnyObject {
     func mediaCarouselView(_ carouselView: MediaCarouselView, didTapVideoAt index: Int, url: String)
+    /// Fired after the carousel optimistically toggles the heart — the delegate
+    /// persists the change (and refreshes on failure).
+    func mediaCarouselView(_ carouselView: MediaCarouselView, didSetPhotoLiked liked: Bool, photo: AttributedPhoto)
 }
 
 class MediaCarouselView: UIView {
@@ -149,14 +152,18 @@ class MediaCarouselView: UIView {
                 print("  Item \(index + 1): Photo UIImage")
             case .video(let thumbnailUrl, let videoUrl):
                 print("  Item \(index + 1): Video - thumb: \(thumbnailUrl ?? "nil"), video: \(videoUrl ?? "nil")")
-            case .attributedPhoto(let url, let uploadedBy, let source):
-                print("  Item \(index + 1): Attributed Photo - URL: \(url), by: \(uploadedBy), source: \(source)")
+            case .attributedPhoto(let photo):
+                print("  Item \(index + 1): Attributed Photo - URL: \(photo.url), by: \(photo.uploadedByName ?? "Unknown"), likes: \(photo.likesCount ?? 0)")
             }
         }
         
         self.mediaItems = mediaItems
         currentIndex = 0
-        
+
+        // Reconfiguring means fresh server data — drop optimistic like state
+        likeButtons.removeAll()
+        photoLikeState.removeAll()
+
         // Clear existing views
         contentStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
         
@@ -273,62 +280,131 @@ class MediaCarouselView: UIView {
                 playButton.heightAnchor.constraint(equalToConstant: 80)
             ])
             
-        case .attributedPhoto(let url, let uploadedBy, let source):
+        case .attributedPhoto(let photo):
             let imageView = UIImageView()
             imageView.contentMode = .scaleAspectFill
             imageView.clipsToBounds = true
             imageView.backgroundColor = Constants.Colors.lightGray
             imageView.translatesAutoresizingMaskIntoConstraints = false
-            
+
             // Load image
-            ImageService.shared.loadImage(from: url) { image in
+            ImageService.shared.loadImage(from: photo.url) { image in
                 DispatchQueue.main.async {
                     imageView.image = image
                 }
             }
-            
-            // Create attribution label
-            let attributionLabel = UILabel()
-            attributionLabel.text = "Photo by \(uploadedBy)"
-            attributionLabel.font = UIFont.systemFont(ofSize: 12, weight: .medium)
-            attributionLabel.textColor = .white
-            attributionLabel.backgroundColor = UIColor.black.withAlphaComponent(0.7)
-            attributionLabel.layer.cornerRadius = 4
-            attributionLabel.clipsToBounds = true
-            attributionLabel.textAlignment = .center
-            attributionLabel.translatesAutoresizingMaskIntoConstraints = false
-            
-            // Add padding to the label
-            let paddingView = UIView()
-            paddingView.backgroundColor = UIColor.black.withAlphaComponent(0.7)
-            paddingView.layer.cornerRadius = 4
-            paddingView.clipsToBounds = true
-            paddingView.translatesAutoresizingMaskIntoConstraints = false
-            
-            paddingView.addSubview(attributionLabel)
-            
+
             containerView.addSubview(imageView)
-            containerView.addSubview(paddingView)
-            
+
             NSLayoutConstraint.activate([
                 // Image constraints
                 imageView.topAnchor.constraint(equalTo: containerView.topAnchor),
                 imageView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
                 imageView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-                imageView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-                
-                // Attribution label constraints
-                paddingView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
-                paddingView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -8),
-                
-                attributionLabel.topAnchor.constraint(equalTo: paddingView.topAnchor, constant: 4),
-                attributionLabel.leadingAnchor.constraint(equalTo: paddingView.leadingAnchor, constant: 8),
-                attributionLabel.trailingAnchor.constraint(equalTo: paddingView.trailingAnchor, constant: -8),
-                attributionLabel.bottomAnchor.constraint(equalTo: paddingView.bottomAnchor, constant: -4)
+                imageView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
             ])
+
+            // Attribution chip - only when a real person uploaded the photo.
+            // Google/legacy-imported photos have no uploader name and get no chip.
+            if let uploaderName = photo.uploadedByName, !uploaderName.isEmpty {
+                let attributionLabel = UILabel()
+                attributionLabel.text = "Photo by \(uploaderName)"
+                attributionLabel.font = UIFont.systemFont(ofSize: 12, weight: .medium)
+                attributionLabel.textColor = .white
+                attributionLabel.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+                attributionLabel.layer.cornerRadius = 4
+                attributionLabel.clipsToBounds = true
+                attributionLabel.textAlignment = .center
+                attributionLabel.translatesAutoresizingMaskIntoConstraints = false
+
+                // Add padding to the label
+                let paddingView = UIView()
+                paddingView.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+                paddingView.layer.cornerRadius = 4
+                paddingView.clipsToBounds = true
+                paddingView.translatesAutoresizingMaskIntoConstraints = false
+
+                paddingView.addSubview(attributionLabel)
+                containerView.addSubview(paddingView)
+
+                NSLayoutConstraint.activate([
+                    paddingView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
+                    paddingView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -8),
+
+                    attributionLabel.topAnchor.constraint(equalTo: paddingView.topAnchor, constant: 4),
+                    attributionLabel.leadingAnchor.constraint(equalTo: paddingView.leadingAnchor, constant: 8),
+                    attributionLabel.trailingAnchor.constraint(equalTo: paddingView.trailingAnchor, constant: -8),
+                    attributionLabel.bottomAnchor.constraint(equalTo: paddingView.bottomAnchor, constant: -4)
+                ])
+            }
+
+            // Like pill (bottom-right, mirrors the attribution pill) — only for
+            // photos that have a server id to like against
+            if let photoId = photo.photoId {
+                let currentUserId = AuthService.shared.getUserId() ?? ""
+                if photoLikeState[photoId] == nil {
+                    photoLikeState[photoId] = (
+                        liked: (photo.likes ?? []).contains(currentUserId),
+                        count: photo.likesCount ?? photo.likes?.count ?? 0
+                    )
+                }
+                let state = photoLikeState[photoId]!
+
+                let likeButton = UIButton(type: .system)
+                likeButton.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+                likeButton.layer.cornerRadius = 14
+                likeButton.clipsToBounds = true
+                likeButton.tintColor = .white
+                likeButton.contentEdgeInsets = UIEdgeInsets(top: 4, left: 10, bottom: 4, right: 10)
+                likeButton.translatesAutoresizingMaskIntoConstraints = false
+                likeButton.tag = index
+                likeButton.addTarget(self, action: #selector(likeButtonTapped(_:)), for: .touchUpInside)
+                applyLikeAppearance(to: likeButton, liked: state.liked, count: state.count)
+                likeButtons[photoId] = likeButton
+
+                containerView.addSubview(likeButton)
+                NSLayoutConstraint.activate([
+                    // Top-right: the bottom-right corner belongs to the place
+                    // screen's "Add Photo" overlay button
+                    likeButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -8),
+                    likeButton.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 8),
+                    likeButton.heightAnchor.constraint(equalToConstant: 28)
+                ])
+            }
         }
-        
+
         return containerView
+    }
+
+    // MARK: - Photo Likes
+
+    /// Optimistic like state per photo id, seeded from the server data
+    private var photoLikeState: [String: (liked: Bool, count: Int)] = [:]
+    private var likeButtons: [String: UIButton] = [:]
+
+    private func applyLikeAppearance(to button: UIButton, liked: Bool, count: Int) {
+        let symbol = liked ? "heart.fill" : "heart"
+        button.setImage(UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold)), for: .normal)
+        button.setTitle(count > 0 ? " \(count)" : "", for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
+        button.tintColor = liked ? .systemRed : .white
+    }
+
+    @objc private func likeButtonTapped(_ sender: UIButton) {
+        let index = sender.tag
+        guard index < mediaItems.count,
+              case .attributedPhoto(let photo) = mediaItems[index],
+              let photoId = photo.photoId,
+              var state = photoLikeState[photoId] else { return }
+
+        // Optimistic toggle; the delegate persists it and refreshes on failure
+        state.liked.toggle()
+        state.count = max(0, state.count + (state.liked ? 1 : -1))
+        photoLikeState[photoId] = state
+        applyLikeAppearance(to: sender, liked: state.liked, count: state.count)
+
+        delegate?.mediaCarouselView(self, didSetPhotoLiked: state.liked, photo: photo)
     }
     
     private func updateNavigationButtons() {
@@ -449,5 +525,5 @@ enum MediaItem {
     case photo(url: String?)
     case photoImage(image: UIImage)
     case video(thumbnailUrl: String?, videoUrl: String?)
-    case attributedPhoto(url: String, uploadedBy: String, source: MediaSource)
+    case attributedPhoto(photo: AttributedPhoto)
 }

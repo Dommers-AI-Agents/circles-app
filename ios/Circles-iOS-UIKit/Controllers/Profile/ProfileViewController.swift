@@ -454,6 +454,19 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }()
     
     // Search bar
+    // Search scope: the field searches places by default, circles on demand
+    private enum ProfileSearchScope { case places, circles }
+    private var profileSearchScope: ProfileSearchScope = .places
+    private var filteredCircles: [Circle] = []
+
+    private lazy var searchScopeButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.showsMenuAsPrimaryAction = true
+        button.tintColor = Constants.Colors.primary
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+
     let searchBar: UISearchBar = {
         let searchBar = UISearchBar()
         searchBar.placeholder = "Search places..."
@@ -960,7 +973,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         contentView.addSubview(contentTypeSegmentedControl)
         contentView.addSubview(searchBarContainer)
         searchBarContainer.addSubview(searchBar)
+        searchBarContainer.addSubview(searchScopeButton)
         searchBarContainer.addSubview(mapToggleButton)
+        updateSearchScopeMenu()
         contentView.addSubview(circlesHeaderView)
         circlesHeaderView.addSubview(circlesHeaderLabel)
         contentView.addSubview(circlesCollectionView)
@@ -1169,7 +1184,12 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             searchBar.topAnchor.constraint(equalTo: searchBarContainer.topAnchor),
             searchBar.leadingAnchor.constraint(equalTo: searchBarContainer.leadingAnchor),
             searchBar.bottomAnchor.constraint(equalTo: searchBarContainer.bottomAnchor),
-            searchBar.trailingAnchor.constraint(equalTo: mapToggleButton.leadingAnchor, constant: -8),
+            searchBar.trailingAnchor.constraint(equalTo: searchScopeButton.leadingAnchor, constant: -4),
+
+            searchScopeButton.centerYAnchor.constraint(equalTo: searchBarContainer.centerYAnchor),
+            searchScopeButton.trailingAnchor.constraint(equalTo: mapToggleButton.leadingAnchor, constant: -4),
+            searchScopeButton.widthAnchor.constraint(equalToConstant: 32),
+            searchScopeButton.heightAnchor.constraint(equalToConstant: 32),
             
             // Map toggle button
             mapToggleButton.centerYAnchor.constraint(equalTo: searchBarContainer.centerYAnchor),
@@ -4237,17 +4257,89 @@ extension ProfileViewController: MKMapViewDelegate {
     
 }
 
+// MARK: - Search Scope
+extension ProfileViewController {
+    private func updateSearchScopeMenu() {
+        let iconName = profileSearchScope == .places ? "mappin.circle" : "circle.grid.2x2"
+        searchScopeButton.setImage(UIImage(systemName: iconName), for: .normal)
+        searchScopeButton.menu = UIMenu(children: [
+            UIAction(
+                title: "Places",
+                image: UIImage(systemName: "mappin.circle"),
+                state: profileSearchScope == .places ? .on : .off
+            ) { [weak self] _ in self?.setSearchScope(.places) },
+            UIAction(
+                title: "Circles",
+                image: UIImage(systemName: "circle.grid.2x2"),
+                state: profileSearchScope == .circles ? .on : .off
+            ) { [weak self] _ in self?.setSearchScope(.circles) }
+        ])
+    }
+
+    private func setSearchScope(_ scope: ProfileSearchScope) {
+        guard scope != profileSearchScope else { return }
+        profileSearchScope = scope
+        searchBar.placeholder = scope == .places ? "Search places..." : "Search circles..."
+        updateSearchScopeMenu()
+        // Re-run the active search under the new scope
+        filteredPlaces = []
+        filteredCircles = []
+        if let text = searchBar.text, !text.isEmpty {
+            self.searchBar(searchBar, textDidChange: text)
+        } else {
+            hideSearchResults()
+        }
+    }
+
+    fileprivate func filterCirclesForSearch(_ searchText: String) {
+        filteredCircles = circles.filter { circle in
+            circle.name.localizedCaseInsensitiveContains(searchText) ||
+            (circle.description ?? "").localizedCaseInsensitiveContains(searchText)
+        }
+    }
+
+    // Mirrors PlaceSearchable.showSearchResults but sized to circle results
+    fileprivate func showCircleSearchResults() {
+        let height = CGFloat(min(filteredCircles.count, 5)) * 60
+        searchResultsTableView.isHidden = false
+        searchResultsHeightConstraint?.constant = height
+        UIView.animate(withDuration: 0.3) {
+            self.searchResultsTableView.alpha = 1
+            self.view.layoutIfNeeded()
+        }
+        searchResultsTableView.reloadData()
+    }
+}
+
 // MARK: - UISearchBarDelegate
 extension ProfileViewController: UISearchBarDelegate {
     func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+        if profileSearchScope == .circles {
+            if searchText.isEmpty {
+                isSearching = false
+                filteredCircles = []
+                hideSearchResults()
+            } else {
+                isSearching = true
+                filterCirclesForSearch(searchText)
+                if filteredCircles.isEmpty {
+                    hideSearchResults()
+                } else {
+                    showCircleSearchResults()
+                }
+            }
+            circlesCollectionView.reloadData()
+            return
+        }
         // Call the protocol's default implementation
         (self as PlaceSearchable).searchBar(searchBar, textDidChange: searchText)
         // Update collection view to show/hide content during search
         circlesCollectionView.reloadData()
     }
-    
+
     func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
-        // Call the protocol's default implementation  
+        filteredCircles = []
+        // Call the protocol's default implementation
         (self as PlaceSearchable).searchBarCancelButtonClicked(searchBar)
         // Update collection view after clearing search
         circlesCollectionView.reloadData()
@@ -4285,10 +4377,45 @@ extension ProfileViewController {
     }
 }
 
+// MARK: - Circle Search Results
+extension ProfileViewController {
+    fileprivate func configureCircleSearchResultCell(_ cell: UITableViewCell, at indexPath: IndexPath) {
+        guard indexPath.row < filteredCircles.count else { return }
+
+        let circle = filteredCircles[indexPath.row]
+        var content = cell.defaultContentConfiguration()
+        content.text = circle.name
+        let placeCount = circle.placesCount ?? circle.places?.count ?? 0
+        content.secondaryText = "\(placeCount) place\(placeCount == 1 ? "" : "s")"
+        content.image = UIImage(systemName: "circle.grid.2x2.fill")
+        content.imageProperties.tintColor = Constants.Colors.primary
+        cell.contentConfiguration = content
+    }
+
+    fileprivate func handleCircleSearchResultSelection(at indexPath: IndexPath) {
+        guard indexPath.row < filteredCircles.count else { return }
+
+        let circle = filteredCircles[indexPath.row]
+
+        // Clear search (same reset as the places path)
+        searchBar.text = ""
+        searchBar.resignFirstResponder()
+        isSearching = false
+        filteredCircles = []
+        hideSearchResults()
+
+        let circleDetailVC = CircleDetailViewController(circle: circle)
+        navigationController?.pushViewController(circleDetailVC, animated: true)
+    }
+}
+
 // MARK: - UITableViewDataSource & UITableViewDelegate for Search Results
 extension ProfileViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         if tableView == searchResultsTableView {
+            if profileSearchScope == .circles {
+                return isSearching ? filteredCircles.count : 0
+            }
             return numberOfRowsInSearchResults()
         }
         if tableView == mapPlacesListTableView {
@@ -4300,7 +4427,11 @@ extension ProfileViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         if tableView == searchResultsTableView {
             let cell = tableView.dequeueReusableCell(withIdentifier: "SearchResultCell", for: indexPath)
-            configureSearchResultCell(cell, at: indexPath)
+            if profileSearchScope == .circles {
+                configureCircleSearchResultCell(cell, at: indexPath)
+            } else {
+                configureSearchResultCell(cell, at: indexPath)
+            }
             return cell
         }
         if tableView == mapPlacesListTableView {
@@ -4316,7 +4447,11 @@ extension ProfileViewController: UITableViewDataSource, UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         if tableView == searchResultsTableView {
-            handleSearchResultSelection(at: indexPath)
+            if profileSearchScope == .circles {
+                handleCircleSearchResultSelection(at: indexPath)
+            } else {
+                handleSearchResultSelection(at: indexPath)
+            }
         }
         if tableView == mapPlacesListTableView {
             tableView.deselectRow(at: indexPath, animated: true)

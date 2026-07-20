@@ -5,6 +5,7 @@ protocol ActivityFeedCellDelegate: AnyObject {
     func didTapUserProfile(user: User)
     func didTapPlaceImage(activity: Activity)
     func didTapActivityContent(activity: Activity)
+    func didTapActivityGroup(activities: [Activity])
     func didTapReactions(activity: Activity)
     func didTapComments(activity: Activity)
     func didTapReactionButton(activity: Activity, emoji: String)
@@ -17,6 +18,9 @@ class ActivityFeedCell: UITableViewCell {
     static let identifier = "ActivityFeedCell"
     weak var delegate: ActivityFeedCellDelegate?
     private var currentActivity: Activity?
+    // Set when this cell shows a group summary row — internal taps then
+    // expand/collapse the group instead of navigating to the first activity
+    private var currentGroup: [Activity]?
     
     // Image loading state management
     private var currentAvatarLoadId: String?
@@ -268,6 +272,12 @@ class ActivityFeedCell: UITableViewCell {
     func configure(with activity: Activity) {
         // Store the current activity
         currentActivity = activity
+        currentGroup = nil
+        activityLabel.numberOfLines = 2 // group rows set 0 for the action line
+
+        // Re-show chrome a grouped-summary render may have hidden (cells are reused)
+        interactionButtonsContainer.isHidden = false
+        reactionPillsContainer.isHidden = false
         
         // Configure avatar
         if let actor = activity.actor {
@@ -399,6 +409,63 @@ class ActivityFeedCell: UITableViewCell {
             commentCountLabel.isHidden = true
         }
     }
+
+    /// Renders a collapsed burst of same-actor activities as one summary row,
+    /// e.g. "Wesley liked 5 places and uploaded 2 photos (7) ▾". Reactions and
+    /// comments belong to individual activities, so that chrome is hidden here.
+    func configure(withGroup activities: [Activity], isExpanded: Bool) {
+        guard let first = activities.first else { return }
+        currentActivity = first
+        currentGroup = activities
+
+        // Avatar (same handling as single rows)
+        avatarImageView.image = UIImage(systemName: "person.circle.fill")
+        avatarImageView.tintColor = Constants.Colors.primary
+        if let actor = first.actor, let profilePicture = actor.profilePicture, !profilePicture.isEmpty {
+            let loadId = UUID().uuidString
+            currentAvatarLoadId = loadId
+            let profileCacheKey = "profile_\(actor.id)_\(profilePicture)"
+            ImageService.shared.loadImageWithKey(from: profilePicture, cacheKey: profileCacheKey) { [weak self] image in
+                DispatchQueue.main.async {
+                    guard let self = self, self.currentAvatarLoadId == loadId else { return }
+                    if let image = image {
+                        self.avatarImageView.image = image
+                    }
+                }
+            }
+        }
+
+        // Bold actor name + aggregated summary, then an explicit link-styled
+        // action line so it's obvious the row expands/collapses on tap
+        let attributedString = NSMutableAttributedString()
+        if let actorName = first.actor?.displayName {
+            attributedString.append(NSAttributedString(string: actorName + " ", attributes: [
+                .font: UIFont.systemFont(ofSize: 13, weight: .semibold),
+                .foregroundColor: Constants.Colors.label
+            ]))
+        }
+        attributedString.append(NSAttributedString(string: activities.groupSummary, attributes: [
+            .font: UIFont.systemFont(ofSize: 13),
+            .foregroundColor: Constants.Colors.label
+        ]))
+        let actionText = isExpanded
+            ? "Show less ▴"
+            : "Show all \(activities.count) activities ▾"
+        attributedString.append(NSAttributedString(string: "\n" + actionText, attributes: [
+            .font: UIFont.systemFont(ofSize: 13, weight: .semibold),
+            .foregroundColor: Constants.Colors.primary
+        ]))
+        activityLabel.numberOfLines = 0
+        activityLabel.attributedText = attributedString
+
+        timestampLabel.text = first.timeAgo
+
+        // Summary rows carry no per-activity chrome
+        placeImageView.isHidden = true
+        commentLabel.isHidden = true
+        interactionButtonsContainer.isHidden = true
+        reactionPillsContainer.isHidden = true
+    }
     
     // MARK: - Actions
     @objc private func avatarTapped() {
@@ -409,16 +476,27 @@ class ActivityFeedCell: UITableViewCell {
     }
     
     @objc private func placeImageTapped() {
+        if let group = currentGroup {
+            delegate?.didTapActivityGroup(activities: group)
+            return
+        }
         guard let activity = currentActivity else { return }
         delegate?.didTapPlaceImage(activity: activity)
     }
-    
+
     @objc private func contentTapped() {
+        // A group summary row expands/collapses — it must never navigate to
+        // the first activity's place (that hid the rest of the group)
+        if let group = currentGroup {
+            delegate?.didTapActivityGroup(activities: group)
+            return
+        }
+
         guard let activity = currentActivity else { return }
-        
+
         // Navigate for all place-related activities
-        if activity.type == .placeAdded || 
-           activity.type == .placeLiked || 
+        if activity.type == .placeAdded ||
+           activity.type == .placeLiked ||
            activity.type == .placeCommented ||
            activity.type == .checkIn ||
            activity.type == .videoUploaded ||
@@ -511,6 +589,7 @@ class ActivityFeedCell: UITableViewCell {
         // Cancel any pending image loads by clearing load IDs
         currentAvatarLoadId = nil
         currentPlaceImageLoadId = nil
+        currentGroup = nil
         
         // Reset UI elements to default state
         avatarImageView.image = UIImage(systemName: "person.circle.fill")

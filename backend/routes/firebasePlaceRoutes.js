@@ -9,8 +9,10 @@ const {
   searchPlaces,
   refreshPlaceFromGoogle,
   updatePlaceAddress,
+  flagPlaceInfo,
   likePlace,
   getPlaceLikes,
+  getPlaceSavers,
   getPlaceComments,
   addPlaceComment,
   deletePlaceComment,
@@ -57,11 +59,17 @@ router.route('/:id/refresh-google')
 router.route('/:id/update-address')
   .put(updatePlaceAddress);
 
+router.route('/:id/flag')
+  .post(flagPlaceInfo);
+
 router.route('/:id/like')
   .post(likePlace);
 
 router.route('/:id/likes')
   .get(getPlaceLikes);
+
+router.route('/:id/savers')
+  .get(getPlaceSavers);
 
 router.route('/:id/comments')
   .get(getPlaceComments)

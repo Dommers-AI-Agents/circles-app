@@ -142,12 +142,27 @@ const getNetworkPlacesInViewport = async (req, res) => {
       place.addedByUser = userMap.get(place.addedBy) || null;
     });
 
-    console.log(`🗺️ Viewport query for ${userId}: center=(${centerLat},${centerLng}) r=${radiusM}m circles=${circleIds.length} → ${places.length} places${hasMore ? ' (truncated)' : ''}`);
+    // Overlay social + venue data from the canonical venue records so map
+    // pins/cards match the detail page
+    const { fetchGlobalSocialMap, overlayVenueFields } = require('./firebasePlaceController');
+    const socialByGlobalId = await fetchGlobalSocialMap(places);
+    const placesWithSocial = places.map(place => {
+      const social = socialByGlobalId.get(place.globalPlaceId);
+      if (!social) return place;
+      return {
+        ...overlayVenueFields(place, social.venueData),
+        likes: social.likes,
+        likesCount: social.likes.length,
+        commentsCount: social.commentsCount
+      };
+    });
+
+    console.log(`🗺️ Viewport query for ${userId}: center=(${centerLat},${centerLng}) r=${radiusM}m circles=${circleIds.length} → ${placesWithSocial.length} places${hasMore ? ' (truncated)' : ''}`);
 
     res.status(200).json({
       success: true,
-      places,
-      total: places.length,
+      places: placesWithSocial,
+      total: placesWithSocial.length,
       hasMore,
       clampedRadiusM: radiusM
     });

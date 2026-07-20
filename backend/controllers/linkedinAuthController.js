@@ -198,49 +198,83 @@ exports.linkedinAuth = async (req, res, next) => {
       await userRef.update(updateData);
       user = serializeDoc(await userRef.get());
     } else {
-      // No existing user found by email, check by LinkedIn ID
-      userRef = db.collection(COLLECTIONS.USERS).doc(uid);
-      const userDoc = await userRef.get();
-      
-      if (userDoc.exists) {
-        // Existing user by LinkedIn ID
+      // No email match — look the account up by linked provider identity
+      // (keeps merged accounts reachable from LinkedIn sign-in even when the
+      // doc id belongs to another provider)
+      const providerQuery = await db.collection(COLLECTIONS.USERS)
+        .where('linkedProviders.linkedin', '==', uid)
+        .limit(1)
+        .get();
+
+      if (!providerQuery.empty) {
+        const existingUserDoc = providerQuery.docs[0];
+        existingUserId = existingUserDoc.id;
+        userRef = existingUserDoc.ref;
+        console.log(`Found existing user by linkedProviders.linkedin: ${existingUserId}`);
+
+        const existingUser = serializeDoc(existingUserDoc);
         const updateData = {
           updatedAt: new Date().toISOString()
         };
-        
-        const existingUser = serializeDoc(userDoc);
-        
-        // Update email if not set
-        if (!existingUser.email && email) {
-          updateData.email = email;
+        if (email && existingUser.email !== email) {
+          const alternateEmails = existingUser.alternateEmails || [];
+          if (!alternateEmails.includes(email)) {
+            updateData.alternateEmails = [...alternateEmails, email];
+          }
         }
-        
-        // Update display name if better
-        if (displayName && displayName !== 'LinkedIn User' && 
-            (!existingUser.displayName || existingUser.displayName === 'LinkedIn User')) {
+        if (displayName && displayName !== 'LinkedIn User' && !existingUser.displayName) {
           updateData.displayName = displayName;
         }
-        
-        // Update profile picture if not set
-        if (profilePicture && !existingUser.profilePicture) {
-          updateData.profilePicture = profilePicture;
-        }
-        
+
         await userRef.update(updateData);
         user = serializeDoc(await userRef.get());
-      } else {
-        // Completely new user
-        const userData = createUser({
-          uid,
-          email,
-          displayName,
-          profilePicture,
-          linkedProviders: { linkedin: uid }
-        });
-        
-        await userRef.set(userData);
-        user = { id: uid, ...userData };
-        console.log('✅ New LinkedIn user created:', uid);
+      }
+
+      // No provider match either, check by LinkedIn ID as doc id
+      if (!user) {
+        userRef = db.collection(COLLECTIONS.USERS).doc(uid);
+        const userDoc = await userRef.get();
+
+        if (userDoc.exists) {
+          // Existing user by LinkedIn ID
+          const updateData = {
+            updatedAt: new Date().toISOString()
+          };
+
+          const existingUser = serializeDoc(userDoc);
+
+          // Update email if not set
+          if (!existingUser.email && email) {
+            updateData.email = email;
+          }
+
+          // Update display name if better
+          if (displayName && displayName !== 'LinkedIn User' &&
+              (!existingUser.displayName || existingUser.displayName === 'LinkedIn User')) {
+            updateData.displayName = displayName;
+          }
+
+          // Update profile picture if not set
+          if (profilePicture && !existingUser.profilePicture) {
+            updateData.profilePicture = profilePicture;
+          }
+
+          await userRef.update(updateData);
+          user = serializeDoc(await userRef.get());
+        } else {
+          // Completely new user
+          const userData = createUser({
+            uid,
+            email,
+            displayName,
+            profilePicture,
+            linkedProviders: { linkedin: uid }
+          });
+
+          await userRef.set(userData);
+          user = { id: uid, ...userData };
+          console.log('✅ New LinkedIn user created:', uid);
+        }
       }
     }
 

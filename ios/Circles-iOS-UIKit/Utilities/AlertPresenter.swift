@@ -142,6 +142,35 @@ class AlertPresenter {
         viewController.present(alert, animated: true)
     }
     
+    /// Shows an alert with several text input fields (e.g. a contact form).
+    /// Submits an array of field values in the same order as `fields`.
+    static func showMultiFieldInput(
+        title: String,
+        message: String? = nil,
+        fields: [(placeholder: String, keyboardType: UIKeyboardType, initialText: String?)],
+        confirmTitle: String = "Submit",
+        from viewController: UIViewController,
+        onSubmit: @escaping ([String?]) -> Void
+    ) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+
+        for field in fields {
+            alert.addTextField { textField in
+                textField.placeholder = field.placeholder
+                textField.keyboardType = field.keyboardType
+                textField.text = field.initialText
+                textField.autocapitalizationType = field.keyboardType == .emailAddress ? .none : .words
+            }
+        }
+
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: confirmTitle, style: .default) { _ in
+            onSubmit((alert.textFields ?? []).map { $0.text })
+        })
+
+        viewController.present(alert, animated: true)
+    }
+
     // MARK: - Loading Alerts
     
     /// Shows a loading alert that can be dismissed programmatically

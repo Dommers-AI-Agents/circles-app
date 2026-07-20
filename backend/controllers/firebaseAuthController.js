@@ -511,8 +511,49 @@ exports.firebaseAuth = async (req, res, next) => {
         user = serializeDoc(await userRef.get());
       }
     }
-    
-    // If no existing user found by email, check by provider ID
+
+    // If no email match, look the account up by provider identity.
+    // linkedProviders stores each provider's sub on every sign-in, so a
+    // returning user matches even when the provider reports no email (Apple
+    // after first consent) or a different email than the one on file — and a
+    // merged account stays reachable from every linked sign-in method.
+    if (!user) {
+      const providerQuery = await db.collection(COLLECTIONS.USERS)
+        .where(`linkedProviders.${provider}`, '==', uid)
+        .limit(1)
+        .get();
+
+      if (!providerQuery.empty) {
+        const existingUserDoc = providerQuery.docs[0];
+        existingUserId = existingUserDoc.id;
+        userRef = existingUserDoc.ref;
+        console.log(`Found existing user by linkedProviders.${provider}: ${existingUserId}`);
+
+        const existingUser = serializeDoc(existingUserDoc);
+        const updateData = {
+          updatedAt: new Date().toISOString()
+        };
+
+        // Union the incoming email so future email lookups from this
+        // provider's address also match
+        if (email && existingUser.email !== email) {
+          const alternateEmails = existingUser.alternateEmails || [];
+          if (!alternateEmails.includes(email)) {
+            updateData.alternateEmails = [...alternateEmails, email];
+          }
+        }
+
+        // Only update name if user doesn't have one set
+        if (name && !existingUser.displayName) {
+          updateData.displayName = name;
+        }
+
+        await userRef.update(updateData);
+        user = serializeDoc(await userRef.get());
+      }
+    }
+
+    // If no existing user found by email or provider identity, check by provider-derived doc id
     if (!user) {
       // Parse the UID to get the simple format if it's complex
       let simpleUid = uid;
@@ -1593,16 +1634,21 @@ async function checkForDuplicateAccounts(user) {
       
       nameQuery.docs.forEach(doc => {
         const otherUser = serializeDoc(doc);
-        if (otherUser.id !== user.id && 
-            otherUser.email && 
-            otherUser.email !== user.email &&
-            otherUser.email.includes('@privaterelay.appleid.com')) {
+        if (otherUser.id !== user.id &&
+            otherUser.email &&
+            otherUser.email !== user.email) {
+          // Same name + different email is the only detectable signal for the
+          // Apple-vs-Google different-address case — surfaced as a suggestion
+          // only, the user decides whether it's really them
+          const isRelay = otherUser.email.includes('@privaterelay.appleid.com');
           duplicateAccounts.push({
             id: otherUser.id,
             email: otherUser.email,
             displayName: otherUser.displayName,
-            matchType: 'privateRelay',
-            reason: 'Private relay account with same display name'
+            matchType: isRelay ? 'privateRelay' : 'sameName',
+            reason: isRelay
+              ? 'Private relay account with same display name'
+              : 'Another account with the same name'
           });
         }
       });

@@ -361,6 +361,10 @@ exports.createCheckIn = async (req, res) => {
             const place = createPlace(placeData, checkInCircle.id, userId);
             const placeRef = await db.collection(COLLECTIONS.PLACES).add(place);
             finalPlaceId = placeRef.id;
+
+            // Link the save to its canonical venue record (best-effort)
+            const { ensureGlobalPlaceLink } = require('../services/globalPlaceResolver');
+            await ensureGlobalPlaceLink(await placeRef.get());
             
             // Update the circle's places array
             await db.collection(COLLECTIONS.CIRCLES).doc(checkInCircle.id).update({

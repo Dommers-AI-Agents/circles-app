@@ -20,8 +20,9 @@ struct HelpTopic {
         case quickActions = "Quick Actions"
         case maps = "Maps & Discovery"
         case privacy = "Privacy & Settings"
+        case aiAssistants = "AI Assistants"
         case troubleshooting = "Troubleshooting"
-        
+
         var icon: String {
             switch self {
             case .gettingStarted: return "star.fill"
@@ -32,6 +33,7 @@ struct HelpTopic {
             case .quickActions: return "bolt.fill"
             case .maps: return "map.fill"
             case .privacy: return "lock.fill"
+            case .aiAssistants: return "sparkles"
             case .troubleshooting: return "wrench.and.screwdriver.fill"
             }
         }
@@ -46,6 +48,7 @@ struct HelpTopic {
             case .quickActions: return .systemOrange
             case .maps: return .systemTeal
             case .privacy: return .systemGray
+            case .aiAssistants: return .systemIndigo
             case .troubleshooting: return .systemRed
             }
         }
@@ -60,8 +63,9 @@ class HelpContentProvider {
     
     // MARK: - All Help Topics
     var allTopics: [HelpTopic] {
-        return gettingStartedTopics + circlesTopics + placesTopics + socialTopics + 
-               momentsTopics + quickActionsTopics + mapsTopics + privacyTopics + troubleshootingTopics
+        return gettingStartedTopics + circlesTopics + placesTopics + socialTopics +
+               momentsTopics + quickActionsTopics + mapsTopics + privacyTopics +
+               aiAssistantsTopics + troubleshootingTopics
     }
     
     // MARK: - Getting Started Topics
@@ -592,6 +596,60 @@ class HelpContentProvider {
         ]
     }
     
+    // MARK: - AI Assistants Topics
+    var aiAssistantsTopics: [HelpTopic] {
+        return [
+            HelpTopic(
+                id: "connect-ai-assistants",
+                title: "Connect ChatGPT & Claude",
+                subtitle: "Ask AI about your favorite places",
+                content: """
+                Connect your Circles account to the ChatGPT or Claude app on your phone and ask about your saved places in plain language — powered by the FavCircles connector.
+
+                Setup is a one-time step in your phone's web browser. After that, the connection works right inside the Claude or ChatGPT app.
+
+                **What you can do once connected:**
+                • "What restaurants do my friends recommend near me?"
+                • "Which places do Sarah and I both like?"
+                • "Add this café to my Coffee circle"
+                • "Plan a Saturday using places my friends love"
+
+                **Connect Claude:**
+                1. In Safari, go to claude.ai and sign in
+                   (connectors can only be added on the website — they sync to the Claude app automatically)
+                2. Tap **Settings → Connectors**
+                3. Tap **Add custom connector**
+                4. Enter this URL:
+                   https://mcp.favcircles.com/mcp
+                5. Tap **Connect**, then sign in with your Circles account
+                6. Open the Claude app and start a new chat — Claude can now see your circles when you ask
+
+                **Connect ChatGPT:**
+                1. In Safari, go to chatgpt.com and sign in
+                   (like Claude, setup happens on the website — then it works in the ChatGPT app)
+                2. Tap **Settings → Connectors**
+                   (if there's no option to add one, first enable **Developer mode** under Connectors → Advanced)
+                3. Add a connector with the same URL:
+                   https://mcp.favcircles.com/mcp
+                4. Tap **Connect**, then sign in with your Circles account
+                5. Open the ChatGPT app and ask away — it will use your circles for recommendations
+
+                **Good to know:**
+                • Custom connectors require a paid plan — Claude Pro (or higher) or ChatGPT Plus (or higher)
+                • Sign in with the same email & password, Google, or Facebook login you use in this app (Sign in with Apple isn't supported on the connect page yet)
+
+                **Privacy:**
+                • The assistant sees your circles and your network's shared places — the same things you can see in the app, never more
+                • Adding or deleting anything always requires your confirmation in the chat
+                • Disconnect anytime from the assistant's settings to revoke access
+                """,
+                category: .aiAssistants,
+                relatedTopics: ["circle-privacy", "connect-users"],
+                videoTimestamp: nil
+            )
+        ]
+    }
+
     // MARK: - Troubleshooting Topics
     var troubleshootingTopics: [HelpTopic] {
         return [

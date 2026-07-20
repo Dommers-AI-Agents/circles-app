@@ -153,3 +153,61 @@ extension Activity {
         return formatter.localizedString(for: timestamp, relativeTo: Date())
     }
 }
+
+// MARK: - Grouped Activity Summary
+extension Array where Element == Activity {
+    /// One-line summary for a burst of activities by the same actor, e.g.
+    /// "liked 5 places, uploaded 2 photos, and created a circle".
+    /// Single-occurrence types fall back to their normal phrasing.
+    var groupSummary: String {
+        var parts: [String] = []
+        var countedTypes: Set<ActivityType> = []
+
+        for activity in self {
+            guard !countedTypes.contains(activity.type) else { continue }
+            countedTypes.insert(activity.type)
+            let count = filter { $0.type == activity.type }.count
+
+            if count == 1 {
+                parts.append(activity.formattedDescription)
+                continue
+            }
+
+            switch activity.type {
+            case .placeLiked, .globalPlaceLiked:
+                parts.append("liked \(count) places")
+            case .placeCommented, .commentAdded:
+                parts.append("commented on \(count) places")
+            case .commentLiked:
+                parts.append("liked \(count) comments")
+            case .photoUploaded:
+                parts.append("uploaded \(count) photos")
+            case .videoUploaded:
+                parts.append("shared \(count) moments")
+            case .videoLiked:
+                parts.append("liked \(count) moments")
+            case .circleCreated:
+                parts.append("created \(count) circles")
+            case .circleLiked:
+                parts.append("liked \(count) circles")
+            case .circleCommented:
+                parts.append("commented on \(count) circles")
+            case .suggestionSent:
+                parts.append("sent \(count) suggestions")
+            case .suggestionAccepted:
+                parts.append("accepted \(count) suggestions")
+            case .reactionAdded:
+                parts.append("reacted to \(count) posts")
+            default:
+                parts.append("shared \(count) updates")
+            }
+        }
+
+        switch parts.count {
+        case 0: return "shared an update"
+        case 1: return parts[0]
+        case 2: return "\(parts[0]) and \(parts[1])"
+        default: return parts.dropLast().joined(separator: ", ") + ", and \(parts.last!)"
+        }
+    }
+}
