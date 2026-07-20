@@ -65,6 +65,20 @@ The app follows a client-server architecture:
 - **iOS App**: Native Swift/UIKit with mandatory BaseViewController pattern
 - **Deployment**: Google Cloud Run (containerized)
 
+### Place Data Model — Normalized (July 2026)
+
+**Places are normalized around one canonical venue record.** Do not read or write venue/social data directly on legacy `places` docs.
+
+- **`globalPlaces` collection** = the canonical venue record: venue fields (`name`, `address`, `location`, `category`; `googleData.{rating, userRatingsTotal, priceLevel, openingHours, website, phone}`) and global social data (`likes[]`, `likesCount`, `commentsCount`). One doc per real-world venue, deduped by `deduplicationKey`/`googlePlaceId`.
+- **`places` collection** = thin per-user save records referencing the venue via `globalPlaceId`, holding per-user data (`addedBy`, `circleId`, `privacy`, `privateNotes`, `publicNotes`, `tags`, `customCategoryId`, `photos`) plus a denormalized query cache (`name`, `address`, `location`, `geohash`, `category`) used by geo/search list queries.
+- **`placeComments`** are keyed by `globalPlaceId` (with `placeId` kept for legacy readers).
+- Every save path must stamp `globalPlaceId` via `ensureGlobalPlaceLink` (`backend/services/globalPlaceResolver.js`).
+- Read endpoints merge venue + social data over the save doc via `getGlobalSocial`/`fetchGlobalSocialMap`/`overlayVenueFields` in `firebasePlaceController.js`; the API `Place` shape seen by iOS is unchanged.
+- Venue edits (name, address, rating refresh) go through `propagateVenueUpdates`: canonical record updated once, cache fields synced to the venue's other copies. A venue correction by one saver is visible to all savers — intended.
+- Likes toggle in ONE transaction on the globalPlaces doc (`likePlace`). Never fan out social writes across copies.
+- Migration scripts (idempotent, support `DRY_RUN=true`): `scripts/backfill-global-place-links.js`, `scripts/migrate-social-to-global.js`, `scripts/strip-place-venue-fields.js` (run last, after soak).
+- `placeTransitionService.js` and its `USE_GLOBAL_PLACES_*` env flags, plus `userPlaceRelations`, are legacy/dormant (the media subsystem still uses `userPlaceRelations`); do not build on them.
+
 ## Code Reuse Architecture
 
 **⚠️ CRITICAL: The Circles app has undergone comprehensive refactoring to eliminate code redundancy. All new development MUST follow these established patterns.**

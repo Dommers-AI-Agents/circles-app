@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connect FavCircles to Claude - Circles</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        header {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 1rem 0;
+            position: fixed;
+            width: 100%;
+            top: 0;
+            z-index: 1000;
+        }
+
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: white;
+            text-decoration: none;
+        }
+
+        .nav-links {
+            display: flex;
+            list-style: none;
+            gap: 2rem;
+        }
+
+        .nav-links a {
+            color: white;
+            text-decoration: none;
+            font-weight: 500;
+            transition: opacity 0.3s;
+        }
+
+        .nav-links a:hover {
+            opacity: 0.8;
+        }
+
+        main {
+            margin-top: 80px;
+        }
+
+        .content-section {
+            background: white;
+            margin: 2rem 0;
+            padding: 3rem;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        footer {
+            background: rgba(0, 0, 0, 0.2);
+            color: white;
+            text-align: center;
+            padding: 2rem 0;
+            margin-top: 4rem;
+        }
+
+        .policy-content h1 {
+            color: #667eea;
+            margin-bottom: 1rem;
+        }
+
+        .policy-content h2 {
+            color: #667eea;
+            margin-bottom: 1rem;
+            margin-top: 2rem;
+        }
+
+        .policy-content h3 {
+            color: #764ba2;
+            margin-bottom: 0.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .policy-content p, .policy-content li {
+            margin-bottom: 1rem;
+        }
+
+        .policy-content ul, .policy-content ol {
+            margin-left: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        .policy-content code {
+            background: #f4f4f8;
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 0.95em;
+        }
+
+        .prompt-box {
+            background: #f4f4f8;
+            border-left: 4px solid #667eea;
+            padding: 0.75rem 1rem;
+            border-radius: 0 8px 8px 0;
+            margin-bottom: 0.75rem;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <nav>
+                <a href="/" class="logo">Circles</a>
+                <ul class="nav-links">
+                    <li><a href="/">Home</a></li>
+                    <li><a href="/privacy.html">Privacy</a></li>
+                    <li><a href="/terms.html">Terms</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <div class="container">
+            <div class="content-section policy-content">
+                <h1>Connect FavCircles to Claude</h1>
+                <p>FavCircles is a private, trust-based recommendation network. You save your favorite places into "circles" (curated collections like <em>Date Night</em> or <em>Coffee</em>), connect with people you know, and discover places through your network instead of anonymous internet reviews.</p>
+                <p>The FavCircles connector lets Claude work with your circles directly: search your saved places, get recommendations from your friends, organize new finds into circles, and keep up with what your network is sharing — all in conversation.</p>
+
+                <h2>What you need</h2>
+                <ul>
+                    <li>A free FavCircles account. Sign up in the <strong>Circles</strong> iOS app or at <a href="https://favcircles.com">favcircles.com</a>.</li>
+                    <li>A Claude account (claude.ai, Claude Desktop, or Claude mobile apps).</li>
+                </ul>
+
+                <h2>How to connect</h2>
+                <ol>
+                    <li>In Claude, open <strong>Settings &rarr; Connectors</strong> and find <strong>FavCircles</strong> in the directory (or add it as a custom connector with the server URL <code>https://mcp.favcircles.com/mcp</code>).</li>
+                    <li>Click <strong>Connect</strong>. You'll be taken to the FavCircles sign-in page.</li>
+                    <li>Sign in with your email and password, or with Google or Facebook.</li>
+                    <li>Approve the connection. You're done — ask Claude about your circles.</li>
+                </ol>
+                <p><em>Note: accounts created with Sign in with Apple can't link through the web sign-in page yet. If you signed up with Apple, set a password in the Circles app first, then connect with email and password.</em></p>
+
+                <h2>What Claude can do with FavCircles</h2>
+                <h3>Your favorites</h3>
+                <ul>
+                    <li>List your circles and the places in them</li>
+                    <li>Search your saved places by name, category, or circle</li>
+                    <li>Create and edit circles, save new places, and manage your trash</li>
+                </ul>
+                <h3>Your network</h3>
+                <ul>
+                    <li>Get recommendations from your connections — network-wide or near a location</li>
+                    <li>See a friend's shared circles and find favorites you have in common</li>
+                    <li>Catch up on suggestions and recent activity from your network</li>
+                    <li>Find people, send and respond to connection requests</li>
+                    <li>Post a place suggestion to your connections</li>
+                </ul>
+                <h3>Discovery</h3>
+                <ul>
+                    <li>Search the community-wide place database to find and save new places</li>
+                </ul>
+
+                <h2>Things to try</h2>
+                <div class="prompt-box">"What circles do I have in FavCircles?"</div>
+                <div class="prompt-box">"Find coffee places I've saved"</div>
+                <div class="prompt-box">"What restaurants do my friends recommend near Brooklyn?"</div>
+                <div class="prompt-box">"Which places do Sarah and I both like?"</div>
+                <div class="prompt-box">"Create a circle called Weekend Trip and add Balthazar to it"</div>
+                <div class="prompt-box">"What's new in my FavCircles network?"</div>
+
+                <h2>Permissions and safety</h2>
+                <ul>
+                    <li>Claude only sees what your account can see: your own circles, circles shared with your network, and the community place database. Privacy levels (public, my network, private) are enforced by the FavCircles servers exactly as in the app.</li>
+                    <li>Read actions (listing, searching, recommendations) run without confirmation. Actions that change data — creating circles, deleting places, posting suggestions, sending connection requests — are marked so Claude asks before performing them.</li>
+                    <li>Deleting a circle or place moves it to trash, where it can be restored. Permanent deletion is a separate, explicit action.</li>
+                </ul>
+
+                <h2>Disconnecting</h2>
+                <p>Remove the FavCircles connector in Claude's settings at any time. This revokes Claude's access; your FavCircles account and data are unaffected.</p>
+
+                <h2>Privacy</h2>
+                <p>The connector uses the same FavCircles account and data practices described in our <a href="/privacy.html">Privacy Policy</a>. FavCircles receives only the requests Claude makes on your behalf; we don't receive or store your Claude conversations.</p>
+
+                <h2>Support</h2>
+                <p>Questions or problems? Email <a href="mailto:wesley@favcircles.com">wesley@favcircles.com</a>.</p>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 Circles. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>
