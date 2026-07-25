@@ -100,6 +100,7 @@ exports.getUser = async (req, res, next) => {
       profileData.firstName = user.firstName || null;
       profileData.lastName = user.lastName || null;
       profileData.phoneNumber = user.phoneNumber || null;
+      profileData.zipcode = user.zipcode || null;
       profileData.friends = user.friends;
       profileData.friendRequests = user.friendRequests;
       profileData.followers = user.followers;
@@ -199,7 +200,7 @@ exports.getUser = async (req, res, next) => {
 // @access  Private
 exports.updateUser = async (req, res, next) => {
   try {
-    const { displayName, firstName, lastName, phoneNumber, bio, location, profilePicture, preferences } = req.body;
+    const { displayName, firstName, lastName, phoneNumber, bio, location, zipcode, profilePicture, preferences } = req.body;
 
     const updateData = {
       updatedAt: new Date().toISOString()
@@ -215,6 +216,7 @@ exports.updateUser = async (req, res, next) => {
     if (phoneNumber !== undefined) updateData.phoneNumber = phoneNumber;
     if (bio !== undefined) updateData.bio = bio;
     if (location !== undefined) updateData.location = location;
+    if (zipcode !== undefined) updateData.zipcode = zipcode;
 
     // App preferences: allowlisted keys only, written as dot-path updates so a
     // partial preference write never clobbers sibling preference keys
@@ -310,6 +312,7 @@ exports.updateUser = async (req, res, next) => {
         profilePicture: user.profilePicture,
         bio: user.bio,
         location: user.location,
+        zipcode: user.zipcode || null,
         followersCount: user.followersCount || 0,
         followingCount: user.followingCount || 0,
         preferences: user.preferences || null,
@@ -2400,6 +2403,36 @@ exports.completeTutorial = async (req, res, next) => {
     });
   } catch (error) {
     console.error('Error completing tutorial:', error);
+    next(error);
+  }
+};
+
+// @desc    Record an app open (launch or return to foreground). Powers
+//          "did this user quietly come back" insight that API traffic alone
+//          can't show — first/last open timestamps, a lifetime open counter,
+//          and the client version/platform they're on.
+// @route   POST /api/users/me/app-open
+// @access  Private
+exports.recordAppOpen = async (req, res, next) => {
+  try {
+    const userId = normalizeUserId(req.user.uid);
+    const now = new Date().toISOString();
+    const { appVersion, build, platform } = req.body || {};
+
+    const updates = {
+      lastActive: now,
+      lastAppOpenAt: now,
+      appOpenCount: FieldValue.increment(1)
+    };
+    if (!req.user.firstAppOpenAt) updates.firstAppOpenAt = now;
+    if (appVersion) updates.appVersion = String(appVersion).slice(0, 32);
+    if (build) updates.appBuild = String(build).slice(0, 32);
+    if (platform) updates.appPlatform = String(platform).slice(0, 16);
+
+    await db.collection(COLLECTIONS.USERS).doc(userId).update(updates);
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Error recording app open:', error);
     next(error);
   }
 };

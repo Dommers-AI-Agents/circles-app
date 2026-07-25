@@ -4,15 +4,19 @@ enum UserError: Error, LocalizedError {
     case notFound
     case permissionDenied
     case invalidData
+    // The server explained why it refused — always show its words
+    case serverRejected(String)
     case updateFailed
     case networkError(Error)
     case alreadyFriends
     case friendRequestAlreadySent
     case friendRequestNotFound
     case unknown
-    
+
     var errorDescription: String? {
         switch self {
+        case .serverRejected(let message):
+            return message
         case .notFound:
             return "User not found"
         case .permissionDenied:
@@ -207,6 +211,40 @@ class UserService {
         }
     }
     
+    /// Reports an app open (launch or return to foreground) so the backend
+    /// can track when users actually come back, and on what version.
+    /// Throttled client-side so rapid foreground flips don't inflate counts.
+    private static let lastAppOpenReportKey = "lastAppOpenReportedAt"
+    private static let appOpenReportInterval: TimeInterval = 5 * 60
+
+    func reportAppOpen() {
+        let now = Date()
+        if let last = UserDefaults.standard.object(forKey: Self.lastAppOpenReportKey) as? Date,
+           now.timeIntervalSince(last) < Self.appOpenReportInterval {
+            return
+        }
+        UserDefaults.standard.set(now, forKey: Self.lastAppOpenReportKey)
+
+        let info = Bundle.main.infoDictionary
+        let body: [String: Any] = [
+            "appVersion": info?["CFBundleShortVersionString"] as? String ?? "unknown",
+            "build": info?["CFBundleVersion"] as? String ?? "unknown",
+            "platform": "ios"
+        ]
+
+        APIService.shared.request(
+            endpoint: "users/me/app-open",
+            method: .post,
+            body: body,
+            requiresAuth: true
+        ) { (result: Result<SimpleAPIResponse, APIError>) in
+            if case .failure(let error) = result {
+                // Best-effort telemetry — never surface to the user
+                print("📊 App-open report failed: \(error)")
+            }
+        }
+    }
+
     /// Persist which News tab sources the user has enabled (synced via the
     /// user doc so it follows them across devices)
     func updateNewsSourcePreferences(_ sourceIds: [String], completion: @escaping (Result<User, Error>) -> Void) {
@@ -441,20 +479,22 @@ class UserService {
     
     private func mapAPIErrorToUserError(_ error: APIError) -> UserError {
         switch error {
-        case .httpError(let statusCode, let data):
-            if let data = data, let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
-                // Check for specific error messages in the response
-                let errorMessage = errorResponse.message.lowercased()
-                
-                if errorMessage.contains("already friends") {
+        case .httpError(let statusCode, _):
+            // Flow-control cases first (UI branches on these), matched against
+            // the server message in either response shape
+            if let serverMessage = error.serverMessage {
+                let lowered = serverMessage.lowercased()
+                if lowered.contains("already friends") {
                     return .alreadyFriends
-                } else if errorMessage.contains("friend request already sent") {
+                } else if lowered.contains("friend request already sent") {
                     return .friendRequestAlreadySent
-                } else if errorMessage.contains("friend request not found") {
+                } else if lowered.contains("friend request not found") {
                     return .friendRequestNotFound
                 }
+                // Otherwise the server's explanation beats a canned status string
+                return .serverRejected(serverMessage)
             }
-            
+
             switch statusCode {
             case 403:
                 return .permissionDenied
@@ -465,7 +505,7 @@ class UserService {
             default:
                 return .unknown
             }
-            
+
         case .unauthorized:
             return .permissionDenied
             

@@ -6,6 +6,23 @@ const { normalizeUserId, logNormalization } = require('../services/idService');
 
 const db = getFirestore();
 
+// Passive activity tracking: stamp users.lastActive on authenticated traffic,
+// at most once per throttle window per instance. Fire-and-forget — must never
+// add latency or fail a request. (Firebase Auth's lastSignInTime is useless
+// here because the app mints its own long-lived JWTs.)
+const LAST_ACTIVE_THROTTLE_MS = 15 * 60 * 1000;
+const lastActiveStamps = new Map(); // uid -> ms of last stamp (per instance)
+
+const stampLastActive = (userId) => {
+  const now = Date.now();
+  const last = lastActiveStamps.get(userId) || 0;
+  if (now - last < LAST_ACTIVE_THROTTLE_MS) return;
+  lastActiveStamps.set(userId, now);
+  db.collection(COLLECTIONS.USERS).doc(userId)
+    .update({ lastActive: new Date().toISOString() })
+    .catch((error) => console.error('⚠️ lastActive stamp failed:', error.message));
+};
+
 // Protect routes - require valid JWT token
 exports.protect = async (req, res, next) => {
   console.log('🔐 AUTH MIDDLEWARE: protect function called');
@@ -116,6 +133,7 @@ exports.protect = async (req, res, next) => {
       });
 
       console.log('✅ AUTH MIDDLEWARE: User authenticated successfully, proceeding to next middleware');
+      stampLastActive(finalUserId);
       next();
     } catch (error) {
       console.error('❌ AUTH MIDDLEWARE: Token verification failed:', error);

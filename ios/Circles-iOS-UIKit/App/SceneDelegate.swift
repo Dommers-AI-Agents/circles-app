@@ -1009,6 +1009,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             // Clear notification badge when user opens the app
             print("🔔 SceneDelegate: Clearing notification badge on app activation")
             NotificationService.shared.clearBadge()
+
+            // Record the app open (throttled inside the service)
+            UserService.shared.reportAppOpen()
             
             // Proactively check and refresh token if needed
             if AuthService.shared.isTokenExpired() {

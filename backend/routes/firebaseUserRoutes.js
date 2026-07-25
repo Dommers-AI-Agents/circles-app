@@ -28,6 +28,7 @@ const {
   getTutorialStatus,
   completeTutorial,
   retryOnboarding,
+  recordAppOpen,
   mergeUserAccounts,
   getDailySummary
 } = require('../controllers/firebaseUserController');
@@ -131,6 +132,10 @@ router.route('/me/complete-tutorial')
 // Onboarding retry route
 router.route('/me/complete-onboarding')
   .post(retryOnboarding);
+
+// App-open tracking (launch / return to foreground)
+router.route('/me/app-open')
+  .post(recordAppOpen);
 
 // Recalculate follower counts
 router.route('/:id/recalculate-counts')
