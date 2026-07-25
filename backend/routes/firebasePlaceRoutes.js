@@ -26,6 +26,11 @@ const {
   getMyPlacesForCheckIn,
   migrateGooglePhotosToFirebase
 } = require('../controllers/firebasePlaceController');
+const {
+  followPlace,
+  unfollowPlace,
+  getPlaceFollowers
+} = require('../controllers/placeFollowController');
 const { protect } = require('../middleware/firebaseAuth');
 
 const router = express.Router();
@@ -70,6 +75,13 @@ router.route('/:id/likes')
 
 router.route('/:id/savers')
   .get(getPlaceSavers);
+
+router.route('/:id/follow')
+  .post(followPlace)
+  .delete(unfollowPlace);
+
+router.route('/:id/followers')
+  .get(getPlaceFollowers);
 
 router.route('/:id/comments')
   .get(getPlaceComments)

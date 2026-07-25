@@ -69,9 +69,14 @@ exports.getNetworkActivities = async (req, res, next) => {
       following.forEach(followedUserId => {
         connectedUserIds.add(followedUserId);
       });
-      // User following count tracked
+      // Followed places surface their announcements/offers here — their
+      // activities are keyed by the synthetic actor id 'place_<globalPlaceId>'
+      const followedPlaces = userData.followedPlaces || [];
+      followedPlaces.forEach(globalPlaceId => {
+        connectedUserIds.add(`place_${globalPlaceId}`);
+      });
     }
-    
+
     // Add the current user to see their own activities too
     connectedUserIds.add(userId);
     
@@ -176,6 +181,36 @@ exports.getNetworkActivities = async (req, res, next) => {
         actorsMap.set(doc.id, serializeDoc(doc));
       });
     });
+
+    // Place actors ('place_<globalPlaceId>') aren't users — synthesize a
+    // minimal actor from the canonical globalPlaces record so clients render
+    // the venue's name and photo without model changes
+    const placeActorIds = actorIds.filter(id => typeof id === 'string' && id.startsWith('place_'));
+    if (placeActorIds.length > 0) {
+      try {
+        const globalIds = [...new Set(placeActorIds.map(id => id.slice('place_'.length)))];
+        const placeDocs = await db.getAll(
+          ...globalIds.map(id => db.collection('globalPlaces').doc(id))
+        );
+        placeDocs.forEach(doc => {
+          if (!doc.exists) return;
+          const data = doc.data();
+          const firstPhoto = (data.photos || [])[0];
+          const photoUrl = typeof firstPhoto === 'string'
+            ? firstPhoto
+            : (firstPhoto && firstPhoto.url) || null;
+          actorsMap.set(`place_${doc.id}`, {
+            _id: `place_${doc.id}`,
+            id: `place_${doc.id}`,
+            displayName: data.name || 'A place',
+            profilePicture: photoUrl,
+            isPlace: true
+          });
+        });
+      } catch (placeActorError) {
+        console.error('⚠️ Place actor enrichment failed:', placeActorError.message);
+      }
+    }
     
     // OPTIMIZATION 2: Batch fetch all referenced circles
     const circleIds = [...new Set(activities
@@ -465,6 +500,7 @@ exports.createActivity = async (type, actorId, targetType, targetId, targetName,
       circleName: metadata.circleName || null,
       metadata: {
         comment: metadata.comment || null,
+        commentId: metadata.commentId || null,
         placePhoto: metadata.placePhoto || null,
         placeAddress: metadata.placeAddress || null,
         placeId: metadata.placeId || null,

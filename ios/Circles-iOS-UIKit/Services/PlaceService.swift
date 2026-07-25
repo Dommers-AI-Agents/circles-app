@@ -305,6 +305,9 @@ class PlaceService {
             requiresAuth: true,
             completion: createAPICompletion { (result: Result<PlaceResponse, Error>) in
                 if case .success(let response) = result {
+                    DispatchQueue.main.async {
+                        PlaceMilestones.celebrateIfNeeded(totalPlaces: response.totalPlaces)
+                    }
                     completion(.success(response.place))
                 } else if case .failure(let error) = result {
                     completion(.failure(error))
@@ -873,6 +876,9 @@ class PlaceService {
                 switch result {
                 case .success(let response):
                     print("✅ PlaceService: Place created successfully")
+                    DispatchQueue.main.async {
+                        PlaceMilestones.celebrateIfNeeded(totalPlaces: response.totalPlaces)
+                    }
                     if let photos = response.place.photos {
                         print("  Photos in response: \(photos.count)")
                         for (index, photo) in photos.enumerated() {
@@ -1325,20 +1331,20 @@ class PlaceService {
     
     private func mapAPIErrorToPlaceError(_ error: APIError) -> PlaceError {
         switch error {
-        case .httpError(let statusCode, let data):
+        case .httpError(let statusCode, _):
+            // The server's own explanation always beats a canned status
+            // string — e.g. the free tier's "up to 15 places per circle"
+            // limit arrives as a 403, and "already exists in the target
+            // circle" as a 400
+            if let message = error.serverMessage {
+                return .serverRejected(message)
+            }
             switch statusCode {
             case 403:
                 return .permissionDenied
             case 404:
                 return .notFound
             case 400:
-                // Surface the server's explanation (e.g. "This place already
-                // exists in the target circle") instead of a generic label
-                if let data = data,
-                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let message = json["message"] as? String, !message.isEmpty {
-                    return .serverRejected(message)
-                }
                 return .invalidData
             default:
                 return .unknown
@@ -1390,6 +1396,31 @@ class PlaceService {
         )
     }
     
+    // MARK: - Follow/Unfollow Place
+
+    func followPlace(id: String, completion: @escaping (Result<PlaceFollowResponse, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "places/\(id)/follow",
+            method: .post,
+            body: [:],
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<PlaceFollowResponse, Error>) in
+                completion(result)
+            }
+        )
+    }
+
+    func unfollowPlace(id: String, completion: @escaping (Result<PlaceFollowResponse, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "places/\(id)/follow",
+            method: .delete,
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<PlaceFollowResponse, Error>) in
+                completion(result)
+            }
+        )
+    }
+
     func fetchPlaceSavers(id: String, completion: @escaping (Result<PlaceSaversResponse, Error>) -> Void) {
         APIService.shared.request(
             endpoint: "places/\(id)/savers",
@@ -1601,6 +1632,8 @@ struct PlacesResponse: Decodable {
 struct PlaceResponse: Decodable {
     let success: Bool
     let place: Place
+    // User's live place count after this add (drives milestone celebrations)
+    let totalPlaces: Int?
 }
 
 struct FlagPlaceResponse: Decodable {
@@ -1640,6 +1673,14 @@ struct PlaceSaversResponse: Decodable {
     let savers: [User]
     let count: Int
     let totalCount: Int
+}
+
+struct PlaceFollowResponse: Decodable {
+    let success: Bool
+    let following: Bool
+    let followersCount: Int
+    let globalPlaceId: String?
+    let circleId: String?
 }
 
 // MARK: - PlaceComment Model

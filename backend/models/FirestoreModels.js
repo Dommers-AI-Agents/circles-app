@@ -131,6 +131,8 @@ const createCircle = (circleData, ownerId) => {
     privacy: circleData.privacy || 'public', // public, myNetwork, private
     allowNetworkEdit: circleData.allowNetworkEdit || false,
     isSystemCircle: circleData.isSystemCircle || false, // Flag for system-created circles like "My Moments"
+    isCheckInCircle: circleData.isCheckInCircle || false, // Flag for the auto-created "Check-in Places" circle (dedup lookup key)
+    isFollowedPlacesCircle: circleData.isFollowedPlacesCircle || false, // Flag for the auto-created "Places I Follow" circle (dedup lookup key)
     category: circleData.category || 'other', // travel, food, services, shopping, healthcare, entertainment, other
     customCategoryId: circleData.customCategoryId || null, // Reference to user's custom category
     location: circleData.location || null,

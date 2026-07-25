@@ -113,13 +113,16 @@ struct Place: Codable, Identifiable {
     let updatedAt: Date
     var isNew: Bool? // Indicates if this is new activity
     var circleName: String? // Added by backend for check-in place selection
-    
+    var followersCount: Int? = nil // Venue followers (from the canonical global place record)
+    var isFollowing: Bool? = nil // Whether the current user follows this venue
+
     enum CodingKeys: String, CodingKey {
         case id = "_id"
         case globalPlaceId
         case name, description, address, location, website, phone, googlePlaceId
         case photos, videos, category, customCategoryId, subcategory, rating, userRatingsTotal, notes, privateNotes, publicNotes, tags, reviews, openingHours
         case priceLevel, likes, likesCount, commentsCount, circleId, addedBy, addedByUser, privacy, createdAt, updatedAt, isNew, circleName
+        case followersCount, isFollowing
     }
     
     init(from decoder: Decoder) throws {
@@ -205,6 +208,8 @@ struct Place: Codable, Identifiable {
         self.createdAt = try container.decode(Date.self, forKey: .createdAt)
         self.updatedAt = try container.decode(Date.self, forKey: .updatedAt)
         self.isNew = try container.decodeIfPresent(Bool.self, forKey: .isNew)
+        self.followersCount = try container.decodeIfPresent(Int.self, forKey: .followersCount)
+        self.isFollowing = try container.decodeIfPresent(Bool.self, forKey: .isFollowing)
     }
     
     // Manual initializer for creating Place instances in code

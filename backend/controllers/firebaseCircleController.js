@@ -121,13 +121,24 @@ exports.getMyCircles = async (req, res, next) => {
         }
       });
       
-      // Add any remaining circles not in the order array (newly created circles)
-      circlesMap.forEach(circle => {
+      // Add any remaining circles not in the order array (newly created
+      // circles) — the auto-created "Places I Follow" circle always sinks
+      // to the very end
+      const remaining = [...circlesMap.values()].sort((a, b) =>
+        (a.isFollowedPlacesCircle === true) - (b.isFollowedPlacesCircle === true)
+      );
+      remaining.forEach(circle => {
         sortedCircles.push(circle);
       });
     } else {
-      // Fallback to date-based sorting
-      sortedCircles = circles.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      // Fallback to date-based sorting (newest first), with the auto-created
+      // "Places I Follow" circle pinned to the end of the list
+      sortedCircles = circles.sort((a, b) => {
+        const aFollow = a.isFollowedPlacesCircle === true;
+        const bFollow = b.isFollowedPlacesCircle === true;
+        if (aFollow !== bFollow) return aFollow ? 1 : -1;
+        return new Date(b.createdAt) - new Date(a.createdAt);
+      });
     }
 
     res.status(200).json({

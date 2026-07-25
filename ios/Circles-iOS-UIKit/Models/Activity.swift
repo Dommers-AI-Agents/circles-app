@@ -21,6 +21,9 @@ enum ActivityType: String, Codable {
     case profileUpdated = "profile_updated"
     case userActivity = "user_activity"
     case reactionAdded = "reaction_added"
+    // Venue (store-owner) updates surfaced to place followers
+    case venueAnnouncement = "venue_announcement"
+    case venueOffer = "venue_offer"
     /// Fallback for activity types this build doesn't know. The backend adds
     /// types over time; an unknown one must not fail the decode of an entire
     /// home screen response and blank the feed.
@@ -79,6 +82,32 @@ struct Activity: Codable {
     var userReactionStyle: ReactionStyle? {
         guard let emoji = userReaction else { return nil }
         return ReactionStyle(emoji: emoji)
+    }
+
+    /// Copy with a locally-applied reaction toggle. Activity is immutable, so
+    /// feed rows are rebuilt in place after a like instead of refetching the
+    /// whole feed (which would reset pagination and scroll position).
+    func withReaction(userReaction newReaction: String?, reactionCount newCount: Int, reactionSummary newSummary: [ReactionSummary]?) -> Activity {
+        return Activity(
+            id: id, type: type, actorId: actorId, actor: actor,
+            targetType: targetType, targetId: targetId, targetName: targetName,
+            circleId: circleId, circleName: circleName, metadata: metadata,
+            timestamp: timestamp, isRead: isRead,
+            reactionCount: newCount, commentCount: commentCount,
+            userReaction: newReaction, reactionSummary: newSummary
+        )
+    }
+
+    /// Copy with an updated comment count (same in-place row update pattern)
+    func withCommentCount(_ newCount: Int) -> Activity {
+        return Activity(
+            id: id, type: type, actorId: actorId, actor: actor,
+            targetType: targetType, targetId: targetId, targetName: targetName,
+            circleId: circleId, circleName: circleName, metadata: metadata,
+            timestamp: timestamp, isRead: isRead,
+            reactionCount: reactionCount, commentCount: newCount,
+            userReaction: userReaction, reactionSummary: reactionSummary
+        )
     }
 }
 
@@ -142,6 +171,16 @@ extension Activity {
             return "was active"
         case .reactionAdded:
             return "reacted to \(targetName)"
+        case .venueAnnouncement:
+            if let title = metadata?.message, !title.isEmpty {
+                return "posted an announcement: \(title)"
+            }
+            return "posted an announcement"
+        case .venueOffer:
+            if let title = metadata?.message, !title.isEmpty {
+                return "added a new offer: \(title)"
+            }
+            return "added a new offer"
         case .unknown:
             return "shared an update"
         }
