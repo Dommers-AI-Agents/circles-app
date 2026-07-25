@@ -8,6 +8,14 @@ const PlaceDiscoveryService = require('./placeDiscoveryService');
 
 const db = getFirestore();
 
+// Every new user automatically follows these accounts (the most content-rich
+// ones), so their network isn't empty on day one. Combined with all-public
+// default circles, following is enough to see these users' places.
+const DEFAULT_FOLLOW_EMAILS = [
+  'sgroiwes@gmail.com',      // Wes
+  'brittanyvans@gmail.com'   // Brittany
+];
+
 class OnboardingService {
   
   /**
@@ -139,6 +147,14 @@ class OnboardingService {
         console.log(`📍 Added sample place: ${result.samplePlace.name}`);
       }
       
+      // Auto-follow the default accounts (best-effort — a failure here must
+      // not fail onboarding)
+      await OnboardingService.followDefaultUsers(userId, userData);
+
+      // And greet them with a pending connection request from each default
+      // account (best-effort as well)
+      await OnboardingService.sendDefaultConnectionRequests(userId, userData);
+
       // Send SSE notification about onboarding completion
       const sseService = require('./sseService');
       sseService.notifyUser(userId, 'onboarding_completed', {
@@ -164,6 +180,114 @@ class OnboardingService {
     }
   }
   
+  /**
+   * Make a new user follow the default accounts (Wes, Brittany). Idempotent:
+   * already-followed targets are skipped, so retried onboarding can't double
+   * the counts. The targets get the standard new-follower notification —
+   * which doubles as a "someone new joined" signal for them.
+   */
+  static async followDefaultUsers(userId, userData = {}) {
+    try {
+      const { FieldValue } = require('firebase-admin/firestore');
+      const snap = await db.collection(COLLECTIONS.USERS)
+        .where('email', 'in', DEFAULT_FOLLOW_EMAILS)
+        .get();
+
+      const userRef = db.collection(COLLECTIONS.USERS).doc(userId);
+      const userDoc = await userRef.get();
+      const alreadyFollowing = (userDoc.exists && userDoc.data().following) || [];
+
+      const targets = snap.docs.filter(doc =>
+        doc.id !== userId &&
+        doc.data().email !== userData.email &&
+        !alreadyFollowing.includes(doc.id)
+      );
+      if (targets.length === 0) return;
+
+      const batch = db.batch();
+      batch.update(userRef, {
+        following: FieldValue.arrayUnion(...targets.map(doc => doc.id)),
+        followingCount: FieldValue.increment(targets.length),
+        updatedAt: new Date().toISOString()
+      });
+      targets.forEach(doc => {
+        batch.update(doc.ref, {
+          followers: FieldValue.arrayUnion(userId),
+          followersCount: FieldValue.increment(1),
+          updatedAt: new Date().toISOString()
+        });
+      });
+      await batch.commit();
+      console.log(`🤝 New user ${userId} auto-follows: ${targets.map(d => d.data().email).join(', ')}`);
+
+      const notificationService = require('./notificationService');
+      const newUserName = userData.displayName || userData.email || 'A new user';
+      await Promise.all(targets.map(doc =>
+        notificationService.sendFollowerNotification(doc.id, userId, newUserName)
+          .catch(err => console.error('🔔 Auto-follow notification failed:', err.message))
+      ));
+    } catch (error) {
+      // Best-effort: log and continue — onboarding already succeeded
+      console.error(`⚠️ Auto-follow of default users failed for ${userId}:`, error.message);
+    }
+  }
+
+  /**
+   * Send the new user a pending connection request from each default account
+   * (Wes, Brittany). Accepting is what puts those accounts' places on the new
+   * user's map, so the request lands immediately at signup. Idempotent: a
+   * connection existing in either direction (any status) is left alone.
+   */
+  static async sendDefaultConnectionRequests(userId, userData = {}) {
+    try {
+      const { createConnection } = require('../models/FirestoreModels');
+      const notificationService = require('./notificationService');
+      const sseService = require('./sseService');
+
+      const snap = await db.collection(COLLECTIONS.USERS)
+        .where('email', 'in', DEFAULT_FOLLOW_EMAILS)
+        .get();
+      const senders = snap.docs.filter(doc =>
+        doc.id !== userId && doc.data().email !== userData.email
+      );
+
+      for (const senderDoc of senders) {
+        const senderId = senderDoc.id;
+        const [outgoing, incoming] = await Promise.all([
+          db.collection(COLLECTIONS.CONNECTIONS)
+            .where('userId', '==', senderId)
+            .where('connectedUserId', '==', userId)
+            .limit(1).get(),
+          db.collection(COLLECTIONS.CONNECTIONS)
+            .where('userId', '==', userId)
+            .where('connectedUserId', '==', senderId)
+            .limit(1).get()
+        ]);
+        if (!outgoing.empty || !incoming.empty) continue;
+
+        const senderFirstName = (senderDoc.data().displayName || 'Circles').split(' ')[0];
+        const connectionData = createConnection(
+          senderId,
+          userId,
+          `Welcome to Circles! I'm ${senderFirstName} — let's connect so you can see my favorite places on your map.`
+        );
+        const ref = await db.collection(COLLECTIONS.CONNECTIONS).add(connectionData);
+
+        await notificationService.notifyConnectionRequest(senderId, userId, ref.id)
+          .catch(err => console.error('🔔 Welcome connection notification failed:', err.message));
+        sseService.notifyUser(userId, 'connection_request', {
+          connectionId: ref.id,
+          from: { id: senderId, displayName: senderDoc.data().displayName || null },
+          message: connectionData.message
+        });
+        console.log(`🤝 Welcome connection request sent to ${userId} from ${senderDoc.data().email}`);
+      }
+    } catch (error) {
+      // Best-effort: log and continue — onboarding already succeeded
+      console.error(`⚠️ Welcome connection requests failed for ${userId}:`, error.message);
+    }
+  }
+
   /**
    * Create additional sample content for user (can be called later)
    */

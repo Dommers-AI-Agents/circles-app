@@ -486,6 +486,9 @@ class ConnectionDetailViewController: BaseViewController {
             DispatchQueue.main.async {
                 switch result {
                 case .success:
+                    // Connecting implies following (the server auto-follows
+                    // on connect) — reflect it immediately
+                    self.isFollowing = true
                     AlertPresenter.showSuccess(message: "Connection request sent!", from: self) {
                         self.updateButtonVisibility()
                     }

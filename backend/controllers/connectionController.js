@@ -16,6 +16,34 @@ const { normalizeUserId, isSameUser } = require('../services/idService');
 
 const db = getFirestore();
 
+// Make followerId follow targetId, idempotently: if the follow already
+// exists, nothing changes (in particular the counts don't drift — arrayUnion
+// is a no-op on repeats but increment() is not, which is why callers must
+// never bump counts blindly). Returns true when a follow was actually added.
+const ensureFollows = async (followerId, targetId) => {
+  if (!followerId || !targetId || isSameUser(followerId, targetId)) return false;
+
+  const followerRef = db.collection(COLLECTIONS.USERS).doc(followerId);
+  const followerDoc = await followerRef.get();
+  if (!followerDoc.exists) return false;
+  if ((followerDoc.data().following || []).includes(targetId)) return false;
+
+  const now = new Date().toISOString();
+  const batch = db.batch();
+  batch.update(followerRef, {
+    following: FieldValue.arrayUnion(targetId),
+    followingCount: FieldValue.increment(1),
+    updatedAt: now
+  });
+  batch.update(db.collection(COLLECTIONS.USERS).doc(targetId), {
+    followers: FieldValue.arrayUnion(followerId),
+    followersCount: FieldValue.increment(1),
+    updatedAt: now
+  });
+  await batch.commit();
+  return true;
+};
+
 // @desc    Get specific connection by ID
 // @route   GET /api/connections/:connectionId
 // @access  Private
@@ -355,6 +383,10 @@ const sendConnectionRequest = async (req, res) => {
       }
       
       console.log(`⚠️ Connection request already exists with status: ${connectionData.status}`);
+      // Connecting implies following — self-heal requests sent before that
+      // rule existed when the user taps Connect again
+      ensureFollows(userId, targetUserDocId).catch(err =>
+        console.error('⚠️ Auto-follow on repeat connect failed:', err.message));
       return res.status(409).json({
         success: false,
         message: 'Connection request already pending',
@@ -418,35 +450,36 @@ const sendConnectionRequest = async (req, res) => {
       data: connection
     });
 
+    // Connecting implies following: the requester follows the target right
+    // away, so the target's public content shows up even if the request is
+    // never accepted. (Follow-back stays tied to acceptance.)
+    try {
+      if (await ensureFollows(userId, targetUserDocId)) {
+        sseService.notifyUser(userId, 'following_added', { targetUserId: targetUserDocId });
+      }
+    } catch (followError) {
+      console.error('⚠️ Auto-follow on connect failed:', followError.message);
+    }
+
     // If auto-accepted, update user arrays immediately
     if (autoAccept) {
       try {
         console.log('🔄 Auto-accept flow: Updating user arrays for both users');
-        
+
+        // Mutual follows, idempotent so counts can't drift when one side
+        // already follows the other
+        await ensureFollows(userId, targetUserDocId);
+        await ensureFollows(targetUserDocId, userId);
+
         const batch = db.batch();
-        
-        // Update requester's arrays
-        const requesterRef = db.collection(COLLECTIONS.USERS).doc(userId);
-        batch.update(requesterRef, {
+        batch.update(db.collection(COLLECTIONS.USERS).doc(userId), {
           connections: FieldValue.arrayUnion(targetUserDocId),
-          following: FieldValue.arrayUnion(targetUserDocId),
-          followingCount: FieldValue.increment(1),
-          followers: FieldValue.arrayUnion(targetUserDocId),
-          followersCount: FieldValue.increment(1),
           updatedAt: new Date().toISOString()
         });
-        
-        // Update target user's arrays
-        const targetRef = db.collection(COLLECTIONS.USERS).doc(targetUserDocId);
-        batch.update(targetRef, {
+        batch.update(db.collection(COLLECTIONS.USERS).doc(targetUserDocId), {
           connections: FieldValue.arrayUnion(userId),
-          following: FieldValue.arrayUnion(userId),
-          followingCount: FieldValue.increment(1),
-          followers: FieldValue.arrayUnion(userId),
-          followersCount: FieldValue.increment(1),
           updatedAt: new Date().toISOString()
         });
-        
         await batch.commit();
         console.log('✅ Auto-accept: User arrays updated successfully');
         
@@ -577,49 +610,23 @@ const acceptConnection = async (req, res) => {
       data: updatedConnection
     });
 
-    // Auto-follow: When connection is accepted, both users automatically follow each other
+    // Auto-follow: When connection is accepted, both users automatically follow each other.
+    // Idempotent — the requester usually already follows (connect implies
+    // follow), and repeat increments would drift the counts.
     try {
       console.log('🔄 Auto-follow on connection accept - Making users follow each other');
-      
-      // Use a batch to update both users atomically
-      const batch = db.batch();
-      
-      // User who accepted the connection follows the requester
-      const acceptingUserRef = db.collection(COLLECTIONS.USERS).doc(userId);
-      batch.update(acceptingUserRef, {
-        following: FieldValue.arrayUnion(connection.userId),
-        followingCount: FieldValue.increment(1),
-        updatedAt: new Date().toISOString()
-      });
-      
-      // Requester follows the user who accepted
-      const requesterRef = db.collection(COLLECTIONS.USERS).doc(connection.userId);
-      batch.update(requesterRef, {
-        following: FieldValue.arrayUnion(userId),
-        followingCount: FieldValue.increment(1),
-        updatedAt: new Date().toISOString()
-      });
-      
-      // Update followers arrays
-      batch.update(acceptingUserRef, {
-        followers: FieldValue.arrayUnion(connection.userId),
-        followersCount: FieldValue.increment(1)
-      });
-      
-      batch.update(requesterRef, {
-        followers: FieldValue.arrayUnion(userId),
-        followersCount: FieldValue.increment(1)
-      });
-      
+
+      await ensureFollows(userId, connection.userId);
+      await ensureFollows(connection.userId, userId);
+
       // Update connections arrays for both users
-      batch.update(acceptingUserRef, {
+      const batch = db.batch();
+      batch.update(db.collection(COLLECTIONS.USERS).doc(userId), {
         connections: FieldValue.arrayUnion(connection.userId)
       });
-      
-      batch.update(requesterRef, {
+      batch.update(db.collection(COLLECTIONS.USERS).doc(connection.userId), {
         connections: FieldValue.arrayUnion(userId)
       });
-      
       await batch.commit();
       console.log('✅ Auto-follow successful - Both users now follow each other');
       console.log('✅ Connections arrays updated for both users');

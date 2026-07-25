@@ -97,7 +97,11 @@ class PlaceSaversViewController: BaseViewController {
                     guard let self = self,
                           indexPath.section < self.sections.count,
                           indexPath.row < self.sections[indexPath.section].users.count else { return }
-                    self.sections[indexPath.section].users[indexPath.row] = user.copy(connectionStatus: "pending")
+                    // Connecting implies following (the server auto-follows on connect)
+                    self.sections[indexPath.section].users[indexPath.row] = user.copy(
+                        connectionStatus: "pending",
+                        isFollowing: true
+                    )
                     self.tableView.reloadRows(at: [indexPath], with: .none)
                 case .failure(let error):
                     self?.showError(error)
