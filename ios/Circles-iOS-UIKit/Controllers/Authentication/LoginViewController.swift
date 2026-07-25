@@ -242,10 +242,12 @@ class LoginViewController: BaseViewController {
         spacerView2.heightAnchor.constraint(equalToConstant: 8).isActive = true
         buttonsStackView.addArrangedSubview(spacerView2)
 
-        // Social logins demoted below the divider
-        buttonsStackView.addArrangedSubview(appleSignInContainerView)
+        // Social logins demoted below the divider. Google leads and Apple goes
+        // last: Sign in with Apple offers relay emails, which fragment account
+        // identity when the same person later signs in with their real address.
         buttonsStackView.addArrangedSubview(googleSignInButton)
         buttonsStackView.addArrangedSubview(facebookSignInButton)
+        buttonsStackView.addArrangedSubview(appleSignInContainerView)
 
         orDividerLabel.heightAnchor.constraint(equalToConstant: 20).isActive = true
 
