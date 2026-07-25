@@ -48,7 +48,12 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     private var annotationToPlaceIdMap: [ObjectIdentifier: String] = [:]
     private var placesClient: GMSPlacesClient!  // Keep only for photos
     private var placeIdsByCoordinate: [String: String] = [:] // Additional storage by coordinate
-    private var selectedGooglePlaceDetails: GooglePlaceDetails?
+    private var selectedGooglePlaceDetails: GooglePlaceDetails? {
+        didSet { applyVenueSourceLockIfNeeded() }
+    }
+    private var isSuperUserForVenueEdits: Bool?
+    private var ownedGooglePlaceIds = Set<String>()
+    private var venueExemptionChecksInFlight = Set<String>()
     private var selectedCategory: PlaceCategory = .restaurant
     private var selectedSubcategory: String?
     private var isCategoryDropdownVisible = false
@@ -1190,6 +1195,20 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
+    /// Leaves this screen whether it was pushed or presented modally.
+    /// popViewController alone silently no-ops when this controller is the
+    /// root of a presented navigation stack (or has no nav controller at all)
+    /// — that was the "tap Discard, nothing happens" bug.
+    private func closeAddPlaceScreen() {
+        if let nav = navigationController, nav.viewControllers.first !== self {
+            nav.popViewController(animated: true)
+        } else if presentingViewController != nil {
+            dismiss(animated: true)
+        } else {
+            navigationController?.popViewController(animated: true)
+        }
+    }
+
     @objc private func cancelButtonTapped() {
         // Show confirmation if user has entered data
         let hasEnteredData = !(nameTextField.text?.isEmpty ?? true) ||
@@ -1199,23 +1218,23 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                             !publicNotesTextView.text.isEmpty ||
                             selectedImage != nil ||
                             selectedLocation != nil
-        
+
         if hasEnteredData {
             let alert = UIAlertController(
                 title: "Cancel Adding Place?",
                 message: "You have unsaved changes. Are you sure you want to cancel?",
                 preferredStyle: .alert
             )
-            
+
             alert.addAction(UIAlertAction(title: "Keep Editing", style: .cancel))
             alert.addAction(UIAlertAction(title: "Discard", style: .destructive) { [weak self] _ in
-                self?.navigationController?.popViewController(animated: true)
+                self?.closeAddPlaceScreen()
             })
-            
+
             present(alert, animated: true)
         } else {
             // No data entered, go back immediately
-            navigationController?.popViewController(animated: true)
+            closeAddPlaceScreen()
         }
     }
     
@@ -1829,7 +1848,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                         case .failure(let error):
                             print("❌ Failed to create place from POI: \(error)")
                             self?.endSaving()
-                            self?.presentAlert(title: "Error", message: error.localizedDescription)
+                            self?.presentPlaceCreationError(error)
                         }
                     }
                 }
@@ -1967,7 +1986,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                     case .failure(let error):
                         print("❌ Failed to create place: \(error)")
                         self?.endSaving()
-                        self?.presentAlert(title: "Error", message: error.localizedDescription)
+                        self?.presentPlaceCreationError(error)
                     }
                 }
             }
@@ -2040,7 +2059,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                     case .failure(let error):
                         print("❌ Failed to create place: \(error)")
                         self?.endSaving()
-                        self?.presentAlert(title: "Error", message: error.localizedDescription)
+                        self?.presentPlaceCreationError(error)
                     }
                 }
             }
@@ -2061,6 +2080,62 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
+    // MARK: - Google-sourced venue field lock
+
+    /// Google-backed places: venue fields (name, category) come from Google
+    /// Places and are read-only in the add flow too — same rule as
+    /// EditPlaceViewController.applyGoogleSourceLockIfNeeded(). The address
+    /// view is always read-only here. Description, notes, privacy and photos
+    /// stay editable. Super-users and the venue's verified owner (approved
+    /// ownership claim) keep full edit access.
+    private func applyVenueSourceLockIfNeeded() {
+        guard let googlePlaceId = selectedGooglePlaceDetails?.placeID, !googlePlaceId.isEmpty else {
+            setVenueFieldsLocked(false)
+            return
+        }
+        if isSuperUserForVenueEdits == true || ownedGooglePlaceIds.contains(googlePlaceId) {
+            setVenueFieldsLocked(false)
+            return
+        }
+        setVenueFieldsLocked(true)
+        resolveVenueLockExemption(for: googlePlaceId)
+    }
+
+    private func setVenueFieldsLocked(_ locked: Bool) {
+        let venueControls: [UIView] = [nameTextField, categoryButton]
+        venueControls.forEach {
+            $0.isUserInteractionEnabled = !locked
+            $0.alpha = locked ? 0.55 : 1.0
+        }
+        nameLabel.text = locked ? "Place Name (from Google Places)" : "Place Name"
+        categoryLabel.text = locked ? "Category (from Google Places)" : "Category"
+    }
+
+    private func resolveVenueLockExemption(for googlePlaceId: String) {
+        guard !venueExemptionChecksInFlight.contains(googlePlaceId) else { return }
+        venueExemptionChecksInFlight.insert(googlePlaceId)
+
+        if isSuperUserForVenueEdits == nil {
+            RewardsService.shared.getRewardsProfile { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self = self, case .success(let profile) = result else { return }
+                    self.isSuperUserForVenueEdits = profile.isSuperUser
+                    if profile.isSuperUser {
+                        self.applyVenueSourceLockIfNeeded()
+                    }
+                }
+            }
+        }
+
+        RewardsService.shared.getVenueByPlace(placeId: googlePlaceId, googlePlaceId: googlePlaceId) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self, case .success(let data) = result, data.isOwner == true else { return }
+                self.ownedGooglePlaceIds.insert(googlePlaceId)
+                self.applyVenueSourceLockIfNeeded()
+            }
+        }
+    }
+
     private func selectSearchResult(_ result: MKLocalSearchCompletion) {
         // Hide search results
         searchResultsTableView.isHidden = true
@@ -2573,6 +2648,28 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
+    // MARK: - Save failure handling
+
+    /// Failed place creation: subscription-limit refusals get an Upgrade path
+    /// to the paywall instead of a dead-end error alert; everything else
+    /// shows the server's message as-is.
+    private func presentPlaceCreationError(_ error: Error) {
+        let message = error.localizedDescription
+        guard message.localizedCaseInsensitiveContains("premium") else {
+            presentAlert(title: "Error", message: message)
+            return
+        }
+
+        showConfirmation(
+            title: "Place Limit Reached",
+            message: message,
+            confirmTitle: "Upgrade"
+        ) { [weak self] in
+            guard let self = self else { return }
+            SubscriptionManager.shared.showPaywall(from: self, reason: .placeLimit)
+        }
+    }
+
     // MARK: - Place assets (googlePlaceId + photos), database-first
 
     /// Attach a googlePlaceId and photos to the place being added. Our own
@@ -3435,10 +3532,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                     case .failure(let error):
                         print("❌ Failed to create place: \(error)")
                         self.endSaving()
-                        self.presentAlert(
-                            title: "Error",
-                            message: "Failed to add place: \(error.localizedDescription)"
-                        )
+                        self.presentPlaceCreationError(error)
                     }
                 }
             }
@@ -4671,8 +4765,8 @@ extension AddPlaceViewController {
                         
                     case .failure(let error):
                         print("❌ Failed to fetch circle for navigation: \(error)")
-                        // Fallback to just popping the view controller
-                        self.navigationController?.popViewController(animated: true)
+                        // Fallback: leave the screen (handles modal too)
+                        self.closeAddPlaceScreen()
                     }
                 }
             }

@@ -4,10 +4,19 @@ class CirclePickerViewController: UIViewController {
     
     // MARK: - Properties
     private let circles: [Circle]
+    private var filteredCircles: [Circle]
     var onCircleSelected: ((Circle) -> Void)?
     var onCreateNewCircle: (() -> Void)?
-    
+
     // MARK: - UI Elements
+    private lazy var searchController: UISearchController = {
+        let searchController = UISearchController(searchResultsController: nil)
+        searchController.searchResultsUpdater = self
+        searchController.obscuresBackgroundDuringPresentation = false
+        searchController.searchBar.placeholder = "Search circles..."
+        return searchController
+    }()
+
     private let tableView: UITableView = {
         let tableView = UITableView()
         tableView.backgroundColor = Constants.Colors.background
@@ -30,6 +39,7 @@ class CirclePickerViewController: UIViewController {
     // MARK: - Initialization
     init(circles: [Circle]) {
         self.circles = circles
+        self.filteredCircles = circles
         super.init(nibName: nil, bundle: nil)
     }
     
@@ -55,6 +65,11 @@ class CirclePickerViewController: UIViewController {
             target: self,
             action: #selector(cancelButtonTapped)
         )
+
+        // Always-visible search bar under the title
+        navigationItem.searchController = searchController
+        navigationItem.hidesSearchBarWhenScrolling = false
+        definesPresentationContext = true
         
         // Add subviews
         view.addSubview(tableView)
@@ -86,10 +101,12 @@ class CirclePickerViewController: UIViewController {
     
     // MARK: - Actions
     @objc private func cancelButtonTapped() {
+        searchController.isActive = false
         dismiss(animated: true)
     }
-    
+
     @objc private func createNewButtonTapped() {
+        searchController.isActive = false
         dismiss(animated: true) { [weak self] in
             self?.onCreateNewCircle?()
         }
@@ -99,14 +116,27 @@ class CirclePickerViewController: UIViewController {
 // MARK: - UITableViewDataSource
 extension CirclePickerViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return circles.count
+        return filteredCircles.count
     }
-    
+
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "CirclePickerCell", for: indexPath) as! CirclePickerCell
-        let circle = circles[indexPath.row]
+        let circle = filteredCircles[indexPath.row]
         cell.configure(with: circle)
         return cell
+    }
+}
+
+// MARK: - UISearchResultsUpdating
+extension CirclePickerViewController: UISearchResultsUpdating {
+    func updateSearchResults(for searchController: UISearchController) {
+        let searchText = searchController.searchBar.text ?? ""
+        if searchText.isEmpty {
+            filteredCircles = circles
+        } else {
+            filteredCircles = circles.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        }
+        tableView.reloadData()
     }
 }
 
@@ -114,7 +144,11 @@ extension CirclePickerViewController: UITableViewDataSource {
 extension CirclePickerViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        let circle = circles[indexPath.row]
+        guard indexPath.row < filteredCircles.count else { return }
+        let circle = filteredCircles[indexPath.row]
+        // Dismissing while the search controller is active first tears down the
+        // search presentation, which would swallow the sheet dismissal
+        searchController.isActive = false
         dismiss(animated: true) { [weak self] in
             self?.onCircleSelected?(circle)
         }

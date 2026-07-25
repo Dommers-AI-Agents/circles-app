@@ -430,16 +430,28 @@ class EditPlaceViewController: BaseViewController {
         flagButton.accessibilityLabel = "Report incorrect info"
         navigationItem.rightBarButtonItems = [navigationItem.rightBarButtonItem, flagButton].compactMap { $0 }
 
-        // Super-users can still fix listings directly
-        RewardsService.shared.getRewardsProfile { [weak self] result in
+        // Super-users and the venue's verified owner (approved ownership
+        // claim) can still fix listings directly
+        let unlockVenueControls: () -> Void = { [weak self] in
+            venueControls.forEach {
+                $0.isUserInteractionEnabled = true
+                $0.alpha = 1.0
+            }
+            self?.nameLabel.text = "Place Name"
+            self?.addressLabel.text = "Address"
+        }
+
+        RewardsService.shared.getRewardsProfile { result in
             DispatchQueue.main.async {
                 guard case .success(let profile) = result, profile.isSuperUser else { return }
-                venueControls.forEach {
-                    $0.isUserInteractionEnabled = true
-                    $0.alpha = 1.0
-                }
-                self?.nameLabel.text = "Place Name"
-                self?.addressLabel.text = "Address"
+                unlockVenueControls()
+            }
+        }
+
+        RewardsService.shared.getVenueByPlace(placeId: place.id, googlePlaceId: place.googlePlaceId) { result in
+            DispatchQueue.main.async {
+                guard case .success(let data) = result, data.isOwner == true else { return }
+                unlockVenueControls()
             }
         }
     }
