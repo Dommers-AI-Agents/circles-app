@@ -321,6 +321,7 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
                 case 0: // Home tab
                     if let circlesVC = navController.topViewController as? CirclesHomeViewController {
                         circlesVC.scrollToTop()
+                        circlesVC.resetMapToDefault()
                         circlesVC.refreshData()
                     }
                 case 1: // My Network tab

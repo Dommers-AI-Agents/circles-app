@@ -15,12 +15,33 @@ class HorizontalUserListView: UIView {
     private let maxRetries = 3
 
     /// User id of the currently selected connection (map filter); the matching
-    /// avatar shows a blue selection ring
+    /// avatar shows a blue selection ring and is pinned to the front of the
+    /// list until someone else is selected
     var selectedUserId: String? {
         didSet {
             guard oldValue != selectedUserId else { return }
+            applySelectionPinning(scrollToFront: selectedUserId != nil)
             collectionView.reloadData()
         }
+    }
+
+    /// Moves the selected connection to the front of the list. Score-based
+    /// re-sorts on refresh must never shuffle the selected avatar away from
+    /// position 0 while its filter is active.
+    private func applySelectionPinning(scrollToFront: Bool = false) {
+        defer {
+            if scrollToFront && !connections.isEmpty {
+                collectionView.setContentOffset(.zero, animated: true)
+            }
+        }
+        guard let selectedUserId = selectedUserId,
+              let index = connections.firstIndex(where: { connection in
+                  guard let userId = connection.connectedUser?.id else { return false }
+                  return IDNormalizer.isSameUser(selectedUserId, userId)
+              }),
+              index > 0 else { return }
+        let selected = connections.remove(at: index)
+        connections.insert(selected, at: 0)
     }
     
     // MARK: - Pagination Properties
@@ -612,6 +633,7 @@ class HorizontalUserListView: UIView {
                         
                         self.allLoadedConnections = uniqueConnections
                         self.connections = uniqueConnections
+                        self.applySelectionPinning()
                         
                         // Update pagination state for first page
                         self.hasMoreConnections = finalConnections.count == self.pageSize
@@ -647,6 +669,7 @@ class HorizontalUserListView: UIView {
                             // We got new connections, add them
                             self.allLoadedConnections.append(contentsOf: newConnections)
                             self.connections = self.allLoadedConnections
+                            self.applySelectionPinning()
                             print("🔍 HorizontalUserListView: Added \(newConnections.count) new connections (out of \(finalConnections.count) returned)")
                             
                             // Only increment page if we actually added new connections

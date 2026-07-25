@@ -701,6 +701,51 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
     private var selectedConnectionId: String? = nil // Default to All Connections
     private var selectedConnectionUser: User? = nil // Set only when a specific connection is filtered
+
+    /// Whose places are on the map: the selected connection's avatar shown as
+    /// the first chip beside the map controls (hidden when no connection
+    /// filter is active). Tapping opens their profile.
+    private lazy var selectedConnectionAvatarButton: UIButton = {
+        let button = UIButton(type: .custom)
+        button.backgroundColor = Constants.Colors.secondaryBackground.withAlphaComponent(0.9)
+        button.layer.cornerRadius = 14
+        button.layer.borderWidth = 1
+        button.layer.borderColor = Constants.Colors.primary.cgColor
+        button.clipsToBounds = true
+        button.imageView?.contentMode = .scaleAspectFill
+        button.tintColor = Constants.Colors.primary
+        button.isHidden = true
+        button.accessibilityLabel = "Selected connection"
+        button.addTarget(self, action: #selector(selectedConnectionAvatarTapped), for: .touchUpInside)
+        return button
+    }()
+
+    private func updateSelectedConnectionAvatar() {
+        guard let user = selectedConnectionUser,
+              let id = selectedConnectionId, id != "my_places_only" else {
+            selectedConnectionAvatarButton.isHidden = true
+            return
+        }
+        selectedConnectionAvatarButton.isHidden = false
+        selectedConnectionAvatarButton.setImage(UIImage(systemName: "person.crop.circle.fill"), for: .normal)
+        if let profilePicture = user.profilePicture, !profilePicture.isEmpty {
+            let expectedUserId = user.id
+            ImageService.shared.loadImageWithKey(from: profilePicture, cacheKey: "profile_\(user.id)_\(profilePicture)") { [weak self] image in
+                DispatchQueue.main.async {
+                    guard let self = self, let image = image,
+                          self.selectedConnectionUser?.id == expectedUserId else { return }
+                    self.selectedConnectionAvatarButton.setImage(image.withRenderingMode(.alwaysOriginal), for: .normal)
+                }
+            }
+        }
+    }
+
+    @objc private func selectedConnectionAvatarTapped() {
+        guard let user = selectedConnectionUser else { return }
+        let profileVC = ProfileViewController()
+        profileVC.configureWith(user: user)
+        navigationController?.pushViewController(profileVC, animated: true)
+    }
     
     // Search results table view
     let searchResultsTableView: UITableView = {
@@ -824,9 +869,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return label
     }()
     
-    // Segmented control for Activity/Moments/Feeds tabs
+    // Segmented control for Activity/Moments/Specials tabs
     let contentSegmentedControl: UISegmentedControl = {
-        let items = ["Activity", "Moments", "Feeds"]
+        let items = ["Activity", "Moments", "Specials"]
         let control = UISegmentedControl(items: items)
         control.selectedSegmentIndex = 0
         control.translatesAutoresizingMaskIntoConstraints = false
@@ -891,6 +936,23 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     private var newsSourceCatalog: [NewsSource] = []
     private var newsEnabledSourceIds: [String]? = nil // nil = never configured
     private var hasAutoPresentedNewsPicker = false
+
+    // Specials tab: live offers and announcements from participating venues,
+    // one row per deal in the server's order (saved venues first, then nearest)
+    private let specialsTableView: UITableView = {
+        let tableView = UITableView()
+        tableView.backgroundColor = Constants.Colors.background
+        tableView.separatorStyle = .none
+        tableView.rowHeight = UITableView.automaticDimension
+        tableView.estimatedRowHeight = 92
+        tableView.showsVerticalScrollIndicator = true
+        tableView.translatesAutoresizingMaskIntoConstraints = false
+        tableView.isHidden = true // Hidden until the Specials tab is selected
+        return tableView
+    }()
+
+    private var specials: [SpecialItem] = []
+    private var isLoadingSpecials = false
     // Suppresses the reset-to-Activity-on-appear when a modal presented over
     // the Feeds tab (article sheet, source picker) is dismissed
     private var skipTabResetOnNextAppear = false
@@ -2212,6 +2274,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Add small loading indicator directly to map container for better UX
         mapContainerView.addSubview(mapLoadingIndicator)
         contentView.addSubview(locationStatusLabel)
+        // Avatar first so "who is being mapped" reads before the controls
+        filterStackView.addArrangedSubview(selectedConnectionAvatarButton)
         filterStackView.addArrangedSubview(mapMenuButton)
         filterStackView.addArrangedSubview(myPlacesToggleButton)
         filterStackView.addArrangedSubview(listToggleButton)
@@ -2225,6 +2289,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         activityFeedSection.addSubview(activityTableView)
         activityFeedSection.addSubview(reelsCollectionView)
         activityFeedSection.addSubview(newsFeedTableView)
+        activityFeedSection.addSubview(specialsTableView)
         activityFeedSection.addSubview(newsSettingsButton)
         activityFeedSection.addSubview(activityEmptyStateLabel)
         activityFeedSection.addSubview(activityLoadingContainer)
@@ -2457,6 +2522,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             mapMenuButton.widthAnchor.constraint(equalToConstant: 36),
             myPlacesToggleButton.widthAnchor.constraint(equalToConstant: 36),
             listToggleButton.widthAnchor.constraint(equalToConstant: 36),
+            selectedConnectionAvatarButton.widthAnchor.constraint(equalToConstant: 36),
 
             // Places list overlays the map exactly
             placesListTableView.topAnchor.constraint(equalTo: mapContainerView.topAnchor),
@@ -2508,6 +2574,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             newsFeedTableView.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor),
             newsFeedTableView.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor),
             newsFeedTableView.bottomAnchor.constraint(equalTo: activityFeedSection.bottomAnchor),
+
+            // Specials table (same slot as the other content views)
+            specialsTableView.topAnchor.constraint(equalTo: contentSegmentedControl.bottomAnchor, constant: Constants.Spacing.small),
+            specialsTableView.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor),
+            specialsTableView.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor),
+            specialsTableView.bottomAnchor.constraint(equalTo: activityFeedSection.bottomAnchor),
 
             // News settings gear - overlay on the right side of the News segment
             newsSettingsButton.centerYAnchor.constraint(equalTo: contentSegmentedControl.centerYAnchor),
@@ -2644,6 +2716,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         newsFeedTableView.delegate = self
         newsFeedTableView.dataSource = self
         newsFeedTableView.register(NewsArticleCell.self, forCellReuseIdentifier: NewsArticleCell.identifier)
+
+        specialsTableView.delegate = self
+        specialsTableView.dataSource = self
+        specialsTableView.register(SpecialItemCell.self, forCellReuseIdentifier: SpecialItemCell.identifier)
         newsSettingsButton.addTarget(self, action: #selector(newsSettingsTapped), for: .touchUpInside)
 
         // Setup segmented control
@@ -2885,7 +2961,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         case 1:
             fetchReels()
         default:
-            fetchNewsFeed(force: true)
+            fetchSpecials(force: true)
         }
         
         // Also refresh circles data for consistency
@@ -2905,6 +2981,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             activityTableView.isHidden = false
             reelsCollectionView.isHidden = true
             newsFeedTableView.isHidden = true
+            specialsTableView.isHidden = true
             momentsCameraButton.isHidden = true
             newsSettingsButton.isHidden = true
             activityHeaderLabel.text = "Recent Activity"
@@ -2921,6 +2998,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             activityTableView.isHidden = true
             reelsCollectionView.isHidden = false
             newsFeedTableView.isHidden = true
+            specialsTableView.isHidden = true
             newsSettingsButton.isHidden = true
 
             // Reset to first video
@@ -2949,22 +3027,159 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
             // Note: fetchReels will handle playing the first video after loading
         default:
-            // Show News feed
+            // Show Specials (live offers + announcements from participating venues)
             activityTableView.isHidden = true
             reelsCollectionView.isHidden = true
-            newsFeedTableView.isHidden = false
+            newsFeedTableView.isHidden = true
+            specialsTableView.isHidden = false
             momentsCameraButton.isHidden = true
-            newsSettingsButton.isHidden = false
-            activityHeaderLabel.text = "Feeds"
+            newsSettingsButton.isHidden = true
+            activityHeaderLabel.text = "Specials"
 
             // Pause any playing videos (may be arriving from Moments)
             pauseAllVideos()
 
             // Load once; pull-to-refresh refetches
-            if newsArticles.isEmpty {
-                fetchNewsFeed()
+            if specials.isEmpty {
+                fetchSpecials()
             }
         }
+    }
+
+    // MARK: - Specials Methods
+
+    /// Loads live deals from participating venues and flattens them into one
+    /// row per offer/announcement, preserving the server's venue order
+    /// (saved venues first, then nearest).
+    private func fetchSpecials(force: Bool = false) {
+        guard !isLoadingSpecials else { return }
+        isLoadingSpecials = true
+
+        if specials.isEmpty {
+            activityLoadingContainer.isHidden = false
+            activityLoadingIndicator.startAnimating()
+            activityEmptyStateLabel.isHidden = true
+        }
+
+        // Location improves ordering but is optional — denied/unavailable
+        // falls back to the server's alphabetical order
+        LocationService.shared.getCurrentLocation { [weak self] location in
+            RewardsService.shared.getOffers(
+                lat: location?.coordinate.latitude,
+                lng: location?.coordinate.longitude
+            ) { result in
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    self.isLoadingSpecials = false
+                    self.activityLoadingIndicator.stopAnimating()
+                    self.activityLoadingContainer.isHidden = true
+                    self.scrollView.refreshControl?.endRefreshing()
+
+                    // Only touch shared UI if Specials is still the visible tab
+                    let onSpecialsTab = self.contentSegmentedControl.selectedSegmentIndex == 2
+
+                    switch result {
+                    case .success(let data):
+                        self.specials = data.venues.flatMap { venue -> [SpecialItem] in
+                            let offerItems = venue.offers.map {
+                                SpecialItem(venue: venue, kind: .offer($0))
+                            }
+                            let announcementItems = (venue.announcements ?? []).map {
+                                SpecialItem(venue: venue, kind: .announcement($0))
+                            }
+                            return offerItems + announcementItems
+                        }
+                        self.specialsTableView.reloadData()
+
+                        if onSpecialsTab {
+                            if self.specials.isEmpty {
+                                self.activityEmptyStateLabel.text = "No specials right now — check back soon"
+                                self.activityEmptyStateLabel.isHidden = false
+                            } else {
+                                self.activityEmptyStateLabel.isHidden = true
+                            }
+                        }
+
+                    case .failure:
+                        if self.specials.isEmpty && onSpecialsTab {
+                            self.activityEmptyStateLabel.text = "Couldn't load specials — pull to refresh"
+                            self.activityEmptyStateLabel.isHidden = false
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Opens the tapped deal's place page — same resolution as the Rewards
+    /// screen: canonical global place by id, venue-built fallback otherwise.
+    private func openSpecialPlace(_ venue: OfferVenue) {
+        guard let placeId = venue.globalPlaceId ?? venue.googlePlaceId else {
+            pushSpecialPlaceFallback(venue)
+            return
+        }
+
+        let loading = AlertPresenter.showLoading(message: "Loading place...", from: self)
+        GlobalPlaceService.shared.getGlobalPlace(id: placeId) { [weak self] result in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: true) {
+                    guard let self = self else { return }
+                    switch result {
+                    case .success(let response):
+                        let place = response.globalPlace.toLegacyPlace(withRelation: response.userRelation)
+                        let detailVC = PlaceDetailViewController(place: place)
+                        self.navigationController?.pushViewController(detailVC, animated: true)
+                    case .failure:
+                        self.pushSpecialPlaceFallback(venue)
+                    }
+                }
+            }
+        }
+    }
+
+    private func pushSpecialPlaceFallback(_ venue: OfferVenue) {
+        var location: GeoLocation?
+        if let coordinate = venue.location {
+            // GeoJSON order: [longitude, latitude]
+            location = GeoLocation(type: "Point", coordinates: [coordinate.lng, coordinate.lat])
+        }
+
+        let place = Place(
+            id: venue.globalPlaceId ?? venue.googlePlaceId ?? venue.venueId,
+            globalPlaceId: venue.globalPlaceId,
+            name: venue.placeName ?? venue.venueName,
+            description: nil,
+            address: venue.placeAddress ?? "",
+            location: location,
+            website: nil,
+            phone: nil,
+            googlePlaceId: venue.googlePlaceId,
+            photos: nil,
+            videos: nil,
+            category: PlaceCategory(rawValue: venue.category ?? "") ?? .restaurant,
+            customCategoryId: nil,
+            subcategory: nil,
+            rating: nil,
+            userRatingsTotal: nil,
+            notes: nil,
+            privateNotes: nil,
+            publicNotes: nil,
+            tags: nil,
+            reviews: nil,
+            openingHours: nil,
+            priceLevel: nil,
+            likes: nil,
+            likesCount: nil,
+            commentsCount: nil,
+            circleId: nil,
+            addedBy: "",
+            addedByUser: nil,
+            privacy: .public,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+        let detailVC = PlaceDetailViewController(place: place)
+        navigationController?.pushViewController(detailVC, animated: true)
     }
 
     // MARK: - News Feed Methods
@@ -4773,6 +4988,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         )
         fullScreenMap.viewMode = .allPlaces
         fullScreenMap.isPresentedModally = true
+        fullScreenMap.selectedConnectionUser = selectedConnectionUser
         fullScreenMap.delegate = self  // Set delegate to handle place selection
         
         // Separate user places from connection places
@@ -5786,6 +6002,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         selectedConnectionId = id
         selectedConnectionUser = user
         updateMyPlacesToggleAppearance()
+        updateSelectedConnectionAvatar()
+        // Keep the expanded map's avatar chip in sync while it's presented
+        presentedFullScreenMap?.selectedConnectionUser = user
 
         // Highlight the selected connection's avatar (nil clears the highlight)
         userListView.selectedUserId = (id == nil || id == "my_places_only") ? nil : id
@@ -5799,6 +6018,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         updateAvailableCategories()
 
         if let connectionId = id, connectionId != "my_places_only" {
+            // Refilter the map with what's already loaded BEFORE any async
+            // fetch — otherwise other connections' pins linger on screen
+            // until this connection's places arrive, which reads as showing
+            // the wrong person's places
+            refreshMapDisplay()
+
             if networkCircles.isEmpty {
                 print("📍 Need to fetch network circles for connection filtering")
                 fetchNetworkCircles { [weak self] in
@@ -5813,8 +6038,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 }
             } else if useViewportNetworkLoading {
                 fetchAllPlacesForConnection(connectionId)
-            } else {
-                refreshMapDisplay()
             }
         } else {
             // All Connections / My Places Only: refresh with what's loaded
@@ -6613,6 +6836,8 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             return feedItems.count
         } else if tableView == newsFeedTableView {
             return newsArticles.count
+        } else if tableView == specialsTableView {
+            return specials.count
         }
         return 0
     }
@@ -6670,10 +6895,10 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 subtitle = "Added by you"
             } else {
                 // Try to find the connection name from network circles
-                var connectionName: String? = nil
-                
+                var connectionName: String? = place.addedByUser?.displayName
+
                 // Look through network circles to find the owner
-                for networkCircle in networkCircles {
+                for networkCircle in networkCircles where connectionName == nil {
                     if let circleId = place.circleId, networkCircle.id == circleId {
                         // Found the circle, get the owner's name
                         if let ownerDetails = networkCircle.ownerDetails {
@@ -6753,6 +6978,11 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             guard indexPath.row < newsArticles.count else { return cell }
             cell.configure(with: newsArticles[indexPath.row])
             return cell
+        } else if tableView == specialsTableView {
+            let cell = tableView.dequeueReusableCell(withIdentifier: SpecialItemCell.identifier, for: indexPath) as! SpecialItemCell
+            guard indexPath.row < specials.count else { return cell }
+            cell.configure(with: specials[indexPath.row])
+            return cell
         }
 
         return UITableViewCell()
@@ -6778,6 +7008,12 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
         if tableView == newsFeedTableView {
             guard indexPath.row < newsArticles.count else { return }
             openNewsArticle(newsArticles[indexPath.row])
+            return
+        }
+
+        if tableView == specialsTableView {
+            guard indexPath.row < specials.count else { return }
+            openSpecialPlace(specials[indexPath.row].venue)
             return
         }
 
@@ -6845,6 +7081,10 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 } else if activity.targetType == "place" {
                     navigateToPlace(withId: activity.targetId)
                 }
+            case .venueAnnouncement, .venueOffer:
+                // targetId is the venue's canonical globalPlaces id — open the
+                // place page the same way the Specials tab does
+                navigateToGlobalPlace(withId: activity.targetId)
             case .globalPlaceLiked, .suggestionSent, .suggestionAccepted,
                  .profileUpdated, .userActivity, .reactionAdded, .unknown:
                 // No reliable local destination for these
@@ -7450,9 +7690,13 @@ extension CirclesHomeViewController: ActivityFeedCellDelegate {
         // Show comments view
         let commentsVC = ActivityCommentsViewController(activity: activity)
         commentsVC.onCommentsUpdated = { [weak self] commentCount in
-            // Since Activity is a struct with let properties, we need to refresh the data
-            // to get the updated comment count from the server
-            self?.refreshActivityFeed()
+            // Update the row in place — a full refresh would jump the user
+            // back to the top of the feed when they close the comments sheet
+            guard let self = self,
+                  let index = self.activities.firstIndex(where: { $0.id == activity.id }) else { return }
+            self.activities[index] = self.activities[index].withCommentCount(commentCount)
+            self.regroupActivities()
+            self.activityTableView.reloadData()
         }
         let navController = UINavigationController(rootViewController: commentsVC)
         present(navController, animated: true)
@@ -7460,10 +7704,11 @@ extension CirclesHomeViewController: ActivityFeedCellDelegate {
     
     func didTapReactionButton(activity: Activity, emoji: String) {
         // Toggle reaction - if user already has this reaction, remove it, otherwise add it
-        let endpoint = activity.userReaction == emoji ? 
-            "activities/\(activity.id)/reactions/remove" : 
+        let isRemoving = activity.userReaction == emoji
+        let endpoint = isRemoving ?
+            "activities/\(activity.id)/reactions/remove" :
             "activities/\(activity.id)/reactions"
-        
+
         APIService.shared.request(
             endpoint: endpoint,
             method: .post,
@@ -7472,13 +7717,55 @@ extension CirclesHomeViewController: ActivityFeedCellDelegate {
             DispatchQueue.main.async {
                 switch result {
                 case .success:
-                    // Reload activity feed to show updated reaction count
-                    self?.fetchActivities()
+                    // Update the row in place. A full fetchActivities() here
+                    // would reset pagination to page one and jump the user
+                    // back to the top of the feed mid-scroll.
+                    self?.applyLocalReaction(activityId: activity.id, emoji: isRemoving ? nil : emoji)
                 case .failure(let error):
                     self?.showError("Failed to update reaction: \(error.localizedDescription)")
                 }
             }
         }
+    }
+
+    /// Applies a reaction toggle to the in-memory feed and reloads the table
+    /// without touching scroll position; the next natural feed load brings
+    /// the server-computed counts.
+    private func applyLocalReaction(activityId: String, emoji: String?) {
+        guard let index = activities.firstIndex(where: { $0.id == activityId }) else { return }
+        let current = activities[index]
+
+        var count = current.reactionCount ?? 0
+        if emoji == nil {
+            count = max(0, count - 1)
+        } else if current.userReaction == nil {
+            count += 1
+        } // switching from one emoji to another keeps the count
+
+        // Keep the reaction chips consistent with the toggle
+        var summary = current.reactionSummary ?? []
+        if let old = current.userReaction, let i = summary.firstIndex(where: { $0.emoji == old }) {
+            if summary[i].count <= 1 {
+                summary.remove(at: i)
+            } else {
+                summary[i] = ReactionSummary(emoji: old, count: summary[i].count - 1, users: nil)
+            }
+        }
+        if let emoji = emoji {
+            if let i = summary.firstIndex(where: { $0.emoji == emoji }) {
+                summary[i] = ReactionSummary(emoji: emoji, count: summary[i].count + 1, users: nil)
+            } else {
+                summary.append(ReactionSummary(emoji: emoji, count: 1, users: nil))
+            }
+        }
+
+        activities[index] = current.withReaction(
+            userReaction: emoji,
+            reactionCount: count,
+            reactionSummary: summary.isEmpty ? nil : summary
+        )
+        regroupActivities()
+        activityTableView.reloadData()
     }
     
     func didLongPressReactionButton(activity: Activity, sourceView: UIView) {
@@ -7529,9 +7816,54 @@ extension CirclesHomeViewController {
     func scrollToTop() {
         DispatchQueue.main.async {
             self.scrollView.setContentOffset(.zero, animated: true)
+            // The activity table scrolls independently of the outer scroll
+            // view — reset it too so a Home re-tap always lands at the top
+            // of the feed
+            if !self.activityTableView.isHidden, self.activityTableView.window != nil {
+                self.activityTableView.setContentOffset(
+                    CGPoint(x: 0, y: -self.activityTableView.contentInset.top),
+                    animated: true
+                )
+            }
         }
     }
-    
+
+    /// Tab-bar Home re-tap: return the map to its original state — no
+    /// connection or category filter, framed on the default region
+    func resetMapToDefault() {
+        if selectedConnectionId != nil || selectedCategory != nil {
+            selectedCategory = nil
+            selectConnection(id: nil, user: nil)
+        } else {
+            // Nothing filtered - just re-frame the default region (the user
+            // may have panned or zoomed away)
+            mapViewController?.adjustMapRegion()
+        }
+    }
+
+
+    /// Venue offer/announcement activities target the canonical venue record
+    /// (globalPlaceId), not a personal save doc — resolve it the same way the
+    /// Specials tab does and open the place page
+    func navigateToGlobalPlace(withId globalPlaceId: String) {
+        let loading = AlertPresenter.showLoading(message: "Loading place...", from: self)
+        GlobalPlaceService.shared.getGlobalPlace(id: globalPlaceId) { [weak self] result in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: true) {
+                    guard let self = self else { return }
+                    switch result {
+                    case .success(let response):
+                        let place = response.globalPlace.toLegacyPlace(withRelation: response.userRelation)
+                        let detailVC = PlaceDetailViewController(place: place)
+                        self.navigationController?.pushViewController(detailVC, animated: true)
+                    case .failure(let error):
+                        self.showError(error)
+                    }
+                }
+            }
+        }
+    }
+
     func navigateToCircle(withId circleId: String) {
         // Find the circle in our data
         guard let circle = circles.first(where: { $0.id == circleId }) else {
@@ -8019,6 +8351,20 @@ extension CirclesHomeViewController {
                 }
             }
             
+        case .specialsUpdated:
+            // A venue changed its offers or announcements — refresh the
+            // Specials tab live if it's showing, otherwise drop the loaded
+            // list so the next visit refetches
+            Logger.info("Received specials updated event")
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                if self.contentSegmentedControl.selectedSegmentIndex == 2 {
+                    self.fetchSpecials(force: true)
+                } else {
+                    self.specials = []
+                }
+            }
+
         default:
             // Handle other specific event types
             if let eventTypeString = event.data["type"] as? String {

@@ -21,6 +21,7 @@ enum SSEEventType: String {
     case reactionAdded = "reaction_added"
     case commentAdded = "comment_added"
     case checkIn = "check_in"
+    case specialsUpdated = "specials_updated"
 }
 
 // MARK: - SSE Event

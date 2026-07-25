@@ -149,6 +149,54 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         return stack
     }()
 
+    /// Whose places are on the map: the selected connection's avatar shown
+    /// beside the control chips (hidden when no connection filter is active).
+    /// Tapping opens their profile.
+    private lazy var connectionAvatarChip: UIButton = {
+        let button = UIButton(type: .custom)
+        button.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+        button.layer.cornerRadius = 18
+        button.clipsToBounds = true
+        button.imageView?.contentMode = .scaleAspectFill
+        button.tintColor = .white
+        button.isHidden = true
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.accessibilityLabel = "Selected connection"
+        button.addTarget(self, action: #selector(connectionAvatarChipTapped), for: .touchUpInside)
+        return button
+    }()
+
+    /// The user whose places the map is filtered to; drives the avatar chip
+    var selectedConnectionUser: User? {
+        didSet { updateConnectionAvatarChip() }
+    }
+
+    private func updateConnectionAvatarChip() {
+        guard isViewLoaded else { return }
+        guard let user = selectedConnectionUser,
+              selectedConnectionId != nil, selectedConnectionId != "my_places_only" else {
+            connectionAvatarChip.isHidden = true
+            return
+        }
+        connectionAvatarChip.isHidden = false
+        connectionAvatarChip.setImage(UIImage(systemName: "person.crop.circle.fill"), for: .normal)
+        if let profilePicture = user.profilePicture, !profilePicture.isEmpty {
+            let expectedUserId = user.id
+            ImageService.shared.loadImageWithKey(from: profilePicture, cacheKey: "profile_\(user.id)_\(profilePicture)") { [weak self] image in
+                DispatchQueue.main.async {
+                    guard let self = self, let image = image,
+                          self.selectedConnectionUser?.id == expectedUserId else { return }
+                    self.connectionAvatarChip.setImage(image.withRenderingMode(.alwaysOriginal), for: .normal)
+                }
+            }
+        }
+    }
+
+    @objc private func connectionAvatarChipTapped() {
+        guard let user = selectedConnectionUser else { return }
+        presentProfile(for: user)
+    }
+
     // Distance-sorted list shown by the list/map toggle
     private lazy var placesListTableView: UITableView = {
         let tableView = UITableView()
@@ -226,10 +274,18 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     func setConnectionFilterContext(_ connectionId: String?) {
         let changed = selectedConnectionId != connectionId
         selectedConnectionId = connectionId
+        if connectionId == nil || connectionId == "my_places_only" {
+            selectedConnectionUser = nil
+        }
+        updateConnectionAvatarChip()
         // Re-scope the pins when the presenter resolves a canonical id for the
         // current selection. No delegate echo — this call came FROM the
-        // presenter, so notifying it back would loop.
-        if changed && isViewLoaded {
+        // presenter, so notifying it back would loop. Modal only: it filters
+        // its own place set. The embedded child gets already-filtered places
+        // via updatePlaces right after this call — re-filtering here would
+        // zoom to fit the STALE unfiltered set (framing the whole country
+        // instead of the selected connection's city)
+        if changed && isViewLoaded && isPresentedModally {
             applyFilter()
         }
     }
@@ -336,11 +392,14 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         
         // Add overlay control chips only if presented modally and filters are enabled
         if isPresentedModally && showFilters {
+            // Avatar first so "who is being mapped" reads before the controls
+            overlayChipStack.addArrangedSubview(connectionAvatarChip)
             overlayChipStack.addArrangedSubview(menuChipButton)
             if viewMode == .allPlaces {
                 overlayChipStack.addArrangedSubview(myPlacesChipButton)
             }
             overlayChipStack.addArrangedSubview(listChipButton)
+            updateConnectionAvatarChip()
 
             // List added before the chips so the chips stay tappable above it
             view.addSubview(placesListTableView)
@@ -396,6 +455,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                 overlayChipStack.heightAnchor.constraint(equalToConstant: 36),
                 menuChipButton.widthAnchor.constraint(equalToConstant: 36),
                 listChipButton.widthAnchor.constraint(equalToConstant: 36),
+                connectionAvatarChip.widthAnchor.constraint(equalToConstant: 36),
+                connectionAvatarChip.heightAnchor.constraint(equalToConstant: 36),
 
                 // Places list fills the map area below the chips
                 placesListTableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 60),
@@ -617,7 +678,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             return
         }
         isAdjustingRegion = true
-        
+        var issuedRegionChange = false
+
         print("📍 adjustMapRegion called:")
         print("  - selectedConnectionId: \(selectedConnectionId ?? "nil")")
         print("  - selectedCategory: \(selectedCategory?.displayName ?? "nil")")
@@ -670,6 +732,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                 
                 let region = MKCoordinateRegion(center: center, span: span)
                 mapView.setRegion(region, animated: true)
+                issuedRegionChange = true
                 hasInitiallyZoomed = true
             }
         } else {
@@ -713,6 +776,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                     longitudinalMeters: radius * 2
                 )
                 mapView.setRegion(region, animated: !hasInitiallyZoomed)
+                issuedRegionChange = true
                 hasInitiallyZoomed = true
             } else if filteredPlaces.count > 0 {
                 // No user location - fit the focus places instead
@@ -742,14 +806,22 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                     
                     let region = MKCoordinateRegion(center: center, span: span)
                     mapView.setRegion(region, animated: !hasInitiallyZoomed)
+                    issuedRegionChange = true
                     hasInitiallyZoomed = true
                 }
             }
         }
-        
-        // Reset the flag after a delay to allow the animation to complete
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.isAdjustingRegion = false
+
+        if issuedRegionChange {
+            // Reset the flag after a delay to allow the animation to complete
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.isAdjustingRegion = false
+            }
+        } else {
+            // No zoom was issued - don't hold the guard, or a real zoom that
+            // follows moments later (e.g. a connection's places arriving from
+            // the network) gets silently skipped
+            isAdjustingRegion = false
         }
     }
     
@@ -1279,6 +1351,10 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     private func selectConnection(_ connectionId: String?) {
         print("🔍 FullScreenMap: selectConnection called with: \(connectionId ?? "nil")")
         selectedConnectionId = connectionId
+        if connectionId == nil || connectionId == "my_places_only" {
+            selectedConnectionUser = nil
+        }
+        updateConnectionAvatarChip()
         updateMyPlacesChipAppearance()
         // Keep the avatar row's highlight ring in sync (also covers changes
         // made through the hamburger menu)
@@ -1542,6 +1618,7 @@ extension FullScreenMapViewController: HorizontalUserListViewDelegate {
            IDNormalizer.isSameUser(selected, targetId) {
             presentProfile(for: user)
         } else {
+            selectedConnectionUser = user
             selectConnection(targetId)
         }
     }
