@@ -241,6 +241,54 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         return view
     }()
     
+    // Place-milestone badge (Explorer, Adventurer, ... - see PlaceMilestones);
+    // shown next to the name once the profile's place count reaches a tier
+    private let milestoneBadgeIcon: UIImageView = {
+        let imageView = UIImageView()
+        imageView.tintColor = .white
+        imageView.contentMode = .scaleAspectFit
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        return imageView
+    }()
+
+    private let milestoneBadgeLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 10, weight: .bold)
+        label.textColor = .white
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    private lazy var milestoneBadgeView: UIView = {
+        let view = UIView()
+        view.layer.cornerRadius = 12
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isHidden = true
+
+        view.addSubview(milestoneBadgeIcon)
+        view.addSubview(milestoneBadgeLabel)
+
+        NSLayoutConstraint.activate([
+            milestoneBadgeIcon.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 6),
+            milestoneBadgeIcon.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            milestoneBadgeIcon.widthAnchor.constraint(equalToConstant: 12),
+            milestoneBadgeIcon.heightAnchor.constraint(equalToConstant: 12),
+
+            milestoneBadgeLabel.leadingAnchor.constraint(equalTo: milestoneBadgeIcon.trailingAnchor, constant: 4),
+            milestoneBadgeLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            milestoneBadgeLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),
+
+            view.heightAnchor.constraint(equalToConstant: 24)
+        ])
+
+        return view
+    }()
+
+    // Milestone badge sits after the premium badge when that's showing,
+    // directly after the name otherwise (hidden views still hold layout space)
+    private var milestoneBadgeToPremiumConstraint: NSLayoutConstraint?
+    private var milestoneBadgeToNameConstraint: NSLayoutConstraint?
+
     // Stats containers
     private let topStatsContainer: UIView = {
         let view = UIView()
@@ -942,6 +990,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         contentView.addSubview(profileHeaderView)
         profileHeaderView.addSubview(usernameLabel)
         profileHeaderView.addSubview(premiumBadgeView)
+        profileHeaderView.addSubview(milestoneBadgeView)
         profileHeaderView.addSubview(profileImageView)
         profileHeaderView.addSubview(topStatsContainer)
         profileHeaderView.addSubview(bottomStatsContainer)
@@ -1033,6 +1082,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             // Premium badge
             premiumBadgeView.leadingAnchor.constraint(equalTo: usernameLabel.trailingAnchor, constant: 8),
             premiumBadgeView.centerYAnchor.constraint(equalTo: usernameLabel.centerYAnchor),
+
+            milestoneBadgeView.centerYAnchor.constraint(equalTo: usernameLabel.centerYAnchor),
             
             // Profile image view (Instagram style - smaller, on the left)
             profileImageView.topAnchor.constraint(equalTo: usernameLabel.bottomAnchor, constant: Constants.Spacing.medium),
@@ -1365,11 +1416,13 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             // Show floating add button for current user
             floatingAddButton.isHidden = false
         } else {
-            // Connection profile - search bar anchored to separator, separator to notification section
+            // Other user - search bar anchored to separator. Start with the
+            // compact layout (separator pinned to profile); the notification
+            // section only reserves space once we know they're a connection
             searchBarContainerTopToSegmentedConstraint?.isActive = false
             searchBarContainerTopToSeparatorConstraint?.isActive = true
-            separatorLineTopToProfileConstraint?.isActive = false
-            separatorLineTopToNotificationConstraint?.isActive = true
+            separatorLineTopToNotificationConstraint?.isActive = false
+            separatorLineTopToProfileConstraint?.isActive = true
             // Hide floating add button for other users
             floatingAddButton.isHidden = true
         }
@@ -2177,37 +2230,16 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                     
                     switch result {
                     case .success:
-                        // Update connection status locally
+                        // Update connection status locally. Connecting implies
+                        // following (the server auto-follows on connect), so
+                        // the Follow button flips to "Following" right away.
                         self.connectionStatus = .pending
-                        // Create new user instance with updated connection direction
-                        if let currentUser = self.user {
-                            self.user = User(
-                                id: currentUser.id,
-                                email: currentUser.email,
-                                displayName: currentUser.displayName,
-                                firstName: currentUser.firstName,
-                                lastName: currentUser.lastName,
-                                phoneNumber: currentUser.phoneNumber,
-                                profilePicture: currentUser.profilePicture,
-                                bio: currentUser.bio,
-                                location: currentUser.location,
-                                friends: currentUser.friends,
-                                friendRequests: currentUser.friendRequests,
-                                circleOrder: currentUser.circleOrder,
-                                preferences: currentUser.preferences,
-                                createdAt: currentUser.createdAt,
-                                connectionStatus: "pending",
-                                connectionDirection: "outgoing",
-                                connectionId: currentUser.connectionId,
-                                followers: currentUser.followers,
-                                following: currentUser.following,
-                                followersCount: currentUser.followersCount,
-                                followingCount: currentUser.followingCount,
-                                connectionsCount: currentUser.connectionsCount,
-                                pinnedPlaces: currentUser.pinnedPlaces,
-                                isFollowing: currentUser.isFollowing
-                            )
-                        }
+                        self.isFollowing = true
+                        self.user = self.user?.copy(
+                            connectionStatus: "pending",
+                            connectionDirection: "outgoing",
+                            isFollowing: true
+                        )
                         self.updateButtonVisibility()
                         self.showAlert(title: "Success", message: "Connection request sent!")
                         
@@ -2569,6 +2601,18 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         // Show/hide notifications section based on connection status
         let shouldShowNotifications = !isCurrentUser && isConnected
         notificationsSectionContainer.isHidden = !shouldShowNotifications
+
+        // Re-pin the separator so the hidden section doesn't reserve space on
+        // non-connected profiles (a hidden view keeps its Auto Layout height)
+        if !isCurrentUser {
+            if shouldShowNotifications {
+                separatorLineTopToProfileConstraint?.isActive = false
+                separatorLineTopToNotificationConstraint?.isActive = true
+            } else {
+                separatorLineTopToNotificationConstraint?.isActive = false
+                separatorLineTopToProfileConstraint?.isActive = true
+            }
+        }
         
         // Set initial toggle state if connected
         if shouldShowNotifications {
@@ -2650,15 +2694,21 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         print("🚀 ProfileViewController: loadUserProfile called")
         print("🚀 ProfileViewController: Has existing user? \(self.user != nil)")
         
-        if let user = self.user {
-            // If user is provided, use it
+        // The OWN profile always refetches — re-rendering the held snapshot
+        // meant Edit Profile changes (location, zipcode, ...) never appeared
+        // until app restart. Other users' profiles render what they were given.
+        let currentUserId = AuthService.shared.getUserId() ?? ""
+        let isOwnProfile = self.user == nil || IDNormalizer.isSameUser(self.user!.id, currentUserId)
+
+        if let user = self.user, !isOwnProfile {
+            // Another user's profile — use the provided snapshot
             print("✅ ProfileViewController: Using existing user: \(user.id)")
             displayUser(user)
             fetchUserStats(userId: user.id)
             completion?()
         } else {
-            // Otherwise fetch current user - always get fresh data
-            print("🔄 ProfileViewController: No existing user, fetching fresh data")
+            // Own profile — always get fresh data
+            print("🔄 ProfileViewController: Own profile, fetching fresh data")
             fetchFreshUserData(completion: completion)
         }
     }
@@ -2892,6 +2942,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         }
         if let placesCount = user.placesCount {
             placesStatView.configure(number: "\(placesCount)", title: "Places")
+            updateMilestoneBadge(placeCount: placesCount)
         }
         
         // Update UI with user data
@@ -2921,6 +2972,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         if isCurrentUser {
             Task { @MainActor in
                 premiumBadgeView.isHidden = !SubscriptionManager.shared.isSubscribed
+                // Re-anchor the milestone badge now that premium visibility is known
+                updateMilestoneBadge(placeCount: lastKnownPlaceCount)
             }
         } else {
             // Hide for other users (we don't track their subscription status)
@@ -2976,12 +3029,20 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                 self.separatorLineTopToProfileConstraint?.isActive = true
                 print("📐 Switched to current user layout - no notification section space")
             } else {
-                // Connection profile - search bar anchored to separator, separator to notification section
+                // Other user - search bar anchored to separator. Only pin the
+                // separator below the notification section for accepted
+                // connections; a hidden section still holds its Auto Layout
+                // height and left a large gap on non-connected profiles
                 self.searchBarContainerTopToSegmentedConstraint?.isActive = false
                 self.searchBarContainerTopToSeparatorConstraint?.isActive = true
-                self.separatorLineTopToProfileConstraint?.isActive = false
-                self.separatorLineTopToNotificationConstraint?.isActive = true
-                print("📐 Switched to connection profile layout - with notification section space")
+                if self.connectionStatus == .accepted {
+                    self.separatorLineTopToProfileConstraint?.isActive = false
+                    self.separatorLineTopToNotificationConstraint?.isActive = true
+                } else {
+                    self.separatorLineTopToNotificationConstraint?.isActive = false
+                    self.separatorLineTopToProfileConstraint?.isActive = true
+                }
+                print("📐 Switched to other-user layout - notification space only when connected")
             }
             self.view.layoutIfNeeded()
         }
@@ -3010,13 +3071,48 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             connectButton.isHidden = true
         }
         
-        // Hide activity notifications section for current user (only show for connections)
-        notificationsSectionContainer.isHidden = isCurrentUser
+        // Only show the activity notifications section for accepted connections
+        // (updateConnectionUI re-evaluates once the status loads)
+        notificationsSectionContainer.isHidden = isCurrentUser || connectionStatus != .accepted
         
         // Configure drag and drop based on whether this is the current user
         configureDragAndDrop()
     }
     
+    private var lastKnownPlaceCount = 0
+
+    /// Shows the place-milestone badge (see PlaceMilestones) next to the name,
+    /// after the premium badge when that's visible. Hidden below the first tier.
+    private func updateMilestoneBadge(placeCount: Int) {
+        lastKnownPlaceCount = placeCount
+        if milestoneBadgeToPremiumConstraint == nil {
+            milestoneBadgeToPremiumConstraint = milestoneBadgeView.leadingAnchor.constraint(
+                equalTo: premiumBadgeView.trailingAnchor, constant: 6)
+            milestoneBadgeToNameConstraint = milestoneBadgeView.leadingAnchor.constraint(
+                equalTo: usernameLabel.trailingAnchor, constant: 8)
+        }
+
+        guard let milestone = PlaceMilestones.badge(for: placeCount) else {
+            milestoneBadgeView.isHidden = true
+            milestoneBadgeToPremiumConstraint?.isActive = false
+            milestoneBadgeToNameConstraint?.isActive = false
+            return
+        }
+
+        milestoneBadgeView.isHidden = false
+        milestoneBadgeView.backgroundColor = milestone.color
+        milestoneBadgeIcon.image = UIImage(systemName: milestone.iconName)
+        milestoneBadgeLabel.text = milestone.name.uppercased()
+
+        if premiumBadgeView.isHidden {
+            milestoneBadgeToPremiumConstraint?.isActive = false
+            milestoneBadgeToNameConstraint?.isActive = true
+        } else {
+            milestoneBadgeToNameConstraint?.isActive = false
+            milestoneBadgeToPremiumConstraint?.isActive = true
+        }
+    }
+
     private func fetchUserStats(userId: String) {
         print("🚀 ProfileViewController: fetchUserStats called for userId: \(userId)")
         print("🚀 ProfileViewController: Current user ID: \(AuthService.shared.getUserId() ?? "nil")")
@@ -3046,6 +3142,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                         // Update both stats
                         self.circlesStatView.configure(number: "\(self.circles.count)", title: "Circles")
                         self.placesStatView.configure(number: "\(totalPlaces)", title: "Places")
+                        self.updateMilestoneBadge(placeCount: totalPlaces)
                         print("   Total places calculated: \(totalPlaces)")
                         
                         self.circlesCollectionView.reloadData()
@@ -3060,6 +3157,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                         self.circles = []
                         self.circlesStatView.configure(number: "0", title: "Circles")
                         self.placesStatView.configure(number: "0", title: "Places")
+                        self.updateMilestoneBadge(placeCount: 0)
                         self.circlesCollectionView.reloadData()
                         self.updateCollectionViewHeight()
                         
@@ -3124,6 +3222,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                     // Update stats
                     self.circlesStatView.configure(number: "\(response.data.circles.count)", title: "Circles")
                     self.placesStatView.configure(number: "\(totalPlaces)", title: "Places")
+                    self.updateMilestoneBadge(placeCount: totalPlaces)
                 
                     // Use user data for followers/following/connections
                     let user = response.data.user
@@ -3162,6 +3261,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                     // Show default stats on error
                     self.circlesStatView.configure(number: "0", title: "Circles")
                     self.placesStatView.configure(number: "0", title: "Places")
+                    self.updateMilestoneBadge(placeCount: 0)
                     self.connectionsStatView.configure(number: "0", title: "Connections")
                     self.followersStatView.configure(number: "0", title: "Followers")
                     self.followingStatView.configure(number: "0", title: "Following")
@@ -3193,6 +3293,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         
         circlesStatView.configure(number: "0", title: "Circles")
         placesStatView.configure(number: "0", title: "Places")
+        updateMilestoneBadge(placeCount: 0)
         connectionsStatView.configure(number: "0", title: "Connections")
         followersStatView.configure(number: "0", title: "Followers")
         followingStatView.configure(number: "0", title: "Following")

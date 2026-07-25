@@ -291,6 +291,38 @@ class HelpContentProvider {
                 videoTimestamp: 300
             ),
             HelpTopic(
+                id: "badges-milestones",
+                title: "Place Badges & Milestones",
+                subtitle: "Earn badges as you save places",
+                content: """
+                Every place you save counts toward your explorer badge! Your current badge appears next to your name on your profile, where all your connections can see it.
+
+                **The Badges:**
+                • **Explorer** — 5 places saved
+                • **Adventurer** — 10 places saved
+                • **Pathfinder** — 20 places saved
+                • **Trailblazer** — 50 places saved
+                • **Globetrotter** — 100 places saved
+                • **Voyager** — 200 places saved
+                • **Legend** — 500 places saved
+                • **Cartographer** — 1,000 places saved
+
+                **How it works:**
+                • Any place you add to any of your circles counts
+                • You'll get a congratulations screen the moment you reach a new tier
+                • Your badge upgrades automatically as your count grows
+                • Badges are visible to anyone who can view your profile
+
+                **Tips for leveling up:**
+                • Save places as you discover them — favorites, hidden gems, places to try
+                • Check in when you're out; check-ins can save new places too
+                • Import your saved places from other apps in Settings
+                """,
+                category: .places,
+                relatedTopics: ["add-place", "search-places"],
+                videoTimestamp: nil
+            ),
+            HelpTopic(
                 id: "place-notes",
                 title: "Adding Notes to Places",
                 subtitle: "Share why you love it",
