@@ -137,6 +137,28 @@ enum APIError: Error, LocalizedError {
     }
 }
 
+extension APIError {
+    /// The server's own explanation for a failed request, if it sent one.
+    /// Reads both response shapes in use — {"message": ...} and {"error": ...}.
+    /// Service error mappers MUST prefer this over canned per-status strings;
+    /// substituting canned text is how "You don't have permission" ended up
+    /// hiding "Free users can add up to 15 places per circle".
+    var serverMessage: String? {
+        guard case .httpError(_, let data) = self,
+              let data = data,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        if let message = json["message"] as? String, !message.isEmpty {
+            return message
+        }
+        if let errorText = json["error"] as? String, !errorText.isEmpty {
+            return errorText
+        }
+        return nil
+    }
+}
+
 // MARK: - API Environment
 enum APIEnvironment {
     case development

@@ -118,6 +118,8 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '50mb' })); // Increased limit for image uploads
+// Mirror message<->error keys on all error responses (see middleware file)
+app.use(require('./middleware/responseNormalizer'));
 app.use(express.urlencoded({ limit: '50mb', extended: true })); // Also handle URL encoded data
 app.use(morgan('combined'));
 

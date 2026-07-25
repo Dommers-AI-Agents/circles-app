@@ -10,15 +10,19 @@ enum CircleError: Error, LocalizedError {
     case notFound
     case permissionDenied
     case invalidData
+    // The server explained why it refused — always show its words
+    case serverRejected(String)
     case creationFailed
     case updateFailed
     case deleteFailed
     case fetchFailed
     case networkError(Error)
     case unknown
-    
+
     var errorDescription: String? {
         switch self {
+        case .serverRejected(let message):
+            return message
         case .notFound:
             return "Circle not found"
         case .permissionDenied:
@@ -611,6 +615,10 @@ class CircleService {
     private func mapAPIErrorToCircleError(_ error: APIError) -> CircleError {
         switch error {
         case .httpError(let statusCode, _):
+            // The server's own explanation always beats a canned status string
+            if let message = error.serverMessage {
+                return .serverRejected(message)
+            }
             switch statusCode {
             case 403:
                 return .permissionDenied
@@ -621,7 +629,7 @@ class CircleService {
             default:
                 return .unknown
             }
-            
+
         case .unauthorized:
             return .permissionDenied
             

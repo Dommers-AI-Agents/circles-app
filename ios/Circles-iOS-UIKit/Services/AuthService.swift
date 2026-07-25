@@ -729,18 +729,26 @@ class AuthService {
                 return .tokenExpired
             }
 
-            // Parse error message from response data if available
-            if let data = data, let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
-                
+            // Parse error message from response data if available — via
+            // serverMessage so both {"message"} and {"error"} shapes work
+            // (the auth backend uses the "error" key, which the old
+            // ErrorResponse-only decode silently missed)
+            if let serverMessage = error.serverMessage {
+                let lowered = serverMessage.lowercased()
+
                 // Check for email verification error
-                if errorResponse.message.lowercased().contains("email") && errorResponse.message.lowercased().contains("verif") {
+                if lowered.contains("email") && lowered.contains("verif") {
                     return .emailNotVerified
                 }
-                
+
                 switch statusCode {
                 case 400:
-                    // Use allErrorMessages to get detailed validation errors
-                    return .unknown(errorResponse.allErrorMessages)
+                    // Prefer detailed validation errors when the body decodes
+                    // as the structured shape; else the plain server message
+                    if let data = data, let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
+                        return .unknown(errorResponse.allErrorMessages)
+                    }
+                    return .unknown(serverMessage)
                 case 401:
                     return .invalidCredentials
                 case 403:
@@ -748,22 +756,22 @@ class AuthService {
                     if context == .login {
                         return .emailNotVerified
                     }
-                    return .unknown("Forbidden")
+                    return .unknown(serverMessage)
                 case 409:
                     if context == .register {
                         return .accountExists
                     }
-                    return .unknown("Conflict")
+                    return .unknown(serverMessage)
                 case 404:
                     return .accountNotFound
                 case 500:
                     // Check if it's a server configuration error
-                    if errorResponse.message.lowercased().contains("server configuration") {
+                    if lowered.contains("server configuration") {
                         return .unknown("Server configuration error. Please try again later.")
                     }
-                    return .unknown("Server error: \(errorResponse.message)")
+                    return .unknown("Server error: \(serverMessage)")
                 default:
-                    return .unknown("HTTP error: \(statusCode)")
+                    return .unknown(serverMessage)
                 }
             }
             return .unknown(error.localizedDescription)
