@@ -45,6 +45,11 @@ fi
 # Add Firebase API Key
 ENV_VARS="$ENV_VARS,FIREBASE_API_KEY=AIzaSyDMWyL8jI_MZSuASgxc_aSpyqJpxUSARYI"
 
+# Public base URL for share links (custom domain mapped to this service)
+if [ ! -z "$SHARE_LINK_BASE_URL" ]; then
+    ENV_VARS="$ENV_VARS,SHARE_LINK_BASE_URL=$SHARE_LINK_BASE_URL"
+fi
+
 # Sticker rewards admin API secret
 if [ ! -z "$ADMIN_SECRET" ]; then
     ENV_VARS="$ENV_VARS,ADMIN_SECRET=$ADMIN_SECRET"

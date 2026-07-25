@@ -524,6 +524,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         } else if pathComponents.first == "video" && pathComponents.count >= 2 {
             let videoId = pathComponents[1]
             navigateToVideo(videoId: videoId)
+        } else if pathComponents.first == "share" && pathComponents.count >= 3 && pathComponents[1] == "video" {
+            // Shared moment links (https://<backend>/share/video/<id>) open
+            // the moment directly when the app is installed
+            let videoId = pathComponents[2]
+            navigateToVideo(videoId: videoId)
         } else if pathComponents.first == "circle" && pathComponents.count >= 2 {
             let circleId = pathComponents[1]
             navigateToCircle(circleId: circleId)

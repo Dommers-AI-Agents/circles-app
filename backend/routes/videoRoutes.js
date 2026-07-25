@@ -47,6 +47,8 @@ router.get('/:videoId/activity', protect, require('../controllers/videoControlle
 
 // Share link generation
 router.post('/:videoId/share', protect, require('../controllers/videoController').generateVideoShareLink);
+// Public: metadata for the /share/video/:videoId landing page
+router.get('/:videoId/share-info', require('../controllers/videoController').getVideoShareInfo);
 
 // Public video access (no auth required)
 router.get('/public/:videoId', require('../controllers/videoController').getPublicVideoDetails);
