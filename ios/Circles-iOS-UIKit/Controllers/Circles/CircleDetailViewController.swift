@@ -1540,20 +1540,18 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             shareText += " 🔒"
         }
         
-        // Add deep link
-        if let shareLink = share.shareLink {
-            shareText += "\n\nOpen in Circles: \(shareLink)"
-        }
-        
-        // Add app download link
-        let appStoreLink = "https://apps.apple.com/us/app/favcircles/id6746807095"
-        shareText += "\n\nDon't have Circles? Download here: \(appStoreLink)"
-        
+        shareText += "\n\nJoin me on Circles:"
+
         var activityItems: [Any] = [shareText]
-        
-        // Add the direct deep link URL as a separate item for better sharing
+
+        // The share link is a separate item so messengers render one clean,
+        // tappable rich preview (opens in-app when installed, public circle
+        // page + App Store fallback otherwise) — never embed the raw URL in
+        // the text
         if let shareLink = share.shareLink, let url = URL(string: shareLink) {
             activityItems.append(url)
+        } else {
+            activityItems.append(ShareLinks.circle(id: circle.id))
         }
         
         // Function to present the share sheet
@@ -1964,30 +1962,12 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         // Add to your places message
         shareText += "\n\n➕ Add this place to your Circles!"
         
-        // Deep link to open/add the place in Circles
-        let deepLink = "circles://place/\(place.id)"
-        shareText += "\n📱 Open in Circles: \(deepLink)"
-        
-        // App Store link
-        let appStoreLink = "https://apps.apple.com/us/app/favcircles/id6746807095"
-        shareText += "\n\nDon't have Circles? Download here: \(appStoreLink)"
-        
-        var activityItems: [Any] = [shareText]
-        
-        // Add location as Apple Maps link with place name
-        if let location = place.location?.clLocation {
-            // Create Apple Maps URL with place name
-            let escapedName = place.name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-            let appleMapsURL = "https://maps.apple.com/?q=\(escapedName)&ll=\(location.coordinate.latitude),\(location.coordinate.longitude)"
-            if let url = URL(string: appleMapsURL) {
-                activityItems.append(url)
-            }
-        }
-        
-        // Add Circles deep link as URL object so it appears in SMS
-        if let circlesURL = URL(string: deepLink) {
-            activityItems.append(circlesURL)
-        }
+        shareText += "\n\nSaved on Circles — see it (and who recommends it) here:"
+
+        // The Circles place link is THE link of the share: opens in-app when
+        // installed (carrying share attribution so the sharer earns points),
+        // renders a preview page with App Store fallback otherwise
+        let activityItems: [Any] = [shareText, ShareLinks.place(id: place.id)]
         
         let activityViewController = UIActivityViewController(
             activityItems: activityItems,

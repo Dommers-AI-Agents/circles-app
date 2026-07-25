@@ -577,7 +577,7 @@ class DailySummaryService {
               </p>
               <p style="color: #999; font-size: 12px; margin: 10px 0 0 0;">
                 You're receiving this because you have daily summaries enabled.<br>
-                <a href="https://circles-backend-196924649787.us-central1.run.app/app/open?path=settings/notifications" style="color: #4CAF50;">Manage notification preferences</a>
+                <a href="https://api.favcircles.com/app/open?path=settings/notifications" style="color: #4CAF50;">Manage notification preferences</a>
               </p>
             </div>
           </div>
@@ -696,7 +696,7 @@ class DailySummaryService {
       `;
       ctaText = 'Find Friends';
       ctaLink = 'circles://network/find-friends';
-      fallbackLink = 'https://circles-backend-196924649787.us-central1.run.app/app/open?path=network/find-friends';
+      fallbackLink = 'https://api.favcircles.com/app/open?path=network/find-friends';
     } else if (stats.userPlaceCount === 0) {
       // User has connections but no places
       mainContent = `
@@ -715,7 +715,7 @@ class DailySummaryService {
       `;
       ctaText = 'Add Your First Place';
       ctaLink = 'circles://add-place';
-      fallbackLink = 'https://circles-backend-196924649787.us-central1.run.app/app/open?path=add-place';
+      fallbackLink = 'https://api.favcircles.com/app/open?path=add-place';
     } else {
       // User has connections and places but no recent activity
       mainContent = `
@@ -796,7 +796,7 @@ class DailySummaryService {
               </p>
               <p style="color: #999; font-size: 12px; margin: 10px 0 0 0;">
                 You're receiving this because you have daily summaries enabled.<br>
-                <a href="https://circles-backend-196924649787.us-central1.run.app/app/open?path=settings/notifications" style="color: #4CAF50;">Manage notification preferences</a>
+                <a href="https://api.favcircles.com/app/open?path=settings/notifications" style="color: #4CAF50;">Manage notification preferences</a>
               </p>
             </div>
           </div>

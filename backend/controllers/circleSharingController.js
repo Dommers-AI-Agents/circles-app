@@ -104,10 +104,13 @@ const shareCircle = async (req, res) => {
       case 'link':
         // Generate a secure share link
         const shareToken = crypto.randomBytes(32).toString('hex');
-        // Use deep link format that will open directly in the app
-        shareData.shareLink = `circles://circle/${circleId}?share=${shareToken}`;
-        // Also store a web fallback URL for users who don't have the app
-        shareData.webShareLink = `https://circles-app.com/shared/${circleId}/${shareToken}`;
+        // Universal link: opens straight into the app when installed (AASA
+        // /circle/*), renders the public circle page with an App Store
+        // fallback otherwise. Never share the raw circles:// scheme — it
+        // isn't clickable in most messengers for people without the app.
+        const shareBase = process.env.SHARE_LINK_BASE_URL || 'https://api.favcircles.com';
+        shareData.shareLink = `${shareBase}/circle/${circleId}?share=${shareToken}`;
+        shareData.webShareLink = shareData.shareLink;
         break;
 
       default:

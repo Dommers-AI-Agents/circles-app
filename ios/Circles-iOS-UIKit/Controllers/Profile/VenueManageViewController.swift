@@ -526,7 +526,7 @@ class VenueManageViewController: BaseViewController {
     private func showWindowQR() {
         // Fall back to the documented sticker link shape when an older
         // my-venues payload has no explicit URL
-        let url = windowStickerUrl ?? "https://circles-backend-196924649787.us-central1.run.app/s/\(windowCode)"
+        let url = windowStickerUrl ?? "\(ShareLinks.base)/s/\(windowCode)"
         let qrVC = VenueQRViewController(venueName: venueName, stickerUrl: url)
         navigationController?.pushViewController(qrVC, animated: true)
     }

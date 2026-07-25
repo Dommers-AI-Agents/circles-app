@@ -2100,51 +2100,35 @@ class PlaceDetailViewController: BaseViewController {
     
     @objc private func shareButtonTapped() {
         // Create a formatted string with place details
-        var shareText = "📍 \(place.name)\n"
-        
+        var shareText = "📍 \(place.name)"
+
         if let description = place.description, !description.isEmpty {
-            shareText += "\(description)\n"
+            shareText += "\n\(description)"
         }
-        
-        shareText += "\n📍 \(place.address)\n"
-        
+
+        shareText += "\n\(place.address)"
+
         if let phone = place.phone {
-            shareText += "📞 \(phone)\n"
+            shareText += "\n📞 \(phone)"
         }
-        
+
         if let website = place.website {
-            shareText += "🌐 \(website)\n"
+            shareText += "\n🌐 \(website)"
         }
-        
+
         if let rating = place.rating {
             let stars = String(repeating: "⭐", count: Int(rating.rounded()))
-            shareText += "\(stars) \(rating)/5.0\n"
+            shareText += "\n\(stars) \(rating)/5.0"
         }
-        
-        // Add Google Maps link
-        if let location = place.location?.clLocation {
-            let googleMapsURL = "https://maps.google.com/?q=\(location.coordinate.latitude),\(location.coordinate.longitude)"
-            shareText += "\n🗺️ View on Google Maps: \(googleMapsURL)"
-        }
-        
-        // Add deep link and web link (with share attribution so the sharer
-        // earns reward points if the recipient adds this place)
-        var placeLink = "circles://place/\(place.id)"
-        if let currentUserId = AuthService.shared.getUserId() {
-            placeLink += "?ref=\(currentUserId)"
-        }
-        shareText += "\n\n📱 Open in Circles: \(placeLink)"
-        
-        // Add App Store link
-        shareText += "\n\n🔗 Get Circles App: https://apps.apple.com/us/app/favcircles/id6746807095"
-        
-        var activityItems: [Any] = [shareText]
-        
-        // Add website URL if available
-        if let websiteString = place.website, let url = URL(string: websiteString) {
-            activityItems.append(url)
-        }
-        
+
+        shareText += "\n\nSaved on Circles — see it (and who recommends it) here:"
+
+        // The Circles place link is THE link of the share: with the app
+        // installed it opens the place directly (carrying share attribution
+        // so the sharer earns points when the recipient adds it); without
+        // the app it renders a preview page with an App Store fallback
+        let activityItems: [Any] = [shareText, ShareLinks.place(id: place.id)]
+
         let activityViewController = UIActivityViewController(
             activityItems: activityItems,
             applicationActivities: nil

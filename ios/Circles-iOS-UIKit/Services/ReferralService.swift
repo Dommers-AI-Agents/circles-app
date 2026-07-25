@@ -91,17 +91,16 @@ class ReferralService {
     // MARK: - Share Referral Link
     
     func shareReferralLink(code: String, from viewController: UIViewController) {
-        let appStoreLink = "https://apps.apple.com/us/app/favcircles/id6746807095"
         let message = """
         Join me on Circles! 🌟
-        
+
         Use my code \(code) to get 1 month free when you sign up.
-        
-        Download: \(appStoreLink)
         """
-        
+
+        // App Store link as its own item so messengers render a tappable
+        // rich preview instead of plain text
         let activityViewController = UIActivityViewController(
-            activityItems: [message],
+            activityItems: [message, ShareLinks.appStoreURL],
             applicationActivities: nil
         )
         

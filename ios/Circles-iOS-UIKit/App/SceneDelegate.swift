@@ -509,7 +509,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             case "circle":
                 if pathComponents.count >= 3 {
                     let circleId = pathComponents[2]
-                    navigateToCircle(circleId: circleId)
+                    handleCircleLink(circleId: circleId, url: url)
                 }
             case "connect":
                 if pathComponents.count >= 3 {
@@ -531,7 +531,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             navigateToVideo(videoId: videoId)
         } else if pathComponents.first == "circle" && pathComponents.count >= 2 {
             let circleId = pathComponents[1]
-            navigateToCircle(circleId: circleId)
+            handleCircleLink(circleId: circleId, url: url)
+        } else if pathComponents.first == "place" && pathComponents.count >= 2 {
+            // Shared place links (https://<backend>/place/<id>?ref=<userId>)
+            // open the place directly, carrying share attribution
+            let placeId = pathComponents[1]
+            let refUserId = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "ref" })?.value
+            navigateToPlace(placeId: placeId, refUserId: refUserId)
         } else if pathComponents.first == "connect" && pathComponents.count >= 2 {
             let userId = pathComponents[1]
             handleConnectionInvite(from: userId)
@@ -539,6 +546,18 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             // Physical sticker QR code: https://<backend>/s/<code>
             let code = pathComponents[1]
             handleStickerCode(code)
+        }
+    }
+
+    /// Circle universal links may carry a ?share= token granting view access
+    /// to private circles — validate it the same way the custom-scheme path
+    /// does instead of dropping it
+    private func handleCircleLink(circleId: String, url: URL) {
+        if let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
+           let shareToken = urlComponents.queryItems?.first(where: { $0.name == "share" })?.value {
+            handleSharedCircleWithToken(circleId: circleId, shareToken: shareToken)
+        } else {
+            navigateToCircle(circleId: circleId)
         }
     }
     

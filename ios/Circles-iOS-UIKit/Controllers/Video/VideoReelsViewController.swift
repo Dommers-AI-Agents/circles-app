@@ -414,20 +414,42 @@ extension VideoReelsViewController: VideoReelCellDelegate {
     func videoReelCellDidTapShare(_ cell: VideoReelCell) {
         guard let indexPath = collectionView.indexPath(for: cell) else { return }
         let reel = reels[indexPath.item]
-        
-        // Share video
-        let shareText = "Check out this place: \(reel.placeName)"
-        let shareItems: [Any] = [shareText]
-        
-        let activityVC = UIActivityViewController(activityItems: shareItems, applicationActivities: nil)
-        
-        // For iPad
-        if let popover = activityVC.popoverPresentationController {
-            popover.sourceView = cell
-            popover.sourceRect = cell.bounds
+
+        // Generate a real share link (same backend endpoint as the home
+        // moments feed) so recipients get a page that opens the app or the
+        // App Store — a bare text share promoted nothing
+        let loadingAlert = AlertPresenter.showLoading(message: "Generating share link...", from: self)
+        APIService.shared.request(
+            endpoint: "videos/\(reel.id)/share",
+            method: .post
+        ) { [weak self] (result: Result<VideoShareLinkResponse, APIError>) in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                loadingAlert.dismiss(animated: false) {
+                    var shareItems: [Any]
+                    switch result {
+                    case .success(let response):
+                        shareItems = [response.data.shareText]
+                        if let url = URL(string: response.data.shareUrl) {
+                            shareItems.append(url)
+                        }
+                    case .failure:
+                        // Fallback: text + App Store link still promotes the app
+                        shareItems = ["Check out this place on Circles: \(reel.placeName)", ShareLinks.appStoreURL]
+                    }
+
+                    let activityVC = UIActivityViewController(activityItems: shareItems, applicationActivities: nil)
+
+                    // For iPad
+                    if let popover = activityVC.popoverPresentationController {
+                        popover.sourceView = cell
+                        popover.sourceRect = cell.bounds
+                    }
+
+                    self.present(activityVC, animated: true)
+                }
+            }
         }
-        
-        present(activityVC, animated: true)
     }
     
     func videoReelCellDidTapProfile(_ cell: VideoReelCell) {

@@ -385,7 +385,7 @@ const inviteContacts = async (req, res) => {
 
     // Connect link: opens the app and auto-connects when installed,
     // otherwise redirects to the App Store (served by GET /connect/:userId)
-    const inviteLink = `https://circles-backend-196924649787.us-central1.run.app/connect/${userId}`;
+    const inviteLink = `https://api.favcircles.com/connect/${userId}`;
 
     // Send invitations
     for (const invite of invites) {

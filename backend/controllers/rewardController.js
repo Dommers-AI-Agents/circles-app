@@ -1607,7 +1607,7 @@ exports.createVenue = async (req, res) => {
 
     const venue = await rewardService.createVenue(req.body);
     const baseUrl = process.env.STICKER_LINK_BASE_URL
-      || 'https://circles-backend-196924649787.us-central1.run.app';
+      || 'https://api.favcircles.com';
 
     res.status(201).json({
       success: true,

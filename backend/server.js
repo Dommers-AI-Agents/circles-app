@@ -206,6 +206,73 @@ app.get('/connect/:userId', async (req, res) => {
 </body></html>`);
 });
 
+// Public circle share page. With the app installed, iOS opens this as a
+// Universal Link (AASA /circle/*). Without it, circle-share.js renders the
+// circle preview from /api/circles/:id/public with an App Store fallback.
+app.get('/circle/:circleId', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'circle-share.html'));
+});
+
+// Public place share page. Universal Link target (AASA /place/*) — with the
+// app installed iOS opens the place directly (carrying ?ref= attribution).
+// Without it, this page shows a preview and falls back to the App Store.
+app.get('/place/:placeId', async (req, res) => {
+  const placeId = String(req.params.placeId).replace(/[^a-zA-Z0-9_-]/g, '');
+  const ref = String(req.query.ref || '').replace(/[^a-zA-Z0-9._-]/g, '');
+  const appStoreUrl = 'https://apps.apple.com/us/app/favcircles/id6746807095';
+
+  // Personalize the page + link preview with the place's details. Best-effort:
+  // failures fall back to a generic page.
+  let name = null;
+  let address = null;
+  let photoUrl = null;
+  try {
+    const { getFirestore } = require('./config/firebase');
+    const db = getFirestore();
+    let doc = await db.collection('places').doc(placeId).get();
+    if (!doc.exists) {
+      doc = await db.collection('globalPlaces').doc(placeId).get();
+    }
+    if (doc.exists) {
+      const data = doc.data();
+      name = (data.name || '').trim() || null;
+      address = (data.address || '').trim() || null;
+      const firstPhoto = (data.photos || [])[0];
+      photoUrl = typeof firstPhoto === 'string' ? firstPhoto : (firstPhoto && firstPhoto.url) || null;
+    }
+  } catch (e) {
+    console.warn('Place share page: could not load place:', e.message);
+  }
+
+  const esc = (s) => String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const ogTitle = name ? `${esc(name)} on Circles` : 'A favorite place on Circles';
+  const heading = name ? esc(name) : 'Opening Circles…';
+  const deepLink = `circles://place/${placeId}${ref ? `?ref=${ref}` : ''}`;
+
+  res.send(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${ogTitle}</title>
+<meta property="og:title" content="${ogTitle}">
+<meta property="og:description" content="${address ? esc(address) + ' · ' : ''}Saved and recommended on Circles — favorite places from people you trust.">
+<meta property="og:site_name" content="Circles">
+<meta property="og:type" content="website">
+${photoUrl ? `<meta property="og:image" content="${esc(photoUrl)}">` : ''}
+<meta property="og:url" content="https://api.favcircles.com/place/${placeId}">
+</head>
+<body style="font-family:-apple-system,Helvetica,Arial,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#3182CE;color:#fff;text-align:center;padding:24px">
+<div>${photoUrl ? `<img src="${esc(photoUrl)}" alt="" style="width:96px;height:96px;border-radius:16px;object-fit:cover;margin-bottom:16px">` : ''}
+<h1 style="margin:0 0 4px">${heading}</h1>
+${address ? `<p style="margin:0 0 16px;opacity:.85">${esc(address)}</p>` : ''}
+<p>See it — and who recommends it — in the Circles app:</p>
+<a href="${appStoreUrl}" style="background:#fff;color:#3182CE;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">Download Circles</a></div>
+<script>
+  window.location = '${deepLink}';
+  setTimeout(function(){ if (!document.hidden) window.location = '${appStoreUrl}'; }, 1500);
+</script>
+</body></html>`);
+});
+
 // Route debug middleware (reduced logging)
 app.use('/api/users', (req, res, next) => {
   next();

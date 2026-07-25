@@ -74,7 +74,7 @@ class RewardService {
 
   stickerUrl(code) {
     const baseUrl = process.env.STICKER_LINK_BASE_URL
-      || 'https://circles-backend-196924649787.us-central1.run.app';
+      || 'https://api.favcircles.com';
     return `${baseUrl}/s/${code}`;
   }
 

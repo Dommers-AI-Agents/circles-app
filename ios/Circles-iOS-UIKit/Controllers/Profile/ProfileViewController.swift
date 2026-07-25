@@ -3880,12 +3880,11 @@ extension ProfileViewController: UICollectionViewDelegate {
             shareText += "\n🔒 Private Circle"
         }
         
-        // Add deep link
-        shareText += "\n\n📱 Open in Circles: circles://circle/\(circle.id)"
-        shareText += "\n🔗 Get Circles App: https://apps.apple.com/us/app/favcircles/id6746807095"
-        shareText += "\n\nJoin me on Circles!"
-        
-        let activityItems: [Any] = [shareText]
+        shareText += "\n\nJoin me on Circles:"
+
+        // Universal link: opens the circle in-app when installed, public
+        // circle preview page + App Store fallback otherwise
+        let activityItems: [Any] = [shareText, ShareLinks.circle(id: circle.id)]
         let activityViewController = UIActivityViewController(
             activityItems: activityItems,
             applicationActivities: nil

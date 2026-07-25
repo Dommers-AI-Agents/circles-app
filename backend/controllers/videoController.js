@@ -2722,7 +2722,7 @@ exports.generateVideoShareLink = async (req, res) => {
     // routed /share/* to this backend — links must use a host that actually
     // reaches Cloud Run (same pattern as sticker QR links).
     const shareBaseUrl = process.env.SHARE_LINK_BASE_URL
-      || 'https://circles-backend-196924649787.us-central1.run.app';
+      || 'https://api.favcircles.com';
     const shareUrl = `${shareBaseUrl}/share/video/${videoId}`;
     const deepLink = `circles://video/${videoId}`;
     
