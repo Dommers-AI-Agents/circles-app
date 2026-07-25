@@ -18,6 +18,11 @@ const {
 const rewardService = require('../services/rewardService');
 const rewardConfig = require('../config/rewardConfig');
 const emailService = require('../services/emailService');
+const { resolveGlobalPlace } = require('../services/globalPlaceResolver');
+const { GLOBAL_COLLECTIONS } = require('../models/GlobalPlace');
+const { isOwnerPremiumUser, isVenueLoyaltyActive } = require('../services/ownerSubscriptionService');
+const { createActivity } = require('./activityController');
+const sseService = require('../services/sseService');
 
 const db = getFirestore();
 
@@ -51,6 +56,47 @@ const publicVenueInfo = (venue) => ({
 });
 
 const activeOffers = (venue) => (venue.offers || []).filter((o) => o.active !== false);
+
+// Batch-read the venues' canonical globalPlaces docs and map venueId → first
+// photo URL (photos are stored as {url} objects or bare strings). Venues
+// missing a stamped globalPlaceId fall back to a googlePlaceId lookup.
+const firstPhotoUrl = (globalPlaceData) => {
+  const first = (globalPlaceData.photos || [])[0];
+  return typeof first === 'string' ? first : (first && first.url) || null;
+};
+
+const fetchVenuePhotoUrls = async (venues) => {
+  const photoUrls = new Map();
+  try {
+    const byGlobalId = venues.filter((v) => v.globalPlaceId);
+    if (byGlobalId.length > 0) {
+      const ids = [...new Set(byGlobalId.map((v) => v.globalPlaceId))];
+      const docs = await db.getAll(...ids.map((id) => db.collection('globalPlaces').doc(id)));
+      const urlsById = new Map();
+      docs.forEach((doc) => {
+        if (doc.exists) urlsById.set(doc.id, firstPhotoUrl(doc.data()));
+      });
+      byGlobalId.forEach((v) => {
+        const url = urlsById.get(v.globalPlaceId);
+        if (url) photoUrls.set(v.venueId, url);
+      });
+    }
+
+    const byGoogleId = venues.filter((v) => !v.globalPlaceId && v.googlePlaceId);
+    await Promise.all(byGoogleId.map(async (v) => {
+      const snapshot = await db.collection('globalPlaces')
+        .where('googlePlaceId', '==', v.googlePlaceId)
+        .limit(1)
+        .get();
+      if (snapshot.empty) return;
+      const url = firstPhotoUrl(snapshot.docs[0].data());
+      if (url) photoUrls.set(v.venueId, url);
+    }));
+  } catch (error) {
+    console.error('⚠️ Venue photo lookup failed (continuing without photos):', error.message);
+  }
+  return photoUrls;
+};
 
 // @desc    Redeem a scanned sticker code (window or register)
 // @route   POST /api/rewards/scan
@@ -90,7 +136,24 @@ exports.scan = async (req, res) => {
     }
 
     // Register card: purchase proof (possession of the physical card is the
-    // gate — points come from the venue's owner-configured earn rate)
+    // gate — points come from the venue's owner-configured earn rate).
+    // Loyalty pauses gracefully when the owner's business subscription lapses —
+    // never a scary error at the register.
+    if (!(await isVenueLoyaltyActive(venue))) {
+      const { rewardPoints } = await rewardService.getBalance(userId);
+      return res.json({
+        success: true,
+        data: {
+          kind: 'register',
+          venue: publicVenueInfo(venue),
+          awarded: null,
+          loyaltyPaused: true,
+          balance: rewardPoints,
+          offers: []
+        }
+      });
+    }
+
     const visitResult = await rewardService.awardVenueVisit(userId, venue);
 
     const { rewardPoints } = await rewardService.getBalance(userId);
@@ -178,6 +241,11 @@ exports.redeemOffer = async (req, res) => {
       return res.status(400).json({ success: false, error: 'venueId and offerId are required' });
     }
 
+    const venueDoc = await db.collection(STICKER_COLLECTIONS.STICKER_VENUES).doc(venueId).get();
+    if (venueDoc.exists && !(await isVenueLoyaltyActive({ venueId, ...venueDoc.data() }))) {
+      return res.status(400).json({ success: false, error: 'Loyalty is paused at this venue' });
+    }
+
     const result = await rewardService.redeemOffer(req.user.uid, venueId, offerId);
     if (!result.success) {
       return res.status(400).json({ success: false, error: result.error });
@@ -210,25 +278,46 @@ exports.getOffers = async (req, res) => {
       .limit(200)
       .get();
 
-    const withOffers = snapshot.docs
-      .map((doc) => ({ venueId: doc.id, ...doc.data() }))
-      .filter((venue) => activeOffers(venue).length > 0);
+    // Owners whose business subscription lapsed have their offers hidden
+    // (announcements stay up until natural expiry). Unowned venues stay live.
+    const allVenues = snapshot.docs.map((doc) => ({ venueId: doc.id, ...doc.data() }));
+    const ownerIds = [...new Set(allVenues.map((v) => v.ownerUserId).filter(Boolean))];
+    const ownerPremium = new Map();
+    if (ownerIds.length > 0) {
+      const ownerDocs = await db.getAll(
+        ...ownerIds.map((id) => db.collection(COLLECTIONS.USERS).doc(id))
+      );
+      ownerDocs.forEach((doc) => ownerPremium.set(doc.id, doc.exists && isOwnerPremiumUser(doc.data())));
+    }
+    const loyaltyLive = (venue) => !venue.ownerUserId || ownerPremium.get(venue.ownerUserId) === true;
+
+    // A venue belongs in the browse list while it has anything live to show —
+    // a redeemable offer or an announcement ("Happy Hour 3-6pm" style promos)
+    const liveVenues = allVenues
+      .filter((venue) =>
+        (loyaltyLive(venue) && activeOffers(venue).length > 0) ||
+        rewardService.activeAnnouncements(venue).length > 0
+      );
 
     const savedPlaceIds = await rewardService.getSavedVenuePlaceIds(
       userId,
-      withOffers.map((venue) => venue.googlePlaceId)
+      liveVenues.map((venue) => venue.googlePlaceId)
     );
 
-    const venues = withOffers.map((venue) => ({
+    const photoUrls = await fetchVenuePhotoUrls(liveVenues);
+
+    const venues = liveVenues.map((venue) => ({
       ...publicVenueInfo(venue),
       earnRate: rewardService.effectiveEarnRate(venue),
       savedByUser: !!(venue.googlePlaceId && savedPlaceIds.has(venue.googlePlaceId)),
+      photoUrl: photoUrls.get(venue.venueId) || null,
       distanceMeters: hasCoords && venue.location
         ? geofire.distanceBetween([lat, lng], [venue.location.lat, venue.location.lng]) * 1000
         : null,
-      offers: activeOffers(venue).map(({ offerId, title, pointsCost }) => ({
+      offers: (loyaltyLive(venue) ? activeOffers(venue) : []).map(({ offerId, title, pointsCost }) => ({
         offerId, title, pointsCost
-      }))
+      })),
+      announcements: rewardService.activeAnnouncements(venue)
     }));
 
     // Saved venues first (alphabetical), then by distance, unknown-distance last
@@ -327,6 +416,10 @@ exports.getVenueByPlace = async (req, res) => {
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
     const balance = (userDoc.exists && userDoc.data().rewardPoints) || 0;
 
+    // Offers hide while the owner's business subscription is lapsed;
+    // announcements stay up until their natural expiry
+    const venueLoyaltyLive = await isVenueLoyaltyActive(venue);
+
     res.json({
       success: true,
       data: {
@@ -334,7 +427,7 @@ exports.getVenueByPlace = async (req, res) => {
           ...publicVenueInfo(venue),
           earnRate: rewardService.effectiveEarnRate(venue)
         },
-        offers: activeOffers(venue).map(({ offerId, title, pointsCost }) => ({
+        offers: (venueLoyaltyLive ? activeOffers(venue) : []).map(({ offerId, title, pointsCost }) => ({
           offerId, title, pointsCost
         })),
         announcements: rewardService.activeAnnouncements(venue),
@@ -379,6 +472,7 @@ exports.getMe = async (req, res) => {
     data: {
       isSuperUser: req.user.isSuperUser === true,
       ownsVenues,
+      ownerPremium: isOwnerPremiumUser(req.user),
       email: req.user.email || null
     }
   });
@@ -578,13 +672,158 @@ exports.getMyVenues = async (req, res) => {
       venues = claimable.map((doc) => ({ venueId: doc.id, ...doc.data(), ownerUserId: uid }));
     }
 
+    // Follower counts ride along so venue list rows can show them
+    const venueInfos = venues.map(ownerVenueInfo);
+    await Promise.all(venueInfos.map(async (info, i) => {
+      const globalPlaceId = await venueGlobalPlaceId(venues[i]);
+      if (!globalPlaceId) return;
+      const globalDoc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES)
+        .doc(globalPlaceId).get();
+      info.stats = {
+        ...info.stats,
+        followers: (globalDoc.exists && globalDoc.data().followersCount) || 0
+      };
+    }));
+
     res.json({
       success: true,
-      data: { venues: venues.map(ownerVenueInfo), count: venues.length }
+      data: {
+        venues: venueInfos,
+        count: venues.length,
+        ownerPremium: isOwnerPremiumUser(req.user)
+      }
     });
   } catch (error) {
     console.error('❌ Failed to load owned venues:', error);
     res.status(500).json({ success: false, error: 'Failed to load your venues' });
+  }
+};
+
+// Resolve a venue's canonical globalPlaces doc id (venues enrolled before
+// place normalization only carry a googlePlaceId).
+const venueGlobalPlaceId = async (venue) => {
+  if (venue.globalPlaceId) return venue.globalPlaceId;
+  if (!venue.googlePlaceId) return null;
+  try {
+    const { globalPlaceDoc } = await resolveGlobalPlace(venue.googlePlaceId);
+    return globalPlaceDoc ? globalPlaceDoc.id : null;
+  } catch (error) {
+    console.error('⚠️ Venue global-place resolution failed:', error.message);
+    return null;
+  }
+};
+
+// Fire-and-forget activity for venue announcements/offers so they surface in
+// followers' feeds. Actor id 'place_<globalPlaceId>' — the feed query adds a
+// user's followed places under the same key, and enrichment synthesizes a
+// place actor. Venues with no resolvable global place just skip emission.
+// Live-refresh signal for the home screen's Specials tab: any change to a
+// venue's offers or announcements pushes every connected client to refetch
+const notifySpecialsChanged = (venueId) => {
+  try {
+    sseService.broadcast('specials_updated', { venueId });
+  } catch (error) {
+    console.error('⚠️ specials_updated broadcast failed:', error.message);
+  }
+};
+
+const emitVenueActivity = (venue, type, message) => {
+  (async () => {
+    try {
+      const globalPlaceId = await venueGlobalPlaceId(venue);
+      if (!globalPlaceId) return;
+      await createActivity(
+        type,
+        `place_${globalPlaceId}`,
+        'place',
+        globalPlaceId,
+        venue.placeName || venue.venueName,
+        {
+          message,
+          placeId: globalPlaceId,
+          placeAddress: venue.placeAddress || null
+        }
+      );
+    } catch (error) {
+      console.error('⚠️ Venue activity emission failed:', error.message);
+    }
+  })();
+};
+
+// @desc    Per-venue stats dashboard. Headline counts are visible to every
+//          claimed owner (they're the upsell); detail requires the business
+//          subscription.
+// @route   GET /api/rewards/venues/:venueId/dashboard
+// @access  Venue owner (or super user)
+exports.getVenueDashboard = async (req, res) => {
+  try {
+    const venue = req.venue;
+    const premiumActive = isOwnerPremiumUser(req.user);
+    const globalPlaceId = await venueGlobalPlaceId(venue);
+
+    // Followers live on the canonical globalPlaces record
+    let followersCount = 0;
+    if (globalPlaceId) {
+      const globalDoc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES)
+        .doc(globalPlaceId).get();
+      followersCount = (globalDoc.exists && globalDoc.data().followersCount) || 0;
+    }
+
+    // Organic saves = thin save docs referencing the venue, distinct by saver.
+    // Projection query keeps this cheap; equality-only, so no composite index.
+    let saveDocs = [];
+    if (globalPlaceId) {
+      const savesSnapshot = await db.collection(COLLECTIONS.PLACES)
+        .where('globalPlaceId', '==', globalPlaceId)
+        .where('deletedAt', '==', null)
+        .select('addedBy', 'createdAt')
+        .get();
+      saveDocs = savesSnapshot.docs.map((doc) => doc.data());
+    }
+    const distinctSavers = new Set(saveDocs.map((d) => d.addedBy).filter(Boolean));
+
+    const stats = venue.stats || {};
+    const headline = {
+      saves: distinctSavers.size,
+      followers: followersCount,
+      visits: stats.visits || 0,
+      scans: stats.scans || 0,
+      signups: stats.signups || 0,
+      redemptions: stats.redemptions || 0
+    };
+
+    let detail = null;
+    if (premiumActive) {
+      // Last 6 months of the venue's counter history, newest first
+      const monthly = {};
+      const now = new Date();
+      for (let i = 0; i < 6; i++) {
+        const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+        const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+        monthly[key] = (venue.statsMonthly || {})[key] || {};
+      }
+
+      const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+      const newSavesThisMonth = saveDocs.filter(
+        (d) => d.createdAt && d.createdAt >= monthStart
+      ).length;
+
+      detail = { monthly, newSavesThisMonth };
+    }
+
+    res.json({
+      success: true,
+      data: {
+        venueId: venue.venueId,
+        venueName: venue.venueName,
+        premium: { active: premiumActive },
+        headline,
+        detail
+      }
+    });
+  } catch (error) {
+    console.error('❌ Failed to load venue dashboard:', error);
+    res.status(500).json({ success: false, error: 'Failed to load venue dashboard' });
   }
 };
 
@@ -614,6 +853,9 @@ exports.addOffer = async (req, res) => {
     await db.collection(STICKER_COLLECTIONS.STICKER_VENUES)
       .doc(req.venue.venueId)
       .update({ offers, updatedAt: new Date().toISOString() });
+
+    emitVenueActivity(req.venue, 'venue_offer', String(title).trim());
+    notifySpecialsChanged(req.venue.venueId);
 
     res.status(201).json({ success: true, data: { offers } });
   } catch (error) {
@@ -653,6 +895,7 @@ exports.updateOffer = async (req, res) => {
       .doc(req.venue.venueId)
       .update({ offers, updatedAt: new Date().toISOString() });
 
+    notifySpecialsChanged(req.venue.venueId);
     res.json({ success: true, data: { offers } });
   } catch (error) {
     console.error('❌ Failed to update offer:', error);
@@ -708,6 +951,10 @@ exports.addAnnouncement = async (req, res) => {
     });
 
     await saveAnnouncements(req.venue.venueId, announcements);
+
+    emitVenueActivity(req.venue, 'venue_announcement', String(title).trim());
+    notifySpecialsChanged(req.venue.venueId);
+
     res.status(201).json({ success: true, data: { announcements } });
   } catch (error) {
     console.error('❌ Failed to add announcement:', error);
@@ -742,6 +989,7 @@ exports.updateAnnouncement = async (req, res) => {
     };
 
     await saveAnnouncements(req.venue.venueId, announcements);
+    notifySpecialsChanged(req.venue.venueId);
     res.json({ success: true, data: { announcements } });
   } catch (error) {
     console.error('❌ Failed to update announcement:', error);
@@ -761,6 +1009,7 @@ exports.deleteAnnouncement = async (req, res) => {
     }
 
     await saveAnnouncements(req.venue.venueId, announcements);
+    notifySpecialsChanged(req.venue.venueId);
     res.json({ success: true, data: { announcements } });
   } catch (error) {
     console.error('❌ Failed to delete announcement:', error);

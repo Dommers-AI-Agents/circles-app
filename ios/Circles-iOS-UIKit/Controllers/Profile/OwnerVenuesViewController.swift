@@ -99,7 +99,7 @@ extension OwnerVenuesViewController: UITableViewDataSource, UITableViewDelegate 
         config.text = venue.venueName
 
         let stats = venue.stats
-        config.secondaryText = "Purchases \(stats?.visits ?? 0) · Redeemed \(stats?.redemptions ?? 0) · Saves \(stats?.saves ?? 0)"
+        config.secondaryText = "Visits \(stats?.visits ?? 0) · Redeemed \(stats?.redemptions ?? 0) · Saves \(stats?.saves ?? 0) · Followers \(stats?.followers ?? 0)"
         config.secondaryTextProperties.color = .secondaryLabel
         config.secondaryTextProperties.font = UIFont.systemFont(ofSize: 12)
         config.image = UIImage(systemName: "storefront")

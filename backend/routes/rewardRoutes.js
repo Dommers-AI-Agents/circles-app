@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/firebaseAuth');
+const { requireOwnerPremium } = require('../middleware/ownerPremium');
 const rewardController = require('../controllers/rewardController');
 
 // Admin guard — same Bearer ADMIN_SECRET convention as routes/adminRoutes.js
@@ -51,16 +52,19 @@ router.get('/claims', requireSuperUser, rewardController.listClaims);
 router.post('/claims/:claimId/approve', requireSuperUser, rewardController.approveClaim);
 router.post('/claims/:claimId/deny', requireSuperUser, rewardController.denyClaim);
 
-// Venue-owner endpoints (self-service offers + earn rate; super-users pass
-// the owner check automatically)
+// Venue-owner endpoints. Free owner tier: venue list, dashboard headline,
+// window QR (scan-to-save). Business tier (requireOwnerPremium; super-users
+// and ownerManuallyVerified bypass): offers, announcements, earn rate, and
+// the register QR — the loyalty program.
 router.get('/my-venues', rewardController.getMyVenues);
+router.get('/venues/:venueId/dashboard', rewardController.requireVenueOwner, rewardController.getVenueDashboard);
 router.post('/venues/:venueId/email-qr', rewardController.requireVenueOwner, rewardController.emailVenueQR);
-router.post('/venues/:venueId/offers', rewardController.requireVenueOwner, rewardController.addOffer);
-router.put('/venues/:venueId/offers/:offerId', rewardController.requireVenueOwner, rewardController.updateOffer);
-router.post('/venues/:venueId/announcements', rewardController.requireVenueOwner, rewardController.addAnnouncement);
-router.put('/venues/:venueId/announcements/:announcementId', rewardController.requireVenueOwner, rewardController.updateAnnouncement);
-router.delete('/venues/:venueId/announcements/:announcementId', rewardController.requireVenueOwner, rewardController.deleteAnnouncement);
-router.patch('/venues/:venueId', rewardController.requireVenueOwner, rewardController.updateVenueSettings);
-router.post('/venues/:venueId/register-code', rewardController.requireVenueOwner, rewardController.rotateRegisterCode);
+router.post('/venues/:venueId/offers', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.addOffer);
+router.put('/venues/:venueId/offers/:offerId', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.updateOffer);
+router.post('/venues/:venueId/announcements', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.addAnnouncement);
+router.put('/venues/:venueId/announcements/:announcementId', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.updateAnnouncement);
+router.delete('/venues/:venueId/announcements/:announcementId', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.deleteAnnouncement);
+router.patch('/venues/:venueId', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.updateVenueSettings);
+router.post('/venues/:venueId/register-code', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.rotateRegisterCode);
 
 module.exports = router;

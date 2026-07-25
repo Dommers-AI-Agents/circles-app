@@ -9,11 +9,26 @@ class SubscriptionService: ObservableObject {
     @Published private(set) var purchasedProductIDs = Set<String>()
     @Published private(set) var subscriptionStatus: SubscriptionStatus = .none
     @Published private(set) var subscriptionInfo: SubscriptionInfo?
-    
+    // FavCircles Business (store-owner) entitlement — tracked separately from
+    // consumer premium; never merged into subscriptionStatus
+    @Published private(set) var isBusinessSubscriber = false
+
     private var productIds = [
         SubscriptionProduct.monthlyProductId,
-        SubscriptionProduct.annualProductId
+        SubscriptionProduct.annualProductId,
+        SubscriptionProduct.businessMonthlyProductId,
+        SubscriptionProduct.businessAnnualProductId
     ]
+
+    /// Consumer premium products only (what the consumer paywall shows)
+    var consumerProducts: [SubscriptionProduct] {
+        products.filter { !$0.isBusinessProduct }
+    }
+
+    /// FavCircles Business products only (what the owner paywall shows)
+    var businessProducts: [SubscriptionProduct] {
+        products.filter { $0.isBusinessProduct }
+    }
     private var updates: Task<Void, Never>? = nil
     
     private init() {
@@ -154,16 +169,25 @@ class SubscriptionService: ObservableObject {
         
         var highestStatus: Product.SubscriptionInfo.Status? = nil
         var highestProduct: Product? = nil
-        
+        var hasBusinessEntitlement = false
+
         for await result in Transaction.currentEntitlements {
             guard case .verified(let transaction) = result else {
                 continue
             }
-            
+
             guard transaction.productType == .autoRenewable else {
                 continue
             }
-            
+
+            // Business subscriptions are a separate entitlement — they must
+            // never set the consumer premium status
+            if SubscriptionProduct.isBusinessProductId(transaction.productID) {
+                hasBusinessEntitlement = true
+                purchasedProductIDs.insert(transaction.productID)
+                continue
+            }
+
             guard let product = products.first(where: { $0.id == transaction.productID })?.product else {
                 continue
             }
@@ -230,6 +254,8 @@ class SubscriptionService: ObservableObject {
             // Check if user is in free trial (from backend)
             await checkTrialStatus()
         }
+
+        isBusinessSubscriber = hasBusinessEntitlement
     }
     
     // MARK: - Transaction Observation
@@ -276,6 +302,7 @@ class SubscriptionService: ObservableObject {
                 "expirationDate": transaction.expirationDate.map { ISO8601DateFormatter().string(from: $0) } ?? nil
             ]
 
+            let isBusinessReceipt = SubscriptionProduct.isBusinessProductId(transaction.productID)
             APIService.shared.request(
                 endpoint: "users/subscription/verify",
                 method: .post,
@@ -285,7 +312,11 @@ class SubscriptionService: ObservableObject {
                 switch result {
                 case .success(let response):
                     print("✅ Subscription synced with backend")
-                    self.updateLocalSubscriptionInfo(response.subscription)
+                    // A business receipt must never overwrite the consumer
+                    // premium status shown in the app
+                    if !isBusinessReceipt {
+                        self.updateLocalSubscriptionInfo(response.subscription)
+                    }
                 case .failure(let error):
                     print("❌ Failed to sync subscription: \(error)")
                 }
@@ -305,8 +336,10 @@ class SubscriptionService: ObservableObject {
             return
         }
 
-        // Get the latest transaction for any active subscription
-        var latestTransaction: Transaction? = nil
+        // Latest transaction per scope — consumer and business verify
+        // separately (the backend routes each by productId)
+        var latestConsumer: Transaction? = nil
+        var latestBusiness: Transaction? = nil
 
         for await result in Transaction.currentEntitlements {
             guard case .verified(let transaction) = result else {
@@ -317,20 +350,27 @@ class SubscriptionService: ObservableObject {
                 continue
             }
 
-            // Find the most recent transaction
-            if latestTransaction == nil || transaction.purchaseDate > latestTransaction!.purchaseDate {
-                latestTransaction = transaction
+            if SubscriptionProduct.isBusinessProductId(transaction.productID) {
+                if latestBusiness == nil || transaction.purchaseDate > latestBusiness!.purchaseDate {
+                    latestBusiness = transaction
+                }
+            } else if latestConsumer == nil || transaction.purchaseDate > latestConsumer!.purchaseDate {
+                latestConsumer = transaction
             }
         }
 
-        // If we have an active subscription, sync it
-        if let transaction = latestTransaction {
+        if let transaction = latestConsumer {
             print("📱 Found active subscription, syncing with backend...")
             await syncSubscriptionWithBackend(transaction: transaction)
         } else {
             print("💎 No active subscription found - checking backend status...")
             // Even if no local subscription, check backend in case it has valid data
             await checkTrialStatus()
+        }
+
+        if let transaction = latestBusiness {
+            print("🏪 Found active business subscription, syncing with backend...")
+            await syncSubscriptionWithBackend(transaction: transaction)
         }
     }
     

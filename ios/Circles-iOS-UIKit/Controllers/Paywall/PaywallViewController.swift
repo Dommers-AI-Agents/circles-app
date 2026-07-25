@@ -303,7 +303,7 @@ class PaywallViewController: BaseViewController {
                 
                 DispatchQueue.main.async { [weak self] in
                     self?.hideLoadingState()
-                    self?.products = SubscriptionService.shared.products
+                    self?.products = SubscriptionService.shared.consumerProducts
                     self?.setupSubscriptionOptions()
                 }
             } catch {

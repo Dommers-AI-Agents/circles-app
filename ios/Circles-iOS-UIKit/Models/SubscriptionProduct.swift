@@ -4,6 +4,20 @@ import StoreKit
 struct SubscriptionProduct {
     static let monthlyProductId = "com.favcircles.circles.premium.subscription.monthly"
     static let annualProductId = "com.favcircles.circles.premium.annual"
+
+    // FavCircles Business — store-owner subscription (separate StoreKit
+    // subscription group; never counts toward consumer premium)
+    static let businessMonthlyProductId = "com.favcircles.circles.business.subscription.monthly"
+    static let businessAnnualProductId = "com.favcircles.circles.business.subscription.annual"
+    static let businessProductIds: Set<String> = [businessMonthlyProductId, businessAnnualProductId]
+
+    static func isBusinessProductId(_ id: String) -> Bool {
+        businessProductIds.contains(id)
+    }
+
+    var isBusinessProduct: Bool {
+        SubscriptionProduct.isBusinessProductId(product.id)
+    }
     
     let product: Product
     let subscription: Product.SubscriptionInfo?
@@ -175,6 +189,37 @@ struct PremiumFeatures {
             title: "Advanced Features",
             description: "Access to new features as they're released",
             iconName: "sparkles.rectangle.stack.fill"
+        )
+    ]
+}
+
+// FavCircles Business features (store owners)
+struct BusinessFeatures {
+    static let features: [PremiumFeatures.Feature] = [
+        PremiumFeatures.Feature(
+            title: "Full Stats Dashboard",
+            description: "Monthly trends for saves, followers, visits, and redemptions",
+            iconName: "chart.bar.xaxis"
+        ),
+        PremiumFeatures.Feature(
+            title: "Announcements",
+            description: "Post deals, happy hours, and events to your place page and followers",
+            iconName: "megaphone.fill"
+        ),
+        PremiumFeatures.Feature(
+            title: "Offers",
+            description: "Create the rewards customers redeem their points for",
+            iconName: "gift.fill"
+        ),
+        PremiumFeatures.Feature(
+            title: "Loyalty Program",
+            description: "Register QR earns customers points on every purchase",
+            iconName: "qrcode"
+        ),
+        PremiumFeatures.Feature(
+            title: "Reach Your Followers",
+            description: "Updates surface in your followers' activity feeds",
+            iconName: "person.2.wave.2.fill"
         )
     ]
 }

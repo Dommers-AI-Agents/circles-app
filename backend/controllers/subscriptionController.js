@@ -1,10 +1,16 @@
 const admin = require('firebase-admin');
 const axios = require('axios');
 const subscriptionLimitService = require('../services/subscriptionLimitService');
+const ownerSubscriptionService = require('../services/ownerSubscriptionService');
 
 // Supported Product IDs
+// Consumer premium:
 // - com.favcircles.circles.premium.subscription.monthly ($2.99/month)
 // - com.favcircles.circles.premium.annual ($29.99/year)
+// Store-owner business (separate subscription group; tracked on owner* fields,
+// never on the consumer subscriptionStatus):
+// - com.favcircles.circles.business.subscription.monthly
+// - com.favcircles.circles.business.subscription.annual
 
 // Apple App Store Server API configuration
 const APPLE_VERIFY_RECEIPT_URL = process.env.NODE_ENV === 'production' 
@@ -97,6 +103,30 @@ exports.verifySubscription = async (req, res) => {
             subscriptionStatus = isTrialPeriod ? 'trial' : 'active';
         } else {
             subscriptionStatus = 'expired';
+        }
+
+        // Business (store-owner) receipts update the owner* fields ONLY —
+        // buying the business tier must never touch consumer premium state,
+        // and vice versa
+        if (ownerSubscriptionService.isBusinessProduct(latestReceiptInfo.product_id)) {
+            const ownerRef = admin.firestore().collection('users').doc(userId);
+            await ownerRef.update({
+                ownerSubscriptionStatus: subscriptionStatus,
+                ownerSubscriptionExpiryDate: new Date(expiresDateMs).toISOString(),
+                ownerSubscriptionProductId: latestReceiptInfo.product_id,
+                ownerOriginalTransactionId: latestReceiptInfo.original_transaction_id,
+                lastOwnerReceiptVerification: new Date().toISOString()
+            });
+            return res.json({
+                success: true,
+                subscription: {
+                    scope: 'business',
+                    status: subscriptionStatus,
+                    expiryDate: new Date(expiresDateMs).toISOString(),
+                    autoRenewEnabled: latestReceiptInfo.auto_renew_status === '1',
+                    productId: latestReceiptInfo.product_id
+                }
+            });
         }
 
         // Update user's subscription info in Firestore
@@ -263,7 +293,15 @@ exports.handleSubscriptionWebhook = async (req, res) => {
         }
 
         const { originalTransactionId, expiresDate, productId } = transaction;
-        
+
+        // Business (store-owner) notifications update owner* fields on the
+        // user found by the owner transaction id — fully separate from the
+        // consumer premium path below
+        if (ownerSubscriptionService.isBusinessProduct(productId)) {
+            await handleBusinessWebhook({ notificationType, originalTransactionId, expiresDate, renewalInfo });
+            return;
+        }
+
         // Find user by original transaction ID
         const usersSnapshot = await admin.firestore()
             .collection('users')
@@ -356,6 +394,73 @@ exports.handleSubscriptionWebhook = async (req, res) => {
         // Still return 200 to prevent Apple from retrying
     }
 };
+
+// Business-subscription webhook handling: same notification types as consumer,
+// mapped onto the owner* fields.
+async function handleBusinessWebhook({ notificationType, originalTransactionId, expiresDate, renewalInfo }) {
+    const usersSnapshot = await admin.firestore()
+        .collection('users')
+        .where('ownerOriginalTransactionId', '==', originalTransactionId)
+        .limit(1)
+        .get();
+
+    if (usersSnapshot.empty) {
+        console.log('No user found for business transaction:', originalTransactionId);
+        await admin.firestore().collection('pendingSubscriptions').doc(`business_${originalTransactionId}`).set({
+            scope: 'business',
+            notificationType,
+            expiresDate,
+            processedAt: new Date().toISOString()
+        });
+        return;
+    }
+
+    let updateData = {};
+    switch (notificationType) {
+        case 'SUBSCRIBED':
+        case 'DID_RENEW':
+            updateData = {
+                ownerSubscriptionStatus: 'active',
+                ownerSubscriptionExpiryDate: new Date(expiresDate).toISOString()
+            };
+            break;
+        case 'DID_FAIL_TO_RENEW': {
+            let inGrace = false;
+            if (renewalInfo) {
+                const renewal = JSON.parse(Buffer.from(renewalInfo, 'base64').toString());
+                if (renewal.gracePeriodExpiresDate) {
+                    inGrace = true;
+                    updateData = {
+                        ownerSubscriptionStatus: 'grace_period',
+                        ownerSubscriptionExpiryDate: new Date(renewal.gracePeriodExpiresDate).toISOString()
+                    };
+                }
+            }
+            if (!inGrace) {
+                updateData = { ownerSubscriptionStatus: 'expired' };
+            }
+            break;
+        }
+        case 'EXPIRED':
+        case 'GRACE_PERIOD_EXPIRED':
+            updateData = {
+                ownerSubscriptionStatus: 'expired',
+                ownerSubscriptionExpiryDate: new Date(expiresDate).toISOString()
+            };
+            break;
+        case 'REFUND':
+        case 'REVOKE':
+            updateData = { ownerSubscriptionStatus: 'cancelled' };
+            break;
+        default:
+            console.log('Unhandled business notification type:', notificationType);
+            return;
+    }
+
+    updateData.lastOwnerWebhookReceived = new Date().toISOString();
+    await usersSnapshot.docs[0].ref.update(updateData);
+    console.log(`Updated user ${usersSnapshot.docs[0].id} business subscription via webhook (${notificationType})`);
+}
 
 // @desc    Start free trial (for testing)
 // @route   POST /api/users/subscription/trial

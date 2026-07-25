@@ -340,6 +340,17 @@ class SSEService {
     });
   }
 
+  // Broadcast an event to every connected client (all users)
+  broadcast(eventType, data) {
+    this.clients.forEach((clientSet, userId) => {
+      this.sendEvent(userId, {
+        type: eventType,
+        data: data,
+        timestamp: new Date().toISOString()
+      });
+    });
+  }
+
   // Get connected users count
   getConnectedUsersCount() {
     return this.clients.size;

@@ -347,6 +347,22 @@ class RewardsService {
         }
     }
 
+    func getVenueDashboard(venueId: String, completion: @escaping (Result<VenueDashboardData, Error>) -> Void) {
+        apiService.request(
+            endpoint: "rewards/venues/\(venueId)/dashboard",
+            method: .get,
+            body: nil,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<VenueDashboardData>, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
     func addOffer(venueId: String, title: String, pointsCost: Int, completion: @escaping (Result<[RewardOffer], Error>) -> Void) {
         let body: [String: Any] = ["title": title, "pointsCost": pointsCost]
 
@@ -705,8 +721,10 @@ struct OfferVenue: Codable {
     let location: RewardCoordinate?
     let earnRate: Int?
     let savedByUser: Bool?
+    let photoUrl: String?
     let distanceMeters: Double?
     let offers: [RewardOffer]
+    let announcements: [VenueAnnouncement]?
 
     var distanceDisplay: String? {
         guard let meters = distanceMeters else { return nil }
@@ -807,6 +825,9 @@ struct ClaimResponseData: Codable {
 struct RewardsProfile: Codable {
     let isSuperUser: Bool
     let ownsVenues: Bool?
+    // FavCircles Business subscription (or superuser/manual override) — gates
+    // owner tools client-side; the server enforces regardless
+    let ownerPremium: Bool?
     let email: String?
 }
 
@@ -883,6 +904,44 @@ struct AdminVenue: Codable {
 }
 
 struct AdminVenueStats: Codable {
+    let scans: Int?
+    let signups: Int?
+    let saves: Int?
+    let visits: Int?
+    let redemptions: Int?
+    let followers: Int?
+}
+
+// MARK: - Venue Dashboard
+
+struct VenueDashboardData: Codable {
+    let venueId: String
+    let venueName: String
+    let premium: VenueDashboardPremium
+    let headline: VenueDashboardHeadline
+    // nil for non-premium owners — the server never ships locked detail
+    let detail: VenueDashboardDetail?
+}
+
+struct VenueDashboardPremium: Codable {
+    let active: Bool
+}
+
+struct VenueDashboardHeadline: Codable {
+    let saves: Int
+    let followers: Int
+    let visits: Int
+    let scans: Int
+    let signups: Int
+    let redemptions: Int
+}
+
+struct VenueDashboardDetail: Codable {
+    let monthly: [String: VenueDashboardMonth]
+    let newSavesThisMonth: Int
+}
+
+struct VenueDashboardMonth: Codable {
     let scans: Int?
     let signups: Int?
     let saves: Int?

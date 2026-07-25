@@ -14,8 +14,13 @@ class VenueManageViewController: BaseViewController {
     private var announcements: [VenueAnnouncement]
     private var earnRate: Int
     private var registerCode: String
+    // Business-tier gate (offers/announcements/earn rate/register QR). Starts
+    // optimistic to avoid flashing locks for subscribed owners; the server
+    // enforces regardless.
+    private var ownerPremium = true
 
     private enum Section: Int, CaseIterable {
+        case dashboard
         case earnRate
         case offers
         case announcements
@@ -82,6 +87,32 @@ class VenueManageViewController: BaseViewController {
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
+
+        refreshOwnerPremium()
+    }
+
+    // MARK: - Business gate
+
+    private func refreshOwnerPremium() {
+        RewardsService.shared.getRewardsProfile { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self, case .success(let profile) = result else { return }
+                let premium = profile.isSuperUser || (profile.ownerPremium ?? false)
+                if premium != self.ownerPremium {
+                    self.ownerPremium = premium
+                    self.tableView.reloadData()
+                }
+            }
+        }
+    }
+
+    private func presentOwnerPaywall() {
+        let paywallVC = OwnerPaywallViewController()
+        paywallVC.onSubscribed = { [weak self] in
+            self?.ownerPremium = true
+            self?.tableView.reloadData()
+        }
+        navigationController?.pushViewController(paywallVC, animated: true)
     }
 
     // MARK: - Public page
@@ -501,6 +532,7 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
 
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         switch Section(rawValue: section)! {
+        case .dashboard: return nil
         case .earnRate: return "Points per purchase"
         case .offers: return "Offers"
         case .announcements: return "Announcements"
@@ -510,6 +542,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
 
     func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
         switch Section(rawValue: section)! {
+        case .dashboard:
+            return nil
         case .earnRate:
             return "Customers earn these points each time they scan your register card after a purchase (once per day)."
         case .offers:
@@ -523,6 +557,7 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch Section(rawValue: section)! {
+        case .dashboard: return 1
         case .earnRate: return 1
         case .offers: return offers.count + 1 // + "Add offer" row
         case .announcements: return announcements.count + 1 // + "Add announcement" row
@@ -536,6 +571,13 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
         cell.accessoryType = .none
 
         switch Section(rawValue: indexPath.section)! {
+        case .dashboard:
+            config.text = "Stats & Insights"
+            config.secondaryText = "Saves, followers, visits, redemptions"
+            config.image = UIImage(systemName: "chart.bar.fill")
+            config.imageProperties.tintColor = Constants.Colors.primary
+            cell.accessoryType = .disclosureIndicator
+
         case .earnRate:
             config.text = "\(earnRate) points"
             config.secondaryText = "Tap to change"
@@ -598,6 +640,15 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             }
         }
 
+        // Business-tier tools show a lock for free owners
+        if !ownerPremium && Section(rawValue: indexPath.section)! != .dashboard {
+            let lock = UIImageView(image: UIImage(systemName: "lock.fill"))
+            lock.tintColor = .systemGray2
+            cell.accessoryView = lock
+        } else {
+            cell.accessoryView = nil
+        }
+
         config.secondaryTextProperties.color = .secondaryLabel
         config.secondaryTextProperties.font = UIFont.systemFont(ofSize: 12)
         cell.contentConfiguration = config
@@ -607,7 +658,18 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
 
-        switch Section(rawValue: indexPath.section)! {
+        let section = Section(rawValue: indexPath.section)!
+
+        // Free owners get the paywall for any business-tier tool
+        if !ownerPremium && section != .dashboard {
+            presentOwnerPaywall()
+            return
+        }
+
+        switch section {
+        case .dashboard:
+            let dashboardVC = VenueDashboardViewController(venueId: venueId, venueName: venueName)
+            navigationController?.pushViewController(dashboardVC, animated: true)
         case .earnRate:
             editEarnRate()
         case .offers:
