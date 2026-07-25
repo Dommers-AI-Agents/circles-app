@@ -25,6 +25,18 @@ class ActivityFeedCell: UITableViewCell {
     // Image loading state management
     private var currentAvatarLoadId: String?
     private var currentPlaceImageLoadId: String?
+
+    // Expanded-group member styling: indented container + a thread line in the
+    // gutter so the burst reads as one nested block under its summary header
+    private var containerLeadingConstraint: NSLayoutConstraint!
+    private let threadLineView: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.35)
+        view.layer.cornerRadius = 1.5
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isHidden = true
+        return view
+    }()
     
     // MARK: - UI Elements
     private let containerView: UIView = {
@@ -199,12 +211,21 @@ class ActivityFeedCell: UITableViewCell {
     }
     
     private func setupConstraints() {
+        contentView.addSubview(threadLineView)
+        containerLeadingConstraint = containerView.leadingAnchor.constraint(
+            equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium)
         NSLayoutConstraint.activate([
             // Container view
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 3),
-            containerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
+            containerLeadingConstraint,
             containerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
             containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -3),
+
+            // Thread line: full cell height so consecutive children connect
+            threadLineView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium + 10),
+            threadLineView.widthAnchor.constraint(equalToConstant: 3),
+            threadLineView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            threadLineView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             
             // Avatar
             avatarImageView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: Constants.Spacing.small),
@@ -412,6 +433,20 @@ class ActivityFeedCell: UITableViewCell {
         }
     }
 
+    /// Styles this row as a member of an expanded group: indented, with a
+    /// thread line in the gutter and flatter chrome, so expanded rows are
+    /// visually distinct from the surrounding feed.
+    func setGroupChildStyle(_ isChild: Bool) {
+        containerLeadingConstraint.constant = isChild
+            ? Constants.Spacing.medium + 24
+            : Constants.Spacing.medium
+        threadLineView.isHidden = !isChild
+        containerView.layer.shadowOpacity = isChild ? 0 : 0.05
+        containerView.backgroundColor = isChild
+            ? Constants.Colors.secondaryBackground.withAlphaComponent(0.6)
+            : Constants.Colors.secondaryBackground
+    }
+
     /// Renders a collapsed burst of same-actor activities as one summary row,
     /// e.g. "Wesley liked 5 places and uploaded 2 photos (7) ▾". Reactions and
     /// comments belong to individual activities, so that chrome is hidden here.
@@ -614,6 +649,7 @@ class ActivityFeedCell: UITableViewCell {
         currentAvatarLoadId = nil
         currentPlaceImageLoadId = nil
         currentGroup = nil
+        setGroupChildStyle(false)
         
         // Reset UI elements to default state
         avatarImageView.image = UIImage(systemName: "person.circle.fill")

@@ -18,6 +18,7 @@
           "/share/video/*",
           "/circle/*",
           "/place/*",
+          "/user/*",
           "/connect/*",
           "/daily-summary",
           "/s/*"

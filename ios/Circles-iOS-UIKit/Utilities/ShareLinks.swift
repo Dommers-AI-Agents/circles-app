@@ -34,5 +34,10 @@ enum ShareLinks {
         return URL(string: "\(base)/connect/\(userId)") ?? URL(string: base)!
     }
 
+    /// Public profile link (opens the profile in-app when installed)
+    static func user(id: String) -> URL {
+        return URL(string: "\(base)/user/\(id)") ?? URL(string: base)!
+    }
+
     static var appStoreURL: URL { URL(string: appStore)! }
 }

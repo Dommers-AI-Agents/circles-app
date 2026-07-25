@@ -273,6 +273,52 @@ ${address ? `<p style="margin:0 0 16px;opacity:.85">${esc(address)}</p>` : ''}
 </body></html>`);
 });
 
+// Public user profile share page. Universal Link target (AASA /user/*) —
+// opens the profile in-app when installed, App Store fallback otherwise.
+app.get('/user/:userId', async (req, res) => {
+  const userId = String(req.params.userId).replace(/[^a-zA-Z0-9._-]/g, '');
+  const appStoreUrl = 'https://apps.apple.com/us/app/favcircles/id6746807095';
+
+  let name = null;
+  let photoUrl = null;
+  try {
+    const { getFirestore } = require('./config/firebase');
+    const userDoc = await getFirestore().collection('users').doc(userId).get();
+    if (userDoc.exists) {
+      name = (userDoc.data().displayName || '').trim() || null;
+      photoUrl = userDoc.data().profilePicture || null;
+    }
+  } catch (e) {
+    console.warn('User share page: could not load user:', e.message);
+  }
+
+  const esc = (s) => String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const ogTitle = name ? `${esc(name)} on Circles` : 'A profile on Circles';
+  const heading = name ? esc(name) : 'Opening Circles…';
+
+  res.send(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${ogTitle}</title>
+<meta property="og:title" content="${ogTitle}">
+<meta property="og:description" content="Follow their favorite places on Circles — recommendations from people you trust.">
+<meta property="og:site_name" content="Circles">
+<meta property="og:type" content="profile">
+${photoUrl ? `<meta property="og:image" content="${esc(photoUrl)}">` : ''}
+<meta property="og:url" content="https://api.favcircles.com/user/${userId}">
+</head>
+<body style="font-family:-apple-system,Helvetica,Arial,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#3182CE;color:#fff;text-align:center;padding:24px">
+<div>${photoUrl ? `<img src="${esc(photoUrl)}" alt="" style="width:96px;height:96px;border-radius:48px;object-fit:cover;margin-bottom:16px">` : ''}
+<h1 style="margin:0 0 16px">${heading}</h1>
+<p>See their circles and favorite places in the app:</p>
+<a href="${appStoreUrl}" style="background:#fff;color:#3182CE;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">Download Circles</a></div>
+<script>
+  window.location = 'circles://user/${userId}';
+  setTimeout(function(){ if (!document.hidden) window.location = '${appStoreUrl}'; }, 1500);
+</script>
+</body></html>`);
+});
+
 // Route debug middleware (reduced logging)
 app.use('/api/users', (req, res, next) => {
   next();

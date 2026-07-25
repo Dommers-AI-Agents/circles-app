@@ -3137,6 +3137,30 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
 
+    /// Long-press share on a Specials row: the deal's text plus the venue's
+    /// place link (or the App Store link when the venue has no linked place)
+    private func shareSpecial(_ item: SpecialItem) {
+        var shareText: String
+        switch item.kind {
+        case .offer(let offer):
+            shareText = "🎁 \(offer.title) at \(item.venue.venueName) — redeem it with points on Circles!"
+        case .announcement(let announcement):
+            shareText = "📣 \(announcement.title) at \(item.venue.venueName)"
+            if !announcement.message.isEmpty {
+                shareText += "\n\(announcement.message)"
+            }
+            shareText += "\nSeen on Circles:"
+        }
+
+        // The /place page resolves both save-doc and globalPlaces ids — a
+        // googlePlaceId won't resolve, so fall back to the App Store link
+        let url: URL = item.venue.globalPlaceId.map { ShareLinks.place(id: $0) } ?? ShareLinks.appStoreURL
+
+        let activityVC = UIActivityViewController(activityItems: [shareText, url], applicationActivities: nil)
+        activityVC.popoverPresentationController?.sourceView = specialsTableView
+        present(activityVC, animated: true)
+    }
+
     private func pushSpecialPlaceFallback(_ venue: OfferVenue) {
         var location: GeoLocation?
         if let coordinate = venue.location {
@@ -3389,6 +3413,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     enum ActivityFeedItem {
         case single(Activity)
         case group([Activity])
+        // An expanded group's member row — rendered indented under its
+        // summary header so the burst reads as one nested block
+        case groupChild(Activity)
     }
 
     /// Derived render model for the activity table. Rebuilt from `activities`
@@ -3417,7 +3444,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             if pendingGroup.count >= 2 {
                 var groupRows: [ActivityFeedItem] = [.group(pendingGroup)]
                 if expandedGroupKeys.contains(pendingGroup[0].id) {
-                    groupRows.append(contentsOf: pendingGroup.map { .single($0) })
+                    groupRows.append(contentsOf: pendingGroup.map { .groupChild($0) })
                 }
                 items.insert(contentsOf: groupRows, at: insertAt)
             } else {
@@ -3456,10 +3483,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
     /// The single activity backing a row, or nil for group summary rows
     private func singleActivity(at row: Int) -> Activity? {
-        if case .single(let activity)? = activityFeedItem(at: row) {
+        switch activityFeedItem(at: row) {
+        case .single(let activity), .groupChild(let activity):
             return activity
+        default:
+            return nil
         }
-        return nil
     }
 
     private func toggleActivityGroup(withKey key: String) {
@@ -6968,9 +6997,14 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             switch item {
             case .single(let activity):
                 cell.configure(with: activity)
+                cell.setGroupChildStyle(false)
+            case .groupChild(let activity):
+                cell.configure(with: activity)
+                cell.setGroupChildStyle(true)
             case .group(let groupActivities):
                 cell.configure(withGroup: groupActivities,
                                isExpanded: expandedGroupKeys.contains(groupActivities[0].id))
+                cell.setGroupChildStyle(false)
             }
             return cell
         } else if tableView == newsFeedTableView {
@@ -6996,6 +7030,18 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
         return UITableView.automaticDimension
     }
     
+    // Long-press a Specials row to share the deal (with the place link)
+    func tableView(_ tableView: UITableView, contextMenuConfigurationForRowAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
+        guard tableView == specialsTableView, indexPath.row < specials.count else { return nil }
+        let item = specials[indexPath.row]
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
+            let share = UIAction(title: "Share", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in
+                self?.shareSpecial(item)
+            }
+            return UIMenu(children: [share])
+        }
+    }
+
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
 
@@ -7048,10 +7094,12 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             guard let item = activityFeedItem(at: indexPath.row) else { return }
 
             // Group summary rows expand/collapse in place
-            guard case .single(let activity) = item else {
-                if case .group(let groupActivities) = item {
-                    toggleActivityGroup(withKey: groupActivities[0].id)
-                }
+            let activity: Activity
+            switch item {
+            case .single(let a), .groupChild(let a):
+                activity = a
+            case .group(let groupActivities):
+                toggleActivityGroup(withKey: groupActivities[0].id)
                 return
             }
 

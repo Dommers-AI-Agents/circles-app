@@ -1557,6 +1557,19 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         navigationController?.pushViewController(editProfileVC, animated: true)
     }
     
+    /// Share someone ELSE's profile: universal link that opens their profile
+    /// in-app when installed, preview page + App Store fallback otherwise
+    @objc private func shareViewedProfileTapped() {
+        guard let user = user else { return }
+        let shareText = "Check out \(user.displayName)'s favorite places on Circles:"
+        let activityVC = UIActivityViewController(
+            activityItems: [shareText, ShareLinks.user(id: user.id)],
+            applicationActivities: nil
+        )
+        activityVC.popoverPresentationController?.barButtonItem = navigationItem.rightBarButtonItems?.first
+        present(activityVC, animated: true)
+    }
+
     @objc private func shareProfileButtonTapped() {
         guard let user = user else { return }
         
@@ -3061,8 +3074,15 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             navigationItem.rightBarButtonItems = [settingsButton, videoButton, checkInButton, rewardsButton]
             addStorefrontButtonIfEligible()
         } else {
-            // Other user - no navigation bar buttons
-            navigationItem.rightBarButtonItems = []
+            // Other user - just a share button (profile universal link)
+            let shareButton = UIBarButtonItem(
+                image: UIImage(systemName: "square.and.arrow.up"),
+                style: .plain,
+                target: self,
+                action: #selector(shareViewedProfileTapped)
+            )
+            shareButton.accessibilityLabel = "Share profile"
+            navigationItem.rightBarButtonItems = [shareButton]
         }
         
         // For other users, check connection status and follow status

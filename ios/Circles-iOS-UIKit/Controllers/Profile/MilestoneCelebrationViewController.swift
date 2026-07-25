@@ -80,6 +80,7 @@ class MilestoneCelebrationViewController: BaseViewController {
     }()
 
     private lazy var continueButton = UIButton.primaryButton(title: "Keep Exploring")
+    private lazy var shareButton = UIButton.secondaryButton(title: "Share the News")
 
     // MARK: - Lifecycle
 
@@ -101,8 +102,11 @@ class MilestoneCelebrationViewController: BaseViewController {
         cardView.addSubview(messageLabel)
         cardView.addSubview(badgePillView)
         badgePillView.addSubview(badgeNameLabel)
+        cardView.addSubview(shareButton)
         cardView.addSubview(continueButton)
 
+        shareButton.translatesAutoresizingMaskIntoConstraints = false
+        shareButton.addTarget(self, action: #selector(shareTapped), for: .touchUpInside)
         continueButton.translatesAutoresizingMaskIntoConstraints = false
         continueButton.addTarget(self, action: #selector(continueTapped), for: .touchUpInside)
 
@@ -137,7 +141,11 @@ class MilestoneCelebrationViewController: BaseViewController {
             badgeNameLabel.trailingAnchor.constraint(equalTo: badgePillView.trailingAnchor, constant: -14),
             badgeNameLabel.centerYAnchor.constraint(equalTo: badgePillView.centerYAnchor),
 
-            continueButton.topAnchor.constraint(equalTo: badgePillView.bottomAnchor, constant: 24),
+            shareButton.topAnchor.constraint(equalTo: badgePillView.bottomAnchor, constant: 24),
+            shareButton.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 24),
+            shareButton.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -24),
+
+            continueButton.topAnchor.constraint(equalTo: shareButton.bottomAnchor, constant: 12),
             continueButton.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 24),
             continueButton.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -24),
             continueButton.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -24)
@@ -194,6 +202,17 @@ class MilestoneCelebrationViewController: BaseViewController {
     }
 
     // MARK: - Actions
+
+    @objc private func shareTapped() {
+        // Achievement moments are peak share intent — one tap spreads the app
+        let shareText = "I just earned the \(milestone.name) badge on Circles — \(milestone.threshold) favorite places saved! 🎉"
+        let activityVC = UIActivityViewController(
+            activityItems: [shareText, ShareLinks.appStoreURL],
+            applicationActivities: nil
+        )
+        activityVC.popoverPresentationController?.sourceView = shareButton
+        present(activityVC, animated: true)
+    }
 
     @objc private func continueTapped() {
         dismiss(animated: true)

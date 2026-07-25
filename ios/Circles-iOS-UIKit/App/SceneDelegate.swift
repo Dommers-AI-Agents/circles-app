@@ -539,6 +539,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             let refUserId = URLComponents(url: url, resolvingAgainstBaseURL: false)?
                 .queryItems?.first(where: { $0.name == "ref" })?.value
             navigateToPlace(placeId: placeId, refUserId: refUserId)
+        } else if pathComponents.first == "user" && pathComponents.count >= 2 {
+            // Shared profile links (https://<backend>/user/<id>)
+            let userId = pathComponents[1]
+            navigateToUserProfile(userId: userId)
         } else if pathComponents.first == "connect" && pathComponents.count >= 2 {
             let userId = pathComponents[1]
             handleConnectionInvite(from: userId)
