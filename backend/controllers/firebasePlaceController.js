@@ -64,6 +64,96 @@ const overlayVenueFields = (place, globalData) => {
   return merged;
 };
 
+// A verified store owner (approved ownership claim → stickerVenues.ownerUserId)
+// edits their venue's Google-backed fields like a super-user does.
+const isVerifiedVenueOwner = async (uid, placeId, googlePlaceId) => {
+  try {
+    const venue = await rewardService.findVenueByPlace(placeId || googlePlaceId, googlePlaceId);
+    return !!(venue && venue.ownerUserId && isSameUser(venue.ownerUserId, uid));
+  } catch (error) {
+    console.error('⚠️ Venue-owner check failed:', error.message);
+    return false;
+  }
+};
+
+// Google-backed saves arrive with client-authored venue fields. Re-anchor them
+// server-side so a tampered Add Place request can't seed or shadow the
+// canonical venue record: the existing globalPlaces record wins; a first save
+// (which will seed that record) is verified against Google Places directly.
+// Mutates placeData. Category stays client-supplied on the Google path — the
+// Google-types → app-category mapping lives client-side.
+const anchorVenueFieldsToSource = async (placeData) => {
+  const googlePlaceId = placeData.googlePlaceId;
+
+  const applyLocation = (coordinates) => {
+    if (Array.isArray(coordinates) && coordinates.length === 2 &&
+        typeof coordinates[0] === 'number' && typeof coordinates[1] === 'number') {
+      placeData.location = { type: 'Point', coordinates: [coordinates[0], coordinates[1]] };
+      placeData.geohash = geofire.geohashForLocation([coordinates[1], coordinates[0]]);
+    }
+  };
+
+  const canonicalHit = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES)
+    .where('googlePlaceId', '==', googlePlaceId)
+    .limit(1)
+    .get();
+  if (!canonicalHit.empty) {
+    const canonical = canonicalHit.docs[0].data();
+    ['name', 'address', 'category', 'subcategory'].forEach((field) => {
+      if (canonical[field] !== undefined && canonical[field] !== null && canonical[field] !== '') {
+        placeData[field] = canonical[field];
+      }
+    });
+    applyLocation(canonical.location?.coordinates);
+    const googleData = canonical.googleData || {};
+    VENUE_GOOGLE_FIELDS.forEach((field) => {
+      if (googleData[field] !== undefined && googleData[field] !== null && googleData[field] !== '') {
+        placeData[field] = googleData[field];
+      }
+    });
+    console.log(`🔒 Venue fields anchored to canonical record for ${googlePlaceId}`);
+    return;
+  }
+
+  if (!googleMapsApiKey) return;
+  try {
+    // Own cache namespace: refreshPlace caches a narrower field set under
+    // 'placeDetails' and must not satisfy this lookup
+    let details = placeCache.get('placeDetailsFull', googlePlaceId);
+    if (!details) {
+      details = await requestDeduplicator.execute(`placeDetailsFull_${googlePlaceId}`, async () => {
+        const cached = placeCache.get('placeDetailsFull', googlePlaceId);
+        if (cached) return cached;
+        const response = await googleMapsClient.placeDetails({
+          params: {
+            place_id: googlePlaceId,
+            fields: ['name', 'formatted_address', 'geometry', 'website',
+                     'formatted_phone_number', 'rating', 'user_ratings_total', 'price_level'],
+            key: googleMapsApiKey
+          }
+        });
+        placeCache.set('placeDetailsFull', googlePlaceId, response.data.result);
+        return response.data.result;
+      });
+    }
+    if (!details) return;
+
+    if (details.name) placeData.name = details.name;
+    if (details.formatted_address) placeData.address = details.formatted_address;
+    const loc = details.geometry?.location;
+    if (loc) applyLocation([loc.lng, loc.lat]);
+    placeData.website = details.website || null;
+    placeData.phone = details.formatted_phone_number || null;
+    placeData.rating = details.rating ?? null;
+    placeData.userRatingsTotal = details.user_ratings_total ?? null;
+    placeData.priceLevel = details.price_level ?? null;
+    console.log(`🔒 Venue fields verified against Google Places for new venue ${googlePlaceId}`);
+  } catch (error) {
+    // Availability over strictness: a Google outage shouldn't block saves
+    console.warn(`⚠️ Could not verify venue fields with Google for ${googlePlaceId}: ${error.message}`);
+  }
+};
+
 // Translate legacy-shaped venue updates into a globalPlaces update payload
 const buildGlobalVenueUpdates = (updateData) => {
   const updates = {};
@@ -165,6 +255,43 @@ const fetchGlobalSocialMap = async (places) => {
 // viewport endpoint in networkPlacesController)
 exports.fetchGlobalSocialMap = fetchGlobalSocialMap;
 exports.overlayVenueFields = overlayVenueFields;
+// (also reused by getUserCircles in circleSharingController)
+exports.buildAddedByUserMap = (...args) => buildAddedByUserMap(...args);
+
+// Batch-fetch the users behind places' addedBy ids so responses can carry
+// addedByUser (iOS falls back to "Added by a connection" without it). Keyed by
+// both the user doc id and the original id format from the place doc.
+const buildAddedByUserMap = async (places) => {
+  const userIds = [...new Set(places.map(place => place.addedBy).filter(Boolean))];
+  const userMap = new Map();
+  if (userIds.length === 0) return userMap;
+
+  const userDocs = await Promise.all(userIds.map(userId => {
+    // Handle complex ID format if needed (e.g. "provider.uid.suffix")
+    let actualUserId = userId;
+    if (userId.includes('.')) {
+      const parts = userId.split('.');
+      if (parts.length >= 2) {
+        actualUserId = parts[1];
+      }
+    }
+    return db.collection(COLLECTIONS.USERS).doc(actualUserId).get();
+  }));
+
+  userDocs.forEach((doc, index) => {
+    if (!doc.exists) return;
+    const userData = serializeDoc(doc);
+    const userInfo = {
+      id: userData.id,
+      displayName: userData.displayName || 'Unknown User',
+      email: userData.email,
+      profilePicture: userData.profilePicture
+    };
+    userMap.set(userData.id, userInfo);
+    userMap.set(userIds[index], userInfo);
+  });
+  return userMap;
+};
 
 // @desc    Get places by circle ID
 // @route   GET /api/circles/:circleId/places
@@ -923,15 +1050,21 @@ exports.getPlace = async (req, res, next) => {
 
     // Social and venue data come from the canonical venue record (one read,
     // shared by every saved copy of this place)
-    const social = await getGlobalSocial(placeDoc);
+    const [social, addedByUserMap] = await Promise.all([
+      getGlobalSocial(placeDoc),
+      buildAddedByUserMap([place])
+    ]);
 
     // Filter privateNotes - only visible to the user who added the place
     let placeData = {
       ...place,
       globalPlaceId: social.globalPlaceId || place.globalPlaceId || null,
+      addedByUser: addedByUserMap.get(place.addedBy) || null,
       likes: social.likes,
       likesCount: social.likes.length,
-      commentsCount: social.commentsCount
+      commentsCount: social.commentsCount,
+      followersCount: (social.venueData && social.venueData.followersCount) || 0,
+      isFollowing: ((social.venueData && social.venueData.followers) || []).includes(req.user.uid)
     };
     if (social.venueData) {
       placeData = overlayVenueFields(placeData, social.venueData);
@@ -1057,7 +1190,18 @@ exports.createPlace = async (req, res, next) => {
 
     // Create place data
     const placeData = createPlace(req.body, circleId, req.user.uid);
-    
+
+    // Google-backed saves: venue fields are locked to their source at creation
+    // too, mirroring the updatePlace lock. Super-users and the venue's
+    // verified owner keep their submitted values.
+    if (placeData.googlePlaceId) {
+      const exempt = req.user.isSuperUser === true
+        || await isVerifiedVenueOwner(req.user.uid, null, placeData.googlePlaceId);
+      if (!exempt) {
+        await anchorVenueFieldsToSource(placeData);
+      }
+    }
+
     // Validate photos - reject Google Places API URLs
     if (placeData.photos && placeData.photos.length > 0) {
       const invalidPhotos = placeData.photos.filter(photo => 
@@ -1174,9 +1318,24 @@ exports.createPlace = async (req, res, next) => {
       });
     }
 
+    // Gamification: the user's live place count rides along so the client can
+    // trigger milestone celebrations (5, 10, 20, ... places)
+    let totalPlaces = null;
+    try {
+      const countSnap = await db.collection(COLLECTIONS.PLACES)
+        .where('addedBy', '==', req.user.uid)
+        .where('deletedAt', '==', null)
+        .count()
+        .get();
+      totalPlaces = countSnap.data().count;
+    } catch (countError) {
+      console.error('⚠️ Milestone place count failed (non-fatal):', countError.message);
+    }
+
     // Add commentsCount to the response (new places have 0 comments)
     res.status(201).json({
       success: true,
+      totalPlaces,
       place: {
         ...place,
         commentsCount: 0
@@ -1286,7 +1445,8 @@ exports.updatePlace = async (req, res, next) => {
 
     // Google-backed places: Google Places is the source of truth for venue
     // fields, so users can't edit them (they can flag bad data instead —
-    // POST /places/:id/flag). Super-users can still correct anything.
+    // POST /places/:id/flag). Super-users and the venue's verified owner
+    // (approved ownership claim) can still correct anything.
     // Manually created places (no googlePlaceId — home/work, custom spots)
     // keep editable venue fields since there is no Google record behind them.
     const isGoogleBacked = !!place.googlePlaceId;
@@ -1296,10 +1456,11 @@ exports.updatePlace = async (req, res, next) => {
         'website', 'phone', 'rating', 'userRatingsTotal', 'priceLevel',
         'openingHours', 'googlePlaceId'
       ];
-      const stripped = lockedFields.filter((field) => field in updateData);
-      stripped.forEach((field) => delete updateData[field]);
-      if (stripped.length > 0) {
-        console.log(`🔒 Venue fields stripped from update of Google-backed place ${req.params.id}: ${stripped.join(', ')}`);
+      const touched = lockedFields.filter((field) => field in updateData);
+      if (touched.length > 0
+          && !(await isVerifiedVenueOwner(req.user.uid, req.params.id, place.googlePlaceId))) {
+        touched.forEach((field) => delete updateData[field]);
+        console.log(`🔒 Venue fields stripped from update of Google-backed place ${req.params.id}: ${touched.join(', ')}`);
       }
     }
 
@@ -1526,7 +1687,7 @@ exports.searchPlaces = async (req, res, next) => {
       .limit(50)
       .get();
 
-    const places = serializeQuerySnapshot(snapshot);
+    const places = serializeQuerySnapshot(snapshot).filter(place => !place.deletedAt);
 
     // Filter results to only include places from circles the user can access
     const accessiblePlaces = [];
@@ -1537,7 +1698,7 @@ exports.searchPlaces = async (req, res, next) => {
         const isOwner = circle.owner === req.user.uid;
         const isSharedWith = circle.sharedWith.includes(req.user.uid);
         const isPublic = circle.privacy === 'public';
-        
+
         if (isOwner || isSharedWith || isPublic) {
           accessiblePlaces.push(place);
         }
@@ -1547,10 +1708,23 @@ exports.searchPlaces = async (req, res, next) => {
     // Sort results by name
     accessiblePlaces.sort((a, b) => a.name.localeCompare(b.name));
 
+    // Attach adder info; filter privateNotes to the user who added the place
+    const addedByUserMap = await buildAddedByUserMap(accessiblePlaces);
+    const enrichedPlaces = accessiblePlaces.map(place => {
+      const placeData = {
+        ...place,
+        addedByUser: addedByUserMap.get(place.addedBy) || null
+      };
+      if (place.addedBy !== req.user.uid) {
+        delete placeData.privateNotes;
+      }
+      return placeData;
+    });
+
     res.status(200).json({
       success: true,
-      count: accessiblePlaces.length,
-      places: accessiblePlaces
+      count: enrichedPlaces.length,
+      places: enrichedPlaces
     });
   } catch (error) {
     console.error('Error searching places:', error);
@@ -2764,6 +2938,7 @@ exports.addPlaceComment = async (req, res, next) => {
         circleId: place.circleId,
         circleName: circle.name || 'Unknown Circle',
         comment: text.trim(),
+        commentId: commentRef.id,
         placePhoto: place.photos && place.photos.length > 0 ? place.photos[0] : null,
         placeAddress: place.address || null
       }
@@ -3079,6 +3254,29 @@ exports.deletePlaceComment = async (req, res, next) => {
       await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(counterGlobalId).update({
         commentsCount: admin.firestore.FieldValue.increment(-1)
       }).catch(err => console.error('⚠️ Failed to decrement commentsCount:', err.message));
+    }
+
+    // A deleted comment must not live on in the home feed: remove the
+    // place_commented activity addPlaceComment created for it. New activities
+    // carry metadata.commentId; older ones are matched by comment text.
+    try {
+      const activityHits = await db.collection('activities')
+        .where('type', '==', 'place_commented')
+        .where('actorId', '==', String(comment.userId))
+        .where('targetId', '==', comment.placeId)
+        .get();
+      const byId = activityHits.docs.filter((doc) => doc.data().metadata?.commentId === commentId);
+      const matches = byId.length > 0
+        ? byId
+        : activityHits.docs.filter((doc) =>
+            !doc.data().metadata?.commentId &&
+            (doc.data().metadata?.comment || null) === (comment.text || null));
+      await Promise.all(matches.map((doc) => doc.ref.delete()));
+      if (matches.length > 0) {
+        console.log(`🧹 Removed ${matches.length} place_commented activity for deleted comment ${commentId}`);
+      }
+    } catch (activityError) {
+      console.error('⚠️ Failed to remove place_commented activity:', activityError.message);
     }
     
     res.status(200).json({
@@ -3811,13 +4009,19 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
     
     console.log(`✅ Batch fetched ${allPlaces.length} places from ${processedCircles.size} accessible circles`);
 
-    // Overlay social + venue data from the canonical venue records
-    const socialByGlobalId = await fetchGlobalSocialMap(allPlaces);
+    // Overlay social + venue data from the canonical venue records, and
+    // attach adder info so clients can show "Added by <name>"
+    const [socialByGlobalId, addedByUserMap] = await Promise.all([
+      fetchGlobalSocialMap(allPlaces),
+      buildAddedByUserMap(allPlaces)
+    ]);
     const placesWithSocial = allPlaces.map(place => {
       const social = socialByGlobalId.get(place.globalPlaceId);
-      if (!social) return place;
+      const addedByUser = addedByUserMap.get(place.addedBy) || null;
+      if (!social) return { ...place, addedByUser };
       return {
         ...overlayVenueFields(place, social.venueData),
+        addedByUser,
         likes: social.likes,
         likesCount: social.likes.length,
         commentsCount: social.commentsCount

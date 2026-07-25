@@ -929,6 +929,22 @@ const getUserCircles = async (req, res) => {
       return circle;
     }));
 
+    // Embedded places need the same addedByUser enrichment as
+    // circles/:id/places — without it iOS shows "Added by Unknown" on every
+    // pin/row rendered from this payload
+    try {
+      const { buildAddedByUserMap } = require('./firebasePlaceController');
+      const embeddedPlaces = circles.flatMap(circle => circle.placesWithDetails || []);
+      const addedByUserMap = await buildAddedByUserMap(embeddedPlaces);
+      circles.forEach(circle => {
+        (circle.placesWithDetails || []).forEach(place => {
+          place.addedByUser = addedByUserMap.get(place.addedBy) || null;
+        });
+      });
+    } catch (enrichError) {
+      console.error('⚠️ addedByUser enrichment failed for user-circles:', enrichError.message);
+    }
+
     // Clear activity notification after viewing
     await activityService.clearActivityNotification(currentUserId, targetUserId);
     
