@@ -59,6 +59,7 @@ router.post('/claims/:claimId/deny', requireSuperUser, rewardController.denyClai
 router.get('/my-venues', rewardController.getMyVenues);
 router.get('/venues/:venueId/dashboard', rewardController.requireVenueOwner, rewardController.getVenueDashboard);
 router.post('/venues/:venueId/email-qr', rewardController.requireVenueOwner, rewardController.emailVenueQR);
+router.patch('/venues/:venueId/info', rewardController.requireVenueOwner, rewardController.updateVenueInfo);
 router.post('/venues/:venueId/offers', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.addOffer);
 router.put('/venues/:venueId/offers/:offerId', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.updateOffer);
 router.post('/venues/:venueId/announcements', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.addAnnouncement);

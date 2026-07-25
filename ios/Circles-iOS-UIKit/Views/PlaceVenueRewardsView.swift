@@ -4,6 +4,7 @@ protocol PlaceVenueRewardsViewDelegate: AnyObject {
     func placeVenueView(_ view: PlaceVenueRewardsView, didTapRedeem offer: RewardOffer, venue: PlaceVenue)
     func placeVenueViewDidTapClaim(_ view: PlaceVenueRewardsView)
     func placeVenueViewDidTapManage(_ view: PlaceVenueRewardsView, venue: PlaceVenue)
+    func placeVenueViewDidTapUpgrade(_ view: PlaceVenueRewardsView)
 }
 
 /// The rewards section of a place page: the venue's announcements and offers,
@@ -91,6 +92,12 @@ class PlaceVenueRewardsView: UIView {
             let row = makeAnnouncementRow(announcement)
             if isOwner { attachManageTap(to: row, venue: venue) }
             containerStack.addArrangedSubview(row)
+        }
+
+        // Free-tier owner on their own page: show where announcements would
+        // appear and what unlocks them. Only the claimed owner ever sees this.
+        if isOwner && data.ownerPremium == false {
+            containerStack.addArrangedSubview(makeUpgradeTeaserRow())
         }
 
         let offers = data.offers ?? []
@@ -233,6 +240,67 @@ class PlaceVenueRewardsView: UIView {
             self.delegate?.placeVenueViewDidTapManage(self, venue: venue)
         }, for: .touchUpInside)
         return button
+    }
+
+    /// Free-tier owner teaser: where announcements would appear, show what
+    /// unlocks them. Tapping opens the Business paywall.
+    private func makeUpgradeTeaserRow() -> UIView {
+        let row = UIView()
+        row.translatesAutoresizingMaskIntoConstraints = false
+
+        let icon = UIImageView(image: UIImage(systemName: "megaphone"))
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        icon.tintColor = .systemGray2
+        icon.contentMode = .scaleAspectFit
+
+        let titleLabel = UILabel()
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.text = "Post announcements & offers here"
+        titleLabel.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
+        titleLabel.textColor = .label
+
+        let subtitleLabel = UILabel()
+        subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
+        subtitleLabel.text = "Upgrade to Business to reach your savers and followers"
+        subtitleLabel.font = UIFont.systemFont(ofSize: 12)
+        subtitleLabel.textColor = Constants.Colors.primary
+        subtitleLabel.numberOfLines = 0
+
+        let chevron = UIImageView(image: UIImage(systemName: "chevron.right"))
+        chevron.translatesAutoresizingMaskIntoConstraints = false
+        chevron.tintColor = .tertiaryLabel
+
+        row.addSubview(icon)
+        row.addSubview(titleLabel)
+        row.addSubview(subtitleLabel)
+        row.addSubview(chevron)
+
+        NSLayoutConstraint.activate([
+            icon.leadingAnchor.constraint(equalTo: row.leadingAnchor),
+            icon.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
+            icon.widthAnchor.constraint(equalToConstant: 18),
+            icon.heightAnchor.constraint(equalToConstant: 18),
+
+            titleLabel.topAnchor.constraint(equalTo: row.topAnchor),
+            titleLabel.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8),
+            titleLabel.trailingAnchor.constraint(equalTo: chevron.leadingAnchor, constant: -8),
+
+            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
+            subtitleLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+            subtitleLabel.trailingAnchor.constraint(equalTo: chevron.leadingAnchor, constant: -8),
+            subtitleLabel.bottomAnchor.constraint(equalTo: row.bottomAnchor),
+
+            chevron.trailingAnchor.constraint(equalTo: row.trailingAnchor),
+            chevron.centerYAnchor.constraint(equalTo: row.centerYAnchor)
+        ])
+
+        row.isUserInteractionEnabled = true
+        row.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(upgradeTeaserTapped)))
+        return row
+    }
+
+    @objc private func upgradeTeaserTapped() {
+        delegate?.placeVenueViewDidTapUpgrade(self)
     }
 
     /// Owner shortcut: tapping a content row jumps straight into management

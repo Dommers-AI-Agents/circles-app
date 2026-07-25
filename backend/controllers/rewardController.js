@@ -433,6 +433,9 @@ exports.getVenueByPlace = async (req, res) => {
         announcements: rewardService.activeAnnouncements(venue),
         balance,
         isOwner,
+        // For the owner viewing their own place: drives the in-place
+        // "Upgrade to Business" teaser when they can't post announcements yet
+        ownerPremium: isOwner ? isOwnerPremiumUser(req.user) : undefined,
         claim
       }
     });
@@ -615,11 +618,16 @@ const ownerVenueInfo = (venue) => ({
   placeName: venue.placeName,
   placeAddress: venue.placeAddress,
   category: venue.category || 'restaurant',
+  contactName: venue.contactName || null,
+  contactEmail: venue.contactEmail || null,
   googlePlaceId: venue.googlePlaceId,
   globalPlaceId: venue.globalPlaceId,
   location: venue.location || null,
   windowCode: venue.windowCode,
   registerCode: venue.registerCode,
+  // Exact URL encoded in the printed window sticker, so the in-app QR
+  // renders identically to the physical one
+  windowStickerUrl: rewardService.stickerUrl(venue.windowCode),
   earnRate: rewardService.effectiveEarnRate(venue),
   offers: venue.offers || [],
   announcements: venue.announcements || [],
@@ -1014,6 +1022,48 @@ exports.deleteAnnouncement = async (req, res) => {
   } catch (error) {
     console.error('❌ Failed to delete announcement:', error);
     res.status(500).json({ success: false, error: 'Failed to delete announcement' });
+  }
+};
+
+// @desc    Update the venue's business contact info (free owner tier —
+//          unlike updateVenueSettings, no business subscription required)
+// @route   PATCH /api/rewards/venues/:venueId/info
+// @access  Venue owner (or super user)
+exports.updateVenueInfo = async (req, res) => {
+  try {
+    const { contactName, contactEmail } = req.body;
+    const errors = [];
+    if (contactName !== undefined && typeof contactName !== 'string') {
+      errors.push('contactName must be a string');
+    }
+    if (contactEmail !== undefined) {
+      if (typeof contactEmail !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail.trim())) {
+        errors.push('contactEmail must be a valid email address');
+      }
+    }
+    if (contactName === undefined && contactEmail === undefined) {
+      errors.push('Nothing to update');
+    }
+    if (errors.length > 0) {
+      return res.status(400).json({ success: false, error: errors.join('. ') });
+    }
+
+    const update = { updatedAt: new Date().toISOString() };
+    if (contactName !== undefined) update.contactName = String(contactName).trim() || null;
+    if (contactEmail !== undefined) {
+      update.contactEmail = contactEmail.trim().toLowerCase();
+      // ownerEmail mirrors contactEmail (used for lazy claim-by-email)
+      update.ownerEmail = update.contactEmail;
+    }
+
+    await db.collection(STICKER_COLLECTIONS.STICKER_VENUES)
+      .doc(req.venue.venueId)
+      .update(update);
+
+    res.json({ success: true, data: { venue: ownerVenueInfo({ ...req.venue, ...update }) } });
+  } catch (error) {
+    console.error('❌ Failed to update venue info:', error);
+    res.status(500).json({ success: false, error: 'Failed to update venue info' });
   }
 };
 

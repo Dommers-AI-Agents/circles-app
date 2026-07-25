@@ -110,7 +110,9 @@ struct SubscriptionProduct {
     }
     
     var tierName: String {
-        if isMonthly {
+        if isBusinessProduct {
+            return product.id == SubscriptionProduct.businessAnnualProductId ? "Business Annual" : "Business Monthly"
+        } else if isMonthly {
             return "Monthly"
         } else if isAnnual {
             return "Annual"

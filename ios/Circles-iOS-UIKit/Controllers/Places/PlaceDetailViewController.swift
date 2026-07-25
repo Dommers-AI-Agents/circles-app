@@ -3903,6 +3903,16 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
         openVenueManagement(venue)
     }
 
+    func placeVenueViewDidTapUpgrade(_ view: PlaceVenueRewardsView) {
+        let paywallVC = OwnerPaywallViewController()
+        paywallVC.onSubscribed = { [weak self] in
+            // Reload so the teaser disappears and the store card reflects
+            // the unlocked state
+            self?.loadVenueRewards()
+        }
+        navigationController?.pushViewController(paywallVC, animated: true)
+    }
+
     /// Storefront nav-bar button (owners only) — same destination as the
     /// card's Manage Store button
     @objc func storefrontNavButtonTapped() {

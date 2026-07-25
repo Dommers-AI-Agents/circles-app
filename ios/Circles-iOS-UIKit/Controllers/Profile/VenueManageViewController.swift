@@ -14,6 +14,10 @@ class VenueManageViewController: BaseViewController {
     private var announcements: [VenueAnnouncement]
     private var earnRate: Int
     private var registerCode: String
+    private var contactName: String?
+    private var contactEmail: String?
+    private let windowCode: String
+    private let windowStickerUrl: String?
     // Business-tier gate (offers/announcements/earn rate/register QR). Starts
     // optimistic to avoid flashing locks for subscribed owners; the server
     // enforces regardless.
@@ -21,11 +25,16 @@ class VenueManageViewController: BaseViewController {
 
     private enum Section: Int, CaseIterable {
         case dashboard
+        case businessInfo
+        case windowQR
         case earnRate
         case offers
         case announcements
         case registerCode
     }
+
+    /// Free owner tier: everything else is business-tier (paywalled)
+    private static let freeSections: Set<Section> = [.dashboard, .businessInfo, .windowQR]
 
     // MARK: - UI Elements
 
@@ -46,6 +55,10 @@ class VenueManageViewController: BaseViewController {
         self.announcements = venue.announcements ?? []
         self.earnRate = venue.earnRate ?? 25
         self.registerCode = venue.registerCode
+        self.contactName = venue.contactName
+        self.contactEmail = venue.contactEmail
+        self.windowCode = venue.windowCode
+        self.windowStickerUrl = venue.windowStickerUrl
         self.venuePlaceId = venue.globalPlaceId ?? venue.googlePlaceId
         super.init(nibName: nil, bundle: nil)
     }
@@ -455,6 +468,69 @@ class VenueManageViewController: BaseViewController {
         }
     }
 
+    // MARK: - Business info (free tier)
+
+    private func editContactName() {
+        showTextInput(
+            title: "Contact Name",
+            message: "Who should FavCircles reach about this venue?",
+            placeholder: "Name",
+            initialText: contactName
+        ) { [weak self] value in
+            guard let self = self,
+                  let value = value?.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+            self.saveVenueInfo(contactName: value, contactEmail: nil)
+        }
+    }
+
+    private func editContactEmail() {
+        showTextInput(
+            title: "Contact Email",
+            message: "Monthly reports and printable QR codes are sent here.",
+            placeholder: "you@business.com",
+            initialText: contactEmail,
+            keyboardType: .emailAddress
+        ) { [weak self] value in
+            guard let self = self,
+                  let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !value.isEmpty else { return }
+            self.saveVenueInfo(contactName: nil, contactEmail: value)
+        }
+    }
+
+    private func saveVenueInfo(contactName: String?, contactEmail: String?) {
+        let loading = AlertPresenter.showLoading(message: "Saving...", from: self)
+        RewardsService.shared.updateVenueInfo(
+            venueId: venueId,
+            contactName: contactName,
+            contactEmail: contactEmail
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: true) {
+                    guard let self = self else { return }
+                    switch result {
+                    case .success(let venue):
+                        self.contactName = venue.contactName
+                        self.contactEmail = venue.contactEmail
+                        self.tableView.reloadData()
+                    case .failure(let error):
+                        self.showError(error)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Window QR (free tier)
+
+    private func showWindowQR() {
+        // Fall back to the documented sticker link shape when an older
+        // my-venues payload has no explicit URL
+        let url = windowStickerUrl ?? "https://circles-backend-196924649787.us-central1.run.app/s/\(windowCode)"
+        let qrVC = VenueQRViewController(venueName: venueName, stickerUrl: url)
+        navigationController?.pushViewController(qrVC, animated: true)
+    }
+
     // MARK: - Register QR
 
     private func rotateRegisterCode() {
@@ -533,6 +609,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         switch Section(rawValue: section)! {
         case .dashboard: return nil
+        case .businessInfo: return "Business info"
+        case .windowQR: return "Scan-to-save QR"
         case .earnRate: return "Points per purchase"
         case .offers: return "Offers"
         case .announcements: return "Announcements"
@@ -544,6 +622,10 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
         switch Section(rawValue: section)! {
         case .dashboard:
             return nil
+        case .businessInfo:
+            return "Where FavCircles reaches you about your venue. Monthly reports and printable QR codes go to the contact email."
+        case .windowQR:
+            return "Free for every venue: customers scan this in your window (or from your phone) to save your place and start earning points."
         case .earnRate:
             return "Customers earn these points each time they scan your register card after a purchase (once per day)."
         case .offers:
@@ -558,10 +640,12 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch Section(rawValue: section)! {
         case .dashboard: return 1
+        case .businessInfo: return venuePlaceId != nil ? 3 : 2 // place page + contact name + contact email
+        case .windowQR: return 2 // show QR + email QR codes
         case .earnRate: return 1
         case .offers: return offers.count + 1 // + "Add offer" row
         case .announcements: return announcements.count + 1 // + "Add announcement" row
-        case .registerCode: return 2 // rotate + email
+        case .registerCode: return 1 // rotate
         }
     }
 
@@ -577,6 +661,37 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             config.image = UIImage(systemName: "chart.bar.fill")
             config.imageProperties.tintColor = Constants.Colors.primary
             cell.accessoryType = .disclosureIndicator
+
+        case .businessInfo:
+            let contactRow = indexPath.row - (venuePlaceId != nil ? 1 : 0)
+            if contactRow < 0 {
+                config.text = "Your place page"
+                config.secondaryText = "View and update your public listing"
+                config.image = UIImage(systemName: "storefront")
+            } else if contactRow == 0 {
+                config.text = "Contact name"
+                config.secondaryText = contactName?.isEmpty == false ? contactName : "Add your name"
+                config.image = UIImage(systemName: "person.crop.circle")
+            } else {
+                config.text = "Contact email"
+                config.secondaryText = contactEmail?.isEmpty == false ? contactEmail : "Add an email"
+                config.image = UIImage(systemName: "envelope.badge")
+            }
+            config.imageProperties.tintColor = Constants.Colors.primary
+            cell.accessoryType = .disclosureIndicator
+
+        case .windowQR:
+            if indexPath.row == 0 {
+                config.text = "Show scan-to-save QR"
+                config.secondaryText = "Display or share your window sticker"
+                config.image = UIImage(systemName: "qrcode.viewfinder")
+                cell.accessoryType = .disclosureIndicator
+            } else {
+                config.text = "Email QR codes to me"
+                config.secondaryText = "Printable window + register stickers"
+                config.image = UIImage(systemName: "envelope")
+            }
+            config.imageProperties.tintColor = Constants.Colors.primary
 
         case .earnRate:
             config.text = "\(earnRate) points"
@@ -628,20 +743,14 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             }
 
         case .registerCode:
-            if indexPath.row == 0 {
-                config.text = "Generate new register QR"
-                config.secondaryText = "Current code: \(registerCode)"
-                config.image = UIImage(systemName: "qrcode")
-                config.imageProperties.tintColor = Constants.Colors.primary
-            } else {
-                config.text = "Email QR codes to me"
-                config.image = UIImage(systemName: "envelope")
-                config.imageProperties.tintColor = Constants.Colors.primary
-            }
+            config.text = "Generate new register QR"
+            config.secondaryText = "Current code: \(registerCode)"
+            config.image = UIImage(systemName: "qrcode")
+            config.imageProperties.tintColor = Constants.Colors.primary
         }
 
         // Business-tier tools show a lock for free owners
-        if !ownerPremium && Section(rawValue: indexPath.section)! != .dashboard {
+        if !ownerPremium && !Self.freeSections.contains(Section(rawValue: indexPath.section)!) {
             let lock = UIImageView(image: UIImage(systemName: "lock.fill"))
             lock.tintColor = .systemGray2
             cell.accessoryView = lock
@@ -661,7 +770,7 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
         let section = Section(rawValue: indexPath.section)!
 
         // Free owners get the paywall for any business-tier tool
-        if !ownerPremium && section != .dashboard {
+        if !ownerPremium && !Self.freeSections.contains(section) {
             presentOwnerPaywall()
             return
         }
@@ -684,12 +793,23 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             } else {
                 addAnnouncement()
             }
-        case .registerCode:
+        case .businessInfo:
+            let contactRow = indexPath.row - (venuePlaceId != nil ? 1 : 0)
+            if contactRow < 0 {
+                viewPublicPageTapped()
+            } else if contactRow == 0 {
+                editContactName()
+            } else {
+                editContactEmail()
+            }
+        case .windowQR:
             if indexPath.row == 0 {
-                rotateRegisterCode()
+                showWindowQR()
             } else {
                 emailQR()
             }
+        case .registerCode:
+            rotateRegisterCode()
         }
     }
 }

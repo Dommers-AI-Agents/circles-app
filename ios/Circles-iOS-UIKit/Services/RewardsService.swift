@@ -347,6 +347,26 @@ class RewardsService {
         }
     }
 
+    /// Free owner tier: update the venue's business contact info
+    func updateVenueInfo(venueId: String, contactName: String?, contactEmail: String?, completion: @escaping (Result<AdminVenue, Error>) -> Void) {
+        var body: [String: Any] = [:]
+        if let contactName = contactName { body["contactName"] = contactName }
+        if let contactEmail = contactEmail { body["contactEmail"] = contactEmail }
+        apiService.request(
+            endpoint: "rewards/venues/\(venueId)/info",
+            method: .patch,
+            body: body,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<VenueInfoUpdateData>, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data.venue))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
     func getVenueDashboard(venueId: String, completion: @escaping (Result<VenueDashboardData, Error>) -> Void) {
         apiService.request(
             endpoint: "rewards/venues/\(venueId)/dashboard",
@@ -744,6 +764,9 @@ struct PlaceVenueData: Codable {
     let announcements: [VenueAnnouncement]?
     let balance: Int?
     let isOwner: Bool?
+    // Present only when isOwner: whether the owner has the Business tier
+    // (false drives the in-place "Upgrade to Business" teaser)
+    let ownerPremium: Bool?
     let claim: PlaceVenueClaim?
 }
 
@@ -884,11 +907,18 @@ struct AdminVenueList: Codable {
     let count: Int
 }
 
+struct VenueInfoUpdateData: Codable {
+    let venue: AdminVenue
+}
+
 struct AdminVenue: Codable {
     let venueId: String
     let venueName: String
     let placeAddress: String?
+    let contactName: String?
     let contactEmail: String?
+    // Exact URL encoded in the printed window sticker (for in-app QR display)
+    let windowStickerUrl: String?
     let windowCode: String
     let registerCode: String
     let active: Bool?
