@@ -27,14 +27,36 @@ async function findOrCreateCheckInCircle(userId) {
     const circlesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
       .where('owner', '==', userId)
       .where('isCheckInCircle', '==', true)
-      .limit(1)
       .get();
-    
-    if (!circlesSnapshot.empty) {
-      // Return existing check-in circle
-      return serializeDoc(circlesSnapshot.docs[0]);
+
+    const flagged = circlesSnapshot.docs.find(doc => !doc.data().deletedAt);
+    if (flagged) {
+      return serializeDoc(flagged);
     }
-    
+
+    // Legacy check-in circles were created before createCircle persisted the
+    // isCheckInCircle flag, so the query above can't see them — adopt an
+    // existing "Check-in Places" circle by name instead of creating a duplicate
+    const byNameSnapshot = await db.collection(COLLECTIONS.CIRCLES)
+      .where('owner', '==', userId)
+      .where('name', '==', 'Check-in Places')
+      .get();
+
+    const candidates = byNameSnapshot.docs.filter(doc => !doc.data().deletedAt);
+    if (candidates.length > 0) {
+      // Prefer the copy that already has places, then the oldest
+      candidates.sort((a, b) => {
+        const placesDiff = (b.data().places || []).length - (a.data().places || []).length;
+        if (placesDiff !== 0) return placesDiff;
+        return (a.data().createdAt || '').localeCompare(b.data().createdAt || '');
+      });
+      const keeper = candidates[0];
+      await keeper.ref.update({ isCheckInCircle: true, updatedAt: new Date().toISOString() });
+      const keeperDoc = await keeper.ref.get();
+      console.log(`✅ Adopted legacy Check-in Places circle ${keeper.id} for user ${userId}`);
+      return serializeDoc(keeperDoc);
+    }
+
     // Create new check-in circle
     const checkInCircleData = {
       name: 'Check-in Places',
@@ -368,7 +390,9 @@ exports.createCheckIn = async (req, res) => {
             
             // Update the circle's places array
             await db.collection(COLLECTIONS.CIRCLES).doc(checkInCircle.id).update({
-              places: FieldValue.arrayUnion(finalPlaceId)
+              places: FieldValue.arrayUnion(finalPlaceId),
+              placesCount: FieldValue.increment(1),
+              updatedAt: new Date().toISOString()
             });
             
             // Use the first photo for activity thumbnail
