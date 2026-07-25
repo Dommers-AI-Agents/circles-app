@@ -331,16 +331,18 @@ class ActivityFeedCell: UITableViewCell {
         // Configure timestamp
         timestampLabel.text = activity.timeAgo
         
-        // Configure optional elements - show place image for check-ins, places, video uploads, and photo uploads
-        let shouldShowPlaceImage = (activity.type == .checkIn || 
-                                   activity.type == .placeAdded || 
+        // Configure optional elements - show place image for check-ins, places, video uploads, and photo uploads.
+        // Video/photo moments carry their image as videoThumbnail rather than placePhoto.
+        let thumbnailUrl = activity.metadata?.placePhoto ?? activity.metadata?.videoThumbnail
+        let shouldShowPlaceImage = (activity.type == .checkIn ||
+                                   activity.type == .placeAdded ||
                                    activity.type == .placeLiked ||
                                    activity.type == .videoUploaded ||
-                                   activity.type == .photoUploaded) && 
-                                   activity.metadata?.placePhoto != nil
-        
+                                   activity.type == .photoUploaded) &&
+                                   thumbnailUrl != nil
+
         placeImageView.isHidden = !shouldShowPlaceImage
-        if let placePhoto = activity.metadata?.placePhoto, shouldShowPlaceImage {
+        if let placePhoto = thumbnailUrl, shouldShowPlaceImage {
             // Generate unique load ID for this place image request
             let loadId = UUID().uuidString
             currentPlaceImageLoadId = loadId
@@ -460,8 +462,30 @@ class ActivityFeedCell: UITableViewCell {
 
         timestampLabel.text = first.timeAgo
 
-        // Summary rows carry no per-activity chrome
-        placeImageView.isHidden = true
+        // Summary rows carry no per-activity chrome, but do get a thumbnail:
+        // the first image in the burst stands in for the whole group
+        let groupThumbnail = activities
+            .compactMap { $0.metadata?.placePhoto ?? $0.metadata?.videoThumbnail }
+            .first
+        if let thumbnail = groupThumbnail {
+            placeImageView.isHidden = false
+            let loadId = UUID().uuidString
+            currentPlaceImageLoadId = loadId
+            placeImageView.image = nil
+            ImageService.shared.loadImageWithKey(from: thumbnail, cacheKey: "place_group_\(thumbnail)") { [weak self] image in
+                DispatchQueue.main.async {
+                    guard let self = self, self.currentPlaceImageLoadId == loadId else { return }
+                    if let image = image {
+                        self.placeImageView.image = image
+                    } else {
+                        self.placeImageView.image = UIImage(systemName: "photo")
+                        self.placeImageView.tintColor = Constants.Colors.lightGray
+                    }
+                }
+            }
+        } else {
+            placeImageView.isHidden = true
+        }
         commentLabel.isHidden = true
         interactionButtonsContainer.isHidden = true
         reactionPillsContainer.isHidden = true

@@ -1958,19 +1958,20 @@ exports.addEmbeddedVideo = async (req, res) => {
     const videoRef = await db.collection(COLLECTIONS.PLACE_VIDEOS).add(videoData);
     const videoId = videoRef.id;
     
-    // Create activity
-    await createActivity({
-      type: 'videoUploaded',
-      actorId: userId,
-      objectType: 'video',
-      objectId: videoId,
-      placeId: placeId,
-      placeName: placeName,
-      metadata: {
+    // Create activity (positional args — the object form silently failed and
+    // embedded videos never appeared in the feed)
+    await createActivity(
+      'video_uploaded',
+      userId,
+      'place_video',
+      videoId,
+      placeName,
+      {
         videoTitle: videoData.title,
-        platform: metadata.platform
+        videoThumbnail: videoData.thumbnailUrl || null,
+        placeId: placeId
       }
-    });
+    );
     
     res.json({
       success: true,

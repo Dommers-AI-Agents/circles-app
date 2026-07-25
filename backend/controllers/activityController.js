@@ -505,7 +505,12 @@ exports.createActivity = async (type, actorId, targetType, targetId, targetName,
         placeAddress: metadata.placeAddress || null,
         placeId: metadata.placeId || null,
         message: metadata.message || null,
-        endTime: metadata.endTime || null
+        endTime: metadata.endTime || null,
+        // Video/photo moment activities carry their thumbnail here — the feed
+        // renders it when placePhoto is absent
+        videoTitle: metadata.videoTitle || null,
+        videoThumbnail: metadata.videoThumbnail || null,
+        videoDuration: metadata.videoDuration || null
       },
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
       viewers: [], // Track who has seen this activity
