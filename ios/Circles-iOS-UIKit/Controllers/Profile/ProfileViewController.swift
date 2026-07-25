@@ -2533,11 +2533,15 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         
         // Update button visibility and constraints based on connection status
         if isPending {
-            // Pending connections: Show connect button with appropriate state
+            // Pending connections: Show connect button with appropriate state.
+            // Receivers of a request see Accept only — no Follow shortcut
+            // (accepting auto-follows; following someone you declined is a
+            // separate, deliberate action). Senders keep the follow button,
+            // which reads "Following" since connect implies follow.
             messageButton.isHidden = true
             connectButton.isHidden = false
-            followButton.isHidden = false
-            
+            followButton.isHidden = user.connectionDirection == "incoming"
+
             // Update button based on connection direction
             if let direction = user.connectionDirection {
                 if direction == "outgoing" {

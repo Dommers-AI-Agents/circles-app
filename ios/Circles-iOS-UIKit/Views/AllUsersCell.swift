@@ -330,19 +330,16 @@ class AllUsersCell: UITableViewCell {
             
         case "pending":
             if user.connectionDirection == "incoming" {
-                // Incoming requests: Show Accept, Decline, and Follow buttons
+                // Incoming requests: Accept or Decline only — no Follow
+                // option here. Accepting auto-follows both ways; declining
+                // leaves following as a separate, deliberate action.
                 actionButton.setTitle("Accept", for: .normal)
                 actionButton.backgroundColor = .systemGreen
                 actionButton.setTitleColor(.white, for: .normal)
                 actionButton.isEnabled = true
-                
-                // Configure follow button (can follow even without connection)
-                let isFollowing = user.isFollowing ?? false
-                followButton.setTitle(isFollowing ? "Following" : "Follow", for: .normal)
-                followButton.backgroundColor = isFollowing ? .systemGray5 : .systemBlue
-                followButton.setTitleColor(isFollowing ? .label : .white, for: .normal)
-                followButton.isHidden = false
-                
+
+                followButton.isHidden = true
+
                 removeButton.isHidden = true
                 declineButton.isHidden = false
                 contentView.backgroundColor = Constants.Colors.brightOrange.withAlphaComponent(0.05)
