@@ -58,7 +58,7 @@ class DiscoveryListViewController: BaseViewController {
             } else if currentLocation == nil {
                 return "Getting your location...\n\nMake sure location services are enabled"
             } else {
-                return "No users found nearby\n\nShowing popular users instead"
+                return "No users found near you yet\n\nInvite friends to join Circles, or add your zipcode in your profile"
             }
         case .popular:
             return "No popular users found\n\nCheck back later as more people join"

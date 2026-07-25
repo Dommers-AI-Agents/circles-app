@@ -151,18 +151,19 @@ const POPULAR_PLACES = {
   ]
 };
 
-// Default circles to create for new users
+// Default circles to create for new users — all public so a follow alone
+// lets someone view the places a new user saves into them
 const DEFAULT_CIRCLES = [
   {
     name: "Want to Try",
     description: "Places you're excited to visit soon",
-    privacy: "private",
+    privacy: "public",
     category: "other"
   },
   {
     name: "Favorite Local Spots", 
     description: "Your go-to places in your area",
-    privacy: "myNetwork",
+    privacy: "public",
     category: "food"
   },
   {

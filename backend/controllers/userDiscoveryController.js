@@ -84,9 +84,12 @@ const getDiscoverUsers = async (req, res) => {
     }
     
     // 2. Nearby Users (if location provided)
-    if ((type === 'nearby' || type === 'all') && lat && lng) {
-      const center = [parseFloat(lat), parseFloat(lng)];
-      const radiusInM = radius * 1000;
+    const latNum = lat !== undefined ? parseFloat(lat) : NaN;
+    const lngNum = lng !== undefined ? parseFloat(lng) : NaN;
+    const radiusKm = parseFloat(radius) || 50;
+    if ((type === 'nearby' || type === 'all') && !isNaN(latNum) && !isNaN(lngNum)) {
+      const center = [latNum, lngNum];
+      const radiusInM = radiusKm * 1000;
       const nearbyUserDocs = [];
       
       // First try to get users with geohash (more efficient)
@@ -114,9 +117,9 @@ const getDiscoverUsers = async (req, res) => {
             if (userData.lastKnownLocation) {
               const lat2 = userData.lastKnownLocation.latitude;
               const lng2 = userData.lastKnownLocation.longitude;
-              const distanceInKm = geofire.distanceBetween([lat, lng], [lat2, lng2]);
-              
-              if (distanceInKm <= radius) {
+              const distanceInKm = geofire.distanceBetween(center, [lat2, lng2]);
+
+              if (distanceInKm <= radiusKm) {
                 nearbyUserDocs.push({ doc, distance: distanceInKm });
               }
             }
@@ -136,14 +139,14 @@ const getDiscoverUsers = async (req, res) => {
         
         for (const doc of allUsersQuery.docs) {
           if (doc.id === userId || connectedUserIds.has(doc.id)) continue;
-          
+
           const userData = doc.data();
           if (userData.lastKnownLocation) {
             const lat2 = userData.lastKnownLocation.latitude;
             const lng2 = userData.lastKnownLocation.longitude;
-            const distanceInKm = geofire.distanceBetween([parseFloat(lat), parseFloat(lng)], [lat2, lng2]);
-            
-            if (distanceInKm <= radius) {
+            const distanceInKm = geofire.distanceBetween(center, [lat2, lng2]);
+
+            if (distanceInKm <= radiusKm) {
               nearbyUserDocs.push({ doc, distance: distanceInKm });
             }
           }
@@ -171,32 +174,45 @@ const getDiscoverUsers = async (req, res) => {
         }
       }
       
-      // If still no nearby users, just show some popular users as fallback
-      if (discoveryUsers.filter(u => u.discoveryType === 'nearby').length === 0 && type === 'nearby') {
-        console.log('📍 No nearby users found, showing popular users as fallback');
-        const popularUsersQuery = await db.collection(COLLECTIONS.USERS)
-          .orderBy('followersCount', 'desc')
-          .limit(10)
+    }
+
+    // 2b. Same-area users by zipcode (3-digit prefix ≈ same metro area).
+    // Most users never share GPS location, so this is the tier that usually
+    // fills Nearby. No geocoding available in this project — prefix matching
+    // stands in for zip-to-distance. NOTE: no popular-users fallback here;
+    // far-away users must never be presented under Nearby.
+    if (type === 'nearby' || type === 'all') {
+      const requesterZip = String(req.query.zipcode || currentUserData.zipcode || '').trim();
+      if (/^\d{5}/.test(requesterZip)) {
+        const zipPrefix = requesterZip.slice(0, 3);
+        const alreadyIncluded = new Set(discoveryUsers.map(u => u.id));
+        const zipUsersQuery = await db.collection(COLLECTIONS.USERS)
+          .orderBy('zipcode')
+          .startAt(zipPrefix)
+          .endAt(zipPrefix + '\uf8ff')
+          .limit(50)
           .get();
-        
-        for (const doc of popularUsersQuery.docs) {
-          if (doc.id === userId || connectedUserIds.has(doc.id)) continue;
-          
+
+        for (const doc of zipUsersQuery.docs) {
+          if (doc.id === userId || connectedUserIds.has(doc.id) || alreadyIncluded.has(doc.id)) continue;
+
           const userData = doc.data();
           const { placesCount, circlesCount } = await calculateUserPlaceCounts(doc.id);
-          
-          if (placesCount >= 5) {
+
+          if (placesCount > 0) {
             discoveryUsers.push({
               id: doc.id,
               ...userData,
               placesCount,
               circlesCount,
-              discoveryType: 'popular', // Mark as popular since they're not actually nearby
+              discoveryType: 'nearby',
               isFollowing: userFollowing.has(doc.id),
-              connectionStatus: connectedUserIds.has(doc.id) ? 'accepted' : 'none'
+              connectionStatus: 'none'
             });
           }
         }
+      } else if (type === 'nearby') {
+        console.log(`📍 Requester has no usable zipcode ("${requesterZip}") — zip tier skipped`);
       }
     }
     

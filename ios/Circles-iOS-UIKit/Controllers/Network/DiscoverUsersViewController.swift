@@ -314,7 +314,7 @@ class DiscoverUsersViewController: BaseViewController {
                 } else if currentLocation == nil {
                     message = "Getting your location...\n\nMake sure location services are enabled"
                 } else {
-                    message = "No users found nearby\n\nShowing popular users instead"
+                    message = "No users found near you yet\n\nInvite friends to join Circles, or add your zipcode in your profile"
                 }
             case .popular:
                 message = "No popular users found\n\nCheck back later as more people join"
