@@ -13,10 +13,13 @@ This comprehensive guide contains essential context, architecture details, and i
 4. **ALWAYS use `User.copy()`** - Never create User objects with all properties
 5. **FOLLOW established patterns** - Check existing refactored controllers for examples
 
-### **74% CODE REDUCTION ACHIEVED**
-- **Original**: ~29,300 lines → **Current**: ~7,562 lines
-- **Utilities Created**: BaseViewController, AlertPresenter, UIButton+Factory, User+Copy
-- **All 49 ViewControllers** have been refactored to use these utilities
+### **SHARED UTILITIES (adopt these in all new code)**
+- **Utilities available**: BaseViewController, AlertPresenter, UIButton+Factory, User+Copy
+- **Reality check (2026-07)**: these utilities exist and are the standard for new
+  work, but adoption across the ~124k-line iOS codebase is partial — there are
+  still ~46 files using `UIAlertController` directly and ~186 manual
+  `UIButton(type:)` sites being migrated. Use the utilities in anything you touch;
+  don't assume every existing controller already does.
 
 ## Table of Contents
 1. [Project Overview](#project-overview)
@@ -85,31 +88,24 @@ The app follows a client-server architecture:
 
 ### **Utility Framework Overview**
 
-The app now uses a mandatory utility framework that reduces code by 74%:
+The app provides a set of shared utilities that new code should use:
 
 1. **BaseViewController** (`Controllers/Base/BaseViewController.swift`)
 2. **AlertPresenter** (`Utilities/AlertPresenter.swift`)
 3. **UIButton+Factory** (`Extensions/UIButton+Factory.swift`)
 4. **User+Copy** (`Extensions/User+Copy.swift`)
 
-### **Project Statistics Post-Refactoring**
-- **Total ViewControllers Refactored**: 49
-- **Original Codebase**: ~29,300 lines
-- **Current Codebase**: ~7,562 lines
-- **Code Reduction**: 74% (21,738 lines eliminated)
-- **Utilities Added**: 4 files (1,162 lines total)
-- **Net Reduction**: 21,738 lines
-
-### **Refactoring Impact by Category**
-| Category | Original Lines | Final Lines | Reduction |
-|----------|---------------|-------------|-----------|
-| Authentication | ~950 | ~580 | 39% |
-| Circles | ~8,050 | ~3,280 | 59% |
-| Places | ~4,500 | ~2,700 | 40% |
-| Network | ~5,200 | ~3,100 | 40% |
-| Messages | ~1,600 | ~1,200 | 25% |
-| Profile | ~4,900 | ~2,500 | 49% |
-| Other | ~2,544 | ~2,325 | 9% |
+### **Current State (2026-07, honest)**
+- **iOS codebase**: ~124k lines of Swift across ~271 files.
+- The four utilities above are the **standard for new work**, but adoption is
+  **partial** — earlier "74% reduction / all 49 controllers refactored / 7,562
+  lines" claims in this doc were aspirational and inaccurate; they've been removed.
+- Some very large controllers are being broken up (Wave 4): the home, add-place,
+  and profile controllers were each split from ~5–9k-line single files into a
+  smaller core plus focused sibling files (`+Map`, `+Search`, `+TableView`, etc.).
+- Known cleanup still in progress: ~46 files use `UIAlertController` directly
+  (should use `AlertPresenter`) and ~186 `UIButton(type:)` sites (should use the
+  factory). Don't assume an existing controller already follows the patterns.
 
 ## Mandatory Development Patterns
 
@@ -292,7 +288,7 @@ user.withFollowerCounts(followers: 100, following: 50)
 - **Language**: Swift 5
 - **UI Framework**: UIKit (NOT SwiftUI)
 - **Architecture**: BaseViewController pattern with Service/Manager layers
-- **Code Reuse**: Mandatory utility patterns (74% reduction achieved)
+- **Code Reuse**: Shared utility patterns (BaseViewController, AlertPresenter, factories) — standard for new code, adoption partial
 - **Networking**: URLSession with custom APIService
 - **Image Loading**: Custom ImageService with caching
 - **Authentication**: Firebase SDK + custom AuthService
@@ -556,11 +552,11 @@ Moments (formerly called "Reels") is a multimedia content sharing feature that a
 
 ### **Code Quality Standards Post-Refactoring**
 
-- **Consistency**: All controllers follow BaseViewController pattern
+- **Consistency**: BaseViewController is the pattern for new controllers (not yet universal)
 - **Maintainability**: Utilities handle common functionality
 - **Readability**: Factory methods make intent clear
 - **Testability**: Standardized interfaces for testing
-- **Performance**: 74% less code to compile and maintain
+- **Performance**: shared utilities reduce per-controller boilerplate
 
 ### **Before Adding New Features**
 
@@ -570,13 +566,13 @@ Moments (formerly called "Reels") is a multimedia content sharing feature that a
 4. Use User.copy() for any user object updates
 5. Follow patterns in existing refactored controllers
 
-### **Refactoring Achievement Summary (January 2025)**
+### **Refactoring Status (2026-07)**
 
-- ✅ **49 ViewControllers refactored** to use BaseViewController pattern
-- ✅ **74% code reduction** achieved (29,300 → 7,562 lines)
-- ✅ **4 utility frameworks** created and implemented
-- ✅ **Consistent patterns** established across entire app
-- ✅ **Development velocity** significantly improved
-- ✅ **Maintainability** dramatically enhanced
-
-**The Circles app is now a model of efficient, maintainable iOS development.**
+- ✅ **4 shared utilities** created (BaseViewController, AlertPresenter, UIButton
+  factory, User.copy) — use them in all new code.
+- 🚧 **Adoption is partial** — ~46 files still use `UIAlertController` directly and
+  ~186 `UIButton(type:)` sites remain; migration is ongoing.
+- 🚧 **God-object breakup in progress** — home/add-place/profile controllers split
+  into a core + focused sibling files; `firebasePlaceController.js` still to do.
+- ⚠️ The earlier "74% reduction / 7,562 lines / all 49 refactored" claims were
+  inaccurate and have been corrected throughout this doc.
