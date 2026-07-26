@@ -2945,11 +2945,25 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Reload table
         activityTableView.reloadData()
-        
+
         // Table view now handles its own scrolling with fixed height
         view.layoutIfNeeded()
+
+        // Grouping can collapse an entire fetched page into a single row (e.g.
+        // one actor bulk-adding many places), leaving too few rows to scroll —
+        // so the scroll-triggered load-more never fires and the rest of the
+        // history never loads. Auto-load the next page until there's enough to
+        // fill the viewport (capped so a huge single-actor import can't loop).
+        if contentSegmentedControl.selectedSegmentIndex == 0,
+           feedItems.count < 8,
+           hasMoreActivities,
+           !isLoadingActivities,
+           !isLoadingMoreActivities,
+           activities.count < 300 {
+            fetchActivities(loadMore: true)
+        }
     }
-    
+
     // MARK: - Reels Methods
     func fetchReels(loadMore: Bool = false, completion: ((Bool) -> Void)? = nil) {
         guard !isLoadingReels && !isLoadingMoreReels else {
