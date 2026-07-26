@@ -98,58 +98,41 @@ exports.getNetworkActivities = async (req, res, next) => {
     
     console.log(`🔍 Fetching activities for ${userIds.length} users (connections + following + self)`);
     
-    // Handle Firestore IN query limitation (max 30 values)
-    let allActivities = [];
-    
-    if (userIds.length <= 30) {
-      // Single query for <= 30 users
-      let activitiesQuery = db.collection(COLLECTIONS.ACTIVITIES)
-        .where('actorId', 'in', userIds)
+    // Only ever need the newest (offset + limit) activities. Cap every query
+    // with .limit(fetchCap) so a user following hundreds of actors doesn't
+    // pull the entire activities collection just to render one page.
+    const startIndex = parseInt(offset) || 0;
+    const limitCount = parseInt(limit) || 20;
+    const fetchCap = startIndex + limitCount;
+    const sinceDate = since ? new Date(since) : null;
+
+    const buildActivityQuery = (actorBatch) => {
+      let q = db.collection(COLLECTIONS.ACTIVITIES)
+        .where('actorId', 'in', actorBatch)
         .orderBy('timestamp', 'desc');
-      
-      // Add date filter if provided
-      if (since) {
-        const sinceDate = new Date(since);
-        activitiesQuery = activitiesQuery.where('timestamp', '>=', sinceDate);
-      }
-      
-      const activitiesSnapshot = await activitiesQuery.get();
+      if (sinceDate) q = q.where('timestamp', '>=', sinceDate);
+      return q.limit(fetchCap);
+    };
+
+    // Handle Firestore IN query limitation (max 30 values per query)
+    let allActivities = [];
+    if (userIds.length <= 30) {
+      const activitiesSnapshot = await buildActivityQuery(userIds).get();
       allActivities = serializeQuerySnapshot(activitiesSnapshot);
     } else {
-      // Batch queries for > 30 users
-      console.log(`⚠️ User has ${userIds.length} connections, batching IN queries`);
-      
       const userBatches = [];
       for (let i = 0; i < userIds.length; i += 30) {
         userBatches.push(userIds.slice(i, i + 30));
       }
-      
-      const batchPromises = userBatches.map(async (batch) => {
-        let query = db.collection(COLLECTIONS.ACTIVITIES)
-          .where('actorId', 'in', batch)
-          .orderBy('timestamp', 'desc');
-        
-        // Add date filter if provided
-        if (since) {
-          const sinceDate = new Date(since);
-          query = query.where('timestamp', '>=', sinceDate);
-        }
-        
-        const snapshot = await query.get();
-        return serializeQuerySnapshot(snapshot);
-      });
-      
-      const batchResults = await Promise.all(batchPromises);
-      
-      // Merge and sort all results
+      const batchResults = await Promise.all(
+        userBatches.map(batch => buildActivityQuery(batch).get().then(serializeQuerySnapshot))
+      );
       allActivities = batchResults
         .flat()
         .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     }
-    
+
     // Apply limit and offset after merging (for batched queries)
-    const startIndex = parseInt(offset) || 0;
-    const limitCount = parseInt(limit) || 20;
     const activities = allActivities.slice(startIndex, startIndex + limitCount);
     
     // Found activities
@@ -243,42 +226,47 @@ exports.getNetworkActivities = async (req, res, next) => {
     const activityIds = activities.map(a => a._id || a.id).filter(Boolean);
     console.log('🚀 Batch fetching reactions for', activityIds.length, 'activities');
     
-    // Fetch user's reactions for these activities (batch by 10 for Firebase limit)
+    // Both reaction passes (the caller's own reactions + full summaries) run
+    // as one parallel batch instead of two sequential per-chunk loops.
     const userReactionsMap = new Map();
-    
+    const reactionSummariesMap = new Map();
+
+    const reactionBatches = [];
     for (let i = 0; i < activityIds.length; i += 10) {
       const batch = activityIds.slice(i, i + 10);
-      if (batch.length > 0) {
-        const userReactionsQuery = await db.collection(COLLECTIONS.ACTIVITY_REACTIONS)
+      if (batch.length > 0) reactionBatches.push(batch);
+    }
+
+    const [userReactionResults, summaryResults] = await Promise.all([
+      Promise.all(reactionBatches.map(batch =>
+        db.collection(COLLECTIONS.ACTIVITY_REACTIONS)
           .where('activityId', 'in', batch)
           .where('userId', '==', userId)
-          .get();
-        
-        userReactionsQuery.docs.forEach(doc => {
-          const reaction = doc.data();
-          userReactionsMap.set(reaction.activityId, reaction.emoji);
-        });
-      }
-    }
-    
-    // Fetch reaction summaries for all activities
-    const reactionSummariesMap = new Map();
-    
-    // We need to fetch all reactions for these activities to get counts
-    for (let i = 0; i < activityIds.length; i += 10) {
-      const batch = activityIds.slice(i, i + 10);
-      const reactionsQuery = await db.collection(COLLECTIONS.ACTIVITY_REACTIONS)
-        .where('activityId', 'in', batch)
-        .get();
-      
-      reactionsQuery.docs.forEach(doc => {
+          .get()
+      )),
+      Promise.all(reactionBatches.map(batch =>
+        db.collection(COLLECTIONS.ACTIVITY_REACTIONS)
+          .where('activityId', 'in', batch)
+          .get()
+      ))
+    ]);
+
+    userReactionResults.forEach(snapshot => {
+      snapshot.docs.forEach(doc => {
+        const reaction = doc.data();
+        userReactionsMap.set(reaction.activityId, reaction.emoji);
+      });
+    });
+
+    summaryResults.forEach(snapshot => {
+      snapshot.docs.forEach(doc => {
         const reaction = doc.data();
         const activityId = reaction.activityId;
-        
+
         if (!reactionSummariesMap.has(activityId)) {
           reactionSummariesMap.set(activityId, new Map());
         }
-        
+
         const activityReactions = reactionSummariesMap.get(activityId);
         if (!activityReactions.has(reaction.emoji)) {
           activityReactions.set(reaction.emoji, {
@@ -287,7 +275,7 @@ exports.getNetworkActivities = async (req, res, next) => {
             users: []
           });
         }
-        
+
         const reactionSummary = activityReactions.get(reaction.emoji);
         reactionSummary.count++;
         if (reactionSummary.users.length < 3) { // Only keep first 3 users for display
@@ -298,7 +286,7 @@ exports.getNetworkActivities = async (req, res, next) => {
           });
         }
       });
-    }
+    });
     
     // Process activities with cached data
     const enrichedActivities = activities.map(activity => {

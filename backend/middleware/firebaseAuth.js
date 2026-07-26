@@ -23,26 +23,33 @@ const stampLastActive = (userId) => {
     .catch((error) => console.error('⚠️ lastActive stamp failed:', error.message));
 };
 
+// Short-TTL per-instance cache of resolved user identity, so read traffic
+// doesn't pay a Firestore read to rehydrate req.user on every request. Only
+// served for GET: any mutating request reads fresh (and refreshes the cache),
+// so a write never acts on — or returns — stale user state.
+const USER_CACHE_TTL_MS = 20 * 1000;
+const userCache = new Map(); // decoded.uid -> { userData, finalUserId, expires }
+
+const buildReqUser = (decoded, userData, finalUserId) => ({
+  uid: finalUserId,
+  firebaseDocId: finalUserId,
+  originalUid: decoded.uid,
+  email: decoded.email || userData.email,
+  ...userData
+});
+
 // Protect routes - require valid JWT token
 exports.protect = async (req, res, next) => {
-  console.log('🔐 AUTH MIDDLEWARE: protect function called');
-  console.log('🔐 AUTH MIDDLEWARE: Request path:', req.path);
-  console.log('🔐 AUTH MIDDLEWARE: Request method:', req.method);
-  // Auth middleware processing
-  
   try {
     let token;
 
     // Get token from header
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
       token = req.headers.authorization.split(' ')[1];
-      console.log('🔐 AUTH MIDDLEWARE: Token found in Authorization header');
-      console.log('🔐 AUTH MIDDLEWARE: Token length:', token.length);
     }
 
     // Make sure token exists
     if (!token) {
-      console.log('❌ AUTH MIDDLEWARE: No token found in request');
       return res.status(401).json({
         success: false,
         message: 'Not authorized to access this route'
@@ -50,57 +57,52 @@ exports.protect = async (req, res, next) => {
     }
 
     try {
-      console.log('🔐 AUTH MIDDLEWARE: Verifying JWT token...');
       // Verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      console.log('✅ AUTH MIDDLEWARE: Token verified successfully');
-      // Token decoded successfully
 
       // Normalize the user ID using our centralized service
       const normalizedUid = normalizeUserId(decoded.uid);
       logNormalization('Auth Middleware', decoded.uid, normalizedUid);
 
-      console.log('🔐 AUTH MIDDLEWARE: Looking up user in database...');
+      // Fast path: serve cached identity for read-only requests
+      if (req.method === 'GET') {
+        const cached = userCache.get(decoded.uid);
+        if (cached && cached.expires > Date.now()) {
+          req.user = buildReqUser(decoded, cached.userData, cached.finalUserId);
+          stampLastActive(cached.finalUserId);
+          return next();
+        }
+      }
+
       // Get user from Firestore - try normalized ID first
       let userDoc = null;
       let actualUserId = null;
-      
-      // Try with normalized ID
-      console.log('🔐 AUTH MIDDLEWARE: Trying normalized ID:', normalizedUid);
+
       userDoc = await db.collection(COLLECTIONS.USERS).doc(normalizedUid).get();
-      
+
       if (userDoc.exists) {
         actualUserId = normalizedUid;
-        console.log('✅ AUTH MIDDLEWARE: User found with normalized ID');
       } else if (normalizedUid !== decoded.uid) {
-        console.log('⚠️ AUTH MIDDLEWARE: User not found with normalized ID, trying original:', decoded.uid);
         // If not found with normalized ID and original was different, try original
         const originalDoc = await db.collection(COLLECTIONS.USERS).doc(decoded.uid).get();
-        
         if (originalDoc.exists) {
           userDoc = originalDoc;
           actualUserId = decoded.uid;
           console.log(`⚠️ AUTH MIDDLEWARE: User found with complex ID ${decoded.uid}, migration needed`);
         }
       }
-      
+
       // If still not found, try to find by email if available
       if (!userDoc || !userDoc.exists) {
-        console.log('⚠️ AUTH MIDDLEWARE: User not found by ID, trying email lookup');
         if (decoded.email) {
           const normalizedEmail = decoded.email.toLowerCase().trim();
-          console.log('🔐 AUTH MIDDLEWARE: Looking for user with email:', normalizedEmail);
           const usersWithEmail = await db.collection(COLLECTIONS.USERS)
             .where('email', '==', normalizedEmail)
             .limit(1)
             .get();
-          
           if (!usersWithEmail.empty) {
             userDoc = usersWithEmail.docs[0];
             actualUserId = userDoc.id;
-            console.log(`✅ AUTH MIDDLEWARE: Found user by email ${normalizedEmail}, ID: ${actualUserId}`);
-          } else {
-            console.log('❌ AUTH MIDDLEWARE: No user found with email:', normalizedEmail);
           }
         }
       }
@@ -116,23 +118,9 @@ exports.protect = async (req, res, next) => {
       // Add user to request object with normalized ID
       const userData = serializeDoc(userDoc);
       const finalUserId = normalizeUserId(actualUserId); // Ensure we always use normalized ID
-      
-      req.user = {
-        uid: finalUserId, // Always use normalized ID
-        firebaseDocId: finalUserId, // Keep for backwards compatibility
-        originalUid: decoded.uid, // Keep the original ID from token
-        email: decoded.email || userData.email,
-        ...userData
-      };
-      
-      console.log('🔍 Auth middleware - User authenticated:', {
-        uid: req.user.uid,
-        originalUid: req.user.originalUid,
-        email: req.user.email,
-        normalized: finalUserId !== decoded.uid
-      });
 
-      console.log('✅ AUTH MIDDLEWARE: User authenticated successfully, proceeding to next middleware');
+      userCache.set(decoded.uid, { userData, finalUserId, expires: Date.now() + USER_CACHE_TTL_MS });
+      req.user = buildReqUser(decoded, userData, finalUserId);
       stampLastActive(finalUserId);
       next();
     } catch (error) {

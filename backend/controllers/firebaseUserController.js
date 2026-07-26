@@ -634,89 +634,67 @@ exports.removeFriend = async (req, res, next) => {
 // @desc    Search users by email, name, or phone
 // @route   GET /api/users/search
 // @access  Private
+// Fetch the caller's connections ONCE and index them by the other
+// participant's normalized id → { status, direction, connectionId }. Replaces
+// the per-candidate pair of connection queries that made user search O(N)
+// sequential reads. Outgoing wins over incoming (matches the old precedence).
+const buildConnectionMap = async (currentUserId) => {
+  const [outgoing, incoming] = await Promise.all([
+    db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', currentUserId).get(),
+    db.collection(COLLECTIONS.CONNECTIONS).where('connectedUserId', '==', currentUserId).get()
+  ]);
+  const map = new Map();
+  outgoing.docs.forEach((doc) => {
+    const d = doc.data();
+    map.set(normalizeUserId(d.connectedUserId), {
+      status: d.status,
+      direction: d.status === 'pending' ? 'outgoing' : null,
+      connectionId: doc.id
+    });
+  });
+  incoming.docs.forEach((doc) => {
+    const d = doc.data();
+    const other = normalizeUserId(d.userId);
+    if (!map.has(other)) {
+      map.set(other, {
+        status: d.status,
+        direction: d.status === 'pending' ? 'incoming' : null,
+        connectionId: doc.id
+      });
+    }
+  });
+  return map;
+};
+
 exports.searchUsers = async (req, res, next) => {
   try {
     const { query } = req.query;
     const currentUserId = req.user.uid; // Already normalized by middleware
-    
-    console.log(`🔍 searchUsers - currentUserId: ${currentUserId}, query: '${query}'`);
-    
+
     // If no query provided, return all users sorted alphabetically
     if (!query || query.trim().length === 0) {
-      const usersSnapshot = await db.collection(COLLECTIONS.USERS).get();
-      
-      const allUsers = [];
-      console.log(`Found ${usersSnapshot.size} total users in database`);
-      
-      // Get all connections for current user
-      const connectionQueries = await Promise.all([
-        db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', currentUserId).get(),
-        db.collection(COLLECTIONS.CONNECTIONS).where('connectedUserId', '==', currentUserId).get()
+      const [usersSnapshot, connectionMap, currentUserDoc] = await Promise.all([
+        db.collection(COLLECTIONS.USERS).get(),
+        buildConnectionMap(currentUserId),
+        db.collection(COLLECTIONS.USERS).doc(currentUserId).get()
       ]);
-      
-      const allConnections = new Set();
-      connectionQueries.forEach(query => {
-        query.docs.forEach(doc => allConnections.add(doc.id));
-      });
-      
-      console.log(`Current user ${currentUserId} has ${allConnections.size} total connections`);
-      
-      // Log a sample connection for debugging
-      if (allConnections.size > 0) {
-        const firstConnDoc = connectionQueries.find(q => q.size > 0)?.docs[0];
-        if (firstConnDoc) {
-          console.log('Sample connection:', firstConnDoc.data());
-        }
-      }
-      
-      // Get current user's following list to check isFollowing for each user
-      const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(currentUserId).get();
-      const currentUserData = currentUserDoc.exists ? currentUserDoc.data() : {};
-      const following = currentUserData.following || [];
-      
+
+      const allUsers = [];
+      const following = (currentUserDoc.exists ? currentUserDoc.data() : {}).following || [];
+
       for (const doc of usersSnapshot.docs) {
         const user = serializeDoc(doc);
-        
+
         // Skip current user - use isSameUser to handle all ID formats
-        if (isSameUser(user.id, currentUserId)) {
-          console.log(`Skipping current user: ${user.id}`);
-          continue;
-        }
-        
-        
-        // Check connection status using normalized IDs
+        if (isSameUser(user.id, currentUserId)) continue;
+
         const targetUserId = normalizeUserId(user.id);
-        
-        // Check both directions for connection
-        const connectionChecks = await Promise.all([
-          db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', currentUserId).where('connectedUserId', '==', targetUserId).get(),
-          db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', targetUserId).where('connectedUserId', '==', currentUserId).get()
-        ]);
-        
-        let connectionStatus = 'none';
-        let connectionDirection = null; // 'incoming' or 'outgoing' for pending requests
-        let connectionId = null;
-        
-        for (let i = 0; i < connectionChecks.length; i++) {
-          const query = connectionChecks[i];
-          if (!query.empty) {
-            const connectionData = query.docs[0].data();
-            connectionStatus = connectionData.status;
-            connectionId = query.docs[0].id;
-            
-            // Determine direction for pending connections
-            if (connectionStatus === 'pending') {
-              // i === 0: current user is userId (outgoing request)
-              // i === 1: current user is connectedUserId (incoming request)
-              connectionDirection = i === 0 ? 'outgoing' : 'incoming';
-            }
-            break;
-          }
-        }
-        
-        // Check if current user is following this user
+        const conn = connectionMap.get(targetUserId) || {};
+        const connectionStatus = conn.status || 'none';
+        const connectionDirection = conn.direction || null;
+        const connectionId = conn.connectionId || null;
         const isFollowing = following.includes(targetUserId);
-        
+
         allUsers.push({
           _id: normalizeUserId(user.id), // Always return normalized ID
           displayName: user.displayName,
@@ -748,18 +726,18 @@ exports.searchUsers = async (req, res, next) => {
     }
 
     const searchTerm = query.trim().toLowerCase();
-    
-    // Search users by email, name, or phone
-    const usersSnapshot = await db.collection(COLLECTIONS.USERS).get();
-    
-    // Normalize the current user ID for consistent comparisons
+
+    // Search users by email, name, or phone. Fetch the user collection, the
+    // caller's connection map, and their following list together (one batch).
+    const [usersSnapshot, connectionMap, currentUserDoc] = await Promise.all([
+      db.collection(COLLECTIONS.USERS).get(),
+      buildConnectionMap(currentUserId),
+      db.collection(COLLECTIONS.USERS).doc(currentUserId).get()
+    ]);
+
     const simpleUserId = normalizeUserId(currentUserId);
-    
-    // Get current user's following list to check isFollowing for each user
-    const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(currentUserId).get();
-    const currentUserData = currentUserDoc.exists ? currentUserDoc.data() : {};
-    const following = currentUserData.following || [];
-    
+    const following = (currentUserDoc.exists ? currentUserDoc.data() : {}).following || [];
+
     const matchingUsers = [];
     for (const doc of usersSnapshot.docs) {
       const user = serializeDoc(doc);
@@ -796,39 +774,13 @@ exports.searchUsers = async (req, res, next) => {
       const wordMatch = displayNameWords.some(word => word.startsWith(searchTerm));
       
       if (emailMatch || displayNameMatch || firstNameMatch || lastNameMatch || phoneMatch || wordMatch) {
-        // Check connection status using normalized IDs
         const targetUserId = normalizeUserId(user.id);
-        
-        // Check both directions for connection
-        const connectionChecks = await Promise.all([
-          db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', currentUserId).where('connectedUserId', '==', targetUserId).get(),
-          db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', targetUserId).where('connectedUserId', '==', currentUserId).get()
-        ]);
-        
-        let connectionStatus = 'none';
-        let connectionDirection = null; // 'incoming' or 'outgoing' for pending requests
-        let connectionId = null;
-        
-        for (let i = 0; i < connectionChecks.length; i++) {
-          const query = connectionChecks[i];
-          if (!query.empty) {
-            const connectionData = query.docs[0].data();
-            connectionStatus = connectionData.status;
-            connectionId = query.docs[0].id;
-            
-            // Determine direction for pending connections
-            if (connectionStatus === 'pending') {
-              // i === 0: current user is userId (outgoing request)
-              // i === 1: current user is connectedUserId (incoming request)
-              connectionDirection = i === 0 ? 'outgoing' : 'incoming';
-            }
-            break;
-          }
-        }
-        
-        // Check if current user is following this user
+        const conn = connectionMap.get(targetUserId) || {};
+        const connectionStatus = conn.status || 'none';
+        const connectionDirection = conn.direction || null;
+        const connectionId = conn.connectionId || null;
         const isFollowing = following.includes(targetUserId);
-        
+
         matchingUsers.push({
           _id: normalizeUserId(user.id), // Always return normalized ID
           displayName: user.displayName,
