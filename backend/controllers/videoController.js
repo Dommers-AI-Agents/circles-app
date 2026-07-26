@@ -1254,7 +1254,7 @@ exports.getReelsFeed = async (req, res) => {
     res.json({
       success: true,
       data: videosWithUsers,
-      hasMore: shuffledVideos.length > parseInt(offset) + parseInt(limit)
+      hasMore: videos.length > parseInt(offset) + parseInt(limit)
     });
   } catch (error) {
     console.error('Error getting reels feed:', error);
