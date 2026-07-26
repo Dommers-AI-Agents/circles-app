@@ -3492,12 +3492,39 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
 
     private func toggleActivityGroup(withKey key: String) {
-        if expandedGroupKeys.contains(key) {
-            expandedGroupKeys.remove(key)
-        } else {
+        let expanding = !expandedGroupKeys.contains(key)
+        if expanding {
             expandedGroupKeys.insert(key)
+        } else {
+            expandedGroupKeys.remove(key)
         }
-        updateActivityFeed()
+
+        // Animate the member rows in/out under their header so it's obvious
+        // what the tap revealed (vs. the untouched rows below the group)
+        let itemsBefore = feedItems
+        regroupActivities()
+        func headerIndex(in items: [ActivityFeedItem]) -> Int? {
+            return items.firstIndex {
+                if case .group(let g) = $0 { return g.first?.id == key }
+                return false
+            }
+        }
+        guard let header = headerIndex(in: feedItems),
+              headerIndex(in: itemsBefore) == header,
+              case .group(let group) = feedItems[header] else {
+            activityTableView.reloadData()
+            return
+        }
+        let childPaths = (1...group.count).map { IndexPath(row: header + $0, section: 0) }
+        activityTableView.performBatchUpdates {
+            if expanding {
+                activityTableView.insertRows(at: childPaths, with: .fade)
+            } else {
+                activityTableView.deleteRows(at: childPaths, with: .fade)
+            }
+        }
+        // Refresh the header's "Show all / Show less" state
+        activityTableView.reloadRows(at: [IndexPath(row: header, section: 0)], with: .none)
     }
 
     private func updateActivityFeed() {
