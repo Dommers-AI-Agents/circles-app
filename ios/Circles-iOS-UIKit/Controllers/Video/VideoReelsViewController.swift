@@ -622,7 +622,30 @@ extension VideoReelsViewController: VideoReelCellDelegate {
             }
         }
     }
-    
+
+    func videoReelCellDidTapMoreOptions(_ cell: VideoReelCell) {
+        guard let indexPath = collectionView.indexPath(for: cell) else { return }
+        let reel = reels[indexPath.item]
+        pauseAllVideos()
+        presentMomentOwnerMenu(
+            for: reel,
+            sourceView: cell,
+            onPrivacyChanged: { [weak self] newVisibility in
+                guard let self = self, let idx = self.reels.firstIndex(where: { $0.id == reel.id }) else { return }
+                self.reels[idx].visibility = newVisibility
+            },
+            onDeleted: { [weak self] in
+                guard let self = self, let idx = self.reels.firstIndex(where: { $0.id == reel.id }) else { return }
+                self.reels.remove(at: idx)
+                if self.reels.isEmpty {
+                    self.dismiss(animated: true)
+                } else {
+                    self.collectionView.reloadData()
+                }
+            }
+        )
+    }
+
     private func fetchActivityAndShowEngagement(videoId: String) {
         let endpoint = "videos/\(videoId)/activity"
         

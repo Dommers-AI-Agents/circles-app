@@ -10,6 +10,8 @@ protocol VideoReelCellDelegate: AnyObject {
     func videoReelCellDidTapReaction(_ cell: VideoReelCell)
     func videoReelCellDidTapActivityEngagement(_ cell: VideoReelCell)
     func videoReelCellDidTapLikeCount(_ cell: VideoReelCell)
+    /// Owner-only "..." menu (delete / change privacy)
+    func videoReelCellDidTapMoreOptions(_ cell: VideoReelCell)
 }
 
 class VideoReelCell: UICollectionViewCell {
@@ -180,6 +182,18 @@ class VideoReelCell: UICollectionViewCell {
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
+
+    // Owner-only "..." menu (delete / change privacy). Shown only on your own moment.
+    private let moreButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "ellipsis.circle.fill"), for: .normal)
+        button.tintColor = .white
+        button.backgroundColor = UIColor.black.withAlphaComponent(0.3)
+        button.layer.cornerRadius = 20
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isHidden = true
+        return button
+    }()
     
     private let watchOnPlatformButton: UIButton = {
         let button = UIButton(type: .system)
@@ -243,6 +257,7 @@ class VideoReelCell: UICollectionViewCell {
         videoContainerView.addSubview(reactionCountLabel)
         videoContainerView.addSubview(reactionSummaryView)
         videoContainerView.addSubview(soundButton)
+        videoContainerView.addSubview(moreButton)
         videoContainerView.addSubview(watchOnPlatformButton)
         videoContainerView.addSubview(playPauseButton)
         
@@ -323,7 +338,13 @@ class VideoReelCell: UICollectionViewCell {
             soundButton.trailingAnchor.constraint(equalTo: videoContainerView.trailingAnchor, constant: -16),
             soundButton.widthAnchor.constraint(equalToConstant: 40),
             soundButton.heightAnchor.constraint(equalToConstant: 40),
-            
+
+            // More/options button (owner only) — just left of the sound button
+            moreButton.centerYAnchor.constraint(equalTo: soundButton.centerYAnchor),
+            moreButton.trailingAnchor.constraint(equalTo: soundButton.leadingAnchor, constant: -12),
+            moreButton.widthAnchor.constraint(equalToConstant: 40),
+            moreButton.heightAnchor.constraint(equalToConstant: 40),
+
             // Watch on Platform button (centered at top)
             watchOnPlatformButton.topAnchor.constraint(equalTo: videoContainerView.safeAreaLayoutGuide.topAnchor, constant: 120),
             watchOnPlatformButton.centerXAnchor.constraint(equalTo: videoContainerView.centerXAnchor),
@@ -341,6 +362,7 @@ class VideoReelCell: UICollectionViewCell {
         shareButton.addTarget(self, action: #selector(shareTapped), for: .touchUpInside)
         reactionButton.addTarget(self, action: #selector(reactionTapped), for: .touchUpInside)
         soundButton.addTarget(self, action: #selector(soundTapped), for: .touchUpInside)
+        moreButton.addTarget(self, action: #selector(moreTapped), for: .touchUpInside)
         watchOnPlatformButton.addTarget(self, action: #selector(watchOnPlatformTapped), for: .touchUpInside)
         playPauseButton.addTarget(self, action: #selector(playPauseTapped), for: .touchUpInside)
         
@@ -573,8 +595,11 @@ class VideoReelCell: UICollectionViewCell {
             profileImageView.image = UIImage(systemName: "person.circle.fill")
         }
         
-        // Update follow button visibility
-        followButton.isHidden = reel.userId == AuthService.shared.currentUser?.id
+        // Update follow button visibility (hidden on your own moment)
+        let isOwnMoment = reel.userId == AuthService.shared.currentUser?.id
+        followButton.isHidden = isOwnMoment
+        // The "..." owner menu is the inverse: shown only on your own moment
+        moreButton.isHidden = !isOwnMoment
     }
     
     override func layoutSubviews() {
@@ -628,6 +653,10 @@ class VideoReelCell: UICollectionViewCell {
     
     @objc private func reactionSummaryTapped() {
         delegate?.videoReelCellDidTapActivityEngagement(self)
+    }
+
+    @objc private func moreTapped() {
+        delegate?.videoReelCellDidTapMoreOptions(self)
     }
     
     @objc private func watchOnPlatformTapped() {
@@ -868,6 +897,7 @@ class VideoReelCell: UICollectionViewCell {
         // Reset UI elements
         soundButton.isHidden = false
         soundButton.setImage(UIImage(systemName: "speaker.wave.2"), for: .normal)
+        moreButton.isHidden = true // re-gated per moment in configure(...)
         playPauseButton.isHidden = true
         playPauseButton.setImage(UIImage(systemName: "play.fill"), for: .normal)
         

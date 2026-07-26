@@ -491,6 +491,25 @@ extension CirclesHomeViewController: VideoReelCellDelegate {
         // Not implementing like count view in the home feed
         // In a full implementation, we could show a modal with users who liked
     }
+
+    func videoReelCellDidTapMoreOptions(_ cell: VideoReelCell) {
+        guard let indexPath = reelsCollectionView.indexPath(for: cell) else { return }
+        let reel = reels[indexPath.item]
+        pauseAllVideos()
+        presentMomentOwnerMenu(
+            for: reel,
+            sourceView: cell,
+            onPrivacyChanged: { [weak self] newVisibility in
+                guard let self = self, let idx = self.reels.firstIndex(where: { $0.id == reel.id }) else { return }
+                self.reels[idx].visibility = newVisibility
+            },
+            onDeleted: { [weak self] in
+                guard let self = self, let idx = self.reels.firstIndex(where: { $0.id == reel.id }) else { return }
+                self.reels.remove(at: idx)
+                self.reelsCollectionView.reloadData()
+            }
+        )
+    }
     
     // MARK: - Notification Badge Timer Management
     

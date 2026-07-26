@@ -14,7 +14,7 @@ class ContentUploadViewController: UIViewController {
     weak var delegate: ContentUploadDelegate?
     private var selectedPlace: Place?
     private var pendingContent: ContentType?
-    private var selectedVisibility: VideoVisibility = .public // Default to public
+    private var selectedVisibility: VideoVisibility = .followers // Default to followers
     private var shouldNavigateToMomentsOnSuccess = false // Flag to control navigation behavior
     
     // Background image processing
@@ -323,25 +323,16 @@ class ContentUploadViewController: UIViewController {
             preferredStyle: .actionSheet
         )
         
-        // Public option (default) - with checkmark to show it's selected
-        let publicTitle = selectedVisibility == .public ? "✓ Followers" : "Followers"
-        let publicAction = UIAlertAction(title: publicTitle, style: .default) { [weak self] _ in
-            self?.selectedVisibility = .public
-            completion()
+        // One action per privacy tier, with a checkmark on the current selection.
+        for level in VideoVisibility.allCases {
+            let mark = selectedVisibility == level ? "✓ " : ""
+            let action = UIAlertAction(title: "\(mark)\(level.displayLabel) — \(level.pickerSubtitle)", style: .default) { [weak self] _ in
+                self?.selectedVisibility = level
+                completion()
+            }
+            alertController.addAction(action)
         }
-        
-        // Network only option
-        let networkTitle = selectedVisibility == .network ? "✓ Only My Connections" : "Only My Connections"
-        let networkAction = UIAlertAction(title: networkTitle, style: .default) { [weak self] _ in
-            self?.selectedVisibility = .network
-            completion()
-        }
-        
-        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel)
-        
-        alertController.addAction(publicAction)
-        alertController.addAction(networkAction)
-        alertController.addAction(cancelAction)
+        alertController.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         
         // iPad support
         if let popover = alertController.popoverPresentationController {

@@ -15,7 +15,7 @@ struct PlaceVideo: Codable {
     let fileSize: Int64? // bytes after compression - optional for embedded videos
     let originalSize: Int64? // bytes before compression - optional for embedded videos
     let compressionRatio: Float? // optional for embedded videos
-    let visibility: VideoVisibility
+    var visibility: VideoVisibility
     let viewCount: Int
     let lastViewedAt: Date?
     var likeCount: Int
@@ -103,10 +103,31 @@ struct EmbedMetadata: Codable {
 }
 
 // MARK: - Video Enums
-enum VideoVisibility: String, Codable {
+enum VideoVisibility: String, Codable, CaseIterable {
     case `public` = "public"
-    case network = "network"
+    case followers = "followers"
+    case network = "network"   // "Connections" — raw value kept as-is (no migration)
     case `private` = "private"
+
+    /// User-facing label. Note raw `network` is shown as "Connections".
+    var displayLabel: String {
+        switch self {
+        case .public: return "Public"
+        case .followers: return "Followers"
+        case .network: return "Connections"
+        case .private: return "Only Me"
+        }
+    }
+
+    /// One-line description shown under each option in the privacy picker.
+    var pickerSubtitle: String {
+        switch self {
+        case .public: return "Anyone on FavCircles"
+        case .followers: return "People who follow you"
+        case .network: return "Your accepted connections"
+        case .private: return "Only you"
+        }
+    }
 }
 
 enum VideoUploadStatus: String, Codable {

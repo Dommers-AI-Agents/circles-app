@@ -1247,6 +1247,23 @@ class APIService {
         }
     }
     
+    /// Change a moment's privacy. Reuses PUT /videos/:id (owner-checked server-side).
+    func updateVideoVisibility(videoId: String, visibility: VideoVisibility, completion: @escaping (Result<Void, APIError>) -> Void) {
+        request(
+            endpoint: "videos/\(videoId)",
+            method: .put,
+            body: ["visibility": visibility.rawValue],
+            requiresAuth: true
+        ) { (result: Result<SimpleAPIResponse, APIError>) in
+            switch result {
+            case .success:
+                completion(.success(()))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
     func likeReel(videoId: String, completion: @escaping (Result<Void, APIError>) -> Void) {
         request(
             endpoint: "videos/reels/\(videoId)/like",
