@@ -16,7 +16,7 @@ class IDNormalizer {
             let parts = userId.split(separator: ".")
             if parts.count >= 2 {
                 let normalizedId = String(parts[1])
-                print("📋 IDNormalizer: Normalized \(userId) → \(normalizedId)")
+                Logger.debug("📋 IDNormalizer: Normalized \(userId) → \(normalizedId)")
                 return normalizedId
             }
         }

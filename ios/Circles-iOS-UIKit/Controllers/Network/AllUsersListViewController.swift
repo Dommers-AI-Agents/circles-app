@@ -247,10 +247,10 @@ class AllUsersListViewController: UIViewController {
                     
                     switch result {
                     case .success(let users):
-                        print("🔍 AllUsersListVC: Received \(users.count) users from server")
+                        Logger.debug("🔍 AllUsersListVC: Received \(users.count) users from server")
                         self.allUsers = users
                         self.sortAndFilterUsers()
-                        print("🔍 AllUsersListVC: After filtering - Connected: \(self.connectedUsers.count ?? 0), Pending: \(self.pendingIncomingUsers.count ?? 0), Others: \(self.nonConnectedUsers.count ?? 0)")
+                        Logger.debug("🔍 AllUsersListVC: After filtering - Connected: \(self.connectedUsers.count ?? 0), Pending: \(self.pendingIncomingUsers.count ?? 0), Others: \(self.nonConnectedUsers.count ?? 0)")
                         self.tableView.reloadData()
                         
                         // Track if we've ever had connections
@@ -266,13 +266,13 @@ class AllUsersListViewController: UIViewController {
                         }
                         
                     case .failure(let error):
-                        print("Failed to load users: \(error)")
+                        Logger.debug("Failed to load users: \(error)")
                         
                         // Check if it's a duplicate request error
                         if case .duplicateRequest = error as? APIError {
                             // Don't show empty state for duplicate requests
                             // Keep the loading state active - the other request will complete
-                            print("Ignoring duplicate request error - keeping loading state")
+                            Logger.debug("Ignoring duplicate request error - keeping loading state")
                             // Don't update any state, just return
                             return
                         }
@@ -827,7 +827,7 @@ extension AllUsersListViewController: AllUsersCellDelegate {
     
     private func acceptConnectionRequest(_ user: User) {
         guard let connectionId = user.connectionId else {
-            print("No connection ID for incoming request")
+            Logger.debug("No connection ID for incoming request")
             return
         }
         
@@ -868,7 +868,7 @@ extension AllUsersListViewController: AllUsersCellDelegate {
     
     func allUsersCell(_ cell: AllUsersCell, didTapDeclineButton user: User) {
         guard let connectionId = user.connectionId else {
-            print("No connection ID for incoming request")
+            Logger.debug("No connection ID for incoming request")
             return
         }
         
@@ -915,7 +915,7 @@ extension AllUsersListViewController: AllUsersCellDelegate {
         let action = isCurrentlyFollowing ? "unfollow" : "follow"
         let endpoint = "users/\(user.id)/\(action)"
         
-        print("🔵 Follow button tapped - Action: \(action), User: \(user.displayName)")
+        Logger.debug("🔵 Follow button tapped - Action: \(action), User: \(user.displayName)")
         
         // Optimistically update the UI
         updateUserFollowStatus(userId: user.id, isFollowing: !isCurrentlyFollowing)
@@ -930,7 +930,7 @@ extension AllUsersListViewController: AllUsersCellDelegate {
                 
                 switch result {
                 case .success(let response):
-                    print("✅ Successfully \(action)ed user: \(user.displayName)")
+                    Logger.debug("✅ Successfully \(action)ed user: \(user.displayName)")
                     
                     // Use the server response to update user data instead of optimistic update
                     if let updatedUser = response.user {
@@ -940,7 +940,7 @@ extension AllUsersListViewController: AllUsersCellDelegate {
                     // If no user data in response, keep the optimistic update
                     
                 case .failure(let error):
-                    print("❌ Failed to \(action) user: \(error)")
+                    Logger.debug("❌ Failed to \(action) user: \(error)")
                     // Revert the optimistic update
                     self.updateUserFollowStatus(userId: user.id, isFollowing: isCurrentlyFollowing)
                     

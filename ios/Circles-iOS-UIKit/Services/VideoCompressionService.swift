@@ -61,16 +61,16 @@ class VideoCompressionService {
                 exportSession.outputFileType = .mp4
                 exportSession.shouldOptimizeForNetworkUse = true
                 
-                print("📹 Export session configuration:")
-                print("  - Preset: \(getPresetName(for: quality))")
-                print("  - Output URL: \(outputURL.lastPathComponent)")
+                Logger.debug("📹 Export session configuration:")
+                Logger.debug("  - Preset: \(getPresetName(for: quality))")
+                Logger.debug("  - Output URL: \(outputURL.lastPathComponent)")
                 
                 // Set time range to trim video to 15 seconds if needed
                 if durationInSeconds > maxDuration {
                     let startTime = CMTime.zero
                     let endTime = CMTime(seconds: maxDuration, preferredTimescale: duration.timescale)
                     exportSession.timeRange = CMTimeRange(start: startTime, end: endTime)
-                    print("📹 Auto-trimming video from \(durationInSeconds)s to \(maxDuration)s")
+                    Logger.debug("📹 Auto-trimming video from \(durationInSeconds)s to \(maxDuration)s")
                 }
                 
                 // Check if this is a camera-recorded video by examining the transform
@@ -86,13 +86,13 @@ class VideoCompressionService {
                 if isCameraPortraitVideo {
                     // For camera-recorded videos, skip custom composition
                     // Let the export preset handle orientation naturally
-                    print("📹 Camera video detected - using native export without custom composition")
-                    print("  - Transform: a=\(preferredTransform.a), b=\(preferredTransform.b)")
-                    print("  - Natural size: \(naturalSize)")
+                    Logger.debug("📹 Camera video detected - using native export without custom composition")
+                    Logger.debug("  - Transform: a=\(preferredTransform.a), b=\(preferredTransform.b)")
+                    Logger.debug("  - Natural size: \(naturalSize)")
                     // Don't set videoComposition - let export preset handle it
                 } else {
                     // For other videos (library uploads, etc), apply custom composition
-                    print("📹 Non-camera video - applying custom composition")
+                    Logger.debug("📹 Non-camera video - applying custom composition")
                     let videoComposition = try await createVideoComposition(for: videoTrack, quality: quality)
                     exportSession.videoComposition = videoComposition
                 }
@@ -209,7 +209,7 @@ class VideoCompressionService {
                 let cgImage = try await imageGenerator.image(at: .zero).image
                 return UIImage(cgImage: cgImage)
             } catch {
-                print("Failed to generate thumbnail: \(error)")
+                Logger.debug("Failed to generate thumbnail: \(error)")
                 return nil
             }
         }
@@ -263,13 +263,13 @@ class VideoCompressionService {
         let targetSize = quality.resolution(for: orientation)
         
         // Enhanced debug logging
-        print("📹 Video compression debug:")
-        print("  - Natural size: \(naturalSize)")
-        print("  - Preferred transform: \(preferredTransform)")
-        print("  - Transformed size: \(videoSize)")
-        print("  - Detected orientation: \(orientation)")
-        print("  - Target resolution: \(targetSize)")
-        print("  - Quality preset: \(quality)")
+        Logger.debug("📹 Video compression debug:")
+        Logger.debug("  - Natural size: \(naturalSize)")
+        Logger.debug("  - Preferred transform: \(preferredTransform)")
+        Logger.debug("  - Transformed size: \(videoSize)")
+        Logger.debug("  - Detected orientation: \(orientation)")
+        Logger.debug("  - Target resolution: \(targetSize)")
+        Logger.debug("  - Quality preset: \(quality)")
         
         // Create layer instructions
         let instruction = AVMutableVideoCompositionInstruction()
@@ -282,11 +282,11 @@ class VideoCompressionService {
             // iPhone portrait videos typically have a 90 degree rotation
             // Natural size is landscape but needs to be displayed as portrait
             
-            print("📹 Processing portrait video transform:")
-            print("  - Natural size (pre-rotation): \(naturalSize)")
-            print("  - Video size (post-rotation): \(videoSize)")
-            print("  - Target size: \(targetSize)")
-            print("  - Preferred transform: a=\(preferredTransform.a), b=\(preferredTransform.b), c=\(preferredTransform.c), d=\(preferredTransform.d), tx=\(preferredTransform.tx), ty=\(preferredTransform.ty)")
+            Logger.debug("📹 Processing portrait video transform:")
+            Logger.debug("  - Natural size (pre-rotation): \(naturalSize)")
+            Logger.debug("  - Video size (post-rotation): \(videoSize)")
+            Logger.debug("  - Target size: \(targetSize)")
+            Logger.debug("  - Preferred transform: a=\(preferredTransform.a), b=\(preferredTransform.b), c=\(preferredTransform.c), d=\(preferredTransform.d), tx=\(preferredTransform.tx), ty=\(preferredTransform.ty)")
             
             // Simplified approach: Let the export session handle most of the transform
             // Just apply the preferred transform and scale to fit the target
@@ -301,7 +301,7 @@ class VideoCompressionService {
             let scaleY = targetSize.height / videoSize.height
             let scale = max(scaleX, scaleY) // Aspect fill
             
-            print("  - Scale: \(scale)")
+            Logger.debug("  - Scale: \(scale)")
             
             // Apply scale
             transform = transform.scaledBy(x: scale, y: scale)
@@ -313,8 +313,8 @@ class VideoCompressionService {
             let translateX = (targetSize.width - transformedRect.width) / 2 - transformedRect.minX
             let translateY = (targetSize.height - transformedRect.height) / 2 - transformedRect.minY
             
-            print("  - Transformed rect: \(transformedRect)")
-            print("  - Translation: X=\(translateX), Y=\(translateY)")
+            Logger.debug("  - Transformed rect: \(transformedRect)")
+            Logger.debug("  - Translation: X=\(translateX), Y=\(translateY)")
             
             transform = transform.translatedBy(x: translateX, y: translateY)
             
@@ -352,10 +352,10 @@ class VideoCompressionService {
         composition.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
         composition.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
         
-        print("📹 Video composition final settings:")
-        print("  - Render size: \(composition.renderSize)")
-        print("  - Frame duration: \(composition.frameDuration.seconds)s")
-        print("  - Instructions count: \(composition.instructions.count)")
+        Logger.debug("📹 Video composition final settings:")
+        Logger.debug("  - Render size: \(composition.renderSize)")
+        Logger.debug("  - Frame duration: \(composition.frameDuration.seconds)s")
+        Logger.debug("  - Instructions count: \(composition.instructions.count)")
         
         return composition
     }
@@ -373,7 +373,7 @@ class VideoCompressionService {
                 try? FileManager.default.removeItem(at: file)
             }
         } catch {
-            print("Error cleaning up temporary files: \(error)")
+            Logger.debug("Error cleaning up temporary files: \(error)")
         }
     }
 }

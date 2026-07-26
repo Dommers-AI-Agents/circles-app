@@ -75,12 +75,12 @@ class SSEService: NSObject {
     func connect() {
         guard AuthService.shared.isLoggedIn,
               let token = AuthService.shared.getToken() else {
-            print("📡 SSE: Cannot connect - user not authenticated")
+            Logger.debug("📡 SSE: Cannot connect - user not authenticated")
             return
         }
         
         if isConnected {
-            print("📡 SSE: Already connected")
+            Logger.debug("📡 SSE: Already connected")
             return
         }
         
@@ -97,7 +97,7 @@ class SSEService: NSObject {
         #endif
         
         guard let url = URL(string: "\(baseURL)/sse/stream") else {
-            print("📡 SSE: Invalid URL")
+            Logger.debug("📡 SSE: Invalid URL")
             return
         }
         
@@ -107,7 +107,7 @@ class SSEService: NSObject {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = TimeInterval.infinity
         
-        print("📡 SSE: Connecting to \(url)")
+        Logger.debug("📡 SSE: Connecting to \(url)")
         
         // Create data task
         eventSource = session?.dataTask(with: request)
@@ -118,7 +118,7 @@ class SSEService: NSObject {
     }
     
     func disconnect() {
-        print("📡 SSE: Disconnecting")
+        Logger.debug("📡 SSE: Disconnecting")
         
         eventSource?.cancel()
         eventSource = nil
@@ -158,7 +158,7 @@ class SSEService: NSObject {
         // Exponential backoff
         reconnectDelay = min(reconnectDelay * 2, maxReconnectDelay)
         
-        print("📡 SSE: Reconnecting in \(reconnectDelay) seconds")
+        Logger.debug("📡 SSE: Reconnecting in \(reconnectDelay) seconds")
         
         reconnectTimer?.invalidate()
         reconnectTimer = Timer.scheduledTimer(withTimeInterval: reconnectDelay, repeats: false) { [weak self] _ in
@@ -208,7 +208,7 @@ class SSEService: NSObject {
                         reconnectDelay = 1.0
                     }
                 } catch {
-                    print("📡 SSE: Error parsing event data: \(error)")
+                    Logger.debug("📡 SSE: Error parsing event data: \(error)")
                 }
             }
         }
@@ -239,7 +239,7 @@ class SSEService: NSObject {
 extension SSEService: URLSessionDataDelegate {
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
         if let httpResponse = response as? HTTPURLResponse {
-            print("📡 SSE: Response received with status: \(httpResponse.statusCode)")
+            Logger.debug("📡 SSE: Response received with status: \(httpResponse.statusCode)")
             
             if httpResponse.statusCode == 200 {
                 completionHandler(.allow)
@@ -271,7 +271,7 @@ extension SSEService: URLSessionDataDelegate {
     }
     
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        print("📡 SSE: Connection completed with error: \(error?.localizedDescription ?? "none")")
+        Logger.debug("📡 SSE: Connection completed with error: \(error?.localizedDescription ?? "none")")
         
         isConnected = false
         dataBuffer = ""
@@ -288,7 +288,7 @@ extension SSEService: URLSessionDataDelegate {
 // MARK: - URLSessionDelegate
 extension SSEService: URLSessionDelegate {
     func urlSession(_ session: URLSession, didBecomeInvalidWithError error: Error?) {
-        print("📡 SSE: Session became invalid: \(error?.localizedDescription ?? "unknown error")")
+        Logger.debug("📡 SSE: Session became invalid: \(error?.localizedDescription ?? "unknown error")")
         isConnected = false
         handleReconnect()
     }

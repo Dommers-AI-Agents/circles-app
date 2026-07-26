@@ -25,10 +25,10 @@ class MessagingService {
     // MARK: - Conversations
     
     func fetchConversations(completion: @escaping (Result<[Conversation], Error>) -> Void) {
-        // print("🔍 MessagingService: fetchConversations called")
-        // print("🔐 MessagingService: Auth token available: \(AuthService.shared.getToken() != nil)")
-        // print("🔐 MessagingService: Auth token value: \(AuthService.shared.getToken()?.prefix(20) ?? "nil")...")
-        // print("🔍 MessagingService: Making API request to messages/conversations")
+        // Logger.debug("🔍 MessagingService: fetchConversations called")
+        // Logger.debug("🔐 MessagingService: Auth token available: \(AuthService.shared.getToken() != nil)")
+        // Logger.debug("🔐 MessagingService: Auth token value: \(AuthService.shared.getToken()?.prefix(20) ?? "nil")...")
+        // Logger.debug("🔍 MessagingService: Making API request to messages/conversations")
         
         apiService.request(
             endpoint: "messages/conversations",
@@ -37,24 +37,24 @@ class MessagingService {
         ) { (result: Result<ConversationsResponse, APIError>) in
             switch result {
             case .success(let response):
-                // print("✅ MessagingService: Successfully fetched \(response.conversations.count) conversations")
-                // print("🔍 MessagingService: Response: \(response)")
+                // Logger.debug("✅ MessagingService: Successfully fetched \(response.conversations.count) conversations")
+                // Logger.debug("🔍 MessagingService: Response: \(response)")
                 completion(.success(response.conversations))
             case .failure(let error):
-                // print("❌ MessagingService: Failed to fetch conversations: \(error.localizedDescription)")
-                // print("❌ MessagingService: Error details: \(error)")
-                // print("❌ MessagingService: Error type: \(type(of: error))")
+                // Logger.debug("❌ MessagingService: Failed to fetch conversations: \(error.localizedDescription)")
+                // Logger.debug("❌ MessagingService: Error details: \(error)")
+                // Logger.debug("❌ MessagingService: Error type: \(type(of: error))")
                 if case let APIError.httpError(statusCode, data) = error {
-                    // print("❌ MessagingService: HTTP error - Status: \(statusCode)")
+                    // Logger.debug("❌ MessagingService: HTTP error - Status: \(statusCode)")
                     if let data = data, let message = String(data: data, encoding: .utf8) {
-                        // print("❌ MessagingService: Error message: \(message)")
+                        // Logger.debug("❌ MessagingService: Error message: \(message)")
                     }
                 } else if case APIError.noInternet = error {
-                    // print("❌ MessagingService: No internet connection")
+                    // Logger.debug("❌ MessagingService: No internet connection")
                 } else if case APIError.unauthorized = error {
-                    // print("❌ MessagingService: Unauthorized - auth token may be invalid")
+                    // Logger.debug("❌ MessagingService: Unauthorized - auth token may be invalid")
                 } else if case APIError.serverError = error {
-                    // print("❌ MessagingService: Server error")
+                    // Logger.debug("❌ MessagingService: Server error")
                 }
                 completion(.failure(error))
             }
@@ -104,17 +104,17 @@ class MessagingService {
         before: String? = nil,
         completion: @escaping (Result<[Message], Error>) -> Void
     ) {
-        // print("🔍 MessagingService: fetchMessages called")
-        // print("🔍 MessagingService: conversationId: \(conversationId)")
-        // print("🔍 MessagingService: limit: \(limit), before: \(before ?? "nil")")
+        // Logger.debug("🔍 MessagingService: fetchMessages called")
+        // Logger.debug("🔍 MessagingService: conversationId: \(conversationId)")
+        // Logger.debug("🔍 MessagingService: limit: \(limit), before: \(before ?? "nil")")
         
         var endpoint = "messages/conversations/\(conversationId)/messages?limit=\(limit)"
         if let before = before {
             endpoint += "&before=\(before)"
         }
         
-        // print("🔍 MessagingService: Making API request to endpoint: \(endpoint)")
-        // print("🔐 MessagingService: Auth token available: \(AuthService.shared.getToken() != nil)")
+        // Logger.debug("🔍 MessagingService: Making API request to endpoint: \(endpoint)")
+        // Logger.debug("🔐 MessagingService: Auth token available: \(AuthService.shared.getToken() != nil)")
         
         apiService.request(
             endpoint: endpoint,
@@ -123,17 +123,17 @@ class MessagingService {
         ) { (result: Result<MessagesResponse, APIError>) in
             switch result {
             case .success(let response):
-                // print("✅ MessagingService: Successfully fetched \(response.messages.count) messages")
+                // Logger.debug("✅ MessagingService: Successfully fetched \(response.messages.count) messages")
                 // for (index, message) in response.messages.prefix(3).enumerated() {
-                //     print("   Message \(index): \(message.type.rawValue) - \(message.displayContent)")
+                //     Logger.debug("   Message \(index): \(message.type.rawValue) - \(message.displayContent)")
                 // }
                 completion(.success(response.messages))
             case .failure(let error):
-                print("❌ MessagingService: Failed to fetch messages: \(error.localizedDescription)")
+                Logger.debug("❌ MessagingService: Failed to fetch messages: \(error.localizedDescription)")
                 if case let APIError.httpError(statusCode, data) = error {
-                    print("❌ MessagingService: HTTP error - Status: \(statusCode)")
+                    Logger.debug("❌ MessagingService: HTTP error - Status: \(statusCode)")
                     if let data = data, let message = String(data: data, encoding: .utf8) {
-                        print("❌ MessagingService: Error response: \(message)")
+                        Logger.debug("❌ MessagingService: Error response: \(message)")
                     }
                 }
                 completion(.failure(error))
@@ -336,30 +336,30 @@ class MessagingService {
         // Normalize the user ID before sending to backend
         let normalizedUserId = IDNormalizer.normalize(userId) ?? userId
         
-        print("🔍 MessagingService: getOrCreateDirectConversation called")
-        print("🔍 MessagingService: Original userId: \(userId)")
-        print("🔍 MessagingService: Normalized userId: \(normalizedUserId)")
-        print("🔍 MessagingService: Making POST request to: messages/conversations/direct/\(normalizedUserId)")
+        Logger.debug("🔍 MessagingService: getOrCreateDirectConversation called")
+        Logger.debug("🔍 MessagingService: Original userId: \(userId)")
+        Logger.debug("🔍 MessagingService: Normalized userId: \(normalizedUserId)")
+        Logger.debug("🔍 MessagingService: Making POST request to: messages/conversations/direct/\(normalizedUserId)")
         
         apiService.request(
             endpoint: "messages/conversations/direct/\(normalizedUserId)",
             method: .post,
             requiresAuth: true
         ) { (result: Result<ConversationResponse, APIError>) in
-            print("🔍 MessagingService: Received response from API")
+            Logger.debug("🔍 MessagingService: Received response from API")
             
             switch result {
             case .success(let response):
-                print("✅ MessagingService: Successfully got/created conversation with ID: \(response.conversation.id)")
+                Logger.debug("✅ MessagingService: Successfully got/created conversation with ID: \(response.conversation.id)")
                 completion(.success(response.conversation))
             case .failure(let error):
-                print("❌ MessagingService: Failed to get/create conversation: \(error)")
+                Logger.debug("❌ MessagingService: Failed to get/create conversation: \(error)")
                 
                 // Log more details about the error
                 if case APIError.httpError(let statusCode, let data) = error {
-                    print("❌ MessagingService: HTTP Error - Status Code: \(statusCode)")
+                    Logger.debug("❌ MessagingService: HTTP Error - Status Code: \(statusCode)")
                     if let data = data, let errorString = String(data: data, encoding: .utf8) {
-                        print("❌ MessagingService: Error Details: \(errorString)")
+                        Logger.debug("❌ MessagingService: Error Details: \(errorString)")
                     }
                 }
                 
@@ -373,7 +373,7 @@ class MessagingService {
         name: String?,
         completion: @escaping (Result<Conversation, Error>) -> Void
     ) {
-        print("🔍 MessagingService: createGroupConversation called with \(participantIds.count) participants")
+        Logger.debug("🔍 MessagingService: createGroupConversation called with \(participantIds.count) participants")
         
         // Provide default name if none given
         let groupName = name?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -391,14 +391,14 @@ class MessagingService {
             body: body,
             requiresAuth: true
         ) { (result: Result<ConversationResponse, APIError>) in
-            print("🔍 MessagingService: Received response from API")
+            Logger.debug("🔍 MessagingService: Received response from API")
             
             switch result {
             case .success(let response):
-                print("✅ MessagingService: Successfully created group conversation with ID: \(response.conversation.id)")
+                Logger.debug("✅ MessagingService: Successfully created group conversation with ID: \(response.conversation.id)")
                 completion(.success(response.conversation))
             case .failure(let error):
-                print("❌ MessagingService: Failed to create group conversation: \(error)")
+                Logger.debug("❌ MessagingService: Failed to create group conversation: \(error)")
                 completion(.failure(error))
             }
         }

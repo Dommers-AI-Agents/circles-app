@@ -33,7 +33,7 @@ class GoogleStreetViewService {
     
     func generateStreetViewURL(parameters: StreetViewParameters) -> URL? {
         guard let apiKey = apiKey else {
-            print("Google Maps API key not found in Info.plist")
+            Logger.debug("Google Maps API key not found in Info.plist")
             return nil
         }
         
@@ -95,7 +95,7 @@ class GoogleStreetViewService {
         
         URLSession.shared.dataTask(with: url) { data, response, error in
             guard let data = data, error == nil else {
-                print("Failed to download Street View image: \(error?.localizedDescription ?? "Unknown error")")
+                Logger.debug("Failed to download Street View image: \(error?.localizedDescription ?? "Unknown error")")
                 completion(nil)
                 return
             }

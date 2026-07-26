@@ -526,16 +526,16 @@ class PlaceService {
         
         if let customCategory = customCategory {
             // Debug logging to track custom category values
-            print("🔍 PlaceService: Setting customCategoryId = '\(customCategory)'")
-            print("🔍 Category: \(category.rawValue), Subcategory: \(subcategory ?? "nil")")
-            print("🔍 CircleId: \(circleId)")
-            print("🔍 Stack trace:")
-            Thread.callStackSymbols.prefix(10).forEach { print("  \($0)") }
+            Logger.debug("🔍 PlaceService: Setting customCategoryId = '\(customCategory)'")
+            Logger.debug("🔍 Category: \(category.rawValue), Subcategory: \(subcategory ?? "nil")")
+            Logger.debug("🔍 CircleId: \(circleId)")
+            Logger.debug("🔍 Stack trace:")
+            Thread.callStackSymbols.prefix(10).forEach { Logger.debug("  \($0)") }
             
             if customCategory.contains("@") || (customCategory.components(separatedBy: " ").count == 2 && customCategory != "Other") {
-                print("⚠️ WARNING: Suspicious customCategoryId value: '\(customCategory)'")
-                print("⚠️ This looks like user data, not a category name!")
-                print("⚠️ BLOCKING: Not sending suspicious customCategoryId to backend")
+                Logger.debug("⚠️ WARNING: Suspicious customCategoryId value: '\(customCategory)'")
+                Logger.debug("⚠️ This looks like user data, not a category name!")
+                Logger.debug("⚠️ BLOCKING: Not sending suspicious customCategoryId to backend")
                 // Don't set customCategoryId if it looks like user data
             } else {
                 body["customCategoryId"] = customCategory
@@ -692,9 +692,9 @@ class PlaceService {
         var collectedImageUrls: [String] = []
         if let preUploadedUrls = preUploadedPhotoUrls, !preUploadedUrls.isEmpty {
             Logger.debug("Starting with \(preUploadedUrls.count) pre-uploaded photos")
-            print("📸 DEBUG: Pre-uploaded photos received in PlaceService:")
+            Logger.debug("📸 DEBUG: Pre-uploaded photos received in PlaceService:")
             for (index, url) in preUploadedUrls.enumerated() {
-                print("  Pre-uploaded \(index + 1): \(url)")
+                Logger.debug("  Pre-uploaded \(index + 1): \(url)")
             }
             collectedImageUrls.append(contentsOf: preUploadedUrls)
         }
@@ -706,7 +706,7 @@ class PlaceService {
         // Skip if we already have 2 or more pre-uploaded photos (likely means we have both Google and Apple)
         let shouldFetchLookAround = (preUploadedPhotoUrls?.count ?? 0) < 2
         if shouldFetchLookAround, let location = location, location.coordinates.count >= 2 {
-            print("📸 DEBUG: Attempting to fetch Apple Look Around (pre-uploaded count: \(preUploadedPhotoUrls?.count ?? 0))")
+            Logger.debug("📸 DEBUG: Attempting to fetch Apple Look Around (pre-uploaded count: \(preUploadedPhotoUrls?.count ?? 0))")
             let latitude = location.coordinates[1]
             let longitude = location.coordinates[0]
             let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
@@ -756,16 +756,16 @@ class PlaceService {
                     imageCollectionGroup.leave()
                 }
             } else {
-                print("⚠️ PlaceService: iOS version < 16.0, skipping Look Around")
+                Logger.debug("⚠️ PlaceService: iOS version < 16.0, skipping Look Around")
             }
         } else if !shouldFetchLookAround {
-            print("📸 DEBUG: Skipping Apple Look Around fetch - already have \(preUploadedPhotoUrls?.count ?? 0) pre-uploaded photos")
+            Logger.debug("📸 DEBUG: Skipping Apple Look Around fetch - already have \(preUploadedPhotoUrls?.count ?? 0) pre-uploaded photos")
         }
         
         // Try to get Google Places photo if googlePlaceId is available and we don't already have Google photos
         // Skip if we already have pre-uploaded photos (which are likely Google Places photos)
         if let googlePlaceId = googlePlaceId, !googlePlaceId.isEmpty, (preUploadedPhotoUrls?.isEmpty ?? true) {
-            print("🔍 PlaceService: Fetching Google Places photo for placeId: \(googlePlaceId)")
+            Logger.debug("🔍 PlaceService: Fetching Google Places photo for placeId: \(googlePlaceId)")
             imageCollectionGroup.enter()
             
             // Fetch place details including photos
@@ -774,26 +774,26 @@ class PlaceService {
                 case .success(let place):
                     // Get the first photo if available
                     if let photoMetadata = place.photos?.first {
-                        print("📸 PlaceService: Found Google Places photo metadata, loading photo...")
+                        Logger.debug("📸 PlaceService: Found Google Places photo metadata, loading photo...")
                         GooglePlacesService.shared.loadPhoto(from: photoMetadata) { photoResult in
                             switch photoResult {
                             case .success(let image):
-                                print("✅ PlaceService: Google Places photo loaded successfully")
+                                Logger.debug("✅ PlaceService: Google Places photo loaded successfully")
                                 // Convert to JPEG and upload
                                 if let imageData = image.jpegData(compressionQuality: 0.8) {
-                                    print("📸 PlaceService: Converting Google photo to JPEG (size: \(imageData.count / 1024) KB)")
+                                    Logger.debug("📸 PlaceService: Converting Google photo to JPEG (size: \(imageData.count / 1024) KB)")
                                     self.uploadImage(imageData) { uploadResult in
                                         switch uploadResult {
                                         case .success(let imageUrl):
                                             collectedImageUrls.append(imageUrl)
                                             // Photo uploaded successfully
                                         case .failure(let error):
-                                            print("⚠️ Failed to upload place photo, continuing without it")
+                                            Logger.debug("⚠️ Failed to upload place photo, continuing without it")
                                             
                                             // Check if it's specifically a server error
                                             if let apiError = error as? APIError, case .serverError = apiError {
-                                                print("🔧 PlaceService: Server error - Firebase Storage may not be configured properly")
-                                                print("🔧 PlaceService: Run: gcloud run services update circles-backend --update-env-vars FIREBASE_STORAGE_BUCKET=circles-app-83b67.appspot.com --region us-central1")
+                                                Logger.debug("🔧 PlaceService: Server error - Firebase Storage may not be configured properly")
+                                                Logger.debug("🔧 PlaceService: Run: gcloud run services update circles-backend --update-env-vars FIREBASE_STORAGE_BUCKET=circles-app-83b67.appspot.com --region us-central1")
                                             }
                                         }
                                         imageCollectionGroup.leave()
@@ -808,7 +808,7 @@ class PlaceService {
                             }
                         }
                     } else {
-                        print("⚠️ PlaceService: No photos available from Google Places")
+                        Logger.debug("⚠️ PlaceService: No photos available from Google Places")
                         imageCollectionGroup.leave()
                     }
                 case .failure(let error):
@@ -818,33 +818,33 @@ class PlaceService {
             }
         } else {
             if !collectedImageUrls.isEmpty {
-                print("⚠️ PlaceService: Skipping Google Places photo - already have pre-uploaded photos")
+                Logger.debug("⚠️ PlaceService: Skipping Google Places photo - already have pre-uploaded photos")
             } else {
-                print("⚠️ PlaceService: No googlePlaceId provided or empty, skipping Google Places photo")
+                Logger.debug("⚠️ PlaceService: No googlePlaceId provided or empty, skipping Google Places photo")
             }
         }
         
         // Wait for all image collection tasks to complete
         imageCollectionGroup.notify(queue: .main) {
-            print("🔔 PlaceService: All image collection tasks completed")
+            Logger.debug("🔔 PlaceService: All image collection tasks completed")
             
             // Add collected images to the body
             if !collectedImageUrls.isEmpty {
                 // Remove duplicates before sending
                 let uniqueUrls = Array(Set(collectedImageUrls))
                 if uniqueUrls.count != collectedImageUrls.count {
-                    print("⚠️ PlaceService: Found \(collectedImageUrls.count - uniqueUrls.count) duplicate photo URLs, removing duplicates")
+                    Logger.debug("⚠️ PlaceService: Found \(collectedImageUrls.count - uniqueUrls.count) duplicate photo URLs, removing duplicates")
                 }
                 
                 body["photos"] = uniqueUrls
-                print("📸 PlaceService: Collected \(uniqueUrls.count) unique images for the place")
+                Logger.debug("📸 PlaceService: Collected \(uniqueUrls.count) unique images for the place")
                 for (index, url) in uniqueUrls.enumerated() {
-                    print("  Image \(index + 1): \(url)")
+                    Logger.debug("  Image \(index + 1): \(url)")
                 }
             } else {
-                print("⚠️ PlaceService: No images were collected for the place")
-                print("⚠️ PlaceService: Creating place without images - image upload may have failed")
-                print("🔧 PlaceService: If images aren't uploading, check Firebase Storage configuration")
+                Logger.debug("⚠️ PlaceService: No images were collected for the place")
+                Logger.debug("⚠️ PlaceService: Creating place without images - image upload may have failed")
+                Logger.debug("🔧 PlaceService: If images aren't uploading, check Firebase Storage configuration")
             }
             
             // Create the place with collected data
@@ -855,9 +855,9 @@ class PlaceService {
     }
     
     private func createPlaceWithBody(_ body: [String: Any], completion: @escaping (Result<Place, Error>) -> Void) {
-        print("🚀 PlaceService: Creating place with body containing \(body.keys.count) fields")
+        Logger.debug("🚀 PlaceService: Creating place with body containing \(body.keys.count) fields")
         if let photos = body["photos"] as? [String] {
-            print("  Photos in request: \(photos.count)")
+            Logger.debug("  Photos in request: \(photos.count)")
         }
 
         // Sticker rewards: if this place was opened from a shared link, credit the sharer
@@ -875,17 +875,17 @@ class PlaceService {
             completion: createAPICompletion { (result: Result<PlaceResponse, Error>) in
                 switch result {
                 case .success(let response):
-                    print("✅ PlaceService: Place created successfully")
+                    Logger.debug("✅ PlaceService: Place created successfully")
                     DispatchQueue.main.async {
                         PlaceMilestones.celebrateIfNeeded(totalPlaces: response.totalPlaces)
                     }
                     if let photos = response.place.photos {
-                        print("  Photos in response: \(photos.count)")
+                        Logger.debug("  Photos in response: \(photos.count)")
                         for (index, photo) in photos.enumerated() {
-                            print("  Photo \(index + 1): \(photo)")
+                            Logger.debug("  Photo \(index + 1): \(photo)")
                         }
                     } else {
-                        print("  ⚠️ No photos in response")
+                        Logger.debug("  ⚠️ No photos in response")
                     }
                     completion(.success(response.place))
                 case .failure(let error):
@@ -979,15 +979,15 @@ class PlaceService {
             
             if let customCategory = customCategory {
                 // Debug logging to track custom category values during updates
-                print("🔍 PlaceService UPDATE: Setting customCategoryId = '\(customCategory)'")
-                print("🔍 Place ID: \(id)")
-                print("🔍 Stack trace:")
-                Thread.callStackSymbols.prefix(10).forEach { print("  \($0)") }
+                Logger.debug("🔍 PlaceService UPDATE: Setting customCategoryId = '\(customCategory)'")
+                Logger.debug("🔍 Place ID: \(id)")
+                Logger.debug("🔍 Stack trace:")
+                Thread.callStackSymbols.prefix(10).forEach { Logger.debug("  \($0)") }
                 
                 if customCategory.contains("@") || (customCategory.components(separatedBy: " ").count == 2 && customCategory != "Other") {
-                    print("⚠️ WARNING: Suspicious customCategoryId value during update: '\(customCategory)'")
-                    print("⚠️ This looks like user data, not a category name!")
-                    print("⚠️ BLOCKING: Not sending suspicious customCategoryId to backend")
+                    Logger.debug("⚠️ WARNING: Suspicious customCategoryId value during update: '\(customCategory)'")
+                    Logger.debug("⚠️ This looks like user data, not a category name!")
+                    Logger.debug("⚠️ BLOCKING: Not sending suspicious customCategoryId to backend")
                     // Don't set customCategoryId if it looks like user data
                 } else {
                     body["customCategoryId"] = customCategory
@@ -1196,7 +1196,7 @@ class PlaceService {
         
         // Log image size
         let imageSizeInKB = Double(imageData.count) / 1024.0
-        print("📸 Processing image - size: \(String(format: "%.0f", imageSizeInKB)) KB (attempt #\(attemptNumber))")
+        Logger.debug("📸 Processing image - size: \(String(format: "%.0f", imageSizeInKB)) KB (attempt #\(attemptNumber))")
         
         // CRITICAL: Max size for actual data is ~750KB to ensure base64 encoded version stays under 1MB
         // Base64 encoding increases size by ~33%, so 750KB data -> ~1MB base64
@@ -1209,7 +1209,7 @@ class PlaceService {
         
         // Always check and compress if needed, regardless of attempt number
         if imageSizeInKB > maxDataSizeKB {
-            print("⚠️ Image size exceeds \(maxDataSizeKB)KB target, compressing...")
+            Logger.debug("⚠️ Image size exceeds \(maxDataSizeKB)KB target, compressing...")
             
             // Try to compress the image
             if let image = UIImage(data: imageData) {
@@ -1231,7 +1231,7 @@ class PlaceService {
                         image.draw(in: CGRect(origin: .zero, size: newSize))
                         if let resizedImage = UIGraphicsGetImageFromCurrentImageContext() {
                             imageToCompress = resizedImage
-                            print("📐 Resized image to \(Int(newSize.width))x\(Int(newSize.height)) (max dimension: \(Int(maxDimension)))")
+                            Logger.debug("📐 Resized image to \(Int(newSize.width))x\(Int(newSize.height)) (max dimension: \(Int(maxDimension)))")
                         }
                         UIGraphicsEndImageContext()
                     }
@@ -1241,7 +1241,7 @@ class PlaceService {
                 let compressionIndex = min(attemptNumber - 1, compressionLevels.count - 1)
                 if let compressedData = imageToCompress.jpegData(compressionQuality: CGFloat(compressionLevels[compressionIndex])) {
                     let compressedSizeKB = Double(compressedData.count) / 1024.0
-                    print("📸 Compressed image size: \(String(format: "%.0f", compressedSizeKB)) KB with quality \(compressionLevels[compressionIndex])")
+                    Logger.debug("📸 Compressed image size: \(String(format: "%.0f", compressedSizeKB)) KB with quality \(compressionLevels[compressionIndex])")
                     
                     // If still too large and we have more attempts available
                     if compressedSizeKB > maxDataSizeKB && attemptNumber < maxAttempts {
@@ -1254,7 +1254,7 @@ class PlaceService {
                     dataToUpload = compressedData
                 }
             } else {
-                print("⚠️ Unable to create UIImage from data, uploading as is...")
+                Logger.debug("⚠️ Unable to create UIImage from data, uploading as is...")
             }
         }
         
@@ -1264,14 +1264,14 @@ class PlaceService {
         
         // Log base64 size (about 33% larger than original)
         let base64SizeInKB = Double(base64String.count) / 1024.0
-        print("📸 Base64 encoded size: \(String(format: "%.0f", base64SizeInKB)) KB")
+        Logger.debug("📸 Base64 encoded size: \(String(format: "%.0f", base64SizeInKB)) KB")
         
         let body: [String: Any] = [
             "image": base64String,
             "filename": filename
         ]
         
-        print("📤 Sending image upload request...")
+        Logger.debug("📤 Sending image upload request...")
         
         APIService.shared.request(
             endpoint: "upload/image",
@@ -1281,21 +1281,21 @@ class PlaceService {
         ) { (result: Result<ImageUploadResponse, APIError>) in
             switch result {
             case .success(let response):
-                print("✅ Image uploaded successfully: \(response.url)")
+                Logger.debug("✅ Image uploaded successfully: \(response.url)")
                 completion(.success(response.url))
             case .failure(let error):
-                print("❌ Failed to upload image: \(error)")
-                print("   Error details: \(error.localizedDescription)")
+                Logger.debug("❌ Failed to upload image: \(error)")
+                Logger.debug("   Error details: \(error.localizedDescription)")
                 
                 // Provide more specific error message
                 switch error {
                 case .httpError(let statusCode, let messageData):
                     let message = messageData.flatMap { String(data: $0, encoding: .utf8) } ?? "Unknown error"
-                    print("   HTTP Error \(statusCode): \(message)")
+                    Logger.debug("   HTTP Error \(statusCode): \(message)")
                 case .serverError:
-                    print("   Server error - image may be too large or invalid")
+                    Logger.debug("   Server error - image may be too large or invalid")
                 default:
-                    print("   Error type: \(error)")
+                    Logger.debug("   Error type: \(error)")
                 }
                 
                 completion(.failure(error))
@@ -1464,7 +1464,7 @@ class PlaceService {
     // MARK: - Comments
     
     func getPlaceComments(placeId: String, completion: @escaping (Result<[PlaceComment], Error>) -> Void) {
-        print("🔍 PlaceService: Fetching comments for place: \(placeId)")
+        Logger.debug("🔍 PlaceService: Fetching comments for place: \(placeId)")
         
         APIService.shared.request(
             endpoint: "places/\(placeId)/comments",
@@ -1473,7 +1473,7 @@ class PlaceService {
             completion: createAPICompletion { (result: Result<PlaceCommentsResponse, Error>) in
                 switch result {
                 case .success(let response):
-                    print("✅ PlaceService: Received \(response.comments.count) comments")
+                    Logger.debug("✅ PlaceService: Received \(response.comments.count) comments")
                     completion(.success(response.comments))
                 case .failure(let error):
                     completion(.failure(error))
@@ -1484,7 +1484,7 @@ class PlaceService {
     
     func addPlaceComment(placeId: String, text: String, completion: @escaping (Result<PlaceComment, Error>) -> Void) {
         let body = ["text": text]
-        print("💬 PlaceService: Adding comment to place \(placeId): \(text.prefix(50))...")
+        Logger.debug("💬 PlaceService: Adding comment to place \(placeId): \(text.prefix(50))...")
         
         APIService.shared.request(
             endpoint: "places/\(placeId)/comments",
@@ -1494,7 +1494,7 @@ class PlaceService {
             completion: createAPICompletion { (result: Result<PlaceCommentResponse, Error>) in
                 switch result {
                 case .success(let response):
-                    print("✅ PlaceService: Comment added successfully with ID: \(response.data.id)")
+                    Logger.debug("✅ PlaceService: Comment added successfully with ID: \(response.data.id)")
                     completion(.success(response.data))
                 case .failure(let error):
                     completion(.failure(error))
@@ -1555,7 +1555,7 @@ class PlaceService {
     }
     
     func getPlaceCommentReplies(placeId: String, commentId: String, completion: @escaping (Result<[PlaceComment], Error>) -> Void) {
-        print("📡 PlaceService: Fetching replies for comment \(commentId) on place \(placeId)")
+        Logger.debug("📡 PlaceService: Fetching replies for comment \(commentId) on place \(placeId)")
         
         APIService.shared.request(
             endpoint: "places/\(placeId)/comments/\(commentId)/replies",
@@ -1564,14 +1564,14 @@ class PlaceService {
             completion: createAPICompletion { (result: Result<PlaceCommentsResponse, Error>) in
                 switch result {
                 case .success(let response):
-                    print("✅ PlaceService: Received PlaceCommentsResponse with \(response.comments.count) replies")
-                    print("   Response.success: \(response.success)")
+                    Logger.debug("✅ PlaceService: Received PlaceCommentsResponse with \(response.comments.count) replies")
+                    Logger.debug("   Response.success: \(response.success)")
                     for (index, reply) in response.comments.enumerated() {
-                        print("   Reply \(index): id=\(reply.id), text=\(reply.text)")
+                        Logger.debug("   Reply \(index): id=\(reply.id), text=\(reply.text)")
                     }
                     completion(.success(response.comments))
                 case .failure(let error):
-                    print("❌ PlaceService: Failed to fetch replies: \(error)")
+                    Logger.debug("❌ PlaceService: Failed to fetch replies: \(error)")
                     completion(.failure(error))
                 }
             }

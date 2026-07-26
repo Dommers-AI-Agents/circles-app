@@ -47,7 +47,7 @@ class DailySummaryViewController: UIViewController {
             // Convert contributors
             self.topContributors = apiData.topContributors.map { ($0.name, $0.count) }
             
-            print("📊 DailySummaryData initialized from API response")
+            Logger.debug("📊 DailySummaryData initialized from API response")
         }
     }
     
@@ -55,7 +55,7 @@ class DailySummaryViewController: UIViewController {
     init() {
         super.init(nibName: nil, bundle: nil)
         
-        print("📊 DailySummaryViewController: Initializing (will fetch data from API)")
+        Logger.debug("📊 DailySummaryViewController: Initializing (will fetch data from API)")
         
         // Present as modal
         self.modalPresentationStyle = .overFullScreen
@@ -75,14 +75,14 @@ class DailySummaryViewController: UIViewController {
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        print("📊 ViewDidAppear - Final frames:")
-        print("  - View frame: \(view.frame)")
-        print("  - Container frame: \(containerView.frame)")
-        print("  - ScrollView frame: \(scrollView.frame)")
-        print("  - ContentView frame: \(contentView.frame)")
-        print("  - StackView frame: \(stackView.frame)")
-        print("  - ScrollView contentSize: \(scrollView.contentSize)")
-        print("  - Number of cards: \(stackView.arrangedSubviews.count)")
+        Logger.debug("📊 ViewDidAppear - Final frames:")
+        Logger.debug("  - View frame: \(view.frame)")
+        Logger.debug("  - Container frame: \(containerView.frame)")
+        Logger.debug("  - ScrollView frame: \(scrollView.frame)")
+        Logger.debug("  - ContentView frame: \(contentView.frame)")
+        Logger.debug("  - StackView frame: \(stackView.frame)")
+        Logger.debug("  - ScrollView contentSize: \(scrollView.contentSize)")
+        Logger.debug("  - Number of cards: \(stackView.arrangedSubviews.count)")
     }
     
     // MARK: - UI Setup
@@ -210,7 +210,7 @@ class DailySummaryViewController: UIViewController {
     
     // MARK: - Fetch Data
     private func fetchDailySummary() {
-        print("📊 Fetching daily summary from API...")
+        Logger.debug("📊 Fetching daily summary from API...")
         
         // Show loading state
         loadingIndicator.startAnimating()
@@ -223,13 +223,13 @@ class DailySummaryViewController: UIViewController {
                 
                 switch result {
                 case .success(let apiData):
-                    print("📊 Successfully fetched daily summary data")
+                    Logger.debug("📊 Successfully fetched daily summary data")
                     self?.summaryData = LocalDailySummaryData(from: apiData)
                     self?.scrollView.isHidden = false
                     self?.displaySummary()
                     
                 case .failure(let error):
-                    print("📊 Failed to fetch daily summary: \(error)")
+                    Logger.debug("📊 Failed to fetch daily summary: \(error)")
                     self?.scrollView.isHidden = false
                     self?.displayError(error)
                 }
@@ -251,18 +251,18 @@ class DailySummaryViewController: UIViewController {
         scrollView.alpha = 1.0
         
         guard let data = summaryData else { 
-            print("📊 ❌ No summary data available")
+            Logger.debug("📊 ❌ No summary data available")
             displayError(nil)
             return
         }
         
-        print("📊 ✅ Displaying summary with data:")
-        print("  - newPlaces: \(data.newPlaces)")
-        print("  - newConnections: \(data.newConnections)")
-        print("  - unreadMessages: \(data.unreadMessages)")
-        print("  - placeComments: \(data.placeComments)")
-        print("  - placeLikes: \(data.placeLikes)")
-        print("  - topContributors: \(data.topContributors.count) contributors")
+        Logger.debug("📊 ✅ Displaying summary with data:")
+        Logger.debug("  - newPlaces: \(data.newPlaces)")
+        Logger.debug("  - newConnections: \(data.newConnections)")
+        Logger.debug("  - unreadMessages: \(data.unreadMessages)")
+        Logger.debug("  - placeComments: \(data.placeComments)")
+        Logger.debug("  - placeLikes: \(data.placeLikes)")
+        Logger.debug("  - topContributors: \(data.topContributors.count) contributors")
         
         // Format date
         let formatter = DateFormatter()
@@ -292,7 +292,7 @@ class DailySummaryViewController: UIViewController {
                 action: #selector(viewNewPlaces)
             )
             stackView.addArrangedSubview(placesCard)
-            print("📊 Added places card with \(data.newPlaces) places")
+            Logger.debug("📊 Added places card with \(data.newPlaces) places")
         }
         
         if data.newConnections > 0 {
@@ -345,7 +345,7 @@ class DailySummaryViewController: UIViewController {
         // If no activity at all, show a message
         if data.newPlaces == 0 && data.newConnections == 0 && data.unreadMessages == 0 && 
            data.placeComments == 0 && data.placeLikes == 0 {
-            print("📊 No activity to display")
+            Logger.debug("📊 No activity to display")
             let noActivityCard = createSummaryCard(
                 emoji: "😴",
                 title: "No New Activity",
@@ -357,23 +357,23 @@ class DailySummaryViewController: UIViewController {
         }
         
         // Log final state
-        print("📊 StackView now has \(stackView.arrangedSubviews.count) subviews")
-        print("📊 ScrollView hidden: \(scrollView.isHidden)")
+        Logger.debug("📊 StackView now has \(stackView.arrangedSubviews.count) subviews")
+        Logger.debug("📊 ScrollView hidden: \(scrollView.isHidden)")
         
         // Force layout and log sizes
         view.layoutIfNeeded()
         
         // Debug view hierarchy
-        print("📊 View hierarchy debug:")
-        print("  - Container frame: \(containerView.frame)")
-        print("  - ScrollView frame: \(scrollView.frame)")
-        print("  - ContentView frame: \(contentView.frame)")
-        print("  - StackView frame: \(stackView.frame)")
-        print("  - ScrollView contentSize: \(scrollView.contentSize)")
+        Logger.debug("📊 View hierarchy debug:")
+        Logger.debug("  - Container frame: \(containerView.frame)")
+        Logger.debug("  - ScrollView frame: \(scrollView.frame)")
+        Logger.debug("  - ContentView frame: \(contentView.frame)")
+        Logger.debug("  - StackView frame: \(stackView.frame)")
+        Logger.debug("  - ScrollView contentSize: \(scrollView.contentSize)")
         
         // Log each card's frame
         for (index, subview) in stackView.arrangedSubviews.enumerated() {
-            print("  - Card \(index) frame: \(subview.frame)")
+            Logger.debug("  - Card \(index) frame: \(subview.frame)")
         }
     }
     
@@ -505,77 +505,77 @@ class DailySummaryViewController: UIViewController {
     }
     
     @objc private func viewNewPlaces() {
-        print("📊 View New Places tapped")
+        Logger.debug("📊 View New Places tapped")
         dismiss(animated: true) { 
             // Navigate to home tab to see new places
             DispatchQueue.main.async {
                 if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                    let window = windowScene.windows.first,
                    let tabBar = window.rootViewController as? UITabBarController {
-                    print("📊 Navigating to home tab (index 0)")
+                    Logger.debug("📊 Navigating to home tab (index 0)")
                     tabBar.selectedIndex = 0  // Circles/Home is at index 0
                     
                     // Optional: Scroll to top of the home feed to show latest places
                     if let navController = tabBar.viewControllers?[0] as? UINavigationController,
                        let circlesVC = navController.topViewController as? CirclesHomeViewController {
                         // The view controller will refresh and show latest places
-                        print("📊 ✅ Successfully navigated to Circles home")
+                        Logger.debug("📊 ✅ Successfully navigated to Circles home")
                     }
                 } else {
-                    print("📊 ❌ Failed to find tab bar controller")
+                    Logger.debug("📊 ❌ Failed to find tab bar controller")
                 }
             }
         }
     }
     
     @objc private func viewConnections() {
-        print("📊 View Connections tapped")
+        Logger.debug("📊 View Connections tapped")
         dismiss(animated: true) {
             // Navigate to network tab
             DispatchQueue.main.async {
                 if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                    let window = windowScene.windows.first,
                    let tabBar = window.rootViewController as? UITabBarController {
-                    print("📊 Navigating to network tab (index 1)")
+                    Logger.debug("📊 Navigating to network tab (index 1)")
                     tabBar.selectedIndex = 1  // Network is at index 1
                 } else {
-                    print("📊 ❌ Failed to find tab bar controller")
+                    Logger.debug("📊 ❌ Failed to find tab bar controller")
                 }
             }
         }
     }
     
     @objc private func viewMessages() {
-        print("📊 View Messages tapped")
+        Logger.debug("📊 View Messages tapped")
         dismiss(animated: true) {
             // Navigate to messages tab
             DispatchQueue.main.async {
                 if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                    let window = windowScene.windows.first,
                    let tabBar = window.rootViewController as? UITabBarController {
-                    print("📊 Navigating to messages tab (index 2)")
+                    Logger.debug("📊 Navigating to messages tab (index 2)")
                     tabBar.selectedIndex = 2  // Messages is at index 2
                     
                     // The Messages tab already shows ConversationsListViewController, no need to push
                 } else {
-                    print("📊 ❌ Failed to find tab bar controller")
+                    Logger.debug("📊 ❌ Failed to find tab bar controller")
                 }
             }
         }
     }
     
     @objc private func viewActivity() {
-        print("📊 View Activity tapped")
+        Logger.debug("📊 View Activity tapped")
         dismiss(animated: true) {
             // Navigate to profile to see user's places with activity
             DispatchQueue.main.async {
                 if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                    let window = windowScene.windows.first,
                    let tabBar = window.rootViewController as? UITabBarController {
-                    print("📊 Navigating to profile tab (index 3)")
+                    Logger.debug("📊 Navigating to profile tab (index 3)")
                     tabBar.selectedIndex = 3  // Profile is at index 3
                 } else {
-                    print("📊 ❌ Failed to find tab bar controller")
+                    Logger.debug("📊 ❌ Failed to find tab bar controller")
                 }
             }
         }

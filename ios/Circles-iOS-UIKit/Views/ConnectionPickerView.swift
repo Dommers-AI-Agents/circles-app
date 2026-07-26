@@ -148,7 +148,7 @@ class ConnectionPickerView: UIView {
                 self?.connections = users
                 self?.filteredConnections = users
             case .failure(let error):
-                print("Failed to load connections: \(error)")
+                Logger.debug("Failed to load connections: \(error)")
             }
         }
     }

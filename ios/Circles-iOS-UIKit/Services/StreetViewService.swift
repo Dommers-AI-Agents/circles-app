@@ -23,7 +23,7 @@ class StreetViewService {
         pitch: Int = 0
     ) -> URL? {
         guard let apiKey = apiKey else {
-            print("⚠️ Google Street View API key not configured")
+            Logger.debug("⚠️ Google Street View API key not configured")
             return nil
         }
         

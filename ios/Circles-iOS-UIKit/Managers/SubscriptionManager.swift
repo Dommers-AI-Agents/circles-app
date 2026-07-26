@@ -30,7 +30,7 @@ class SubscriptionManager {
             // Sync with backend on app launch to ensure subscription status is up-to-date
             await service.syncCurrentSubscriptionWithBackend()
         } catch {
-            print("❌ Failed to initialize subscription service: \(error)")
+            Logger.debug("❌ Failed to initialize subscription service: \(error)")
         }
     }
     
@@ -274,7 +274,7 @@ class SubscriptionManager {
     }
     
     @objc private func handlePromotedPurchaseRequiresLogin(_ notification: Notification) {
-        print("💎 Promoted purchase requires login")
+        Logger.debug("💎 Promoted purchase requires login")
         
         DispatchQueue.main.async {
             guard let topViewController = self.getTopViewController() else { return }
@@ -292,7 +292,7 @@ class SubscriptionManager {
     }
     
     @objc private func handlePromotedPurchaseAlreadySubscribed(_ notification: Notification) {
-        print("💎 User already subscribed to premium")
+        Logger.debug("💎 User already subscribed to premium")
         
         DispatchQueue.main.async {
             guard let topViewController = self.getTopViewController() else { return }
@@ -312,10 +312,10 @@ class SubscriptionManager {
     }
     
     @objc private func handleProcessPromotedPurchase(_ notification: Notification) {
-        print("💎 Processing promoted purchase")
+        Logger.debug("💎 Processing promoted purchase")
         
         guard let productId = notification.userInfo?["productId"] as? String else {
-            print("❌ No product ID in notification")
+            Logger.debug("❌ No product ID in notification")
             return
         }
         

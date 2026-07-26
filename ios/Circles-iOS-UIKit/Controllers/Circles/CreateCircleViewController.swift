@@ -561,14 +561,14 @@ class CreateCircleViewController: UIViewController {
             // Log the final size for debugging
             if let data = coverImageData {
                 let sizeKB = data.count / 1024
-                print("Optimized image size: \(sizeKB) KB")
+                Logger.debug("Optimized image size: \(sizeKB) KB")
                 
                 // Extra safety check - if still too large, make it even smaller
                 if sizeKB > 100 {
-                    print("Image still too large, applying extra compression")
+                    Logger.debug("Image still too large, applying extra compression")
                     coverImageData = image.optimizedForUpload(maxDimension: 200, targetSizeKB: 50)
                     if let newData = coverImageData {
-                        print("Final compressed size: \(newData.count / 1024) KB")
+                        Logger.debug("Final compressed size: \(newData.count / 1024) KB")
                     }
                 }
             }
@@ -624,9 +624,9 @@ class CreateCircleViewController: UIViewController {
                     
                     switch result {
                     case .success(let response):
-                        print("✅ Circle created successfully with default image: \(response.circle.name)")
-                        print("📍 Navigation controller exists: \(self.navigationController != nil)")
-                        print("📍 Navigation stack count: \(self.navigationController?.viewControllers.count ?? 0)")
+                        Logger.debug("✅ Circle created successfully with default image: \(response.circle.name)")
+                        Logger.debug("📍 Navigation controller exists: \(self.navigationController != nil)")
+                        Logger.debug("📍 Navigation stack count: \(self.navigationController?.viewControllers.count ?? 0)")
                         
                         let circle = response.circle
                         
@@ -662,9 +662,9 @@ class CreateCircleViewController: UIViewController {
                     
                     switch result {
                     case .success(let circle):
-                        print("✅ Circle created successfully: \(circle.name)")
-                        print("📍 Navigation controller exists: \(self.navigationController != nil)")
-                        print("📍 Navigation stack count: \(self.navigationController?.viewControllers.count ?? 0)")
+                        Logger.debug("✅ Circle created successfully: \(circle.name)")
+                        Logger.debug("📍 Navigation controller exists: \(self.navigationController != nil)")
+                        Logger.debug("📍 Navigation stack count: \(self.navigationController?.viewControllers.count ?? 0)")
                         
                         // Track circle creation analytics
                         AnalyticsService.shared.trackCircleCreated(
@@ -932,9 +932,9 @@ class CreateCircleViewController: UIViewController {
             ) { result in
                 switch result {
                 case .success:
-                    print("✅ Shared circle with \(user.displayName) with \(accessLevel.displayName) access")
+                    Logger.debug("✅ Shared circle with \(user.displayName) with \(accessLevel.displayName) access")
                 case .failure(let error):
-                    print("❌ Failed to share circle with \(user.displayName): \(error)")
+                    Logger.debug("❌ Failed to share circle with \(user.displayName): \(error)")
                 }
             }
         }
@@ -955,9 +955,9 @@ class CreateCircleViewController: UIViewController {
                     ) { result in
                         switch result {
                         case .success:
-                            print("✅ Sent circle invitation to \(emailAddress) with \(accessLevel.displayName) access")
+                            Logger.debug("✅ Sent circle invitation to \(emailAddress) with \(accessLevel.displayName) access")
                         case .failure(let error):
-                            print("❌ Failed to send invitation to \(emailAddress): \(error)")
+                            Logger.debug("❌ Failed to send invitation to \(emailAddress): \(error)")
                         }
                     }
                 }
@@ -1023,12 +1023,12 @@ extension CreateCircleViewController: UITextViewDelegate {
 extension CreateCircleViewController: ConnectionPickerDelegate {
     func connectionPicker(_ picker: ConnectionPickerView, didSelectConnection connection: User) {
         // Connection selected - no additional action needed as the picker handles UI updates
-        print("Selected connection: \(connection.displayName)")
+        Logger.debug("Selected connection: \(connection.displayName)")
     }
     
     func connectionPicker(_ picker: ConnectionPickerView, didDeselectConnection connection: User) {
         // Connection deselected - no additional action needed as the picker handles UI updates
-        print("Deselected connection: \(connection.displayName)")
+        Logger.debug("Deselected connection: \(connection.displayName)")
     }
 }
 

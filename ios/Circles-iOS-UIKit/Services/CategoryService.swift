@@ -141,7 +141,7 @@ class CategoryService {
     
     /// Get user's custom categories
     func fetchUserCategories(completion: @escaping (Result<[UserCategory], Error>) -> Void) {
-        print("🔍 CategoryService: Fetching user categories")
+        Logger.debug("🔍 CategoryService: Fetching user categories")
         
         APIService.shared.request(
             endpoint: "categories",
@@ -150,15 +150,15 @@ class CategoryService {
         ) { (result: Result<CategoriesResponse, APIError>) in
             switch result {
             case .success(let response):
-                print("✅ CategoryService: Successfully fetched \(response.data.count) categories")
+                Logger.debug("✅ CategoryService: Successfully fetched \(response.data.count) categories")
                 completion(.success(response.data))
             case .failure(let error):
-                print("❌ CategoryService: Failed to fetch categories - \(error)")
-                print("❌ CategoryService: Error description - \(error.localizedDescription)")
+                Logger.debug("❌ CategoryService: Failed to fetch categories - \(error)")
+                Logger.debug("❌ CategoryService: Error description - \(error.localizedDescription)")
                 
                 // Provide more context for 404 errors
                 if case .httpError(let statusCode, _) = error, statusCode == 404 {
-                    print("❌ CategoryService: 404 - The categories endpoint was not found")
+                    Logger.debug("❌ CategoryService: 404 - The categories endpoint was not found")
                 }
                 
                 completion(.failure(error))

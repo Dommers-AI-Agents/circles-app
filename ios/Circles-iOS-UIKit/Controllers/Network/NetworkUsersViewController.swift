@@ -93,7 +93,7 @@ class NetworkUsersViewController: BaseViewController {
                     self.tableView.reloadData()
                     self.updateUI()
                 case .failure(let error):
-                    print("Error loading users with circles: \(error)")
+                    Logger.debug("Error loading users with circles: \(error)")
                     self.showError("Failed to load network circles")
                 }
             }

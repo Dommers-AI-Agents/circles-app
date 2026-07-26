@@ -226,7 +226,7 @@ class RewardsViewController: BaseViewController {
                     self.updateOffersUI(with: data)
                 case .failure(let error):
                     // Offers are additive — balance/history still render
-                    print("⚠️ Failed to load offers: \(error)")
+                    Logger.debug("⚠️ Failed to load offers: \(error)")
                     self.updateOffersUI(with: nil)
                 }
             }

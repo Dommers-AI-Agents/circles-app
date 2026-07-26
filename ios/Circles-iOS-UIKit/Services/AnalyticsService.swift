@@ -141,9 +141,9 @@ final class AnalyticsService {
         Analytics.setAnalyticsCollectionEnabled(consent)
         
         if consent {
-            print("📊 Analytics: Initialized with user consent")
+            Logger.debug("📊 Analytics: Initialized with user consent")
         } else {
-            print("📊 Analytics: Disabled per user preference")
+            Logger.debug("📊 Analytics: Disabled per user preference")
         }
     }
     
@@ -156,11 +156,11 @@ final class AnalyticsService {
         if let userId = userId {
             Analytics.setUserID(userId)
             userDefaults.set(userId, forKey: kAnalyticsUserId)
-            print("📊 Analytics: User ID set - \(userId)")
+            Logger.debug("📊 Analytics: User ID set - \(userId)")
         } else {
             Analytics.setUserID(nil)
             userDefaults.removeObject(forKey: kAnalyticsUserId)
-            print("📊 Analytics: User ID cleared")
+            Logger.debug("📊 Analytics: User ID cleared")
         }
     }
     
@@ -170,7 +170,7 @@ final class AnalyticsService {
     func setUserProperty(_ value: String?, forName name: String) {
         guard isEnabled else { return }
         Analytics.setUserProperty(value, forName: name)
-        print("📊 Analytics: User property set - \(name): \(value ?? "nil")")
+        Logger.debug("📊 Analytics: User property set - \(name): \(value ?? "nil")")
     }
     
     /**
@@ -185,9 +185,9 @@ final class AnalyticsService {
         Analytics.logEvent(sanitizedEventName, parameters: parameters)
         
         #if DEBUG
-        print("📊 Analytics Event: \(sanitizedEventName)")
+        Logger.debug("📊 Analytics Event: \(sanitizedEventName)")
         if let params = parameters {
-            print("   Parameters: \(params)")
+            Logger.debug("   Parameters: \(params)")
         }
         #endif
     }
@@ -363,7 +363,7 @@ final class AnalyticsService {
         ])
         
         #if DEBUG
-        print("📊 Analytics: Screen viewed - \(screenName)")
+        Logger.debug("📊 Analytics: Screen viewed - \(screenName)")
         #endif
     }
     

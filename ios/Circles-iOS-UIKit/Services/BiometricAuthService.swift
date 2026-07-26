@@ -115,7 +115,7 @@ class BiometricAuthService {
     /// Enable biometric login for the user
     func enableBiometricLogin() {
         isBiometricLoginEnabled = true
-        print("🔐 BiometricAuthService: Biometric login enabled")
+        Logger.debug("🔐 BiometricAuthService: Biometric login enabled")
     }
 
     /// Disable biometric login for the user
@@ -123,7 +123,7 @@ class BiometricAuthService {
         isBiometricLoginEnabled = false
         // Also clear saved credentials when disabling
         KeychainService.shared.clearSavedCredentials()
-        print("🔐 BiometricAuthService: Biometric login disabled and credentials cleared")
+        Logger.debug("🔐 BiometricAuthService: Biometric login disabled and credentials cleared")
     }
 
     // MARK: - Helper Methods

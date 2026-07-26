@@ -317,7 +317,7 @@ class VideoCommentsViewController: BaseViewController {
                     self.tableView.reloadData()
                     
                 case .failure(let error):
-                    print("Failed to load more comments: \(error)")
+                    Logger.debug("Failed to load more comments: \(error)")
                 }
             }
         }
@@ -473,7 +473,7 @@ class VideoCommentsViewController: BaseViewController {
                     self.tableView.reloadRows(at: [indexPath], with: .none)
                     
                 case .failure(let error):
-                    print("Failed to like comment: \(error)")
+                    Logger.debug("Failed to like comment: \(error)")
                     self.showError("Failed to update like. Please try again.")
                 }
             }
@@ -528,7 +528,7 @@ class VideoCommentsViewController: BaseViewController {
                     self.loadData(completion: nil)
                     
                 case .failure(let error):
-                    print("Failed to send reply: \(error)")
+                    Logger.debug("Failed to send reply: \(error)")
                     self.showError("Failed to send reply. Please try again.")
                 }
             }

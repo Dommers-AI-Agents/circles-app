@@ -403,17 +403,17 @@ class VideoReelCell: UICollectionViewCell {
         contentView.layoutIfNeeded()
         videoContainerView.layoutIfNeeded()
         
-        print("📹 VideoReelCell: Configuring cell for reel:")
-        print("   - ID: \(reel.id)")
-        print("   - Title: \(reel.title)")
-        print("   - Content Type: \(reel.contentType ?? "video")")
-        print("   - Video Type: \(reel.videoType ?? "nil")")
-        print("   - Is Embedded: \(reel.isEmbedded)")
-        print("   - Embed URL: \(reel.embedUrl ?? "nil")")
-        print("   - Embed Platform: \(reel.embedPlatform ?? "nil")")
-        print("   - Has Player: \(player != nil)")
-        print("   - Video URL: \(reel.videoUrl ?? "nil")")
-        print("   - Preview URL: \(reel.previewUrl ?? "nil")")
+        Logger.debug("📹 VideoReelCell: Configuring cell for reel:")
+        Logger.debug("   - ID: \(reel.id)")
+        Logger.debug("   - Title: \(reel.title)")
+        Logger.debug("   - Content Type: \(reel.contentType ?? "video")")
+        Logger.debug("   - Video Type: \(reel.videoType ?? "nil")")
+        Logger.debug("   - Is Embedded: \(reel.isEmbedded)")
+        Logger.debug("   - Embed URL: \(reel.embedUrl ?? "nil")")
+        Logger.debug("   - Embed Platform: \(reel.embedPlatform ?? "nil")")
+        Logger.debug("   - Has Player: \(player != nil)")
+        Logger.debug("   - Video URL: \(reel.videoUrl ?? "nil")")
+        Logger.debug("   - Preview URL: \(reel.previewUrl ?? "nil")")
         
         // Set like state based on server data
         self.isLiked = reel.likedByCurrentUser ?? false
@@ -491,13 +491,13 @@ class VideoReelCell: UICollectionViewCell {
             // Observe player item status
             playerItemObserver = player.currentItem?.observe(\.status, options: [.new]) { [weak self] item, _ in
                 DispatchQueue.main.async {
-                    print("📹 VideoReelCell: Player item status changed: \(item.status.rawValue)")
+                    Logger.debug("📹 VideoReelCell: Player item status changed: \(item.status.rawValue)")
                     if item.status == .readyToPlay {
-                        print("📹 VideoReelCell: Video ready to play!")
+                        Logger.debug("📹 VideoReelCell: Video ready to play!")
                         self?.playerLayer?.isHidden = false
                         // Don't auto-play here - let CirclesHomeViewController control playback
                     } else if item.status == .failed {
-                        print("❌ VideoReelCell: Player item failed: \(item.error?.localizedDescription ?? "Unknown error")")
+                        Logger.debug("❌ VideoReelCell: Player item failed: \(item.error?.localizedDescription ?? "Unknown error")")
                     }
                 }
             }
@@ -532,19 +532,19 @@ class VideoReelCell: UICollectionViewCell {
             videoContainerView.alpha = 1.0
             
             // Debug logging
-            print("📹 VideoReelCell: Added player layer with frame: \(newPlayerLayer.frame)")
-            print("📹 VideoReelCell: Video container bounds: \(videoContainerView.bounds)")
-            print("📹 VideoReelCell: Player status: \(player.status.rawValue)")
+            Logger.debug("📹 VideoReelCell: Added player layer with frame: \(newPlayerLayer.frame)")
+            Logger.debug("📹 VideoReelCell: Video container bounds: \(videoContainerView.bounds)")
+            Logger.debug("📹 VideoReelCell: Player status: \(player.status.rawValue)")
             if let currentItem = player.currentItem {
-                print("📹 VideoReelCell: Player item status: \(currentItem.status.rawValue)")
-                print("📹 VideoReelCell: Player item duration: \(currentItem.duration.seconds)")
+                Logger.debug("📹 VideoReelCell: Player item status: \(currentItem.status.rawValue)")
+                Logger.debug("📹 VideoReelCell: Player item duration: \(currentItem.duration.seconds)")
             }
-            print("📹 VideoReelCell: Video container hidden: \(videoContainerView.isHidden)")
-            print("📹 VideoReelCell: Video container alpha: \(videoContainerView.alpha)")
-            print("📹 VideoReelCell: Number of sublayers: \(videoContainerView.layer.sublayers?.count ?? 0)")
+            Logger.debug("📹 VideoReelCell: Video container hidden: \(videoContainerView.isHidden)")
+            Logger.debug("📹 VideoReelCell: Video container alpha: \(videoContainerView.alpha)")
+            Logger.debug("📹 VideoReelCell: Number of sublayers: \(videoContainerView.layer.sublayers?.count ?? 0)")
             
             // Don't auto-play here - let CirclesHomeViewController control playback
-            print("📹 VideoReelCell: Player configured, waiting for playback command")
+            Logger.debug("📹 VideoReelCell: Player configured, waiting for playback command")
             
             // Force layout update
             videoContainerView.setNeedsLayout()
@@ -586,11 +586,11 @@ class VideoReelCell: UICollectionViewCell {
             CATransaction.setDisableActions(true)
             playerLayer.frame = videoContainerView.bounds
             CATransaction.commit()
-            print("📹 VideoReelCell: Updated player layer frame in layoutSubviews: \(playerLayer.frame)")
-            print("📹 VideoReelCell: Player layer bounds: \(playerLayer.bounds)")
-            print("📹 VideoReelCell: Player ready for display: \(playerLayer.isReadyForDisplay)")
-            print("📹 VideoReelCell: ContentView bounds: \(contentView.bounds)")
-            print("📹 VideoReelCell: VideoContainer bounds: \(videoContainerView.bounds)")
+            Logger.debug("📹 VideoReelCell: Updated player layer frame in layoutSubviews: \(playerLayer.frame)")
+            Logger.debug("📹 VideoReelCell: Player layer bounds: \(playerLayer.bounds)")
+            Logger.debug("📹 VideoReelCell: Player ready for display: \(playerLayer.isReadyForDisplay)")
+            Logger.debug("📹 VideoReelCell: ContentView bounds: \(contentView.bounds)")
+            Logger.debug("📹 VideoReelCell: VideoContainer bounds: \(videoContainerView.bounds)")
         }
         
         // Update gradient frame
@@ -823,19 +823,19 @@ class VideoReelCell: UICollectionViewCell {
     
     // MARK: - Debug
     private func debugPrintViewHierarchy() {
-        print("📹 VideoReelCell: View hierarchy:")
-        print("   - contentView frame: \(contentView.frame)")
-        print("   - videoContainerView frame: \(videoContainerView.frame)")
-        print("   - videoContainerView subviews: \(videoContainerView.subviews.count)")
+        Logger.debug("📹 VideoReelCell: View hierarchy:")
+        Logger.debug("   - contentView frame: \(contentView.frame)")
+        Logger.debug("   - videoContainerView frame: \(videoContainerView.frame)")
+        Logger.debug("   - videoContainerView subviews: \(videoContainerView.subviews.count)")
         
         for (index, subview) in videoContainerView.subviews.enumerated() {
-            print("     Subview \(index): \(type(of: subview)) - frame: \(subview.frame), hidden: \(subview.isHidden), alpha: \(subview.alpha)")
+            Logger.debug("     Subview \(index): \(type(of: subview)) - frame: \(subview.frame), hidden: \(subview.isHidden), alpha: \(subview.alpha)")
         }
         
         if let sublayers = videoContainerView.layer.sublayers {
-            print("   - videoContainerView sublayers: \(sublayers.count)")
+            Logger.debug("   - videoContainerView sublayers: \(sublayers.count)")
             for (index, layer) in sublayers.enumerated() {
-                print("     Layer \(index): \(type(of: layer)) - frame: \(layer.frame), hidden: \(layer.isHidden), opacity: \(layer.opacity)")
+                Logger.debug("     Layer \(index): \(type(of: layer)) - frame: \(layer.frame), hidden: \(layer.isHidden), opacity: \(layer.opacity)")
             }
         }
     }

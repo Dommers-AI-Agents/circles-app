@@ -86,19 +86,19 @@ class GooglePlacesService {
     
     @available(*, deprecated, message: "Use Apple Maps MKLocalSearch instead. See APIUsageGuidelines.md")
     func searchPlaces(query: String, location: CLLocation? = nil, completion: @escaping (Result<[GMSAutocompletePrediction], Error>) -> Void) {
-        print("⚠️ DEPRECATED: searchPlaces called. Use Apple Maps MKLocalSearch instead.")
+        Logger.debug("⚠️ DEPRECATED: searchPlaces called. Use Apple Maps MKLocalSearch instead.")
         completion(.success([])) // Return empty results instead of crashing
     }
     
     @available(*, deprecated, message: "Use Apple Maps MKLocalSearch instead. See APIUsageGuidelines.md")
     func searchPlacesByCategory(category: String, center: CLLocationCoordinate2D, radiusInMeters: Double, completion: @escaping (Result<[GMSAutocompletePrediction], Error>) -> Void) {
-        print("⚠️ DEPRECATED: searchPlacesByCategory called. Use Apple Maps MKLocalSearch instead.")
+        Logger.debug("⚠️ DEPRECATED: searchPlacesByCategory called. Use Apple Maps MKLocalSearch instead.")
         completion(.success([])) // Return empty results instead of crashing
     }
     
     @available(*, deprecated, message: "Use Apple Maps MKMapItem for place details. This method now only fetches photos for backward compatibility.")
     func fetchPlaceDetails(placeID: String, completion: @escaping (Result<GMSPlace, Error>) -> Void) {
-        print("⚠️ DEPRECATED: fetchPlaceDetails called. Only fetching photos for backward compatibility.")
+        Logger.debug("⚠️ DEPRECATED: fetchPlaceDetails called. Only fetching photos for backward compatibility.")
         
         // Fetch photos, coordinate, and rating fields
         let fields: GMSPlaceField = [.photos, .placeID, .coordinate, .rating, .userRatingsTotal]
@@ -124,7 +124,7 @@ class GooglePlacesService {
     
     @available(*, deprecated, message: "Use Apple Maps MKMapItem for reviews. This method now only fetches photos for backward compatibility.")
     func fetchPlaceDetailsWithReviews(placeID: String, completion: @escaping (Result<GMSPlace, Error>) -> Void) {
-        print("⚠️ DEPRECATED: fetchPlaceDetailsWithReviews called. Only fetching photos for backward compatibility.")
+        Logger.debug("⚠️ DEPRECATED: fetchPlaceDetailsWithReviews called. Only fetching photos for backward compatibility.")
         
         // Fetch photos, coordinate, and rating fields
         let fields: GMSPlaceField = [.photos, .placeID, .coordinate, .rating, .userRatingsTotal]
@@ -150,13 +150,13 @@ class GooglePlacesService {
     
     @available(*, deprecated, message: "Use Apple Maps MKLocalSearch instead. See APIUsageGuidelines.md")
     func findNearbyPlaces(location: CLLocation, radius: Double = 500, types: [String]? = nil, completion: @escaping (Result<[GMSPlace], Error>) -> Void) {
-        print("⚠️ DEPRECATED: findNearbyPlaces called. Use Apple Maps MKLocalSearch instead.")
+        Logger.debug("⚠️ DEPRECATED: findNearbyPlaces called. Use Apple Maps MKLocalSearch instead.")
         completion(.success([])) // Return empty results instead of crashing
     }
     
     @available(*, deprecated, message: "Use Apple Maps MKLocalSearch instead. See APIUsageGuidelines.md")
     func searchPlaceByNameAndLocation(name: String, coordinate: CLLocationCoordinate2D, address: String? = nil, completion: @escaping (Result<GMSAutocompletePrediction?, Error>) -> Void) {
-        print("⚠️ NOTE: Using Google Places ONLY to get place ID for photo fetching. All other data comes from Apple Maps.")
+        Logger.debug("⚠️ NOTE: Using Google Places ONLY to get place ID for photo fetching. All other data comes from Apple Maps.")
         
         // Create a search token
         let token = GMSAutocompleteSessionToken()
@@ -179,7 +179,7 @@ class GooglePlacesService {
         var searchQuery = name
         if let address = address, !address.isEmpty {
             searchQuery = "\(name), \(address)"
-            print("🔍 Enhanced search query: \(searchQuery)")
+            Logger.debug("🔍 Enhanced search query: \(searchQuery)")
         }
         
         // Search for the place
@@ -189,7 +189,7 @@ class GooglePlacesService {
             sessionToken: token
         ) { predictions, error in
             if let error = error {
-                print("❌ Google Places search error: \(error)")
+                Logger.debug("❌ Google Places search error: \(error)")
                 completion(.failure(error))
                 return
             }
@@ -198,11 +198,11 @@ class GooglePlacesService {
             var bestMatch: GMSAutocompletePrediction? = nil
             
             if let predictions = predictions, !predictions.isEmpty {
-                print("📍 Found \(predictions.count) predictions for '\(searchQuery)'")
+                Logger.debug("📍 Found \(predictions.count) predictions for '\(searchQuery)'")
                 
                 // Log all predictions for debugging
                 for (index, prediction) in predictions.enumerated() {
-                    print("  \(index + 1). \(prediction.attributedPrimaryText.string) - \(prediction.attributedSecondaryText?.string ?? "")")
+                    Logger.debug("  \(index + 1). \(prediction.attributedPrimaryText.string) - \(prediction.attributedSecondaryText?.string ?? "")")
                 }
                 
                 // First try to find exact name match
@@ -215,9 +215,9 @@ class GooglePlacesService {
                 // If no exact match, use the first result (closest based on location bias)
                 if bestMatch == nil {
                     bestMatch = predictions.first
-                    print("⚠️ No exact name match found, using closest result based on location")
+                    Logger.debug("⚠️ No exact name match found, using closest result based on location")
                 } else {
-                    print("✅ Found exact match: \(bestMatch!.attributedPrimaryText.string)")
+                    Logger.debug("✅ Found exact match: \(bestMatch!.attributedPrimaryText.string)")
                 }
             }
             
@@ -227,7 +227,7 @@ class GooglePlacesService {
     
     @available(*, deprecated, message: "Use Apple Maps CLGeocoder instead. See APIUsageGuidelines.md")
     func geocodeAddress(_ address: String, completion: @escaping (Result<GooglePlaceDetails, Error>) -> Void) {
-        print("⚠️ DEPRECATED: geocodeAddress called. Use Apple Maps CLGeocoder instead.")
+        Logger.debug("⚠️ DEPRECATED: geocodeAddress called. Use Apple Maps CLGeocoder instead.")
         completion(.failure(NSError(domain: "GooglePlacesService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Use Apple Maps instead"])))
     }
 }

@@ -46,7 +46,7 @@ class KeychainManager {
         let status = SecItemAdd(query as CFDictionary, nil)
         
         if status != errSecSuccess {
-            print("Error saving to keychain: \(status)")
+            Logger.debug("Error saving to keychain: \(status)")
         }
     }
     
@@ -158,7 +158,7 @@ class KeychainManager {
         )
 
         guard let accessControl = access else {
-            print("Failed to create access control")
+            Logger.debug("Failed to create access control")
             return
         }
 
@@ -174,7 +174,7 @@ class KeychainManager {
         let status = SecItemAdd(query as CFDictionary, nil)
         
         if status != errSecSuccess {
-            print("Error saving to keychain with biometric: \(status)")
+            Logger.debug("Error saving to keychain with biometric: \(status)")
         }
     }
 }

@@ -127,7 +127,7 @@ class SharedCircleDetailViewController: BaseViewController {
                     self?.places = fetchedPlaces
                     self?.tableView.reloadData()
                 case .failure(let error):
-                    print("Error loading places: \(error)")
+                    Logger.debug("Error loading places: \(error)")
                 }
             }
         }

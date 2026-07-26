@@ -138,7 +138,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     /// Force clear all profile picture caches and refresh the profile
     /// Call this when profile picture corruption is detected
     func forceRefreshProfileAndClearCache() {
-        print("🚨 ProfileViewController: Force clearing all profile caches and refreshing")
+        Logger.debug("🚨 ProfileViewController: Force clearing all profile caches and refreshing")
         
         // Clear all image caches
         ImageService.shared.clearAllProfilePictureCaches()
@@ -154,7 +154,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         
         // Force fetch fresh user data
         fetchFreshUserData { [weak self] in
-            print("✅ ProfileViewController: Profile refreshed after cache clear")
+            Logger.debug("✅ ProfileViewController: Profile refreshed after cache clear")
             // Reload circles as well to ensure correct order
             self?.loadUserCircles()
         }
@@ -866,7 +866,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                 if shouldClearCache {
                     ImageService.shared.clearCachedImage(for: profilePictureUrl)
                     UserDefaults.standard.set(false, forKey: "ProfilePictureCacheNeedsClearing")
-                    print("🔄 ProfileViewController: Cleared profile picture cache due to potential corruption")
+                    Logger.debug("🔄 ProfileViewController: Cleared profile picture cache due to potential corruption")
                     
                     // Force refresh profile data
                     loadUserProfile()
@@ -956,14 +956,14 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     // MARK: - BaseViewController Data Loading
     override func loadData(completion: (() -> Void)? = nil) {
-        print("🚀 ProfileViewController: loadData called")
-        print("🚀 ProfileViewController: isLoadingData = \(isLoadingData)")
+        Logger.debug("🚀 ProfileViewController: loadData called")
+        Logger.debug("🚀 ProfileViewController: isLoadingData = \(isLoadingData)")
         
         // Note: BaseViewController already manages isLoadingData, so we don't need to check it here
         // BaseViewController sets isLoadingData = true before calling this method
         
         // Call loadUserProfile with completion handler
-        print("🚀 ProfileViewController: Calling loadUserProfile")
+        Logger.debug("🚀 ProfileViewController: Calling loadUserProfile")
         loadUserProfile(completion: completion)
     }
     
@@ -1720,11 +1720,11 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             }
         } else if contentTypeSegmentedControl.selectedSegmentIndex == 1 {
             // Show videos/moments
-            print("📹 Switching to Moments tab")
+            Logger.debug("📹 Switching to Moments tab")
             
             // TEMPORARY: Clear image cache to debug duplicate thumbnails
             ImageService.shared.clearAllCaches()
-            print("🧹 Cleared all image caches for debugging")
+            Logger.debug("🧹 Cleared all image caches for debugging")
             
             circlesCollectionView.isHidden = true
             videosCollectionView.isHidden = false
@@ -1763,7 +1763,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             logoutButtonTopToUploadsConstraint?.isActive = false
         } else {
             // Show uploads (tab index 2)
-            print("📷 Switching to Uploads tab")
+            Logger.debug("📷 Switching to Uploads tab")
             
             circlesCollectionView.isHidden = true
             videosCollectionView.isHidden = true
@@ -2077,13 +2077,13 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
     
     @objc private func messageButtonTapped() {
-        print("🔍 ProfileViewController: messageButtonTapped called")
+        Logger.debug("🔍 ProfileViewController: messageButtonTapped called")
         guard let user = user else {
-            print("❌ ProfileViewController: messageButtonTapped - user is nil")
+            Logger.debug("❌ ProfileViewController: messageButtonTapped - user is nil")
             return
         }
         
-        print("🔍 ProfileViewController: Creating/getting conversation with user: \(user.displayName) (ID: \(user.id))")
+        Logger.debug("🔍 ProfileViewController: Creating/getting conversation with user: \(user.displayName) (ID: \(user.id))")
         
         // Create or get conversation with this user
         MessagingManager.shared.createOrGetDirectConversation(with: user.id) { [weak self] result in
@@ -2091,20 +2091,20 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             
             switch result {
             case .success(let conversation):
-                print("✅ ProfileViewController: Successfully got conversation:")
-                print("   - ID: \(conversation.id)")
-                print("   - Type: \(conversation.type)")
-                print("   - Participants: \(conversation.participants)")
-                print("   - Display Name: \(conversation.displayName ?? "nil")")
+                Logger.debug("✅ ProfileViewController: Successfully got conversation:")
+                Logger.debug("   - ID: \(conversation.id)")
+                Logger.debug("   - Type: \(conversation.type)")
+                Logger.debug("   - Participants: \(conversation.participants)")
+                Logger.debug("   - Display Name: \(conversation.displayName ?? "nil")")
                 
                 DispatchQueue.main.async {
-                    print("🔍 ProfileViewController: Creating ChatViewController and navigating")
+                    Logger.debug("🔍 ProfileViewController: Creating ChatViewController and navigating")
                     let chatVC = ChatViewController()
                     chatVC.conversation = conversation
                     self.navigationController?.pushViewController(chatVC, animated: true)
                 }
             case .failure(let error):
-                print("❌ ProfileViewController: Failed to create/get conversation: \(error.localizedDescription)")
+                Logger.debug("❌ ProfileViewController: Failed to create/get conversation: \(error.localizedDescription)")
                 DispatchQueue.main.async {
                     self.showAlert(title: "Error", message: "Failed to start conversation: \(error.localizedDescription)")
                 }
@@ -2122,7 +2122,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         let endpoint = isFollowing ? "users/\(user.id)/unfollow" : "users/\(user.id)/follow"
         let action = isFollowing ? "unfollow" : "follow"
         
-        print("🔵 Follow button tapped - Action: \(action), User: \(user.displayName)")
+        Logger.debug("🔵 Follow button tapped - Action: \(action), User: \(user.displayName)")
         
         // Store original states for rollback
         let originalIsFollowing = isFollowing
@@ -2175,7 +2175,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                 
                 switch result {
                 case .success:
-                    print("✅ Successfully \(action)ed user: \(user.displayName)")
+                    Logger.debug("✅ Successfully \(action)ed user: \(user.displayName)")
                     
                     // Re-enable button after successful action
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -2184,7 +2184,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                     }
                     
                 case .failure(let error):
-                    print("❌ Failed to \(action) user: \(error)")
+                    Logger.debug("❌ Failed to \(action) user: \(error)")
                     
                     // Rollback optimistic updates on failure
                     self.isFollowing = originalIsFollowing
@@ -2308,7 +2308,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         guard let connection = allConnections.first(where: { 
             $0.otherUserId(currentUserId: currentUserId) == user.id 
         }) else {
-            print("❌ No connection found for user: \(user.id)")
+            Logger.debug("❌ No connection found for user: \(user.id)")
             activityNotificationsToggle.isEnabled = true
             activityNotificationsToggle.setOn(!isEnabled, animated: true)
             showError("Connection not found")
@@ -2344,10 +2344,10 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         ) { (result: Result<NotificationPreferenceResponse, APIError>) in
             switch result {
             case .success(let response):
-                print("✅ Connection notification preference updated: \(response.success)")
+                Logger.debug("✅ Connection notification preference updated: \(response.success)")
                 completion(response.success)
             case .failure(let error):
-                print("❌ Failed to update connection notification preference: \(error)")
+                Logger.debug("❌ Failed to update connection notification preference: \(error)")
                 completion(false)
             }
         }
@@ -2430,7 +2430,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     private func checkConnectionAndFollowStatus() {
         guard let user = user else { return }
         
-        print("🔍 Checking connection and follow status for user: \(user.displayName)")
+        Logger.debug("🔍 Checking connection and follow status for user: \(user.displayName)")
         
         // Check if user is in current user's connections (both accepted and pending)
         let allConnections = NetworkManager.shared.connections + NetworkManager.shared.pendingConnections
@@ -2479,17 +2479,17 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         if let userIsFollowing = user.isFollowing {
             let wasFollowing = isFollowing
             isFollowing = userIsFollowing
-            print("📊 Follow status from backend - Was: \(wasFollowing), Now: \(isFollowing)")
+            Logger.debug("📊 Follow status from backend - Was: \(wasFollowing), Now: \(isFollowing)")
         } else {
             // Fallback: Check follow status from current user's following list
             if let currentUser = AuthService.shared.currentUser,
                let following = currentUser.following {
                 let wasFollowing = isFollowing
                 isFollowing = following.contains(user.id)
-                print("📊 Follow status from local - Was: \(wasFollowing), Now: \(isFollowing), Following array: \(following.count) users")
+                Logger.debug("📊 Follow status from local - Was: \(wasFollowing), Now: \(isFollowing), Following array: \(following.count) users")
             } else {
                 isFollowing = false
-                print("📊 No following data available")
+                Logger.debug("📊 No following data available")
             }
             
             // If we're viewing another user and don't have current user data, fetch it
@@ -2525,7 +2525,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         // Update the cached user data
         self.user = user.copy(followingCount: newCount)
         
-        print("📊 Updated local following count: \(currentCount) → \(newCount)")
+        Logger.debug("📊 Updated local following count: \(currentCount) → \(newCount)")
     }
     
     private func updateButtonVisibility() {
@@ -2659,7 +2659,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                         self.allPlaces.append(contentsOf: places)
                         self.filterPlaces()
                     case .failure(let error):
-                        print("Failed to load places for circle \(circle.name): \(error)")
+                        Logger.debug("Failed to load places for circle \(circle.name): \(error)")
                     }
                 }
             }
@@ -2708,8 +2708,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     
     private func loadUserProfile(completion: (() -> Void)? = nil) {
-        print("🚀 ProfileViewController: loadUserProfile called")
-        print("🚀 ProfileViewController: Has existing user? \(self.user != nil)")
+        Logger.debug("🚀 ProfileViewController: loadUserProfile called")
+        Logger.debug("🚀 ProfileViewController: Has existing user? \(self.user != nil)")
         
         // The OWN profile always refetches — re-rendering the held snapshot
         // meant Edit Profile changes (location, zipcode, ...) never appeared
@@ -2719,25 +2719,25 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
 
         if let user = self.user, !isOwnProfile {
             // Another user's profile — use the provided snapshot
-            print("✅ ProfileViewController: Using existing user: \(user.id)")
+            Logger.debug("✅ ProfileViewController: Using existing user: \(user.id)")
             displayUser(user)
             fetchUserStats(userId: user.id)
             completion?()
         } else {
             // Own profile — always get fresh data
-            print("🔄 ProfileViewController: Own profile, fetching fresh data")
+            Logger.debug("🔄 ProfileViewController: Own profile, fetching fresh data")
             fetchFreshUserData(completion: completion)
         }
     }
     
     private func fetchFreshUserData(completion: (() -> Void)? = nil) {
-        print("🚀 ProfileViewController: fetchFreshUserData called")
+        Logger.debug("🚀 ProfileViewController: fetchFreshUserData called")
         
         // Always fetch fresh user data from the server
         UserService.shared.fetchUserProfile { [weak self] result in
-            print("📡 ProfileViewController: fetchUserProfile callback received")
+            Logger.debug("📡 ProfileViewController: fetchUserProfile callback received")
             guard let self = self else {
-                print("⚠️ ProfileViewController: Self deallocated during fetch")
+                Logger.debug("⚠️ ProfileViewController: Self deallocated during fetch")
                 completion?()
                 return
             }
@@ -2745,9 +2745,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             DispatchQueue.main.async {
                 switch result {
                 case .success(let user):
-                    print("✅ ProfileViewController: Successfully fetched user profile")
-                    print("✅ ProfileViewController: User ID: \(user.id)")
-                    print("✅ ProfileViewController: User name: \(user.displayName)")
+                    Logger.debug("✅ ProfileViewController: Successfully fetched user profile")
+                    Logger.debug("✅ ProfileViewController: User ID: \(user.id)")
+                    Logger.debug("✅ ProfileViewController: User name: \(user.displayName)")
                     self.user = user
                     self.displayUser(user)
                     self.fetchUserStats(userId: user.id)
@@ -2756,17 +2756,17 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                     AuthService.shared.updateCurrentUser(user)
                     
                 case .failure(let error):
-                    print("❌ ProfileViewController: Failed to fetch user profile: \(error)")
-                    print("❌ ProfileViewController: Error type: \(type(of: error))")
+                    Logger.debug("❌ ProfileViewController: Failed to fetch user profile: \(error)")
+                    Logger.debug("❌ ProfileViewController: Error type: \(type(of: error))")
                     
                     // If we have cached data, use it as fallback
                     if let cachedUser = AuthService.shared.currentUser {
-                        print("⚠️ ProfileViewController: Using cached user as fallback: \(cachedUser.id)")
+                        Logger.debug("⚠️ ProfileViewController: Using cached user as fallback: \(cachedUser.id)")
                         self.user = cachedUser
                         self.displayUser(cachedUser)
                         self.fetchUserStats(userId: cachedUser.id)
                     } else {
-                        print("❌ ProfileViewController: No cached user available, showing default profile")
+                        Logger.debug("❌ ProfileViewController: No cached user available, showing default profile")
                         // Show error or default values
                         self.displayDefaultProfile()
                     }
@@ -2784,7 +2784,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         
         // Only load cached videos for current user
         if isCurrentUser {
-            print("💾 ProfileViewController: Checking for cached videos...")
+            Logger.debug("💾 ProfileViewController: Checking for cached videos...")
             // For now, we'll just rely on network fetch
             // TODO: Implement actual cache retrieval from VideoStorageService
         }
@@ -2792,7 +2792,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     private func fetchUserVideos() {
         guard let userId = user?.id ?? AuthService.shared.getUserId() else {
-            print("⚠️ ProfileViewController: No user ID available for fetching videos")
+            Logger.debug("⚠️ ProfileViewController: No user ID available for fetching videos")
             isLoadingVideos = false
             videosLoadingIndicator.stopAnimating()
             return
@@ -2805,9 +2805,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         
         let isCurrentUser = userId == AuthService.shared.getUserId()
         
-        print("📹 ProfileViewController: Starting to fetch videos for user: \(userId)")
-        print("   - Is current user: \(isCurrentUser)")
-        print("   - Email: \(user?.email ?? "unknown")")
+        Logger.debug("📹 ProfileViewController: Starting to fetch videos for user: \(userId)")
+        Logger.debug("   - Is current user: \(isCurrentUser)")
+        Logger.debug("   - Email: \(user?.email ?? "unknown")")
         
         APIService.shared.getUserVideos(userId: userId) { [weak self] result in
             DispatchQueue.main.async {
@@ -2823,28 +2823,28 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                     }
                     
                     // Debug: Log thumbnail URLs to check for duplicates
-                    print("📹 ProfileViewController: Fetched \(response.data.count) videos, showing \(self.videos.count) valid ones")
+                    Logger.debug("📹 ProfileViewController: Fetched \(response.data.count) videos, showing \(self.videos.count) valid ones")
                     for (index, video) in self.videos.enumerated() {
                         let thumbnailPreview = video.thumbnailUrl?.suffix(50) ?? "none"
-                        print("   [\(index)] ID: \(video.id.prefix(8))... Type: \(video.contentType ?? "video") Thumbnail: ...\(thumbnailPreview)")
+                        Logger.debug("   [\(index)] ID: \(video.id.prefix(8))... Type: \(video.contentType ?? "video") Thumbnail: ...\(thumbnailPreview)")
                     }
                     
                     // Log video details
                     for (index, video) in response.data.enumerated() {
-                        print("   Video \(index + 1):")
-                        print("     - Title: \(video.title)")
-                        print("     - ID: \(video.id)")
-                        print("     - Has video URL: \(video.videoUrl != nil)")
-                        print("     - Has preview URL: \(video.previewUrl != nil)")
-                        print("     - Has thumbnail URL: \(video.thumbnailUrl != nil)")
-                        print("     - Upload status: \(video.uploadStatus.rawValue)")
-                        print("     - Content type: \(video.contentType ?? "video")")
-                        print("     - Video type: \(video.videoType ?? "uploaded")")
+                        Logger.debug("   Video \(index + 1):")
+                        Logger.debug("     - Title: \(video.title)")
+                        Logger.debug("     - ID: \(video.id)")
+                        Logger.debug("     - Has video URL: \(video.videoUrl != nil)")
+                        Logger.debug("     - Has preview URL: \(video.previewUrl != nil)")
+                        Logger.debug("     - Has thumbnail URL: \(video.thumbnailUrl != nil)")
+                        Logger.debug("     - Upload status: \(video.uploadStatus.rawValue)")
+                        Logger.debug("     - Content type: \(video.contentType ?? "video")")
+                        Logger.debug("     - Video type: \(video.videoType ?? "uploaded")")
                     }
                     
                     // Cache user's own videos for permanent storage
                     if isCurrentUser && !response.data.isEmpty {
-                        print("💾 ProfileViewController: Caching \(response.data.count) user videos for offline access")
+                        Logger.debug("💾 ProfileViewController: Caching \(response.data.count) user videos for offline access")
                         VideoStorageService.shared.cacheUserVideos(response.data)
                     }
                     
@@ -2858,14 +2858,14 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                         self.videosEmptyLabel.isHidden = !self.videos.isEmpty
                         
                         if self.videos.isEmpty {
-                            print("📭 ProfileViewController: No videos to display - showing empty state")
+                            Logger.debug("📭 ProfileViewController: No videos to display - showing empty state")
                         }
                     }
                     
                 case .failure(let error):
                     self.isLoadingVideos = false
-                    print("❌ ProfileViewController: Failed to fetch videos: \(error)")
-                    print("   - Error details: \(error.localizedDescription)")
+                    Logger.debug("❌ ProfileViewController: Failed to fetch videos: \(error)")
+                    Logger.debug("   - Error details: \(error.localizedDescription)")
                     
                     // Don't show error to user, just leave videos empty
                     self.videos = []
@@ -2882,13 +2882,13 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     private func fetchUserUploads() {
         guard let userId = user?.id ?? AuthService.shared.getUserId() else {
-            print("⚠️ ProfileViewController: No user ID available for fetching uploads")
+            Logger.debug("⚠️ ProfileViewController: No user ID available for fetching uploads")
             isLoadingUploads = false
             uploadsLoadingIndicator.stopAnimating()
             return
         }
         
-        print("📷 ProfileViewController: Fetching uploads for user: \(userId)")
+        Logger.debug("📷 ProfileViewController: Fetching uploads for user: \(userId)")
         isLoadingUploads = true
         
         GlobalPlaceService.shared.getUserUploads(userId: userId) { [weak self] result in
@@ -2899,14 +2899,14 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                 
                 switch result {
                 case .success(let response):
-                    print("✅ ProfileViewController: Successfully fetched \(response.data.count) uploads")
+                    Logger.debug("✅ ProfileViewController: Successfully fetched \(response.data.count) uploads")
                     self.uploads = response.data
                     
                     // Log upload details for debugging
                     if !response.data.isEmpty {
-                        print("📸 ProfileViewController: Upload details:")
+                        Logger.debug("📸 ProfileViewController: Upload details:")
                         for (index, upload) in response.data.prefix(3).enumerated() {
-                            print("     Upload \(index + 1): \(upload.placeName) - \(upload.imageUrl)")
+                            Logger.debug("     Upload \(index + 1): \(upload.placeName) - \(upload.imageUrl)")
                         }
                     }
                     
@@ -2920,14 +2920,14 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                         self.uploadsEmptyLabel.isHidden = !self.uploads.isEmpty
                         
                         if self.uploads.isEmpty {
-                            print("📭 ProfileViewController: No uploads to display - showing empty state")
+                            Logger.debug("📭 ProfileViewController: No uploads to display - showing empty state")
                         }
                     }
                     
                 case .failure(let error):
                     self.isLoadingUploads = false
-                    print("❌ ProfileViewController: Failed to fetch uploads: \(error)")
-                    print("   - Error details: \(error.localizedDescription)")
+                    Logger.debug("❌ ProfileViewController: Failed to fetch uploads: \(error)")
+                    Logger.debug("   - Error details: \(error.localizedDescription)")
                     
                     // Don't show error to user, just leave uploads empty
                     self.uploads = []
@@ -2942,15 +2942,15 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     private func displayUser(_ user: User) {
         // Debug logging
-        print("🔍 ProfileViewController - Displaying user data:")
-        print("   - Display Name: \(user.displayName)")
-        print("   - First Name: \(user.firstName ?? "nil")")
-        print("   - Last Name: \(user.lastName ?? "nil")")
-        print("   - Phone Number: \(user.phoneNumber ?? "nil")")
-        print("   - Bio: \(user.bio ?? "nil")")
-        print("   - Location: \(user.location ?? "nil")")
-        print("   - Circles Count: \(user.circlesCount ?? 0)")
-        print("   - Places Count: \(user.placesCount ?? 0)")
+        Logger.debug("🔍 ProfileViewController - Displaying user data:")
+        Logger.debug("   - Display Name: \(user.displayName)")
+        Logger.debug("   - First Name: \(user.firstName ?? "nil")")
+        Logger.debug("   - Last Name: \(user.lastName ?? "nil")")
+        Logger.debug("   - Phone Number: \(user.phoneNumber ?? "nil")")
+        Logger.debug("   - Bio: \(user.bio ?? "nil")")
+        Logger.debug("   - Location: \(user.location ?? "nil")")
+        Logger.debug("   - Circles Count: \(user.circlesCount ?? 0)")
+        Logger.debug("   - Places Count: \(user.placesCount ?? 0)")
         
         // Display initial counts from user object if available (for new users)
         // This ensures counts show immediately after registration
@@ -3044,7 +3044,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                 self.searchBarContainerTopToSegmentedConstraint?.isActive = true
                 self.separatorLineTopToNotificationConstraint?.isActive = false
                 self.separatorLineTopToProfileConstraint?.isActive = true
-                print("📐 Switched to current user layout - no notification section space")
+                Logger.debug("📐 Switched to current user layout - no notification section space")
             } else {
                 // Other user - search bar anchored to separator. Only pin the
                 // separator below the notification section for accepted
@@ -3059,7 +3059,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                     self.separatorLineTopToNotificationConstraint?.isActive = false
                     self.separatorLineTopToProfileConstraint?.isActive = true
                 }
-                print("📐 Switched to other-user layout - notification space only when connected")
+                Logger.debug("📐 Switched to other-user layout - notification space only when connected")
             }
             self.view.layoutIfNeeded()
         }
@@ -3138,36 +3138,36 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
 
     private func fetchUserStats(userId: String) {
-        print("🚀 ProfileViewController: fetchUserStats called for userId: \(userId)")
-        print("🚀 ProfileViewController: Current user ID: \(AuthService.shared.getUserId() ?? "nil")")
+        Logger.debug("🚀 ProfileViewController: fetchUserStats called for userId: \(userId)")
+        Logger.debug("🚀 ProfileViewController: Current user ID: \(AuthService.shared.getUserId() ?? "nil")")
         
         // For current user, fetch their circles
         if userId == AuthService.shared.getUserId() {
-            print("✅ ProfileViewController: Fetching stats for current user")
+            Logger.debug("✅ ProfileViewController: Fetching stats for current user")
             // Fetch circles
             CircleService.shared.fetchUserCircles { [weak self] result in
-                print("📡 ProfileViewController: fetchUserCircles callback received")
+                Logger.debug("📡 ProfileViewController: fetchUserCircles callback received")
                 DispatchQueue.main.async {
                     guard let self = self else { return }
                     
                     switch result {
                     case .success(let circles):
                         self.circles = circles
-                        print("🔍 ProfileViewController - Fetched \(circles.count) circles")
+                        Logger.debug("🔍 ProfileViewController - Fetched \(circles.count) circles")
                         
                         // Calculate total places from the same fetch
                         var totalPlaces = 0
                         for circle in self.circles {
                             let placeCount = circle.placesCount ?? circle.places?.count ?? 0
                             totalPlaces += placeCount
-                            print("   Circle '\(circle.name)': placesCount=\(circle.placesCount ?? -1), places array=\(circle.places?.count ?? 0)")
+                            Logger.debug("   Circle '\(circle.name)': placesCount=\(circle.placesCount ?? -1), places array=\(circle.places?.count ?? 0)")
                         }
                         
                         // Update both stats
                         self.circlesStatView.configure(number: "\(self.circles.count)", title: "Circles")
                         self.placesStatView.configure(number: "\(totalPlaces)", title: "Places")
                         self.updateMilestoneBadge(placeCount: totalPlaces)
-                        print("   Total places calculated: \(totalPlaces)")
+                        Logger.debug("   Total places calculated: \(totalPlaces)")
                         
                         self.circlesCollectionView.reloadData()
                         self.updateCollectionViewHeight()
@@ -3196,7 +3196,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             
             // Fetch connections count
             let connectionsCount = NetworkManager.shared.connections.count
-            print("🔍 ProfileViewController - Connections count: \(connectionsCount)")
+            Logger.debug("🔍 ProfileViewController - Connections count: \(connectionsCount)")
             connectionsStatView.configure(number: "\(connectionsCount)", title: "Connections")
             
             // Add followers/following stats from user data
@@ -3205,7 +3205,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                 let followingCount = user.followingCount ?? 0
                 followersStatView.configure(number: "\(followersCount)", title: "Followers")
                 followingStatView.configure(number: "\(followingCount)", title: "Following")
-                print("🔍 ProfileViewController - Followers: \(followersCount), Following: \(followingCount)")
+                Logger.debug("🔍 ProfileViewController - Followers: \(followersCount), Following: \(followingCount)")
             } else {
                 followersStatView.configure(number: "0", title: "Followers")
                 followingStatView.configure(number: "0", title: "Following")
@@ -3219,7 +3219,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     private func fetchOtherUserCircles(userId: String) {
         // Prevent multiple simultaneous requests for the same user
         guard !isFetchingOtherUserCircles else {
-            print("🔍 Already fetching circles for user \(userId), skipping duplicate request")
+            Logger.debug("🔍 Already fetching circles for user \(userId), skipping duplicate request")
             return
         }
         
@@ -3271,15 +3271,15 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                     self.loadAllPlacesFromCircles(response.data.circles)
                     
                 case .failure(let error):
-                    print("Failed to load other user circles: \(error)")
+                    Logger.debug("Failed to load other user circles: \(error)")
                     
                     // Handle rate limiting gracefully
                     if case APIError.rateLimited(let retryAfter) = error {
-                        print("🔍 Rate limited loading user circles, will retry in \(retryAfter ?? 0) seconds")
+                        Logger.debug("🔍 Rate limited loading user circles, will retry in \(retryAfter ?? 0) seconds")
                         // Don't show error to user for rate limiting - just use cached/default data
                     } else {
                         // Show error for other types of failures
-                        print("❌ Non-rate-limit error loading user circles: \(error)")
+                        Logger.debug("❌ Non-rate-limit error loading user circles: \(error)")
                     }
                     
                     // Show default stats on error
@@ -3400,7 +3400,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         // Update connections count when NetworkManager finishes loading
         if let userId = self.user?.id, userId == AuthService.shared.getUserId() {
             let connectionsCount = NetworkManager.shared.connections.count
-            print("🔍 ProfileViewController - Updated connections count after load: \(connectionsCount)")
+            Logger.debug("🔍 ProfileViewController - Updated connections count after load: \(connectionsCount)")
             connectionsStatView.configure(number: "\(connectionsCount)", title: "Connections")
         }
     }
@@ -3476,13 +3476,13 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         // Ensure minimum height of 400 to prevent cutoff
         let finalHeight = max(totalHeight, 400)
         
-        print("🔍 ProfileViewController - Updating circles collection height:")
-        print("   - Circles count: \(circles.count)")
-        print("   - Rows needed: \(rows)")
-        print("   - Collection width: \(collectionWidth)")
-        print("   - Item dimensions: \(itemWidth) x \(itemHeight)")
-        print("   - Total calculated height: \(totalHeight)")
-        print("   - Final height: \(finalHeight)")
+        Logger.debug("🔍 ProfileViewController - Updating circles collection height:")
+        Logger.debug("   - Circles count: \(circles.count)")
+        Logger.debug("   - Rows needed: \(rows)")
+        Logger.debug("   - Collection width: \(collectionWidth)")
+        Logger.debug("   - Item dimensions: \(itemWidth) x \(itemHeight)")
+        Logger.debug("   - Total calculated height: \(totalHeight)")
+        Logger.debug("   - Final height: \(finalHeight)")
         
         circlesCollectionHeightConstraint?.constant = finalHeight
         
@@ -3524,7 +3524,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             self.view.layoutIfNeeded()
         }
         
-        print("📐 ProfileViewController: Updated videos collection height to \(totalHeight) for \(videos.count) videos in \(numberOfRows) rows")
+        Logger.debug("📐 ProfileViewController: Updated videos collection height to \(totalHeight) for \(videos.count) videos in \(numberOfRows) rows")
     }
     
     private func updateUploadsCollectionHeight() {
@@ -3555,7 +3555,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             self.view.layoutIfNeeded()
         }
         
-        print("📐 ProfileViewController: Updated uploads collection height to \(totalHeight) for \(uploads.count) uploads in \(numberOfRows) rows")
+        Logger.debug("📐 ProfileViewController: Updated uploads collection height to \(totalHeight) for \(uploads.count) uploads in \(numberOfRows) rows")
     }
     
     // MARK: - Navigation Helpers
@@ -3579,7 +3579,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                         self.navigationController?.pushViewController(placeDetailVC, animated: true)
                         
                     case .failure(let error):
-                        print("❌ ProfileViewController: Failed to load place details: \(error)")
+                        Logger.debug("❌ ProfileViewController: Failed to load place details: \(error)")
                         
                         // Fallback: Create minimal Place object and still navigate
                         let tempPlace = Place(
@@ -3687,7 +3687,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                                 "userId": video.userId
                             ]
                         )
-                        print("📢 Posted MomentDeleted notification for video: \(video.id)")
+                        Logger.debug("📢 Posted MomentDeleted notification for video: \(video.id)")
                         
                     case .failure(let error):
                         self.showError(error)
@@ -4094,7 +4094,7 @@ extension ProfileViewController: UICollectionViewDropDelegate {
     private func handleReorder(from sourceIndexPath: IndexPath, to destinationIndexPath: IndexPath, coordinator: UICollectionViewDropCoordinator) {
         // Safety check: only allow reordering for current user's own profile
         guard user?.id == AuthService.shared.getUserId() else {
-            print("❌ ProfileViewController: Attempted to reorder for non-current user")
+            Logger.debug("❌ ProfileViewController: Attempted to reorder for non-current user")
             return
         }
         
@@ -4141,7 +4141,7 @@ extension ProfileViewController: UICollectionViewDropDelegate {
     private func saveCircleOrder() {
         // Safety check: only allow saving for current user
         guard user?.id == AuthService.shared.getUserId() else {
-            print("❌ ProfileViewController: Attempted to save circle order for non-current user")
+            Logger.debug("❌ ProfileViewController: Attempted to save circle order for non-current user")
             return
         }
         
@@ -4153,11 +4153,11 @@ extension ProfileViewController: UICollectionViewDropDelegate {
             guard let self = self else { return }
             
             if let error = error {
-                print("Failed to save circle order: \(error)")
+                Logger.debug("Failed to save circle order: \(error)")
                 // Optionally reload circles to restore original order
                 self.loadUserCircles()
             } else {
-                print("Circle order saved successfully")
+                Logger.debug("Circle order saved successfully")
             }
         }
     }
@@ -4201,24 +4201,24 @@ extension ProfileViewController: UICollectionViewDropDelegate {
                 deduplicatedPlaces.append(place)
             } else {
                 duplicatesFound += 1
-                print("🔍 ProfileViewController - Skipping duplicate place: '\(place.name)' (ID: \(place.id))")
+                Logger.debug("🔍 ProfileViewController - Skipping duplicate place: '\(place.name)' (ID: \(place.id))")
             }
         }
         
         if duplicatesFound > 0 {
-            print("⚠️ ProfileViewController - Found and removed \(duplicatesFound) duplicate places")
+            Logger.debug("⚠️ ProfileViewController - Found and removed \(duplicatesFound) duplicate places")
         }
         
         return deduplicatedPlaces
     }
     
     private func loadAllPlacesFromCircles(_ circles: [Circle]) {
-        print("🔍 [Places Debug] loadAllPlacesFromCircles called with \(circles.count) circles")
+        Logger.debug("🔍 [Places Debug] loadAllPlacesFromCircles called with \(circles.count) circles")
         allPlaces.removeAll()
         let dispatchGroup = DispatchGroup()
         
         for circle in circles {
-            print("🔍 [Places Debug] Loading places for circle: \(circle.name) (id: \(circle.id))")
+            Logger.debug("🔍 [Places Debug] Loading places for circle: \(circle.name) (id: \(circle.id))")
             dispatchGroup.enter()
             PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { [weak self] result in
                 guard let self = self else { 
@@ -4228,12 +4228,12 @@ extension ProfileViewController: UICollectionViewDropDelegate {
                 
                 switch result {
                 case .success(let places):
-                    print("🔍 [Places Debug] Loaded \(places.count) places from circle: \(circle.name)")
+                    Logger.debug("🔍 [Places Debug] Loaded \(places.count) places from circle: \(circle.name)")
                     DispatchQueue.main.async {
                         self.allPlaces.append(contentsOf: places)
                     }
                 case .failure(let error):
-                    print("⚠️ [Places Debug] Failed to fetch places for circle \(circle.name): \(error)")
+                    Logger.debug("⚠️ [Places Debug] Failed to fetch places for circle \(circle.name): \(error)")
                 }
                 dispatchGroup.leave()
             }
@@ -4242,13 +4242,13 @@ extension ProfileViewController: UICollectionViewDropDelegate {
         dispatchGroup.notify(queue: .main) { [weak self] in
             guard let self = self else { return }
             
-            print("🔍 [Places Debug] All circles processed, total raw places: \(self.allPlaces.count)")
+            Logger.debug("🔍 [Places Debug] All circles processed, total raw places: \(self.allPlaces.count)")
             
             // Log some sample places and their categories
             if !self.allPlaces.isEmpty {
-                print("🔍 [Places Debug] Sample places and categories:")
+                Logger.debug("🔍 [Places Debug] Sample places and categories:")
                 for (index, place) in self.allPlaces.prefix(3).enumerated() {
-                    print("  \(index + 1). \(place.name) - Category: \(place.category.rawValue), Custom: \(place.customCategoryId ?? "none")")
+                    Logger.debug("  \(index + 1). \(place.name) - Category: \(place.category.rawValue), Custom: \(place.customCategoryId ?? "none")")
                 }
             }
             
@@ -4259,21 +4259,21 @@ extension ProfileViewController: UICollectionViewDropDelegate {
             // Update available categories based on loaded places
             self.updateAvailableCategories()
             
-            print("🔍 ProfileViewController - Loaded \(self.allPlaces.count) total unique places for search (after deduplication)")
+            Logger.debug("🔍 ProfileViewController - Loaded \(self.allPlaces.count) total unique places for search (after deduplication)")
             // Update map with all places by default
             self.filterPlaces()
         }
     }
     
     private func updateAvailableCategories() {
-        print("🔍 [Categories Debug] updateAvailableCategories called with \(allPlaces.count) places")
+        Logger.debug("🔍 [Categories Debug] updateAvailableCategories called with \(allPlaces.count) places")
         
         // Get unique categories from all places, including custom categories
         availableCategories = PlaceCategory.uniqueCategories(from: allPlaces)
         
-        print("🔍 [Categories Debug] Found \(availableCategories.count) unique categories:")
+        Logger.debug("🔍 [Categories Debug] Found \(availableCategories.count) unique categories:")
         for (index, category) in availableCategories.enumerated() {
-            print("  \(index + 1). \(category.displayName) (\(category.isCustom ? "custom" : "standard"))")
+            Logger.debug("  \(index + 1). \(category.displayName) (\(category.isCustom ? "custom" : "standard"))")
         }
         
         // The hamburger chip's menu rebuilds itself on every open, so no
@@ -4300,7 +4300,7 @@ extension ProfileViewController: SSEServiceDelegate {
                     self.followersStatView.configure(number: "\(followersCount)", title: "Followers")
                 }
             case .followingAdded, .followingRemoved:
-                print("🔔 SSE Event: \(event.type) - Data: \(event.data)")
+                Logger.debug("🔔 SSE Event: \(event.type) - Data: \(event.data)")
                 let followingCount = event.data["followingCount"] as? Int
                 if let followingCount = followingCount {
                     self.followingStatView.configure(number: "\(followingCount)", title: "Following")
@@ -4492,7 +4492,7 @@ extension ProfileViewController {
     func navigateToPlace(_ place: Place) {
         // Find the circle this place belongs to
         guard let circle = circles.first(where: { $0.id == place.circleId }) else {
-            print("⚠️ Could not find circle for place: \(place.name)")
+            Logger.debug("⚠️ Could not find circle for place: \(place.name)")
             return
         }
         
@@ -4618,14 +4618,14 @@ extension ProfileViewController: ContentUploadDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             // Find the tab bar controller and switch to home tab
             if let tabBarController = self?.tabBarController {
-                print("🏠 Navigating to home tab after successful moment upload")
+                Logger.debug("🏠 Navigating to home tab after successful moment upload")
                 tabBarController.selectedIndex = 0 // Home tab is index 0
             } else if let navController = self?.navigationController,
                       let tabBarController = navController.tabBarController {
-                print("🏠 Navigating to home tab via nav controller after successful moment upload")
+                Logger.debug("🏠 Navigating to home tab via nav controller after successful moment upload")
                 tabBarController.selectedIndex = 0
             } else {
-                print("⚠️ Could not find tab bar controller for navigation")
+                Logger.debug("⚠️ Could not find tab bar controller for navigation")
             }
         }
     }

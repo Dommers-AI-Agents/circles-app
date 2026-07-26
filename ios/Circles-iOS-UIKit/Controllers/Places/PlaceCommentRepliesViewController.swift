@@ -185,7 +185,7 @@ class PlaceCommentRepliesViewController: BaseViewController {
                     self?.replies.insert(reply, at: 0)
                     self?.tableView.insertRows(at: [IndexPath(row: 0, section: 1)], with: .automatic)
                 case .failure(let error):
-                    print("Failed to add reply: \(error)")
+                    Logger.debug("Failed to add reply: \(error)")
                     self?.showError("Failed to add reply. Please try again.")
                 }
             }
@@ -219,9 +219,9 @@ class PlaceCommentRepliesViewController: BaseViewController {
             DispatchQueue.main.async {
                 switch result {
                 case .success(let replies):
-                    print("📝 PlaceCommentRepliesViewController: Received \(replies.count) replies")
+                    Logger.debug("📝 PlaceCommentRepliesViewController: Received \(replies.count) replies")
                     for (index, reply) in replies.enumerated() {
-                        print("  Reply \(index): id=\(reply.id), text=\(reply.text), userId=\(reply.userId)")
+                        Logger.debug("  Reply \(index): id=\(reply.id), text=\(reply.text), userId=\(reply.userId)")
                     }
                     self?.replies = replies
                     self?.tableView.reloadData()
@@ -233,7 +233,7 @@ class PlaceCommentRepliesViewController: BaseViewController {
                         self?.hideEmptyState()
                     }
                 case .failure(let error):
-                    print("❌ PlaceCommentRepliesViewController: Failed to fetch replies: \(error)")
+                    Logger.debug("❌ PlaceCommentRepliesViewController: Failed to fetch replies: \(error)")
                     self?.showError("Failed to load replies")
                 }
                 completion?()
@@ -328,7 +328,7 @@ extension PlaceCommentRepliesViewController: UITableViewDelegate, UITableViewDat
                     self?.tableView.deleteRows(at: [indexPath], with: .automatic)
                     completionHandler(true)
                 case .failure(let error):
-                    print("Failed to delete reply: \(error)")
+                    Logger.debug("Failed to delete reply: \(error)")
                     self?.showError("Failed to delete reply. Please try again.")
                     completionHandler(false)
                 }
@@ -384,7 +384,7 @@ extension PlaceCommentRepliesViewController: CommentCellDelegate {
                         self?.tableView.reloadRows(at: [IndexPath(row: index, section: 0)], with: .none)
                     }
                 case .failure(let error):
-                    print("Failed to like reply: \(error)")
+                    Logger.debug("Failed to like reply: \(error)")
                     self?.showError("Failed to update like. Please try again.")
                 }
             }
@@ -393,6 +393,6 @@ extension PlaceCommentRepliesViewController: CommentCellDelegate {
     
     func commentCell(_ cell: CommentCell, didTapReplyButton comment: PlaceComment) {
         // We don't allow replies to replies (single level nesting only)
-        print("Reply to reply not supported")
+        Logger.debug("Reply to reply not supported")
     }
 }

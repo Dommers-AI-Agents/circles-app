@@ -557,7 +557,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        print("AddPlaceViewController loaded - Google Places integration active")
+        Logger.debug("AddPlaceViewController loaded - Google Places integration active")
         
         setupUI()
         setupMap()
@@ -1076,11 +1076,11 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
 
             DispatchQueue.main.async {
                 if let mapItem = nearest {
-                    print("📍 Map tap selected nearest place: \(mapItem.name ?? "Unknown")")
+                    Logger.debug("📍 Map tap selected nearest place: \(mapItem.name ?? "Unknown")")
                     self.enableManualEntry()
                     self.fillFormWithMapItem(mapItem)
                 } else {
-                    print("📍 No place found near tap - using manual location")
+                    Logger.debug("📍 No place found near tap - using manual location")
                     self.handleManualLocationTap(at: coordinate)
                 }
             }
@@ -1148,7 +1148,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     }
     
     private func searchNearbyPlaces(at coordinate: CLLocationCoordinate2D) {
-        print("🔍 Searching for nearby places at \(coordinate.latitude), \(coordinate.longitude)")
+        Logger.debug("🔍 Searching for nearby places at \(coordinate.latitude), \(coordinate.longitude)")
         
         // Use Google Places to search for nearby businesses
         GooglePlacesService.shared.searchPlacesByCategory(
@@ -1159,7 +1159,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             switch result {
             case .success(let predictions):
                 if let nearestPlace = predictions.first {
-                    print("✅ Found nearby place: \(nearestPlace.attributedPrimaryText.string)")
+                    Logger.debug("✅ Found nearby place: \(nearestPlace.attributedPrimaryText.string)")
                     
                     // Fetch details for the nearest place
                     GooglePlacesService.shared.fetchPlaceDetails(placeID: nearestPlace.placeID) { detailsResult in
@@ -1177,20 +1177,20 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                                 if self?.uploadedPhotoUrls.isEmpty == true {
                                     self?.preloadAndUploadPhotosForPlace(googleDetails)
                                 } else {
-                                    print("📸 Skipping photo preload - already have \(self?.uploadedPhotoUrls.count ?? 0) uploaded photos")
+                                    Logger.debug("📸 Skipping photo preload - already have \(self?.uploadedPhotoUrls.count ?? 0) uploaded photos")
                                 }
                                 
-                                print("📍 Updated form with nearby place: \(place.name ?? "Unknown")")
+                                Logger.debug("📍 Updated form with nearby place: \(place.name ?? "Unknown")")
                             }
                         case .failure(let error):
-                            print("❌ Failed to fetch place details: \(error)")
+                            Logger.debug("❌ Failed to fetch place details: \(error)")
                         }
                     }
                 } else {
-                    print("⚠️ No nearby places found at this location")
+                    Logger.debug("⚠️ No nearby places found at this location")
                 }
             case .failure(let error):
-                print("❌ Failed to search nearby places: \(error)")
+                Logger.debug("❌ Failed to search nearby places: \(error)")
             }
         }
     }
@@ -1275,7 +1275,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         uploadedPhotoUrls.removeAll()
         downloadedGoogleImage = nil
         downloadedLookAroundImage = nil
-        print("📸 Cleared all photos and uploads")
+        Logger.debug("📸 Cleared all photos and uploads")
         
         // Update layout to reflect changes
         view.setNeedsLayout()
@@ -1347,7 +1347,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         // Extract the category name (remove emoji and trim)
         let category = buttonTitle.components(separatedBy: " ").dropFirst().joined(separator: " ")
         
-        print("Category button tapped: \(category)")
+        Logger.debug("Category button tapped: \(category)")
         
         // Clear search bar
         searchBar.text = ""
@@ -1695,28 +1695,28 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         present(loadingAlert, animated: true)
         
         // Check if we have pre-uploaded photos
-        print("📸 Checking pre-uploaded photos: \(uploadedPhotoUrls.count) available")
+        Logger.debug("📸 Checking pre-uploaded photos: \(uploadedPhotoUrls.count) available")
         
         // Only prepare photo data if no pre-uploaded photos exist
         var photoData: [Data]? = nil
         if uploadedPhotoUrls.isEmpty && selectedImage != nil {
-            print("⚠️ No pre-uploaded photos but image exists - this shouldn't happen!")
+            Logger.debug("⚠️ No pre-uploaded photos but image exists - this shouldn't happen!")
             // This is a fallback - photos should have been pre-uploaded
             if let image = selectedImage {
                 if let imageData = image.jpegData(compressionQuality: 0.6) {
                     photoData = [imageData]
-                    print("📸 Using fallback photo data")
+                    Logger.debug("📸 Using fallback photo data")
                 }
             }
         }
         
         // Check if we have Google Place details to use
         if let googleDetails = selectedGooglePlaceDetails {
-            print("🚀 AddPlaceViewController: Creating place with Google details")
-            print("  Name: \(name)")
-            print("  GooglePlaceId: \(googleDetails.placeID)")
-            print("  Has photos: \(googleDetails.photos.count > 0)")
-            print("  Coordinate: \(googleDetails.coordinate.latitude), \(googleDetails.coordinate.longitude)")
+            Logger.debug("🚀 AddPlaceViewController: Creating place with Google details")
+            Logger.debug("  Name: \(name)")
+            Logger.debug("  GooglePlaceId: \(googleDetails.placeID)")
+            Logger.debug("  Has photos: \(googleDetails.photos.count > 0)")
+            Logger.debug("  Coordinate: \(googleDetails.coordinate.latitude), \(googleDetails.coordinate.longitude)")
             
             // Check if coordinates are valid
             let isValidCoordinate = googleDetails.coordinate.latitude >= -90 && googleDetails.coordinate.latitude <= 90 &&
@@ -1725,8 +1725,8 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                                   !(googleDetails.coordinate.longitude == 0 && googleDetails.coordinate.latitude == 0)
             
             if !isValidCoordinate {
-                print("⚠️ Google Place has invalid coordinates: \(googleDetails.coordinate.latitude), \(googleDetails.coordinate.longitude)")
-                print("🔄 Will attempt to geocode the address: \(address)")
+                Logger.debug("⚠️ Google Place has invalid coordinates: \(googleDetails.coordinate.latitude), \(googleDetails.coordinate.longitude)")
+                Logger.debug("🔄 Will attempt to geocode the address: \(address)")
                 
                 // Geocode the address to get valid coordinates
                 let geocoder = CLGeocoder()
@@ -1734,7 +1734,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                     guard let self = self else { return }
                     
                     if let error = error {
-                        print("❌ Geocoding failed: \(error.localizedDescription)")
+                        Logger.debug("❌ Geocoding failed: \(error.localizedDescription)")
                         loadingAlert.dismiss(animated: true) {
                             self.endSaving()
                             self.presentAlert(title: "Location Error",
@@ -1745,7 +1745,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                     
                     guard let placemark = placemarks?.first,
                           let location = placemark.location else {
-                        print("❌ No location found for address")
+                        Logger.debug("❌ No location found for address")
                         loadingAlert.dismiss(animated: true) {
                             self.endSaving()
                             self.presentAlert(title: "Location Error",
@@ -1754,7 +1754,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                         return
                     }
                     
-                    print("✅ Successfully geocoded address to: \(location.coordinate.latitude), \(location.coordinate.longitude)")
+                    Logger.debug("✅ Successfully geocoded address to: \(location.coordinate.latitude), \(location.coordinate.longitude)")
                     
                     // Create place with geocoded coordinates
                     let geoLocation = GeoLocation(
@@ -1794,9 +1794,9 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                                        force: force)
         } else if let poiData = currentPOIData {
             // We have POI data but no Google details - use the POI location
-            print("🚀 Creating place from POI data without Google details")
-            print("  Name: \(name)")
-            print("  POI Location: \(poiData.coordinate)")
+            Logger.debug("🚀 Creating place from POI data without Google details")
+            Logger.debug("  Name: \(name)")
+            Logger.debug("  POI Location: \(poiData.coordinate)")
             
             let location = GeoLocation(
                 type: "Point",
@@ -1822,17 +1822,17 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                     loadingAlert.dismiss(animated: true) {
                         switch result {
                         case .success(let place):
-                            print("✅ Place created successfully from POI")
-                            print("📸 DEBUG: Place returned with \(place.photos?.count ?? 0) photos:")
+                            Logger.debug("✅ Place created successfully from POI")
+                            Logger.debug("📸 DEBUG: Place returned with \(place.photos?.count ?? 0) photos:")
                             if let photos = place.photos {
                                 for (index, photoUrl) in photos.enumerated() {
-                                    print("  Photo \(index + 1): \(photoUrl)")
+                                    Logger.debug("  Photo \(index + 1): \(photoUrl)")
                                 }
                             }
-                            print("📸 DEBUG: Originally uploaded \(self?.uploadedPhotoUrls.count ?? 0) photos:")
+                            Logger.debug("📸 DEBUG: Originally uploaded \(self?.uploadedPhotoUrls.count ?? 0) photos:")
                             if let uploadedUrls = self?.uploadedPhotoUrls {
                                 for (index, url) in uploadedUrls.enumerated() {
-                                    print("  Uploaded \(index + 1): \(url)")
+                                    Logger.debug("  Uploaded \(index + 1): \(url)")
                                 }
                             }
                             
@@ -1846,7 +1846,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                                 self?.navigateToCircleDetail()
                             }
                         case .failure(let error):
-                            print("❌ Failed to create place from POI: \(error)")
+                            Logger.debug("❌ Failed to create place from POI: \(error)")
                             self?.endSaving()
                             self?.presentPlaceCreationError(error)
                         }
@@ -1855,22 +1855,22 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             }
         } else {
             // No Google details or POI data, create place normally
-            print("📸 Creating non-Google place with pre-uploaded photos: \(self.uploadedPhotoUrls)")
+            Logger.debug("📸 Creating non-Google place with pre-uploaded photos: \(self.uploadedPhotoUrls)")
             
             // Determine location to use - prioritize selectedLocation, then try geocoding
             var locationToUse = self.selectedLocation
             
             if locationToUse == nil {
-                print("🗺️ No location selected, attempting to geocode address: \(address)")
+                Logger.debug("🗺️ No location selected, attempting to geocode address: \(address)")
                 
                 PlaceService.shared.geocodeAddress(address) { [weak self] geocodeResult in
                     DispatchQueue.main.async {
                         switch geocodeResult {
                         case .success(let coordinate):
-                            print("✅ Successfully geocoded address to: \(coordinate)")
+                            Logger.debug("✅ Successfully geocoded address to: \(coordinate)")
                             locationToUse = coordinate
                         case .failure(let error):
-                            print("⚠️ Geocoding failed: \(error.localizedDescription)")
+                            Logger.debug("⚠️ Geocoding failed: \(error.localizedDescription)")
                             // For place creation, location should be mandatory
                             loadingAlert.dismiss(animated: true) {
                                 self?.endSaving()
@@ -1934,7 +1934,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             return
         }
         
-        print("📍 Creating place with location: \(location.latitude), \(location.longitude)")
+        Logger.debug("📍 Creating place with location: \(location.latitude), \(location.longitude)")
         
         PlaceService.shared.createPlace(
             name: name,
@@ -1960,17 +1960,17 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                 loadingAlert.dismiss(animated: true) {
                     switch result {
                     case .success(let place):
-                        print("✅ Place created successfully")
-                        print("📸 DEBUG: Place returned with \(place.photos?.count ?? 0) photos:")
+                        Logger.debug("✅ Place created successfully")
+                        Logger.debug("📸 DEBUG: Place returned with \(place.photos?.count ?? 0) photos:")
                         if let photos = place.photos {
                             for (index, photoUrl) in photos.enumerated() {
-                                print("  Photo \(index + 1): \(photoUrl)")
+                                Logger.debug("  Photo \(index + 1): \(photoUrl)")
                             }
                         }
-                        print("📸 DEBUG: Originally uploaded \(self?.uploadedPhotoUrls.count ?? 0) photos:")
+                        Logger.debug("📸 DEBUG: Originally uploaded \(self?.uploadedPhotoUrls.count ?? 0) photos:")
                         if let uploadedUrls = self?.uploadedPhotoUrls {
                             for (index, url) in uploadedUrls.enumerated() {
-                                print("  Uploaded \(index + 1): \(url)")
+                                Logger.debug("  Uploaded \(index + 1): \(url)")
                             }
                         }
                         // Post notification that a place was added
@@ -1984,7 +1984,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                             self?.navigateToCircleDetail()
                         }
                     case .failure(let error):
-                        print("❌ Failed to create place: \(error)")
+                        Logger.debug("❌ Failed to create place: \(error)")
                         self?.endSaving()
                         self?.presentPlaceCreationError(error)
                     }
@@ -2003,12 +2003,12 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                                             publicNotes: String?,
                                             loadingAlert: UIAlertController,
                                             force: Bool = false) {
-        print("📸 Using pre-uploaded photos: \(self.uploadedPhotoUrls)")
+        Logger.debug("📸 Using pre-uploaded photos: \(self.uploadedPhotoUrls)")
         
         // Debug: Log rating information
-        print("📊 Creating place with rating info:")
-        print("  Rating: \(googleDetails.rating ?? 0)")
-        print("  Total Ratings: \(googleDetails.userRatingsTotal ?? 0)")
+        Logger.debug("📊 Creating place with rating info:")
+        Logger.debug("  Rating: \(googleDetails.rating ?? 0)")
+        Logger.debug("  Total Ratings: \(googleDetails.userRatingsTotal ?? 0)")
         
         PlaceService.shared.addPlaceFromPOI(
             name: name,
@@ -2031,18 +2031,18 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                 loadingAlert.dismiss(animated: true) {
                     switch result {
                     case .success(let place):
-                        print("✅ Place created successfully (Google place with details)")
-                        print("  ID: \(place.id)")
-                        print("📸 DEBUG: Place returned with \(place.photos?.count ?? 0) photos:")
+                        Logger.debug("✅ Place created successfully (Google place with details)")
+                        Logger.debug("  ID: \(place.id)")
+                        Logger.debug("📸 DEBUG: Place returned with \(place.photos?.count ?? 0) photos:")
                         if let photos = place.photos {
                             for (index, photo) in photos.enumerated() {
-                                print("  Photo \(index + 1): \(photo)")
+                                Logger.debug("  Photo \(index + 1): \(photo)")
                             }
                         }
-                        print("📸 DEBUG: Originally uploaded \(self?.uploadedPhotoUrls.count ?? 0) photos:")
+                        Logger.debug("📸 DEBUG: Originally uploaded \(self?.uploadedPhotoUrls.count ?? 0) photos:")
                         if let uploadedUrls = self?.uploadedPhotoUrls {
                             for (index, url) in uploadedUrls.enumerated() {
-                                print("  Uploaded \(index + 1): \(url)")
+                                Logger.debug("  Uploaded \(index + 1): \(url)")
                             }
                         }
                         
@@ -2057,7 +2057,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                             self?.navigateToCircleDetail()
                         }
                     case .failure(let error):
-                        print("❌ Failed to create place: \(error)")
+                        Logger.debug("❌ Failed to create place: \(error)")
                         self?.endSaving()
                         self?.presentPlaceCreationError(error)
                     }
@@ -2150,12 +2150,12 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             guard let self = self else { return }
             
             if let error = error {
-                print("Search error: \(error.localizedDescription)")
+                Logger.debug("Search error: \(error.localizedDescription)")
                 return
             }
             
             guard let response = response, let mapItem = response.mapItems.first else {
-                print("No map items found")
+                Logger.debug("No map items found")
                 return
             }
             
@@ -2208,12 +2208,12 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             guard let self = self else { return }
             
             if let error = error {
-                print("Place type search error: \(error.localizedDescription)")
+                Logger.debug("Place type search error: \(error.localizedDescription)")
                 return
             }
             
             guard let response = response else {
-                print("No results found for place type: \(query)")
+                Logger.debug("No results found for place type: \(query)")
                 return
             }
             
@@ -2330,7 +2330,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         // First check if street view is available at this location
         GoogleStreetViewService.shared.checkStreetViewAvailability(at: coordinate) { [weak self] available in
             guard available else {
-                print("Street View not available at this location")
+                Logger.debug("Street View not available at this location")
                 return
             }
             
@@ -2345,7 +2345,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             GoogleStreetViewService.shared.downloadStreetViewImage(parameters: parameters) { imageData in
                 guard let data = imageData,
                       let image = UIImage(data: data) else {
-                    print("Failed to download street view image")
+                    Logger.debug("Failed to download street view image")
                     return
                 }
                 
@@ -2355,15 +2355,15 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                     self?.photoImageView.isHidden = false
                     self?.removePhotoButton.isHidden = false
                     self?.addPhotoButton.isHidden = true
-                    print("✅ Street view image captured successfully")
+                    Logger.debug("✅ Street view image captured successfully")
                 }
             }
         }
     }
     
     private func fillFormWithMapItem(_ mapItem: MKMapItem) {
-        print("📝 fillFormWithMapItem called with: \(mapItem.name ?? "Unknown")")
-        print("📝 Category search active: \(hasSearchedCategory)")
+        Logger.debug("📝 fillFormWithMapItem called with: \(mapItem.name ?? "Unknown")")
+        Logger.debug("📝 Category search active: \(hasSearchedCategory)")
         
         // Set flag to prevent auto-search while filling form
         isFillingForm = true
@@ -2383,15 +2383,15 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             
             switch result {
             case .success(let enrichedDetails):
-                print("✅ Got enriched details - Google Place ID: \(enrichedDetails.googlePlaceId ?? "none"), Photos: \(enrichedDetails.googlePhotos.count)")
+                Logger.debug("✅ Got enriched details - Google Place ID: \(enrichedDetails.googlePlaceId ?? "none"), Photos: \(enrichedDetails.googlePhotos.count)")
                 
                 // Load the first Google photo if available
                 if let firstPhotoMetadata = enrichedDetails.googlePhotos.first {
-                    print("📸 Loading Google photo for place...")
+                    Logger.debug("📸 Loading Google photo for place...")
                     PlaceDetailsService.shared.loadPhoto(from: firstPhotoMetadata, maxSize: CGSize(width: 800, height: 800)) { [weak self] photoResult in
                         switch photoResult {
                         case .success(let image):
-                            print("📸 Successfully loaded Google photo")
+                            Logger.debug("📸 Successfully loaded Google photo")
                             DispatchQueue.main.async {
                                 self?.downloadedGoogleImage = image
                                 self?.selectedImage = image
@@ -2402,16 +2402,16 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                                 
                                 // Don't upload here - let preloadAndUploadPhotosForPlace handle it
                                 // This prevents duplicate uploads due to race conditions
-                                print("📸 Google photo downloaded and stored for later upload")
+                                Logger.debug("📸 Google photo downloaded and stored for later upload")
                             }
                         case .failure(let error):
-                            print("❌ Failed to load Google photo: \(error)")
+                            Logger.debug("❌ Failed to load Google photo: \(error)")
                         }
                     }
                 }
                 
             case .failure(let error):
-                print("⚠️ Failed to get enriched details: \(error)")
+                Logger.debug("⚠️ Failed to get enriched details: \(error)")
             }
         }
         
@@ -2419,7 +2419,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
-            print("📝 Form container state - alpha: \(self.formContainer.alpha), enabled: \(self.formContainer.isUserInteractionEnabled)")
+            Logger.debug("📝 Form container state - alpha: \(self.formContainer.alpha), enabled: \(self.formContainer.isUserInteractionEnabled)")
             
             // Check if this is likely a residential address (no business name)
             let isResidentialAddress = mapItem.name == nil || mapItem.name?.isEmpty == true
@@ -2615,12 +2615,12 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             self.view.layoutIfNeeded()
             
             // Debug: Log what was filled
-            print("📝 Form filled with:")
-            print("  - Name: \(self.nameTextField.text ?? "empty")")
-            print("  - Address: \(self.addressTextView.text ?? "empty")")
-            print("  - Description: \(self.descriptionTextView.text ?? "empty")")
-            print("  - Category: \(self.selectedCategory.displayName)")
-            print("  - Form enabled: \(self.formContainer.isUserInteractionEnabled)")
+            Logger.debug("📝 Form filled with:")
+            Logger.debug("  - Name: \(self.nameTextField.text ?? "empty")")
+            Logger.debug("  - Address: \(self.addressTextView.text ?? "empty")")
+            Logger.debug("  - Description: \(self.descriptionTextView.text ?? "empty")")
+            Logger.debug("  - Category: \(self.selectedCategory.displayName)")
+            Logger.debug("  - Form enabled: \(self.formContainer.isUserInteractionEnabled)")
             
             // Attach googlePlaceId + photos (only for businesses, not
             // residential). Checks our own database first — Google is only
@@ -2686,7 +2686,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                 guard let self = self else { return }
 
                 if case .success(let match?) = result, let googlePlaceId = match.googlePlaceId, !googlePlaceId.isEmpty {
-                    print("✅ Venue already in our database (\(match.globalPlaceId)) — skipping Google Places")
+                    Logger.debug("✅ Venue already in our database (\(match.globalPlaceId)) — skipping Google Places")
                     self.selectedGooglePlaceDetails = GooglePlaceDetails(
                         placeID: googlePlaceId,
                         name: match.name,
@@ -2697,7 +2697,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                     // no download/re-upload needed
                     if self.uploadedPhotoUrls.isEmpty && !match.photos.isEmpty {
                         self.uploadedPhotoUrls = Array(match.photos.prefix(5))
-                        print("📸 Reusing \(self.uploadedPhotoUrls.count) canonical photos")
+                        Logger.debug("📸 Reusing \(self.uploadedPhotoUrls.count) canonical photos")
                     }
                     return
                 }
@@ -2710,7 +2710,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     /// The Google Places pipeline (Find Place → Details → photo upload),
     /// used only when the venue is new to our database.
     private func searchGoogleForPlaceAssets(name: String, coordinate: CLLocationCoordinate2D, address: String?) {
-        print("🔍 Searching Google Places for: \(name)")
+        Logger.debug("🔍 Searching Google Places for: \(name)")
         GooglePlacesService.shared.searchPlaceByNameAndLocation(
             name: name,
             coordinate: coordinate,
@@ -2719,7 +2719,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             switch result {
             case .success(let prediction):
                 if let prediction = prediction {
-                    print("✅ Found Google Place match: \(prediction.attributedPrimaryText.string)")
+                    Logger.debug("✅ Found Google Place match: \(prediction.attributedPrimaryText.string)")
                     GooglePlacesService.shared.fetchPlaceDetails(placeID: prediction.placeID) { detailsResult in
                         switch detailsResult {
                         case .success(let place):
@@ -2730,18 +2730,18 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                                 if self?.uploadedPhotoUrls.isEmpty == true {
                                     self?.preloadAndUploadPhotosForPlace(googleDetails)
                                 } else {
-                                    print("📸 Skipping photo preload - already have \(self?.uploadedPhotoUrls.count ?? 0) uploaded photos")
+                                    Logger.debug("📸 Skipping photo preload - already have \(self?.uploadedPhotoUrls.count ?? 0) uploaded photos")
                                 }
                             }
                         case .failure(let error):
-                            print("❌ Failed to fetch Google Place details: \(error)")
+                            Logger.debug("❌ Failed to fetch Google Place details: \(error)")
                         }
                     }
                 } else {
-                    print("⚠️ No Google Place match found for: \(name)")
+                    Logger.debug("⚠️ No Google Place match found for: \(name)")
                 }
             case .failure(let error):
-                print("❌ Failed to search Google Places: \(error)")
+                Logger.debug("❌ Failed to search Google Places: \(error)")
             }
         }
     }
@@ -2794,7 +2794,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                         // Fill the form with place details
                         self.fillFormWithGMSPlace(place)
                     } else {
-                        print("Failed to fetch place details: \(error?.localizedDescription ?? "unknown error")")
+                        Logger.debug("Failed to fetch place details: \(error?.localizedDescription ?? "unknown error")")
                         self.presentAlert(title: "Error", message: "Failed to load place details")
                     }
                 }
@@ -2858,21 +2858,21 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     }
     
     private func preloadAndUploadPhotosForPlace(_ placeDetails: GooglePlaceDetails) {
-        print("🚀 Pre-loading photos for place: \(placeDetails.name)")
-        print("📸 DEBUG: Starting photo pre-load process")
-        print("📸 DEBUG: Existing uploaded URLs count: \(self.uploadedPhotoUrls.count)")
-        print("📸 DEBUG: Already have Google image: \(self.downloadedGoogleImage != nil)")
+        Logger.debug("🚀 Pre-loading photos for place: \(placeDetails.name)")
+        Logger.debug("📸 DEBUG: Starting photo pre-load process")
+        Logger.debug("📸 DEBUG: Existing uploaded URLs count: \(self.uploadedPhotoUrls.count)")
+        Logger.debug("📸 DEBUG: Already have Google image: \(self.downloadedGoogleImage != nil)")
         
         // Don't reset if we already have photos - this prevents duplicate uploads
         if self.uploadedPhotoUrls.isEmpty {
             // Only reset if we don't have any uploaded photos yet
             self.downloadedGoogleImage = nil
             self.downloadedLookAroundImage = nil
-            print("📸 DEBUG: No existing uploads, cleared downloaded images")
+            Logger.debug("📸 DEBUG: No existing uploads, cleared downloaded images")
         } else {
-            print("📸 DEBUG: Keeping existing \(self.uploadedPhotoUrls.count) uploaded photo URLs")
+            Logger.debug("📸 DEBUG: Keeping existing \(self.uploadedPhotoUrls.count) uploaded photo URLs")
             for (index, url) in self.uploadedPhotoUrls.enumerated() {
-                print("  Existing photo \(index + 1): \(url)")
+                Logger.debug("  Existing photo \(index + 1): \(url)")
             }
         }
         
@@ -2882,18 +2882,18 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         if !placeDetails.photos.isEmpty {
             if let existingImage = self.downloadedGoogleImage {
                 // We already have a downloaded image, just upload it
-                print("📸 Using existing downloaded Google photo")
+                Logger.debug("📸 Using existing downloaded Google photo")
                 if self.uploadedPhotoUrls.isEmpty {
                     photoGroup.enter()
                     if let imageData = existingImage.jpegData(compressionQuality: 0.8) {
-                        print("📸 Uploading Google photo (size: \(imageData.count / 1024) KB)...")
+                        Logger.debug("📸 Uploading Google photo (size: \(imageData.count / 1024) KB)...")
                         self.uploadImageData(imageData) { uploadedUrl in
                             if let url = uploadedUrl {
                                 if !self.uploadedPhotoUrls.contains(url) {
                                     self.uploadedPhotoUrls.append(url)
-                                    print("✅ Google photo uploaded: \(url)")
+                                    Logger.debug("✅ Google photo uploaded: \(url)")
                                 } else {
-                                    print("⚠️ Skipping duplicate photo URL: \(url)")
+                                    Logger.debug("⚠️ Skipping duplicate photo URL: \(url)")
                                 }
                             }
                             photoGroup.leave()
@@ -2902,16 +2902,16 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                         photoGroup.leave()
                     }
                 } else {
-                    print("📸 Skipping Google photo upload - already have \(self.uploadedPhotoUrls.count) uploaded photos")
+                    Logger.debug("📸 Skipping Google photo upload - already have \(self.uploadedPhotoUrls.count) uploaded photos")
                 }
             } else {
                 // Need to download and upload the photo
                 photoGroup.enter()
-                print("📸 Loading photo from Google Places...")
+                Logger.debug("📸 Loading photo from Google Places...")
                 GooglePlacesService.shared.loadPhoto(from: placeDetails.photos[0], maxSize: CGSize(width: 800, height: 800)) { [weak self] result in
                     switch result {
                     case .success(let image):
-                        print("📸 Successfully loaded Google photo")
+                        Logger.debug("📸 Successfully loaded Google photo")
                         self?.downloadedGoogleImage = image
                         
                         // Show in UI immediately
@@ -2926,15 +2926,15 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                         // Only upload if we don't already have uploaded photos
                         if self?.uploadedPhotoUrls.isEmpty == true {
                             if let imageData = image.jpegData(compressionQuality: 0.8) {
-                                print("📸 Uploading Google photo (size: \(imageData.count / 1024) KB)...")
+                                Logger.debug("📸 Uploading Google photo (size: \(imageData.count / 1024) KB)...")
                                 self?.uploadImageData(imageData) { uploadedUrl in
                                     if let url = uploadedUrl {
                                         // Check for duplicates before appending
                                         if !(self?.uploadedPhotoUrls.contains(url) ?? false) {
                                             self?.uploadedPhotoUrls.append(url)
-                                            print("✅ Google photo uploaded: \(url)")
+                                            Logger.debug("✅ Google photo uploaded: \(url)")
                                         } else {
-                                            print("⚠️ Skipping duplicate photo URL: \(url)")
+                                            Logger.debug("⚠️ Skipping duplicate photo URL: \(url)")
                                         }
                                     }
                                     photoGroup.leave()
@@ -2943,12 +2943,12 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                                 photoGroup.leave()
                             }
                         } else {
-                            print("📸 Skipping Google photo upload - already have \(self?.uploadedPhotoUrls.count ?? 0) uploaded photos")
+                            Logger.debug("📸 Skipping Google photo upload - already have \(self?.uploadedPhotoUrls.count ?? 0) uploaded photos")
                             photoGroup.leave()
                         }
                         
                     case .failure(let error):
-                        print("❌ Failed to load Google photo: \(error)")
+                        Logger.debug("❌ Failed to load Google photo: \(error)")
                         photoGroup.leave()
                     }
                 }
@@ -2959,11 +2959,11 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         if #available(iOS 16.0, *) {
             photoGroup.enter()
             Task {
-                print("📸 Checking Apple Look Around...")
+                Logger.debug("📸 Checking Apple Look Around...")
                 let hasLookAround = await AppleLookAroundService.shared.checkLookAroundAvailability(at: placeDetails.coordinate)
                 
                 if hasLookAround {
-                    print("✅ Look Around is available")
+                    Logger.debug("✅ Look Around is available")
                     do {
                         let lookAroundImage = try await AppleLookAroundService.shared.getLookAroundSnapshot(at: placeDetails.coordinate)
                         self.downloadedLookAroundImage = lookAroundImage
@@ -2981,15 +2981,15 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                         
                         // Upload the image
                         if let imageData = lookAroundImage.jpegData(compressionQuality: 0.8) {
-                            print("📸 Uploading Look Around photo (size: \(imageData.count / 1024) KB)...")
+                            Logger.debug("📸 Uploading Look Around photo (size: \(imageData.count / 1024) KB)...")
                             self.uploadImageData(imageData) { uploadedUrl in
                                 if let url = uploadedUrl {
                                     // Check for duplicates before appending
                                     if !self.uploadedPhotoUrls.contains(url) {
                                         self.uploadedPhotoUrls.append(url)
-                                        print("✅ Look Around photo uploaded: \(url)")
+                                        Logger.debug("✅ Look Around photo uploaded: \(url)")
                                     } else {
-                                        print("⚠️ Skipping duplicate photo URL: \(url)")
+                                        Logger.debug("⚠️ Skipping duplicate photo URL: \(url)")
                                     }
                                 }
                                 photoGroup.leave()
@@ -2998,11 +2998,11 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                             photoGroup.leave()
                         }
                     } catch {
-                        print("❌ Failed to get Look Around snapshot: \(error)")
+                        Logger.debug("❌ Failed to get Look Around snapshot: \(error)")
                         photoGroup.leave()
                     }
                 } else {
-                    print("⚠️ Look Around not available")
+                    Logger.debug("⚠️ Look Around not available")
                     photoGroup.leave()
                 }
             }
@@ -3010,12 +3010,12 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         
         // Log completion
         photoGroup.notify(queue: .main) {
-            print("📸 DEBUG: Photo pre-loading complete")
-            print("📸 DEBUG: Total photos uploaded: \(self.uploadedPhotoUrls.count)")
-            print("📸 DEBUG: Google image downloaded: \(self.downloadedGoogleImage != nil)")
-            print("📸 DEBUG: Look Around image downloaded: \(self.downloadedLookAroundImage != nil)")
+            Logger.debug("📸 DEBUG: Photo pre-loading complete")
+            Logger.debug("📸 DEBUG: Total photos uploaded: \(self.uploadedPhotoUrls.count)")
+            Logger.debug("📸 DEBUG: Google image downloaded: \(self.downloadedGoogleImage != nil)")
+            Logger.debug("📸 DEBUG: Look Around image downloaded: \(self.downloadedLookAroundImage != nil)")
             for (index, url) in self.uploadedPhotoUrls.enumerated() {
-                print("  Uploaded photo \(index + 1): \(url)")
+                Logger.debug("  Uploaded photo \(index + 1): \(url)")
             }
         }
     }
@@ -3026,7 +3026,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             case .success(let urls):
                 completion(urls.first)
             case .failure(let error):
-                print("❌ Image upload failed: \(error)")
+                Logger.debug("❌ Image upload failed: \(error)")
                 completion(nil)
             }
         }
@@ -3205,7 +3205,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     }
     
     private func searchForCategory(_ category: String) {
-        print("Searching for category: \(category)")
+        Logger.debug("Searching for category: \(category)")
         
         // Mark that we've searched for a category
         hasSearchedCategory = true
@@ -3221,13 +3221,13 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             guard let self = self else { return }
             
             if let error = error {
-                print("Search error: \(error.localizedDescription)")
+                Logger.debug("Search error: \(error.localizedDescription)")
                 return
             }
             
             guard let response = response else { return }
             
-            print("Found \(response.mapItems.count) items")
+            Logger.debug("Found \(response.mapItems.count) items")
             
             DispatchQueue.main.async {
                 // Remove existing annotations (except user location)
@@ -3248,7 +3248,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                     self.mapView.addAnnotation(annotation)
                     self.annotations.append(annotation)
                     
-                    print("📍 Added annotation: \(annotation.title ?? "Unknown") at \(annotation.coordinate)")
+                    Logger.debug("📍 Added annotation: \(annotation.title ?? "Unknown") at \(annotation.coordinate)")
                     
                     // Store by coordinate for lookup
                     let coordKey = "\(mapItem.placemark.coordinate.latitude),\(mapItem.placemark.coordinate.longitude)"
@@ -3391,36 +3391,36 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             // For all other operations, use Apple Maps API (see APIUsageGuidelines.md)
             if let photos = place.photos, !photos.isEmpty {
                 // Load the first photo
-                print("📸 Loading photo from Google Places...")
+                Logger.debug("📸 Loading photo from Google Places...")
                 GooglePlacesService.shared.loadPhoto(from: photos[0], maxSize: CGSize(width: 800, height: 800)) { photoResult in
                     switch photoResult {
                     case .success(let image):
-                        print("📸 Successfully loaded Google photo")
+                        Logger.debug("📸 Successfully loaded Google photo")
                         // Convert to data and upload
                         if let imageData = image.jpegData(compressionQuality: 0.8) {
-                            print("📸 Uploading photo to backend... Size: \(imageData.count / 1024)KB")
+                            Logger.debug("📸 Uploading photo to backend... Size: \(imageData.count / 1024)KB")
                             PlaceService.shared.uploadMultipleImages([imageData]) { uploadResult in
                                 switch uploadResult {
                                 case .success(let imageUrls):
-                                    print("📸 Photo uploaded successfully: \(imageUrls)")
+                                    Logger.debug("📸 Photo uploaded successfully: \(imageUrls)")
                                     placeData["photos"] = imageUrls
                                     self.createPlaceWithGoogleData(placeData, loadingAlert: loadingAlert)
                                 case .failure(let error):
-                                    print("📸 Failed to upload photo: \(error)")
+                                    Logger.debug("📸 Failed to upload photo: \(error)")
                                     self.createPlaceWithGoogleData(placeData, loadingAlert: loadingAlert)
                                 }
                             }
                         } else {
-                            print("📸 Failed to convert image to JPEG data")
+                            Logger.debug("📸 Failed to convert image to JPEG data")
                             self.createPlaceWithGoogleData(placeData, loadingAlert: loadingAlert)
                         }
                     case .failure(let error):
-                        print("📸 Failed to load Google photo: \(error)")
+                        Logger.debug("📸 Failed to load Google photo: \(error)")
                         self.createPlaceWithGoogleData(placeData, loadingAlert: loadingAlert)
                     }
                 }
             } else {
-                print("📸 No photos available from Google Places")
+                Logger.debug("📸 No photos available from Google Places")
                 self.createPlaceWithGoogleData(placeData, loadingAlert: loadingAlert)
             }
         }
@@ -3428,12 +3428,12 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     
     private func createPlaceWithGoogleData(_ placeData: [String: Any], loadingAlert: UIAlertController) {
         // Debug: Log place data being sent
-        print("📍 Creating place with data:")
-        print("📍 Name: \(placeData["name"] ?? "No name")")
-        print("📍 Category: \(placeData["category"] ?? "No category")")
-        print("📍 Photos: \(placeData["photos"] ?? "No photos")")
-        print("📍 Rating: \(placeData["rating"] ?? "No rating")")
-        print("📍 Description: \(placeData["description"] ?? "No description")")
+        Logger.debug("📍 Creating place with data:")
+        Logger.debug("📍 Name: \(placeData["name"] ?? "No name")")
+        Logger.debug("📍 Category: \(placeData["category"] ?? "No category")")
+        Logger.debug("📍 Photos: \(placeData["photos"] ?? "No photos")")
+        Logger.debug("📍 Rating: \(placeData["rating"] ?? "No rating")")
+        Logger.debug("📍 Description: \(placeData["description"] ?? "No description")")
         
         var enrichedPlaceData = placeData
         
@@ -3466,14 +3466,14 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                                         var photos = enrichedPlaceData["photos"] as? [String] ?? []
                                         photos.append(contentsOf: imageUrls)
                                         enrichedPlaceData["photos"] = photos
-                                        print("✅ Apple Look Around image uploaded successfully")
-                                        print("📸 Total photos: \(photos.count)")
+                                        Logger.debug("✅ Apple Look Around image uploaded successfully")
+                                        Logger.debug("📸 Total photos: \(photos.count)")
                                         
                                         // Now create the place with both images
                                         self.finalizeCreatePlace(enrichedPlaceData, loadingAlert: loadingAlert)
                                         
                                     case .failure(let error):
-                                        print("Failed to upload Look Around image: \(error)")
+                                        Logger.debug("Failed to upload Look Around image: \(error)")
                                         // Continue without Look Around image
                                         self.finalizeCreatePlace(enrichedPlaceData, loadingAlert: loadingAlert)
                                     }
@@ -3483,7 +3483,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                                 self.finalizeCreatePlace(enrichedPlaceData, loadingAlert: loadingAlert)
                             }
                         } catch {
-                            print("Failed to get Look Around snapshot: \(error)")
+                            Logger.debug("Failed to get Look Around snapshot: \(error)")
                             // Continue without Look Around image
                             self.finalizeCreatePlace(enrichedPlaceData, loadingAlert: loadingAlert)
                         }
@@ -3511,11 +3511,11 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                     switch result {
                     case .success(let newPlace):
                         // Debug: Log returned place data
-                        print("✅ Place created successfully:")
-                        print("✅ ID: \(newPlace.id)")
-                        print("✅ Name: \(newPlace.name)")
-                        print("✅ Photos: \(newPlace.photos ?? [])")
-                        print("✅ Description: \(newPlace.description ?? "nil")")
+                        Logger.debug("✅ Place created successfully:")
+                        Logger.debug("✅ ID: \(newPlace.id)")
+                        Logger.debug("✅ Name: \(newPlace.name)")
+                        Logger.debug("✅ Photos: \(newPlace.photos ?? [])")
+                        Logger.debug("✅ Description: \(newPlace.description ?? "nil")")
                         
                         // Show success message
                         let successAlert = UIAlertController(
@@ -3530,7 +3530,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                         self.present(successAlert, animated: true)
                         
                     case .failure(let error):
-                        print("❌ Failed to create place: \(error)")
+                        Logger.debug("❌ Failed to create place: \(error)")
                         self.endSaving()
                         self.presentPlaceCreationError(error)
                     }
@@ -3774,15 +3774,15 @@ extension AddPlaceViewController: MKMapViewDelegate {
         if lastHandledPOIName == poiName,
            let lastTime = lastPOISelectionTime,
            Date().timeIntervalSince(lastTime) < 1.0 {
-            print("🏪 POI selection deduped: \(poiName)")
+            Logger.debug("🏪 POI selection deduped: \(poiName)")
             return
         }
         lastHandledPOIName = poiName
         lastPOISelectionTime = Date()
 
-        print("🏪 POI selected: \(poiName)")
-        print("📍 POI subtitle: \(poiSubtitle)")
-        print("📍 POI coordinate: \(coordinate.latitude), \(coordinate.longitude)")
+        Logger.debug("🏪 POI selected: \(poiName)")
+        Logger.debug("📍 POI subtitle: \(poiSubtitle)")
+        Logger.debug("📍 POI coordinate: \(coordinate.latitude), \(coordinate.longitude)")
         
         // Enable form first
         enableManualEntry()
@@ -3837,7 +3837,7 @@ extension AddPlaceViewController: MKMapViewDelegate {
                     }
                 }
             case .failure(let error):
-                print("❌ Failed to convert POI to place: \(error)")
+                Logger.debug("❌ Failed to convert POI to place: \(error)")
                 // Fall back to basic info
                 DispatchQueue.main.async {
                     self?.nameTextField.text = poiName
@@ -3924,13 +3924,13 @@ extension AddPlaceViewController: MKMapViewDelegate {
         }
         
         let name = placeAnnotation.title ?? "Unknown Place"
-        print("🗺️ Map annotation selected: \(name)")
-        print("🗺️ Annotation source: \(hasSearchedCategory ? "category search" : "regular search")")
+        Logger.debug("🗺️ Map annotation selected: \(name)")
+        Logger.debug("🗺️ Annotation source: \(hasSearchedCategory ? "category search" : "regular search")")
         
         // Check if we have a mapItem (from Apple Maps search)
         if let mapItem = placeAnnotation.mapItem {
-            print("✅ Found map item, filling form immediately")
-            print("🗺️ Map item details: name=\(mapItem.name ?? ""), placemark=\(mapItem.placemark)")
+            Logger.debug("✅ Found map item, filling form immediately")
+            Logger.debug("🗺️ Map item details: name=\(mapItem.name ?? ""), placemark=\(mapItem.placemark)")
             
             // Enable form first to ensure it's ready
             enableManualEntry()
@@ -3948,7 +3948,7 @@ extension AddPlaceViewController: MKMapViewDelegate {
         }
         // Check if we have a Google Place ID
         else if let placeId = placeAnnotation.placeId {
-            print("✅ Found Google place ID, loading details")
+            Logger.debug("✅ Found Google place ID, loading details")
             
             // Enable form first
             enableManualEntry()
@@ -3964,7 +3964,7 @@ extension AddPlaceViewController: MKMapViewDelegate {
                 }
             }
         } else {
-            print("⚠️ No map item or place ID found for annotation")
+            Logger.debug("⚠️ No map item or place ID found for annotation")
         }
         
         // Keep the annotation selected to show the callout
@@ -4012,7 +4012,7 @@ extension AddPlaceViewController: MKMapViewDelegate {
         guard let placeAnnotation = view.annotation as? PlaceSearchAnnotation else { return }
         
         let name = placeAnnotation.title ?? "Unknown Place"
-        print("ℹ️ Info button tapped: \(name)")
+        Logger.debug("ℹ️ Info button tapped: \(name)")
         
         // For "Selected Location" annotations, the form is already filled
         if name == "Selected Location" {
@@ -4021,7 +4021,7 @@ extension AddPlaceViewController: MKMapViewDelegate {
         
         // Since we now handle selection in didSelect, this is just a backup
         // or for users who prefer to use the info button
-        print("ℹ️ Form should already be populated from didSelect")
+        Logger.debug("ℹ️ Form should already be populated from didSelect")
         
         // Scroll to form if it's not visible
         scrollToFormTop()
@@ -4110,11 +4110,11 @@ extension AddPlaceViewController: MKLocalSearchCompleterDelegate {
     func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
         searchResults = completer.results
         searchResultsTableView.reloadData()
-        print("✅ Apple Maps found \(searchResults.count) results")
+        Logger.debug("✅ Apple Maps found \(searchResults.count) results")
     }
     
     func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
-        print("🔴 Apple Maps search error: \(error.localizedDescription)")
+        Logger.debug("🔴 Apple Maps search error: \(error.localizedDescription)")
         searchResults = []
         searchResultsTableView.reloadData()
     }
@@ -4400,7 +4400,7 @@ extension AddPlaceViewController: UIGestureRecognizerDelegate {
                     let annotationPoint = mapView.convert(annotation.coordinate, toPointTo: mapView)
                     let annotationRect = CGRect(x: annotationPoint.x - 22, y: annotationPoint.y - 22, width: 44, height: 44)
                     if annotationRect.contains(location) {
-                        print("🚫 Tap on annotation detected, allowing map to handle it")
+                        Logger.debug("🚫 Tap on annotation detected, allowing map to handle it")
                         return false
                     }
                 }
@@ -4431,7 +4431,7 @@ extension AddPlaceViewController: UIGestureRecognizerDelegate {
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
         // Allow map's internal gesture recognizers to work alongside our tap gesture
         if gestureRecognizer.view == mapView || otherGestureRecognizer.view == mapView {
-            print("🤝 Allowing simultaneous gesture recognition on map")
+            Logger.debug("🤝 Allowing simultaneous gesture recognition on map")
             return true
         }
         return false
@@ -4462,19 +4462,19 @@ extension AddPlaceViewController: PHPickerViewControllerDelegate {
                         self?.downloadedLookAroundImage = nil
                         
                         // Pre-upload the manually selected photo
-                        print("📸 Pre-uploading manually selected photo...")
+                        Logger.debug("📸 Pre-uploading manually selected photo...")
                         if let imageData = image.jpegData(compressionQuality: 0.8) {
                             self?.uploadImageData(imageData) { uploadedUrl in
                                 if let url = uploadedUrl {
                                     // Check for duplicates before appending
                                     if !(self?.uploadedPhotoUrls.contains(url) ?? false) {
                                         self?.uploadedPhotoUrls.append(url)
-                                        print("✅ Manual photo pre-uploaded: \(url)")
+                                        Logger.debug("✅ Manual photo pre-uploaded: \(url)")
                                     } else {
-                                        print("⚠️ Skipping duplicate photo URL: \(url)")
+                                        Logger.debug("⚠️ Skipping duplicate photo URL: \(url)")
                                     }
                                 } else {
-                                    print("❌ Failed to pre-upload manual photo")
+                                    Logger.debug("❌ Failed to pre-upload manual photo")
                                 }
                             }
                         }
@@ -4547,7 +4547,7 @@ extension AddPlaceViewController {
                         guard let self = self else { return }
                         
                         if let error = error {
-                            print("❌ POI search error: \(error.localizedDescription)")
+                            Logger.debug("❌ POI search error: \(error.localizedDescription)")
                             // Still enable form for manual entry
                             self.enableManualEntry()
                             return
@@ -4569,7 +4569,7 @@ extension AddPlaceViewController {
                             })
                             
                             if let mapItem = closestItem {
-                                print("✅ Found POI match: \(mapItem.name ?? name)")
+                                Logger.debug("✅ Found POI match: \(mapItem.name ?? name)")
                                 
                                 DispatchQueue.main.async {
                                     // Enable form and fill it
@@ -4605,7 +4605,7 @@ extension AddPlaceViewController {
                                     }
                                 }
                             } else {
-                                print("⚠️ No matching POI found nearby")
+                                Logger.debug("⚠️ No matching POI found nearby")
                                 self.enableManualEntry()
                             }
                         }
@@ -4640,7 +4640,7 @@ extension AddPlaceViewController {
             guard let self = self else { return }
             
             if let error = error {
-                print("❌ Error searching for POI: \(error)")
+                Logger.debug("❌ Error searching for POI: \(error)")
                 return
             }
             
@@ -4687,7 +4687,7 @@ extension AddPlaceViewController {
             case .success(let circles):
                 self.applyUserCircles(circles)
             case .failure(let error):
-                print("❌ Failed to load circles: \(error)")
+                Logger.debug("❌ Failed to load circles: \(error)")
                 // Still try to show the circle name if we have the ID
                 DispatchQueue.main.async {
                     self.circleButton.setTitle("Loading...", for: .normal)
@@ -4764,7 +4764,7 @@ extension AddPlaceViewController {
                         }
                         
                     case .failure(let error):
-                        print("❌ Failed to fetch circle for navigation: \(error)")
+                        Logger.debug("❌ Failed to fetch circle for navigation: \(error)")
                         // Fallback: leave the screen (handles modal too)
                         self.closeAddPlaceScreen()
                     }
@@ -4832,7 +4832,7 @@ extension AddPlaceViewController {
                     guard let self = self else { return }
                     
                     if let error = error {
-                        print("❌ Place search error: \(error.localizedDescription)")
+                        Logger.debug("❌ Place search error: \(error.localizedDescription)")
                         // Still enable form for manual entry with existing data
                         DispatchQueue.main.async {
                             self.enableManualEntry()
@@ -4864,7 +4864,7 @@ extension AddPlaceViewController {
                         })
                         
                         if let mapItem = closestItem {
-                            print("✅ Found place match: \(mapItem.name ?? place.name)")
+                            Logger.debug("✅ Found place match: \(mapItem.name ?? place.name)")
                             
                             DispatchQueue.main.async {
                                 // Fill form with MapKit data (which will trigger Google Photos search)

@@ -24,7 +24,7 @@ class QuickAccessPlacesViewController: BaseViewController {
             }
             
             // Log for debugging
-            print("📍 QuickAccessPlaces: Received \(_allPlaces.count) places")
+            Logger.debug("📍 QuickAccessPlaces: Received \(_allPlaces.count) places")
             
             // Sort places with selected ones first, then alphabetically within each group
             DispatchQueue.main.async { [weak self] in

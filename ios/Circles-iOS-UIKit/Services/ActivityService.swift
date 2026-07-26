@@ -21,7 +21,7 @@ class ActivityService {
             queryParams["since"] = formatter.string(from: since)
         }
         
-        print("🔍 ActivityService: Fetching network activities with params: \(queryParams)")
+        Logger.debug("🔍 ActivityService: Fetching network activities with params: \(queryParams)")
         
         APIService.shared.request(
             endpoint: "network/activities",
@@ -30,20 +30,20 @@ class ActivityService {
         ) { (result: Result<ActivityResponse, APIError>) in
             switch result {
             case .success(let response):
-                print("✅ ActivityService: Received \(response.activities.count) activities")
-                print("📊 ActivityService: Response - success: \(response.success), count: \(response.count), hasMore: \(response.hasMore)")
+                Logger.debug("✅ ActivityService: Received \(response.activities.count) activities")
+                Logger.debug("📊 ActivityService: Response - success: \(response.success), count: \(response.count), hasMore: \(response.hasMore)")
                 if !response.activities.isEmpty {
-                    print("🎯 ActivityService: First activity type: \(response.activities[0].type.rawValue)")
-                    print("🎯 ActivityService: First activity actor: \(response.activities[0].actor?.displayName ?? "Unknown")")
+                    Logger.debug("🎯 ActivityService: First activity type: \(response.activities[0].type.rawValue)")
+                    Logger.debug("🎯 ActivityService: First activity actor: \(response.activities[0].actor?.displayName ?? "Unknown")")
                 }
                 completion(.success(response))
             case .failure(let error):
-                print("❌ ActivityService: Error fetching activities: \(error)")
-                print("🔍 ActivityService: Error details - \(error.localizedDescription)")
+                Logger.debug("❌ ActivityService: Error fetching activities: \(error)")
+                Logger.debug("🔍 ActivityService: Error details - \(error.localizedDescription)")
                 if case .httpError(let statusCode, let data) = error {
-                    print("🔍 ActivityService: HTTP \(statusCode)")
+                    Logger.debug("🔍 ActivityService: HTTP \(statusCode)")
                     if let data = data, let errorString = String(data: data, encoding: .utf8) {
-                        print("🔍 ActivityService: Error response: \(errorString)")
+                        Logger.debug("🔍 ActivityService: Error response: \(errorString)")
                     }
                 }
                 completion(.failure(error))
@@ -64,7 +64,7 @@ class ActivityService {
             case .success:
                 completion(.success(true))
             case .failure(let error):
-                print("❌ Error marking activities as read: \(error)")
+                Logger.debug("❌ Error marking activities as read: \(error)")
                 completion(.failure(error))
             }
         }

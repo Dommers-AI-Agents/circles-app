@@ -28,41 +28,41 @@ class SocialAuthService: NSObject {
     // MARK: - Apple Sign-In
     
     func signInWithApple(from viewController: UIViewController, completion: @escaping (Result<User, Error>) -> Void) {
-        print("🍎 Starting Apple Sign-In process in SocialAuthService")
+        Logger.debug("🍎 Starting Apple Sign-In process in SocialAuthService")
         self.completionHandler = completion
         
         // Store the presentation anchor (window) directly
         self.presentationAnchor = viewController.view.window
-        print("🍎 Stored presentation anchor (window): \(String(describing: self.presentationAnchor))")
+        Logger.debug("🍎 Stored presentation anchor (window): \(String(describing: self.presentationAnchor))")
         
         // Generate a nonce for the authentication request
         let nonce = generateNonce(length: 32)
         self.currentNonce = nonce
-        print("🍎 Generated nonce: \(nonce)")
+        Logger.debug("🍎 Generated nonce: \(nonce)")
         
         // Create Apple ID request
         let appleIDProvider = ASAuthorizationAppleIDProvider()
         let request = appleIDProvider.createRequest()
         request.requestedScopes = [.fullName, .email]
         request.nonce = sha256(nonce)
-        print("🍎 Created Apple ID request with scopes: \(request.requestedScopes?.description ?? "none")")
+        Logger.debug("🍎 Created Apple ID request with scopes: \(request.requestedScopes?.description ?? "none")")
         
         // Create authorization controller and keep a strong reference
         self.authorizationController = ASAuthorizationController(authorizationRequests: [request])
         self.authorizationController?.delegate = self
         self.authorizationController?.presentationContextProvider = self
-        print("🍎 Created authorization controller and set delegate and presentation context provider")
+        Logger.debug("🍎 Created authorization controller and set delegate and presentation context provider")
         
         // Get a reference to AppDelegate to store the controller
         if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
             appDelegate.authorizationController = self.authorizationController
-            print("🍎 Stored authorizationController in AppDelegate for strong reference")
+            Logger.debug("🍎 Stored authorizationController in AppDelegate for strong reference")
         }
         
         // Perform the request
-        print("🍎 About to perform authorization requests")
+        Logger.debug("🍎 About to perform authorization requests")
         self.authorizationController?.performRequests()
-        print("🍎 Authorization requests performed")
+        Logger.debug("🍎 Authorization requests performed")
     }
     
     // MARK: - Google Sign-In
@@ -73,15 +73,15 @@ class SocialAuthService: NSObject {
         // CRITICAL: Store a strong reference to the view controller to prevent deallocation
         self.presentingViewController = viewController
         
-        print("🔍 Starting Google Sign-In process with configuration from GoogleService-Info.plist")
-        print("🔍 Storing strong reference to view controller: \(viewController)")
+        Logger.debug("🔍 Starting Google Sign-In process with configuration from GoogleService-Info.plist")
+        Logger.debug("🔍 Storing strong reference to view controller: \(viewController)")
         
         // Load configuration from GoogleService-Info.plist
         guard let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
               let plist = NSDictionary(contentsOfFile: path),
               let clientId = plist["CLIENT_ID"] as? String,
               let reversedClientId = plist["REVERSED_CLIENT_ID"] as? String else {
-            print("🔍 ❌ Failed to load Google configuration from GoogleService-Info.plist")
+            Logger.debug("🔍 ❌ Failed to load Google configuration from GoogleService-Info.plist")
             let error = NSError(domain: "com.circles.auth.google", code: -1, 
                                userInfo: [NSLocalizedDescriptionKey: "Google Sign-In configuration not found in GoogleService-Info.plist"])
             completion(.failure(error))
@@ -89,10 +89,10 @@ class SocialAuthService: NSObject {
         }
         
         // Debug info for troubleshooting
-        print("🔍 DEBUG: Loaded from GoogleService-Info.plist:")
-        print("🔍 DEBUG: Client ID: \(clientId)")
-        print("🔍 DEBUG: Reversed Client ID (URL Scheme): \(reversedClientId)")
-        print("🔍 DEBUG: Bundle ID: \(Bundle.main.bundleIdentifier ?? "Unknown")")
+        Logger.debug("🔍 DEBUG: Loaded from GoogleService-Info.plist:")
+        Logger.debug("🔍 DEBUG: Client ID: \(clientId)")
+        Logger.debug("🔍 DEBUG: Reversed Client ID (URL Scheme): \(reversedClientId)")
+        Logger.debug("🔍 DEBUG: Bundle ID: \(Bundle.main.bundleIdentifier ?? "Unknown")")
         
         // Create the Google Sign-In configuration using the plist data
         let signInConfig = GIDConfiguration(clientID: clientId)
@@ -107,60 +107,60 @@ class SocialAuthService: NSObject {
             for urlType in urlTypes {
                 if let urlSchemes = urlType["CFBundleURLSchemes"] as? [String] {
                     for scheme in urlSchemes {
-                        print("🔍 DEBUG: Found URL scheme: \(scheme)")
+                        Logger.debug("🔍 DEBUG: Found URL scheme: \(scheme)")
                         if scheme == "com.googleusercontent.apps.778088177220-7ddtorl0um8te3s5dmv14fs4d2kirukt" {
                             hasCorrectURLScheme = true
-                            print("🔍 DEBUG: ✅ Found matching Google URL scheme")
+                            Logger.debug("🔍 DEBUG: ✅ Found matching Google URL scheme")
                         }
                     }
                 }
             }
             
             if !hasCorrectURLScheme {
-                print("🔍 DEBUG: ⚠️ Could not find the required URL scheme")
+                Logger.debug("🔍 DEBUG: ⚠️ Could not find the required URL scheme")
             }
         }
         
         // Start the sign-in flow
-        print("🔍 DEBUG: About to start Google sign-in flow")
+        Logger.debug("🔍 DEBUG: About to start Google sign-in flow")
         
         // Add more detailed debugging for the sign-in process
-        print("🔍 ==== GOOGLE SIGN-IN DEBUG INFO ====")
-        print("🔍 Client ID: 778088177220-7ddtorl0um8te3s5dmv14fs4d2kirukt.apps.googleusercontent.com")
-        print("🔍 View Controller: \(type(of: viewController))")
-        print("🔍 Bundle ID: \(Bundle.main.bundleIdentifier ?? "Unknown")")
+        Logger.debug("🔍 ==== GOOGLE SIGN-IN DEBUG INFO ====")
+        Logger.debug("🔍 Client ID: 778088177220-7ddtorl0um8te3s5dmv14fs4d2kirukt.apps.googleusercontent.com")
+        Logger.debug("🔍 View Controller: \(type(of: viewController))")
+        Logger.debug("🔍 Bundle ID: \(Bundle.main.bundleIdentifier ?? "Unknown")")
         
         // Additional parameters for OAuth flow would go here if needed
         
         // Standard sign in method
-        print("🔍 Calling GIDSignIn.signIn() now...")
+        Logger.debug("🔍 Calling GIDSignIn.signIn() now...")
         
         // Add debugging to check if the call even works
-        print("🔍 GIDSignIn.sharedInstance: \(GIDSignIn.sharedInstance)")
-        print("🔍 GIDSignIn configuration: \(String(describing: GIDSignIn.sharedInstance.configuration))")
+        Logger.debug("🔍 GIDSignIn.sharedInstance: \(GIDSignIn.sharedInstance)")
+        Logger.debug("🔍 GIDSignIn configuration: \(String(describing: GIDSignIn.sharedInstance.configuration))")
         
         GIDSignIn.sharedInstance.signIn(
             withPresenting: viewController
         ) { signInResult, error in
-            print("🔍 ======= GOOGLE SIGN-IN CALLBACK RECEIVED =======")
-            print("🔍 This message proves the callback was called")
-            print("🔍 SignInResult: \(String(describing: signInResult))")
-            print("🔍 Error: \(String(describing: error))")
-            print("🔍 ===============================================")
+            Logger.debug("🔍 ======= GOOGLE SIGN-IN CALLBACK RECEIVED =======")
+            Logger.debug("🔍 This message proves the callback was called")
+            Logger.debug("🔍 SignInResult: \(String(describing: signInResult))")
+            Logger.debug("🔍 Error: \(String(describing: error))")
+            Logger.debug("🔍 ===============================================")
             
             // Handle sign-in errors with more detailed logging
             if let error = error {
-                print("🔍 ======= GOOGLE SIGN-IN ERROR =======")
-                print("🔍 Error Code: \((error as NSError).code)")
-                print("🔍 Error Domain: \((error as NSError).domain)")
-                print("🔍 Description: \(error.localizedDescription)")
+                Logger.debug("🔍 ======= GOOGLE SIGN-IN ERROR =======")
+                Logger.debug("🔍 Error Code: \((error as NSError).code)")
+                Logger.debug("🔍 Error Domain: \((error as NSError).domain)")
+                Logger.debug("🔍 Description: \(error.localizedDescription)")
                 
                 // Get more details from userInfo if available
                 let nsError = error as NSError
-                print("🔍 User Info: \(nsError.userInfo)")
+                Logger.debug("🔍 User Info: \(nsError.userInfo)")
                 
-                print("🔍 Full Error: \(error)")
-                print("🔍 ===================================")
+                Logger.debug("🔍 Full Error: \(error)")
+                Logger.debug("🔍 ===================================")
                 
                 // Clean up the reference to prevent memory leaks
                 self.presentingViewController = nil
@@ -185,9 +185,9 @@ class SocialAuthService: NSObject {
                 return
             }
             
-            print("🔍 Successfully authenticated with Google, token: \(idToken)")
-            print("🔍 Google User: \(user.profile?.name ?? "Unknown"), \(user.profile?.email ?? "No email")")
-            print("🔍 Google Profile Picture: \(user.profile?.imageURL(withDimension: 200)?.absoluteString ?? "No picture")")
+            Logger.debug("🔍 Successfully authenticated with Google, token: \(idToken)")
+            Logger.debug("🔍 Google User: \(user.profile?.name ?? "Unknown"), \(user.profile?.email ?? "No email")")
+            Logger.debug("🔍 Google Profile Picture: \(user.profile?.imageURL(withDimension: 200)?.absoluteString ?? "No picture")")
             
             // Clean up the reference to prevent memory leaks
             self.presentingViewController = nil
@@ -209,26 +209,26 @@ class SocialAuthService: NSObject {
     // MARK: - Session Restoration
     
     func restoreGoogleSignInSession(completion: @escaping (Result<User, Error>) -> Void) {
-        print("🔍 Attempting to restore Google Sign-In session")
+        Logger.debug("🔍 Attempting to restore Google Sign-In session")
         
         // Check if there's a previous Google Sign-In session
         GIDSignIn.sharedInstance.restorePreviousSignIn { user, error in
             if let error = error {
-                print("🔍 Failed to restore Google session: \(error)")
+                Logger.debug("🔍 Failed to restore Google session: \(error)")
                 completion(.failure(error))
                 return
             }
             
             guard let user = user,
                   let idToken = user.idToken?.tokenString else {
-                print("🔍 No previous Google session found")
+                Logger.debug("🔍 No previous Google session found")
                 let error = NSError(domain: "com.circles.auth.google", code: -1, 
                                    userInfo: [NSLocalizedDescriptionKey: "No previous Google session"])
                 completion(.failure(error))
                 return
             }
             
-            print("🔍 Successfully restored Google session for: \(user.profile?.email ?? "Unknown")")
+            Logger.debug("🔍 Successfully restored Google session for: \(user.profile?.email ?? "Unknown")")
             
             // Send the restored token to our backend with profile data
             AuthService.shared.loginWithSocialProvider(
@@ -248,7 +248,7 @@ class SocialAuthService: NSObject {
     func signInWithFacebook(from viewController: UIViewController, completion: @escaping (Result<User, Error>) -> Void) {
         self.completionHandler = completion
         
-        print("📘 Starting Facebook Sign-In process")
+        Logger.debug("📘 Starting Facebook Sign-In process")
         
         let loginManager = LoginManager()
         loginManager.logOut() // Clear any existing session
@@ -257,13 +257,13 @@ class SocialAuthService: NSObject {
         // For development, you can use just "public_profile" or add test users in Facebook App Dashboard
         loginManager.logIn(permissions: ["public_profile", "email"], from: viewController) { [weak self] result, error in
             if let error = error {
-                print("📘 Facebook Sign-In error: \(error)")
+                Logger.debug("📘 Facebook Sign-In error: \(error)")
                 completion(.failure(error))
                 return
             }
             
             guard let result = result, !result.isCancelled else {
-                print("📘 Facebook Sign-In cancelled")
+                Logger.debug("📘 Facebook Sign-In cancelled")
                 let error = NSError(domain: "com.circles.auth.facebook", code: -1, 
                                    userInfo: [NSLocalizedDescriptionKey: "Facebook sign-in was cancelled"])
                 completion(.failure(error))
@@ -272,20 +272,20 @@ class SocialAuthService: NSObject {
             
             // Get the access token
             guard let token = AccessToken.current?.tokenString else {
-                print("📘 Failed to get Facebook access token")
+                Logger.debug("📘 Failed to get Facebook access token")
                 let error = NSError(domain: "com.circles.auth.facebook", code: -1, 
                                    userInfo: [NSLocalizedDescriptionKey: "Failed to get Facebook access token"])
                 completion(.failure(error))
                 return
             }
             
-            print("📘 Successfully authenticated with Facebook, token: \(token)")
+            Logger.debug("📘 Successfully authenticated with Facebook, token: \(token)")
             
             // Fetch user profile data
             let request = GraphRequest(graphPath: "me", parameters: ["fields": "id,name,email,picture.type(large)"])
             request.start { _, graphResult, error in
                 if let error = error {
-                    print("📘 Failed to fetch Facebook profile: \(error)")
+                    Logger.debug("📘 Failed to fetch Facebook profile: \(error)")
                     completion(.failure(error))
                     return
                 }
@@ -307,7 +307,7 @@ class SocialAuthService: NSObject {
                     picture = url
                 }
                 
-                print("📘 Facebook User: \(name ?? "Unknown"), \(email ?? "No email"), picture: \(picture ?? "No picture")")
+                Logger.debug("📘 Facebook User: \(name ?? "Unknown"), \(email ?? "No email"), picture: \(picture ?? "No picture")")
                 
                 // Send the token to our backend with profile picture
                 AuthService.shared.loginWithSocialProvider(provider: "facebook", token: token, name: name, email: email, picture: picture) { result in
@@ -323,12 +323,12 @@ class SocialAuthService: NSObject {
         self.completionHandler = completion
         self.presentingViewController = viewController
         
-        print("🔗 Starting LinkedIn Sign-In process")
+        Logger.debug("🔗 Starting LinkedIn Sign-In process")
         
         // LinkedIn OAuth 2.0 configuration
         guard let clientId = Bundle.main.object(forInfoDictionaryKey: "LinkedInClientID") as? String,
               clientId != "YOUR_LINKEDIN_CLIENT_ID" else {
-            print("🔗 LinkedIn Client ID not configured in Info.plist")
+            Logger.debug("🔗 LinkedIn Client ID not configured in Info.plist")
             let error = NSError(domain: "com.circles.auth.linkedin", code: -10,
                                userInfo: [NSLocalizedDescriptionKey: "LinkedIn Client ID not configured"])
             completion(.failure(error))
@@ -362,13 +362,13 @@ class SocialAuthService: NSObject {
         }
         
         // Present Safari view controller for OAuth flow
-        print("🔗 Opening LinkedIn authorization URL: \(authURL.absoluteString)")
+        Logger.debug("🔗 Opening LinkedIn authorization URL: \(authURL.absoluteString)")
         let safariViewController = SFSafariViewController(url: authURL)
         safariViewController.delegate = self
         safariViewController.preferredBarTintColor = Constants.Colors.primary
         safariViewController.preferredControlTintColor = .white
         viewController.present(safariViewController, animated: true) {
-            print("🔗 Safari view controller presented successfully")
+            Logger.debug("🔗 Safari view controller presented successfully")
         }
     }
     
@@ -376,13 +376,13 @@ class SocialAuthService: NSObject {
     
     func signOutFromGoogle(completion: @escaping (Bool) -> Void) {
         GIDSignIn.sharedInstance.signOut()
-        print("🔍 Signed out from Google")
+        Logger.debug("🔍 Signed out from Google")
         completion(true)
     }
     
     func signOutFromFacebook(completion: @escaping (Bool) -> Void) {
         LoginManager().logOut()
-        print("📘 Signed out from Facebook")
+        Logger.debug("📘 Signed out from Facebook")
         completion(true)
     }
     
@@ -437,23 +437,23 @@ class SocialAuthService: NSObject {
 extension SocialAuthService: ASAuthorizationControllerDelegate {
     // Handle authorization success
     func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
-        print("🍎 Authorization completed successfully")
+        Logger.debug("🍎 Authorization completed successfully")
         
         // Extract credentials
         if let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential,
            let identityToken = appleIDCredential.identityToken,
            let tokenString = String(data: identityToken, encoding: .utf8) {
             
-            print("🍎 Successfully got Apple ID credential")
+            Logger.debug("🍎 Successfully got Apple ID credential")
             
             // Get user info (not directly used here, but would be in a full implementation)
             let userId = appleIDCredential.user
             let fullName = appleIDCredential.fullName
             let email = appleIDCredential.email
             
-            print("🍎 User ID: \(userId)")
-            print("🍎 Full Name: \(fullName?.givenName ?? "nil") \(fullName?.familyName ?? "nil")")
-            print("🍎 Email: \(email ?? "nil")")
+            Logger.debug("🍎 User ID: \(userId)")
+            Logger.debug("🍎 Full Name: \(fullName?.givenName ?? "nil") \(fullName?.familyName ?? "nil")")
+            Logger.debug("🍎 Email: \(email ?? "nil")")
             
             // Create a display name from the full name components
             var displayName: String? = nil
@@ -466,9 +466,9 @@ extension SocialAuthService: ASAuthorizationControllerDelegate {
             }
             
             if let name = displayName {
-                print("🍎 Signing in with Apple as: \(name)")
+                Logger.debug("🍎 Signing in with Apple as: \(name)")
             } else {
-                print("🍎 No name provided by Apple Sign-In")
+                Logger.debug("🍎 No name provided by Apple Sign-In")
             }
             
             // Clean up strong references 
@@ -479,13 +479,13 @@ extension SocialAuthService: ASAuthorizationControllerDelegate {
             
             // Send the token to our backend via the AuthService with name and email
             // Note: Apple doesn't provide profile pictures, so picture will be nil
-            print("🍎 Calling AuthService.loginWithSocialProvider with token, name: \(displayName ?? "nil"), email: \(email ?? "nil")")
+            Logger.debug("🍎 Calling AuthService.loginWithSocialProvider with token, name: \(displayName ?? "nil"), email: \(email ?? "nil")")
             AuthService.shared.loginWithSocialProvider(provider: "apple", token: tokenString, name: displayName, email: email, picture: nil) { [weak self] result in
-                print("🍎 AuthService.loginWithSocialProvider completed")
+                Logger.debug("🍎 AuthService.loginWithSocialProvider completed")
                 self?.completionHandler?(result)
             }
         } else {
-            print("🍎 Failed to get Apple ID credential from authorization")
+            Logger.debug("🍎 Failed to get Apple ID credential from authorization")
             
             // Clean up strong references
             authorizationController = nil
@@ -500,8 +500,8 @@ extension SocialAuthService: ASAuthorizationControllerDelegate {
     
     // Handle authorization failure
     func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
-        print("🍎 Authorization failed with error: \(error.localizedDescription)")
-        print("🍎 Error details: \(error)")
+        Logger.debug("🍎 Authorization failed with error: \(error.localizedDescription)")
+        Logger.debug("🍎 Error details: \(error)")
         
         // Get more detailed error information
         var errorMessage = error.localizedDescription
@@ -525,7 +525,7 @@ extension SocialAuthService: ASAuthorizationControllerDelegate {
             }
         }
         
-        print("🍎 Detailed error: \(errorMessage)")
+        Logger.debug("🍎 Detailed error: \(errorMessage)")
         
         // Clean up strong references
         authorizationController = nil
@@ -545,14 +545,14 @@ extension SocialAuthService: ASAuthorizationControllerDelegate {
 
 extension SocialAuthService: ASAuthorizationControllerPresentationContextProviding {
     func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        print("🍎 presentationAnchor called for controller")
+        Logger.debug("🍎 presentationAnchor called for controller")
         
         if let anchor = self.presentationAnchor {
-            print("🍎 Using stored presentation anchor")
+            Logger.debug("🍎 Using stored presentation anchor")
             return anchor
         }
         
-        print("🍎 Using fallback to UIApplication.shared.windows.first")
+        Logger.debug("🍎 Using fallback to UIApplication.shared.windows.first")
         
         // Use the scene API for iOS 13+
         if #available(iOS 13.0, *) {
@@ -561,14 +561,14 @@ extension SocialAuthService: ASAuthorizationControllerPresentationContextProvidi
                 if let windowScene = scene as? UIWindowScene {
                     for window in windowScene.windows {
                         if window.isKeyWindow {
-                            print("🍎 Found key window using UIWindowScene: \(window)")
+                            Logger.debug("🍎 Found key window using UIWindowScene: \(window)")
                             return window
                         }
                     }
                     
                     // If no key window found, use the first window
                     if let window = windowScene.windows.first {
-                        print("🍎 Found first window using UIWindowScene: \(window)")
+                        Logger.debug("🍎 Found first window using UIWindowScene: \(window)")
                         return window
                     }
                 }
@@ -578,7 +578,7 @@ extension SocialAuthService: ASAuthorizationControllerPresentationContextProvidi
         // Legacy fallback for iOS 12 and below (although Sign in with Apple needs iOS 13+)
         // This is deprecated but we need it as a last resort fallback
         if let window = UIApplication.shared.delegate?.window ?? nil {
-            print("🍎 Found window using UIApplication.shared.delegate?.window: \(window)")
+            Logger.debug("🍎 Found window using UIApplication.shared.delegate?.window: \(window)")
             return window
         }
         
@@ -589,7 +589,7 @@ extension SocialAuthService: ASAuthorizationControllerPresentationContextProvidi
             for scene in UIApplication.shared.connectedScenes {
                 if let windowScene = scene as? UIWindowScene {
                     if let window = windowScene.windows.first {
-                        print("🍎 Found window using scene-based API: \(window)")
+                        Logger.debug("🍎 Found window using scene-based API: \(window)")
                         return window
                     }
                 }
@@ -597,7 +597,7 @@ extension SocialAuthService: ASAuthorizationControllerPresentationContextProvidi
         } else if #available(iOS 13.0, *) {
             // This is deprecated in iOS 15 but still works in iOS 13-14
             if let window = UIApplication.shared.windows.first {
-                print("🍎 Found window using older windows array: \(window)")
+                Logger.debug("🍎 Found window using older windows array: \(window)")
                 return window
             }
         }
@@ -612,7 +612,7 @@ extension SocialAuthService: ASAuthorizationControllerPresentationContextProvidi
 
 extension SocialAuthService: SFSafariViewControllerDelegate {
     func safariViewControllerDidFinish(_ controller: SFSafariViewController) {
-        print("🔗 LinkedIn Safari view controller dismissed by user")
+        Logger.debug("🔗 LinkedIn Safari view controller dismissed by user")
         // Only treat as cancellation if we haven't received a callback
         if completionHandler != nil {
             let error = NSError(domain: "com.circles.auth.linkedin", code: -1, 
@@ -628,10 +628,10 @@ extension SocialAuthService: SFSafariViewControllerDelegate {
 
 extension SocialAuthService {
     func handleLinkedInCallback(url: URL) -> Bool {
-        print("🔗 handleLinkedInCallback called with URL: \(url.absoluteString)")
+        Logger.debug("🔗 handleLinkedInCallback called with URL: \(url.absoluteString)")
         
         guard url.scheme == "com.favcircles.circles" else {
-            print("🔗 URL scheme doesn't match, expected: com.favcircles.circles, got: \(url.scheme ?? "nil")")
+            Logger.debug("🔗 URL scheme doesn't match, expected: com.favcircles.circles, got: \(url.scheme ?? "nil")")
             return false
         }
         
@@ -639,7 +639,7 @@ extension SocialAuthService {
         // So we need to check if the URL contains linkedin callback
         let urlString = url.absoluteString
         guard urlString.contains("linkedin") && urlString.contains("callback") else {
-            print("🔗 URL doesn't contain linkedin callback pattern")
+            Logger.debug("🔗 URL doesn't contain linkedin callback pattern")
             return false
         }
         
@@ -653,7 +653,7 @@ extension SocialAuthService {
         UserDefaults.standard.removeObject(forKey: "linkedInAuthState")
         
         if state != savedState {
-            print("🔗 LinkedIn state mismatch")
+            Logger.debug("🔗 LinkedIn state mismatch")
             let error = NSError(domain: "com.circles.auth.linkedin", code: -1, 
                                userInfo: [NSLocalizedDescriptionKey: "LinkedIn authentication state mismatch"])
             completionHandler?(.failure(error))
@@ -664,7 +664,7 @@ extension SocialAuthService {
         }
         
         if let error = error {
-            print("🔗 LinkedIn OAuth error: \(error)")
+            Logger.debug("🔗 LinkedIn OAuth error: \(error)")
             let authError = NSError(domain: "com.circles.auth.linkedin", code: -1, 
                                    userInfo: [NSLocalizedDescriptionKey: "LinkedIn authentication failed: \(error)"])
             completionHandler?(.failure(authError))
@@ -675,7 +675,7 @@ extension SocialAuthService {
         }
         
         guard let authCode = code else {
-            print("🔗 No authorization code received from LinkedIn")
+            Logger.debug("🔗 No authorization code received from LinkedIn")
             let error = NSError(domain: "com.circles.auth.linkedin", code: -1, 
                                userInfo: [NSLocalizedDescriptionKey: "No authorization code received from LinkedIn"])
             completionHandler?(.failure(error))
@@ -688,12 +688,12 @@ extension SocialAuthService {
         // Dismiss Safari view controller if it's still presented
         if let viewController = self.presentingViewController {
             viewController.dismiss(animated: true) {
-                print("🔗 Safari view controller dismissed after successful callback")
+                Logger.debug("🔗 Safari view controller dismissed after successful callback")
             }
         }
         
         // Send authorization code to backend for secure token exchange
-        print("🔗 Sending authorization code to backend for token exchange")
+        Logger.debug("🔗 Sending authorization code to backend for token exchange")
         
         // The backend will handle the client secret securely
         AuthService.shared.loginWithSocialProvider(
@@ -716,7 +716,7 @@ extension SocialAuthService {
         
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             if let error = error {
-                print("🔗 LinkedIn profile fetch error: \(error)")
+                Logger.debug("🔗 LinkedIn profile fetch error: \(error)")
                 self?.completionHandler?(.failure(error))
                 return
             }
@@ -734,7 +734,7 @@ extension SocialAuthService {
             let lastName = profile["localizedLastName"] as? String ?? ""
             let name = "\(firstName) \(lastName)".trimmingCharacters(in: .whitespaces)
             
-            print("🔗 LinkedIn User: \(name)")
+            Logger.debug("🔗 LinkedIn User: \(name)")
             
             // Fetch email separately (requires different endpoint)
             self?.fetchLinkedInEmail(accessToken: accessToken, name: name)
@@ -757,7 +757,7 @@ extension SocialAuthService {
                 email = emailAddress
             }
             
-            print("🔗 LinkedIn Email: \(email ?? "No email")")
+            Logger.debug("🔗 LinkedIn Email: \(email ?? "No email")")
             
             // Send the token to our backend
             DispatchQueue.main.async {

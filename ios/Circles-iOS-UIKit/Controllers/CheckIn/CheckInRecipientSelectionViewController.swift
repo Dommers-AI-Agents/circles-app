@@ -179,7 +179,7 @@ class CheckInRecipientSelectionViewController: BaseViewController {
             case .success(let conversations):
                 self?.groups = conversations.filter { $0.type == .group }
             case .failure(let error):
-                print("Failed to load groups: \(error)")
+                Logger.debug("Failed to load groups: \(error)")
             }
             group.leave()
         }
@@ -191,7 +191,7 @@ class CheckInRecipientSelectionViewController: BaseViewController {
                 let acceptedConnections = connections.filter { $0.status == .accepted }
                 self?.connections = acceptedConnections
             } else if let error = error {
-                print("Failed to load connections: \(error)")
+                Logger.debug("Failed to load connections: \(error)")
             }
             group.leave()
         }

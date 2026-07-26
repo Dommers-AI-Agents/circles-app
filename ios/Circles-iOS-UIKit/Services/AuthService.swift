@@ -105,7 +105,7 @@ class AuthService {
     var isLoggedIn: Bool {
         let token = getToken()
         let loggedIn = token != nil
-        print("🔐 AuthService: isLoggedIn called, token exists: \(token != nil), returning: \(loggedIn)")
+        Logger.debug("🔐 AuthService: isLoggedIn called, token exists: \(token != nil), returning: \(loggedIn)")
         return loggedIn
     }
     
@@ -242,8 +242,8 @@ class AuthService {
     }
     
     func loginWithSocialProvider(provider: String, token: String, name: String? = nil, email: String? = nil, picture: String? = nil, completion: @escaping (Result<User, Error>) -> Void) {
-        print("🔐 AuthService.loginWithSocialProvider called with provider: \(provider)")
-        print("🔐 Profile data - name: \(name ?? "nil"), email: \(email ?? "nil"), picture: \(picture ?? "nil")")
+        Logger.debug("🔐 AuthService.loginWithSocialProvider called with provider: \(provider)")
+        Logger.debug("🔐 Profile data - name: \(name ?? "nil"), email: \(email ?? "nil"), picture: \(picture ?? "nil")")
         
         // Use different endpoints for different providers
         let endpoint: String
@@ -284,16 +284,16 @@ class AuthService {
             body: body,
             requiresAuth: false
         ) { [weak self] (result: Result<AuthResponse, APIError>) in
-            print("🔐 AuthService.loginWithSocialProvider API response received")
+            Logger.debug("🔐 AuthService.loginWithSocialProvider API response received")
             
             switch result {
             case .success(let response):
-                print("🔐 Social login successful, handling auth response")
+                Logger.debug("🔐 Social login successful, handling auth response")
                 // Save the auth provider for session restoration
                 self?.saveAuthProvider(provider)
                 self?.handleAuthResponse(response, completion: completion)
             case .failure(let error):
-                print("🔐 Social login failed with error: \(error)")
+                Logger.debug("🔐 Social login failed with error: \(error)")
                 let authError = self?.mapAPIErrorToAuthError(error, context: .login)
                 completion(.failure(authError ?? error))
             }
@@ -382,19 +382,19 @@ class AuthService {
     func fetchCurrentUser(completion: @escaping (Result<User, Error>) -> Void) {
         // If we already have the current user cached and it's from the current session, return it
         if let currentUser = _currentUser, getUserId() == currentUser.id {
-            print("🔐 Returning cached current user: \(currentUser.displayName)")
+            Logger.debug("🔐 Returning cached current user: \(currentUser.displayName)")
             completion(.success(currentUser))
             return
         }
         
         // Otherwise fetch from the API
         guard let userId = getUserId() else {
-            print("🔐 No user ID found, cannot fetch current user")
+            Logger.debug("🔐 No user ID found, cannot fetch current user")
             completion(.failure(AuthError.tokenExpired))
             return
         }
         
-        print("🔐 Fetching current user with ID: \(userId)")
+        Logger.debug("🔐 Fetching current user with ID: \(userId)")
         
         // Use the specific user endpoint instead of /me endpoint which seems to have issues
         APIService.shared.request(
@@ -404,15 +404,15 @@ class AuthService {
         ) { [weak self] (result: Result<UserResponse, APIError>) in
             switch result {
             case .success(let response):
-                print("🔐 Successfully fetched current user: \(response.user.displayName)")
+                Logger.debug("🔐 Successfully fetched current user: \(response.user.displayName)")
                 self?._currentUser = response.user
                 completion(.success(response.user))
             case .failure(let error):
-                print("🔐 Failed to fetch current user: \(error)")
+                Logger.debug("🔐 Failed to fetch current user: \(error)")
                 
                 // If user not found (404), clear the invalid session
                 if case .httpError(404, _) = error {
-                    print("🔐 User not found (404) - clearing invalid session")
+                    Logger.debug("🔐 User not found (404) - clearing invalid session")
                     self?.clearLocalAuth()
                     self?.notifyAuthStateChange(isLoggedIn: false)
                     completion(.failure(AuthError.userNotFound))
@@ -506,7 +506,7 @@ class AuthService {
     // MARK: - Helper Methods
     
     private func handleAuthResponse(_ response: AuthResponse, completion: @escaping (Result<User, Error>) -> Void) {
-        print("🔐 handleAuthResponse called, success: \(response.success)")
+        Logger.debug("🔐 handleAuthResponse called, success: \(response.success)")
 
         if response.success {
             // Stash any duplicate-account hint; the home screen surfaces it
@@ -520,7 +520,7 @@ class AuthService {
             let isNewUser = previousUserId != response.user.id
             
             if isNewUser && previousUserId != nil {
-                print("🔐 Different user detected - resetting onboarding state")
+                Logger.debug("🔐 Different user detected - resetting onboarding state")
                 // Reset onboarding state for the new user
                 OnboardingManager.shared.resetForNewUser()
             }
@@ -538,36 +538,36 @@ class AuthService {
                 expiration = Date().addingTimeInterval(TimeInterval(Constants.Auth.defaultTokenLifetime))
             }
             saveToken(response.token, expiration: expiration)
-            print("🔐 Token saved with expiration: \(expiration?.description ?? "none")")
+            Logger.debug("🔐 Token saved with expiration: \(expiration?.description ?? "none")")
             
             if let refreshToken = response.refreshToken {
                 saveRefreshToken(refreshToken)
                 APIService.shared.setRefreshToken(refreshToken)
-                print("🔐 Refresh token saved")
+                Logger.debug("🔐 Refresh token saved")
             }
             saveUserId(response.user.id)
-            print("🔐 User ID saved: \(response.user.id)")
+            Logger.debug("🔐 User ID saved: \(response.user.id)")
             
             // Set token in API service
             APIService.shared.setAuthToken(response.token)
             
             // Save current user
             self._currentUser = response.user
-            print("🔐 Current user set: \(response.user.displayName)")
+            Logger.debug("🔐 Current user set: \(response.user.displayName)")
             
             // Handle notifications setup for logged in user
             NotificationService.shared.handleUserLogin()
             
             // Notify auth state change
-            print("🔐 About to notify auth state change - isLoggedIn: true")
+            Logger.debug("🔐 About to notify auth state change - isLoggedIn: true")
             notifyAuthStateChange(isLoggedIn: true)
             
             // Register device token if available
             if let savedToken = UserDefaults.standard.string(forKey: "FCMToken") {
-                print("🔐 Found saved FCM token, registering with backend")
+                Logger.debug("🔐 Found saved FCM token, registering with backend")
                 NotificationService.shared.registerDeviceToken(savedToken)
             } else {
-                print("🔐 No saved FCM token found")
+                Logger.debug("🔐 No saved FCM token found")
             }
             
             // Refresh subscription status now that we're authenticated.
@@ -580,7 +580,7 @@ class AuthService {
             // Check for deferred promoted purchase
             Task { @MainActor in
                 if StoreKitObserver.shared.hasDeferredPurchase {
-                    print("💎 Resuming deferred promoted purchase after login")
+                    Logger.debug("💎 Resuming deferred promoted purchase after login")
                     try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second delay
                     StoreKitObserver.shared.resumeDeferredPurchase()
                 }
@@ -588,7 +588,7 @@ class AuthService {
             
             completion(.success(response.user))
         } else {
-            print("🔐 Auth response not successful")
+            Logger.debug("🔐 Auth response not successful")
             completion(.failure(AuthError.unknown("Authentication failed")))
         }
     }
@@ -604,7 +604,7 @@ class AuthService {
     
     // Public method to handle token expiration from APIService
     func handleTokenExpired() {
-        print("🔐 AuthService: Handling token expiration - logging out user")
+        Logger.debug("🔐 AuthService: Handling token expiration - logging out user")
         clearLocalAuth()
         notifyAuthStateChange(isLoggedIn: false)
     }
@@ -622,12 +622,12 @@ class AuthService {
     }
     
     private func notifyAuthStateChange(isLoggedIn: Bool) {
-        print("🔐 notifyAuthStateChange called with isLoggedIn: \(isLoggedIn)")
-        print("🔐 Number of auth listeners: \(authStateListeners.count)")
+        Logger.debug("🔐 notifyAuthStateChange called with isLoggedIn: \(isLoggedIn)")
+        Logger.debug("🔐 Number of auth listeners: \(authStateListeners.count)")
         
         DispatchQueue.main.async {
             for (id, listener) in self.authStateListeners {
-                print("🔐 Notifying listener: \(id)")
+                Logger.debug("🔐 Notifying listener: \(id)")
                 listener(isLoggedIn)
             }
         }
@@ -695,7 +695,7 @@ class AuthService {
         // Clear NetworkManager's pending connection invite
         NetworkManager.clearPendingConnectionInvite()
         
-        print("🧹 AuthService: Cleared app-specific UserDefaults")
+        Logger.debug("🧹 AuthService: Cleared app-specific UserDefaults")
     }
     
     private func saveAuthProvider(_ provider: String) {

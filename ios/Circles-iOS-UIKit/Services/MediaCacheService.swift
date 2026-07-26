@@ -34,7 +34,7 @@ class MediaCacheService {
         
         // Get Library directory (persists across app updates)
         guard let libraryDirectory = fileManager.urls(for: .libraryDirectory, in: .userDomainMask).first else {
-            print("❌ MediaCacheService: Failed to get Library directory")
+            Logger.debug("❌ MediaCacheService: Failed to get Library directory")
             return
         }
         
@@ -54,7 +54,7 @@ class MediaCacheService {
         [userMomentsDirectory, networkMomentsDirectory].compactMap { $0 }.forEach { directory in
             if !fileManager.fileExists(atPath: directory.path) {
                 try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true, attributes: nil)
-                print("✅ MediaCacheService: Created directory at \(directory.path)")
+                Logger.debug("✅ MediaCacheService: Created directory at \(directory.path)")
             }
         }
     }
@@ -74,7 +74,7 @@ class MediaCacheService {
             } else if let networkDir = self.networkMomentsDirectory {
                 directory = networkDir.appendingPathComponent(mediaType.rawValue)
             } else {
-                print("❌ MediaCacheService: No directory available for caching")
+                Logger.debug("❌ MediaCacheService: No directory available for caching")
                 return
             }
             
@@ -89,7 +89,7 @@ class MediaCacheService {
             
             // Check if file already exists
             if FileManager.default.fileExists(atPath: fileURL.path) {
-                print("⚠️ MediaCacheService: File already exists, overwriting: \(filename)")
+                Logger.debug("⚠️ MediaCacheService: File already exists, overwriting: \(filename)")
             }
             
             // Write data to disk with better error handling
@@ -102,7 +102,7 @@ class MediaCacheService {
                 
                 // Verify the file was written successfully
                 guard FileManager.default.fileExists(atPath: fileURL.path) else {
-                    print("❌ MediaCacheService: File write verification failed")
+                    Logger.debug("❌ MediaCacheService: File write verification failed")
                     return
                 }
                 
@@ -128,11 +128,11 @@ class MediaCacheService {
                 self.cacheIndex[mediaId] = cachedMedia
                 self.saveCacheIndex()
                 
-                print("✅ MediaCacheService: Cached \(mediaType.rawValue) (\(data.count / 1024)KB) for \(isPermanent ? "user" : "network")")
+                Logger.debug("✅ MediaCacheService: Cached \(mediaType.rawValue) (\(data.count / 1024)KB) for \(isPermanent ? "user" : "network")")
                 
             } catch let error as NSError {
-                print("❌ MediaCacheService: Failed to cache media: \(error.localizedDescription)")
-                print("❌ MediaCacheService: Error code: \(error.code), domain: \(error.domain)")
+                Logger.debug("❌ MediaCacheService: Failed to cache media: \(error.localizedDescription)")
+                Logger.debug("❌ MediaCacheService: Error code: \(error.code), domain: \(error.domain)")
                 
                 // Clean up partial writes
                 try? FileManager.default.removeItem(at: fileURL)
@@ -147,7 +147,7 @@ class MediaCacheService {
         
         // Check memory cache first
         if let cachedData = memoryCache.object(forKey: mediaId as NSString) {
-            print("✅ MediaCacheService: Retrieved from memory cache")
+            Logger.debug("✅ MediaCacheService: Retrieved from memory cache")
             completion(cachedData as Data)
             return
         }
@@ -164,7 +164,7 @@ class MediaCacheService {
             
             // Check if expired (skip for permanent content)
             if !cachedMedia.isPermanent && cachedMedia.isExpired {
-                print("⚠️ MediaCacheService: Cache expired for \(mediaId)")
+                Logger.debug("⚠️ MediaCacheService: Cache expired for \(mediaId)")
                 self.removeFromCache(mediaId: mediaId)
                 DispatchQueue.main.async {
                     completion(nil)
@@ -183,13 +183,13 @@ class MediaCacheService {
                 // Add to memory cache
                 self.memoryCache.setObject(data as NSData, forKey: mediaId as NSString, cost: data.count)
                 
-                print("✅ MediaCacheService: Retrieved from disk cache (\(data.count / 1024)KB)")
+                Logger.debug("✅ MediaCacheService: Retrieved from disk cache (\(data.count / 1024)KB)")
                 
                 DispatchQueue.main.async {
                     completion(data)
                 }
             } catch {
-                print("❌ MediaCacheService: Failed to read cached media: \(error)")
+                Logger.debug("❌ MediaCacheService: Failed to read cached media: \(error)")
                 DispatchQueue.main.async {
                     completion(nil)
                 }
@@ -240,7 +240,7 @@ class MediaCacheService {
             
             self.saveCacheIndex()
             
-            print("✅ MediaCacheService: Cleanup complete. Removed \(removedCount) items, freed \(freedSpace / 1024 / 1024)MB")
+            Logger.debug("✅ MediaCacheService: Cleanup complete. Removed \(removedCount) items, freed \(freedSpace / 1024 / 1024)MB")
         }
     }
     
@@ -308,7 +308,7 @@ class MediaCacheService {
             try FileManager.default.removeItem(atPath: cachedMedia.localPath)
             return true
         } catch {
-            print("❌ MediaCacheService: Failed to remove file: \(error)")
+            Logger.debug("❌ MediaCacheService: Failed to remove file: \(error)")
             return false
         }
     }
@@ -330,16 +330,16 @@ class MediaCacheService {
     private func loadCacheIndex() {
         guard let metadataURL = cacheMetadataURL,
               FileManager.default.fileExists(atPath: metadataURL.path) else {
-            print("⚠️ MediaCacheService: No cache index found")
+            Logger.debug("⚠️ MediaCacheService: No cache index found")
             return
         }
         
         do {
             let data = try Data(contentsOf: metadataURL)
             cacheIndex = try JSONDecoder().decode([String: CachedMedia].self, from: data)
-            print("✅ MediaCacheService: Loaded cache index with \(cacheIndex.count) items")
+            Logger.debug("✅ MediaCacheService: Loaded cache index with \(cacheIndex.count) items")
         } catch {
-            print("❌ MediaCacheService: Failed to load cache index: \(error)")
+            Logger.debug("❌ MediaCacheService: Failed to load cache index: \(error)")
         }
     }
     
@@ -350,7 +350,7 @@ class MediaCacheService {
             let data = try JSONEncoder().encode(cacheIndex)
             try data.write(to: metadataURL)
         } catch {
-            print("❌ MediaCacheService: Failed to save cache index: \(error)")
+            Logger.debug("❌ MediaCacheService: Failed to save cache index: \(error)")
         }
     }
     
@@ -377,7 +377,7 @@ class MediaCacheService {
             }
             
             self.saveCacheIndex()
-            print("✅ MediaCacheService: Cleared network cache")
+            Logger.debug("✅ MediaCacheService: Cleared network cache")
         }
     }
     
@@ -396,7 +396,7 @@ class MediaCacheService {
                 self.removeFromDisk(cachedMedia: cachedItem)
                 self.cacheIndex.removeValue(forKey: cacheKey)
                 self.saveCacheIndex()
-                print("✅ MediaCacheService: Cleared cached image for URL: \(urlString)")
+                Logger.debug("✅ MediaCacheService: Cleared cached image for URL: \(urlString)")
             }
         }
     }
@@ -421,7 +421,7 @@ class MediaCacheService {
             self.setupDirectories()
             self.saveCacheIndex()
             
-            print("✅ MediaCacheService: Cleared all cache")
+            Logger.debug("✅ MediaCacheService: Cleared all cache")
         }
     }
 }

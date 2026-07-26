@@ -107,9 +107,9 @@ class SuggestionsViewController: BaseViewController {
             SuggestionService.shared.unlikeSuggestion(suggestion.id) { [weak self] result in
                 switch result {
                 case .success:
-                    print("Successfully unliked suggestion")
+                    Logger.debug("Successfully unliked suggestion")
                 case .failure(let error):
-                    print("Error unliking suggestion: \(error)")
+                    Logger.debug("Error unliking suggestion: \(error)")
                     // Revert the optimistic update
                     DispatchQueue.main.async {
                         self?.suggestions[index] = suggestion
@@ -121,9 +121,9 @@ class SuggestionsViewController: BaseViewController {
             SuggestionService.shared.likeSuggestion(suggestion.id) { [weak self] result in
                 switch result {
                 case .success:
-                    print("Successfully liked suggestion")
+                    Logger.debug("Successfully liked suggestion")
                 case .failure(let error):
-                    print("Error liking suggestion: \(error)")
+                    Logger.debug("Error liking suggestion: \(error)")
                     // Revert the optimistic update
                     DispatchQueue.main.async {
                         self?.suggestions[index] = suggestion
@@ -144,7 +144,7 @@ class SuggestionsViewController: BaseViewController {
                     self?.tableView.reloadData()
                     self?.updateEmptyState()
                 case .failure(let error):
-                    print("Error loading suggestions: \(error)")
+                    Logger.debug("Error loading suggestions: \(error)")
                     self?.showErrorWithRetry(error) {
                         self?.loadData(completion: completion)
                     }
@@ -193,7 +193,7 @@ class SuggestionsViewController: BaseViewController {
                                 self?.tableView.deleteRows(at: [indexPath], with: .automatic)
                                 self?.updateEmptyState()
                             case .failure(let error):
-                                print("Error deleting suggestion: \(error)")
+                                Logger.debug("Error deleting suggestion: \(error)")
                                 self?.showErrorWithRetry(error) {
                                     self?.deleteSuggestion(at: indexPath)
                                 }
@@ -317,7 +317,7 @@ extension SuggestionsViewController: SuggestionTableViewCellDelegate {
                         let placeDetailVC = PlaceDetailViewController(place: place)
                         self?.navigationController?.pushViewController(placeDetailVC, animated: true)
                     case .failure(let error):
-                        print("Error fetching place: \(error)")
+                        Logger.debug("Error fetching place: \(error)")
                         self?.showErrorWithRetry(error) {
                             self?.fetchPlaceAndNavigate(placeId: placeId)
                         }

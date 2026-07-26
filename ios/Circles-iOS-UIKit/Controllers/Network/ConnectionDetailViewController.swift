@@ -351,12 +351,12 @@ class ConnectionDetailViewController: BaseViewController {
     private func loadConnectionCircles() {
         guard let connection = connection,
               let currentUserId = AuthService.shared.getUserId() else { 
-            print("Error: No connection or current user ID found")
+            Logger.debug("Error: No connection or current user ID found")
             return 
         }
         let userId = connection.otherUserId(currentUserId: currentUserId)
         
-        print("Loading circles for user: \(userId)")
+        Logger.debug("Loading circles for user: \(userId)")
         
         // Use the network endpoint that properly checks connections
         struct UserCirclesResponse: Codable {
@@ -383,7 +383,7 @@ class ConnectionDetailViewController: BaseViewController {
                     self.noCirclesLabel.isHidden = !response.data.circles.isEmpty
                     self.circlesCollectionView.isHidden = response.data.circles.isEmpty
                 case .failure(let error):
-                    print("Failed to load connection circles: \(error)")
+                    Logger.debug("Failed to load connection circles: \(error)")
                     self.connectionCircles = []
                     self.circlesCollectionView.reloadData()
                     self.noCirclesLabel.isHidden = false
@@ -605,10 +605,10 @@ class ConnectionDetailViewController: BaseViewController {
         ) { (result: Result<NotificationPreferenceResponse, APIError>) in
             switch result {
             case .success(let response):
-                print("✅ Connection notification preference updated: \(response.success)")
+                Logger.debug("✅ Connection notification preference updated: \(response.success)")
                 completion(response.success)
             case .failure(let error):
-                print("❌ Failed to update connection notification preference: \(error)")
+                Logger.debug("❌ Failed to update connection notification preference: \(error)")
                 completion(false)
             }
         }

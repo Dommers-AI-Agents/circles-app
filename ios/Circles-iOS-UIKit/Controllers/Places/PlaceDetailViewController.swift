@@ -54,7 +54,7 @@ class PlaceDetailViewController: BaseViewController {
     private var currentPhotoIndex = 0
     
     private func updateMediaCarousel() {
-        print("📸 [PlaceDetailViewController] updateMediaCarousel() called for place: \(place.name)")
+        Logger.debug("📸 [PlaceDetailViewController] updateMediaCarousel() called for place: \(place.name)")
         var mediaItems: [MediaItem] = []
         
         // Merge all photo sources, deduped by URL. Attributed GlobalPlace photos
@@ -65,7 +65,7 @@ class PlaceDetailViewController: BaseViewController {
         var seenUrls = Set<String>()
 
         if let attributedPhotos = globalPlace?.photos {
-            print("📸 [PlaceDetailViewController] GlobalPlace attributed photos: \(attributedPhotos.count)")
+            Logger.debug("📸 [PlaceDetailViewController] GlobalPlace attributed photos: \(attributedPhotos.count)")
             for attributedPhoto in attributedPhotos {
                 mediaItems.append(.attributedPhoto(photo: attributedPhoto))
                 seenUrls.insert(attributedPhoto.url)
@@ -95,7 +95,7 @@ class PlaceDetailViewController: BaseViewController {
         }
 
         if mediaItems.isEmpty {
-            print("📸 DEBUG: No photos available, will use placeholder")
+            Logger.debug("📸 DEBUG: No photos available, will use placeholder")
         }
         
         // Add videos
@@ -113,17 +113,17 @@ class PlaceDetailViewController: BaseViewController {
         }
         
         // Configure carousel
-        print("📸 [PlaceDetailViewController] Configuring MediaCarouselView with \(mediaItems.count) items")
+        Logger.debug("📸 [PlaceDetailViewController] Configuring MediaCarouselView with \(mediaItems.count) items")
         let attributedCount = mediaItems.filter { 
             if case .attributedPhoto = $0 { return true }
             return false
         }.count
         if attributedCount > 0 {
-            print("✅ [PlaceDetailViewController] \(attributedCount) items have attribution - should show 'Photo by [Name]'")
+            Logger.debug("✅ [PlaceDetailViewController] \(attributedCount) items have attribution - should show 'Photo by [Name]'")
         }
         
         mediaCarouselView.configure(with: mediaItems)
-        print("📸 [PlaceDetailViewController] MediaCarouselView configured with \(mediaItems.count) items")
+        Logger.debug("📸 [PlaceDetailViewController] MediaCarouselView configured with \(mediaItems.count) items")
     }
     
     private let streetViewToggleButton: UIButton = {
@@ -877,7 +877,7 @@ class PlaceDetailViewController: BaseViewController {
                     }
                 }
             case .failure(let error):
-                print("Failed to fetch rating: \(error)")
+                Logger.debug("Failed to fetch rating: \(error)")
             }
         }
     }
@@ -902,7 +902,7 @@ class PlaceDetailViewController: BaseViewController {
                     self?.updateCircleInfo()
                 }
             case .failure(let error):
-                print("Failed to fetch circle: \(error.localizedDescription)")
+                Logger.debug("Failed to fetch circle: \(error.localizedDescription)")
             }
         }
     }
@@ -911,15 +911,15 @@ class PlaceDetailViewController: BaseViewController {
         // Mark this place as viewed to clear the red dot
         // Only mark if place belongs to a circle
         guard let circleId = place.circleId, !circleId.isEmpty else {
-            print("Place has no circleId, skipping mark as viewed")
+            Logger.debug("Place has no circleId, skipping mark as viewed")
             return
         }
         
         NetworkManager.shared.markPlaceAsViewed(placeId: place.id, circleId: circleId) { error in
             if let error = error {
-                print("Error marking place as viewed: \(error)")
+                Logger.debug("Error marking place as viewed: \(error)")
             } else {
-                print("Successfully marked place as viewed")
+                Logger.debug("Successfully marked place as viewed")
             }
         }
     }
@@ -1446,11 +1446,11 @@ class PlaceDetailViewController: BaseViewController {
         // updateInfoButton.isHidden = !isShowingDefaultIcon || !canSearchGooglePlaces // Commented - automatic migration
         
         // Description - only show if available
-        print("🔍 [PlaceDetailViewController] Place ID: \(place.id)")
-        print("🔍 [PlaceDetailViewController] Place description: \(place.description ?? "nil")")
-        print("🔍 [PlaceDetailViewController] Place reviews count: \(place.reviews?.count ?? 0)")
-        print("🔍 [PlaceDetailViewController] Place likes count: \(place.likesCount ?? 0)")
-        print("🔍 [PlaceDetailViewController] Place comments count: \(place.commentsCount ?? 0)")
+        Logger.debug("🔍 [PlaceDetailViewController] Place ID: \(place.id)")
+        Logger.debug("🔍 [PlaceDetailViewController] Place description: \(place.description ?? "nil")")
+        Logger.debug("🔍 [PlaceDetailViewController] Place reviews count: \(place.reviews?.count ?? 0)")
+        Logger.debug("🔍 [PlaceDetailViewController] Place likes count: \(place.likesCount ?? 0)")
+        Logger.debug("🔍 [PlaceDetailViewController] Place comments count: \(place.commentsCount ?? 0)")
         
         // Phone/website already have their own chips — drop the duplicated
         // "Phone: …" / "Website: …" lines from the description text
@@ -1907,7 +1907,7 @@ class PlaceDetailViewController: BaseViewController {
             case .success(let circles):
                 self?.userCircles = circles
             case .failure(let error):
-                print("Failed to load user circles: \(error)")
+                Logger.debug("Failed to load user circles: \(error)")
                 // Continue without user circles - will treat as check-in
                 self?.userCircles = []
             }
@@ -1978,7 +1978,7 @@ class PlaceDetailViewController: BaseViewController {
     private func loadGlobalPlaceData() {
         // Try to load global place data if available
         // This provides better photo attribution and user tags
-        print("🔍 [PlaceDetailViewController] Starting loadGlobalPlaceData for place: \(place.name)")
+        Logger.debug("🔍 [PlaceDetailViewController] Starting loadGlobalPlaceData for place: \(place.name)")
 
         // Same id preference as the upload path (MediaStorageService), so reads
         // and writes resolve to the same GlobalPlace doc
@@ -1986,37 +1986,37 @@ class PlaceDetailViewController: BaseViewController {
             switch result {
             case .success(let globalPlaceResponse):
                 DispatchQueue.main.async {
-                    print("✅ [PlaceDetailViewController] GlobalPlace data loaded successfully")
-                    print("📍 [PlaceDetailViewController] GlobalPlace name: \(globalPlaceResponse.globalPlace.name)")
-                    print("🆔 [PlaceDetailViewController] GlobalPlace ID: \(globalPlaceResponse.globalPlace.id)")
+                    Logger.debug("✅ [PlaceDetailViewController] GlobalPlace data loaded successfully")
+                    Logger.debug("📍 [PlaceDetailViewController] GlobalPlace name: \(globalPlaceResponse.globalPlace.name)")
+                    Logger.debug("🆔 [PlaceDetailViewController] GlobalPlace ID: \(globalPlaceResponse.globalPlace.id)")
                     
                     self?.globalPlace = globalPlaceResponse.globalPlace
                     let photoCount = globalPlaceResponse.globalPlace.photos?.count ?? 0
-                    print("📷 [PlaceDetailViewController] Loaded GlobalPlace with \(photoCount) attributed photos")
+                    Logger.debug("📷 [PlaceDetailViewController] Loaded GlobalPlace with \(photoCount) attributed photos")
                     
                     if let photos = globalPlaceResponse.globalPlace.photos, !photos.isEmpty {
                         let firstPhoto = photos[0]
-                        print("📸 [PlaceDetailViewController] First photo by: '\(firstPhoto.uploadedByName ?? "Unknown")'")
+                        Logger.debug("📸 [PlaceDetailViewController] First photo by: '\(firstPhoto.uploadedByName ?? "Unknown")'")
                     }
                     
                     // Refresh media carousel with attribution data
-                    print("🔄 [PlaceDetailViewController] Calling updateMediaCarousel() with GlobalPlace data")
+                    Logger.debug("🔄 [PlaceDetailViewController] Calling updateMediaCarousel() with GlobalPlace data")
                     self?.updateMediaCarousel()
                 }
             case .failure(let error):
-                print("❌ [PlaceDetailViewController] Could not load GlobalPlace data: \(error)")
-                print("📍 [PlaceDetailViewController] Continuing with legacy Place model for: \(self?.place.name ?? "Unknown")")
+                Logger.debug("❌ [PlaceDetailViewController] Could not load GlobalPlace data: \(error)")
+                Logger.debug("📍 [PlaceDetailViewController] Continuing with legacy Place model for: \(self?.place.name ?? "Unknown")")
                 
                 DispatchQueue.main.async {
                     // Try to add retry logic for common failures
                     if case APIError.noInternet = error {
-                        print("🔄 [PlaceDetailViewController] No internet detected, will retry GlobalPlace lookup once")
+                        Logger.debug("🔄 [PlaceDetailViewController] No internet detected, will retry GlobalPlace lookup once")
                         // Retry once after a short delay
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                             self?.retryGlobalPlaceDataLoad()
                         }
                     } else if case APIError.requestFailed = error {
-                        print("🔄 [PlaceDetailViewController] Request failed, will retry GlobalPlace lookup once")
+                        Logger.debug("🔄 [PlaceDetailViewController] Request failed, will retry GlobalPlace lookup once")
                         // Retry once after a short delay
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                             self?.retryGlobalPlaceDataLoad()
@@ -2032,18 +2032,18 @@ class PlaceDetailViewController: BaseViewController {
     }
     
     private func retryGlobalPlaceDataLoad() {
-        print("🔄 [PlaceDetailViewController] Retrying GlobalPlace data load...")
+        Logger.debug("🔄 [PlaceDetailViewController] Retrying GlobalPlace data load...")
 
         GlobalPlaceService.shared.getGlobalPlace(id: place.globalPlaceId ?? place.id) { [weak self] result in
             switch result {
             case .success(let globalPlaceResponse):
                 DispatchQueue.main.async {
-                    print("✅ [PlaceDetailViewController] GlobalPlace data loaded on retry")
+                    Logger.debug("✅ [PlaceDetailViewController] GlobalPlace data loaded on retry")
                     self?.globalPlace = globalPlaceResponse.globalPlace
                     self?.updateMediaCarousel()
                 }
             case .failure(let error):
-                print("❌ [PlaceDetailViewController] GlobalPlace retry failed: \(error)")
+                Logger.debug("❌ [PlaceDetailViewController] GlobalPlace retry failed: \(error)")
                 // Give up and continue with legacy data
             }
         }
@@ -2084,7 +2084,7 @@ class PlaceDetailViewController: BaseViewController {
     
     @objc private func creatorLabelTapped(_ gesture: UITapGestureRecognizer) {
         guard let user = creatorUser else { 
-            print("No creator user data available")
+            Logger.debug("No creator user data available")
             return 
         }
         
@@ -2430,10 +2430,10 @@ class PlaceDetailViewController: BaseViewController {
     }
     
     @objc private func streetViewToggleButtonTapped() {
-        print("🔘 PlaceDetailViewController: Street view toggle button tapped")
-        print("  - Current state - showingStreetView: \(showingStreetView)")
-        print("  - placePhotos.count: \(placePhotos.count)")
-        print("  - currentPhotoIndex: \(currentPhotoIndex)")
+        Logger.debug("🔘 PlaceDetailViewController: Street view toggle button tapped")
+        Logger.debug("  - Current state - showingStreetView: \(showingStreetView)")
+        Logger.debug("  - placePhotos.count: \(placePhotos.count)")
+        Logger.debug("  - currentPhotoIndex: \(currentPhotoIndex)")
         
         // Toggle street view state
         if isStreetViewAvailable {
@@ -2458,23 +2458,23 @@ class PlaceDetailViewController: BaseViewController {
     
     private func checkStreetViewAvailability() {
         guard let location = place.location?.clLocation else { 
-            print("⚠️ PlaceDetailViewController: No location available for street view check")
+            Logger.debug("⚠️ PlaceDetailViewController: No location available for street view check")
             return 
         }
         
         if #available(iOS 16.0, *) {
-            print("🔍 PlaceDetailViewController: Checking Look Around availability for \(place.name)")
+            Logger.debug("🔍 PlaceDetailViewController: Checking Look Around availability for \(place.name)")
             Task {
                 let available = await AppleLookAroundService.shared.checkLookAroundAvailability(at: location.coordinate)
                 await MainActor.run {
-                    print("📍 PlaceDetailViewController: Look Around available: \(available)")
+                    Logger.debug("📍 PlaceDetailViewController: Look Around available: \(available)")
                     self.isStreetViewAvailable = available
                     self.updateToggleButtonVisibility()
                 }
             }
         } else {
             // Look Around not available on iOS < 16
-            print("⚠️ PlaceDetailViewController: iOS < 16.0, Look Around not available")
+            Logger.debug("⚠️ PlaceDetailViewController: iOS < 16.0, Look Around not available")
             isStreetViewAvailable = false
             updateToggleButtonVisibility()
         }
@@ -2499,7 +2499,7 @@ class PlaceDetailViewController: BaseViewController {
                         }
                     }
                 } catch {
-                    print("Failed to load Look Around: \(error)")
+                    Logger.debug("Failed to load Look Around: \(error)")
                 }
             }
         }
@@ -2874,46 +2874,46 @@ class PlaceDetailViewController: BaseViewController {
     private func loadPlacePhotos() {
         // First check if place has photos from the API
         if let photos = place.photos, !photos.isEmpty {
-            print("🖼️ PlaceDetailViewController: Loading \(photos.count) photos for place: \(place.name)")
-            print("📸 DEBUG: Photo URLs from place object:")
+            Logger.debug("🖼️ PlaceDetailViewController: Loading \(photos.count) photos for place: \(place.name)")
+            Logger.debug("📸 DEBUG: Photo URLs from place object:")
             for (index, photo) in photos.enumerated() {
-                print("  Photo \(index + 1): \(photo)")
+                Logger.debug("  Photo \(index + 1): \(photo)")
                 // Check if it's a Google or Apple photo
                 if photo.contains("firebasestorage") || photo.contains("googleapis") {
-                    print("    Type: Firebase Storage")
+                    Logger.debug("    Type: Firebase Storage")
                 } else {
-                    print("    Type: Unknown")
+                    Logger.debug("    Type: Unknown")
                 }
             }
             
             // Load all photos from the API
             placePhotos.removeAll()
-            print("📸 DEBUG: Cleared placePhotos array, starting fresh load...")
+            Logger.debug("📸 DEBUG: Cleared placePhotos array, starting fresh load...")
             let loadGroup = DispatchGroup()
             
             for (index, photoUrl) in photos.enumerated() {
                 guard let url = URL(string: photoUrl) else { 
-                    print("❌ PlaceDetailViewController: Invalid photo URL at index \(index): \(photoUrl)")
+                    Logger.debug("❌ PlaceDetailViewController: Invalid photo URL at index \(index): \(photoUrl)")
                     continue 
                 }
                 
                 loadGroup.enter()
                 URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
                     if let error = error {
-                        print("❌ PlaceDetailViewController: Error loading photo \(index): \(error)")
+                        Logger.debug("❌ PlaceDetailViewController: Error loading photo \(index): \(error)")
                     }
                     
                     if let httpResponse = response as? HTTPURLResponse {
-                        print("📡 PlaceDetailViewController: Photo \(index) HTTP Status: \(httpResponse.statusCode)")
+                        Logger.debug("📡 PlaceDetailViewController: Photo \(index) HTTP Status: \(httpResponse.statusCode)")
                     }
                     
                     if let data = data, let image = UIImage(data: data) {
-                        print("✅ PlaceDetailViewController: Successfully loaded photo \(index)")
+                        Logger.debug("✅ PlaceDetailViewController: Successfully loaded photo \(index)")
                         DispatchQueue.main.async {
                             self?.placePhotos.append((image: image, url: photoUrl))
                         }
                     } else {
-                        print("❌ PlaceDetailViewController: Failed to create image from data for photo \(index)")
+                        Logger.debug("❌ PlaceDetailViewController: Failed to create image from data for photo \(index)")
                     }
                     loadGroup.leave()
                 }.resume()
@@ -2922,11 +2922,11 @@ class PlaceDetailViewController: BaseViewController {
             loadGroup.notify(queue: .main) { [weak self] in
                 guard let self = self else { return }
                 
-                print("🏁 PlaceDetailViewController: Finished loading photos. Total loaded: \(self.placePhotos.count)")
-                print("📸 DEBUG: placePhotos array now contains \(self.placePhotos.count) UIImages")
+                Logger.debug("🏁 PlaceDetailViewController: Finished loading photos. Total loaded: \(self.placePhotos.count)")
+                Logger.debug("📸 DEBUG: placePhotos array now contains \(self.placePhotos.count) UIImages")
                 
                 // Update media carousel
-                print("📸 DEBUG: Calling updateMediaCarousel()...")
+                Logger.debug("📸 DEBUG: Calling updateMediaCarousel()...")
                 self.updateMediaCarousel()
                 
                 // Update UI if photos were loaded
@@ -2939,7 +2939,7 @@ class PlaceDetailViewController: BaseViewController {
                         self.photosEditButton.isHidden = false
                     }
                 } else {
-                    print("⚠️ PlaceDetailViewController: No photos were successfully loaded")
+                    Logger.debug("⚠️ PlaceDetailViewController: No photos were successfully loaded")
                 }
                 
                 // Update street view toggle button visibility
@@ -2966,9 +2966,9 @@ class PlaceDetailViewController: BaseViewController {
         // Photo navigation is now handled by MediaCarouselView
         let shouldShowToggle = isStreetViewAvailable
         
-        print("🔘 PlaceDetailViewController: Toggle button visibility check:")
-        print("  - isStreetViewAvailable: \(isStreetViewAvailable)")
-        print("  - shouldShowToggle: \(shouldShowToggle)")
+        Logger.debug("🔘 PlaceDetailViewController: Toggle button visibility check:")
+        Logger.debug("  - isStreetViewAvailable: \(isStreetViewAvailable)")
+        Logger.debug("  - shouldShowToggle: \(shouldShowToggle)")
         
         streetViewToggleButton.isHidden = !shouldShowToggle
         
@@ -3254,7 +3254,7 @@ extension PlaceDetailViewController: EditPlaceDelegate {
         title = place.name
         
         // Stay on the current screen to show the updated changes
-        print("🔄 Place updated: \(updatedPlace.name) with category: \(updatedPlace.displayCategory)")
+        Logger.debug("🔄 Place updated: \(updatedPlace.name) with category: \(updatedPlace.displayCategory)")
     }
     
     func didDeletePlace(_ placeId: String) {
@@ -3414,7 +3414,7 @@ extension PlaceDetailViewController: MediaCaptureServiceDelegate {
                     // replaces it with the attributed server copy when it lands
                     self?.updateMediaCarousel()
 
-                    print("✅ [PlaceDetailViewController] Photo upload successful, refreshing Global Place data...")
+                    Logger.debug("✅ [PlaceDetailViewController] Photo upload successful, refreshing Global Place data...")
 
                     // Clear any cached data and refresh Global Place data
                     self?.globalPlace = nil
@@ -3480,7 +3480,7 @@ extension PlaceDetailViewController: MediaCarouselViewDelegate {
             liked: liked
         ) { [weak self] result in
             if case .failure(let error) = result {
-                print("❌ [PlaceDetailViewController] Photo like failed, re-syncing: \(error)")
+                Logger.debug("❌ [PlaceDetailViewController] Photo like failed, re-syncing: \(error)")
                 DispatchQueue.main.async {
                     self?.loadGlobalPlaceData()
                 }

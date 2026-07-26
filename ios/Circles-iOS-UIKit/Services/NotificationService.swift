@@ -12,31 +12,31 @@ class NotificationService {
     // MARK: - Device Token Management
     
     func registerDeviceToken(_ token: String) {
-        print("🔔 ===== REGISTER DEVICE TOKEN =====")
-        print("🔔 Token length: \(token.count)")
-        print("🔔 Token preview: \(token.prefix(30))...")
-        print("🔔 User logged in: \(AuthService.shared.isLoggedIn)")
+        Logger.debug("🔔 ===== REGISTER DEVICE TOKEN =====")
+        Logger.debug("🔔 Token length: \(token.count)")
+        Logger.debug("🔔 Token preview: \(token.prefix(30))...")
+        Logger.debug("🔔 User logged in: \(AuthService.shared.isLoggedIn)")
         
         self.deviceToken = token
         
         // Save to UserDefaults for persistence
         UserDefaults.standard.set(token, forKey: "FCMToken")
         UserDefaults.standard.synchronize()
-        print("🔔 Saved FCM token to UserDefaults")
+        Logger.debug("🔔 Saved FCM token to UserDefaults")
         
         // Only send to backend if user is logged in
         guard AuthService.shared.isLoggedIn else {
-            print("🔔 User not logged in, storing device token for later registration")
-            print("🔔 Token will be sent when user logs in")
+            Logger.debug("🔔 User not logged in, storing device token for later registration")
+            Logger.debug("🔔 Token will be sent when user logs in")
             return
         }
         
-        print("🔔 User is logged in, sending token to backend NOW")
+        Logger.debug("🔔 User is logged in, sending token to backend NOW")
         sendDeviceTokenToBackend(token)
     }
     
     private func sendDeviceTokenToBackend(_ token: String) {
-        print("🔔 Sending device token to backend...")
+        Logger.debug("🔔 Sending device token to backend...")
         let body: [String: Any] = [
             "deviceToken": token,
             "platform": "ios",
@@ -51,15 +51,15 @@ class NotificationService {
         ) { (result: Result<EmptyResponse, APIError>) in
             switch result {
             case .success:
-                print("🔔 ✅ Device token registered successfully with backend")
-                print("🔔 Old tokens have been automatically cleaned up")
+                Logger.debug("🔔 ✅ Device token registered successfully with backend")
+                Logger.debug("🔔 Old tokens have been automatically cleaned up")
             case .failure(let error):
-                print("🔔 ❌ Failed to register device token: \(error)")
-                print("🔔 Error details: \(error.localizedDescription)")
+                Logger.debug("🔔 ❌ Failed to register device token: \(error)")
+                Logger.debug("🔔 Error details: \(error.localizedDescription)")
                 
                 // Retry once after a delay if it fails
                 DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-                    print("🔔 Retrying device token registration...")
+                    Logger.debug("🔔 Retrying device token registration...")
                     self.sendDeviceTokenToBackend(token)
                 }
             }
@@ -81,9 +81,9 @@ class NotificationService {
         ) { (result: Result<EmptyResponse, APIError>) in
             switch result {
             case .success:
-                print("🔔 Device token unregistered successfully")
+                Logger.debug("🔔 Device token unregistered successfully")
             case .failure(let error):
-                print("🔔 Failed to unregister device token: \(error)")
+                Logger.debug("🔔 Failed to unregister device token: \(error)")
             }
         }
     }
@@ -91,14 +91,14 @@ class NotificationService {
     // MARK: - Badge Management
     
     func updateApplicationBadge(count: Int) {
-        print("🔔 NotificationService: Setting application badge count to \(count)")
+        Logger.debug("🔔 NotificationService: Setting application badge count to \(count)")
         DispatchQueue.main.async {
             UIApplication.shared.applicationIconBadgeNumber = count
         }
     }
     
     func clearBadge() {
-        print("🔔 NotificationService: Clearing application badge count")
+        Logger.debug("🔔 NotificationService: Clearing application badge count")
         updateApplicationBadge(count: 0)
     }
     
@@ -141,9 +141,9 @@ class NotificationService {
         
         UNUserNotificationCenter.current().add(request) { error in
             if let error = error {
-                print("🔔 Error scheduling test notification: \(error)")
+                Logger.debug("🔔 Error scheduling test notification: \(error)")
             } else {
-                print("🔔 Test notification scheduled")
+                Logger.debug("🔔 Test notification scheduled")
             }
         }
     }
@@ -221,8 +221,8 @@ extension NotificationService {
     // MARK: - In-App Notifications
     
     func getNotifications(limit: Int = 50, offset: Int = 0, archived: Bool = false, completion: @escaping (Result<NotificationsResponse, Error>) -> Void) {
-        print("🚀 NotificationService: getNotifications called")
-        print("🚀 NotificationService: limit: \(limit), offset: \(offset), archived: \(archived)")
+        Logger.debug("🚀 NotificationService: getNotifications called")
+        Logger.debug("🚀 NotificationService: limit: \(limit), offset: \(offset), archived: \(archived)")
         
         let queryParams: [String: String] = [
             "limit": "\(limit)",
@@ -230,7 +230,7 @@ extension NotificationService {
             "archived": archived ? "true" : "false"
         ]
         
-        print("🚀 NotificationService: Making API request to 'notifications' endpoint")
+        Logger.debug("🚀 NotificationService: Making API request to 'notifications' endpoint")
         
         APIService.shared.request(
             endpoint: "notifications",
@@ -238,16 +238,16 @@ extension NotificationService {
             queryParams: queryParams,
             requiresAuth: true
         ) { (result: Result<NotificationsResponse, APIError>) in
-            print("📡 NotificationService: API callback received")
+            Logger.debug("📡 NotificationService: API callback received")
             
             switch result {
             case .success(let response):
-                print("✅ NotificationService: Successfully fetched notifications")
-                print("✅ NotificationService: Notification count: \(response.notifications.count)")
+                Logger.debug("✅ NotificationService: Successfully fetched notifications")
+                Logger.debug("✅ NotificationService: Notification count: \(response.notifications.count)")
                 completion(.success(response))
             case .failure(let error):
-                print("❌ NotificationService: Failed to fetch notifications: \(error)")
-                print("❌ NotificationService: Error type: \(type(of: error))")
+                Logger.debug("❌ NotificationService: Failed to fetch notifications: \(error)")
+                Logger.debug("❌ NotificationService: Error type: \(type(of: error))")
                 completion(.failure(error))
             }
         }

@@ -528,7 +528,7 @@ extension MyNetworkViewController {
 // MARK: - SSEServiceDelegate
 extension MyNetworkViewController: SSEServiceDelegate {
     func sseService(_ service: SSEService, didReceiveEvent event: SSEEvent) {
-        print("📡 MyNetwork: Received SSE event: \(event.type)")
+        Logger.debug("📡 MyNetwork: Received SSE event: \(event.type)")
         
         switch event.type {
         case .connectionRequest:
@@ -549,12 +549,12 @@ extension MyNetworkViewController: SSEServiceDelegate {
     }
     
     func sseServiceDidConnect(_ service: SSEService) {
-        print("📡 MyNetwork: SSE connected")
+        Logger.debug("📡 MyNetwork: SSE connected")
         sseConnected = true
     }
     
     func sseServiceDidDisconnect(_ service: SSEService, error: Error?) {
-        print("📡 MyNetwork: SSE disconnected")
+        Logger.debug("📡 MyNetwork: SSE disconnected")
         sseConnected = false
     }
     

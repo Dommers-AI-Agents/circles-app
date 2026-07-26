@@ -204,7 +204,7 @@ class EmailLoginViewController: BaseViewController {
                 
                 switch result {
                 case .success(let user):
-                    print("Successfully logged in user: \(user.displayName)")
+                    Logger.debug("Successfully logged in user: \(user.displayName)")
                     AnalyticsService.shared.trackLogin(method: "email")
                     self?.saveEmail(email)
 
@@ -307,7 +307,7 @@ class EmailLoginViewController: BaseViewController {
                 // Save credentials with biometric protection
                 KeychainManager.shared.saveCredentialsWithBiometric(email: email, password: password)
                 BiometricAuthService.shared.enableBiometricLogin()
-                print("🔐 Biometric login enabled for user")
+                Logger.debug("🔐 Biometric login enabled for user")
             }
         )
     }

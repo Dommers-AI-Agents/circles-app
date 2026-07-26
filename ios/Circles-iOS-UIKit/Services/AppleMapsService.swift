@@ -76,13 +76,13 @@ class AppleMapsService {
         let search = MKLocalSearch(request: request)
         search.start { response, error in
             if let error = error {
-                print("❌ AppleMapsService - Search error: \(error)")
+                Logger.debug("❌ AppleMapsService - Search error: \(error)")
                 completion(.failure(error))
             } else if let mapItems = response?.mapItems {
-                print("✅ AppleMapsService - Found \(mapItems.count) items for category: \(category)")
+                Logger.debug("✅ AppleMapsService - Found \(mapItems.count) items for category: \(category)")
                 completion(.success(mapItems))
             } else {
-                print("⚠️ AppleMapsService - No results found")
+                Logger.debug("⚠️ AppleMapsService - No results found")
                 completion(.success([]))
             }
         }
@@ -385,7 +385,7 @@ class AppleMapsService {
         let search = MKLocalSearch(request: request)
         search.start { response, error in
             if let error = error {
-                print("Failed to search for POI details: \(error)")
+                Logger.debug("Failed to search for POI details: \(error)")
                 completion(nil)
                 return
             }
@@ -414,7 +414,7 @@ class AppleMapsService {
         
         geocoder.reverseGeocodeLocation(location) { placemarks, error in
             if let error = error {
-                print("Reverse geocoding error: \(error)")
+                Logger.debug("Reverse geocoding error: \(error)")
                 completion(nil)
                 return
             }

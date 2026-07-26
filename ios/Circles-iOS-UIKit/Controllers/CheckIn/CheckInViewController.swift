@@ -673,7 +673,7 @@ class CheckInViewController: BaseViewController {
                     self.selectedPlace = existingPlace
                     self.selectedCompletion = nil
                     self.tempCheckInData.removeAll()
-                    print("✅ Found existing place match: \(existingPlace.name) with ID: \(existingPlace.id)")
+                    Logger.debug("✅ Found existing place match: \(existingPlace.name) with ID: \(existingPlace.id)")
                 }
                 
                 // Enable next button
@@ -828,8 +828,8 @@ extension CheckInViewController: CLLocationManagerDelegate {
         guard let location = locations.last else { return }
         currentLocation = location
         
-        print("📍 CheckIn: Received location update: \(location.coordinate.latitude), \(location.coordinate.longitude)")
-        print("📍 CheckIn: Location accuracy: \(location.horizontalAccuracy)m")
+        Logger.debug("📍 CheckIn: Received location update: \(location.coordinate.latitude), \(location.coordinate.longitude)")
+        Logger.debug("📍 CheckIn: Location accuracy: \(location.horizontalAccuracy)m")
         
         // Update search completer region
         searchCompleter.region = MKCoordinateRegion(
@@ -878,12 +878,12 @@ extension CheckInViewController: CLLocationManagerDelegate {
 extension CheckInViewController: MKLocalSearchCompleterDelegate {
     func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
         searchResults = completer.results
-        print("📍 CheckIn: Search completer found \(searchResults.count) results")
+        Logger.debug("📍 CheckIn: Search completer found \(searchResults.count) results")
         placesTableView.reloadData()
     }
     
     func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
-        print("❌ CheckIn: Search completer error: \(error.localizedDescription)")
+        Logger.debug("❌ CheckIn: Search completer error: \(error.localizedDescription)")
     }
 }
 

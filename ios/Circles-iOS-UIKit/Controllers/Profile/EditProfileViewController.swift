@@ -497,14 +497,14 @@ class EditProfileViewController: BaseViewController {
         let bio = updates["bio"] as? String
         
         // Debug logging
-        print("🔍 EditProfileViewController - Sending updates:")
-        print("   - Display Name: \(displayName ?? "nil")")
-        print("   - First Name: \(updates["firstName"] ?? "nil")")
-        print("   - Last Name: \(updates["lastName"] ?? "nil")")
-        print("   - Phone Number: \(updates["phoneNumber"] ?? "nil")")
-        print("   - Location: \(location ?? "nil")")
-        print("   - Zipcode: \(zipcode ?? "nil")")
-        print("   - Bio: \(bio ?? "nil")")
+        Logger.debug("🔍 EditProfileViewController - Sending updates:")
+        Logger.debug("   - Display Name: \(displayName ?? "nil")")
+        Logger.debug("   - First Name: \(updates["firstName"] ?? "nil")")
+        Logger.debug("   - Last Name: \(updates["lastName"] ?? "nil")")
+        Logger.debug("   - Phone Number: \(updates["phoneNumber"] ?? "nil")")
+        Logger.debug("   - Location: \(location ?? "nil")")
+        Logger.debug("   - Zipcode: \(zipcode ?? "nil")")
+        Logger.debug("   - Bio: \(bio ?? "nil")")
         
         // Convert selected image to data or handle avatar
         var profileImageData: Data?
@@ -535,11 +535,11 @@ class EditProfileViewController: BaseViewController {
                 switch result {
                 case .success(let updatedUser):
                     // Debug logging
-                    print("✅ EditProfileViewController - Received updated user:")
-                    print("   - Display Name: \(updatedUser.displayName)")
-                    print("   - First Name: \(updatedUser.firstName ?? "nil")")
-                    print("   - Last Name: \(updatedUser.lastName ?? "nil")")
-                    print("   - Phone Number: \(updatedUser.phoneNumber ?? "nil")")
+                    Logger.debug("✅ EditProfileViewController - Received updated user:")
+                    Logger.debug("   - Display Name: \(updatedUser.displayName)")
+                    Logger.debug("   - First Name: \(updatedUser.firstName ?? "nil")")
+                    Logger.debug("   - Last Name: \(updatedUser.lastName ?? "nil")")
+                    Logger.debug("   - Phone Number: \(updatedUser.phoneNumber ?? "nil")")
                     
                     // Update the cached user
                     AuthService.shared.updateCurrentUser(updatedUser)

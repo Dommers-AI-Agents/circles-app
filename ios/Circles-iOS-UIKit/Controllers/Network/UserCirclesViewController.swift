@@ -168,7 +168,7 @@ class UserCirclesViewController: BaseViewController {
                     //     self.showActivityBanner()
                     // }
                 case .failure(let error):
-                    print("Error loading user circles: \(error)")
+                    Logger.debug("Error loading user circles: \(error)")
                     self.showError("Failed to load circles")
                 }
             }
@@ -221,7 +221,7 @@ class UserCirclesViewController: BaseViewController {
         ) { (result: Result<TrackingResponse, APIError>) in
             // Silent tracking - no need to handle response
             if case .failure(let error) = result {
-                print("Failed to track circle view: \(error)")
+                Logger.debug("Failed to track circle view: \(error)")
             }
         }
     }
@@ -353,7 +353,7 @@ extension UserCirclesViewController: UITableViewDelegate {
             // Mark circle activities as viewed
             NetworkManager.shared.markCircleActivitiesAsViewed(circleId: circle.id) { error in
                 if let error = error {
-                    print("Error marking circle activities as viewed: \(error)")
+                    Logger.debug("Error marking circle activities as viewed: \(error)")
                 }
             }
         }

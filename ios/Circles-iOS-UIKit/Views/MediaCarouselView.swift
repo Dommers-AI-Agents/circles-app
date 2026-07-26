@@ -143,17 +143,17 @@ class MediaCarouselView: UIView {
     // MARK: - Public Methods
     
     func configure(with mediaItems: [MediaItem]) {
-        print("📸 MediaCarouselView: configure() called with \(mediaItems.count) items")
+        Logger.debug("📸 MediaCarouselView: configure() called with \(mediaItems.count) items")
         for (index, item) in mediaItems.enumerated() {
             switch item {
             case .photo(let url):
-                print("  Item \(index + 1): Photo URL - \(url ?? "nil")")
+                Logger.debug("  Item \(index + 1): Photo URL - \(url ?? "nil")")
             case .photoImage(_):
-                print("  Item \(index + 1): Photo UIImage")
+                Logger.debug("  Item \(index + 1): Photo UIImage")
             case .video(let thumbnailUrl, let videoUrl):
-                print("  Item \(index + 1): Video - thumb: \(thumbnailUrl ?? "nil"), video: \(videoUrl ?? "nil")")
+                Logger.debug("  Item \(index + 1): Video - thumb: \(thumbnailUrl ?? "nil"), video: \(videoUrl ?? "nil")")
             case .attributedPhoto(let photo):
-                print("  Item \(index + 1): Attributed Photo - URL: \(photo.url), by: \(photo.uploadedByName ?? "Unknown"), likes: \(photo.likesCount ?? 0)")
+                Logger.debug("  Item \(index + 1): Attributed Photo - URL: \(photo.url), by: \(photo.uploadedByName ?? "Unknown"), likes: \(photo.likesCount ?? 0)")
             }
         }
         
@@ -186,11 +186,11 @@ class MediaCarouselView: UIView {
         pageControl.numberOfPages = mediaItems.count
         pageControl.currentPage = 0
         pageControl.isHidden = mediaItems.count <= 1
-        print("📸 MediaCarouselView: Page control - pages: \(pageControl.numberOfPages), hidden: \(pageControl.isHidden)")
+        Logger.debug("📸 MediaCarouselView: Page control - pages: \(pageControl.numberOfPages), hidden: \(pageControl.isHidden)")
         
         // Update navigation buttons
         updateNavigationButtons()
-        print("📸 MediaCarouselView: Configuration complete - \(contentStackView.arrangedSubviews.count) views in stack")
+        Logger.debug("📸 MediaCarouselView: Configuration complete - \(contentStackView.arrangedSubviews.count) views in stack")
     }
     
     // MARK: - Private Methods

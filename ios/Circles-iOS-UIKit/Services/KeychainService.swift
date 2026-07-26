@@ -93,7 +93,7 @@ class KeychainService {
         // Save password with biometric protection
         saveBiometricProtected(password, account: savedPasswordAccount)
 
-        print("🔐 KeychainService: Saved credentials with biometric protection")
+        Logger.debug("🔐 KeychainService: Saved credentials with biometric protection")
     }
 
     /// Retrieve saved email (no biometric required)
@@ -115,7 +115,7 @@ class KeychainService {
     func clearSavedCredentials() {
         delete(account: savedEmailAccount)
         delete(account: savedPasswordAccount)
-        print("🔐 KeychainService: Cleared saved credentials")
+        Logger.debug("🔐 KeychainService: Cleared saved credentials")
     }
 
     // MARK: - Private Helper Methods
@@ -139,7 +139,7 @@ class KeychainService {
         let status = SecItemAdd(query as CFDictionary, nil)
         
         if status != errSecSuccess {
-            print("Error saving \(account) to keychain: \(status)")
+            Logger.debug("Error saving \(account) to keychain: \(status)")
         }
     }
     
@@ -191,7 +191,7 @@ class KeychainService {
             .biometryCurrentSet, // Requires biometric and invalidates if biometrics change
             &error
         ) else {
-            print("❌ KeychainService: Failed to create access control: \(String(describing: error))")
+            Logger.debug("❌ KeychainService: Failed to create access control: \(String(describing: error))")
             return
         }
 
@@ -208,9 +208,9 @@ class KeychainService {
         let status = SecItemAdd(query as CFDictionary, nil)
 
         if status != errSecSuccess {
-            print("❌ KeychainService: Error saving biometric-protected \(account): \(status)")
+            Logger.debug("❌ KeychainService: Error saving biometric-protected \(account): \(status)")
         } else {
-            print("✅ KeychainService: Successfully saved biometric-protected \(account)")
+            Logger.debug("✅ KeychainService: Successfully saved biometric-protected \(account)")
         }
     }
 
@@ -237,10 +237,10 @@ class KeychainService {
                 if status == errSecSuccess,
                    let data = dataTypeRef as? Data,
                    let value = String(data: data, encoding: .utf8) {
-                    print("✅ KeychainService: Successfully retrieved biometric-protected \(account)")
+                    Logger.debug("✅ KeychainService: Successfully retrieved biometric-protected \(account)")
                     completion(value)
                 } else {
-                    print("❌ KeychainService: Failed to retrieve biometric-protected \(account): \(status)")
+                    Logger.debug("❌ KeychainService: Failed to retrieve biometric-protected \(account): \(status)")
                     completion(nil)
                 }
             }

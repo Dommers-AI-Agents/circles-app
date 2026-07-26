@@ -109,17 +109,17 @@ class NetworkManager {
                             let isSelfConnection = (connection.userId == currentUserId && connection.connectedUserId == currentUserId)
                             
                             if isSelfConnection {
-                                print("⚠️ NetworkManager.loadConnections: Filtering out invalid self-connection: \(connection.id)")
-                                print("   userId: \(connection.userId)")
-                                print("   connectedUserId: \(connection.connectedUserId)")
-                                print("   currentUserId: \(currentUserId)")
-                                print("   connectedUser: \(connection.connectedUser?.displayName ?? "nil") (\(connection.connectedUser?.email ?? "nil"))")
+                                Logger.debug("⚠️ NetworkManager.loadConnections: Filtering out invalid self-connection: \(connection.id)")
+                                Logger.debug("   userId: \(connection.userId)")
+                                Logger.debug("   connectedUserId: \(connection.connectedUserId)")
+                                Logger.debug("   currentUserId: \(currentUserId)")
+                                Logger.debug("   connectedUser: \(connection.connectedUser?.displayName ?? "nil") (\(connection.connectedUser?.email ?? "nil"))")
                             } else {
                                 // Log valid connections for debugging
                                 let otherUserId = connection.otherUserId(currentUserId: currentUserId)
-                                print("✅ NetworkManager.loadConnections: Valid connection \(connection.id) to user \(otherUserId)")
-                                print("   connectedUser: \(connection.connectedUser?.displayName ?? "nil") (\(connection.connectedUser?.email ?? "nil"))")
-                                print("   status: \(connection.status.rawValue)")
+                                Logger.debug("✅ NetworkManager.loadConnections: Valid connection \(connection.id) to user \(otherUserId)")
+                                Logger.debug("   connectedUser: \(connection.connectedUser?.displayName ?? "nil") (\(connection.connectedUser?.email ?? "nil"))")
+                                Logger.debug("   status: \(connection.status.rawValue)")
                             }
                             return !isSelfConnection
                         }
@@ -127,7 +127,7 @@ class NetworkManager {
                         self.connections = validConnections.filter { $0.status == .accepted }
                         self.pendingConnections = validConnections.filter { $0.status == .pending }
                         
-                        print("🔍 NetworkManager: Loaded connections - accepted: \(self.connections.count), pending: \(self.pendingConnections.count)")
+                        Logger.debug("🔍 NetworkManager: Loaded connections - accepted: \(self.connections.count), pending: \(self.pendingConnections.count)")
                         
                         // Post notification after data is loaded
                         NotificationCenter.default.post(
@@ -141,7 +141,7 @@ class NetworkManager {
                             object: nil
                         )
                     case .failure(let error):
-                        print("❌ NetworkManager: Failed to load connections: \(error)")
+                        Logger.debug("❌ NetworkManager: Failed to load connections: \(error)")
                         self.error = error.localizedDescription
                         // Clear pending connections on error to reset badge
                         self.pendingConnections = []
@@ -169,7 +169,7 @@ class NetworkManager {
                             self.sharedCircles = response.shares
                         } else if let circlesData = response.data {
                             // Convert circles to shares if needed
-                            print("✅ Loaded \(circlesData.count) shared circles")
+                            Logger.debug("✅ Loaded \(circlesData.count) shared circles")
                         }
                     case .failure(let error):
                         self.error = error.localizedDescription
@@ -197,10 +197,10 @@ class NetworkManager {
                     switch result {
                     case .success(let response):
                         self.editableCirclesFromOthers = response.data
-                        print("✅ Loaded \(response.data.count) editable circles from others")
+                        Logger.debug("✅ Loaded \(response.data.count) editable circles from others")
                     case .failure(let error):
                         self.error = error.localizedDescription
-                        print("❌ Failed to load editable circles from others: \(error)")
+                        Logger.debug("❌ Failed to load editable circles from others: \(error)")
                     }
                 }
             }
@@ -211,13 +211,13 @@ class NetworkManager {
     
     func generateConnectionInviteLink() -> String {
         guard let userId = AuthService.shared.getUserId() else {
-            print("🔗 NetworkManager: No user ID available for invite link")
+            Logger.debug("🔗 NetworkManager: No user ID available for invite link")
             return ""
         }
         
-        print("🔗 NetworkManager: Generating connection invite link")
-        print("🔗 NetworkManager: Current user ID from AuthService: \(userId)")
-        print("🔗 NetworkManager: Current user from AuthService: \(AuthService.shared.currentUser?.id ?? "nil")")
+        Logger.debug("🔗 NetworkManager: Generating connection invite link")
+        Logger.debug("🔗 NetworkManager: Current user ID from AuthService: \(userId)")
+        Logger.debug("🔗 NetworkManager: Current user from AuthService: \(AuthService.shared.currentUser?.id ?? "nil")")
         
         // Parse the user ID to ensure we use simple format in the link
         var simpleUserId = userId
@@ -225,13 +225,13 @@ class NetworkManager {
             let components = userId.components(separatedBy: ".")
             if components.count >= 2 {
                 simpleUserId = components[1] // Extract the Firebase UID part
-                print("🔗 NetworkManager: Extracted simple ID \(simpleUserId) from complex ID \(userId)")
+                Logger.debug("🔗 NetworkManager: Extracted simple ID \(simpleUserId) from complex ID \(userId)")
             }
         }
         
         // Create the deep link URL with the simple user ID
         let inviteLink = "circles://connect/\(simpleUserId)"
-        print("🔗 NetworkManager: Generated invite link: \(inviteLink)")
+        Logger.debug("🔗 NetworkManager: Generated invite link: \(inviteLink)")
         
         return inviteLink
     }
@@ -273,7 +273,7 @@ class NetworkManager {
     }
     
     func sendConnectionRequest(to userId: String, message: String? = nil, autoAccept: Bool = false, completion: @escaping (Result<Connection, Error>) -> Void) {
-        print("📤 NetworkManager: Sending connection request to userId: \(userId)")
+        Logger.debug("📤 NetworkManager: Sending connection request to userId: \(userId)")
         var body: [String: Any] = ["targetUserId": userId]
         if let message = message {
             body["message"] = message
@@ -281,7 +281,7 @@ class NetworkManager {
         if autoAccept {
             body["autoAccept"] = true
         }
-        print("📤 NetworkManager: Request body: \(body)")
+        Logger.debug("📤 NetworkManager: Request body: \(body)")
         
         apiService.request(
             endpoint: "connections/invite",
@@ -312,7 +312,7 @@ class NetworkManager {
     }
     
     func handleConnectionInvite(from inviteUserId: String, completion: @escaping (Result<Connection, Error>) -> Void) {
-        print("🔗 NetworkManager: handleConnectionInvite called with userId: \(inviteUserId)")
+        Logger.debug("🔗 NetworkManager: handleConnectionInvite called with userId: \(inviteUserId)")
         
         // Parse userId from deep link format
         // Format could be: "userId" or "prefix.userId.suffix" or "userId_timestamp"
@@ -331,38 +331,38 @@ class NetworkManager {
             cleanUserId = inviteUserId.components(separatedBy: "_").first ?? inviteUserId
         }
         
-        print("🔗 NetworkManager: Cleaned userId: \(cleanUserId) from original: \(inviteUserId)")
+        Logger.debug("🔗 NetworkManager: Cleaned userId: \(cleanUserId) from original: \(inviteUserId)")
         
         // Check if it's the current user
         if cleanUserId == AuthService.shared.getUserId() {
-            print("🔗 NetworkManager: Cannot connect to yourself")
+            Logger.debug("🔗 NetworkManager: Cannot connect to yourself")
             completion(.failure(NSError(domain: "NetworkManager", code: 0, userInfo: [NSLocalizedDescriptionKey: "Cannot connect to yourself"])))
             return
         }
         
         // Check if already connected
         if connections.contains(where: { $0.connectedUserId == cleanUserId || $0.userId == cleanUserId }) {
-            print("🔗 NetworkManager: Already connected to user \(cleanUserId)")
+            Logger.debug("🔗 NetworkManager: Already connected to user \(cleanUserId)")
             completion(.failure(NSError(domain: "NetworkManager", code: 0, userInfo: [NSLocalizedDescriptionKey: "Already connected to this user"])))
             return
         }
         
         // Check if there's already a pending request
         if pendingConnections.contains(where: { $0.connectedUserId == cleanUserId || $0.userId == cleanUserId }) {
-            print("🔗 NetworkManager: Connection request already pending for user \(cleanUserId)")
+            Logger.debug("🔗 NetworkManager: Connection request already pending for user \(cleanUserId)")
             completion(.failure(NSError(domain: "NetworkManager", code: 0, userInfo: [NSLocalizedDescriptionKey: "Connection request already pending"])))
             return
         }
         
-        print("🔗 NetworkManager: Sending connection request to user \(cleanUserId)")
+        Logger.debug("🔗 NetworkManager: Sending connection request to user \(cleanUserId)")
         
         // Send connection request with autoAccept = true for invite links
         sendConnectionRequest(to: cleanUserId, message: "Connected via invite link", autoAccept: true) { result in
             switch result {
             case .success(let connection):
-                print("🔗 NetworkManager: Connection created successfully: \(connection.id), status: \(connection.status)")
+                Logger.debug("🔗 NetworkManager: Connection created successfully: \(connection.id), status: \(connection.status)")
             case .failure(let error):
-                print("🔗 NetworkManager: Failed to create connection: \(error)")
+                Logger.debug("🔗 NetworkManager: Failed to create connection: \(error)")
             }
             completion(result)
         }
@@ -638,7 +638,7 @@ class NetworkManager {
     // MARK: - Connection Fetching (for UIKit compatibility)
     
     func fetchConnections(completion: @escaping ([Connection]?, Error?) -> Void) {
-        print("🔍 NetworkManager.fetchConnections: Starting to fetch connections...")
+        Logger.debug("🔍 NetworkManager.fetchConnections: Starting to fetch connections...")
         
         // Load connections from server
         apiService.request(
@@ -649,47 +649,47 @@ class NetworkManager {
                 DispatchQueue.main.async(flags: .barrier) {
                     switch result {
                     case .success(let response):
-                        print("✅ NetworkManager.fetchConnections: Received response with success=\(response.success)")
-                        print("📊 NetworkManager.fetchConnections: Total connections in response: \(response.connections.count)")
+                        Logger.debug("✅ NetworkManager.fetchConnections: Received response with success=\(response.success)")
+                        Logger.debug("📊 NetworkManager.fetchConnections: Total connections in response: \(response.connections.count)")
                         
                         let connections = response.connections
                         
                         // Filter out invalid self-connections (where current user is connected to themselves)
                         let currentUserId = AuthService.shared.getUserId() ?? ""
-                        print("🔍 NetworkManager.fetchConnections: Current user ID: \(currentUserId)")
+                        Logger.debug("🔍 NetworkManager.fetchConnections: Current user ID: \(currentUserId)")
                         
                         let validConnections = connections.filter { connection in
                             // A self-connection is when both userId and connectedUserId are the current user
                             let isSelfConnection = (connection.userId == currentUserId && connection.connectedUserId == currentUserId)
                             
                             if isSelfConnection {
-                                print("⚠️ NetworkManager.fetchConnections: Filtering out invalid self-connection: \(connection.id)")
-                                print("   userId: \(connection.userId)")
-                                print("   connectedUserId: \(connection.connectedUserId)")
-                                print("   currentUserId: \(currentUserId)")
-                                print("   connectedUser: \(connection.connectedUser?.displayName ?? "nil") (\(connection.connectedUser?.email ?? "nil"))")
+                                Logger.debug("⚠️ NetworkManager.fetchConnections: Filtering out invalid self-connection: \(connection.id)")
+                                Logger.debug("   userId: \(connection.userId)")
+                                Logger.debug("   connectedUserId: \(connection.connectedUserId)")
+                                Logger.debug("   currentUserId: \(currentUserId)")
+                                Logger.debug("   connectedUser: \(connection.connectedUser?.displayName ?? "nil") (\(connection.connectedUser?.email ?? "nil"))")
                             } else {
                                 // Log valid connections for debugging
                                 let otherUserId = connection.otherUserId(currentUserId: currentUserId)
-                                print("✅ NetworkManager.fetchConnections: Valid connection \(connection.id) to user \(otherUserId)")
-                                print("   connectedUser: \(connection.connectedUser?.displayName ?? "nil") (\(connection.connectedUser?.email ?? "nil"))")
-                                print("   status: \(connection.status.rawValue)")
+                                Logger.debug("✅ NetworkManager.fetchConnections: Valid connection \(connection.id) to user \(otherUserId)")
+                                Logger.debug("   connectedUser: \(connection.connectedUser?.displayName ?? "nil") (\(connection.connectedUser?.email ?? "nil"))")
+                                Logger.debug("   status: \(connection.status.rawValue)")
                             }
                             return !isSelfConnection
                         }
                         
-                        print("📊 NetworkManager.fetchConnections: Valid connections after filtering: \(validConnections.count)")
+                        Logger.debug("📊 NetworkManager.fetchConnections: Valid connections after filtering: \(validConnections.count)")
                         
                         self.connections = validConnections.filter { $0.status == .accepted }
                         self.pendingConnections = validConnections.filter { $0.status == .pending }
                         
-                        print("📊 NetworkManager.fetchConnections: Accepted connections: \(self.connections.count)")
-                        print("📊 NetworkManager.fetchConnections: Pending connections: \(self.pendingConnections.count)")
+                        Logger.debug("📊 NetworkManager.fetchConnections: Accepted connections: \(self.connections.count)")
+                        Logger.debug("📊 NetworkManager.fetchConnections: Pending connections: \(self.pendingConnections.count)")
                         
                         // Return only accepted connections
                         completion(self.connections, nil)
                     case .failure(let error):
-                        print("❌ NetworkManager.fetchConnections: Failed with error: \(error)")
+                        Logger.debug("❌ NetworkManager.fetchConnections: Failed with error: \(error)")
                         completion(nil, error)
                     }
                 }
@@ -698,7 +698,7 @@ class NetworkManager {
     }
     
     func fetchActiveConnections(limit: Int = 10, offset: Int = 0, completion: @escaping ([Connection]?, Error?) -> Void) {
-        print("🔍 NetworkManager: fetchActiveConnections called with limit: \(limit), offset: \(offset)")
+        Logger.debug("🔍 NetworkManager: fetchActiveConnections called with limit: \(limit), offset: \(offset)")
         
         // Load active connections sorted by activity
         var queryParams = ["limit": "\(limit)"]
@@ -715,17 +715,17 @@ class NetworkManager {
                 DispatchQueue.main.async(flags: .barrier) {
                     switch result {
                     case .success(let response):
-                        print("✅ NetworkManager: fetchActiveConnections received \(response.connections.count) connections")
+                        Logger.debug("✅ NetworkManager: fetchActiveConnections received \(response.connections.count) connections")
                         // Log first few connections to verify sorting and scores
                         for (index, connection) in response.connections.prefix(3).enumerated() {
                             let messageInfo = connection.lastMessageAt != nil ? "has messages" : "no messages"
                             let activityInfo = connection.hasRecentPlace == true ? "has recent activity" : "no recent activity"
                             let scoreInfo = connection.connectionScore != nil ? ", score: \(connection.connectionScore!)" : ", no score"
-                            print("   \(index + 1). \(connection.connectedUser?.displayName ?? "Unknown") - \(messageInfo), \(activityInfo)\(scoreInfo)")
+                            Logger.debug("   \(index + 1). \(connection.connectedUser?.displayName ?? "Unknown") - \(messageInfo), \(activityInfo)\(scoreInfo)")
                         }
                         completion(response.connections, nil)
                     case .failure(let error):
-                        print("❌ NetworkManager: fetchActiveConnections failed: \(error)")
+                        Logger.debug("❌ NetworkManager: fetchActiveConnections failed: \(error)")
                         completion(nil, error)
                     }
                 }
@@ -734,7 +734,7 @@ class NetworkManager {
     }
     
     func fetchActiveRelationships(limit: Int = 10, offset: Int = 0, completion: @escaping ([Connection]?, Error?) -> Void) {
-        print("🔍 NetworkManager: fetchActiveRelationships called with limit: \(limit), offset: \(offset)")
+        Logger.debug("🔍 NetworkManager: fetchActiveRelationships called with limit: \(limit), offset: \(offset)")
         
         // Load active relationships (connections + following) sorted by activity
         var queryParams = ["limit": "\(limit)"]
@@ -751,21 +751,21 @@ class NetworkManager {
                 DispatchQueue.main.async(flags: .barrier) {
                     switch result {
                     case .success(let response):
-                        print("✅ NetworkManager: fetchActiveRelationships successful")
+                        Logger.debug("✅ NetworkManager: fetchActiveRelationships successful")
                         
                         // Handle both old response format (connections) and new format (relationships)
                         let relationships = response.relationships ?? response.connections
                         
-                        print("📊 NetworkManager: Total relationships in response: \(relationships.count)")
+                        Logger.debug("📊 NetworkManager: Total relationships in response: \(relationships.count)")
                         let connections = relationships.filter { $0.relationshipType == "connection" || $0.relationshipType == nil }
                         let following = relationships.filter { $0.relationshipType == "following" }
-                        print("   - Connections: \(connections.count)")
-                        print("   - Following: \(following.count)")
+                        Logger.debug("   - Connections: \(connections.count)")
+                        Logger.debug("   - Following: \(following.count)")
                         
                         completion(relationships, nil)
                         
                     case .failure(let error):
-                        print("❌ NetworkManager: fetchActiveRelationships failed: \(error)")
+                        Logger.debug("❌ NetworkManager: fetchActiveRelationships failed: \(error)")
                         completion(nil, error)
                     }
                 }
@@ -888,7 +888,7 @@ class NetworkManager {
     
     // Public method to force refresh badge
     func refreshBadgeCount() {
-        print("🔄 NetworkManager: Force refreshing badge count")
+        Logger.debug("🔄 NetworkManager: Force refreshing badge count")
         loadConnections()
     }
     
@@ -928,17 +928,17 @@ class NetworkManager {
             cleanUserId = pendingUserId.components(separatedBy: "_").first ?? pendingUserId
         }
         
-        print("🔗 NetworkManager: Processing pending connection - cleaned userId: \(cleanUserId) from original: \(pendingUserId)")
+        Logger.debug("🔗 NetworkManager: Processing pending connection - cleaned userId: \(cleanUserId) from original: \(pendingUserId)")
         
         // Process the connection invite
         handleConnectionInvite(from: cleanUserId) { result in
             switch result {
             case .success:
-                print("Successfully processed pending connection invite")
+                Logger.debug("Successfully processed pending connection invite")
                 // Refresh connections list
                 self.loadConnections()
             case .failure(let error):
-                print("Failed to process pending connection invite: \(error)")
+                Logger.debug("Failed to process pending connection invite: \(error)")
             }
         }
     }
@@ -948,29 +948,29 @@ class NetworkManager {
     func getPendingConnectionsCount(completion: @escaping (Int) -> Void) {
         // Return count of pending incoming connections
         let currentUserId = AuthService.shared.getUserId()
-        print("🔢 NetworkManager: Calculating pending connections count")
-        print("🔢 Current user ID: \(currentUserId ?? "nil")")
-        print("🔢 Total pending connections in array: \(pendingConnections.count)")
+        Logger.debug("🔢 NetworkManager: Calculating pending connections count")
+        Logger.debug("🔢 Current user ID: \(currentUserId ?? "nil")")
+        Logger.debug("🔢 Total pending connections in array: \(pendingConnections.count)")
         
         // Log each pending connection
         pendingConnections.forEach { connection in
-            print("🔢 Pending connection: \(connection.id)")
-            print("   Status: \(connection.status)")
-            print("   UserId: \(connection.userId)")
-            print("   ConnectedUserId: \(connection.connectedUserId)")
-            print("   Is incoming: \(connection.connectedUserId == currentUserId)")
+            Logger.debug("🔢 Pending connection: \(connection.id)")
+            Logger.debug("   Status: \(connection.status)")
+            Logger.debug("   UserId: \(connection.userId)")
+            Logger.debug("   ConnectedUserId: \(connection.connectedUserId)")
+            Logger.debug("   Is incoming: \(connection.connectedUserId == currentUserId)")
         }
         
         let pendingCount = pendingConnections.filter { connection in
             // Count only incoming pending connections
             let isIncoming = connection.status == .pending && connection.connectedUserId == currentUserId
             if isIncoming {
-                print("🔢 Counting incoming pending connection from: \(connection.userId)")
+                Logger.debug("🔢 Counting incoming pending connection from: \(connection.userId)")
             }
             return isIncoming
         }.count
         
-        print("🔢 Final pending count: \(pendingCount)")
+        Logger.debug("🔢 Final pending count: \(pendingCount)")
         completion(pendingCount)
     }
 }
@@ -996,7 +996,7 @@ struct ConnectionsResponse: Codable {
         if let relationships = try? container.decode([Connection].self, forKey: .relationships) {
             self.relationships = relationships
             self.connections = relationships // For backward compatibility
-            print("✅ NetworkManager: Successfully decoded \(relationships.count) relationships from 'relationships' key")
+            Logger.debug("✅ NetworkManager: Successfully decoded \(relationships.count) relationships from 'relationships' key")
             return
         }
         
@@ -1004,30 +1004,30 @@ struct ConnectionsResponse: Codable {
         do {
             self.connections = try container.decode([Connection].self, forKey: .connections)
             self.relationships = nil
-            print("✅ NetworkManager: Successfully decoded \(self.connections.count) connections from 'connections' key")
+            Logger.debug("✅ NetworkManager: Successfully decoded \(self.connections.count) connections from 'connections' key")
         } catch let connectionsError {
-            print("⚠️ NetworkManager: Failed to decode from 'connections' key: \(connectionsError)")
+            Logger.debug("⚠️ NetworkManager: Failed to decode from 'connections' key: \(connectionsError)")
             
             do {
                 self.connections = try container.decode([Connection].self, forKey: .data)
                 self.relationships = nil
-                print("✅ NetworkManager: Successfully decoded \(self.connections.count) connections from 'data' key")
+                Logger.debug("✅ NetworkManager: Successfully decoded \(self.connections.count) connections from 'data' key")
             } catch let dataError {
-                print("❌ NetworkManager: Failed to decode from 'data' key: \(dataError)")
+                Logger.debug("❌ NetworkManager: Failed to decode from 'data' key: \(dataError)")
                 
                 // Check if keys exist
                 let allKeys = container.allKeys.map { $0.rawValue }.joined(separator: ", ")
-                print("❌ NetworkManager: Available keys in response: \(allKeys)")
+                Logger.debug("❌ NetworkManager: Available keys in response: \(allKeys)")
                 
                 // Try to get raw value to see what's there
                 if let rawConnections = try? container.decodeIfPresent(String.self, forKey: .connections) {
-                    print("❌ NetworkManager: Raw 'connections' value (as string): \(rawConnections)")
+                    Logger.debug("❌ NetworkManager: Raw 'connections' value (as string): \(rawConnections)")
                 }
                 
                 // If neither key exists or both fail to decode, use empty array
                 self.connections = []
                 self.relationships = nil
-                print("⚠️ NetworkManager: Using empty connections array as fallback")
+                Logger.debug("⚠️ NetworkManager: Using empty connections array as fallback")
             }
         }
     }

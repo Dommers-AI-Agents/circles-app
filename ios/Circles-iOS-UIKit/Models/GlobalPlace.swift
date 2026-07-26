@@ -335,15 +335,15 @@ extension GlobalPlace {
         let description = publicReviews?.first?.text
         
         // Debug logging to track conversion process
-        print("🔍 [GlobalPlace.toLegacyPlace] Converting GlobalPlace ID: \(id)")
-        print("🔍 [GlobalPlace.toLegacyPlace] Name: \(name)")
-        print("🔍 [GlobalPlace.toLegacyPlace] PublicReviews count: \(publicReviews?.count ?? 0)")
-        print("🔍 [GlobalPlace.toLegacyPlace] Description: \(description ?? "nil")")
+        Logger.debug("🔍 [GlobalPlace.toLegacyPlace] Converting GlobalPlace ID: \(id)")
+        Logger.debug("🔍 [GlobalPlace.toLegacyPlace] Name: \(name)")
+        Logger.debug("🔍 [GlobalPlace.toLegacyPlace] PublicReviews count: \(publicReviews?.count ?? 0)")
+        Logger.debug("🔍 [GlobalPlace.toLegacyPlace] Description: \(description ?? "nil")")
         if let firstReview = publicReviews?.first {
-            print("🔍 [GlobalPlace.toLegacyPlace] First review text: \(firstReview.text)")
-            print("🔍 [GlobalPlace.toLegacyPlace] First review likes count: \(firstReview.likesCount)")
+            Logger.debug("🔍 [GlobalPlace.toLegacyPlace] First review text: \(firstReview.text)")
+            Logger.debug("🔍 [GlobalPlace.toLegacyPlace] First review likes count: \(firstReview.likesCount)")
         }
-        print("🔍 [GlobalPlace.toLegacyPlace] UserContributions totalReviews: \(userContributions.totalReviews)")
+        Logger.debug("🔍 [GlobalPlace.toLegacyPlace] UserContributions totalReviews: \(userContributions.totalReviews)")
         
         // Convert PublicReview array to PlaceReview array for legacy compatibility
         let legacyReviews: [PlaceReview]? = publicReviews?.map { review in

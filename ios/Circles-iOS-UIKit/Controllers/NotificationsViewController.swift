@@ -159,14 +159,14 @@ class NotificationsViewController: BaseViewController {
     
     // MARK: - Data Loading
     override func loadData(completion: (() -> Void)? = nil) {
-        print("🚀 NotificationsViewController: loadData called")
+        Logger.debug("🚀 NotificationsViewController: loadData called")
         loadNotifications(refresh: false, completion: completion)
     }
     
     private func loadNotifications(refresh: Bool = false, completion: (() -> Void)? = nil) {
-        print("🚀 NotificationsViewController: loadNotifications called")
-        print("🚀 NotificationsViewController: refresh: \(refresh), isLoadingData: \(isLoadingData)")
-        print("🚀 NotificationsViewController: currentTab: \(currentTab)")
+        Logger.debug("🚀 NotificationsViewController: loadNotifications called")
+        Logger.debug("🚀 NotificationsViewController: refresh: \(refresh), isLoadingData: \(isLoadingData)")
+        Logger.debug("🚀 NotificationsViewController: currentTab: \(currentTab)")
         
         let isArchived = currentTab == .archived
         
@@ -179,11 +179,11 @@ class NotificationsViewController: BaseViewController {
             }
         }
         
-        print("🚀 NotificationsViewController: Calling NotificationService.getNotifications")
-        print("🚀 NotificationsViewController: limit: \(pageSize), offset: \(currentOffset), archived: \(isArchived)")
+        Logger.debug("🚀 NotificationsViewController: Calling NotificationService.getNotifications")
+        Logger.debug("🚀 NotificationsViewController: limit: \(pageSize), offset: \(currentOffset), archived: \(isArchived)")
         
         NotificationService.shared.getNotifications(limit: pageSize, offset: currentOffset, archived: isArchived) { [weak self] result in
-            print("📡 NotificationsViewController: getNotifications callback received")
+            Logger.debug("📡 NotificationsViewController: getNotifications callback received")
             
             DispatchQueue.main.async {
                 guard let self = self else {
@@ -193,9 +193,9 @@ class NotificationsViewController: BaseViewController {
                 
                 switch result {
                 case .success(let response):
-                    print("✅ NotificationsViewController: Successfully loaded notifications")
-                    print("✅ NotificationsViewController: Received \(response.notifications.count) notifications")
-                    print("✅ NotificationsViewController: hasMore: \(response.hasMore)")
+                    Logger.debug("✅ NotificationsViewController: Successfully loaded notifications")
+                    Logger.debug("✅ NotificationsViewController: Received \(response.notifications.count) notifications")
+                    Logger.debug("✅ NotificationsViewController: hasMore: \(response.hasMore)")
                     
                     if refresh {
                         if self.currentTab == .active {
@@ -217,15 +217,15 @@ class NotificationsViewController: BaseViewController {
                     
                     self.currentOffset += response.notifications.count
                     
-                    print("✅ NotificationsViewController: Total notifications now: \(self.notifications.count)")
+                    Logger.debug("✅ NotificationsViewController: Total notifications now: \(self.notifications.count)")
                     
                     self.updateUI()
                     self.updateNavigationBarButton()
                     self.tableView.reloadData()
                     
                 case .failure(let error):
-                    print("❌ NotificationsViewController: Failed to load notifications: \(error)")
-                    print("❌ NotificationsViewController: Error type: \(type(of: error))")
+                    Logger.debug("❌ NotificationsViewController: Failed to load notifications: \(error)")
+                    Logger.debug("❌ NotificationsViewController: Error type: \(type(of: error))")
                     self.showError("Failed to load notifications: \(error.localizedDescription)")
                 }
                 

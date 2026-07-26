@@ -100,13 +100,13 @@ class ChatViewController: BaseViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        print("🔍 ChatViewController: viewDidLoad called")
+        Logger.debug("🔍 ChatViewController: viewDidLoad called")
         if let conv = conversation {
-            print("🔍 ChatViewController: Conversation loaded - ID: \(conv.id)")
-            print("🔍 ChatViewController: Conversation type: \(conv.type)")
-            print("🔍 ChatViewController: Conversation participants: \(conv.participants)")
+            Logger.debug("🔍 ChatViewController: Conversation loaded - ID: \(conv.id)")
+            Logger.debug("🔍 ChatViewController: Conversation type: \(conv.type)")
+            Logger.debug("🔍 ChatViewController: Conversation participants: \(conv.participants)")
         } else {
-            print("❌ ChatViewController: No conversation set!")
+            Logger.debug("❌ ChatViewController: No conversation set!")
         }
         
         setupView()
@@ -142,18 +142,18 @@ class ChatViewController: BaseViewController {
     // MARK: - Setup
     private func setupView() {
         // Debug logging
-        print("🔍 ChatViewController.setupView: conversation type = \(conversation?.type.rawValue ?? "nil")")
-        print("🔍 ChatViewController.setupView: conversation name = \(conversation?.displayName ?? "nil")")
-        print("🔍 ChatViewController.setupView: is group = \(conversation?.type == .group)")
+        Logger.debug("🔍 ChatViewController.setupView: conversation type = \(conversation?.type.rawValue ?? "nil")")
+        Logger.debug("🔍 ChatViewController.setupView: conversation name = \(conversation?.displayName ?? "nil")")
+        Logger.debug("🔍 ChatViewController.setupView: is group = \(conversation?.type == .group)")
         
         // For group conversations, make title tappable for settings
         if conversation?.type == .group {
-            print("✅ ChatViewController: Setting up group conversation UI")
+            Logger.debug("✅ ChatViewController: Setting up group conversation UI")
             setupNavigationBarWithTappableTitle()
             // Add settings gear icon for group conversations
             addNavigationBarButton(image: "gearshape.fill", position: .right, action: #selector(openGroupSettings))
         } else {
-            print("ℹ️ ChatViewController: Setting up direct conversation UI")
+            Logger.debug("ℹ️ ChatViewController: Setting up direct conversation UI")
             setupNavigationBar(title: conversation?.displayName ?? "Chat")
             addNavigationBarButton(image: "info.circle", position: .right, action: #selector(showConversationInfo))
         }
@@ -309,16 +309,16 @@ class ChatViewController: BaseViewController {
     
     
     private func setupSubscribers() {
-        print("🔍 ChatViewController: setupSubscribers() called")
+        Logger.debug("🔍 ChatViewController: setupSubscribers() called")
         
         guard let conversation = conversation else {
-            print("❌ ChatViewController: setupSubscribers() - conversation is nil!")
+            Logger.debug("❌ ChatViewController: setupSubscribers() - conversation is nil!")
             return
         }
         
         let conversationId = conversation.id
         
-        print("✅ ChatViewController: setupSubscribers() - conversationId: \(conversationId)")
+        Logger.debug("✅ ChatViewController: setupSubscribers() - conversationId: \(conversationId)")
         
         // Listen for new messages notification
         NotificationCenter.default.addObserver(
@@ -327,7 +327,7 @@ class ChatViewController: BaseViewController {
             name: Notification.Name("NewMessagesReceived"),
             object: nil
         )
-        print("🔍 ChatViewController: Added observer for NewMessagesReceived")
+        Logger.debug("🔍 ChatViewController: Added observer for NewMessagesReceived")
         
         // Listen for conversation updates (e.g., avatar changes)
         NotificationCenter.default.addObserver(
@@ -336,25 +336,25 @@ class ChatViewController: BaseViewController {
             name: Notification.Name("ConversationUpdated"),
             object: nil
         )
-        print("🔍 ChatViewController: Added observer for ConversationUpdated")
+        Logger.debug("🔍 ChatViewController: Added observer for ConversationUpdated")
         
         // Poll for message updates (as backup)
         messageUpdateTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             
             // Commented out repetitive timer logs - uncomment for debugging
-            // print("🔍 ChatViewController: Timer fired - checking for messages in conversationId: \(conversationId)")
+            // Logger.debug("🔍 ChatViewController: Timer fired - checking for messages in conversationId: \(conversationId)")
             
             if let messages = self.messagingManager.activeMessages[conversationId] {
-                // print("🔍 ChatViewController: Found \(messages.count) messages in activeMessages")
+                // Logger.debug("🔍 ChatViewController: Found \(messages.count) messages in activeMessages")
                 
                 // Filter out connection request messages (handled in My Network tab)
                 let filteredMessages = messages.filter { $0.type != .connectionRequest }
-                // print("🔍 ChatViewController: After filtering, have \(filteredMessages.count) messages")
+                // Logger.debug("🔍 ChatViewController: After filtering, have \(filteredMessages.count) messages")
                 
                 // Hide loading on initial load only (not for subsequent timer refreshes)
                 if self.messages.isEmpty && !self.hasCompletedInitialLoad {
-                    print("🔍 ChatViewController: Initial load complete, hiding loading (filtered messages: \(filteredMessages.count))")
+                    Logger.debug("🔍 ChatViewController: Initial load complete, hiding loading (filtered messages: \(filteredMessages.count))")
                     self.hasCompletedInitialLoad = true
                     self.hideLoading()
                 }
@@ -362,7 +362,7 @@ class ChatViewController: BaseViewController {
                 if filteredMessages.count != self.messages.count {
                     // Only log significant changes, not every timer check
                     if abs(filteredMessages.count - self.messages.count) > 0 {
-                        print("🔍 ChatViewController: Message count changed from \(self.messages.count) to \(filteredMessages.count)")
+                        Logger.debug("🔍 ChatViewController: Message count changed from \(self.messages.count) to \(filteredMessages.count)")
                     }
                     self.messages = filteredMessages
                     self.tableView.reloadData()
@@ -371,23 +371,23 @@ class ChatViewController: BaseViewController {
             } else {
                 // Only log this once, not every 2 seconds
                 if !self.hasCompletedInitialLoad {
-                    print("⚠️ ChatViewController: No messages found in activeMessages for conversationId: \(conversationId)")
+                    Logger.debug("⚠️ ChatViewController: No messages found in activeMessages for conversationId: \(conversationId)")
                 }
                 
                 // Hide loading if this is the initial load and no messages are found
                 if self.messages.isEmpty && !self.hasCompletedInitialLoad {
-                    print("🔍 ChatViewController: Initial load complete with no messages, hiding loading")
+                    Logger.debug("🔍 ChatViewController: Initial load complete with no messages, hiding loading")
                     self.hasCompletedInitialLoad = true
                     self.hideLoading()
                 }
             }
         }
         
-        // print("🔍 ChatViewController: Message update timer scheduled")
+        // Logger.debug("🔍 ChatViewController: Message update timer scheduled")
     }
     
     @objc private func handleConversationUpdated(_ notification: Notification) {
-        print("🔍 ChatViewController: handleConversationUpdated notification received")
+        Logger.debug("🔍 ChatViewController: handleConversationUpdated notification received")
         
         guard let userInfo = notification.userInfo,
               let updatedConversation = userInfo["conversation"] as? Conversation,
@@ -407,39 +407,39 @@ class ChatViewController: BaseViewController {
     }
     
     @objc private func handleNewMessages(_ notification: Notification) {
-        print("🔍 ChatViewController: handleNewMessages notification received")
+        Logger.debug("🔍 ChatViewController: handleNewMessages notification received")
         
         guard let userInfo = notification.userInfo else {
-            print("⚠️ ChatViewController: handleNewMessages - no userInfo in notification")
+            Logger.debug("⚠️ ChatViewController: handleNewMessages - no userInfo in notification")
             return
         }
         
         guard let notificationConversationId = userInfo["conversationId"] as? String else {
-            print("⚠️ ChatViewController: handleNewMessages - no conversationId in userInfo")
+            Logger.debug("⚠️ ChatViewController: handleNewMessages - no conversationId in userInfo")
             return
         }
         
-        print("🔍 ChatViewController: handleNewMessages - notificationConversationId: \(notificationConversationId)")
-        print("🔍 ChatViewController: handleNewMessages - current conversation.id: \(conversation?.id ?? "nil")")
+        Logger.debug("🔍 ChatViewController: handleNewMessages - notificationConversationId: \(notificationConversationId)")
+        Logger.debug("🔍 ChatViewController: handleNewMessages - current conversation.id: \(conversation?.id ?? "nil")")
         
         guard notificationConversationId == conversation?.id else {
-            print("⚠️ ChatViewController: handleNewMessages - conversationId mismatch, ignoring notification")
+            Logger.debug("⚠️ ChatViewController: handleNewMessages - conversationId mismatch, ignoring notification")
             return
         }
         
-        print("✅ ChatViewController: handleNewMessages - conversationId matches, refreshing messages")
+        Logger.debug("✅ ChatViewController: handleNewMessages - conversationId matches, refreshing messages")
         
         // Refresh messages from MessagingManager
         if let messages = messagingManager.activeMessages[notificationConversationId] {
-            print("🔍 ChatViewController: handleNewMessages - found \(messages.count) messages in activeMessages")
+            Logger.debug("🔍 ChatViewController: handleNewMessages - found \(messages.count) messages in activeMessages")
             
             // Filter out connection request messages (handled in My Network tab)
             let filteredMessages = messages.filter { $0.type != .connectionRequest }
-            print("🔍 ChatViewController: handleNewMessages - after filtering: \(filteredMessages.count) messages")
+            Logger.debug("🔍 ChatViewController: handleNewMessages - after filtering: \(filteredMessages.count) messages")
             
             // Hide loading on initial load only (not for subsequent notifications)
             if self.messages.isEmpty && !self.hasCompletedInitialLoad {
-                print("🔍 ChatViewController: handleNewMessages - initial load complete, hiding loading (filtered messages: \(filteredMessages.count))")
+                Logger.debug("🔍 ChatViewController: handleNewMessages - initial load complete, hiding loading (filtered messages: \(filteredMessages.count))")
                 self.hasCompletedInitialLoad = true
                 self.hideLoading()
             }
@@ -448,11 +448,11 @@ class ChatViewController: BaseViewController {
             tableView.reloadData()
             scrollToBottom(animated: true)
         } else {
-            print("⚠️ ChatViewController: handleNewMessages - no messages found in activeMessages for conversationId: \(notificationConversationId)")
+            Logger.debug("⚠️ ChatViewController: handleNewMessages - no messages found in activeMessages for conversationId: \(notificationConversationId)")
             
             // Hide loading if this is the initial load and no messages are found
             if self.messages.isEmpty && !self.hasCompletedInitialLoad {
-                print("🔍 ChatViewController: handleNewMessages - initial load complete with no messages, hiding loading")
+                Logger.debug("🔍 ChatViewController: handleNewMessages - initial load complete with no messages, hiding loading")
                 self.hasCompletedInitialLoad = true
                 self.hideLoading()
             }
@@ -461,25 +461,25 @@ class ChatViewController: BaseViewController {
     
     // MARK: - BaseViewController Implementation
     override func loadData(completion: (() -> Void)?) {
-        print("🔍 ChatViewController: loadData() called")
+        Logger.debug("🔍 ChatViewController: loadData() called")
         
         guard let conversation = conversation else {
-            print("❌ ChatViewController: loadData() - conversation is nil!")
+            Logger.debug("❌ ChatViewController: loadData() - conversation is nil!")
             completion?()
             return
         }
         
         let conversationId = conversation.id
         
-        print("✅ ChatViewController: loadData() - conversationId: \(conversationId)")
-        print("🔍 ChatViewController: Conversation details:")
-        print("   - ID: \(conversationId)")
-        print("   - Type: \(conversation.type)")
-        print("   - Participants: \(conversation.participants)")
-        print("   - Display Name: \(conversation.displayName ?? "nil")")
-        print("   - Current messages count: \(messages.count)")
+        Logger.debug("✅ ChatViewController: loadData() - conversationId: \(conversationId)")
+        Logger.debug("🔍 ChatViewController: Conversation details:")
+        Logger.debug("   - ID: \(conversationId)")
+        Logger.debug("   - Type: \(conversation.type)")
+        Logger.debug("   - Participants: \(conversation.participants)")
+        Logger.debug("   - Display Name: \(conversation.displayName ?? "nil")")
+        Logger.debug("   - Current messages count: \(messages.count)")
         
-        print("🔍 ChatViewController: Calling messagingManager.loadMessages(for: \(conversationId))")
+        Logger.debug("🔍 ChatViewController: Calling messagingManager.loadMessages(for: \(conversationId))")
         messagingManager.loadMessages(for: conversationId)
         
         // Complete after a short delay to allow messages to load
@@ -590,26 +590,26 @@ class ChatViewController: BaseViewController {
     }
     
     @objc private func titleTapped() {
-        print("🔍 ChatViewController: Title tapped")
-        print("🔍 ChatViewController: Conversation type = \(conversation?.type.rawValue ?? "nil")")
-        print("🔍 ChatViewController: Is group = \(conversation?.type == .group)")
-        print("🔍 ChatViewController: Conversation ID = \(conversation?.id ?? "nil")")
+        Logger.debug("🔍 ChatViewController: Title tapped")
+        Logger.debug("🔍 ChatViewController: Conversation type = \(conversation?.type.rawValue ?? "nil")")
+        Logger.debug("🔍 ChatViewController: Is group = \(conversation?.type == .group)")
+        Logger.debug("🔍 ChatViewController: Conversation ID = \(conversation?.id ?? "nil")")
         
         // Provide haptic feedback
         let impact = UIImpactFeedbackGenerator(style: .light)
         impact.impactOccurred()
         
         guard let conversation = conversation else {
-            print("❌ ChatViewController: No conversation available")
+            Logger.debug("❌ ChatViewController: No conversation available")
             return
         }
         
         guard conversation.type == .group else {
-            print("❌ ChatViewController: Not a group conversation, type = \(conversation.type.rawValue)")
+            Logger.debug("❌ ChatViewController: Not a group conversation, type = \(conversation.type.rawValue)")
             return
         }
         
-        print("✅ ChatViewController: Opening group settings for conversation: \(conversation.displayName)")
+        Logger.debug("✅ ChatViewController: Opening group settings for conversation: \(conversation.displayName)")
         let settingsVC = GroupConversationSettingsViewController(conversation: conversation)
         let navController = UINavigationController(rootViewController: settingsVC)
         present(navController, animated: true)
@@ -1105,7 +1105,7 @@ class MessageCell: UITableViewCell {
 // MARK: - MessageCellDelegate
 extension ChatViewController: MessageCellDelegate {
     func didTapProfileImage(for userId: String) {
-        print("🔍 Profile image tapped for userId: \(userId)")
+        Logger.debug("🔍 Profile image tapped for userId: \(userId)")
         
         // Check if the user is connected to navigate to their profile
         UserService.shared.fetchUserProfile(userId: userId) { [weak self] result in
@@ -1114,10 +1114,10 @@ extension ChatViewController: MessageCellDelegate {
                 
                 switch result {
                 case .success(let user):
-                    print("✅ Found user: \(user.displayName)")
+                    Logger.debug("✅ Found user: \(user.displayName)")
                     self.navigateToUserProfile(user: user)
                 case .failure(let error):
-                    print("❌ Failed to fetch user profile: \(error)")
+                    Logger.debug("❌ Failed to fetch user profile: \(error)")
                     self.showError("Could not load user profile")
                 }
             }

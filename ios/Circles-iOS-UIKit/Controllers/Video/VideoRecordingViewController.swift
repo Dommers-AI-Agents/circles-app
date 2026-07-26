@@ -491,7 +491,7 @@ class VideoRecordingViewController: UIViewController {
                 
                 device.unlockForConfiguration()
             } catch {
-                print("Flash error: \(error)")
+                Logger.debug("Flash error: \(error)")
             }
         }
     }
@@ -550,7 +550,7 @@ class VideoRecordingViewController: UIViewController {
 extension VideoRecordingViewController: AVCaptureFileOutputRecordingDelegate {
     func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
         if let error = error {
-            print("Recording error: \(error)")
+            Logger.debug("Recording error: \(error)")
             showAlert(title: "Recording Failed", message: error.localizedDescription)
         } else {
             // Recording successful

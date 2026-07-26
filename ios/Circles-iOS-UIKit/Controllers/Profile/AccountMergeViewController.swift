@@ -110,7 +110,7 @@ class AccountMergeViewController: BaseViewController {
                     self?.duplicateAccounts = accounts
                     self?.tableView.reloadData()
                 case .failure(let error):
-                    print("Failed to find duplicate accounts: \(error)")
+                    Logger.debug("Failed to find duplicate accounts: \(error)")
                     self?.showError(error)
                 }
                 completion?()

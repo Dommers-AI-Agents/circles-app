@@ -117,7 +117,7 @@ class PlaceSearchViewController: BaseViewController {
                     self.updateTableView()
                     
                 case .failure(let error):
-                    print("Failed to load user places: \(error)")
+                    Logger.debug("Failed to load user places: \(error)")
                     self.myPlaces = []
                     self.filteredPlaces = []
                     self.updateTableView()
@@ -645,6 +645,6 @@ extension PlaceSearchViewController: MKLocalSearchCompleterDelegate {
     }
     
     func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
-        print("Search completer error: \(error.localizedDescription)")
+        Logger.debug("Search completer error: \(error.localizedDescription)")
     }
 }

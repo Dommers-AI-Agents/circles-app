@@ -267,10 +267,10 @@ class SplashScreenViewController: BaseViewController {
     
     // MARK: - Public Methods
     func updateProgress(_ progress: Double, status: String) {
-        print("💫 SplashScreen: updateProgress called - \(progress) - \(status)")
+        Logger.debug("💫 SplashScreen: updateProgress called - \(progress) - \(status)")
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { 
-                print("❌ SplashScreen: self is nil in updateProgress")
+                Logger.debug("❌ SplashScreen: self is nil in updateProgress")
                 return 
             }
             
@@ -284,7 +284,7 @@ class SplashScreenViewController: BaseViewController {
                 self.statusLabel.text = status
             }
             
-            print("💫 SplashScreen: Progress updated to \(progress)")
+            Logger.debug("💫 SplashScreen: Progress updated to \(progress)")
         }
     }
     
@@ -297,7 +297,7 @@ class SplashScreenViewController: BaseViewController {
     }
     
     func completeLoading(completion: @escaping () -> Void) {
-        print("🎬 SplashScreenViewController: completeLoading called")
+        Logger.debug("🎬 SplashScreenViewController: completeLoading called")
 
         // No artificial minimum display time - transition as soon as data is ready
         UIView.animate(withDuration: 0.2, animations: { [weak self] in
@@ -308,7 +308,7 @@ class SplashScreenViewController: BaseViewController {
             self?.loadingDotsContainer.alpha = 0
             self?.statusLabel.alpha = 0
         }) { _ in
-            print("🎬 Final animations complete, calling completion")
+            Logger.debug("🎬 Final animations complete, calling completion")
             completion()
         }
     }

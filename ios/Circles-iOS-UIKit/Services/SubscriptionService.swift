@@ -43,26 +43,26 @@ class SubscriptionService: ObservableObject {
     // MARK: - Load Products
     
     func loadProducts() async throws {
-        print("🔍 [SubscriptionService] Starting to load products...")
-        print("🔍 Product IDs to request: \(productIds)")
-        print("🔍 Bundle ID: \(Bundle.main.bundleIdentifier ?? "Unknown")")
+        Logger.debug("🔍 [SubscriptionService] Starting to load products...")
+        Logger.debug("🔍 Product IDs to request: \(productIds)")
+        Logger.debug("🔍 Bundle ID: \(Bundle.main.bundleIdentifier ?? "Unknown")")
         
         do {
-            print("📱 Requesting products from StoreKit...")
+            Logger.debug("📱 Requesting products from StoreKit...")
             let storeProducts = try await Product.products(for: productIds)
             
-            print("📦 Received \(storeProducts.count) products from StoreKit")
+            Logger.debug("📦 Received \(storeProducts.count) products from StoreKit")
             
             for product in storeProducts {
-                print("  ✅ Product loaded:")
-                print("     - ID: \(product.id)")
-                print("     - Display Name: \(product.displayName)")
-                print("     - Display Price: \(product.displayPrice)")
-                print("     - Type: \(product.type.rawValue)")
+                Logger.debug("  ✅ Product loaded:")
+                Logger.debug("     - ID: \(product.id)")
+                Logger.debug("     - Display Name: \(product.displayName)")
+                Logger.debug("     - Display Price: \(product.displayPrice)")
+                Logger.debug("     - Type: \(product.type.rawValue)")
                 if let subscription = product.subscription {
-                    print("     - Period: \(subscription.subscriptionPeriod)")
-                    print("     - Period Unit: \(subscription.subscriptionPeriod.unit)")
-                    print("     - Period Value: \(subscription.subscriptionPeriod.value)")
+                    Logger.debug("     - Period: \(subscription.subscriptionPeriod)")
+                    Logger.debug("     - Period Unit: \(subscription.subscriptionPeriod.unit)")
+                    Logger.debug("     - Period Value: \(subscription.subscriptionPeriod.value)")
                 }
             }
             
@@ -70,38 +70,38 @@ class SubscriptionService: ObservableObject {
                 .map { SubscriptionProduct(product: $0) }
                 .sorted { $0.price < $1.price }
             
-            print("✅ Successfully loaded and sorted \(products.count) subscription products")
+            Logger.debug("✅ Successfully loaded and sorted \(products.count) subscription products")
             
             if products.isEmpty {
-                print("⚠️ WARNING: No products loaded. Possible reasons:")
-                print("   1. Products not configured in App Store Connect")
-                print("   2. Bundle ID mismatch")
-                print("   3. Products still processing (can take up to 24 hours)")
-                print("   4. Not signed in with sandbox account (for testing)")
-                print("   5. Paid Applications agreement not active")
+                Logger.debug("⚠️ WARNING: No products loaded. Possible reasons:")
+                Logger.debug("   1. Products not configured in App Store Connect")
+                Logger.debug("   2. Bundle ID mismatch")
+                Logger.debug("   3. Products still processing (can take up to 24 hours)")
+                Logger.debug("   4. Not signed in with sandbox account (for testing)")
+                Logger.debug("   5. Paid Applications agreement not active")
             }
         } catch {
-            print("❌ Failed to load products from StoreKit")
-            print("❌ Error type: \(type(of: error))")
-            print("❌ Error description: \(error.localizedDescription)")
+            Logger.debug("❌ Failed to load products from StoreKit")
+            Logger.debug("❌ Error type: \(type(of: error))")
+            Logger.debug("❌ Error description: \(error.localizedDescription)")
             
             if let skError = error as? StoreKitError {
-                print("❌ StoreKit Error: \(skError)")
+                Logger.debug("❌ StoreKit Error: \(skError)")
                 switch skError {
                 case .networkError(let urlError):
-                    print("   - Network error: \(urlError)")
+                    Logger.debug("   - Network error: \(urlError)")
                 case .systemError(let nsError):
-                    print("   - System error: \(nsError)")
+                    Logger.debug("   - System error: \(nsError)")
                 case .userCancelled:
-                    print("   - User cancelled")
+                    Logger.debug("   - User cancelled")
                 default:
-                    print("   - Other StoreKit error")
+                    Logger.debug("   - Other StoreKit error")
                 }
             } else if let nsError = error as NSError? {
-                print("❌ NSError details:")
-                print("   - Domain: \(nsError.domain)")
-                print("   - Code: \(nsError.code)")
-                print("   - User Info: \(nsError.userInfo)")
+                Logger.debug("❌ NSError details:")
+                Logger.debug("   - Domain: \(nsError.domain)")
+                Logger.debug("   - Code: \(nsError.code)")
+                Logger.debug("   - User Info: \(nsError.userInfo)")
             }
             
             throw error
@@ -130,19 +130,19 @@ class SubscriptionService: ObservableObject {
                 return transaction
                 
             case .userCancelled:
-                print("⚠️ User cancelled purchase")
+                Logger.debug("⚠️ User cancelled purchase")
                 return nil
                 
             case .pending:
-                print("⏳ Purchase pending")
+                Logger.debug("⏳ Purchase pending")
                 return nil
                 
             @unknown default:
-                print("❓ Unknown purchase result")
+                Logger.debug("❓ Unknown purchase result")
                 return nil
             }
         } catch {
-            print("❌ Purchase failed: \(error)")
+            Logger.debug("❌ Purchase failed: \(error)")
             throw error
         }
     }
@@ -162,7 +162,7 @@ class SubscriptionService: ObservableObject {
     func updateSubscriptionStatus() async {
         // Skip updating subscription status if user is not logged in
         guard AuthService.shared.isLoggedIn else {
-            print("💎 Skipping subscription status update - user not logged in")
+            Logger.debug("💎 Skipping subscription status update - user not logged in")
             subscriptionStatus = .none
             return
         }
@@ -285,7 +285,7 @@ class SubscriptionService: ObservableObject {
         // Get receipt data
         guard let appStoreReceiptURL = Bundle.main.appStoreReceiptURL,
               FileManager.default.fileExists(atPath: appStoreReceiptURL.path) else {
-            print("❌ No receipt found")
+            Logger.debug("❌ No receipt found")
             return
         }
 
@@ -311,28 +311,28 @@ class SubscriptionService: ObservableObject {
             ) { (result: Result<SubscriptionResponse, APIError>) in
                 switch result {
                 case .success(let response):
-                    print("✅ Subscription synced with backend")
+                    Logger.debug("✅ Subscription synced with backend")
                     // A business receipt must never overwrite the consumer
                     // premium status shown in the app
                     if !isBusinessReceipt {
                         self.updateLocalSubscriptionInfo(response.subscription)
                     }
                 case .failure(let error):
-                    print("❌ Failed to sync subscription: \(error)")
+                    Logger.debug("❌ Failed to sync subscription: \(error)")
                 }
             }
         } catch {
-            print("❌ Failed to read receipt: \(error)")
+            Logger.debug("❌ Failed to read receipt: \(error)")
         }
     }
 
     /// Sync current subscription with backend (called on app launch and restore)
     func syncCurrentSubscriptionWithBackend() async {
-        print("🔄 Syncing current subscription with backend...")
+        Logger.debug("🔄 Syncing current subscription with backend...")
 
         // Skip if user is not logged in
         guard AuthService.shared.isLoggedIn else {
-            print("💎 Skipping subscription sync - user not logged in")
+            Logger.debug("💎 Skipping subscription sync - user not logged in")
             return
         }
 
@@ -360,16 +360,16 @@ class SubscriptionService: ObservableObject {
         }
 
         if let transaction = latestConsumer {
-            print("📱 Found active subscription, syncing with backend...")
+            Logger.debug("📱 Found active subscription, syncing with backend...")
             await syncSubscriptionWithBackend(transaction: transaction)
         } else {
-            print("💎 No active subscription found - checking backend status...")
+            Logger.debug("💎 No active subscription found - checking backend status...")
             // Even if no local subscription, check backend in case it has valid data
             await checkTrialStatus()
         }
 
         if let transaction = latestBusiness {
-            print("🏪 Found active business subscription, syncing with backend...")
+            Logger.debug("🏪 Found active business subscription, syncing with backend...")
             await syncSubscriptionWithBackend(transaction: transaction)
         }
     }
@@ -377,7 +377,7 @@ class SubscriptionService: ObservableObject {
     private func checkTrialStatus() async {
         // Skip checking trial status if user is not logged in
         guard AuthService.shared.isLoggedIn else {
-            print("💎 Skipping trial status check - user not logged in")
+            Logger.debug("💎 Skipping trial status check - user not logged in")
             return
         }
         
@@ -390,10 +390,10 @@ class SubscriptionService: ObservableObject {
             case .success(let response):
                 self?.updateLocalSubscriptionInfo(response.subscription)
             case .failure(let error):
-                print("❌ Failed to check trial status: \(error)")
+                Logger.debug("❌ Failed to check trial status: \(error)")
                 // Stop retrying if unauthorized
                 if case .unauthorized = error {
-                    print("💎 User unauthorized - stopping trial status checks")
+                    Logger.debug("💎 User unauthorized - stopping trial status checks")
                     return
                 }
             }

@@ -172,7 +172,7 @@ class PlaceAddressSearchViewController: BaseViewController {
             self?.tableView.isUserInteractionEnabled = true
             
             if let error = error {
-                print("Local search error: \(error)")
+                Logger.debug("Local search error: \(error)")
                 self?.showError("Unable to find place details. Please try again.")
                 return
             }
@@ -268,7 +268,7 @@ extension PlaceAddressSearchViewController: MKLocalSearchCompleterDelegate {
     }
     
     func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
-        print("Search completer error: \(error)")
+        Logger.debug("Search completer error: \(error)")
         // Don't show error to user for completer failures as they're common during typing
     }
 }

@@ -82,7 +82,7 @@ class PlaceEnrichmentService {
         // Find the place using Google Places search
         let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
         
-        print("🌟 Fetching rating for: \(name) at \(coordinate)")
+        Logger.debug("🌟 Fetching rating for: \(name) at \(coordinate)")
         
         GooglePlacesService.shared.searchPlaces(query: name, location: location) { result in
             switch result {
@@ -94,21 +94,21 @@ class PlaceEnrichmentService {
                         case .success(let place):
                             let rating = place.rating > 0 ? Double(place.rating) : nil
                             let userRatingsTotal = place.userRatingsTotal > 0 ? Int(place.userRatingsTotal) : nil
-                            print("✅ Got rating: \(rating ?? 0) from \(userRatingsTotal ?? 0) reviews")
+                            Logger.debug("✅ Got rating: \(rating ?? 0) from \(userRatingsTotal ?? 0) reviews")
                             completion(.success((rating: rating, userRatingsTotal: userRatingsTotal)))
                         case .failure(let error):
-                            print("❌ Failed to fetch place details for rating: \(error)")
+                            Logger.debug("❌ Failed to fetch place details for rating: \(error)")
                             // Don't fail the entire enrichment process
                             completion(.success((rating: nil, userRatingsTotal: nil)))
                         }
                     }
                 } else {
                     // No matching place found
-                    print("⚠️ No matching place found for rating lookup")
+                    Logger.debug("⚠️ No matching place found for rating lookup")
                     completion(.success((rating: nil, userRatingsTotal: nil)))
                 }
             case .failure(let error):
-                print("❌ Failed to search for place: \(error)")
+                Logger.debug("❌ Failed to search for place: \(error)")
                 // Don't fail the entire enrichment process, just return nil ratings
                 completion(.success((rating: nil, userRatingsTotal: nil)))
             }

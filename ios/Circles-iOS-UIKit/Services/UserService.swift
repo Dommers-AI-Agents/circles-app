@@ -65,30 +65,30 @@ class UserService {
     
     func fetchUserProfile(userId: String? = nil, completion: @escaping (Result<User, Error>) -> Void) {
         let endpoint = userId != nil ? "users/\(userId!)" : "users/me"
-        print("🚀 UserService: fetchUserProfile called")
-        print("🚀 UserService: userId parameter: \(userId ?? "nil")")
-        print("🚀 UserService: Using endpoint: \(endpoint)")
+        Logger.debug("🚀 UserService: fetchUserProfile called")
+        Logger.debug("🚀 UserService: userId parameter: \(userId ?? "nil")")
+        Logger.debug("🚀 UserService: Using endpoint: \(endpoint)")
         
         APIService.shared.request(
             endpoint: endpoint,
             method: .get,
             requiresAuth: true
         ) { [weak self] (result: Result<UserResponse, APIError>) in
-            print("📡 UserService: fetchUserProfile API callback received")
+            Logger.debug("📡 UserService: fetchUserProfile API callback received")
             guard let self = self else { 
-                print("⚠️ UserService: Self deallocated during fetch")
+                Logger.debug("⚠️ UserService: Self deallocated during fetch")
                 return 
             }
             
             switch result {
             case .success(let response):
-                print("✅ UserService: Successfully fetched user profile")
-                print("✅ UserService: User ID: \(response.user.id)")
-                print("✅ UserService: User name: \(response.user.displayName)")
+                Logger.debug("✅ UserService: Successfully fetched user profile")
+                Logger.debug("✅ UserService: User ID: \(response.user.id)")
+                Logger.debug("✅ UserService: User name: \(response.user.displayName)")
                 completion(.success(response.user))
             case .failure(let error):
-                print("❌ UserService: Failed to fetch user profile: \(error)")
-                print("❌ UserService: Error type: \(type(of: error))")
+                Logger.debug("❌ UserService: Failed to fetch user profile: \(error)")
+                Logger.debug("❌ UserService: Error type: \(type(of: error))")
                 let mappedError = self.mapAPIErrorToUserError(error)
                 completion(.failure(mappedError))
             }
@@ -152,15 +152,15 @@ class UserService {
         }
         
         // Debug logging
-        print("🔍 UserService - performUpdateProfile sending body:")
-        print("   - displayName: \(body["displayName"] ?? "nil")")
-        print("   - firstName: \(body["firstName"] ?? "nil")")
-        print("   - lastName: \(body["lastName"] ?? "nil")")
-        print("   - phoneNumber: \(body["phoneNumber"] ?? "nil")")
-        print("   - bio: \(body["bio"] ?? "nil")")
-        print("   - location: \(body["location"] ?? "nil")")
-        print("   - zipcode: \(body["zipcode"] ?? "nil")")
-        print("   - profilePicture: \(body["profilePicture"] ?? "nil")")
+        Logger.debug("🔍 UserService - performUpdateProfile sending body:")
+        Logger.debug("   - displayName: \(body["displayName"] ?? "nil")")
+        Logger.debug("   - firstName: \(body["firstName"] ?? "nil")")
+        Logger.debug("   - lastName: \(body["lastName"] ?? "nil")")
+        Logger.debug("   - phoneNumber: \(body["phoneNumber"] ?? "nil")")
+        Logger.debug("   - bio: \(body["bio"] ?? "nil")")
+        Logger.debug("   - location: \(body["location"] ?? "nil")")
+        Logger.debug("   - zipcode: \(body["zipcode"] ?? "nil")")
+        Logger.debug("   - profilePicture: \(body["profilePicture"] ?? "nil")")
         
         // Only proceed if there are changes to make
         guard !body.isEmpty else {
@@ -240,7 +240,7 @@ class UserService {
         ) { (result: Result<SimpleAPIResponse, APIError>) in
             if case .failure(let error) = result {
                 // Best-effort telemetry — never surface to the user
-                print("📊 App-open report failed: \(error)")
+                Logger.debug("📊 App-open report failed: \(error)")
             }
         }
     }
@@ -446,7 +446,7 @@ class UserService {
             case .success(let response):
                 completion(.success(response.url))
             case .failure(let error):
-                print("Profile image upload failed: \(error)")
+                Logger.debug("Profile image upload failed: \(error)")
                 let mappedError = self.mapAPIErrorToUserError(error)
                 completion(.failure(mappedError))
             }

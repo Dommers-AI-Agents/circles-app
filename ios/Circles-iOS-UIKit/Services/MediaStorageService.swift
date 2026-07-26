@@ -215,7 +215,7 @@ class MediaStorageService {
         progress: @escaping (UploadProgress) -> Void,
         completion: @escaping (Result<StorageResult, Error>) -> Void
     ) {
-        print("📸 [MediaStorageService] Starting Global Place photo upload for place: \(place.name)")
+        Logger.debug("📸 [MediaStorageService] Starting Global Place photo upload for place: \(place.name)")
         
         // Step 1: Upload image to Firebase Storage first
         progress(UploadProgress(progress: 0.1, bytesUploaded: 0, totalBytes: Int64(photo.sizeInBytes), phase: .uploading))
@@ -229,7 +229,7 @@ class MediaStorageService {
         PlaceService.shared.uploadImage(imageData) { [weak self] (result: Result<String, Error>) in
             switch result {
             case .success(let storageURL):
-                print("✅ [MediaStorageService] Image uploaded to Firebase Storage: \(storageURL)")
+                Logger.debug("✅ [MediaStorageService] Image uploaded to Firebase Storage: \(storageURL)")
                 progress(UploadProgress(progress: 0.7, bytesUploaded: Int64(photo.sizeInBytes), totalBytes: Int64(photo.sizeInBytes), phase: .finalizing))
                 
                 // Step 2: Register photo with Global Place system
@@ -243,7 +243,7 @@ class MediaStorageService {
                 )
                 
             case .failure(let error):
-                print("❌ [MediaStorageService] Firebase Storage upload failed: \(error)")
+                Logger.debug("❌ [MediaStorageService] Firebase Storage upload failed: \(error)")
                 completion(.failure(error))
             }
         }
@@ -258,11 +258,11 @@ class MediaStorageService {
         progress: @escaping (UploadProgress) -> Void,
         completion: @escaping (Result<StorageResult, Error>) -> Void
     ) {
-        print("📝 [MediaStorageService] Registering photo with Global Place system...")
+        Logger.debug("📝 [MediaStorageService] Registering photo with Global Place system...")
         
         // Use globalPlaceId if available, otherwise fall back to legacy place ID
         let placeIdToUse = place.globalPlaceId ?? place.id
-        print("🆔 [MediaStorageService] Using place ID: \(placeIdToUse) (globalPlaceId: \(place.globalPlaceId ?? "none"), legacyId: \(place.id))")
+        Logger.debug("🆔 [MediaStorageService] Using place ID: \(placeIdToUse) (globalPlaceId: \(place.globalPlaceId ?? "none"), legacyId: \(place.id))")
         
         // Use GlobalPlaceService to register the photo
         GlobalPlaceService.shared.uploadPlaceMedia(
@@ -274,7 +274,7 @@ class MediaStorageService {
         ) { result in
             switch result {
             case .success(let attributedPhoto):
-                print("✅ [MediaStorageService] Photo registered with Global Place system")
+                Logger.debug("✅ [MediaStorageService] Photo registered with Global Place system")
                 progress(UploadProgress(progress: 1.0, bytesUploaded: Int64(photo.sizeInBytes), totalBytes: Int64(photo.sizeInBytes), phase: .completed))
                 
                 // Create successful result
@@ -292,7 +292,7 @@ class MediaStorageService {
                 completion(.success(storageResult))
                 
             case .failure(let error):
-                print("❌ [MediaStorageService] Failed to register photo with Global Place: \(error)")
+                Logger.debug("❌ [MediaStorageService] Failed to register photo with Global Place: \(error)")
                 completion(.failure(error))
             }
         }

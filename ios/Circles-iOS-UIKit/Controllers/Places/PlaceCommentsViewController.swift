@@ -181,7 +181,7 @@ class PlaceCommentsViewController: BaseViewController {
                     self?.tableView.insertRows(at: [IndexPath(row: 0, section: 0)], with: .automatic)
                     self?.onCommentsUpdated?(self?.comments.count ?? 0)
                 case .failure(let error):
-                    print("Failed to add comment: \(error)")
+                    Logger.debug("Failed to add comment: \(error)")
                     self?.showError("Failed to add comment. Please try again.")
                 }
             }
@@ -219,7 +219,7 @@ class PlaceCommentsViewController: BaseViewController {
                     self?.tableView.reloadData()
                     self?.onCommentsUpdated?(comments.count)
                 case .failure(let error):
-                    print("Failed to fetch comments: \(error)")
+                    Logger.debug("Failed to fetch comments: \(error)")
                 }
                 completion?()
             }
@@ -293,7 +293,7 @@ extension PlaceCommentsViewController: UITableViewDelegate, UITableViewDataSourc
                     self?.onCommentsUpdated?(self?.comments.count ?? 0)
                     completionHandler(true)
                 case .failure(let error):
-                    print("Failed to delete comment: \(error)")
+                    Logger.debug("Failed to delete comment: \(error)")
                     self?.showError("Failed to delete comment. Please try again.")
                     completionHandler(false)
                 }
@@ -593,7 +593,7 @@ extension PlaceCommentsViewController: CommentCellDelegate {
                     }
                     
                 case .failure(let error):
-                    print("Failed to like comment: \(error)")
+                    Logger.debug("Failed to like comment: \(error)")
                     self?.showError("Failed to update like. Please try again.")
                 }
             }
@@ -637,7 +637,7 @@ extension PlaceCommentsViewController: CommentCellDelegate {
                     // Reload data to show updated reply count
                     self?.loadData(completion: nil)
                 case .failure(let error):
-                    print("Failed to send reply: \(error)")
+                    Logger.debug("Failed to send reply: \(error)")
                     self?.showError("Failed to send reply. Please try again.")
                 }
             }

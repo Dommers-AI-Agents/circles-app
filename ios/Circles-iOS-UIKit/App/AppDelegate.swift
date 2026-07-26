@@ -26,7 +26,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
 
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        print("🚀 DAILY SUMMARY VERSION: App launched with enhanced notification handling - v2025.8.1-fixed")
+        Logger.debug("🚀 DAILY SUMMARY VERSION: App launched with enhanced notification handling - v2025.8.1-fixed")
         // Override point for customization after application launch.
         
         // Suppress Google Maps SDK duplicate class warnings in debug builds
@@ -45,35 +45,35 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         Messaging.messaging().delegate = self
         
         // Get FCM token if available
-        print("🔔 ===== PUSH NOTIFICATION SETUP =====")
-        print("🔔 App launched at: \(Date())")
-        print("🔔 Requesting FCM token on app launch...")
+        Logger.debug("🔔 ===== PUSH NOTIFICATION SETUP =====")
+        Logger.debug("🔔 App launched at: \(Date())")
+        Logger.debug("🔔 Requesting FCM token on app launch...")
         
         Messaging.messaging().token { token, error in
             if let error = error {
-                print("🔔 ❌ Error fetching FCM registration token: \(error)")
-                print("🔔 Error domain: \(error._domain)")
-                print("🔔 Error code: \(error._code)")
+                Logger.debug("🔔 ❌ Error fetching FCM registration token: \(error)")
+                Logger.debug("🔔 Error domain: \(error._domain)")
+                Logger.debug("🔔 Error code: \(error._code)")
             } else if let token = token {
-                print("🔔 ✅ FCM registration token retrieved on launch")
-                print("🔔 Token length: \(token.count) characters")
-                print("🔔 Token preview: \(token.prefix(20))...")
+                Logger.debug("🔔 ✅ FCM registration token retrieved on launch")
+                Logger.debug("🔔 Token length: \(token.count) characters")
+                Logger.debug("🔔 Token preview: \(token.prefix(20))...")
                 
                 // Save to UserDefaults
                 UserDefaults.standard.set(token, forKey: "FCMToken")
                 UserDefaults.standard.synchronize()
-                print("🔔 Token saved to UserDefaults")
+                Logger.debug("🔔 Token saved to UserDefaults")
                 
                 // Send to backend if user is logged in
                 if AuthService.shared.isLoggedIn {
-                    print("🔔 User is logged in on launch, registering token with backend")
-                    print("🔔 Backend URL: \(APIEnvironment.current.baseURL)")
+                    Logger.debug("🔔 User is logged in on launch, registering token with backend")
+                    Logger.debug("🔔 Backend URL: \(APIEnvironment.current.baseURL)")
                     NotificationService.shared.registerDeviceToken(token)
                 } else {
-                    print("🔔 User not logged in on launch, token saved for later registration")
+                    Logger.debug("🔔 User not logged in on launch, token saved for later registration")
                 }
             } else {
-                print("🔔 ⚠️ No FCM token available on launch")
+                Logger.debug("🔔 ⚠️ No FCM token available on launch")
             }
         }
         
@@ -81,19 +81,19 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         
         // Initialize media cache and cleanup expired content
         DispatchQueue.global(qos: .background).async {
-            print("🧹 Starting media cache cleanup...")
+            Logger.debug("🧹 Starting media cache cleanup...")
             MediaCacheService.shared.cleanupExpiredCache()
             
             // Clear potentially corrupted activity feed image caches
-            print("🧹 Clearing activity feed image caches to fix corruption...")
+            Logger.debug("🧹 Clearing activity feed image caches to fix corruption...")
             ImageService.shared.clearActivityFeedCaches()
             
             let stats = MediaCacheService.shared.getCacheStatistics()
-            print("📊 Media Cache Statistics:")
-            print("   - Total items: \(stats.itemCount)")
-            print("   - Total size: \(stats.totalSize / 1024 / 1024)MB")
-            print("   - User content: \(stats.userContentSize / 1024 / 1024)MB")
-            print("   - Network content: \(stats.networkContentSize / 1024 / 1024)MB")
+            Logger.debug("📊 Media Cache Statistics:")
+            Logger.debug("   - Total items: \(stats.itemCount)")
+            Logger.debug("   - Total size: \(stats.totalSize / 1024 / 1024)MB")
+            Logger.debug("   - User content: \(stats.userContentSize / 1024 / 1024)MB")
+            Logger.debug("   - Network content: \(stats.networkContentSize / 1024 / 1024)MB")
         }
         
         // Configure NetworkManager after Firebase is initialized
@@ -107,7 +107,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         
         // Initialize Visit Detection Service
         VisitDetectionService.shared.configure()
-        print("📍 Visit Detection Service initialized")
+        Logger.debug("📍 Visit Detection Service initialized")
         
         // Set up Apple ID credential state observer
         NotificationCenter.default.addObserver(
@@ -122,7 +122,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
               let plist = NSDictionary(contentsOfFile: path),
               let clientId = plist["CLIENT_ID"] as? String,
               let reversedClientId = plist["REVERSED_CLIENT_ID"] as? String else {
-            print("❌ Failed to load Google configuration from GoogleService-Info.plist")
+            Logger.debug("❌ Failed to load Google configuration from GoogleService-Info.plist")
             return true
         }
         
@@ -142,7 +142,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         }
         
         if !hasRequiredScheme {
-            print("⚠️ WARNING: Required Google Sign-In URL scheme not found")
+            Logger.debug("⚠️ WARNING: Required Google Sign-In URL scheme not found")
         }
         
         // Try to restore previous Google Sign-In session
@@ -150,30 +150,30 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         
         // Initialize Facebook SDK asynchronously to avoid blocking startup
         DispatchQueue.global(qos: .background).async {
-            print("📘 Initializing Facebook SDK in background")
+            Logger.debug("📘 Initializing Facebook SDK in background")
             ApplicationDelegate.shared.application(application, didFinishLaunchingWithOptions: launchOptions)
         }
         
         // Initialize Google Places SDK using API_KEY from GoogleService-Info.plist
         if let gmsApiKey = plist["API_KEY"] as? String {
             GMSPlacesClient.provideAPIKey(gmsApiKey)
-            print("📍 Google Places SDK initialized (photos only)")
+            Logger.debug("📍 Google Places SDK initialized (photos only)")
         } else {
-            print("❌ Failed to load Google Places API key")
+            Logger.debug("❌ Failed to load Google Places API key")
         }
         
         // Initialize Subscription Service
-        print("💎 Initializing Subscription Service")
+        Logger.debug("💎 Initializing Subscription Service")
         Task {
             await SubscriptionManager.shared.initialize()
         }
         
         // Start observing for promoted purchases
-        print("💎 Starting StoreKit Observer for promoted purchases")
+        Logger.debug("💎 Starting StoreKit Observer for promoted purchases")
         StoreKitObserver.shared.startObserving()
         
         // Configure Push Notifications
-        print("🔔 Configuring Push Notifications")
+        Logger.debug("🔔 Configuring Push Notifications")
         UNUserNotificationCenter.current().delegate = self
         
         // Configure notification categories for rich interactions
@@ -212,11 +212,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
         // Handle URL schemes for authentication services
-        print("📱 URL received in AppDelegate: \(url)")
+        Logger.debug("📱 URL received in AppDelegate: \(url)")
 
         // Check if the URL is for Apple Sign-In
         if url.absoluteString.contains("appleid") {
-            print("🍎 Handling Apple Sign-In callback URL")
+            Logger.debug("🍎 Handling Apple Sign-In callback URL")
             // Note: Apple Sign-In is typically handled through the ASAuthorizationController delegate methods,
             // not through URL schemes. But we'll log it anyway.
             return true
@@ -229,34 +229,34 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         
         // Handle Facebook SDK
         let facebookHandled = ApplicationDelegate.shared.application(app, open: url, options: options)
-        print("📘 Facebook SDK handling result: \(facebookHandled)")
+        Logger.debug("📘 Facebook SDK handling result: \(facebookHandled)")
         
         if facebookHandled {
-            print("📘 Facebook SDK successfully handled URL")
+            Logger.debug("📘 Facebook SDK successfully handled URL")
             return true
         }
         
         // Handle LinkedIn OAuth callback
         // URL format: com.favcircles.circles://linkedin/callback?code=xxx&state=yyy
         if url.scheme == "com.favcircles.circles" {
-            print("🔗 Checking if LinkedIn callback - URL: \(url.absoluteString)")
-            print("🔗 URL host: \(url.host ?? "nil"), path: \(url.path)")
+            Logger.debug("🔗 Checking if LinkedIn callback - URL: \(url.absoluteString)")
+            Logger.debug("🔗 URL host: \(url.host ?? "nil"), path: \(url.path)")
             
             // Check if this is a LinkedIn callback
             if url.absoluteString.contains("linkedin") {
-                print("🔗 LinkedIn OAuth callback received")
+                Logger.debug("🔗 LinkedIn OAuth callback received")
                 let handled = SocialAuthService.shared.handleLinkedInCallback(url: url)
                 return handled
             }
         }
         
         // Handle other URL schemes your app may use
-        print("📱 URL not recognized by auth providers, checking app's deep linking")
+        Logger.debug("📱 URL not recognized by auth providers, checking app's deep linking")
         
         // Forward deep links to the active scene
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
            let sceneDelegate = windowScene.delegate as? SceneDelegate {
-            print("📱 Forwarding URL to SceneDelegate for deep link handling")
+            Logger.debug("📱 Forwarding URL to SceneDelegate for deep link handling")
             sceneDelegate.handleURLContext(url)
         }
         
@@ -266,7 +266,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     // MARK: - Continue Apple Sign-In
     
     @objc func didChangeAuthState(_ notification: Notification) {
-        print("🍎 Apple ID credential state changed")
+        Logger.debug("🍎 Apple ID credential state changed")
         // Handle sign-out when Apple ID is revoked
         AuthService.shared.logout { _ in
             // This will trigger the auth state listener in SceneDelegate
@@ -276,7 +276,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     // MARK: - Background Tasks
     
     func application(_ application: UIApplication, performFetchWithCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
-        print("📍 Background fetch triggered")
+        Logger.debug("📍 Background fetch triggered")
         
         // Sync any pending visits
         VisitDetectionService.shared.syncPendingVisits()
@@ -290,27 +290,27 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         let tokenParts = deviceToken.map { data in String(format: "%02.2hhx", data) }
         let token = tokenParts.joined()
-        print("🔔 ===== APNS REGISTRATION SUCCESS =====")
-        print("🔔 APNs Device Token: \(token)")
-        print("🔔 Token length: \(token.count) characters")
+        Logger.debug("🔔 ===== APNS REGISTRATION SUCCESS =====")
+        Logger.debug("🔔 APNs Device Token: \(token)")
+        Logger.debug("🔔 Token length: \(token.count) characters")
         
         // Set APNs token for Firebase Messaging
-        print("🔔 Setting APNs token for Firebase Messaging...")
+        Logger.debug("🔔 Setting APNs token for Firebase Messaging...")
         Messaging.messaging().apnsToken = deviceToken
-        print("🔔 APNs token set, waiting for FCM token...")
+        Logger.debug("🔔 APNs token set, waiting for FCM token...")
         
         // The FCM token will be received in the MessagingDelegate callback
     }
     
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
-        print("🔔 Failed to register for remote notifications: \(error)")
+        Logger.debug("🔔 Failed to register for remote notifications: \(error)")
     }
     
     // MARK: - Background Notification Handling
     
     func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable : Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
-        print("🔔 Received remote notification in background/terminated state")
-        print("🔔 UserInfo: \(userInfo)")
+        Logger.debug("🔔 Received remote notification in background/terminated state")
+        Logger.debug("🔔 UserInfo: \(userInfo)")
         
         // Process the notification
         if let aps = userInfo["aps"] as? [String: Any] {
@@ -488,12 +488,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     // Removed cleanupOldSummaries - no longer storing summaries locally
     
     private func presentDailySummary(with userInfo: [AnyHashable: Any]) {
-        print("📊 Presenting daily summary modal (will fetch fresh data)")
+        Logger.debug("📊 Presenting daily summary modal (will fetch fresh data)")
         
         // Function to actually present the modal
         let presentModal = {
             guard let topViewController = self.getTopViewController() else {
-                print("⚠️ Could not find top view controller")
+                Logger.debug("⚠️ Could not find top view controller")
                 // Try again after a short delay in case app is still launching
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                     self.presentDailySummary(with: userInfo)
@@ -509,12 +509,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             if topViewController.presentedViewController != nil {
                 topViewController.dismiss(animated: false) {
                     topViewController.present(summaryVC, animated: true) {
-                        print("✅ Daily summary modal presented")
+                        Logger.debug("✅ Daily summary modal presented")
                     }
                 }
             } else {
                 topViewController.present(summaryVC, animated: true) {
-                    print("✅ Daily summary modal presented")
+                    Logger.debug("✅ Daily summary modal presented")
                 }
             }
         }
@@ -530,7 +530,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     }
     
     private func showDailySummaryAlert(data: [String: Any], from viewController: UIViewController) {
-        print("📊 Showing daily summary alert with data: \(data)")
+        Logger.debug("📊 Showing daily summary alert with data: \(data)")
         
         // Parse the notification data
         let newPlaces = Int(data["newPlaces"] as? String ?? "0") ?? 0
@@ -616,7 +616,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         alert.addAction(UIAlertAction(title: "Close", style: .cancel))
         
         viewController.present(alert, animated: true) {
-            print("✅ Daily summary alert presented")
+            Logger.debug("✅ Daily summary alert presented")
         }
     }
     
@@ -702,19 +702,19 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         }
         
         guard let type = notificationType else {
-            print("⚠️ No notification type found")
+            Logger.debug("⚠️ No notification type found")
             return
         }
         
         // Handle different notification types when user taps the notification
-        print("🔔 AppDelegate: Handling notification tap for type: \(type)")
-        print("🔔 AppDelegate: UserInfo: \(userInfo)")
+        Logger.debug("🔔 AppDelegate: Handling notification tap for type: \(type)")
+        Logger.debug("🔔 AppDelegate: UserInfo: \(userInfo)")
         
         switch type {
         case "new_message":
             // Navigate to specific conversation if conversationId is provided
             if let conversationId = userInfo["conversationId"] as? String {
-                print("🔔 AppDelegate: Navigating to conversation: \(conversationId)")
+                Logger.debug("🔔 AppDelegate: Navigating to conversation: \(conversationId)")
                 NotificationCenter.default.post(
                     name: Notification.Name("NavigateToConversation"),
                     object: conversationId
@@ -746,7 +746,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         case "place_liked", "place_commented":
             // Navigate to specific place
             if let placeId = userInfo["placeId"] as? String {
-                print("🔔 AppDelegate: Navigating to place: \(placeId)")
+                Logger.debug("🔔 AppDelegate: Navigating to place: \(placeId)")
                 NotificationCenter.default.post(
                     name: Notification.Name("NavigateToPlace"),
                     object: placeId,
@@ -763,7 +763,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         case "circle_liked", "circle_commented":
             // Navigate to specific circle
             if let circleId = userInfo["circleId"] as? String {
-                print("🔔 AppDelegate: Navigating to circle: \(circleId)")
+                Logger.debug("🔔 AppDelegate: Navigating to circle: \(circleId)")
                 NotificationCenter.default.post(
                     name: Notification.Name("NavigateToCircle"),
                     object: circleId,
@@ -828,7 +828,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         case "activity_update", "activity_like", "activity_comment":
             // Navigate to activity feed with specific activity
             if let activityId = userInfo["activityId"] as? String {
-                print("🔔 AppDelegate: Navigating to activity: \(activityId)")
+                Logger.debug("🔔 AppDelegate: Navigating to activity: \(activityId)")
                 NotificationCenter.default.post(
                     name: Notification.Name("NavigateToActivity"),
                     object: activityId
@@ -842,7 +842,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             }
             
         default:
-            print("⚠️ AppDelegate: Unknown notification type: \(type)")
+            Logger.debug("⚠️ AppDelegate: Unknown notification type: \(type)")
             // For unknown types, try to navigate based on available data
             if let activityId = userInfo["activityId"] as? String {
                 NotificationCenter.default.post(
@@ -976,29 +976,29 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     // MARK: - MessagingDelegate
     
     func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
-        print("🔔 Firebase FCM registration token received: \(fcmToken ?? "nil")")
+        Logger.debug("🔔 Firebase FCM registration token received: \(fcmToken ?? "nil")")
         
         if let fcmToken = fcmToken {
-            print("🔔 FCM Token length: \(fcmToken.count) characters")
+            Logger.debug("🔔 FCM Token length: \(fcmToken.count) characters")
             
             // Save FCM token to UserDefaults
             UserDefaults.standard.set(fcmToken, forKey: "FCMToken")
             UserDefaults.standard.synchronize()
-            print("🔔 Saved FCM token to UserDefaults")
+            Logger.debug("🔔 Saved FCM token to UserDefaults")
             
             // Send FCM token to backend
-            print("🔔 Calling NotificationService.registerDeviceToken")
+            Logger.debug("🔔 Calling NotificationService.registerDeviceToken")
             NotificationService.shared.registerDeviceToken(fcmToken)
             
             // Also check if user is logged in and update backend
             if AuthService.shared.isLoggedIn {
-                print("🔔 User is logged in, updating push token")
+                Logger.debug("🔔 User is logged in, updating push token")
                 NotificationService.shared.updatePushToken()
             } else {
-                print("🔔 User not logged in, token will be sent on next login")
+                Logger.debug("🔔 User not logged in, token will be sent on next login")
             }
         } else {
-            print("🔔 ❌ Received nil FCM token")
+            Logger.debug("🔔 ❌ Received nil FCM token")
         }
     }
 }

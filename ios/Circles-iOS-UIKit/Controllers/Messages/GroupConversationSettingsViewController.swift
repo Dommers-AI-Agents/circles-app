@@ -218,7 +218,7 @@ class GroupConversationSettingsViewController: BaseViewController {
     }
     
     private func loadParticipantDetails() {
-        print("🔍 GroupConversationSettings: Loading participant details for \(conversation.participants.count) participants")
+        Logger.debug("🔍 GroupConversationSettings: Loading participant details for \(conversation.participants.count) participants")
         
         let participantIds = conversation.participants
         var participantDetails: [User] = []
@@ -233,13 +233,13 @@ class GroupConversationSettingsViewController: BaseViewController {
                 case .success(let user):
                     participantDetails.append(user)
                 case .failure(let error):
-                    print("❌ Failed to load participant \(participantId): \(error)")
+                    Logger.debug("❌ Failed to load participant \(participantId): \(error)")
                 }
             }
         }
         
         group.notify(queue: .main) { [weak self] in
-            print("✅ Loaded \(participantDetails.count) participant details")
+            Logger.debug("✅ Loaded \(participantDetails.count) participant details")
             // Update conversation with participant details
             if let currentConversation = self?.conversation {
                 self?.conversation = Conversation(
@@ -476,7 +476,7 @@ class GroupConversationSettingsViewController: BaseViewController {
     }
     
     private func uploadAvatarImage(_ imageData: Data, completion: @escaping (String?) -> Void) {
-        print("📤 Uploading avatar image, size: \(imageData.count / 1024)KB")
+        Logger.debug("📤 Uploading avatar image, size: \(imageData.count / 1024)KB")
         
         // Convert image data to base64
         let base64String = imageData.base64EncodedString()
@@ -500,10 +500,10 @@ class GroupConversationSettingsViewController: BaseViewController {
             DispatchQueue.main.async {
                 switch result {
                 case .success(let response):
-                    print("✅ Avatar image uploaded successfully: \(response.url)")
+                    Logger.debug("✅ Avatar image uploaded successfully: \(response.url)")
                     completion(response.url)
                 case .failure(let error):
-                    print("❌ Failed to upload avatar image: \(error)")
+                    Logger.debug("❌ Failed to upload avatar image: \(error)")
                     completion(nil)
                 }
             }
@@ -773,7 +773,7 @@ extension GroupConversationSettingsViewController: AddParticipantsDelegate {
                     successCount += 1
                 case .failure(let error):
                     failureCount += 1
-                    print("❌ Failed to add participant \(user.displayName): \(error)")
+                    Logger.debug("❌ Failed to add participant \(user.displayName): \(error)")
                 }
                 group.leave()
             }
@@ -825,7 +825,7 @@ extension GroupConversationSettingsViewController: PHPickerViewControllerDelegat
         
         result.itemProvider.loadObject(ofClass: UIImage.self) { [weak self] object, error in
             if let error = error {
-                print("❌ Error loading image: \(error)")
+                Logger.debug("❌ Error loading image: \(error)")
                 return
             }
             
@@ -847,7 +847,7 @@ extension GroupConversationSettingsViewController: PHPickerViewControllerDelegat
                             let sizeKB = data.count / 1024
                             if sizeKB <= maxSizeKB {
                                 imageData = data
-                                print("✅ Image compressed to \(sizeKB)KB with quality \(quality)")
+                                Logger.debug("✅ Image compressed to \(sizeKB)KB with quality \(quality)")
                                 break
                             }
                         }
@@ -855,9 +855,9 @@ extension GroupConversationSettingsViewController: PHPickerViewControllerDelegat
                     
                     if let imageData = imageData {
                         self?.selectedImageData = imageData
-                        print("✅ Image selected, size: \(imageData.count / 1024)KB")
+                        Logger.debug("✅ Image selected, size: \(imageData.count / 1024)KB")
                     } else {
-                        print("❌ Failed to compress image to acceptable size")
+                        Logger.debug("❌ Failed to compress image to acceptable size")
                         self?.showError("Image is too large. Please choose a smaller image.")
                     }
                 }

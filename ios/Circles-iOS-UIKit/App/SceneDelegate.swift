@@ -110,15 +110,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
     
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
-        print("📱 SceneDelegate: openURLContexts called with \(URLContexts.count) contexts")
+        Logger.debug("📱 SceneDelegate: openURLContexts called with \(URLContexts.count) contexts")
         
         // Handle deep links when the app is already running
         if let url = URLContexts.first?.url {
-            print("📱 SceneDelegate: Processing URL: \(url.absoluteString)")
-            print("📱 SceneDelegate: URL scheme: \(url.scheme ?? "nil")")
-            print("📱 SceneDelegate: URL host: \(url.host ?? "nil")")
-            print("📱 SceneDelegate: URL path: \(url.path)")
-            print("📱 SceneDelegate: URL pathComponents: \(url.pathComponents)")
+            Logger.debug("📱 SceneDelegate: Processing URL: \(url.absoluteString)")
+            Logger.debug("📱 SceneDelegate: URL scheme: \(url.scheme ?? "nil")")
+            Logger.debug("📱 SceneDelegate: URL host: \(url.host ?? "nil")")
+            Logger.debug("📱 SceneDelegate: URL path: \(url.path)")
+            Logger.debug("📱 SceneDelegate: URL pathComponents: \(url.pathComponents)")
 
             // Export files opened with Circles ("Open in" from Mail/Files) —
             // route into the place import flow
@@ -129,39 +129,39 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
             // First check if it's a Facebook callback
             if ApplicationDelegate.shared.application(UIApplication.shared, open: url, sourceApplication: nil, annotation: nil) {
-                print("📘 Handled by Facebook SDK")
+                Logger.debug("📘 Handled by Facebook SDK")
                 return
             }
             
             // Check if it's a LinkedIn callback
             if url.scheme == "com.favcircles.circles" && url.absoluteString.contains("linkedin") {
-                print("🔗 LinkedIn callback detected in SceneDelegate")
+                Logger.debug("🔗 LinkedIn callback detected in SceneDelegate")
                 let handled = SocialAuthService.shared.handleLinkedInCallback(url: url)
                 if handled {
-                    print("🔗 LinkedIn callback handled successfully")
+                    Logger.debug("🔗 LinkedIn callback handled successfully")
                     return
                 }
             }
             
             // Handle other deep links
-            print("📱 SceneDelegate: Calling handleDeepLink with URL: \(url.absoluteString)")
+            Logger.debug("📱 SceneDelegate: Calling handleDeepLink with URL: \(url.absoluteString)")
             handleDeepLink(url)
         }
     }
     
     // Handle Universal Links
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
-        print("📱 SceneDelegate: continue userActivity called")
+        Logger.debug("📱 SceneDelegate: continue userActivity called")
         
         guard userActivity.activityType == NSUserActivityTypeBrowsingWeb,
               let url = userActivity.webpageURL else {
-            print("📱 SceneDelegate: Not a web browsing activity")
+            Logger.debug("📱 SceneDelegate: Not a web browsing activity")
             return
         }
         
-        print("📱 SceneDelegate: Universal Link received: \(url.absoluteString)")
-        print("📱 SceneDelegate: URL host: \(url.host ?? "nil")")
-        print("📱 SceneDelegate: URL path: \(url.path)")
+        Logger.debug("📱 SceneDelegate: Universal Link received: \(url.absoluteString)")
+        Logger.debug("📱 SceneDelegate: URL host: \(url.host ?? "nil")")
+        Logger.debug("📱 SceneDelegate: URL path: \(url.path)")
         
         // Handle Universal Links from our backend (branded domain and the
         // legacy run.app host - old shared links must keep working)
@@ -204,7 +204,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// presents the import flow.
     private func handleImportFile(_ url: URL) {
         guard let tabBarController = window?.rootViewController as? CirclesTabBarController else {
-            print("📥 Import file received before main interface is ready — ignoring")
+            Logger.debug("📥 Import file received before main interface is ready — ignoring")
             return
         }
 
@@ -218,7 +218,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         do {
             try FileManager.default.copyItem(at: url, to: tempURL)
         } catch {
-            print("📥 Failed to copy import file: \(error)")
+            Logger.debug("📥 Failed to copy import file: \(error)")
             return
         }
 
@@ -341,7 +341,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 guard let self = self, let splashVC = splashVC else { return }
                 guard !hasCompleted else { return } // Already completed normally
 
-                print("⏰ SceneDelegate: Splash screen timeout reached (60 seconds)")
+                Logger.debug("⏰ SceneDelegate: Splash screen timeout reached (60 seconds)")
 
                 // Show error with retry option. A timeout is never an auth failure,
                 // so this always offers Retry - the user decides when to give up.
@@ -352,12 +352,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 )
 
                 alert.addAction(UIAlertAction(title: "Retry", style: .default) { _ in
-                    print("🔄 User chose to retry from splash screen timeout")
+                    Logger.debug("🔄 User chose to retry from splash screen timeout")
                     self.updateRootViewController(isLoggedIn: true)
                 })
 
                 alert.addAction(UIAlertAction(title: "Logout", style: .destructive) { _ in
-                    print("🚪 User chose to logout from splash screen timeout")
+                    Logger.debug("🚪 User chose to logout from splash screen timeout")
                     AuthService.shared.logout()
                 })
 
@@ -368,20 +368,20 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             // Start preloading all data
             PreloadManager.shared.preloadAllData(
                 progressHandler: { progress, status in
-                    print("🚦 Progress update: \(progress) - \(status)")
+                    Logger.debug("🚦 Progress update: \(progress) - \(status)")
                     splashVC.updateProgress(progress, status: status)
                 },
                 completion: { [weak self] result in
                     hasCompleted = true // Mark as completed to prevent timeout handler
                     timeoutWorkItem.cancel()
-                    print("🚦 PreloadManager completion called")
+                    Logger.debug("🚦 PreloadManager completion called")
                     switch result {
                     case .success(let preloadedData):
                         // Data loaded successfully, show main interface
-                        print("🚦 Success - showing main interface")
+                        Logger.debug("🚦 Success - showing main interface")
                         DispatchQueue.main.async {
                             guard let self = self else {
-                                print("❌ Self is nil in completion")
+                                Logger.debug("❌ Self is nil in completion")
                                 return
                             }
 
@@ -397,7 +397,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                         
                     case .failure(let error):
                         // Failed to load data, show error and logout
-                        print("Failed to preload data: \(error)")
+                        Logger.debug("Failed to preload data: \(error)")
 
                         guard let self = self else { return }
 
@@ -415,7 +415,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
                         // If token expired or session expired, auto-logout and attempt re-auth
                         if isTokenExpired || isUserNotFound || isSessionExpired {
-                            print("🚪 SceneDelegate: Token/session expired - auto-logging out and attempting re-auth")
+                            Logger.debug("🚪 SceneDelegate: Token/session expired - auto-logging out and attempting re-auth")
                             self.handleAutoLogoutAndReauth()
                         } else {
                             // For other errors, show an alert with retry option.
@@ -446,7 +446,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                                 )
 
                                 alert.addAction(UIAlertAction(title: "Retry", style: .default) { _ in
-                                    print("🔄 User chose to retry from preload error")
+                                    Logger.debug("🔄 User chose to retry from preload error")
                                     self.updateRootViewController(isLoggedIn: true)
                                 })
 
@@ -478,13 +478,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     
     // Public method to handle URLs from AppDelegate
     func handleURLContext(_ url: URL) {
-        print("📱 SceneDelegate: handleURLContext called with URL: \(url.absoluteString)")
+        Logger.debug("📱 SceneDelegate: handleURLContext called with URL: \(url.absoluteString)")
         handleDeepLink(url)
     }
     
     private func handleUniversalLink(_ url: URL) {
         // Handle Universal Links from our backend
-        print("📱 SceneDelegate: Processing Universal Link with path: \(url.path)")
+        Logger.debug("📱 SceneDelegate: Processing Universal Link with path: \(url.path)")
         
         let pathComponents = url.pathComponents.filter { $0 != "/" }
         
@@ -517,7 +517,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     handleConnectionInvite(from: userId)
                 }
             default:
-                print("📱 SceneDelegate: Unknown app path: \(appPath)")
+                Logger.debug("📱 SceneDelegate: Unknown app path: \(appPath)")
             }
         } else if pathComponents.first == "daily-summary" {
             navigateToDailySummary()
@@ -583,34 +583,34 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     private func handleDeepLink(_ url: URL) {
         // Parse the URL and navigate to the appropriate screen
         guard url.scheme == "circles" else {
-            print("📱 SceneDelegate: URL scheme '\(url.scheme ?? "nil")' is not 'circles', returning")
+            Logger.debug("📱 SceneDelegate: URL scheme '\(url.scheme ?? "nil")' is not 'circles', returning")
             return
         }
         
-        print("📱 SceneDelegate: Processing deep link with path: \(url.path)")
-        print("📱 SceneDelegate: Path components: \(url.pathComponents)")
-        print("📱 SceneDelegate: Path components count: \(url.pathComponents.count)")
+        Logger.debug("📱 SceneDelegate: Processing deep link with path: \(url.path)")
+        Logger.debug("📱 SceneDelegate: Path components: \(url.pathComponents)")
+        Logger.debug("📱 SceneDelegate: Path components count: \(url.pathComponents.count)")
         
         // Handle different path components
         let components = url.pathComponents
         
         // Log each component for debugging
         for (index, component) in components.enumerated() {
-            print("📱 SceneDelegate: Component[\(index)]: '\(component)'")
+            Logger.debug("📱 SceneDelegate: Component[\(index)]: '\(component)'")
         }
         
         // Handle deep linking after app is fully loaded
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            print("📱 SceneDelegate: Inside dispatch queue, processing components")
+            Logger.debug("📱 SceneDelegate: Inside dispatch queue, processing components")
             
             // First check if this is a host-based URL format (e.g., circles://connect/userId)
             if url.host == "connect" {
                 // Handle circles://connect/userId format where "connect" is the host
-                print("📱 SceneDelegate: Detected 'connect' as host")
+                Logger.debug("📱 SceneDelegate: Detected 'connect' as host")
                 let userId = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-                print("📱 SceneDelegate: Extracted userId from path: \(userId)")
+                Logger.debug("📱 SceneDelegate: Extracted userId from path: \(userId)")
                 if !userId.isEmpty {
-                    print("📱 SceneDelegate: Calling handleConnectionInvite with userId: \(userId)")
+                    Logger.debug("📱 SceneDelegate: Calling handleConnectionInvite with userId: \(userId)")
                     self.handleConnectionInvite(from: userId)
                     return
                 }
@@ -618,11 +618,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             
             // Handle video deep links (e.g., circles://video/[videoId])
             if url.host == "video" {
-                print("📱 SceneDelegate: Detected 'video' as host")
+                Logger.debug("📱 SceneDelegate: Detected 'video' as host")
                 let videoId = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-                print("📱 SceneDelegate: Extracted videoId from path: \(videoId)")
+                Logger.debug("📱 SceneDelegate: Extracted videoId from path: \(videoId)")
                 if !videoId.isEmpty {
-                    print("📱 SceneDelegate: Calling handleVideoDeepLink with videoId: \(videoId)")
+                    Logger.debug("📱 SceneDelegate: Calling handleVideoDeepLink with videoId: \(videoId)")
                     self.handleVideoDeepLink(videoId: videoId)
                     return
                 }
@@ -630,10 +630,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             
             // Handle referral deep links (e.g., circles://referral?code=ABC123)
             if url.host == "referral" {
-                print("📱 SceneDelegate: Detected 'referral' as host")
+                Logger.debug("📱 SceneDelegate: Detected 'referral' as host")
                 if let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
                    let code = urlComponents.queryItems?.first(where: { $0.name == "code" })?.value {
-                    print("📱 SceneDelegate: Found referral code: \(code)")
+                    Logger.debug("📱 SceneDelegate: Found referral code: \(code)")
                     self.handleReferralCode(code)
                     return
                 }
@@ -642,10 +642,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             // Handle sticker deep links (e.g., circles://sticker?code=AB12CD)
             // used by the sticker landing page fallback for in-app browsers
             if url.host == "sticker" {
-                print("📱 SceneDelegate: Detected 'sticker' as host")
+                Logger.debug("📱 SceneDelegate: Detected 'sticker' as host")
                 if let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
                    let code = urlComponents.queryItems?.first(where: { $0.name == "code" })?.value {
-                    print("📱 SceneDelegate: Found sticker code: \(code)")
+                    Logger.debug("📱 SceneDelegate: Found sticker code: \(code)")
                     self.handleStickerCode(code)
                     return
                 }
@@ -653,7 +653,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
             // Handle daily summary deep link (e.g., circles://daily-summary)
             if url.host == "daily-summary" {
-                print("📱 SceneDelegate: Detected 'daily-summary' deep link")
+                Logger.debug("📱 SceneDelegate: Detected 'daily-summary' deep link")
                 self.navigateToDailySummary()
                 return
             }
@@ -661,28 +661,28 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             // Handle network deep link (e.g., circles://network) — used by the
             // connection-accepted email's "View Connection" button
             if url.host == "network" {
-                print("📱 SceneDelegate: Detected 'network' deep link")
+                Logger.debug("📱 SceneDelegate: Detected 'network' deep link")
                 self.navigateToMyNetwork()
                 return
             }
             
             // Handle settings/notifications deep link (e.g., circles://settings/notifications)
             if url.host == "settings" && url.path == "/notifications" {
-                print("📱 SceneDelegate: Detected 'settings/notifications' deep link")
+                Logger.debug("📱 SceneDelegate: Detected 'settings/notifications' deep link")
                 self.navigateToNotificationSettings()
                 return
             }
             
             // Handle circle deep links with share tokens (e.g., circles://circle/circleId?share=shareToken)
             if url.host == "circle" {
-                print("📱 SceneDelegate: Detected 'circle' as host")
+                Logger.debug("📱 SceneDelegate: Detected 'circle' as host")
                 let circleId = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-                print("📱 SceneDelegate: Extracted circleId from path: \(circleId)")
+                Logger.debug("📱 SceneDelegate: Extracted circleId from path: \(circleId)")
                 
                 // Check for share token in query parameters
                 if let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
                    let shareToken = urlComponents.queryItems?.first(where: { $0.name == "share" })?.value {
-                    print("📱 SceneDelegate: Found share token: \(shareToken)")
+                    Logger.debug("📱 SceneDelegate: Found share token: \(shareToken)")
                     self.handleSharedCircleWithToken(circleId: circleId, shareToken: shareToken)
                     return
                 } else if !circleId.isEmpty {
@@ -701,7 +701,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     // Check for share token in query parameters
                     if let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
                        let shareToken = urlComponents.queryItems?.first(where: { $0.name == "share" })?.value {
-                        print("📱 SceneDelegate: Found share token in path format: \(shareToken)")
+                        Logger.debug("📱 SceneDelegate: Found share token in path format: \(shareToken)")
                         self.handleSharedCircleWithToken(circleId: circleId, shareToken: shareToken)
                     } else {
                         self.navigateToCircle(circleId: circleId)
@@ -723,7 +723,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 } else if components[1] == "connect" && components.count >= 3 {
                     // Example: circles:///connect/user_123 (with triple slash)
                     let userId = components[2]
-                    print("📱 SceneDelegate: Handling connection invite from user: \(userId)")
+                    Logger.debug("📱 SceneDelegate: Handling connection invite from user: \(userId)")
                     self.handleConnectionInvite(from: userId)
                 }
             }
@@ -1035,7 +1035,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Check for any pending notifications or updates
         if AuthService.shared.isLoggedIn {
             // Clear notification badge when user opens the app
-            print("🔔 SceneDelegate: Clearing notification badge on app activation")
+            Logger.debug("🔔 SceneDelegate: Clearing notification badge on app activation")
             NotificationService.shared.clearBadge()
 
             // Record the app open (throttled inside the service)
@@ -1043,28 +1043,28 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             
             // Proactively check and refresh token if needed
             if AuthService.shared.isTokenExpired() {
-                print("🔄 SceneDelegate: Token expired, attempting in-place refresh on scene activation")
+                Logger.debug("🔄 SceneDelegate: Token expired, attempting in-place refresh on scene activation")
                 // Refresh in place; only a definitive server rejection logs out
                 revalidateExpiredTokenNonDestructively()
             }
             
             // Ensure push token is registered
             if let fcmToken = UserDefaults.standard.string(forKey: "FCMToken") {
-                print("🎬 ===== SCENE ACTIVE - TOKEN CHECK =====")
-                print("🎬 Scene became active at: \(Date())")
-                print("🎬 Found saved FCM token: \(fcmToken.prefix(20))...")
-                print("🎬 Re-registering token with backend to ensure it's current")
+                Logger.debug("🎬 ===== SCENE ACTIVE - TOKEN CHECK =====")
+                Logger.debug("🎬 Scene became active at: \(Date())")
+                Logger.debug("🎬 Found saved FCM token: \(fcmToken.prefix(20))...")
+                Logger.debug("🎬 Re-registering token with backend to ensure it's current")
                 NotificationService.shared.registerDeviceToken(fcmToken)
             } else {
-                print("🎬 ===== SCENE ACTIVE - NO TOKEN =====")
-                print("🎬 Scene became active, but no FCM token saved")
-                print("🎬 Requesting new FCM token...")
+                Logger.debug("🎬 ===== SCENE ACTIVE - NO TOKEN =====")
+                Logger.debug("🎬 Scene became active, but no FCM token saved")
+                Logger.debug("🎬 Requesting new FCM token...")
                 Messaging.messaging().token { token, error in
                     if let token = token {
-                        print("🎬 Got new FCM token: \(token.prefix(20))...")
+                        Logger.debug("🎬 Got new FCM token: \(token.prefix(20))...")
                         NotificationService.shared.registerDeviceToken(token)
                     } else if let error = error {
-                        print("🎬 Failed to get FCM token: \(error)")
+                        Logger.debug("🎬 Failed to get FCM token: \(error)")
                     }
                 }
             }
@@ -1075,13 +1075,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
     
     private func handleConnectionInvite(from userId: String) {
-        print("📱 SceneDelegate: handleConnectionInvite called with userId: \(userId)")
-        print("📱 SceneDelegate: Current user logged in: \(AuthService.shared.isLoggedIn)")
-        print("📱 SceneDelegate: Current user ID: \(AuthService.shared.getUserId() ?? "nil")")
+        Logger.debug("📱 SceneDelegate: handleConnectionInvite called with userId: \(userId)")
+        Logger.debug("📱 SceneDelegate: Current user logged in: \(AuthService.shared.isLoggedIn)")
+        Logger.debug("📱 SceneDelegate: Current user ID: \(AuthService.shared.getUserId() ?? "nil")")
         
         // If user is not logged in, store the connection invite and prompt login
         guard AuthService.shared.isLoggedIn else {
-            print("📱 SceneDelegate: User not logged in, storing pending connection invite")
+            Logger.debug("📱 SceneDelegate: User not logged in, storing pending connection invite")
             // Store both as pending deep link and specific connection invite
             UserDefaults.standard.set("connect:\(userId)", forKey: "pendingDeepLink")
             NetworkManager.storePendingConnectionInvite(userId: userId)
@@ -1104,13 +1104,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         
         // Handle the connection invite
-        print("📱 SceneDelegate: About to call NetworkManager.handleConnectionInvite")
+        Logger.debug("📱 SceneDelegate: About to call NetworkManager.handleConnectionInvite")
         NetworkManager.shared.handleConnectionInvite(from: userId) { [weak self] result in
-            print("📱 SceneDelegate: NetworkManager.handleConnectionInvite callback received")
+            Logger.debug("📱 SceneDelegate: NetworkManager.handleConnectionInvite callback received")
             DispatchQueue.main.async {
                 switch result {
                 case .success(let connection):
-                    print("📱 SceneDelegate: Connection successful! Connection ID: \(connection.id), Status: \(connection.status)")
+                    Logger.debug("📱 SceneDelegate: Connection successful! Connection ID: \(connection.id), Status: \(connection.status)")
                     // Refresh connections list to ensure UI is updated
                     NetworkManager.shared.loadConnections()
                     
@@ -1158,7 +1158,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     }
                     
                 case .failure(let error):
-                    print("📱 SceneDelegate: Connection failed with error: \(error)")
+                    Logger.debug("📱 SceneDelegate: Connection failed with error: \(error)")
                     // Show error alert
                     let errorMessage: String
                     if error.localizedDescription.contains("Already connected") {
@@ -1405,13 +1405,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         if AuthService.shared.isLoggedIn {
             // Refresh if token is expired or will expire soon
             if AuthService.shared.shouldRefreshToken() {
-                print("🎬 Token needs refresh on foreground, refreshing...")
+                Logger.debug("🎬 Token needs refresh on foreground, refreshing...")
                 AuthService.shared.refreshToken { result in
                     switch result {
                     case .success:
-                        print("🎬 Token refreshed successfully on foreground")
+                        Logger.debug("🎬 Token refreshed successfully on foreground")
                     case .failure(let error):
-                        print("🎬 Token refresh failed on foreground: \(error)")
+                        Logger.debug("🎬 Token refresh failed on foreground: \(error)")
                     }
                 }
             }
@@ -1426,11 +1426,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     // MARK: - Referral Code Handling
     
     private func handleReferralCode(_ code: String) {
-        print("📱 SceneDelegate: handleReferralCode called with code: \(code)")
+        Logger.debug("📱 SceneDelegate: handleReferralCode called with code: \(code)")
         
         // If user is not logged in, save the code for later
         guard AuthService.shared.isLoggedIn else {
-            print("📱 SceneDelegate: User not logged in, saving referral code for later")
+            Logger.debug("📱 SceneDelegate: User not logged in, saving referral code for later")
             ReferralService.shared.savePendingReferralCode(code)
             
             // Show alert prompting user to sign up
@@ -1452,7 +1452,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         
         // If user is logged in, check if they've already used a referral code
         if ReferralService.shared.hasUsedReferralCode() {
-            print("📱 SceneDelegate: User has already used a referral code")
+            Logger.debug("📱 SceneDelegate: User has already used a referral code")
             
             let alert = UIAlertController(
                 title: "Referral Code",
@@ -1509,12 +1509,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     // MARK: - Sticker Code Handling
 
     private func handleStickerCode(_ code: String) {
-        print("📱 SceneDelegate: handleStickerCode called with code: \(code)")
+        Logger.debug("📱 SceneDelegate: handleStickerCode called with code: \(code)")
 
         // If the user is not logged in, save the code — it's redeemed right
         // after signup/login via runPostLaunchSideEffects (all auth routes)
         guard AuthService.shared.isLoggedIn else {
-            print("📱 SceneDelegate: User not logged in, saving sticker code for later")
+            Logger.debug("📱 SceneDelegate: User not logged in, saving sticker code for later")
             RewardsService.shared.savePendingStickerCode(code)
 
             let alert = UIAlertController(
@@ -1544,7 +1544,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
               let code = RewardsService.shared.getPendingStickerCode() else { return }
 
         RewardsService.shared.clearPendingStickerCode()
-        print("📱 SceneDelegate: Redeeming pending sticker code: \(code)")
+        Logger.debug("📱 SceneDelegate: Redeeming pending sticker code: \(code)")
 
         // Give the main interface (and any onboarding modals) a moment to settle
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
@@ -1555,11 +1555,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     // MARK: - Video Deep Link Handling
     
     private func handleVideoDeepLink(videoId: String) {
-        print("📱 SceneDelegate: handleVideoDeepLink called with videoId: \(videoId)")
+        Logger.debug("📱 SceneDelegate: handleVideoDeepLink called with videoId: \(videoId)")
         
         // If user is not logged in, store the video link and prompt login
         guard AuthService.shared.isLoggedIn else {
-            print("📱 SceneDelegate: User not logged in, storing pending video link")
+            Logger.debug("📱 SceneDelegate: User not logged in, storing pending video link")
             UserDefaults.standard.set("video:\(videoId)", forKey: "pendingDeepLink")
             
             // Show alert prompting user to login
@@ -1620,7 +1620,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     navController.pushViewController(videoReelsVC, animated: true)
                     
                 case .failure(let error):
-                    print("Failed to load video: \(error)")
+                    Logger.debug("Failed to load video: \(error)")
                     let alert = UIAlertController(
                         title: "Video Not Found",
                         message: "Unable to load the requested video",
@@ -1647,7 +1647,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         let summaryVC = DailySummaryViewController()
         tabBarController.present(summaryVC, animated: true)
 
-        print("📱 SceneDelegate: Presented DailySummaryViewController from daily-summary deep link")
+        Logger.debug("📱 SceneDelegate: Presented DailySummaryViewController from daily-summary deep link")
     }
 
     /// Switch to the My Network tab (tab order: 0 Home, 1 My Network, 2 Messages, 3 Me)
@@ -1660,7 +1660,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
 
         tabBarController.selectedIndex = 1
-        print("📱 SceneDelegate: Switched to My Network tab from network deep link")
+        Logger.debug("📱 SceneDelegate: Switched to My Network tab from network deep link")
     }
     
     // MARK: - Notification Settings Navigation
@@ -1704,7 +1704,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
     
     @objc private func handleShowLoginForPromotedPurchase() {
-        print("💎 SceneDelegate: Showing login for promoted purchase")
+        Logger.debug("💎 SceneDelegate: Showing login for promoted purchase")
         
         DispatchQueue.main.async { [weak self] in
             // Show login screen
@@ -1720,7 +1720,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
                 // Present login
                 topController.present(loginVC, animated: true) {
-                    print("💎 Login screen presented for promoted purchase")
+                    Logger.debug("💎 Login screen presented for promoted purchase")
                 }
             }
         }
@@ -1739,11 +1739,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     /// Handles automatic logout after max retry attempts and attempts to re-authenticate for social auth users
     private func handleAutoLogoutAndReauth() {
-        print("🔐 SceneDelegate: Handling auto-logout and re-authentication")
+        Logger.debug("🔐 SceneDelegate: Handling auto-logout and re-authentication")
 
         // Get the auth provider before logging out
         let authProvider = AuthService.shared.getAuthProvider()
-        print("🔐 SceneDelegate: Auth provider: \(authProvider ?? "none")")
+        Logger.debug("🔐 SceneDelegate: Auth provider: \(authProvider ?? "none")")
 
         // Show a loading message
         DispatchQueue.main.async { [weak self] in
@@ -1753,12 +1753,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             if let provider = authProvider, provider == "email" {
                 // For email/password users, check if biometric is enabled
                 if BiometricAuthService.shared.isBiometricLoginEnabled {
-                    print("🔐 SceneDelegate: Email user with biometric enabled - attempting biometric re-auth")
+                    Logger.debug("🔐 SceneDelegate: Email user with biometric enabled - attempting biometric re-auth")
                     self.attemptEmailBiometricReauth()
                 } else {
                     // No biometric - try silent re-login with saved credentials
                     // before falling back to the login screen
-                    print("🔐 SceneDelegate: Email/password user - attempting silent re-login")
+                    Logger.debug("🔐 SceneDelegate: Email/password user - attempting silent re-login")
                     self.attemptSilentCredentialReauth()
                 }
             } else if let provider = authProvider {
@@ -1766,10 +1766,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 self.attemptSilentReauth(provider: provider)
             } else {
                 // No auth provider, just logout
-                print("🔐 SceneDelegate: No auth provider - logging out")
+                Logger.debug("🔐 SceneDelegate: No auth provider - logging out")
                 AuthService.shared.logout { success in
                     if success {
-                        print("🔐 SceneDelegate: Logout successful, showing login screen")
+                        Logger.debug("🔐 SceneDelegate: Logout successful, showing login screen")
                     }
                 }
             }
@@ -1778,7 +1778,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     /// Attempts silent re-authentication for social auth providers
     private func attemptSilentReauth(provider: String) {
-        print("🔐 SceneDelegate: Attempting silent re-authentication for provider: \(provider)")
+        Logger.debug("🔐 SceneDelegate: Attempting silent re-authentication for provider: \(provider)")
 
         // Show a temporary loading message
         var loadingAlert: UIAlertController?
@@ -1805,7 +1805,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     case "facebook":
                         self.attemptFacebookReauth()
                     default:
-                        print("🔐 SceneDelegate: No silent re-auth available for provider: \(provider)")
+                        Logger.debug("🔐 SceneDelegate: No silent re-auth available for provider: \(provider)")
                         // Just show login screen
                     }
                 }
@@ -1820,7 +1820,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     /// Attempts to silently re-authenticate with Google
     private func attemptGoogleReauth() {
-        print("🔐 SceneDelegate: Attempting Google re-authentication")
+        Logger.debug("🔐 SceneDelegate: Attempting Google re-authentication")
 
         // Show a loading indicator
         DispatchQueue.main.async { [weak self] in
@@ -1840,12 +1840,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     let handleResult = {
                         switch result {
                         case .success:
-                            print("🔐 SceneDelegate: Google session restored and logged in successfully")
+                            Logger.debug("🔐 SceneDelegate: Google session restored and logged in successfully")
                             // The session is restored and login was triggered
                             // The auth state listener will handle showing the main interface
 
                         case .failure(let error):
-                            print("🔐 SceneDelegate: Google re-auth failed: \(error)")
+                            Logger.debug("🔐 SceneDelegate: Google re-auth failed: \(error)")
                             // Show a message to the user
                             self?.showReauthFailedMessage()
                         }
@@ -1862,7 +1862,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     /// Attempts to silently re-authenticate with Apple
     private func attemptAppleReauth() {
-        print("🔐 SceneDelegate: Apple re-auth not implemented - showing login screen")
+        Logger.debug("🔐 SceneDelegate: Apple re-auth not implemented - showing login screen")
         // Apple Sign In doesn't support silent re-authentication
         // User needs to manually sign in again
         showReauthFailedMessage()
@@ -1870,7 +1870,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     /// Attempts to silently re-authenticate with Facebook
     private func attemptFacebookReauth() {
-        print("🔐 SceneDelegate: Facebook re-auth not implemented - showing login screen")
+        Logger.debug("🔐 SceneDelegate: Facebook re-auth not implemented - showing login screen")
         // Facebook re-auth would need to check if there's an active token
         // For now, just show login screen
         showReauthFailedMessage()
@@ -1879,24 +1879,24 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// Attempts a silent re-login with credentials saved in the keychain (no biometric required)
     private func attemptSilentCredentialReauth() {
         guard let credentials = KeychainManager.shared.retrieveCredentials() else {
-            print("🔐 SceneDelegate: No saved credentials - logging out")
+            Logger.debug("🔐 SceneDelegate: No saved credentials - logging out")
             AuthService.shared.logout { success in
                 if success {
-                    print("🔐 SceneDelegate: Logout successful, showing login screen")
+                    Logger.debug("🔐 SceneDelegate: Logout successful, showing login screen")
                 }
             }
             return
         }
 
-        print("🔐 SceneDelegate: Found saved credentials, attempting silent re-login")
+        Logger.debug("🔐 SceneDelegate: Found saved credentials, attempting silent re-login")
         AuthService.shared.login(email: credentials.email, password: credentials.password) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success:
-                    print("🔐 SceneDelegate: Silent re-login successful")
+                    Logger.debug("🔐 SceneDelegate: Silent re-login successful")
                     // Auth state listener will refresh the UI
                 case .failure(let error):
-                    print("🔐 SceneDelegate: Silent re-login failed: \(error) - logging out")
+                    Logger.debug("🔐 SceneDelegate: Silent re-login failed: \(error) - logging out")
                     AuthService.shared.logout { _ in }
                     self?.showReauthFailedMessage()
                 }
@@ -1906,7 +1906,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     /// Attempts to re-authenticate email/password user with biometric
     private func attemptEmailBiometricReauth() {
-        print("🔐 SceneDelegate: Attempting email biometric re-authentication")
+        Logger.debug("🔐 SceneDelegate: Attempting email biometric re-authentication")
 
         // Show a loading message
         DispatchQueue.main.async { [weak self] in
@@ -1942,23 +1942,23 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     )
 
                     guard let credentials = credentials else {
-                        print("🔐 SceneDelegate: Failed to retrieve credentials with biometric")
+                        Logger.debug("🔐 SceneDelegate: Failed to retrieve credentials with biometric")
                         finish {
                             self.showReauthFailedMessage()
                         }
                         return
                     }
 
-                    print("🔐 SceneDelegate: Retrieved credentials with biometric, attempting login")
+                    Logger.debug("🔐 SceneDelegate: Retrieved credentials with biometric, attempting login")
                     AuthService.shared.login(email: credentials.email, password: credentials.password) { [weak self] result in
                         finish {
                             switch result {
                             case .success:
-                                print("🔐 SceneDelegate: Email biometric re-auth successful")
+                                Logger.debug("🔐 SceneDelegate: Email biometric re-auth successful")
                                 // Auth state listener will handle showing main interface
 
                             case .failure(let error):
-                                print("🔐 SceneDelegate: Email biometric re-auth failed: \(error)")
+                                Logger.debug("🔐 SceneDelegate: Email biometric re-auth failed: \(error)")
                                 self?.showReauthFailedMessage()
                             }
                         }

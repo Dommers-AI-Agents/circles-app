@@ -260,7 +260,7 @@ class SuggestionDetailViewController: BaseViewController {
                     self.comments = comments
                     self.updateTableViewHeight()
                 case .failure(let error):
-                    print("Error loading comments: \(error)")
+                    Logger.debug("Error loading comments: \(error)")
                 }
             }
         }
@@ -306,7 +306,7 @@ class SuggestionDetailViewController: BaseViewController {
                     self.loadComments()
                     
                 case .failure(let error):
-                    print("Error posting comment: \(error)")
+                    Logger.debug("Error posting comment: \(error)")
                     // Re-enable send button on error
                     self.sendButton.isEnabled = true
                     

@@ -142,7 +142,7 @@ class VideoReelsViewController: UIViewController {
         
         guard let urlString = reel.videoUrl ?? reel.previewUrl,
               let url = URL(string: urlString) else { 
-            print("❌ VideoReels: Invalid video URL for reel \(reel.id)")
+            Logger.debug("❌ VideoReels: Invalid video URL for reel \(reel.id)")
             return 
         }
         
@@ -167,11 +167,11 @@ class VideoReelsViewController: UIViewController {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
             try AVAudioSession.sharedInstance().setActive(true)
         } catch {
-            print("❌ VideoReels: Failed to setup audio session: \(error)")
+            Logger.debug("❌ VideoReels: Failed to setup audio session: \(error)")
         }
         
         players[index] = player
-        print("✅ VideoReels: Loaded video for index \(index)")
+        Logger.debug("✅ VideoReels: Loaded video for index \(index)")
     }
     
     private func playCurrentVideo() {
@@ -190,13 +190,13 @@ class VideoReelsViewController: UIViewController {
             // Check if player is ready
             if player.currentItem?.status == .readyToPlay {
                 player.play()
-                print("✅ VideoReels: Playing video at index \(currentIndex)")
+                Logger.debug("✅ VideoReels: Playing video at index \(currentIndex)")
             } else {
-                print("⏳ VideoReels: Player not ready at index \(currentIndex), waiting...")
+                Logger.debug("⏳ VideoReels: Player not ready at index \(currentIndex), waiting...")
                 // Will play when ready via KVO observer
             }
         } else {
-            print("📥 VideoReels: Loading video at index \(currentIndex)")
+            Logger.debug("📥 VideoReels: Loading video at index \(currentIndex)")
             loadVideo(at: currentIndex)
         }
         
@@ -229,7 +229,7 @@ class VideoReelsViewController: UIViewController {
         ) { (result: Result<SimpleAPIResponse, APIError>) in
             // Silent tracking, no need to handle response
             if case .failure(let error) = result {
-                print("❌ VideoReels: Failed to track view: \(error)")
+                Logger.debug("❌ VideoReels: Failed to track view: \(error)")
             }
         }
     }
@@ -260,12 +260,12 @@ class VideoReelsViewController: UIViewController {
                 for (index, player) in players where player.currentItem == playerItem {
                     if index == currentIndex {
                         player.play()
-                        print("✅ VideoReels: Auto-playing video at index \(index) after ready")
+                        Logger.debug("✅ VideoReels: Auto-playing video at index \(index) after ready")
                     }
                     break
                 }
             case .failed:
-                print("❌ VideoReels: Player item failed: \(playerItem.error?.localizedDescription ?? "Unknown error")")
+                Logger.debug("❌ VideoReels: Player item failed: \(playerItem.error?.localizedDescription ?? "Unknown error")")
             default:
                 break
             }
@@ -378,7 +378,7 @@ extension VideoReelsViewController: VideoReelCellDelegate {
                         cell.configure(with: reel, player: self.players[indexPath.item])
                     }
                     
-                    print("Failed to update like: \(error)")
+                    Logger.debug("Failed to update like: \(error)")
                 }
             }
         }
@@ -462,7 +462,7 @@ extension VideoReelsViewController: VideoReelCellDelegate {
             guard let window = UIApplication.shared.windows.first,
                   let rootVC = window.rootViewController as? UITabBarController,
                   let navController = rootVC.selectedViewController as? UINavigationController else {
-                print("❌ VideoReelsViewController: Unable to find navigation controller")
+                Logger.debug("❌ VideoReelsViewController: Unable to find navigation controller")
                 return
             }
             
@@ -471,7 +471,7 @@ extension VideoReelsViewController: VideoReelCellDelegate {
             profileVC.configureWith(user: user)
             navController.pushViewController(profileVC, animated: true)
             
-            print("✅ VideoReelsViewController: Navigating to profile for user: \(user.displayName)")
+            Logger.debug("✅ VideoReelsViewController: Navigating to profile for user: \(user.displayName)")
         }
     }
     
@@ -489,7 +489,7 @@ extension VideoReelsViewController: VideoReelCellDelegate {
                 guard let window = UIApplication.shared.windows.first,
                       let rootVC = window.rootViewController as? UITabBarController,
                       let navController = rootVC.selectedViewController as? UINavigationController else {
-                    print("❌ VideoReelsViewController: Unable to find navigation controller for place")
+                    Logger.debug("❌ VideoReelsViewController: Unable to find navigation controller for place")
                     return
                 }
                 
@@ -523,10 +523,10 @@ extension VideoReelsViewController: VideoReelCellDelegate {
                                     // Create and push place detail view controller
                                     let placeDetailVC = PlaceDetailViewController(place: response.place, circle: nil)
                                     navController.pushViewController(placeDetailVC, animated: true)
-                                    print("✅ VideoReelsViewController: Navigating to place: \(reel.placeName)")
+                                    Logger.debug("✅ VideoReelsViewController: Navigating to place: \(reel.placeName)")
                                 }
                             case .failure(let error):
-                                print("❌ VideoReelsViewController: Failed to fetch place details: \(error)")
+                                Logger.debug("❌ VideoReelsViewController: Failed to fetch place details: \(error)")
                                 // Show error alert
                                 let errorAlert = UIAlertController(
                                     title: "Error",
@@ -540,7 +540,7 @@ extension VideoReelsViewController: VideoReelCellDelegate {
                     }
                 }
                 
-                print("📍 VideoReelsViewController: Fetching place details for: \(reel.placeName)")
+                Logger.debug("📍 VideoReelsViewController: Fetching place details for: \(reel.placeName)")
             }
         }
     }
@@ -551,7 +551,7 @@ extension VideoReelsViewController: VideoReelCellDelegate {
         
         // Check if video has an activity
         guard let activityId = reel.activityId else {
-            print("No activity found for this video")
+            Logger.debug("No activity found for this video")
             return
         }
         
@@ -585,7 +585,7 @@ extension VideoReelsViewController: VideoReelCellDelegate {
         
         // Check if video has an activity
         guard let activityId = reel.activityId else {
-            print("No activity found for this video")
+            Logger.debug("No activity found for this video")
             return
         }
         
@@ -635,7 +635,7 @@ extension VideoReelsViewController: VideoReelCellDelegate {
                 case .success(let response):
                     self?.presentActivityEngagement(response.data)
                 case .failure(let error):
-                    print("Failed to fetch activity: \(error)")
+                    Logger.debug("Failed to fetch activity: \(error)")
                 }
             }
         }
@@ -685,7 +685,7 @@ extension VideoReelsViewController: ReactionPickerDelegate {
             body: body
         ) { (result: Result<SimpleAPIResponse, APIError>) in
             if case .failure(let error) = result {
-                print("Failed to add reaction: \(error)")
+                Logger.debug("Failed to add reaction: \(error)")
                 // Could revert the optimistic update here
             }
         }

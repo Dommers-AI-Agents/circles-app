@@ -313,12 +313,12 @@ class PaywallViewController: BaseViewController {
                     self?.setupSubscriptionOptions()
                     
                     // Log the error for debugging
-                    print("❌ Failed to load subscription products: \(error)")
-                    print("❌ Error details: \(error.localizedDescription)")
+                    Logger.debug("❌ Failed to load subscription products: \(error)")
+                    Logger.debug("❌ Error details: \(error.localizedDescription)")
                     if let nsError = error as NSError? {
-                        print("❌ Error domain: \(nsError.domain)")
-                        print("❌ Error code: \(nsError.code)")
-                        print("❌ Error userInfo: \(nsError.userInfo)")
+                        Logger.debug("❌ Error domain: \(nsError.domain)")
+                        Logger.debug("❌ Error code: \(nsError.code)")
+                        Logger.debug("❌ Error userInfo: \(nsError.userInfo)")
                     }
                 }
             }
@@ -326,7 +326,7 @@ class PaywallViewController: BaseViewController {
     }
     
     @objc private func retryLoadingProducts() {
-        print("🔄 Retrying to load subscription products...")
+        Logger.debug("🔄 Retrying to load subscription products...")
         loadProducts()
     }
     
@@ -570,7 +570,7 @@ class PaywallViewController: BaseViewController {
     @objc private func purchaseTapped() {
         // Check if products are available
         if products.isEmpty {
-            print("⚠️ No products available for purchase")
+            Logger.debug("⚠️ No products available for purchase")
             // The UI already shows retry option, don't show another alert
             return
         }
@@ -595,7 +595,7 @@ class PaywallViewController: BaseViewController {
                     self?.hideLoadingState()
                     
                     if transaction != nil {
-                        print("✅ Subscription purchase successful!")
+                        Logger.debug("✅ Subscription purchase successful!")
                         AlertPresenter.showSuccess(
                             title: "Welcome to Circles Premium! 🎉",
                             message: "Enjoy unlimited access to all features.",
@@ -604,7 +604,7 @@ class PaywallViewController: BaseViewController {
                         self?.dismiss(animated: true)
                     } else {
                         // User cancelled
-                        print("ℹ️ User cancelled subscription purchase")
+                        Logger.debug("ℹ️ User cancelled subscription purchase")
                         self?.purchaseButton.isEnabled = true
                     }
                 }
@@ -616,7 +616,7 @@ class PaywallViewController: BaseViewController {
                     self.purchaseButton.isEnabled = true
                     
                     // Log the error
-                    print("❌ Subscription purchase failed: \(error)")
+                    Logger.debug("❌ Subscription purchase failed: \(error)")
                     
                     // Show user-friendly error message
                     if let skError = error as? StoreKitError {

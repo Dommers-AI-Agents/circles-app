@@ -122,7 +122,7 @@ class ConversationsListViewController: UIViewController {
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
-        print("🔍 ConversationsListViewController: viewDidLoad called")
+        Logger.debug("🔍 ConversationsListViewController: viewDidLoad called")
         setupView()
         setupTableView()
         setupEmptyState()
@@ -140,21 +140,21 @@ class ConversationsListViewController: UIViewController {
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        print("🔍 ConversationsListViewController: viewWillAppear called")
-        print("🔍 ConversationsListViewController: Auth token available: \(AuthService.shared.getToken() != nil)")
-        print("🔍 ConversationsListViewController: Initial load complete: \(isInitialLoadComplete)")
+        Logger.debug("🔍 ConversationsListViewController: viewWillAppear called")
+        Logger.debug("🔍 ConversationsListViewController: Auth token available: \(AuthService.shared.getToken() != nil)")
+        Logger.debug("🔍 ConversationsListViewController: Initial load complete: \(isInitialLoadComplete)")
         
         // Notify MessagingManager that Messages tab is active
         messagingManager.setMessagesTabActive(true)
         
         // Always load conversations if we have a token
         if AuthService.shared.getToken() != nil {
-            print("🔍 ConversationsListViewController: Token exists, ensuring initialized and loading conversations")
+            Logger.debug("🔍 ConversationsListViewController: Token exists, ensuring initialized and loading conversations")
             messagingManager.ensureInitialized()
             
             // Show loading indicator on first load
             if !isInitialLoadComplete {
-                print("🔍 ConversationsListViewController: First load - showing loading indicator")
+                Logger.debug("🔍 ConversationsListViewController: First load - showing loading indicator")
                 showLoadingIndicator()
             }
             
@@ -169,7 +169,7 @@ class ConversationsListViewController: UIViewController {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                     guard let self = self else { return }
                     let loadDuration = Date().timeIntervalSince(loadStartTime)
-                    print("🔍 ConversationsListViewController: Initial load completed in \(loadDuration) seconds")
+                    Logger.debug("🔍 ConversationsListViewController: Initial load completed in \(loadDuration) seconds")
                     self.isInitialLoadComplete = true
                     self.hideLoadingIndicator()
                 }
@@ -346,13 +346,13 @@ class ConversationsListViewController: UIViewController {
             
             // Always update empty state and UI, even if loading
             let conversations = self.messagingManager.conversations
-            print("🔍 ConversationsListViewController: Polling update - \(conversations.count) conversations")
+            Logger.debug("🔍 ConversationsListViewController: Polling update - \(conversations.count) conversations")
             
             // If we've been loading for more than 10 seconds, force hide loading
             if self.messagingManager.isLoadingConversations && self.isInitialLoadComplete {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) {
                     if self.messagingManager.isLoadingConversations {
-                        print("⚠️ ConversationsListViewController: Force hiding loading after timeout")
+                        Logger.debug("⚠️ ConversationsListViewController: Force hiding loading after timeout")
                         self.hideLoadingIndicator()
                     }
                 }
@@ -375,14 +375,14 @@ class ConversationsListViewController: UIViewController {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
-            print("🔍 ConversationsListViewController: Conversations updated, reloading table")
+            Logger.debug("🔍 ConversationsListViewController: Conversations updated, reloading table")
             self.tableView.reloadData()
             self.updateEmptyState()
         }
     }
     
     @objc private func handleConversationDeleted(notification: Notification) {
-        print("🔍 ConversationsListViewController: Received ConversationDeleted notification")
+        Logger.debug("🔍 ConversationsListViewController: Received ConversationDeleted notification")
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
@@ -395,19 +395,19 @@ class ConversationsListViewController: UIViewController {
     
     // MARK: - Data Loading
     private func loadConversations() {
-        print("🔍 ConversationsListViewController: Loading conversations...")
+        Logger.debug("🔍 ConversationsListViewController: Loading conversations...")
         messagingManager.ensureInitialized()  // Ensure messaging is initialized
         messagingManager.loadConversations()
     }
     
     @objc func refreshConversations() {
-        print("🔍 ConversationsListViewController: Pull to refresh triggered")
+        Logger.debug("🔍 ConversationsListViewController: Pull to refresh triggered")
         messagingManager.loadConversations(forceRefresh: true)
     }
     
     // MARK: - Actions
     @objc private func newMessageTapped() {
-        print("🔍 ConversationsListViewController: New message button tapped")
+        Logger.debug("🔍 ConversationsListViewController: New message button tapped")
         let selectConnectionVC = SelectConnectionViewController()
         selectConnectionVC.delegate = self
         let navController = UINavigationController(rootViewController: selectConnectionVC)
@@ -418,7 +418,7 @@ class ConversationsListViewController: UIViewController {
     private func updateEmptyState() {
         let conversations = messagingManager.conversations
         
-        print("🔍 ConversationsListViewController: updateEmptyState - total conversations: \(conversations.count)")
+        Logger.debug("🔍 ConversationsListViewController: updateEmptyState - total conversations: \(conversations.count)")
         
         // Hide loading indicator if we're not actively loading
         if !messagingManager.isLoadingConversations && isInitialLoadComplete {
@@ -430,7 +430,7 @@ class ConversationsListViewController: UIViewController {
         emptyStateView.isHidden = !shouldShowEmptyState
         tableView.isHidden = shouldShowEmptyState
         
-        print("🔍 ConversationsListViewController: shouldShowEmptyState: \(shouldShowEmptyState)")
+        Logger.debug("🔍 ConversationsListViewController: shouldShowEmptyState: \(shouldShowEmptyState)")
         
         // Always reload table to ensure all conversations are displayed
         if !shouldShowEmptyState {
@@ -493,15 +493,15 @@ class ConversationsListViewController: UIViewController {
     
     // MARK: - Navigation
     private func showConversation(_ conversation: Conversation) {
-        print("🔍 ConversationsListViewController: showConversation called")
-        print("🔍 Conversation details: id=\(conversation.id)")
-        print("🔍 Conversation participants: \(conversation.participants)")
-        print("🔍 Conversation type: \(conversation.type)")
-        print("🔍 Conversation displayName: \(conversation.displayName)")
+        Logger.debug("🔍 ConversationsListViewController: showConversation called")
+        Logger.debug("🔍 Conversation details: id=\(conversation.id)")
+        Logger.debug("🔍 Conversation participants: \(conversation.participants)")
+        Logger.debug("🔍 Conversation type: \(conversation.type)")
+        Logger.debug("🔍 Conversation displayName: \(conversation.displayName)")
         
         // Validate conversation has required data
         guard !conversation.id.isEmpty else {
-            print("❌ ConversationsListViewController: Invalid conversation - missing ID")
+            Logger.debug("❌ ConversationsListViewController: Invalid conversation - missing ID")
             let alert = UIAlertController(
                 title: "Error",
                 message: "Unable to open conversation. Please try again.",
@@ -528,7 +528,7 @@ class ConversationsListViewController: UIViewController {
         
         present(loadingAlert, animated: true) { [weak self] in
             guard let self = self else { return }
-            print("🔍 ConversationsListViewController: Creating ChatViewController")
+            Logger.debug("🔍 ConversationsListViewController: Creating ChatViewController")
             
             // Create and configure the chat view controller
             let chatVC = ChatViewController()
@@ -536,10 +536,10 @@ class ConversationsListViewController: UIViewController {
             
             // Navigate after a brief delay to show loading
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                print("🔍 ConversationsListViewController: Navigating to ChatViewController")
+                Logger.debug("🔍 ConversationsListViewController: Navigating to ChatViewController")
                 loadingAlert.dismiss(animated: false) {
                     self.navigationController?.pushViewController(chatVC, animated: true)
-                    print("✅ ConversationsListViewController: Navigation to chat completed")
+                    Logger.debug("✅ ConversationsListViewController: Navigation to chat completed")
                 }
             }
         }
@@ -568,17 +568,17 @@ extension ConversationsListViewController: UITableViewDelegate {
         // Get the cell to retrieve the conversation ID for stable selection
         guard let cell = tableView.cellForRow(at: indexPath) as? ConversationCell,
               let conversationId = cell.conversationId else {
-            print("⚠️ ConversationsListViewController: Could not get conversation ID from cell")
+            Logger.debug("⚠️ ConversationsListViewController: Could not get conversation ID from cell")
             return
         }
         
         // Find the conversation by ID instead of index to avoid race conditions
         guard let conversation = messagingManager.conversations.first(where: { $0.id == conversationId }) else {
-            print("⚠️ ConversationsListViewController: Could not find conversation with ID: \(conversationId)")
+            Logger.debug("⚠️ ConversationsListViewController: Could not find conversation with ID: \(conversationId)")
             return
         }
         
-        print("✅ ConversationsListViewController: Selected conversation: \(conversation.displayName)")
+        Logger.debug("✅ ConversationsListViewController: Selected conversation: \(conversation.displayName)")
         showConversation(conversation)
     }
     
@@ -644,18 +644,18 @@ extension ConversationsListViewController: SelectConnectionViewControllerDelegat
     func didSelectConnection(_ connection: Connection) {
         // Get the current user ID to determine the other user
         guard let currentUserId = AuthService.shared.getUserId() else {
-            print("Error: No current user ID")
+            Logger.debug("Error: No current user ID")
             return
         }
         
         // Use the IDNormalizer to get the correct normalized user ID
         guard let otherUserId = IDNormalizer.getOtherUserId(from: connection, currentUserId: currentUserId) else {
-            print("❌ ConversationsListViewController: Could not determine other user ID")
+            Logger.debug("❌ ConversationsListViewController: Could not determine other user ID")
             return
         }
         let connectionName = connection.connectedUser?.displayName ?? "User"
         
-        print("🔍 ConversationsListViewController: Creating conversation with user: \(otherUserId) (normalized)")
+        Logger.debug("🔍 ConversationsListViewController: Creating conversation with user: \(otherUserId) (normalized)")
         
         // Show loading indicator
         let loadingAlert = UIAlertController(title: nil, message: "Creating conversation with \(connectionName)...", preferredStyle: .alert)
@@ -677,7 +677,7 @@ extension ConversationsListViewController: SelectConnectionViewControllerDelegat
         DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) { [weak self] in
             guard let self = self else { return }
             if !isCompleted {
-                print("⚠️ ConversationsListViewController: Conversation creation timed out")
+                Logger.debug("⚠️ ConversationsListViewController: Conversation creation timed out")
                 loadingAlert.dismiss(animated: true) {
                     let timeoutAlert = UIAlertController(
                         title: "Connection Timeout",
@@ -695,29 +695,29 @@ extension ConversationsListViewController: SelectConnectionViewControllerDelegat
             isCompleted = true
             
             DispatchQueue.main.async {
-                print("🔍 ConversationsListViewController: Conversation creation result: \(result)")
+                Logger.debug("🔍 ConversationsListViewController: Conversation creation result: \(result)")
                 
                 loadingAlert.dismiss(animated: true) {
                     switch result {
                     case .success(let conversation):
-                        print("✅ ConversationsListViewController: Successfully created/retrieved conversation")
-                        print("🔍 Conversation ID: \(conversation.id)")
-                        print("🔍 Conversation participants: \(conversation.participants)")
-                        print("🔍 Conversation type: \(conversation.type)")
+                        Logger.debug("✅ ConversationsListViewController: Successfully created/retrieved conversation")
+                        Logger.debug("🔍 Conversation ID: \(conversation.id)")
+                        Logger.debug("🔍 Conversation participants: \(conversation.participants)")
+                        Logger.debug("🔍 Conversation type: \(conversation.type)")
                         
                         // The MessagingManager.createOrGetDirectConversation already adds the conversation to the list
                         // Just ensure the UI is updated
-                        print("🔍 Updating UI to show new conversation")
+                        Logger.debug("🔍 Updating UI to show new conversation")
                         self?.tableView.reloadData()
                         self?.updateEmptyState()
                         
                         // Small delay to ensure UI updates before navigation
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                            print("🔍 Navigating to conversation after delay")
+                            Logger.debug("🔍 Navigating to conversation after delay")
                             self?.showConversation(conversation)
                         }
                     case .failure(let error):
-                        print("❌ ConversationsListViewController: Error creating conversation: \(error)")
+                        Logger.debug("❌ ConversationsListViewController: Error creating conversation: \(error)")
                         
                         // Extract error details and show alert
                         var errorMessage = "Failed to create conversation"
@@ -729,7 +729,7 @@ extension ConversationsListViewController: SelectConnectionViewControllerDelegat
                             
                             if let data = data,
                                let serverMessage = String(data: data, encoding: .utf8) {
-                                print("Server error details: \(serverMessage)")
+                                Logger.debug("Server error details: \(serverMessage)")
                                 if serverMessage.contains("yourself") {
                                     errorMessage = "Cannot create conversation with yourself"
                                 } else if let jsonData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -874,7 +874,7 @@ class ConversationCell: UITableViewCell {
         timeLabel.text = conversation.formattedLastMessageTime ?? ""
         
         // Log unread count for debugging
-        print("📱 ConversationCell: \(conversation.displayName) - unreadCount: \(conversation.unreadCount), hasUnread: \(conversation.hasUnreadMessages)")
+        Logger.debug("📱 ConversationCell: \(conversation.displayName) - unreadCount: \(conversation.unreadCount), hasUnread: \(conversation.hasUnreadMessages)")
         
         // Configure avatar
         if let avatarURL = conversation.displayAvatar {
@@ -919,7 +919,7 @@ extension ConversationsListViewController {
 // MARK: - SSEServiceDelegate
 extension ConversationsListViewController: SSEServiceDelegate {
     func sseService(_ service: SSEService, didReceiveEvent event: SSEEvent) {
-        print("📡 Conversations: Received SSE event: \(event.type)")
+        Logger.debug("📡 Conversations: Received SSE event: \(event.type)")
         
         switch event.type {
         case .newMessage:
@@ -936,12 +936,12 @@ extension ConversationsListViewController: SSEServiceDelegate {
     }
     
     func sseServiceDidConnect(_ service: SSEService) {
-        print("📡 Conversations: SSE connected")
+        Logger.debug("📡 Conversations: SSE connected")
         sseConnected = true
     }
     
     func sseServiceDidDisconnect(_ service: SSEService, error: Error?) {
-        print("📡 Conversations: SSE disconnected")
+        Logger.debug("📡 Conversations: SSE disconnected")
         sseConnected = false
     }
     

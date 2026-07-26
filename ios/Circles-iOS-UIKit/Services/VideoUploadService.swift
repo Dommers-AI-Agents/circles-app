@@ -58,7 +58,7 @@ class VideoUploadService {
                                     case .success:
                                         completion(.success(video))
                                     case .failure(let error):
-                                        print("⚠️ Video processing check failed: \(error)")
+                                        Logger.debug("⚠️ Video processing check failed: \(error)")
                                         // Still return success but video might show as processing
                                         completion(.success(video))
                                     }
@@ -146,7 +146,7 @@ class VideoUploadService {
         uploadToSignedUrl(data: previewVideoData, signedUrl: uploadUrls.preview) { error in
             if let error = error {
                 uploadError = error
-                print("Failed to upload preview video: \(error)")
+                Logger.debug("Failed to upload preview video: \(error)")
             }
             uploadGroup.leave()
         }
@@ -156,7 +156,7 @@ class VideoUploadService {
         uploadToSignedUrl(data: fullVideoData, signedUrl: uploadUrls.video) { error in
             if let error = error {
                 uploadError = error
-                print("Failed to upload full video: \(error)")
+                Logger.debug("Failed to upload full video: \(error)")
             }
             uploadGroup.leave()
         }
@@ -165,23 +165,23 @@ class VideoUploadService {
         if let thumbnail = generateThumbnail(from: fullVideoUrl) {
             uploadGroup.enter()
             if let thumbnailData = thumbnail.jpegData(compressionQuality: 0.8) {
-                print("📤 VideoUploadService: Uploading thumbnail - Size: \(thumbnailData.count) bytes")
-                print("   - Thumbnail URL: \(uploadUrls.thumbnail.suffix(100))")
+                Logger.debug("📤 VideoUploadService: Uploading thumbnail - Size: \(thumbnailData.count) bytes")
+                Logger.debug("   - Thumbnail URL: \(uploadUrls.thumbnail.suffix(100))")
                 uploadToSignedUrl(data: thumbnailData, signedUrl: uploadUrls.thumbnail) { error in
                     if let error = error {
-                        print("❌ VideoUploadService: Failed to upload thumbnail: \(error)")
+                        Logger.debug("❌ VideoUploadService: Failed to upload thumbnail: \(error)")
                         // Don't fail the whole upload if thumbnail fails
                     } else {
-                        print("✅ VideoUploadService: Thumbnail uploaded successfully")
+                        Logger.debug("✅ VideoUploadService: Thumbnail uploaded successfully")
                     }
                     uploadGroup.leave()
                 }
             } else {
-                print("⚠️ VideoUploadService: Failed to convert thumbnail to JPEG data")
+                Logger.debug("⚠️ VideoUploadService: Failed to convert thumbnail to JPEG data")
                 uploadGroup.leave()
             }
         } else {
-            print("⚠️ VideoUploadService: No thumbnail generated")
+            Logger.debug("⚠️ VideoUploadService: No thumbnail generated")
         }
         
         uploadGroup.notify(queue: .main) {
@@ -260,7 +260,7 @@ class VideoUploadService {
     }
     
     private func generateThumbnail(from videoUrl: URL) -> UIImage? {
-        print("🎬 VideoUploadService: Generating thumbnail from: \(videoUrl.lastPathComponent)")
+        Logger.debug("🎬 VideoUploadService: Generating thumbnail from: \(videoUrl.lastPathComponent)")
         
         // Use AVAssetImageGenerator to create thumbnail
         let asset = AVAsset(url: videoUrl)
@@ -272,10 +272,10 @@ class VideoUploadService {
         do {
             let cgImage = try imageGenerator.copyCGImage(at: time, actualTime: nil)
             let thumbnail = UIImage(cgImage: cgImage)
-            print("✅ VideoUploadService: Thumbnail generated - Size: \(thumbnail.size)")
+            Logger.debug("✅ VideoUploadService: Thumbnail generated - Size: \(thumbnail.size)")
             return thumbnail
         } catch {
-            print("❌ VideoUploadService: Error generating thumbnail: \(error)")
+            Logger.debug("❌ VideoUploadService: Error generating thumbnail: \(error)")
             return nil
         }
     }
@@ -299,7 +299,7 @@ class VideoUploadService {
                     if response.success, let data = response.data {
                         if data.isReady {
                             // Processing complete
-                            print("✅ Video \(videoId) processing completed")
+                            Logger.debug("✅ Video \(videoId) processing completed")
                             completion(.success(()))
                             return
                         } else if data.uploadStatus == "error" {
@@ -308,13 +308,13 @@ class VideoUploadService {
                             return
                         } else if attempts < maxAttempts {
                             // Still processing, wait and check again
-                            print("📹 Video \(videoId) still processing... (\(attempts)/\(maxAttempts))")
+                            Logger.debug("📹 Video \(videoId) still processing... (\(attempts)/\(maxAttempts))")
                             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                                 checkStatus()
                             }
                         } else {
                             // Timeout - processing took too long
-                            print("⏰ Video \(videoId) processing timeout after \(maxAttempts) attempts")
+                            Logger.debug("⏰ Video \(videoId) processing timeout after \(maxAttempts) attempts")
                             completion(.failure(APIError.processingTimeout))
                         }
                     } else {

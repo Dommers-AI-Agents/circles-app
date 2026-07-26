@@ -46,8 +46,8 @@ class GlobalPlaceService {
     ///   - completion: Completion handler with GlobalPlaceResponse
     func getGlobalPlace(id placeId: String, completion: @escaping (Result<GlobalPlaceResponse, Error>) -> Void) {
         let endpoint = "places/global/\(placeId)"
-        print("🔍 [GlobalPlaceService] Requesting GlobalPlace for ID: \(placeId)")
-        print("📍 [GlobalPlaceService] API endpoint: \(endpoint)")
+        Logger.debug("🔍 [GlobalPlaceService] Requesting GlobalPlace for ID: \(placeId)")
+        Logger.debug("📍 [GlobalPlaceService] API endpoint: \(endpoint)")
         
         apiService.request(
             endpoint: endpoint,
@@ -59,33 +59,33 @@ class GlobalPlaceService {
         ) { (result: Result<GlobalPlaceDetailResponse, APIError>) in
             switch result {
             case .success(let response):
-                print("✅ [GlobalPlaceService] API call successful")
+                Logger.debug("✅ [GlobalPlaceService] API call successful")
                 if response.success {
                     let globalPlace = response.data.globalPlace
-                    print("📍 [GlobalPlaceService] GlobalPlace found: \(globalPlace.name)")
-                    print("📷 [GlobalPlaceService] Photos count: \(globalPlace.photos?.count ?? 0)")
-                    print("📝 [GlobalPlaceService] PublicReviews count: \(globalPlace.publicReviews?.count ?? 0)")
+                    Logger.debug("📍 [GlobalPlaceService] GlobalPlace found: \(globalPlace.name)")
+                    Logger.debug("📷 [GlobalPlaceService] Photos count: \(globalPlace.photos?.count ?? 0)")
+                    Logger.debug("📝 [GlobalPlaceService] PublicReviews count: \(globalPlace.publicReviews?.count ?? 0)")
                     
                     if let photos = globalPlace.photos, !photos.isEmpty {
                         let firstPhoto = photos[0]
-                        print("📸 [GlobalPlaceService] First photo attribution: '\(firstPhoto.uploadedByName ?? "Unknown")'")
+                        Logger.debug("📸 [GlobalPlaceService] First photo attribution: '\(firstPhoto.uploadedByName ?? "Unknown")'")
                     }
                     
                     if let reviews = globalPlace.publicReviews, !reviews.isEmpty {
                         let firstReview = reviews[0]
-                        print("💬 [GlobalPlaceService] First review text: '\(firstReview.text)'")
-                        print("👍 [GlobalPlaceService] First review likes: \(firstReview.likesCount)")
-                        print("⭐ [GlobalPlaceService] First review rating: \(firstReview.rating ?? -1)")
+                        Logger.debug("💬 [GlobalPlaceService] First review text: '\(firstReview.text)'")
+                        Logger.debug("👍 [GlobalPlaceService] First review likes: \(firstReview.likesCount)")
+                        Logger.debug("⭐ [GlobalPlaceService] First review rating: \(firstReview.rating ?? -1)")
                     }
                     
-                    print("📊 [GlobalPlaceService] UserContributions - Reviews: \(globalPlace.userContributions.totalReviews), Photos: \(globalPlace.userContributions.totalPhotos), Videos: \(globalPlace.userContributions.totalVideos)")
+                    Logger.debug("📊 [GlobalPlaceService] UserContributions - Reviews: \(globalPlace.userContributions.totalReviews), Photos: \(globalPlace.userContributions.totalPhotos), Videos: \(globalPlace.userContributions.totalVideos)")
                     completion(.success(response.data))
                 } else {
-                    print("❌ [GlobalPlaceService] API returned success=false")
+                    Logger.debug("❌ [GlobalPlaceService] API returned success=false")
                     completion(.failure(APIError.serverError))
                 }
             case .failure(let error):
-                print("❌ [GlobalPlaceService] API call failed: \(error)")
+                Logger.debug("❌ [GlobalPlaceService] API call failed: \(error)")
                 completion(.failure(error))
             }
         }
@@ -494,9 +494,9 @@ extension GlobalPlaceService {
             "offset": "\(offset)"
         ]
         
-        print("🔍 [GlobalPlaceService] Requesting user uploads for ID: \(targetUserId)")
-        print("📍 [GlobalPlaceService] API endpoint: \(endpoint)")
-        print("📊 [GlobalPlaceService] Query params: limit=\(limit), offset=\(offset)")
+        Logger.debug("🔍 [GlobalPlaceService] Requesting user uploads for ID: \(targetUserId)")
+        Logger.debug("📍 [GlobalPlaceService] API endpoint: \(endpoint)")
+        Logger.debug("📊 [GlobalPlaceService] Query params: limit=\(limit), offset=\(offset)")
         
         apiService.request(
             endpoint: endpoint,
@@ -508,16 +508,16 @@ extension GlobalPlaceService {
         ) { (result: Result<UserUploadsResponse, APIError>) in
             switch result {
             case .success(let response):
-                print("✅ [GlobalPlaceService] User uploads API call successful")
+                Logger.debug("✅ [GlobalPlaceService] User uploads API call successful")
                 if response.success {
-                    print("📷 [GlobalPlaceService] Found \(response.data.count) uploads (total: \(response.total))")
+                    Logger.debug("📷 [GlobalPlaceService] Found \(response.data.count) uploads (total: \(response.total))")
                     completion(.success(response))
                 } else {
-                    print("❌ [GlobalPlaceService] API returned success=false")
+                    Logger.debug("❌ [GlobalPlaceService] API returned success=false")
                     completion(.failure(APIError.serverError))
                 }
             case .failure(let error):
-                print("❌ [GlobalPlaceService] User uploads API call failed: \(error)")
+                Logger.debug("❌ [GlobalPlaceService] User uploads API call failed: \(error)")
                 completion(.failure(error))
             }
         }
@@ -533,7 +533,7 @@ extension GlobalPlaceService {
     ) {
         let endpoint = "places/global/\(upload.placeId)/media/\(upload.id)"
         
-        print("🗑️ [GlobalPlaceService] Deleting upload: \(upload.id) from place: \(upload.placeId)")
+        Logger.debug("🗑️ [GlobalPlaceService] Deleting upload: \(upload.id) from place: \(upload.placeId)")
         
         apiService.request(
             endpoint: endpoint,
@@ -546,14 +546,14 @@ extension GlobalPlaceService {
             switch result {
             case .success(let response):
                 if response.success {
-                    print("✅ [GlobalPlaceService] Successfully deleted upload: \(upload.id)")
+                    Logger.debug("✅ [GlobalPlaceService] Successfully deleted upload: \(upload.id)")
                     completion(.success(()))
                 } else {
-                    print("❌ [GlobalPlaceService] Delete failed - API returned success=false")
+                    Logger.debug("❌ [GlobalPlaceService] Delete failed - API returned success=false")
                     completion(.failure(APIError.serverError))
                 }
             case .failure(let error):
-                print("❌ [GlobalPlaceService] Delete upload failed: \(error)")
+                Logger.debug("❌ [GlobalPlaceService] Delete upload failed: \(error)")
                 completion(.failure(error))
             }
         }
@@ -585,7 +585,7 @@ extension GlobalPlaceService {
                     completion(.failure(APIError.serverError))
                 }
             case .failure(let error):
-                print("❌ [GlobalPlaceService] setPhotoLiked(\(liked)) failed: \(error)")
+                Logger.debug("❌ [GlobalPlaceService] setPhotoLiked(\(liked)) failed: \(error)")
                 completion(.failure(error))
             }
         }

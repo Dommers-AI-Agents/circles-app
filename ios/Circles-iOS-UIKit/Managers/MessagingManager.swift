@@ -29,9 +29,9 @@ class MessagingManager {
     
     private func setupAuthListener() {
         // Listen for authentication changes
-        // print("🔍 MessagingManager: Setting up auth listener")
+        // Logger.debug("🔍 MessagingManager: Setting up auth listener")
         AuthService.shared.addAuthStateListener(id: authObserverId) { [weak self] isAuthenticated in
-            // print("🔍 MessagingManager: Auth state changed to: \(isAuthenticated)")
+            // Logger.debug("🔍 MessagingManager: Auth state changed to: \(isAuthenticated)")
             if isAuthenticated {
                 self?.startMessaging()
             } else {
@@ -43,7 +43,7 @@ class MessagingManager {
     // MARK: - Messaging Lifecycle
     
     private func startMessaging() {
-        // print("🔍 MessagingManager: startMessaging called")
+        // Logger.debug("🔍 MessagingManager: startMessaging called")
         loadConversations()
         // Message polling disabled - using SSE for real-time updates
         // startMessagePolling()
@@ -52,12 +52,12 @@ class MessagingManager {
     
     // Public method to force initialization when we know we're authenticated
     func ensureInitialized() {
-        // print("🔍 MessagingManager: ensureInitialized called")
-        // print("🔍 MessagingManager: Has token = \(AuthService.shared.getToken() != nil)")
+        // Logger.debug("🔍 MessagingManager: ensureInitialized called")
+        // Logger.debug("🔍 MessagingManager: Has token = \(AuthService.shared.getToken() != nil)")
         
         // If we have a token but messaging hasn't started, start it now
         if AuthService.shared.getToken() != nil && messagePollingTimer == nil {
-            // print("🔍 MessagingManager: Token exists but messaging not started, starting now")
+            // Logger.debug("🔍 MessagingManager: Token exists but messaging not started, starting now")
             startMessaging()
         }
     }
@@ -84,7 +84,7 @@ class MessagingManager {
     // MARK: - Tab Management
     
     func setMessagesTabActive(_ isActive: Bool) {
-        // print("🔍 MessagingManager: Messages tab active: \(isActive)")
+        // Logger.debug("🔍 MessagingManager: Messages tab active: \(isActive)")
         isMessagesTabActive = isActive
         updatePollingInterval()
         
@@ -149,7 +149,7 @@ class MessagingManager {
                             )
                         }
                     case .failure(let error):
-                        // print("⚠️ MessagingManager: Failed to refresh messages for conversation \(conversationId): \(error)")
+                        // Logger.debug("⚠️ MessagingManager: Failed to refresh messages for conversation \(conversationId): \(error)")
                         break
                     }
                 }
@@ -160,12 +160,12 @@ class MessagingManager {
     // MARK: - Conversations
     
     func loadConversations(forceRefresh: Bool = false) {
-        // print("🔍 MessagingManager: loadConversations called (forceRefresh: \(forceRefresh))")
-        // print("🔍 MessagingManager: Has auth token = \(AuthService.shared.getToken() != nil)")
+        // Logger.debug("🔍 MessagingManager: loadConversations called (forceRefresh: \(forceRefresh))")
+        // Logger.debug("🔍 MessagingManager: Has auth token = \(AuthService.shared.getToken() != nil)")
         
         // Skip auth check if we have a token - this is a workaround for auth state detection issues
         guard AuthService.shared.getToken() != nil else {
-            // print("⚠️ MessagingManager: No auth token, skipping conversation load")
+            // Logger.debug("⚠️ MessagingManager: No auth token, skipping conversation load")
             return
         }
         
@@ -181,7 +181,7 @@ class MessagingManager {
         
         // Don't load if already loading
         guard !isLoadingConversations else {
-            // print("🔍 MessagingManager: Already loading conversations, skipping duplicate request")
+            // Logger.debug("🔍 MessagingManager: Already loading conversations, skipping duplicate request")
             return
         }
         
@@ -193,7 +193,7 @@ class MessagingManager {
                 
                 switch result {
                 case .success(let fetchedConversations):
-                    // print("🔍 MessagingManager: Fetched \(fetchedConversations.count) conversations successfully")
+                    // Logger.debug("🔍 MessagingManager: Fetched \(fetchedConversations.count) conversations successfully")
                     
                     // Preserve locally marked as read status
                     var updatedConversations = fetchedConversations
@@ -203,7 +203,7 @@ class MessagingManager {
                             if self?.locallyMarkedAsRead.contains(conversationId) == true {
                                 // Preserve the local read status
                                 updatedConversations[i].unreadCounts?[currentUserId] = 0
-                                print("🔍 MessagingManager: Preserving local read status for conversation \(conversationId)")
+                                Logger.debug("🔍 MessagingManager: Preserving local read status for conversation \(conversationId)")
                             }
                         }
                     }
@@ -221,7 +221,7 @@ class MessagingManager {
                     
                     self?.conversations = sortedConversations
                 case .failure(let error):
-                    // print("⚠️ MessagingManager: Failed to fetch conversations: \(error.localizedDescription)")
+                    // Logger.debug("⚠️ MessagingManager: Failed to fetch conversations: \(error.localizedDescription)")
                     self?.error = error.localizedDescription
                 }
             }
@@ -232,14 +232,14 @@ class MessagingManager {
     // MARK: - Messages
     
     func loadMessages(for conversationId: String, limit: Int = 50, before: String? = nil, showLoading: Bool = true) {
-        print("🔍 MessagingManager: loadMessages called for conversationId: \(conversationId)")
-        print("🔍 MessagingManager: limit: \(limit), before: \(before ?? "nil"), showLoading: \(showLoading)")
+        Logger.debug("🔍 MessagingManager: loadMessages called for conversationId: \(conversationId)")
+        Logger.debug("🔍 MessagingManager: limit: \(limit), before: \(before ?? "nil"), showLoading: \(showLoading)")
         
         if showLoading {
             isLoadingMessages = true
         }
         
-        print("🔍 MessagingManager: Calling messagingService.fetchMessages...")
+        Logger.debug("🔍 MessagingManager: Calling messagingService.fetchMessages...")
         messagingService.fetchMessages(conversationId: conversationId, limit: limit, before: before) { [weak self] result in
             DispatchQueue.main.async {
                 if showLoading {
@@ -248,22 +248,22 @@ class MessagingManager {
                 
                 switch result {
                 case .success(let messages):
-                    print("✅ MessagingManager: Successfully fetched \(messages.count) messages for conversationId: \(conversationId)")
+                    Logger.debug("✅ MessagingManager: Successfully fetched \(messages.count) messages for conversationId: \(conversationId)")
                     
                     if before == nil {
                         // Initial load or refresh
-                        print("🔍 MessagingManager: Initial load - storing \(messages.count) messages")
+                        Logger.debug("🔍 MessagingManager: Initial load - storing \(messages.count) messages")
                         self?.activeMessages[conversationId] = messages
                     } else {
                         // Pagination - append older messages
                         var existingMessages = self?.activeMessages[conversationId] ?? []
-                        print("🔍 MessagingManager: Pagination - appending \(messages.count) messages to existing \(existingMessages.count)")
+                        Logger.debug("🔍 MessagingManager: Pagination - appending \(messages.count) messages to existing \(existingMessages.count)")
                         existingMessages.append(contentsOf: messages)
                         self?.activeMessages[conversationId] = existingMessages
                     }
                     
                     // Post notification that new messages were received
-                    print("🔍 MessagingManager: Posting NewMessagesReceived notification")
+                    Logger.debug("🔍 MessagingManager: Posting NewMessagesReceived notification")
                     NotificationCenter.default.post(
                         name: Notification.Name("NewMessagesReceived"),
                         object: nil,
@@ -271,7 +271,7 @@ class MessagingManager {
                     )
                     
                 case .failure(let error):
-                    print("❌ MessagingManager: Failed to fetch messages: \(error.localizedDescription)")
+                    Logger.debug("❌ MessagingManager: Failed to fetch messages: \(error.localizedDescription)")
                     self?.error = error.localizedDescription
                 }
             }
@@ -403,14 +403,14 @@ class MessagingManager {
     func markConversationAsReadLocally(_ conversationId: String) {
         guard let currentUserId = AuthService.shared.getUserId(),
               let index = conversations.firstIndex(where: { $0.id == conversationId }) else { 
-            print("⚠️ MessagingManager: Could not find conversation or user ID")
+            Logger.debug("⚠️ MessagingManager: Could not find conversation or user ID")
             return 
         }
         
         var conversation = conversations[index]
         let previousUnreadCount = conversation.unreadCounts?[currentUserId] ?? 0
         
-        print("🔍 MessagingManager: Marking conversation \(conversationId) as read locally. Previous unread count: \(previousUnreadCount)")
+        Logger.debug("🔍 MessagingManager: Marking conversation \(conversationId) as read locally. Previous unread count: \(previousUnreadCount)")
         
         // Only update if there were unread messages
         if previousUnreadCount > 0 {
@@ -425,7 +425,7 @@ class MessagingManager {
             conversationsCache = conversations
             conversationsCacheTime = Date() // Reset cache time
             
-            print("✅ MessagingManager: Updated conversation unread count to 0 and cache")
+            Logger.debug("✅ MessagingManager: Updated conversation unread count to 0 and cache")
             
             // Update global unread count
             unreadCount = max(0, unreadCount - previousUnreadCount)
@@ -546,22 +546,22 @@ class MessagingManager {
     // MARK: - Create or Get Direct Conversation
     
     func createOrGetDirectConversation(with userId: String, completion: @escaping (Result<Conversation, Error>) -> Void) {
-        print("🔍 MessagingManager: createOrGetDirectConversation called with userId: \(userId)")
+        Logger.debug("🔍 MessagingManager: createOrGetDirectConversation called with userId: \(userId)")
         
         messagingService.getOrCreateDirectConversation(with: userId) { [weak self] result in
             DispatchQueue.main.async {
-                print("🔍 MessagingManager: Received response from getOrCreateDirectConversation")
+                Logger.debug("🔍 MessagingManager: Received response from getOrCreateDirectConversation")
                 
                 switch result {
                 case .success(let conversation):
-                    print("✅ MessagingManager: Successfully got/created conversation: \(conversation.id)")
+                    Logger.debug("✅ MessagingManager: Successfully got/created conversation: \(conversation.id)")
                     
                     // Add to conversations if not already present
                     if let existingIndex = self?.conversations.firstIndex(where: { $0.id == conversation.id }) {
-                        print("🔍 MessagingManager: Updating existing conversation in list")
+                        Logger.debug("🔍 MessagingManager: Updating existing conversation in list")
                         self?.conversations[existingIndex] = conversation
                     } else {
-                        print("🔍 MessagingManager: Adding new conversation to list")
+                        Logger.debug("🔍 MessagingManager: Adding new conversation to list")
                         self?.conversations.insert(conversation, at: 0)
                     }
                     
@@ -571,7 +571,7 @@ class MessagingManager {
                     
                     completion(.success(conversation))
                 case .failure(let error):
-                    print("❌ MessagingManager: Failed to create/get conversation: \(error)")
+                    Logger.debug("❌ MessagingManager: Failed to create/get conversation: \(error)")
                     completion(.failure(error))
                 }
             }
@@ -579,15 +579,15 @@ class MessagingManager {
     }
     
     func createGroupConversation(participantIds: [String], name: String?, completion: @escaping (Result<Conversation, Error>) -> Void) {
-        print("🔍 MessagingManager: createGroupConversation called with \(participantIds.count) participants")
+        Logger.debug("🔍 MessagingManager: createGroupConversation called with \(participantIds.count) participants")
         
         messagingService.createGroupConversation(participantIds: participantIds, name: name) { [weak self] result in
             DispatchQueue.main.async {
-                print("🔍 MessagingManager: Received response from createGroupConversation")
+                Logger.debug("🔍 MessagingManager: Received response from createGroupConversation")
                 
                 switch result {
                 case .success(let conversation):
-                    print("✅ MessagingManager: Successfully created group conversation: \(conversation.id)")
+                    Logger.debug("✅ MessagingManager: Successfully created group conversation: \(conversation.id)")
                     
                     // Add to conversations list at the top
                     self?.conversations.insert(conversation, at: 0)
@@ -598,7 +598,7 @@ class MessagingManager {
                     
                     completion(.success(conversation))
                 case .failure(let error):
-                    print("❌ MessagingManager: Failed to create group conversation: \(error)")
+                    Logger.debug("❌ MessagingManager: Failed to create group conversation: \(error)")
                     completion(.failure(error))
                 }
             }

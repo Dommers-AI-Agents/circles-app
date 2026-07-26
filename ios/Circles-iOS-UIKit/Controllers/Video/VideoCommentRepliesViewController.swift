@@ -193,7 +193,7 @@ class VideoCommentRepliesViewController: BaseViewController {
                     self?.tableView.insertRows(at: [IndexPath(row: 0, section: 1)], with: .automatic)
                     self?.updateEmptyState()
                 case .failure(let error):
-                    print("Failed to add reply: \(error)")
+                    Logger.debug("Failed to add reply: \(error)")
                     self?.showError("Failed to add reply. Please try again.")
                 }
             }
@@ -238,7 +238,7 @@ class VideoCommentRepliesViewController: BaseViewController {
                     self.tableView.reloadData()
                     self.updateEmptyState()
                 case .failure(let error):
-                    print("Failed to fetch replies: \(error)")
+                    Logger.debug("Failed to fetch replies: \(error)")
                 }
                 completion?()
             }
@@ -349,7 +349,7 @@ extension VideoCommentRepliesViewController: VideoCommentCellDelegate {
                     self.tableView.reloadRows(at: [indexPath], with: .none)
                     
                 case .failure(let error):
-                    print("Failed to like comment: \(error)")
+                    Logger.debug("Failed to like comment: \(error)")
                     self.showError("Failed to update like. Please try again.")
                 }
             }
@@ -374,7 +374,7 @@ extension VideoCommentRepliesViewController: VideoCommentCellDelegate {
                     self.showSuccess("Reply deleted")
                     
                 case .failure(let error):
-                    print("Failed to delete reply: \(error)")
+                    Logger.debug("Failed to delete reply: \(error)")
                     self.showError("Failed to delete reply. Please try again.")
                 }
             }

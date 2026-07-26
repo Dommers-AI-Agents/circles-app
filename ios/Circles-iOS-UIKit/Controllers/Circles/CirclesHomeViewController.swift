@@ -175,7 +175,7 @@ class HomeScreenCache {
         // Store in memory
         cachedData = data
         cacheExpiry = Date().addingTimeInterval(cacheValidityMinutes * 60)
-        print("📦 [Memory Cache] Stored home screen data, valid until \(cacheExpiry!)")
+        Logger.debug("📦 [Memory Cache] Stored home screen data, valid until \(cacheExpiry!)")
         
         // Store in disk cache for longer persistence
         CacheService.shared.cacheHomeScreenData(data)
@@ -184,20 +184,20 @@ class HomeScreenCache {
     func retrieve() -> HomeScreenContent? {
         // First try memory cache
         if isValid, let data = cachedData {
-            print("📦 [Memory Cache] Retrieved valid cached data")
+            Logger.debug("📦 [Memory Cache] Retrieved valid cached data")
             return data
         }
         
         // Try disk cache as fallback
         if let diskData = CacheService.shared.getCachedHomeScreenData(maxAgeMinutes: 10) {
-            print("📦 [Disk Cache] Retrieved valid cached data from disk")
+            Logger.debug("📦 [Disk Cache] Retrieved valid cached data from disk")
             // Store in memory for next access
             cachedData = diskData
             cacheExpiry = Date().addingTimeInterval(cacheValidityMinutes * 60)
             return diskData
         }
         
-        print("📦 [Cache] No valid cache found")
+        Logger.debug("📦 [Cache] No valid cache found")
         cachedData = nil
         cacheExpiry = nil
         return nil
@@ -206,7 +206,7 @@ class HomeScreenCache {
     func invalidate() {
         cachedData = nil
         cacheExpiry = nil
-        print("📦 [Cache] Memory cache invalidated")
+        Logger.debug("📦 [Cache] Memory cache invalidated")
         // Note: Disk cache remains for offline scenarios
     }
 }
@@ -954,8 +954,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        print("🟡 CirclesHomeViewController viewDidLoad called")
-        print("🟡 Instance: \(ObjectIdentifier(self))")
+        Logger.debug("🟡 CirclesHomeViewController viewDidLoad called")
+        Logger.debug("🟡 Instance: \(ObjectIdentifier(self))")
         
         setupUI()
         setupNavigationBar()
@@ -1003,7 +1003,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Store cached places but don't display them yet
         // Wait for circles to load before displaying any places to ensure consistency
         if !cachedPlaces.isEmpty {
-            print("🟡 Found cached places: \(cachedPlaces.count) - storing for later display")
+            Logger.debug("🟡 Found cached places: \(cachedPlaces.count) - storing for later display")
             self.allPlaces = cachedPlaces
             // Note: userOwnPlaces will be populated later when circles are loaded
         }
@@ -1034,14 +1034,14 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     // Temporarily disabled to restore original loading behavior
     /*
     override func loadData(completion: (() -> Void)? = nil) {
-        print("⚡ [Enhanced] loadData called - attempting optimized loading")
+        Logger.debug("⚡ [Enhanced] loadData called - attempting optimized loading")
         
         // Show progressive skeleton loading immediately
         showProgressiveSkeletonLoading()
         
         // Check cache first for ultra-fast loading
         if let cachedContent = optimizedCache.retrieve() {
-            print("⚡ [Cache Hit] Using cached data for instant loading")
+            Logger.debug("⚡ [Cache Hit] Using cached data for instant loading")
             isUsingFastLoad = true
             applyHomeScreenData(cachedContent)
             hideProgressiveSkeletonLoading()
@@ -1054,7 +1054,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             guard let self = self else { return }
             
             if success {
-                print("⚡ [Fast API] Successfully loaded via homescreen endpoint")
+                Logger.debug("⚡ [Fast API] Successfully loaded via homescreen endpoint")
                 self.isUsingFastLoad = true
                 self.hideProgressiveSkeletonLoading()
                 
@@ -1063,7 +1063,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     self.loadFullDashboardData()
                 }
             } else {
-                print("⚡ [Fallback] Fast API failed, using full dashboard")
+                Logger.debug("⚡ [Fallback] Fast API failed, using full dashboard")
                 self.loadFullDashboardData()
             }
             
@@ -1076,19 +1076,19 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     private func tryLoadFromCache() {
         // Only try cache if we haven't started loading yet
         guard !hasStartedLoading && circles.isEmpty else { 
-            print("📦 [SafeCache] Skipping - already loading or have data")
+            Logger.debug("📦 [SafeCache] Skipping - already loading or have data")
             return 
         }
         
         // Check if we have cached data
         if let cachedContent = optimizedCache.retrieve() {
-            print("📦 [SafeCache] Found cached data - applying as background enhancement")
+            Logger.debug("📦 [SafeCache] Found cached data - applying as background enhancement")
             
             // Apply cached circles and places for immediate map population
             if !cachedContent.myCircles.isEmpty && circles.isEmpty {
                 self.circles = cachedContent.myCircles
                 self.networkCircles = cachedContent.networkCircles
-                print("📦 [SafeCache] Applied \(cachedContent.myCircles.count) cached circles")
+                Logger.debug("📦 [SafeCache] Applied \(cachedContent.myCircles.count) cached circles")
                 
                 // Extract places from cached circles for immediate map display
                 extractAndShowCachedPlaces()
@@ -1102,7 +1102,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     // Hide optional skeleton since we have data
                     self.hideOptionalSkeletonLoading()
                 }
-                print("📦 [SafeCache] Applied \(cachedContent.activities.count) cached activities")
+                Logger.debug("📦 [SafeCache] Applied \(cachedContent.activities.count) cached activities")
             }
             
             // Start background image preloading
@@ -1131,10 +1131,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         guard !uniqueUrls.isEmpty else { return }
         
-        print("📦 [SafeCache] Preloading \(uniqueUrls.count) images in background")
+        Logger.debug("📦 [SafeCache] Preloading \(uniqueUrls.count) images in background")
         
         CacheService.shared.preloadImages(from: uniqueUrls) { loadedCount in
-            print("📦 [SafeCache] Preloaded \(loadedCount)/\(uniqueUrls.count) images")
+            Logger.debug("📦 [SafeCache] Preloaded \(loadedCount)/\(uniqueUrls.count) images")
         }
     }
     
@@ -1161,10 +1161,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         guard !uniqueUrls.isEmpty else { return }
         
-        print("🖼️ [BackgroundPreload] Starting preload of \(uniqueUrls.count) place images")
+        Logger.debug("🖼️ [BackgroundPreload] Starting preload of \(uniqueUrls.count) place images")
         
         CacheService.shared.preloadImages(from: uniqueUrls) { loadedCount in
-            print("🖼️ [BackgroundPreload] Completed: \(loadedCount)/\(uniqueUrls.count) place images cached")
+            Logger.debug("🖼️ [BackgroundPreload] Completed: \(loadedCount)/\(uniqueUrls.count) place images cached")
         }
     }
     
@@ -1180,7 +1180,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             
             // Only show if we still have no data
             if self.circles.isEmpty && self.activities.isEmpty && !self.hasStartedLoading {
-                print("💀 [OptionalSkeleton] Loading is slow - showing skeleton")
+                Logger.debug("💀 [OptionalSkeleton] Loading is slow - showing skeleton")
                 self.showOptionalSkeletonLoading()
             }
         }
@@ -1189,7 +1189,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     private func showOptionalSkeletonLoading() {
         guard skeletonLoadingView == nil else { return }
         
-        print("💀 [OptionalSkeleton] Showing skeleton for slow connection")
+        Logger.debug("💀 [OptionalSkeleton] Showing skeleton for slow connection")
         
         // Create and show skeleton view
         skeletonLoadingView = showSkeletonLoading(in: view)
@@ -1206,7 +1206,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         guard let skeleton = skeletonLoadingView else { return }
         
-        print("💀 [OptionalSkeleton] Hiding skeleton - data loaded")
+        Logger.debug("💀 [OptionalSkeleton] Hiding skeleton - data loaded")
         
         // Animate content in and skeleton out
         UIView.animate(withDuration: 0.4, animations: {
@@ -1227,7 +1227,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         guard !hasTriedFastAPI && circles.isEmpty && activities.isEmpty else { return }
         
         hasTriedFastAPI = true
-        print("🚀 [Step4] Attempting fast API as alternative data source")
+        Logger.debug("🚀 [Step4] Attempting fast API as alternative data source")
         
         // Try the optimized homescreen endpoint
         APIService.shared.request(
@@ -1240,20 +1240,20 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 
                 switch result {
                 case .success(let response):
-                    print("🚀 [Step4] Fast API succeeded - applying alternative data")
+                    Logger.debug("🚀 [Step4] Fast API succeeded - applying alternative data")
                     
                     // Apply the fast data as an alternative source
                     if let userList = response.data?.userList, !userList.isEmpty {
                         // Refresh user list view to show updated data
                         self.userListView.refresh()
-                        print("🚀 [Step4] Applied \\(userList.count) users from fast API")
+                        Logger.debug("🚀 [Step4] Applied \\(userList.count) users from fast API")
                     }
                     
                     if let activities = response.data?.recentActivities, !activities.isEmpty && self.activities.isEmpty {
                         self.activities = activities
                         self.activityTableView.reloadData()
                         self.activityLoadingContainer.isHidden = true
-                        print("🚀 [Step4] Applied \\(activities.count) activities from fast API")
+                        Logger.debug("🚀 [Step4] Applied \\(activities.count) activities from fast API")
                     }
                     
                     // Cache this data for future use
@@ -1281,7 +1281,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     self.hideOptionalSkeletonLoading()
                     
                 case .failure(let error):
-                    print("🚀 [Step4] Fast API failed, will continue with regular loading: \\(error)")
+                    Logger.debug("🚀 [Step4] Fast API failed, will continue with regular loading: \\(error)")
                     // Don't show error to user - this is just an optimization attempt
                     // Regular loading will continue normally
                 }
@@ -1293,7 +1293,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     private func showProgressiveSkeletonLoading() {
         guard skeletonLoadingView == nil else { return }
         
-        print("💀 [Skeleton] Showing progressive loading skeleton")
+        Logger.debug("💀 [Skeleton] Showing progressive loading skeleton")
         
         // Create and show skeleton view
         skeletonLoadingView = showSkeletonLoading(in: view)
@@ -1307,7 +1307,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     private func hideProgressiveSkeletonLoading() {
         guard let skeleton = skeletonLoadingView else { return }
         
-        print("💀 [Skeleton] Hiding progressive loading skeleton")
+        Logger.debug("💀 [Skeleton] Hiding progressive loading skeleton")
         
         // Animate content in and skeleton out
         UIView.animate(withDuration: 0.3, animations: {
@@ -1321,7 +1321,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     private func updateProgressiveLoading(stage: ProgressiveLoadingStage) {
-        print("💀 [Progressive] Loading stage: \(stage)")
+        Logger.debug("💀 [Progressive] Loading stage: \(stage)")
         
         switch stage {
         case .userListLoaded:
@@ -1350,7 +1350,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     // MARK: - Ultra-Fast Home Screen Loading
     private func loadHomeScreenDataFast(completion: @escaping (Bool) -> Void) {
-        print("⚡ [FastLoad] Fetching ultra-fast home screen data...")
+        Logger.debug("⚡ [FastLoad] Fetching ultra-fast home screen data...")
         
         APIService.shared.request(
             endpoint: "home/homescreen",
@@ -1365,7 +1365,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 switch result {
                 case .success(let response):
                     let loadTime = response.data.stats.loadTimeMs
-                    print("⚡ [FastLoad] Success in \(loadTime)ms - Users: \(response.data.userList.count), Activities: \(response.data.activities.count)")
+                    Logger.debug("⚡ [FastLoad] Success in \(loadTime)ms - Users: \(response.data.userList.count), Activities: \(response.data.activities.count)")
                     
                     // Apply user list immediately for horizontal scroll
                     self.applyFastUserList(response.data.userList)
@@ -1379,7 +1379,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     completion(true)
                     
                 case .failure(let error):
-                    print("⚡ [FastLoad] Failed: \(error.localizedDescription)")
+                    Logger.debug("⚡ [FastLoad] Failed: \(error.localizedDescription)")
                     completion(false)
                 }
             }
@@ -1388,7 +1388,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     // MARK: - Full Dashboard Data Loading (Background)
     private func loadFullDashboardData() {
-        print("📊 [FullLoad] Loading complete dashboard data...")
+        Logger.debug("📊 [FullLoad] Loading complete dashboard data...")
         
         APIService.shared.request(
             endpoint: "home/dashboard",
@@ -1403,7 +1403,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 switch result {
                 case .success(let response):
                     let loadTime = response.data.stats.loadTimeMs
-                    print("📊 [FullLoad] Success in \(loadTime)ms - Full data loaded")
+                    Logger.debug("📊 [FullLoad] Success in \(loadTime)ms - Full data loaded")
                     
                     // Cache the full data for next time
                     self.optimizedCache.store(response.data)
@@ -1417,7 +1417,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     }
                     
                 case .failure(let error):
-                    print("📊 [FullLoad] Failed: \(error.localizedDescription)")
+                    Logger.debug("📊 [FullLoad] Failed: \(error.localizedDescription)")
                     // Fallback to legacy loading if needed
                     if !self.isUsingFastLoad {
                         self.fetchCircles()
@@ -1429,7 +1429,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     // MARK: - Fast Data Application Methods
     private func applyFastUserList(_ userList: [UserListItem]) {
-        print("⚡ [FastApply] Applying user list with \(userList.count) users")
+        Logger.debug("⚡ [FastApply] Applying user list with \(userList.count) users")
         
         // For now, trigger a refresh of the user list view to show the most recent data
         // The HorizontalUserListView will load its own connection data
@@ -1439,11 +1439,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Trigger progressive loading update
         updateProgressiveLoading(stage: .userListLoaded)
         
-        print("⚡ [FastApply] User list updated and visible")
+        Logger.debug("⚡ [FastApply] User list updated and visible")
     }
     
     private func applyFastActivities(_ activities: [Activity]) {
-        print("⚡ [FastApply] Applying \(activities.count) activities")
+        Logger.debug("⚡ [FastApply] Applying \(activities.count) activities")
         
         self.activities = activities
         
@@ -1457,11 +1457,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Trigger progressive loading update
         updateProgressiveLoading(stage: .activitiesLoaded)
         
-        print("⚡ [FastApply] Activities updated and visible")
+        Logger.debug("⚡ [FastApply] Activities updated and visible")
     }
     
     private func showHomeScreenUI() {
-        print("⚡ [FastApply] Showing home screen UI")
+        Logger.debug("⚡ [FastApply] Showing home screen UI")
         
         // Hide loading states
         hideLoadingState()
@@ -1476,11 +1476,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Update empty state
         updateEmptyState()
         
-        print("⚡ [FastApply] Home screen UI visible")
+        Logger.debug("⚡ [FastApply] Home screen UI visible")
     }
     
     private func applyHomeScreenData(_ data: HomeScreenContent) {
-        print("📊 [FullApply] Applying complete home screen data")
+        Logger.debug("📊 [FullApply] Applying complete home screen data")
         
         // Apply circles data
         self.circles = data.myCircles
@@ -1512,7 +1512,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         showHomeScreenUI()
         updateUIAfterDataLoad()
         
-        print("📊 [FullApply] Complete data applied - Activities: \(data.activities.count)")
+        Logger.debug("📊 [FullApply] Complete data applied - Activities: \(data.activities.count)")
     }
     
     // MARK: - Image Preloading
@@ -1538,23 +1538,23 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         guard !uniqueUrls.isEmpty else { return }
         
-        print("📷 [Preload] Starting background preload of \(uniqueUrls.count) images")
+        Logger.debug("📷 [Preload] Starting background preload of \(uniqueUrls.count) images")
         
         // Preload images in background
         DispatchQueue.global(qos: .background).async {
             CacheService.shared.preloadImages(from: uniqueUrls) { loadedCount in
-                print("📷 [Preload] Completed: \(loadedCount)/\(uniqueUrls.count) images cached")
+                Logger.debug("📷 [Preload] Completed: \(loadedCount)/\(uniqueUrls.count) images cached")
             }
         }
     }
     
     private func applyMapData(_ mapData: MapData) {
-        print("🗺️ [MapApply] Applying map data with \(mapData.places.count) places")
+        Logger.debug("🗺️ [MapApply] Applying map data with \(mapData.places.count) places")
         
         // Set map region immediately for better UX
         if let bounds = mapData.bounds {
             // TODO: Set map region once the correct map view property is identified
-            print("🗺️ [MapApply] Map region update requested (deferred)")
+            Logger.debug("🗺️ [MapApply] Map region update requested (deferred)")
         }
         
         // Start progressive place loading
@@ -1563,7 +1563,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     // MARK: - Progressive Map Loading
     private func loadMapPlacesProgressively(_ mapPlaces: [MapPlace]) {
-        print("🗺️ [Progressive] Starting progressive map loading for \(mapPlaces.count) places")
+        Logger.debug("🗺️ [Progressive] Starting progressive map loading for \(mapPlaces.count) places")
         
         // Load places in batches for smooth performance
         let batchSize = 10
@@ -1574,13 +1574,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         func loadNextBatch() {
             guard batchIndex < batches.count else {
-                print("🗺️ [Progressive] Completed loading all \(loadedPlaces.count) places")
+                Logger.debug("🗺️ [Progressive] Completed loading all \(loadedPlaces.count) places")
                 isMapDataReady = true
                 return
             }
             
             let currentBatch = batches[batchIndex]
-            print("🗺️ [Progressive] Loading batch \(batchIndex + 1)/\(batches.count) (\(currentBatch.count) places)")
+            Logger.debug("🗺️ [Progressive] Loading batch \(batchIndex + 1)/\(batches.count) (\(currentBatch.count) places)")
             
             // Convert current batch to Place objects
             // TODO: This will be implemented once place data structure is confirmed
@@ -1611,18 +1611,18 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     // MARK: - Async Map Updates
     private func updateMapWithPlaces(_ places: [Place], animated: Bool = false) {
-        print("🗺️ [UpdateMap] Map update requested for \(places.count) places")
+        Logger.debug("🗺️ [UpdateMap] Map update requested for \(places.count) places")
         
         // Update the embedded map controller with smooth loading
         guard let mapVC = mapViewController else {
-            print("🗺️ [UpdateMap] No map controller available, skipping update")
+            Logger.debug("🗺️ [UpdateMap] No map controller available, skipping update")
             return
         }
         
         // Use the embedded map controller's smooth update method
         mapVC.updatePlaces(places)
         
-        print("🗺️ [UpdateMap] Map update delegated to embedded map controller")
+        Logger.debug("🗺️ [UpdateMap] Map update delegated to embedded map controller")
     }
     
     private func updateUIAfterDataLoad() {
@@ -1635,7 +1635,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Update notification badge  
         updateNotificationBadge()
         
-        print("📊 [UpdateUI] UI updates completed")
+        Logger.debug("📊 [UpdateUI] UI updates completed")
     }
     
     override func viewDidLayoutSubviews() {
@@ -1659,13 +1659,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         
-        print("🟢 CirclesHomeViewController viewWillAppear called")
-        print("🟢 Instance: \(ObjectIdentifier(self))")
-        print("   hasStartedLoading: \(hasStartedLoading)")
-        print("   isReturningFromFullScreenMap: \(isReturningFromFullScreenMap)")
-        print("   circles.count: \(circles.count)")
-        print("   allPlaces.count: \(allPlaces.count)")
-        print("   preloadedData: \(preloadedData != nil)")
+        Logger.debug("🟢 CirclesHomeViewController viewWillAppear called")
+        Logger.debug("🟢 Instance: \(ObjectIdentifier(self))")
+        Logger.debug("   hasStartedLoading: \(hasStartedLoading)")
+        Logger.debug("   isReturningFromFullScreenMap: \(isReturningFromFullScreenMap)")
+        Logger.debug("   circles.count: \(circles.count)")
+        Logger.debug("   allPlaces.count: \(allPlaces.count)")
+        Logger.debug("   preloadedData: \(preloadedData != nil)")
         
         // Step 1: Safe cache optimization - check if we have cached data to speed up loading
         tryLoadFromCache()
@@ -1681,7 +1681,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         showMapLoadingStateImmediate()
         
         // Update notification badge - always refresh when view appears
-        print("🔔 CirclesHomeViewController: Updating notification badge on viewWillAppear")
+        Logger.debug("🔔 CirclesHomeViewController: Updating notification badge on viewWillAppear")
         updateNotificationBadge()
         startNotificationBadgeRefresh()
         updateRewardsBadge()
@@ -1711,7 +1711,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // If we have preloaded data, use it instead of loading
         if let preloadedData = preloadedData {
-            print("🟢 Using preloaded data from splash screen")
+            Logger.debug("🟢 Using preloaded data from splash screen")
             hasStartedLoading = true  // Mark as loaded
             usePreloadedData(preloadedData)
             self.preloadedData = nil // Clear after use
@@ -1727,7 +1727,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Simple check: if this instance has already started loading, don't load again
         if hasStartedLoading {
-            print("🟢 Skipping load - this instance has already started loading")
+            Logger.debug("🟢 Skipping load - this instance has already started loading")
             // Hide loading state if we already have data
             if !allPlaces.isEmpty {
                 hideMapLoadingState()
@@ -1741,7 +1741,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // NOW create the debounce timer (only if we didn't have preloaded data)
         loadDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
             guard let self = self else { return }
-            print("🟢 Starting initial data load (after debounce)")
+            Logger.debug("🟢 Starting initial data load (after debounce)")
             // Start data load without refreshing user list yet
             // User list will be refreshed after all data is loaded
             self.performInitialDataLoad()
@@ -1811,7 +1811,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     @objc private func connectionsLoadedHandler() {
-        print("🔔 Connections loaded notification received")
+        Logger.debug("🔔 Connections loaded notification received")
         // Remove observer to prevent multiple calls
         NotificationCenter.default.removeObserver(self, name: .connectionsLoaded, object: nil)
         
@@ -1822,7 +1822,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     private func checkTutorialAndOverlay() {
         // Only check once per session
         guard !hasCheckedTutorialAndOverlay else {
-            print("⚠️ Already checked tutorial and overlay")
+            Logger.debug("⚠️ Already checked tutorial and overlay")
             return
         }
         hasCheckedTutorialAndOverlay = true
@@ -1834,7 +1834,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         if !hasAnyLoadedData && tutorialCheckRetryCount < maxTutorialCheckRetries {
             tutorialCheckRetryCount += 1
-            print("🔍 No relationship data loaded yet, scheduling retry \(tutorialCheckRetryCount)/\(maxTutorialCheckRetries) in 2 seconds")
+            Logger.debug("🔍 No relationship data loaded yet, scheduling retry \(tutorialCheckRetryCount)/\(maxTutorialCheckRetries) in 2 seconds")
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
                 // Reset flag and try again with hopefully loaded data
                 self?.hasCheckedTutorialAndOverlay = false
@@ -1852,7 +1852,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // We also count pending connections as proof the user isn't "new"
         let totalRelationshipCount = acceptedConnectionCount + horizontalViewCount + pendingConnectionCount
         
-        print("🔍 checkTutorialAndOverlay - Accepted connections: \(acceptedConnectionCount), Following: \(horizontalViewCount), Pending: \(pendingConnectionCount), Total: \(totalRelationshipCount)")
+        Logger.debug("🔍 checkTutorialAndOverlay - Accepted connections: \(acceptedConnectionCount), Following: \(horizontalViewCount), Pending: \(pendingConnectionCount), Total: \(totalRelationshipCount)")
         
         // Additional safety check: also check user profile counts as backup
         let currentUser = AuthService.shared.currentUser
@@ -1860,31 +1860,31 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         let profileConnectionsCount = currentUser?.connectionsCount ?? 0
         let profileTotalRelationships = profileFollowingCount + profileConnectionsCount
         
-        print("🔍 Profile backup check - Following: \(profileFollowingCount), Connections: \(profileConnectionsCount), Profile total: \(profileTotalRelationships)")
+        Logger.debug("🔍 Profile backup check - Following: \(profileFollowingCount), Connections: \(profileConnectionsCount), Profile total: \(profileTotalRelationships)")
         
         // Only show overlay if BOTH the loaded data AND profile data indicate no relationships
         let shouldConsiderAsNewUser = totalRelationshipCount == 0 && profileTotalRelationships == 0
         
         if shouldConsiderAsNewUser {
-            print("✅ User has 0 total relationships in both loaded data and profile - checking if should show overlay")
+            Logger.debug("✅ User has 0 total relationships in both loaded data and profile - checking if should show overlay")
             // For users with 0 total relationships, always show the overlay unless they've explicitly dismissed it this session
             // Reset the flag for users with 0 relationships to ensure they see it
             if !hasCheckedForSuggestedUsers {
                 hasCheckedForSuggestedUsers = true  // Set the flag to prevent repeated showing
                 // Enable the overlay for users with 0 relationships
                 OnboardingManager.shared.enableSuggestedUsersOverlay()
-                print("✅ Enabled suggested users overlay for user with 0 relationships")
+                Logger.debug("✅ Enabled suggested users overlay for user with 0 relationships")
             }
             
             if OnboardingManager.shared.shouldShowSuggestedUsers {
-                print("✅ Should show suggested users overlay - calling showSuggestedUsersOverlay()")
+                Logger.debug("✅ Should show suggested users overlay - calling showSuggestedUsersOverlay()")
                 showSuggestedUsersOverlay()
                 return
             } else {
-                print("❌ Suggested users overlay disabled in settings")
+                Logger.debug("❌ Suggested users overlay disabled in settings")
             }
         } else {
-            print("✅ User has relationships (loaded: \(totalRelationshipCount), profile: \(profileTotalRelationships)) - skipping new user overlay")
+            Logger.debug("✅ User has relationships (loaded: \(totalRelationshipCount), profile: \(profileTotalRelationships)) - skipping new user overlay")
         }
         
         // Check tutorial status from backend
@@ -1925,21 +1925,21 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     private func checkAndShowSuggestedUsers() {
         // Only check once per session
         guard !hasCheckedForSuggestedUsers else { 
-            print("⚠️ checkAndShowSuggestedUsers - Already checked this session")
+            Logger.debug("⚠️ checkAndShowSuggestedUsers - Already checked this session")
             return 
         }
         hasCheckedForSuggestedUsers = true
         
         // Get connection count from NetworkManager
         let connectionCount = NetworkManager.shared.connections.count
-        print("🔍 checkAndShowSuggestedUsers - Connection count: \(connectionCount)")
+        Logger.debug("🔍 checkAndShowSuggestedUsers - Connection count: \(connectionCount)")
         
         // Check if should show suggested users
         if OnboardingManager.shared.shouldShowSuggestedUsersOverlay(connectionCount: connectionCount) {
-            print("✅ Should show suggested users overlay - calling showSuggestedUsersOverlay()")
+            Logger.debug("✅ Should show suggested users overlay - calling showSuggestedUsersOverlay()")
             showSuggestedUsersOverlay()
         } else {
-            print("❌ Should NOT show suggested users overlay")
+            Logger.debug("❌ Should NOT show suggested users overlay")
         }
     }
     
@@ -2549,7 +2549,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         cachedPlaces.removeAll()
         userOwnPlaces.removeAll()
         placesCacheExpiry = nil
-        print("🗑️ Places cache invalidated")
+        Logger.debug("🗑️ Places cache invalidated")
     }
     
     private func shouldUseCachedData() -> Bool {
@@ -2571,16 +2571,16 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         self.activities = data.activities
         self.reels = data.moments
         
-        print("📍 usePreloadedData: Got \(data.circles.count) circles")
-        print("📍 usePreloadedData: Got \(data.allPlaces.count) places (INCOMPLETE!)")
-        print("📍 usePreloadedData: Got \(data.connections.count) connections")
-        print("📍 usePreloadedData: Got \(data.activities.count) activities")
-        print("📍 usePreloadedData: Got \(data.moments.count) moments")
-        print("📍 usePreloadedData: Should have 124 places according to profile")
+        Logger.debug("📍 usePreloadedData: Got \(data.circles.count) circles")
+        Logger.debug("📍 usePreloadedData: Got \(data.allPlaces.count) places (INCOMPLETE!)")
+        Logger.debug("📍 usePreloadedData: Got \(data.connections.count) connections")
+        Logger.debug("📍 usePreloadedData: Got \(data.activities.count) activities")
+        Logger.debug("📍 usePreloadedData: Got \(data.moments.count) moments")
+        Logger.debug("📍 usePreloadedData: Should have 124 places according to profile")
         
         // Don't set initial connections from preloaded data since they don't have message timestamps
         // The connections will be properly loaded with all data in viewWillAppear via refresh()
-        print("✅ usePreloadedData: Skipping initial connections - will load with proper data via refresh()")
+        Logger.debug("✅ usePreloadedData: Skipping initial connections - will load with proper data via refresh()")
         
         // Don't use preloaded places - they're incomplete!
         // Instead, trigger a full fetch of all places
@@ -2636,12 +2636,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 self.fetchReels()
             }
 
-            print("✅ Preloaded data applied successfully")
-            print("   - Circles: \(self.circles.count)")
-            print("   - Places: \(self.allPlaces.count) (INCOMPLETE - need to fetch all)")
-            print("   - Filtered places: \(self.filteredPlaces.count)")
-            print("   - Activities: \(self.activities.count)")
-            print("   - Moments: \(self.reels.count)")
+            Logger.debug("✅ Preloaded data applied successfully")
+            Logger.debug("   - Circles: \(self.circles.count)")
+            Logger.debug("   - Places: \(self.allPlaces.count) (INCOMPLETE - need to fetch all)")
+            Logger.debug("   - Filtered places: \(self.filteredPlaces.count)")
+            Logger.debug("   - Activities: \(self.activities.count)")
+            Logger.debug("   - Moments: \(self.reels.count)")
             
             // Now fetch ALL places from circles
             self.fetchAllPlacesFromCircles()
@@ -2904,21 +2904,21 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
     private func fetchActivities(loadMore: Bool = false, completion: ((Bool) -> Void)? = nil) {
         guard !isLoadingActivities && !isLoadingMoreActivities else { 
-            print("🔄 Already loading activities, skipping...")
+            Logger.debug("🔄 Already loading activities, skipping...")
             completion?(false)
             return 
         }
         
         // Don't load more if we've reached the end
         if loadMore && !hasMoreActivities {
-            print("📊 No more activities to load")
+            Logger.debug("📊 No more activities to load")
             completion?(false)
             return
         }
         
-        print("📊 Starting to fetch activities... (loadMore: \(loadMore))")
-        print("📊 activityLoadingContainer.isHidden before: \(activityLoadingContainer.isHidden)")
-        print("📊 activityLoadingIndicator.isAnimating before: \(activityLoadingIndicator.isAnimating)")
+        Logger.debug("📊 Starting to fetch activities... (loadMore: \(loadMore))")
+        Logger.debug("📊 activityLoadingContainer.isHidden before: \(activityLoadingContainer.isHidden)")
+        Logger.debug("📊 activityLoadingIndicator.isAnimating before: \(activityLoadingIndicator.isAnimating)")
         
         // Check if user needs notification prompt when viewing activity feed
         if !loadMore && activities.isEmpty {
@@ -2940,9 +2940,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 activityTableView.isHidden = true
             }
             
-            print("📊 activityLoadingContainer.isHidden after: \(activityLoadingContainer.isHidden)")
-            print("📊 activityLoadingIndicator.isAnimating after: \(activityLoadingIndicator.isAnimating)")
-            print("📊 activityTableView.isHidden: \(activityTableView.isHidden)")
+            Logger.debug("📊 activityLoadingContainer.isHidden after: \(activityLoadingContainer.isHidden)")
+            Logger.debug("📊 activityLoadingIndicator.isAnimating after: \(activityLoadingIndicator.isAnimating)")
+            Logger.debug("📊 activityTableView.isHidden: \(activityTableView.isHidden)")
             currentOffset = 0 // Reset offset for fresh load
             hasMoreActivities = true
         }
@@ -2962,7 +2962,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 
                 switch result {
                 case .success(let response):
-                    print("✅ Successfully fetched \(response.activities.count) activities")
+                    Logger.debug("✅ Successfully fetched \(response.activities.count) activities")
                     
                     if loadMore {
                         // Append to existing activities, skipping any already
@@ -2980,13 +2980,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     self.currentOffset = self.activities.count ?? 0
                     self.hasMoreActivities = response.hasMore
                     
-                    print("📊 Total activities: \(self.activities.count ?? 0), hasMore: \(response.hasMore)")
+                    Logger.debug("📊 Total activities: \(self.activities.count ?? 0), hasMore: \(response.hasMore)")
                     
                     self.updateActivityFeed()
                     
                 case .failure(let error):
-                    print("❌ Error fetching activities: \(error)")
-                    print("🔍 Error details: \(error.localizedDescription)")
+                    Logger.debug("❌ Error fetching activities: \(error)")
+                    Logger.debug("🔍 Error details: \(error.localizedDescription)")
                     
                     if !loadMore {
                         self.activities = []
@@ -3216,7 +3216,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     self.updateReelsFeed()
                     
                 case .failure(let error):
-                    print("❌ Error fetching reels: \(error)")
+                    Logger.debug("❌ Error fetching reels: \(error)")
                     
                     // Handle specific error types gracefully
                     var isHandledError = false
@@ -3225,7 +3225,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                         // Check if this is the "too many disjunctions" error
                         let errorString = error.localizedDescription
                         if errorString.contains("Too many disjunctions") || errorString.contains("32 disjunctions") {
-                            print("🔍 Detected Firestore disjunction limit error - showing user-friendly message")
+                            Logger.debug("🔍 Detected Firestore disjunction limit error - showing user-friendly message")
                             
                             if !loadMore {
                                 self.showFirestoreQueryLimitError()
@@ -3233,7 +3233,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                             }
                         }
                     } else if case APIError.rateLimited = error {
-                        print("🔍 Rate limited loading Moments feed - showing fallback content")
+                        Logger.debug("🔍 Rate limited loading Moments feed - showing fallback content")
                         
                         if !loadMore {
                             self.showMomentsFeedFallback()
@@ -3331,7 +3331,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         activityEmptyStateLabel.text = "Too much content to load right now! Try refreshing in a few moments, or check back later for your Moments feed."
         activityEmptyStateLabel.isHidden = false
         
-        print("🔍 Showing user-friendly message for Firestore query limit")
+        Logger.debug("🔍 Showing user-friendly message for Firestore query limit")
         
         // Clear reels array to show empty state
         reels = []
@@ -3339,7 +3339,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Auto-retry after 30 seconds
         DispatchQueue.main.asyncAfter(deadline: .now() + 30.0) { [weak self] in
-            print("🔍 Auto-retrying Moments feed after Firestore error")
+            Logger.debug("🔍 Auto-retrying Moments feed after Firestore error")
             self?.fetchReels()
         }
     }
@@ -3356,7 +3356,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         activityEmptyStateLabel.text = "Feed temporarily unavailable due to high activity. Pull to refresh to try again!"
         activityEmptyStateLabel.isHidden = false
         
-        print("🔍 Showing fallback message for rate limited Moments feed")
+        Logger.debug("🔍 Showing fallback message for rate limited Moments feed")
         
         // Clear reels array to show empty state
         reels = []
@@ -3370,7 +3370,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     private func performInitialDataLoad() {
         
         // Unified method to load both circles and places
-        print("🚀 Starting OPTIMIZED initial data load")
+        Logger.debug("🚀 Starting OPTIMIZED initial data load")
         let startTime = CFAbsoluteTimeGetCurrent()
         
         // Ensure connections are loaded in NetworkManager
@@ -3398,9 +3398,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             switch result {
             case .success(let circles):
                 myCirclesResult = circles
-                print("✅ Fetched \(circles.count) user circles")
+                Logger.debug("✅ Fetched \(circles.count) user circles")
             case .failure(let error):
-                print("❌ Failed to fetch user circles: \(error)")
+                Logger.debug("❌ Failed to fetch user circles: \(error)")
             }
             group.leave()
         }
@@ -3415,9 +3415,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             switch result {
             case .success(let response):
                 networkCirclesResult = response.data
-                print("✅ Fetched \(response.data.count) network circles")
+                Logger.debug("✅ Fetched \(response.data.count) network circles")
             case .failure(let error):
-                print("❌ Failed to fetch network circles: \(error)")
+                Logger.debug("❌ Failed to fetch network circles: \(error)")
             }
             group.leave()
         }
@@ -3428,9 +3428,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             switch result {
             case .success(let response):
                 activitiesResult = response.activities
-                print("✅ Fetched \(response.activities.count) activities")
+                Logger.debug("✅ Fetched \(response.activities.count) activities")
             case .failure(let error):
-                print("❌ Failed to fetch activities: \(error)")
+                Logger.debug("❌ Failed to fetch activities: \(error)")
             }
             group.leave()
         }
@@ -3445,9 +3445,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             switch result {
             case .success(let response):
                 reelsResult = response.data
-                print("✅ Fetched \(reelsResult.count) moments")
+                Logger.debug("✅ Fetched \(reelsResult.count) moments")
             case .failure(let error):
-                print("❌ Failed to fetch moments: \(error)")
+                Logger.debug("❌ Failed to fetch moments: \(error)")
             }
             group.leave()
         }
@@ -3463,7 +3463,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             self.reels = reelsResult
             
             let circleLoadTime = CFAbsoluteTimeGetCurrent() - startTime
-            print("⏱️ Phase 1 completed in \(String(format: "%.2f", circleLoadTime)) seconds")
+            Logger.debug("⏱️ Phase 1 completed in \(String(format: "%.2f", circleLoadTime)) seconds")
             
             // Update UI
             self.updateEmptyState()
@@ -3482,7 +3482,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 self.userListView.refresh()
                 
                 let totalTime = CFAbsoluteTimeGetCurrent() - startTime
-                print("✅ OPTIMIZED load completed in \(String(format: "%.2f", totalTime)) seconds (no circles)")
+                Logger.debug("✅ OPTIMIZED load completed in \(String(format: "%.2f", totalTime)) seconds (no circles)")
                 return
             }
             
@@ -3554,11 +3554,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                                     }
                                 })
                                 
-                                print("🗺️ [Progressive] Updated map with \(uniquePlaces.count) places (\(loadedCircles)/\(totalCircles) circles loaded)")
+                                Logger.debug("🗺️ [Progressive] Updated map with \(uniquePlaces.count) places (\(loadedCircles)/\(totalCircles) circles loaded)")
                             }
                             
                         case .failure(let error):
-                            print("❌ Failed to fetch places for circle '\(circle.name)': \(error)")
+                            Logger.debug("❌ Failed to fetch places for circle '\(circle.name)': \(error)")
                         }
                         
                         placeSemaphore.signal()
@@ -3628,12 +3628,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 CirclesHomeViewController.hasLoadedInitialData = true
                 
                 let totalTime = CFAbsoluteTimeGetCurrent() - startTime
-                print("✅ OPTIMIZED load completed in \(String(format: "%.2f", totalTime)) seconds")
-                print("   - My circles: \(myCirclesResult.count)")
-                print("   - Network circles: \(networkCirclesResult.count)")
-                print("   - Total places: \(uniquePlaces.count)")
-                print("   - Activities: \(activitiesResult.count)")
-                print("   - Moments: \(reelsResult.count)")
+                Logger.debug("✅ OPTIMIZED load completed in \(String(format: "%.2f", totalTime)) seconds")
+                Logger.debug("   - My circles: \(myCirclesResult.count)")
+                Logger.debug("   - Network circles: \(networkCirclesResult.count)")
+                Logger.debug("   - Total places: \(uniquePlaces.count)")
+                Logger.debug("   - Activities: \(activitiesResult.count)")
+                Logger.debug("   - Moments: \(reelsResult.count)")
             }
         }
     }
@@ -3641,11 +3641,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     private func showMapLoadingState() {
         // Prevent showing loading state multiple times
         guard !isShowingLoadingUI else { 
-            print("🗺️ Map loading state already showing")
+            Logger.debug("🗺️ Map loading state already showing")
             return 
         }
         
-        print("🗺️ Showing map with loading indicator")
+        Logger.debug("🗺️ Showing map with loading indicator")
         isShowingLoadingUI = true
         
         // Show map immediately but hide the loading overlay
@@ -3666,8 +3666,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     private func hideMapLoadingState() {
-        print("🗺️ Hiding map loading state, showing populated map")
-        print("🗺️ About to call fetchActivities from hideMapLoadingState")
+        Logger.debug("🗺️ Hiding map loading state, showing populated map")
+        Logger.debug("🗺️ About to call fetchActivities from hideMapLoadingState")
         isShowingLoadingUI = false
         
         // Complete the progress bar with satisfaction animation
@@ -3704,7 +3704,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     // NEW: Immediate loading state to prevent empty map confusion
     private func showMapLoadingStateImmediate() {
-        print("🗺️ [IMMEDIATE] Showing map loading state on viewWillAppear")
+        Logger.debug("🗺️ [IMMEDIATE] Showing map loading state on viewWillAppear")
         
         // Show map container immediately so it's not empty
         mapContainerView.isHidden = false
@@ -3743,7 +3743,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Update loading message to indicate we found cached circles
         DispatchQueue.main.async { [weak self] in
             self?.mapLoadingLabel.text = "Found \(self?.circles.count ?? 0) circles, loading places..."
-            print("📦 [Cache→Map] Found cached circles, will load places next")
+            Logger.debug("📦 [Cache→Map] Found cached circles, will load places next")
         }
     }
     
@@ -3755,7 +3755,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Store places
         if isFromCache {
             // Cached places are temporary - will be replaced with full data
-            print("🗺️ [Progressive] Showing \(places.count) cached places temporarily")
+            Logger.debug("🗺️ [Progressive] Showing \(places.count) cached places temporarily")
         } else {
             // Full place data. With viewport loading, merge instead of replacing
             // so already-fetched viewport (network) places aren't wiped out.
@@ -3769,7 +3769,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     circle.places?.contains(place.id) == true
                 }
             }
-            print("🗺️ [Progressive] Populated map with \(places.count) full places")
+            Logger.debug("🗺️ [Progressive] Populated map with \(places.count) full places")
             
             // Update available categories now that we have places
             self.updateAvailableCategories()
@@ -3807,33 +3807,33 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Only show loading state on the very first app launch
         isLoadingCircles = true
         
-        print("🔍 DEBUG fetchCircles() called - About to call CircleService.fetchUserCircles")
+        Logger.debug("🔍 DEBUG fetchCircles() called - About to call CircleService.fetchUserCircles")
         CircleService.shared.fetchUserCircles { [weak self] result in
             guard let self = self else { return }
-            print("🔍 DEBUG fetchCircles() completion called")
+            Logger.debug("🔍 DEBUG fetchCircles() completion called")
             DispatchQueue.main.async {
                 self.isLoadingCircles = false
                 
                 switch result {
                 case .success(let circles):
-                    print("✅ Successfully fetched \(circles.count) user circles")
-                    print("🔍 DEBUG - User Circle Details:")
+                    Logger.debug("✅ Successfully fetched \(circles.count) user circles")
+                    Logger.debug("🔍 DEBUG - User Circle Details:")
                     for (index, circle) in circles.enumerated() {
-                        print("   Circle \(index + 1): '\(circle.name)' (ID: \(circle.id), Places: \(circle.placesCount ?? 0))")
+                        Logger.debug("   Circle \(index + 1): '\(circle.name)' (ID: \(circle.id), Places: \(circle.placesCount ?? 0))")
                     }
                     self.circles = circles
-                    print("🔍 DEBUG - After assignment, self.circles.count: \(self.circles.count)")
+                    Logger.debug("🔍 DEBUG - After assignment, self.circles.count: \(self.circles.count)")
                     self.fetchAllPlacesFromCircles()
                     completion?()
                     // Don't mark as loaded here - wait until places are fetched
                 case .failure(let error):
-                    print("❌ Error fetching circles: \(error.localizedDescription)")
-                    print("❌ Full error: \(error)")
+                    Logger.debug("❌ Error fetching circles: \(error.localizedDescription)")
+                    Logger.debug("❌ Full error: \(error)")
                     completion?()
                     
                     // If it's a duplicate request error, still need to clean up state
                     if case .duplicateRequest = error as? APIError {
-                        print("❌ Duplicate request detected - cleaning up state")
+                        Logger.debug("❌ Duplicate request detected - cleaning up state")
                         self.isLoadingCircles = false
                         self.isPerformingInitialLoad = false
                         self.hideLoadingState()
@@ -3867,25 +3867,25 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 guard let self = self else { return }
                 switch result {
                 case .success(let response):
-                    print("✅ Successfully fetched \(response.data.count) network circles")
+                    Logger.debug("✅ Successfully fetched \(response.data.count) network circles")
                     let currentUserId = AuthService.shared.getUserId() ?? ""
                     let normalizedUserId = IDNormalizer.normalize(currentUserId) ?? currentUserId
                     for circle in response.data {
                         let normalizedOwner = IDNormalizer.normalize(circle.owner) ?? circle.owner
-                        print("📍 Network circle received: \(circle.name) by \(circle.owner) (normalized: \(normalizedOwner)), privacy: \(circle.privacy.rawValue)")
+                        Logger.debug("📍 Network circle received: \(circle.name) by \(circle.owner) (normalized: \(normalizedOwner)), privacy: \(circle.privacy.rawValue)")
                         if IDNormalizer.isSameUser(circle.owner, currentUserId) {
-                            print("⚠️ WARNING: Network circles contains user's own circle: \(circle.name)")
-                            print("   Circle owner: \(circle.owner)")
-                            print("   Current user: \(currentUserId)")
-                            print("   Normalized owner: \(normalizedOwner)")
-                            print("   Normalized user: \(normalizedUserId)")
+                            Logger.debug("⚠️ WARNING: Network circles contains user's own circle: \(circle.name)")
+                            Logger.debug("   Circle owner: \(circle.owner)")
+                            Logger.debug("   Current user: \(currentUserId)")
+                            Logger.debug("   Normalized owner: \(normalizedOwner)")
+                            Logger.debug("   Normalized user: \(normalizedUserId)")
                         }
                     }
                     self.networkCircles = response.data
                     self.updateEmptyState()
                     completion?()
                 case .failure(let error):
-                    print("❌ Error fetching network circles: \(error.localizedDescription)")
+                    Logger.debug("❌ Error fetching network circles: \(error.localizedDescription)")
                     completion?()
                     
                     // If it's a duplicate request error, just ignore it
@@ -4055,17 +4055,17 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Reset map data ready flag at the start of any fetch
         isMapDataReady = false
         
-        print("📍 fetchAllPlacesFromCircles() - Starting fetch process")
-        print("📍 User circles count: \(circles.count)")
-        print("📍 Network circles count: \(networkCircles.count)")
+        Logger.debug("📍 fetchAllPlacesFromCircles() - Starting fetch process")
+        Logger.debug("📍 User circles count: \(circles.count)")
+        Logger.debug("📍 Network circles count: \(networkCircles.count)")
         
         // ALWAYS fetch all user places to ensure we have the complete 124 places
         // Don't use cached data for user places as it may be incomplete
-        print("📍 Fetching all places (cache disabled to ensure complete data)")
+        Logger.debug("📍 Fetching all places (cache disabled to ensure complete data)")
         
         // Note: We're commenting out the cache check to ensure we get all 124 user places
         // if shouldUseCachedData() {
-        //     print("📍 Using cached places data (\(cachedPlaces.count) places)")
+        //     Logger.debug("📍 Using cached places data (\(cachedPlaces.count) places)")
         //     self.allPlaces = cachedPlaces
         //     ... cache logic ...
         //     return
@@ -4080,13 +4080,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Loading state is already shown by performInitialDataLoad, don't show again
         
-        print("📍 fetchAllPlacesFromCircles called (cache invalid or expired)")
-        print("📍 User circles count: \(circles.count)")
-        print("📍 Network circles count: \(networkCircles.count)")
+        Logger.debug("📍 fetchAllPlacesFromCircles called (cache invalid or expired)")
+        Logger.debug("📍 User circles count: \(circles.count)")
+        Logger.debug("📍 Network circles count: \(networkCircles.count)")
         
         // If no circles at all, just update UI and return
         if circles.isEmpty && networkCircles.isEmpty {
-            print("📍 No circles to fetch places from")
+            Logger.debug("📍 No circles to fetch places from")
             self.allPlaces = []
             self.userOwnPlaces = []
             self.filteredPlaces = []
@@ -4104,23 +4104,23 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Debug network circles
         for circle in networkCircles {
-            print("📍 Network circle: \(circle.name) by \(circle.owner), privacy: \(circle.privacy)")
+            Logger.debug("📍 Network circle: \(circle.name) by \(circle.owner), privacy: \(circle.privacy)")
         }
         
         // Fetch user's own places
         var userPlacesCount = 0
-        print("📍 Starting to fetch places from \(circles.count) user circles:")
+        Logger.debug("📍 Starting to fetch places from \(circles.count) user circles:")
         for (index, circle) in circles.enumerated() {
-            print("   Circle \(index + 1)/\(circles.count): '\(circle.name)' (ID: \(circle.id), Expected places: \(circle.placesCount ?? 0))")
+            Logger.debug("   Circle \(index + 1)/\(circles.count): '\(circle.name)' (ID: \(circle.id), Expected places: \(circle.placesCount ?? 0))")
             group.enter()
             PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
                 switch result {
                 case .success(let places):
-                    print("✅ Fetched \(places.count) places from USER circle '\(circle.name)' (expected: \(circle.placesCount ?? 0))")
+                    Logger.debug("✅ Fetched \(places.count) places from USER circle '\(circle.name)' (expected: \(circle.placesCount ?? 0))")
                     userPlacesCount += places.count
                     allFetchedPlaces.append(contentsOf: places)
                 case .failure(let error):
-                    print("❌ Failed to fetch places for USER circle '\(circle.name)' (id: \(circle.id)): \(error)")
+                    Logger.debug("❌ Failed to fetch places for USER circle '\(circle.name)' (id: \(circle.id)): \(error)")
                 }
                 group.leave()
             }
@@ -4147,18 +4147,18 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                             PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
                                 switch result {
                                 case .success(let places):
-                                    print("✅ Found \(places.count) places in network circle: \(circle.name)")
-                                    print("   Circle owner ID: \(circle.owner)")
+                                    Logger.debug("✅ Found \(places.count) places in network circle: \(circle.name)")
+                                    Logger.debug("   Circle owner ID: \(circle.owner)")
                                     allFetchedPlaces.append(contentsOf: places)
                                 case .failure(let error):
-                                    print("Failed to fetch places for network circle \(circle.id): \(error)")
+                                    Logger.debug("Failed to fetch places for network circle \(circle.id): \(error)")
                                 }
                                 group.leave()
                             }
                         }
                     }
                 case .failure(let error):
-                    print("Failed to fetch network circles: \(error)")
+                    Logger.debug("Failed to fetch network circles: \(error)")
                     // If it's a duplicate request error, retry
                     if case .duplicateRequest = error {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -4171,16 +4171,16 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         } else if !useViewportNetworkLoading {
             // Use existing network circles
             for circle in networkCircles {
-                print("📍 Fetching places for network circle: \(circle.name) (\(circle.id))")
+                Logger.debug("📍 Fetching places for network circle: \(circle.name) (\(circle.id))")
                 group.enter()
                 PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
                     switch result {
                     case .success(let places):
-                        print("✅ Found \(places.count) places in network circle: \(circle.name)")
-                        print("   Circle owner ID: \(circle.owner)")
+                        Logger.debug("✅ Found \(places.count) places in network circle: \(circle.name)")
+                        Logger.debug("   Circle owner ID: \(circle.owner)")
                         allFetchedPlaces.append(contentsOf: places)
                     case .failure(let error):
-                        print("❌ Failed to fetch places for network circle \(circle.name) (\(circle.id)): \(error)")
+                        Logger.debug("❌ Failed to fetch places for network circle \(circle.name) (\(circle.id)): \(error)")
                     }
                     group.leave()
                 }
@@ -4190,11 +4190,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         group.notify(queue: .main, execute: { [weak self] in
             guard let self = self else { return }
             
-            print("📍 PLACE FETCH COMPLETE - DETAILED SUMMARY:")
-            print("   Total raw places fetched: \(allFetchedPlaces.count)")
-            print("   User places fetched: \(userPlacesCount)")
-            print("   User circles count: \(self.circles.count)")
-            print("   Network circles count: \(self.networkCircles.count)")
+            Logger.debug("📍 PLACE FETCH COMPLETE - DETAILED SUMMARY:")
+            Logger.debug("   Total raw places fetched: \(allFetchedPlaces.count)")
+            Logger.debug("   User places fetched: \(userPlacesCount)")
+            Logger.debug("   User circles count: \(self.circles.count)")
+            Logger.debug("   Network circles count: \(self.networkCircles.count)")
             
             // Count user places before deduplication
             let currentUserId = AuthService.shared.getUserId() ?? ""
@@ -4219,9 +4219,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 !self.networkCircles.contains(where: { $0.id == circleId && IDNormalizer.isSameUser($0.owner, currentUserId) })
             }
             
-            print("📍 BEFORE DEDUPLICATION:")
-            print("   User places: \(userPlacesBeforeDedup.count)")
-            print("   Network places: \(networkPlacesBeforeDedup.count)")
+            Logger.debug("📍 BEFORE DEDUPLICATION:")
+            Logger.debug("   User places: \(userPlacesBeforeDedup.count)")
+            Logger.debug("   Network places: \(networkPlacesBeforeDedup.count)")
             
             // Deduplicate places that might exist in multiple circles
             let deduplicatedPlaces = self.removeDuplicatePlaces(allFetchedPlaces)
@@ -4243,10 +4243,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                        !self.networkCircles.contains(where: { $0.id == circleId && IDNormalizer.isSameUser($0.owner, currentUserId) })
             }
             
-            print("📍 AFTER DEDUPLICATION:")
-            print("   User places: \(userPlacesAfterDedup.count) (should be 124 according to user)")
-            print("   Network places: \(networkPlacesAfterDedup.count)")
-            print("   Total unique places: \(deduplicatedPlaces.count)")
+            Logger.debug("📍 AFTER DEDUPLICATION:")
+            Logger.debug("   User places: \(userPlacesAfterDedup.count) (should be 124 according to user)")
+            Logger.debug("   Network places: \(networkPlacesAfterDedup.count)")
+            Logger.debug("   Total unique places: \(deduplicatedPlaces.count)")
             
             // Store user's own places separately for search filtering
             self.userOwnPlaces = userPlacesAfterDedup
@@ -4274,10 +4274,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 self.locationStatusLabel.isHidden = true
             }
             
-            print("📍 Map Update Summary:")
-            print("   Total filtered places: \(mapFilteredPlaces.count)")
-            print("   Places with location: \(placesWithLocation)")
-            print("   Places without location: \(placesWithoutLocation)")
+            Logger.debug("📍 Map Update Summary:")
+            Logger.debug("   Total filtered places: \(mapFilteredPlaces.count)")
+            Logger.debug("   Places with location: \(placesWithLocation)")
+            Logger.debug("   Places without location: \(placesWithoutLocation)")
             
             // Update filteredPlaces for UI consistency (search, empty states, etc.)
             self.filteredPlaces = mapFilteredPlaces
@@ -4309,14 +4309,14 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     private func updateMapWhenReady() {
         // Only update map if data is ready and we have places to display
         guard isMapDataReady else {
-            print("🗺️ Map data not ready yet, deferring update")
+            Logger.debug("🗺️ Map data not ready yet, deferring update")
             return
         }
         
         // Apply current filters to get the places to display
         let placesToDisplay = applyFiltersToPlaces(allPlaces)
         
-        print("🗺️ Updating map with \(placesToDisplay.count) places (data ready)")
+        Logger.debug("🗺️ Updating map with \(placesToDisplay.count) places (data ready)")
         
         // Update the map
         self.mapViewController?.updatePlaces(placesToDisplay)
@@ -4518,7 +4518,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     @objc private func handleAppWillEnterForeground() {
         // Check if cache is expired when app comes to foreground
         if !isCacheValid() {
-            print("📱 App entering foreground - cache expired, will refresh on next load")
+            Logger.debug("📱 App entering foreground - cache expired, will refresh on next load")
             // Don't refresh automatically, just invalidate cache
             // Data will be refreshed when view appears
         }
@@ -4527,7 +4527,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     @objc private func handleMomentDeleted(_ notification: Notification) {
         guard let videoId = notification.userInfo?["videoId"] as? String else { return }
         
-        print("📢 Received MomentDeleted notification for video: \(videoId)")
+        Logger.debug("📢 Received MomentDeleted notification for video: \(videoId)")
         
         // Find the indices of activities to remove
         var indexPathsToRemove: [IndexPath] = []
@@ -4535,7 +4535,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         for (index, activity) in activities.enumerated() {
             if activity.targetType == "place_video" && activity.targetId == videoId {
-                print("🗑️ Found activity to remove at index \(index) for video: \(videoId)")
+                Logger.debug("🗑️ Found activity to remove at index \(index) for video: \(videoId)")
                 indexPathsToRemove.append(IndexPath(row: index, section: 0))
                 indicesToRemove.append(index)
             }
@@ -4547,7 +4547,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
         
         if !indexPathsToRemove.isEmpty {
-            print("✅ Removing \(indexPathsToRemove.count) activity(ies) from feed")
+            Logger.debug("✅ Removing \(indexPathsToRemove.count) activity(ies) from feed")
             
             // Update UI if activity feed is visible
             if contentSegmentedControl.selectedSegmentIndex == 0 { // Activity tab
@@ -4619,7 +4619,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         if let connectionId = selectedConnectionId, 
            connectionId != "my_places_only",
            networkCircles.isEmpty {
-            print("📍 Fetching network circles before expanding map...")
+            Logger.debug("📍 Fetching network circles before expanding map...")
             fetchNetworkCircles { [weak self] in
                 guard let self = self else { return }
                 self.presentFullScreenMapWithCurrentState()
@@ -4708,14 +4708,14 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
     @objc private func quickAddPlaceButtonTapped() {
         // Debug: Log current circle state
-        print("🔍 DEBUG quickAddPlaceButtonTapped - circles.count: \(circles.count)")
-        print("🔍 DEBUG quickAddPlaceButtonTapped - circles.isEmpty: \(circles.isEmpty)")
-        print("🔍 DEBUG quickAddPlaceButtonTapped - isLoadingCircles: \(isLoadingCircles)")
-        print("🔍 DEBUG quickAddPlaceButtonTapped - hasLoadedInitialData: \(CirclesHomeViewController.hasLoadedInitialData)")
+        Logger.debug("🔍 DEBUG quickAddPlaceButtonTapped - circles.count: \(circles.count)")
+        Logger.debug("🔍 DEBUG quickAddPlaceButtonTapped - circles.isEmpty: \(circles.isEmpty)")
+        Logger.debug("🔍 DEBUG quickAddPlaceButtonTapped - isLoadingCircles: \(isLoadingCircles)")
+        Logger.debug("🔍 DEBUG quickAddPlaceButtonTapped - hasLoadedInitialData: \(CirclesHomeViewController.hasLoadedInitialData)")
         if !circles.isEmpty {
-            print("🔍 DEBUG quickAddPlaceButtonTapped - circles: \(circles.map { $0.name })")
+            Logger.debug("🔍 DEBUG quickAddPlaceButtonTapped - circles: \(circles.map { $0.name })")
         } else {
-            print("🔍 DEBUG quickAddPlaceButtonTapped - No circles found! This is why picker isn't showing")
+            Logger.debug("🔍 DEBUG quickAddPlaceButtonTapped - No circles found! This is why picker isn't showing")
         }
         
         // If user has circles, show circle picker. Otherwise, silently seed the
@@ -4847,7 +4847,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 seenPlaceIds.insert(place.id)
                 deduplicatedPlaces.append(place)
             } else {
-                print("🔍 Skipping duplicate user place: '\(place.name)' (ID: \(place.id))")
+                Logger.debug("🔍 Skipping duplicate user place: '\(place.name)' (ID: \(place.id))")
             }
         }
         
@@ -4859,15 +4859,15 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 deduplicatedPlaces.append(place)
             } else {
                 duplicatesFound += 1
-                print("🔍 Skipping duplicate network place: '\(place.name)' (ID: \(place.id)) - already exists in user places")
+                Logger.debug("🔍 Skipping duplicate network place: '\(place.name)' (ID: \(place.id)) - already exists in user places")
             }
         }
         
         if duplicatesFound > 0 {
-            print("⚠️ Found and removed \(duplicatesFound) duplicate places from network data")
+            Logger.debug("⚠️ Found and removed \(duplicatesFound) duplicate places from network data")
         }
         
-        print("📍 Deduplication summary: \(userPlaces.count) user + \(networkPlaces.count) network = \(deduplicatedPlaces.count) unique places")
+        Logger.debug("📍 Deduplication summary: \(userPlaces.count) user + \(networkPlaces.count) network = \(deduplicatedPlaces.count) unique places")
         return deduplicatedPlaces
     }
     
@@ -4905,10 +4905,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
                 switch result {
                 case .success(let places):
-                    print("✅ Fetched \(places.count) network places from circle '\(circle.name)'")
+                    Logger.debug("✅ Fetched \(places.count) network places from circle '\(circle.name)'")
                     networkPlaces.append(contentsOf: places)
                 case .failure(let error):
-                    print("❌ Error fetching network places from circle '\(circle.name)': \(error.localizedDescription)")
+                    Logger.debug("❌ Error fetching network places from circle '\(circle.name)': \(error.localizedDescription)")
                 }
                 group.leave()
             }
@@ -4937,8 +4937,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             
             // Deduplicate places before combining
             let allPlaces = self.deduplicatePlaces(userPlaces: self.cachedPlaces, networkPlaces: networkPlaces)
-            print("📍 Combined places: \(self.cachedPlaces.count) cached user + \(networkPlaces.count) network = \(allPlaces.count) total (after deduplication)")
-            print("📍 User's own places: \(self.userOwnPlaces.count)")
+            Logger.debug("📍 Combined places: \(self.cachedPlaces.count) cached user + \(networkPlaces.count) network = \(allPlaces.count) total (after deduplication)")
+            Logger.debug("📍 User's own places: \(self.userOwnPlaces.count)")
             
             self.allPlaces = allPlaces
             self.applyFiltersAndUpdateMap()
@@ -5222,7 +5222,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         for fetched in fetchedViewportCircles {
             let prevCenter = CLLocation(latitude: fetched.center.latitude, longitude: fetched.center.longitude)
             if prevCenter.distance(from: center) + radiusM <= fetched.radiusM {
-                print("🗺️ [Viewport] Region already covered, skipping fetch")
+                Logger.debug("🗺️ [Viewport] Region already covered, skipping fetch")
                 return
             }
         }
@@ -5231,7 +5231,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         isFetchingViewport = true
 
         let requestLimit = 200
-        print("🗺️ [Viewport] Fetching places: center=(\(region.center.latitude), \(region.center.longitude)) radius=\(Int(radiusM))m")
+        Logger.debug("🗺️ [Viewport] Fetching places: center=(\(region.center.latitude), \(region.center.longitude)) radius=\(Int(radiusM))m")
 
         PlaceService.shared.fetchNetworkPlacesInViewport(
             centerLat: region.center.latitude,
@@ -5245,7 +5245,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
                 switch result {
                 case .success(let places):
-                    print("🗺️ [Viewport] Received \(places.count) places")
+                    Logger.debug("🗺️ [Viewport] Received \(places.count) places")
 
                     // Record coverage only when the result wasn't truncated by the limit
                     if places.count < requestLimit {
@@ -5272,7 +5272,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     self.refreshMapDisplay(adjustRegion: false)
                 case .failure(let error):
                     // Non-fatal: a later pan retries the fetch
-                    print("🗺️ [Viewport] Fetch failed: \(error.localizedDescription)")
+                    Logger.debug("🗺️ [Viewport] Fetch failed: \(error.localizedDescription)")
                 }
             }
         }
@@ -5284,7 +5284,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// places/batch endpoint re-checks connections by exact id and can silently
     /// drop circles when connection docs and circle owners use different id formats.
     private func fetchAllPlacesForConnection(_ connectionId: String) {
-        print("📍 Fetching circles for connection \(connectionId)")
+        Logger.debug("📍 Fetching circles for connection \(connectionId)")
         APIService.shared.request(
             endpoint: "network/user-circles/\(connectionId)",
             method: .get,
@@ -5331,7 +5331,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                         self.fetchPlacesForConnectionCircles(circlesMissingPlaces)
                     }
                 case .failure(let error):
-                    print("❌ Failed to fetch circles for connection \(connectionId): \(error.localizedDescription)")
+                    Logger.debug("❌ Failed to fetch circles for connection \(connectionId): \(error.localizedDescription)")
                     self.refreshMapDisplay()
                 }
             }
@@ -5344,7 +5344,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             return
         }
 
-        print("📍 Fetching places for \(connectionCircles.count) connection circles")
+        Logger.debug("📍 Fetching places for \(connectionCircles.count) connection circles")
         var fetchedPlaces: [Place] = []
         let lock = NSLock()
         let group = DispatchGroup()
@@ -5363,7 +5363,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
         group.notify(queue: .main) { [weak self] in
             guard let self = self else { return }
-            print("📍 Connection places fetched: \(fetchedPlaces.count)")
+            Logger.debug("📍 Connection places fetched: \(fetchedPlaces.count)")
             self.allPlaces = self.removeDuplicatePlaces(self.allPlaces + fetchedPlaces)
             self.updateAvailableCategories()
             // Zoom is wanted here — the map should frame this connection's places
@@ -5448,17 +5448,17 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
     private func selectCategory(_ category: UnifiedCategory?) {
         selectedCategory = category
-        print("📍 Category filter changed to: \(selectedCategory?.displayName ?? "All Categories")")
+        Logger.debug("📍 Category filter changed to: \(selectedCategory?.displayName ?? "All Categories")")
         refreshMapDisplay()
     }
 
     private func updateAvailableCategories() {
-        print("🏷️ [Categories] Updating available categories with connection filter: \(selectedConnectionId ?? "none")")
-        print("🏷️ [Categories] Total allPlaces count: \(allPlaces.count)")
+        Logger.debug("🏷️ [Categories] Updating available categories with connection filter: \(selectedConnectionId ?? "none")")
+        Logger.debug("🏷️ [Categories] Total allPlaces count: \(allPlaces.count)")
         
         // Apply connection filter first to get only visible places
         let visiblePlaces = applyConnectionFilterToPlaces(allPlaces)
-        print("🏷️ [Categories] Visible places after connection filter: \(visiblePlaces.count)")
+        Logger.debug("🏷️ [Categories] Visible places after connection filter: \(visiblePlaces.count)")
         
         // Get unique categories from visible places only
         var categoriesSet = Set<UnifiedCategory>()
@@ -5468,17 +5468,17 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             
             // Debug logging for custom categories
             if case .custom(let customName) = category {
-                print("🏷️ [Categories] Found custom category: '\(customName)' for place: \(place.name)")
+                Logger.debug("🏷️ [Categories] Found custom category: '\(customName)' for place: \(place.name)")
             }
         }
         availableCategories = Array(categoriesSet).sorted { $0.displayName < $1.displayName }
         
-        print("🏷️ [Categories] Available categories after connection filter (\(visiblePlaces.count) places): \(availableCategories.map { $0.displayName })")
+        Logger.debug("🏷️ [Categories] Available categories after connection filter (\(visiblePlaces.count) places): \(availableCategories.map { $0.displayName })")
         
         // Check if the currently selected category is still available
         if let selectedCategory = self.selectedCategory,
            !availableCategories.contains(selectedCategory) {
-            print("🏷️ [Categories] Previously selected category '\(selectedCategory.displayName)' no longer available, clearing selection")
+            Logger.debug("🏷️ [Categories] Previously selected category '\(selectedCategory.displayName)' no longer available, clearing selection")
             self.selectedCategory = nil
         }
     }
@@ -5621,7 +5621,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// Pushes the detail screen for a place (used by the places list).
     private func presentDetailForPlace(_ place: Place) {
         guard let circle = resolveCircle(for: place) else {
-            print("⚠️ Place not found in any circle (circleId: \(place.circleId ?? "nil"))")
+            Logger.debug("⚠️ Place not found in any circle (circleId: \(place.circleId ?? "nil"))")
             return
         }
 
@@ -5661,7 +5661,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Highlight the selected connection's avatar (nil clears the highlight)
         userListView.selectedUserId = (id == nil || id == "my_places_only") ? nil : id
 
-        print("📍 Connection filter changed to: \(selectedConnectionId ?? "All Connections")")
+        Logger.debug("📍 Connection filter changed to: \(selectedConnectionId ?? "All Connections")")
 
         // Tell the embedded map so it zooms to the selected connection's places
         mapViewController?.setConnectionFilterContext(selectedConnectionId)
@@ -5680,7 +5680,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             refreshMapDisplay(adjustRegion: !deferZoom)
 
             if networkCircles.isEmpty {
-                print("📍 Need to fetch network circles for connection filtering")
+                Logger.debug("📍 Need to fetch network circles for connection filtering")
                 fetchNetworkCircles { [weak self] in
                     guard let self = self else { return }
                     self.updateAvailableCategories()
@@ -5779,7 +5779,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Invalidate cache when user manually refreshes
         invalidateCache()
         
-        print("🚀 Starting OPTIMIZED refresh")
+        Logger.debug("🚀 Starting OPTIMIZED refresh")
         let startTime = CFAbsoluteTimeGetCurrent()
         
         // Use parallel loading for refresh too
@@ -5807,7 +5807,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     self?.networkCircles = response.data
                     self?.fetchAllPlacesFromCircles()
                 case .failure(let error):
-                    print("❌ Failed to refresh network circles: \(error)")
+                    Logger.debug("❌ Failed to refresh network circles: \(error)")
                 }
                 refreshGroup.leave()
             }
@@ -5818,7 +5818,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     self?.circles = circles
                     self?.fetchAllPlacesFromCircles()
                 case .failure(let error):
-                    print("❌ Failed to refresh user circles: \(error)")
+                    Logger.debug("❌ Failed to refresh user circles: \(error)")
                 }
                 refreshGroup.leave()
             }
@@ -5826,7 +5826,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         refreshGroup.notify(queue: .main) { [weak self] in
             let totalTime = CFAbsoluteTimeGetCurrent() - startTime
-            print("✅ OPTIMIZED refresh completed in \(String(format: "%.2f", totalTime)) seconds")
+            Logger.debug("✅ OPTIMIZED refresh completed in \(String(format: "%.2f", totalTime)) seconds")
         }
     }
     
@@ -5929,7 +5929,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                         self.notificationBadgeLabel?.isHidden = true
                     }
                 case .failure(let error):
-                    print("❌ [updateNotificationBadge] Failed to get unread count: \(error)")
+                    Logger.debug("❌ [updateNotificationBadge] Failed to get unread count: \(error)")
                     self.notificationBadgeLabel?.isHidden = true
                 }
             }
@@ -6405,7 +6405,7 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
 // MARK: - CreateCircleDelegate
 extension CirclesHomeViewController: CreateCircleDelegate {
     func didCreateCircle(_ circle: Circle) {
-        print("✅ Circle created successfully: \(circle.name)")
+        Logger.debug("✅ Circle created successfully: \(circle.name)")
         
         // Add the new circle to our local array at the beginning
         circles.insert(circle, at: 0)
@@ -6470,19 +6470,19 @@ extension CirclesHomeViewController: FullScreenMapViewControllerDelegate {
             })?.connectedUser
         }()
 
-        print("🗺️ Mirroring full-screen map connection filter: \(connectionId ?? "All Connections")")
+        Logger.debug("🗺️ Mirroring full-screen map connection filter: \(connectionId ?? "All Connections")")
         selectConnection(id: connectionId, user: user)
     }
 
     func mapViewController(_ controller: FullScreenMapViewController, didSelectPlace place: Place) {
         let timestamp = Date().timeIntervalSince1970
-        print("🎯 [DEBUG-\(timestamp)] CirclesHomeViewController.mapViewController called for place: \(place.name)")
-        print("🗺️ [DEBUG-\(timestamp)] Controller isPresentedModally: \(controller.isPresentedModally)")
+        Logger.debug("🎯 [DEBUG-\(timestamp)] CirclesHomeViewController.mapViewController called for place: \(place.name)")
+        Logger.debug("🗺️ [DEBUG-\(timestamp)] Controller isPresentedModally: \(controller.isPresentedModally)")
         
         // Deduplication check to prevent double presentation
         let timeSinceLastPresentation = timestamp - lastPresentationTime
         if lastPresentedPlaceId == place.id && timeSinceLastPresentation < presentationDebounceInterval {
-            print("🚫 [DEBUG-\(timestamp)] Duplicate presentation blocked - same place (\(place.name)) presented \(timeSinceLastPresentation) seconds ago")
+            Logger.debug("🚫 [DEBUG-\(timestamp)] Duplicate presentation blocked - same place (\(place.name)) presented \(timeSinceLastPresentation) seconds ago")
             return
         }
         
@@ -6491,34 +6491,34 @@ extension CirclesHomeViewController: FullScreenMapViewControllerDelegate {
         lastPresentationTime = timestamp
         
         guard let circle = resolveCircle(for: place) else {
-            print("⚠️ [DEBUG-\(timestamp)] Place not found in any circle (circleId: \(place.circleId ?? "nil"))")
+            Logger.debug("⚠️ [DEBUG-\(timestamp)] Place not found in any circle (circleId: \(place.circleId ?? "nil"))")
             return
         }
 
-        print("✅ [DEBUG-\(timestamp)] Found place in circle: \(circle.name)")
+        Logger.debug("✅ [DEBUG-\(timestamp)] Found place in circle: \(circle.name)")
         let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
-        print("📱 [DEBUG-\(timestamp)] Created PlaceDetailViewController - presenting...")
+        Logger.debug("📱 [DEBUG-\(timestamp)] Created PlaceDetailViewController - presenting...")
         presentPlaceDetail(placeDetailVC, from: controller)
     }
     
     private func presentPlaceDetail(_ placeDetailVC: PlaceDetailViewController, from controller: FullScreenMapViewController) {
         let timestamp = Date().timeIntervalSince1970
-        print("🎭 [DEBUG-\(timestamp)] presentPlaceDetail called")
-        print("🗺️ [DEBUG-\(timestamp)] Controller isPresentedModally: \(controller.isPresentedModally)")
+        Logger.debug("🎭 [DEBUG-\(timestamp)] presentPlaceDetail called")
+        Logger.debug("🗺️ [DEBUG-\(timestamp)] Controller isPresentedModally: \(controller.isPresentedModally)")
         
         // Check if the map controller is presented modally
         if controller.isPresentedModally {
-            print("📄 [DEBUG-\(timestamp)] Presenting PlaceDetail modally on full-screen map")
+            Logger.debug("📄 [DEBUG-\(timestamp)] Presenting PlaceDetail modally on full-screen map")
             // Present place detail modally on top of the full screen map
             let navController = UINavigationController(rootViewController: placeDetailVC)
             navController.modalPresentationStyle = .pageSheet
             controller.present(navController, animated: true)
         } else {
-            print("📱 [DEBUG-\(timestamp)] Pushing PlaceDetail via navigation for embedded map")
+            Logger.debug("📱 [DEBUG-\(timestamp)] Pushing PlaceDetail via navigation for embedded map")
             // For embedded map, use regular navigation push
             navigationController?.pushViewController(placeDetailVC, animated: true)
         }
-        print("🎭 [DEBUG-\(timestamp)] presentPlaceDetail completed")
+        Logger.debug("🎭 [DEBUG-\(timestamp)] presentPlaceDetail completed")
     }
 }
 
@@ -6677,7 +6677,7 @@ extension CirclesHomeViewController {
         guard !isLoadingNetworkPlaces else { return }
         
         isLoadingNetworkPlaces = true
-        print("🔍 Loading network places for search...")
+        Logger.debug("🔍 Loading network places for search...")
         
         let group = DispatchGroup()
         var allNetworkPlaces: [Place] = []
@@ -6701,13 +6701,13 @@ extension CirclesHomeViewController {
                             case .success(let places):
                                 allNetworkPlaces.append(contentsOf: places)
                             case .failure(let error):
-                                print("Failed to fetch places for network circle \(circle.id): \(error)")
+                                Logger.debug("Failed to fetch places for network circle \(circle.id): \(error)")
                             }
                             group.leave()
                         }
                     }
                 case .failure(let error):
-                    print("Failed to fetch network circles: \(error)")
+                    Logger.debug("Failed to fetch network circles: \(error)")
                 }
                 group.leave()
             }
@@ -6720,7 +6720,7 @@ extension CirclesHomeViewController {
                     case .success(let places):
                         allNetworkPlaces.append(contentsOf: places)
                     case .failure(let error):
-                        print("Failed to fetch places for network circle \(circle.id): \(error)")
+                        Logger.debug("Failed to fetch places for network circle \(circle.id): \(error)")
                     }
                     group.leave()
                 }
@@ -6734,7 +6734,7 @@ extension CirclesHomeViewController {
             // Deduplicate network places before storing
             let deduplicatedNetworkPlaces = self.removeDuplicatePlaces(allNetworkPlaces)
             self.networkPlaces = deduplicatedNetworkPlaces
-            print("🔍 Loaded \(allNetworkPlaces.count) raw network places, deduplicated to \(deduplicatedNetworkPlaces.count) unique places for search")
+            Logger.debug("🔍 Loaded \(allNetworkPlaces.count) raw network places, deduplicated to \(deduplicatedNetworkPlaces.count) unique places for search")
             
             // If a search is active, fold the newly-loaded network places into
             // the current results
@@ -6766,7 +6766,7 @@ extension CirclesHomeViewController {
         }
         
         guard let circle = targetCircle else {
-            print("⚠️ Could not find circle for place: \(place.name)")
+            Logger.debug("⚠️ Could not find circle for place: \(place.name)")
             return
         }
         
@@ -6937,12 +6937,12 @@ extension CirclesHomeViewController: DailySummaryCardViewDelegate {
     
     func dailySummaryCardDidExpand() {
         // Track analytics if needed
-        print("📊 Daily summary expanded")
+        Logger.debug("📊 Daily summary expanded")
     }
     
     func dailySummaryCardDidCollapse() {
         // Track analytics if needed
-        print("📊 Daily summary collapsed")
+        Logger.debug("📊 Daily summary collapsed")
     }
 }
 
@@ -7610,7 +7610,7 @@ extension CirclesHomeViewController {
                     completion(true)
                     
                 case .failure(let error):
-                    print("Failed to delete activity: \(error)")
+                    Logger.debug("Failed to delete activity: \(error)")
                     
                     // Show error alert
                     let errorAlert = UIAlertController(
@@ -7640,7 +7640,7 @@ extension CirclesHomeViewController: UIScrollViewDelegate {
             // Check if we're near the bottom (within 100 points)
             if offsetY > contentHeight - scrollViewHeight - 100 {
                 if !activities.isEmpty && hasMoreActivities && !isLoadingMoreActivities {
-                    print("📊 Reached bottom of activity table, loading more...")
+                    Logger.debug("📊 Reached bottom of activity table, loading more...")
                     fetchActivities(loadMore: true)
                 }
             }
@@ -7732,7 +7732,7 @@ extension CirclesHomeViewController {
             DispatchQueue.main.async { [weak self] in
                 self?.userListView.refresh()
                 // Update notification badge for new activity
-                print("🔔 CirclesHomeViewController: Updating badge for connection activity SSE event")
+                Logger.debug("🔔 CirclesHomeViewController: Updating badge for connection activity SSE event")
                 self?.updateNotificationBadge()
                 
                 // Also refresh activity feed if on Activity tab
@@ -7747,7 +7747,7 @@ extension CirclesHomeViewController {
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
                 // Update notification badge when new activity arrives
-                print("🔔 CirclesHomeViewController: Updating badge for new activity SSE event")
+                Logger.debug("🔔 CirclesHomeViewController: Updating badge for new activity SSE event")
                 self.updateNotificationBadge()
                 
                 // Only refresh if Activity tab is selected
@@ -8143,10 +8143,10 @@ extension CirclesHomeViewController {
         
         // Skip loading AVPlayer for embedded videos - they use EmbeddedVideoPlayerView
         if reel.isEmbedded {
-            print("✅ CirclesHome: Skipping AVPlayer for embedded video \(reel.id)")
-            print("   - videoType: \(reel.videoType ?? "nil")")
-            print("   - embedPlatform: \(reel.embedPlatform ?? "nil")")
-            print("   - embedUrl: \(reel.embedUrl ?? "nil")")
+            Logger.debug("✅ CirclesHome: Skipping AVPlayer for embedded video \(reel.id)")
+            Logger.debug("   - videoType: \(reel.videoType ?? "nil")")
+            Logger.debug("   - embedPlatform: \(reel.embedPlatform ?? "nil")")
+            Logger.debug("   - embedUrl: \(reel.embedUrl ?? "nil")")
             reelVideoStates[index] = .ready // Mark as ready so cell will be configured
             return
         }
@@ -8154,11 +8154,11 @@ extension CirclesHomeViewController {
         // For regular and direct videos, load AVPlayer
         guard let urlString = reel.videoUrl ?? reel.previewUrl,
               let url = URL(string: urlString) else { 
-            print("❌ CirclesHome: Invalid video URL for reel \(reel.id)")
-            print("   - videoUrl: \(reel.videoUrl ?? "nil")")
-            print("   - previewUrl: \(reel.previewUrl ?? "nil")")
-            print("   - title: \(reel.title)")
-            print("   - uploadStatus: \(reel.uploadStatus.rawValue)")
+            Logger.debug("❌ CirclesHome: Invalid video URL for reel \(reel.id)")
+            Logger.debug("   - videoUrl: \(reel.videoUrl ?? "nil")")
+            Logger.debug("   - previewUrl: \(reel.previewUrl ?? "nil")")
+            Logger.debug("   - title: \(reel.title)")
+            Logger.debug("   - uploadStatus: \(reel.uploadStatus.rawValue)")
             reelVideoStates[index] = .failed
             return 
         }
@@ -8172,12 +8172,12 @@ extension CirclesHomeViewController {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
             try AVAudioSession.sharedInstance().setActive(true)
         } catch {
-            print("❌ CirclesHome: Failed to setup audio session: \(error)")
+            Logger.debug("❌ CirclesHome: Failed to setup audio session: \(error)")
         }
         
         reelPlayers[index] = player
         reelVideoStates[index] = .ready
-        print("✅ CirclesHome: Loaded video for index \(index), URL: \(url)")
+        Logger.debug("✅ CirclesHome: Loaded video for index \(index), URL: \(url)")
         
         // Force collection view to reload this cell to update with the player
         DispatchQueue.main.async { [weak self] in
@@ -8188,7 +8188,7 @@ extension CirclesHomeViewController {
             if index < self.reels.count,
                let cell = self.reelsCollectionView.cellForItem(at: indexPath) as? VideoReelCell {
                 cell.configure(with: reel, player: player)
-                print("📹 CirclesHome: Reconfigured cell with player for index \(index)")
+                Logger.debug("📹 CirclesHome: Reconfigured cell with player for index \(index)")
             }
         }
     }
@@ -8228,7 +8228,7 @@ extension CirclesHomeViewController {
             // Restart from beginning when returning to video
             player.seek(to: .zero) { _ in
                 player.play()
-                print("▶️ CirclesHome: Playing video at index \(index) from beginning")
+                Logger.debug("▶️ CirclesHome: Playing video at index \(index) from beginning")
             }
         } else {
             // Load and play
@@ -8240,7 +8240,7 @@ extension CirclesHomeViewController {
     private func pauseVideo(at index: Int) {
         if let player = reelPlayers[index] {
             player.pause()
-            print("⏸ CirclesHome: Paused video at index \(index)")
+            Logger.debug("⏸ CirclesHome: Paused video at index \(index)")
         }
     }
     
@@ -8265,9 +8265,9 @@ extension CirclesHomeViewController {
         ) { (result: Result<SimpleAPIResponse, APIError>) in
             // Silent tracking, no need to handle response
             if case .failure(let error) = result {
-                print("❌ CirclesHome: Failed to track view for reel \(reel.id): \(error)")
+                Logger.debug("❌ CirclesHome: Failed to track view for reel \(reel.id): \(error)")
             } else {
-                print("✅ CirclesHome: Successfully tracked view for reel \(reel.id)")
+                Logger.debug("✅ CirclesHome: Successfully tracked view for reel \(reel.id)")
             }
         }
     }
@@ -8295,7 +8295,7 @@ extension CirclesHomeViewController {
                 player.pause()
                 reelPlayers.removeValue(forKey: index)
                 reelVideoStates[index] = .notLoaded // Reset state for released videos
-                print("🗑 CirclesHome: Released video at index \(index)")
+                Logger.debug("🗑 CirclesHome: Released video at index \(index)")
             }
         }
     }
@@ -8340,7 +8340,7 @@ extension CirclesHomeViewController: VideoReelCellDelegate {
                         cell.configure(with: reel, player: self.reelPlayers[indexPath.item])
                     }
                     
-                    print("Failed to update like: \(error)")
+                    Logger.debug("Failed to update like: \(error)")
                 }
             }
         }
@@ -8429,7 +8429,7 @@ extension CirclesHomeViewController: VideoReelCellDelegate {
                         
                         self?.present(activityVC, animated: true)
                         
-                        print("Failed to generate share link: \(error)")
+                        Logger.debug("Failed to generate share link: \(error)")
                     }
                 }
             }
@@ -8470,7 +8470,7 @@ extension CirclesHomeViewController: VideoReelCellDelegate {
                     }
                 case .failure(let error):
                     self?.showError("Unable to load place details")
-                    print("❌ CirclesHome: Failed to fetch place details: \(error)")
+                    Logger.debug("❌ CirclesHome: Failed to fetch place details: \(error)")
                 }
             }
         }
@@ -8525,7 +8525,7 @@ extension CirclesHomeViewController: VideoReelCellDelegate {
     private func stopNotificationBadgeRefresh() {
         notificationBadgeTimer?.invalidate()
         notificationBadgeTimer = nil
-        print("🔔 [Timer] Stopped periodic notification badge refresh")
+        Logger.debug("🔔 [Timer] Stopped periodic notification badge refresh")
     }
 }
 

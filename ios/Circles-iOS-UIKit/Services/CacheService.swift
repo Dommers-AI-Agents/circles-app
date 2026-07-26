@@ -20,7 +20,7 @@ class CacheService {
             try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
         }
         
-        print("📁 [CacheService] Initialized with directory: \(cacheDirectory.path)")
+        Logger.debug("📁 [CacheService] Initialized with directory: \(cacheDirectory.path)")
     }
     
     // MARK: - Home Screen Data Cache
@@ -38,9 +38,9 @@ class CacheService {
             let timestamp = Date().timeIntervalSince1970
             try String(timestamp).write(to: timestampFile, atomically: true, encoding: .utf8)
             
-            print("💾 [CacheService] Home screen data cached to disk")
+            Logger.debug("💾 [CacheService] Home screen data cached to disk")
         } catch {
-            print("❌ [CacheService] Failed to cache home screen data: \(error)")
+            Logger.debug("❌ [CacheService] Failed to cache home screen data: \(error)")
         }
     }
     
@@ -52,7 +52,7 @@ class CacheService {
             // Check if files exist
             guard fileManager.fileExists(atPath: cacheFile.path),
                   fileManager.fileExists(atPath: timestampFile.path) else {
-                print("📁 [CacheService] No cached home screen data found")
+                Logger.debug("📁 [CacheService] No cached home screen data found")
                 return nil
             }
             
@@ -64,7 +64,7 @@ class CacheService {
             let maxAgeSeconds = maxAgeMinutes * 60
             
             if cacheAge > maxAgeSeconds {
-                print("📁 [CacheService] Cached data expired (age: \(Int(cacheAge/60))min)")
+                Logger.debug("📁 [CacheService] Cached data expired (age: \(Int(cacheAge/60))min)")
                 return nil
             }
             
@@ -74,11 +74,11 @@ class CacheService {
             decoder.dateDecodingStrategy = .iso8601
             let homeScreenData = try decoder.decode(HomeScreenContent.self, from: cachedData)
             
-            print("📁 [CacheService] Retrieved valid cached data (age: \(Int(cacheAge/60))min)")
+            Logger.debug("📁 [CacheService] Retrieved valid cached data (age: \(Int(cacheAge/60))min)")
             return homeScreenData
             
         } catch {
-            print("❌ [CacheService] Failed to retrieve cached data: \(error)")
+            Logger.debug("❌ [CacheService] Failed to retrieve cached data: \(error)")
             return nil
         }
     }
@@ -87,7 +87,7 @@ class CacheService {
     func cacheImage(_ imageData: Data, for url: String) {
         // Optimize image before caching
         guard let optimizedData = optimizeImageData(imageData) else {
-            print("❌ [CacheService] Failed to optimize image")
+            Logger.debug("❌ [CacheService] Failed to optimize image")
             return
         }
         
@@ -105,9 +105,9 @@ class CacheService {
             let originalSize = imageData.count
             let optimizedSize = optimizedData.count
             let savings = ((originalSize - optimizedSize) * 100) / originalSize
-            print("📷 [CacheService] Image cached: \(filename) (saved \(savings)%)")
+            Logger.debug("📷 [CacheService] Image cached: \(filename) (saved \(savings)%)")
         } catch {
-            print("❌ [CacheService] Failed to cache image: \(error)")
+            Logger.debug("❌ [CacheService] Failed to cache image: \(error)")
         }
     }
     
@@ -121,10 +121,10 @@ class CacheService {
         
         do {
             let imageData = try Data(contentsOf: imageFile)
-            print("📷 [CacheService] Retrieved cached image: \(filename)")
+            Logger.debug("📷 [CacheService] Retrieved cached image: \(filename)")
             return imageData
         } catch {
-            print("❌ [CacheService] Failed to retrieve cached image: \(error)")
+            Logger.debug("❌ [CacheService] Failed to retrieve cached image: \(error)")
             return nil
         }
     }
@@ -158,7 +158,7 @@ class CacheService {
             return
         }
         
-        print("📷 [CacheService] Preloading \(urls.count) images")
+        Logger.debug("📷 [CacheService] Preloading \(urls.count) images")
         var loadedCount = 0
         let group = DispatchGroup()
         
@@ -181,7 +181,7 @@ class CacheService {
                 defer { group.leave() }
                 
                 guard let data = data, error == nil else {
-                    print("❌ [CacheService] Failed to preload image: \(url)")
+                    Logger.debug("❌ [CacheService] Failed to preload image: \(url)")
                     return
                 }
                 
@@ -193,7 +193,7 @@ class CacheService {
         }
         
         group.notify(queue: .main) {
-            print("📷 [CacheService] Preloaded \(loadedCount)/\(urls.count) images")
+            Logger.debug("📷 [CacheService] Preloaded \(loadedCount)/\(urls.count) images")
             completion(loadedCount)
         }
     }
@@ -203,7 +203,7 @@ class CacheService {
         // Check cache first
         if let cachedData = getCachedImage(for: url),
            let image = UIImage(data: cachedData) {
-            print("📷 [CacheService] Loaded image from cache: \(url)")
+            Logger.debug("📷 [CacheService] Loaded image from cache: \(url)")
             completion(image)
             return
         }
@@ -238,9 +238,9 @@ class CacheService {
             for file in contents {
                 try fileManager.removeItem(at: file)
             }
-            print("🗑️ [CacheService] Cache cleared")
+            Logger.debug("🗑️ [CacheService] Cache cleared")
         } catch {
-            print("❌ [CacheService] Failed to clear cache: \(error)")
+            Logger.debug("❌ [CacheService] Failed to clear cache: \(error)")
         }
     }
     
@@ -273,11 +273,11 @@ class CacheService {
                 let resourceValues = try file.resourceValues(forKeys: [.creationDateKey])
                 if let creationDate = resourceValues.creationDate, creationDate < cutoffDate {
                     try fileManager.removeItem(at: file)
-                    print("🗑️ [CacheService] Removed expired file: \(file.lastPathComponent)")
+                    Logger.debug("🗑️ [CacheService] Removed expired file: \(file.lastPathComponent)")
                 }
             }
         } catch {
-            print("❌ [CacheService] Failed to clean expired cache: \(error)")
+            Logger.debug("❌ [CacheService] Failed to clean expired cache: \(error)")
         }
     }
 }

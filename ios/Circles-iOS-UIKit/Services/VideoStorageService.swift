@@ -18,7 +18,7 @@ class VideoStorageService {
         downloadsLock.lock()
         if activeDownloads.contains(url) {
             downloadsLock.unlock()
-            print("⚠️ VideoStorageService: Already downloading video from \(url)")
+            Logger.debug("⚠️ VideoStorageService: Already downloading video from \(url)")
             completion(false)
             return
         }
@@ -29,7 +29,7 @@ class VideoStorageService {
             guard let self = self else { return }
             
             guard let videoURL = URL(string: url) else {
-                print("❌ VideoStorageService: Invalid URL: \(url)")
+                Logger.debug("❌ VideoStorageService: Invalid URL: \(url)")
                 self.removeFromActiveDownloads(url)
                 DispatchQueue.main.async {
                     completion(false)
@@ -44,7 +44,7 @@ class VideoStorageService {
                 }
                 
                 if let error = error {
-                    print("❌ VideoStorageService: Download error: \(error)")
+                    Logger.debug("❌ VideoStorageService: Download error: \(error)")
                     DispatchQueue.main.async {
                         completion(false)
                     }
@@ -52,7 +52,7 @@ class VideoStorageService {
                 }
                 
                 guard let data = data else {
-                    print("❌ VideoStorageService: No data received")
+                    Logger.debug("❌ VideoStorageService: No data received")
                     DispatchQueue.main.async {
                         completion(false)
                     }
@@ -71,7 +71,7 @@ class VideoStorageService {
                     isPermanent: isUserContent
                 )
                 
-                print("✅ VideoStorageService: Cached video (\(data.count / 1024 / 1024)MB) from \(url)")
+                Logger.debug("✅ VideoStorageService: Cached video (\(data.count / 1024 / 1024)MB) from \(url)")
                 
                 DispatchQueue.main.async {
                     completion(true)
@@ -88,7 +88,7 @@ class VideoStorageService {
             if let data = data {
                 // Create temporary file URL for AVPlayer
                 let tempURL = self.createTemporaryVideoURL(from: data)
-                print("✅ VideoStorageService: Retrieved video from cache")
+                Logger.debug("✅ VideoStorageService: Retrieved video from cache")
                 completion(tempURL)
             } else {
                 // Return original URL for streaming
@@ -108,14 +108,14 @@ class VideoStorageService {
     }
     
     func cacheUserVideos(_ videos: [PlaceVideo]) {
-        print("📥 VideoStorageService: Caching \(videos.count) user videos")
+        Logger.debug("📥 VideoStorageService: Caching \(videos.count) user videos")
         
         for video in videos {
             // Cache video URL
             if let videoUrl = video.videoUrl {
                 cacheVideo(from: videoUrl, isUserContent: true) { success in
                     if success {
-                        print("✅ Cached full video: \(video.title)")
+                        Logger.debug("✅ Cached full video: \(video.title)")
                     }
                 }
             }
@@ -124,7 +124,7 @@ class VideoStorageService {
             if let previewUrl = video.previewUrl {
                 cacheVideo(from: previewUrl, isUserContent: true) { success in
                     if success {
-                        print("✅ Cached preview video: \(video.title)")
+                        Logger.debug("✅ Cached preview video: \(video.title)")
                     }
                 }
             }
@@ -137,7 +137,7 @@ class VideoStorageService {
     }
     
     func cacheNetworkVideos(_ videos: [PlaceVideo]) {
-        print("📥 VideoStorageService: Caching \(videos.count) network videos")
+        Logger.debug("📥 VideoStorageService: Caching \(videos.count) network videos")
         
         // Only cache thumbnails and preview videos for network content
         for video in videos {
@@ -150,7 +150,7 @@ class VideoStorageService {
             if let previewUrl = video.previewUrl {
                 cacheVideo(from: previewUrl, isUserContent: false) { success in
                     if success {
-                        print("✅ Cached network preview: \(video.title)")
+                        Logger.debug("✅ Cached network preview: \(video.title)")
                     }
                 }
             }
@@ -168,7 +168,7 @@ class VideoStorageService {
             try data.write(to: fileURL)
             return fileURL
         } catch {
-            print("❌ VideoStorageService: Failed to create temporary file: \(error)")
+            Logger.debug("❌ VideoStorageService: Failed to create temporary file: \(error)")
             return nil
         }
     }
@@ -178,7 +178,7 @@ class VideoStorageService {
         
         URLSession.shared.dataTask(with: url) { [weak self] data, _, error in
             if let error = error {
-                print("❌ VideoStorageService: Thumbnail download error: \(error)")
+                Logger.debug("❌ VideoStorageService: Thumbnail download error: \(error)")
                 return
             }
             
@@ -193,7 +193,7 @@ class VideoStorageService {
                 isPermanent: isUserContent
             )
             
-            print("✅ VideoStorageService: Cached thumbnail from \(urlString)")
+            Logger.debug("✅ VideoStorageService: Cached thumbnail from \(urlString)")
         }.resume()
     }
     
@@ -213,9 +213,9 @@ class VideoStorageService {
             for file in tempFiles where file.pathExtension == "mp4" {
                 try FileManager.default.removeItem(at: file)
             }
-            print("✅ VideoStorageService: Cleared temporary video files")
+            Logger.debug("✅ VideoStorageService: Cleared temporary video files")
         } catch {
-            print("❌ VideoStorageService: Failed to clear temp files: \(error)")
+            Logger.debug("❌ VideoStorageService: Failed to clear temp files: \(error)")
         }
     }
 }

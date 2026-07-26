@@ -129,7 +129,7 @@ class PlacePickerViewController: BaseViewController {
                         case .success(let places):
                             allFetchedPlaces.append(contentsOf: places)
                         case .failure(let error):
-                            print("Error fetching places for circle \(circle.id): \(error)")
+                            Logger.debug("Error fetching places for circle \(circle.id): \(error)")
                         }
                         group.leave()
                     }
@@ -152,7 +152,7 @@ class PlacePickerViewController: BaseViewController {
             case .failure(let error):
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { return }
-                    print("Error loading circles: \(error)")
+                    Logger.debug("Error loading circles: \(error)")
                     self.isLoading = false
                     self.loadingView.stopAnimating()
                     self.updateEmptyState()

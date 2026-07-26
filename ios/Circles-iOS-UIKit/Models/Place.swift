@@ -71,7 +71,7 @@ struct LossyDecodableArray<Element: Decodable>: Decodable {
             } else {
                 // Skip the malformed element and keep going
                 _ = try? container.decode(AnyDecodableValue.self)
-                print("⚠️ LossyDecodableArray: dropped malformed \(Element.self) element")
+                Logger.debug("⚠️ LossyDecodableArray: dropped malformed \(Element.self) element")
             }
         }
         self.elements = decoded
@@ -171,12 +171,12 @@ struct Place: Codable, Identifiable {
             (customCategoryId.components(separatedBy: " ").count == 2 && 
              customCategoryId != "Other" && 
              !customCategoryId.isEmpty)) {
-            print("🔴 ALERT: Place decoded with suspicious customCategoryId!")
-            print("🔴 Place ID: \(self.id)")
-            print("🔴 Name: \(self.name)")
-            print("🔴 Category: \(category.rawValue)")
-            print("🔴 CustomCategoryId: '\(customCategoryId)'")
-            print("🔴 This appears to be user data, not a category name!")
+            Logger.debug("🔴 ALERT: Place decoded with suspicious customCategoryId!")
+            Logger.debug("🔴 Place ID: \(self.id)")
+            Logger.debug("🔴 Name: \(self.name)")
+            Logger.debug("🔴 Category: \(category.rawValue)")
+            Logger.debug("🔴 CustomCategoryId: '\(customCategoryId)'")
+            Logger.debug("🔴 This appears to be user data, not a category name!")
         }
         self.subcategory = try container.decodeIfPresent(String.self, forKey: .subcategory)
         self.rating = try container.decodeIfPresent(Double.self, forKey: .rating)
@@ -306,13 +306,13 @@ struct GeoLocation: Codable {
         // Validate coordinates are within valid ranges
         guard longitude >= -180 && longitude <= 180 &&
               latitude >= -90 && latitude <= 90 else {
-            print("❌ Invalid coordinates in GeoLocation: lon=\(longitude), lat=\(latitude)")
+            Logger.debug("❌ Invalid coordinates in GeoLocation: lon=\(longitude), lat=\(latitude)")
             return nil
         }
         
         // Reject coordinates at exactly -180, -180 (invalid/default values)
         if longitude == -180 && latitude == -180 {
-            print("❌ Rejecting default invalid coordinates: -180, -180")
+            Logger.debug("❌ Rejecting default invalid coordinates: -180, -180")
             return nil
         }
         
@@ -548,9 +548,9 @@ enum UnifiedCategory: Hashable, Equatable {
             
             // Debug logging for custom category matching
             if !matches {
-                print("🚫 Custom category '\(name)' does not match place '\(place.name)' - place category: \(place.category.rawValue), customCategoryId: '\(place.customCategoryId ?? "none")'")
+                Logger.debug("🚫 Custom category '\(name)' does not match place '\(place.name)' - place category: \(place.category.rawValue), customCategoryId: '\(place.customCategoryId ?? "none")'")
             } else {
-                print("✅ Custom category '\(name)' matches place '\(place.name)'")
+                Logger.debug("✅ Custom category '\(name)' matches place '\(place.name)'")
             }
             
             return matches
@@ -569,7 +569,7 @@ enum UnifiedCategory: Hashable, Equatable {
                 return .custom(customName)
             } else {
                 // Fall back to "Other" category if invalid
-                print("⚠️ Invalid custom category detected: '\(customName)' - falling back to Other")
+                Logger.debug("⚠️ Invalid custom category detected: '\(customName)' - falling back to Other")
                 return .standard(.other)
             }
         } else {

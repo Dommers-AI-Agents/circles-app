@@ -17,12 +17,12 @@ class StoreKitObserver: NSObject, SKPaymentTransactionObserver {
     // MARK: - Setup
     
     func startObserving() {
-        print("💎 StoreKitObserver: Starting to observe payment queue")
+        Logger.debug("💎 StoreKitObserver: Starting to observe payment queue")
         SKPaymentQueue.default().add(self)
     }
     
     func stopObserving() {
-        print("💎 StoreKitObserver: Stopping payment queue observation")
+        Logger.debug("💎 StoreKitObserver: Stopping payment queue observation")
         SKPaymentQueue.default().remove(self)
     }
     
@@ -31,19 +31,19 @@ class StoreKitObserver: NSObject, SKPaymentTransactionObserver {
     func paymentQueue(_ queue: SKPaymentQueue, updatedTransactions transactions: [SKPaymentTransaction]) {
         // This is handled by StoreKit 2 in SubscriptionService
         // We only need this observer for promoted purchases
-        print("💎 StoreKitObserver: Updated transactions called (handled by StoreKit 2)")
+        Logger.debug("💎 StoreKitObserver: Updated transactions called (handled by StoreKit 2)")
     }
     
     /// Called when a user initiates an in-app purchase from the App Store
     func paymentQueue(_ queue: SKPaymentQueue, shouldAddStorePayment payment: SKPayment, for product: SKProduct) -> Bool {
-        print("💎 ===== PROMOTED PURCHASE DETECTED =====")
-        print("💎 Product ID: \(product.productIdentifier)")
-        print("💎 Product Title: \(product.localizedTitle)")
-        print("💎 Product Price: \(product.priceLocale.currencySymbol ?? "")\(product.price)")
+        Logger.debug("💎 ===== PROMOTED PURCHASE DETECTED =====")
+        Logger.debug("💎 Product ID: \(product.productIdentifier)")
+        Logger.debug("💎 Product Title: \(product.localizedTitle)")
+        Logger.debug("💎 Product Price: \(product.priceLocale.currencySymbol ?? "")\(product.price)")
         
         // Check if user is logged in
         guard AuthService.shared.isLoggedIn else {
-            print("💎 User not logged in - deferring purchase")
+            Logger.debug("💎 User not logged in - deferring purchase")
             
             // Store the payment for later
             deferredPayment = payment
@@ -66,7 +66,7 @@ class StoreKitObserver: NSObject, SKPaymentTransactionObserver {
         let isSubscribed = SubscriptionManager.shared.isSubscribed
         
         if isSubscribed {
-            print("💎 User already subscribed - showing subscription status")
+            Logger.debug("💎 User already subscribed - showing subscription status")
             
             // Post notification to show current subscription
             DispatchQueue.main.async {
@@ -80,7 +80,7 @@ class StoreKitObserver: NSObject, SKPaymentTransactionObserver {
             return false
         }
         
-        print("💎 User logged in and not subscribed - proceeding with purchase")
+        Logger.debug("💎 User logged in and not subscribed - proceeding with purchase")
         
         // Post notification to handle the purchase through our UI
         DispatchQueue.main.async {
@@ -102,11 +102,11 @@ class StoreKitObserver: NSObject, SKPaymentTransactionObserver {
     func resumeDeferredPurchase() {
         guard let payment = deferredPayment,
               let product = deferredProduct else {
-            print("💎 No deferred purchase to resume")
+            Logger.debug("💎 No deferred purchase to resume")
             return
         }
         
-        print("💎 Resuming deferred purchase for product: \(product.productIdentifier)")
+        Logger.debug("💎 Resuming deferred purchase for product: \(product.productIdentifier)")
         
         // Clear deferred purchase
         deferredPayment = nil
@@ -114,7 +114,7 @@ class StoreKitObserver: NSObject, SKPaymentTransactionObserver {
         
         // Check if user is now logged in
         guard AuthService.shared.isLoggedIn else {
-            print("💎 User still not logged in - cannot resume purchase")
+            Logger.debug("💎 User still not logged in - cannot resume purchase")
             return
         }
         
@@ -137,7 +137,7 @@ class StoreKitObserver: NSObject, SKPaymentTransactionObserver {
     func clearDeferredPurchase() {
         deferredPayment = nil
         deferredProduct = nil
-        print("💎 Cleared deferred purchase")
+        Logger.debug("💎 Cleared deferred purchase")
     }
 }
 

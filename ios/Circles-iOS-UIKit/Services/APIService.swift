@@ -457,10 +457,10 @@ class APIService {
         completion: @escaping (Result<T, APIError>) -> Void
     ) {
         if logLevel == .verbose {
-            print("📡 API APIService: Starting request")
-            print("📡 API APIService: Endpoint: \(endpoint)")
-            print("📡 API APIService: Method: \(method.rawValue)")
-            print("📡 API APIService: Requires Auth: \(requiresAuth)")
+            Logger.debug("📡 API APIService: Starting request")
+            Logger.debug("📡 API APIService: Endpoint: \(endpoint)")
+            Logger.debug("📡 API APIService: Method: \(method.rawValue)")
+            Logger.debug("📡 API APIService: Requires Auth: \(requiresAuth)")
         }
         
         // Rate limiting check - prevent duplicate requests too close together
@@ -469,7 +469,7 @@ class APIService {
             let timeSinceLastRequest = Date().timeIntervalSince(lastRequestTime)
             if timeSinceLastRequest < minRequestInterval {
                 if logLevel >= .minimal {
-                    print("⏰ APIService: Throttling request to \(endpoint) (last request \(Int(timeSinceLastRequest * 1000))ms ago)")
+                    Logger.debug("⏰ APIService: Throttling request to \(endpoint) (last request \(Int(timeSinceLastRequest * 1000))ms ago)")
                 }
                 // Delay the request
                 DispatchQueue.main.asyncAfter(deadline: .now() + (minRequestInterval - timeSinceLastRequest)) {
@@ -494,7 +494,7 @@ class APIService {
         // Build URL with query parameters
         guard var urlComponents = URLComponents(string: "\(environment.baseURL)/\(endpoint)") else {
             if logLevel >= .errors {
-                print("❌ ERROR APIService: Invalid URL for endpoint: \(endpoint)")
+                Logger.debug("❌ ERROR APIService: Invalid URL for endpoint: \(endpoint)")
             }
             completion(.failure(.invalidURL))
             return
@@ -522,22 +522,22 @@ class APIService {
         // Add auth token if required and available
         if requiresAuth {
             if logLevel == .verbose {
-                print("🔐 AUTH APIService: Checking auth token for \(endpoint)")
+                Logger.debug("🔐 AUTH APIService: Checking auth token for \(endpoint)")
             }
             
             // Try to get token from keychain if not in memory
             if authToken == nil {
                 if logLevel == .verbose {
-                    print("🔐 AUTH APIService: No token in memory, checking keychain")
+                    Logger.debug("🔐 AUTH APIService: No token in memory, checking keychain")
                 }
                 if let token = keychainService.getAuthToken() {
                     authToken = token
                     if logLevel == .verbose {
-                        print("🔐 AUTH APIService: Retrieved token from keychain")
+                        Logger.debug("🔐 AUTH APIService: Retrieved token from keychain")
                     }
                 } else {
                     if logLevel >= .errors {
-                        print("❌ ERROR APIService: Failed to get token from keychain")
+                        Logger.debug("❌ ERROR APIService: Failed to get token from keychain")
                     }
                 }
             }
@@ -545,12 +545,12 @@ class APIService {
             if let token = authToken {
                 request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
                 if logLevel == .verbose {
-                    print("✅ SUCCESS APIService: Auth token added to request headers")
-                    print("🔐 AUTH APIService: Token length: \(token.count)")
+                    Logger.debug("✅ SUCCESS APIService: Auth token added to request headers")
+                    Logger.debug("🔐 AUTH APIService: Token length: \(token.count)")
                 }
             } else {
                 if logLevel >= .errors {
-                    print("❌ ERROR APIService: No auth token available for protected endpoint \(endpoint)")
+                    Logger.debug("❌ ERROR APIService: No auth token available for protected endpoint \(endpoint)")
                 }
                 Logger.warning("APIService: No auth token available for protected endpoint \(endpoint)")
                 completion(.failure(.unauthorized))
@@ -592,27 +592,27 @@ class APIService {
         
         // Execute the request
         if logLevel == .verbose {
-            print("📡 API APIService: Executing HTTP request to: \(url.absoluteString)")
+            Logger.debug("📡 API APIService: Executing HTTP request to: \(url.absoluteString)")
         }
         let task = session.dataTask(with: request) { [weak self] data, response, error in
             guard let self = self else { 
                 // Can't access instance properties when self is nil
-                print("❌ ERROR APIService: Self deallocated during request")
+                Logger.debug("❌ ERROR APIService: Self deallocated during request")
                 return 
             }
             
             if self.logLevel == .verbose {
-                print("📡 API APIService: Response received for \(endpoint)")
+                Logger.debug("📡 API APIService: Response received for \(endpoint)")
             }
             
             // Handle network errors
             if let error = error {
                 if self.logLevel >= .errors {
-                    print("❌ ERROR APIService: Network error for \(endpoint): \(error.localizedDescription)")
+                    Logger.debug("❌ ERROR APIService: Network error for \(endpoint): \(error.localizedDescription)")
                     if self.logLevel == .verbose {
-                        print("❌ ERROR APIService: Error type: \(type(of: error))")
-                        print("❌ ERROR APIService: Error domain: \((error as NSError).domain)")
-                        print("❌ ERROR APIService: Error code: \((error as NSError).code)")
+                        Logger.debug("❌ ERROR APIService: Error type: \(type(of: error))")
+                        Logger.debug("❌ ERROR APIService: Error domain: \((error as NSError).domain)")
+                        Logger.debug("❌ ERROR APIService: Error code: \((error as NSError).code)")
                     }
                 }
                 
@@ -623,12 +623,12 @@ class APIService {
                     case .notConnectedToInternet, .networkConnectionLost:
                         apiError = .noInternet
                         if self.logLevel >= .errors {
-                            print("❌ ERROR APIService: No internet connection")
+                            Logger.debug("❌ ERROR APIService: No internet connection")
                         }
                     default:
                         apiError = .requestFailed(error)
                         if self.logLevel >= .errors {
-                            print("❌ ERROR APIService: URL error: \(urlError.code)")
+                            Logger.debug("❌ ERROR APIService: URL error: \(urlError.code)")
                         }
                     }
                 } else {
@@ -652,9 +652,9 @@ class APIService {
             // Validate HTTP response
             guard let httpResponse = response as? HTTPURLResponse else {
                 if self.logLevel >= .errors {
-                    print("❌ ERROR APIService: Invalid response type for \(endpoint)")
+                    Logger.debug("❌ ERROR APIService: Invalid response type for \(endpoint)")
                     if self.logLevel == .verbose {
-                        print("❌ ERROR APIService: Response type: \(type(of: response))")
+                        Logger.debug("❌ ERROR APIService: Response type: \(type(of: response))")
                     }
                 }
                 self.logError(APIError.invalidResponse)
@@ -672,10 +672,10 @@ class APIService {
             }
             
             if self.logLevel == .verbose {
-                print("📡 API APIService: HTTP Status Code: \(httpResponse.statusCode) for \(endpoint)")
-                print("📡 API APIService: Response headers: \(httpResponse.allHeaderFields)")
+                Logger.debug("📡 API APIService: HTTP Status Code: \(httpResponse.statusCode) for \(endpoint)")
+                Logger.debug("📡 API APIService: Response headers: \(httpResponse.allHeaderFields)")
             } else if self.logLevel == .minimal {
-                print("📡 API APIService: \(endpoint) - Status: \(httpResponse.statusCode)")
+                Logger.debug("📡 API APIService: \(endpoint) - Status: \(httpResponse.statusCode)")
             }
             
             // Update rate limiting information if available
@@ -705,27 +705,27 @@ class APIService {
                 
             case 401:
                 if self.logLevel >= .errors {
-                    print("❌ ERROR APIService: 401 Unauthorized for \(endpoint)")
+                    Logger.debug("❌ ERROR APIService: 401 Unauthorized for \(endpoint)")
                 }
                 if self.logLevel == .verbose {
-                    print("🔐 AUTH APIService: requiresAuth: \(requiresAuth), hasRefreshToken: \(self.refreshToken != nil), retryCount: \(retryCount)")
+                    Logger.debug("🔐 AUTH APIService: requiresAuth: \(requiresAuth), hasRefreshToken: \(self.refreshToken != nil), retryCount: \(retryCount)")
                 }
                 
                 if self.logLevel >= .errors, let data = data, let errorString = String(data: data, encoding: .utf8) {
-                    print("❌ ERROR APIService: 401 Response body: \(errorString)")
+                    Logger.debug("❌ ERROR APIService: 401 Response body: \(errorString)")
                 }
                 
                 // Handle unauthorized based on request type
                 if requiresAuth && self.refreshToken != nil && retryCount < 1 {
                     if self.logLevel >= .minimal {
-                        print("🔐 AUTH APIService: Attempting to refresh token...")
+                        Logger.debug("🔐 AUTH APIService: Attempting to refresh token...")
                     }
                     // Authenticated request with refresh token - try to refresh
                     self.refreshAuthToken { result in
                         switch result {
                         case .success(let newToken):
                             if self.logLevel >= .minimal {
-                                print("✅ SUCCESS APIService: Token refreshed successfully")
+                                Logger.debug("✅ SUCCESS APIService: Token refreshed successfully")
                             }
                             self.setAuthToken(newToken)
                             // Retry the original request with the new token
@@ -741,7 +741,7 @@ class APIService {
                             )
                         case .failure(let refreshError):
                             if self.logLevel >= .errors {
-                                print("❌ ERROR APIService: Token refresh failed: \(refreshError)")
+                                Logger.debug("❌ ERROR APIService: Token refresh failed: \(refreshError)")
                             }
                             // Only clear tokens when the refresh endpoint definitively
                             // rejected the token. A transport/server error means the
@@ -760,7 +760,7 @@ class APIService {
                     return
                 } else if requiresAuth {
                     if self.logLevel >= .errors {
-                        print("❌ ERROR APIService: No refresh token available, clearing tokens")
+                        Logger.debug("❌ ERROR APIService: No refresh token available, clearing tokens")
                     }
                     // Authenticated request without refresh capability
                     self.clearTokens()
@@ -770,7 +770,7 @@ class APIService {
                     return
                 } else {
                     if self.logLevel >= .errors {
-                        print("❌ ERROR APIService: 401 on non-authenticated request (e.g., login)")
+                        Logger.debug("❌ ERROR APIService: 401 on non-authenticated request (e.g., login)")
                     }
                     // Non-authenticated request (like login) - preserve error message
                     // Clean up any pending GET request tracking
@@ -946,38 +946,38 @@ class APIService {
             // Ensure we have data
             guard let data = data else {
                 if self.logLevel >= .errors {
-                    print("❌ ERROR APIService: No data in response for \(endpoint)")
+                    Logger.debug("❌ ERROR APIService: No data in response for \(endpoint)")
                 }
                 completion(.failure(.invalidResponse))
                 return
             }
             
             if self.logLevel == .verbose {
-                print("📡 API APIService: Response data size: \(data.count) bytes for \(endpoint)")
+                Logger.debug("📡 API APIService: Response data size: \(data.count) bytes for \(endpoint)")
                 
                 // Log raw response for debugging
                 if let jsonString = String(data: data, encoding: .utf8) {
-                    print("📡 API APIService: Raw response preview (first 500 chars): \(String(jsonString.prefix(500)))")
+                    Logger.debug("📡 API APIService: Raw response preview (first 500 chars): \(String(jsonString.prefix(500)))")
                 }
             }
             
             // Parse the data
             do {
                 if self.logLevel == .verbose {
-                    print("📡 API APIService: Attempting to decode response as \(T.self)")
+                    Logger.debug("📡 API APIService: Attempting to decode response as \(T.self)")
                 }
                 
                 // Special logging for connections endpoint (only in verbose mode)
                 if endpoint == "connections" && self.logLevel == .verbose {
-                    print("🔍 APIService: Decoding connections response...")
+                    Logger.debug("🔍 APIService: Decoding connections response...")
                     if let jsonString = String(data: data, encoding: .utf8) {
-                        print("📡 APIService: Full connections response: \(jsonString)")
+                        Logger.debug("📡 APIService: Full connections response: \(jsonString)")
                     }
                 }
                 
                 let result = try self.decoder.decode(T.self, from: data)
                 if self.logLevel >= .minimal {
-                    print("✅ SUCCESS APIService: Successfully decoded response for \(endpoint)")
+                    Logger.debug("✅ SUCCESS APIService: Successfully decoded response for \(endpoint)")
                 }
                 
                 // Remove from pending requests if it was a GET request

@@ -247,7 +247,7 @@ class ContentUploadViewController: UIViewController {
     
     // MARK: - Actions
     @objc private func cancelTapped() {
-        print("📸 User tapped cancel button - dismissing content upload")
+        Logger.debug("📸 User tapped cancel button - dismissing content upload")
         delegate?.contentUploadDidCancel()
         dismiss(animated: true)
     }
@@ -295,7 +295,7 @@ class ContentUploadViewController: UIViewController {
     private func showErrorAlert(_ message: String) {
         // Dismiss any presented view controller first
         if let presented = self.presentedViewController {
-            print("⚠️ ContentUpload: Dismissing \(type(of: presented)) before showing error: \(message)")
+            Logger.debug("⚠️ ContentUpload: Dismissing \(type(of: presented)) before showing error: \(message)")
             presented.dismiss(animated: false) { [weak self] in
                 self?.presentErrorAlertAfterDismissal(message)
             }
@@ -307,7 +307,7 @@ class ContentUploadViewController: UIViewController {
     private func presentErrorAlertAfterDismissal(_ message: String) {
         // Double-check we're still in the view hierarchy
         guard self.view.window != nil else {
-            print("⚠️ ContentUpload: View not in window hierarchy, skipping alert: \(message)")
+            Logger.debug("⚠️ ContentUpload: View not in window hierarchy, skipping alert: \(message)")
             return
         }
         
@@ -411,7 +411,7 @@ extension ContentUploadViewController: MediaCaptureServiceDelegate {
     // MARK: - Unified Media Processing (Using Shared Services)
     
     private func processImageUsingSharedService(_ image: UIImage) {
-        print("📸 Using shared MediaProcessingService for image processing...")
+        Logger.debug("📸 Using shared MediaProcessingService for image processing...")
         
         // Store original image
         self.originalImage = image
@@ -431,9 +431,9 @@ extension ContentUploadViewController: MediaCaptureServiceDelegate {
                     // Store processed image and mark processing as complete
                     self?.processedImage = processedPhoto.image
                     self?.isImageProcessingComplete = true
-                    print("✅ Image processing complete using shared service")
+                    Logger.debug("✅ Image processing complete using shared service")
                 case .failure(let error):
-                    print("❌ Image processing failed: \(error)")
+                    Logger.debug("❌ Image processing failed: \(error)")
                     self?.showError(error)
                 }
             }
@@ -441,7 +441,7 @@ extension ContentUploadViewController: MediaCaptureServiceDelegate {
     }
     
     private func processVideoUsingSharedService(at url: URL) {
-        print("🎥 Using shared MediaProcessingService for video processing...")
+        Logger.debug("🎥 Using shared MediaProcessingService for video processing...")
         
         // Use MediaProcessingService for consistent compression (same as PlaceDetailViewController)
         mediaProcessingService.processVideo(at: url) { [weak self] result in
@@ -451,9 +451,9 @@ extension ContentUploadViewController: MediaCaptureServiceDelegate {
                     // Create a ContentType.video with processed data
                     let content = ContentType.video(processedVideo.url)
                     self?.showPlaceSelection(for: content)
-                    print("✅ Video processing complete using shared service")
+                    Logger.debug("✅ Video processing complete using shared service")
                 case .failure(let error):
-                    print("❌ Video processing failed: \(error)")
+                    Logger.debug("❌ Video processing failed: \(error)")
                     self?.showError(error)
                 }
             }
@@ -461,7 +461,7 @@ extension ContentUploadViewController: MediaCaptureServiceDelegate {
     }
     
     private func processImage(_ image: UIImage) {
-        print("📸 Starting image processing in background...")
+        Logger.debug("📸 Starting image processing in background...")
         
         // Store original image
         self.originalImage = image
@@ -482,14 +482,14 @@ extension ContentUploadViewController: MediaCaptureServiceDelegate {
             
             guard let compressedData = resizedImage.jpegData(compressionQuality: 0.7),
                   let compressedImage = UIImage(data: compressedData) else {
-                print("⚠️ Background image processing failed, will use original")
+                Logger.debug("⚠️ Background image processing failed, will use original")
                 return
             }
             
             DispatchQueue.main.async {
                 strongSelf.processedImage = compressedImage
                 strongSelf.isImageProcessingComplete = true
-                print("📸 Background image processing completed")
+                Logger.debug("📸 Background image processing completed")
             }
         }
     }
@@ -792,7 +792,7 @@ extension ContentUploadViewController: PlaceSearchDelegate {
     private func uploadPhoto(_ image: UIImage, for place: Place, loadingAlert: UIAlertController) {
         // Use processed image if available, otherwise use original
         let imageToUpload = isImageProcessingComplete ? (processedImage ?? image) : image
-        print("📸 Using \(isImageProcessingComplete ? "processed" : "original") image for upload")
+        Logger.debug("📸 Using \(isImageProcessingComplete ? "processed" : "original") image for upload")
         
         // Convert image to JPEG data
         guard let imageData = imageToUpload.jpegData(compressionQuality: 0.7) else {
@@ -893,7 +893,7 @@ extension ContentUploadViewController: PlaceSearchDelegate {
         }
         
         // Generate thumbnail
-        print("🎬 Generating thumbnail for video at URL: \(url.lastPathComponent)")
+        Logger.debug("🎬 Generating thumbnail for video at URL: \(url.lastPathComponent)")
         let imageGenerator = AVAssetImageGenerator(asset: asset)
         imageGenerator.appliesPreferredTrackTransform = true
         let time = CMTimeMake(value: 1, timescale: 2) // Get frame at 0.5 seconds
@@ -904,14 +904,14 @@ extension ContentUploadViewController: PlaceSearchDelegate {
             let thumbnail = UIImage(cgImage: cgImage)
             thumbnailData = thumbnail.jpegData(compressionQuality: 0.7)
             let thumbnailSize = thumbnailData?.count ?? 0
-            print("✅ Thumbnail generated successfully - Size: \(thumbnailSize) bytes")
-            print("   - Image dimensions: \(thumbnail.size)")
+            Logger.debug("✅ Thumbnail generated successfully - Size: \(thumbnailSize) bytes")
+            Logger.debug("   - Image dimensions: \(thumbnail.size)")
             
             // Add unique identifier to verify uniqueness
             let uniqueId = UUID().uuidString.prefix(8)
-            print("   - Thumbnail unique ID: \(uniqueId)")
+            Logger.debug("   - Thumbnail unique ID: \(uniqueId)")
         } catch {
-            print("❌ Failed to generate thumbnail: \(error)")
+            Logger.debug("❌ Failed to generate thumbnail: \(error)")
         }
         
         // Check if this is a new place (not from existing places)
@@ -1010,20 +1010,20 @@ extension ContentUploadViewController: PlaceSearchDelegate {
         
         // Upload thumbnail if available
         if let thumbnailData = thumbnailData {
-            print("📤 Uploading thumbnail - Size: \(thumbnailData.count) bytes")
-            print("   - Upload URL: \(uploadUrls.thumbnail.suffix(100))")
+            Logger.debug("📤 Uploading thumbnail - Size: \(thumbnailData.count) bytes")
+            Logger.debug("   - Upload URL: \(uploadUrls.thumbnail.suffix(100))")
             group.enter()
             uploadFile(data: thumbnailData, to: uploadUrls.thumbnail, contentType: "image/jpeg") { error in
                 if let error = error {
-                    print("❌ Thumbnail upload failed: \(error)")
+                    Logger.debug("❌ Thumbnail upload failed: \(error)")
                     uploadErrors.append(error)
                 } else {
-                    print("✅ Thumbnail uploaded successfully")
+                    Logger.debug("✅ Thumbnail uploaded successfully")
                 }
                 group.leave()
             }
         } else {
-            print("⚠️ No thumbnail data available for upload")
+            Logger.debug("⚠️ No thumbnail data available for upload")
         }
         
         // Wait for all uploads to complete
@@ -1094,13 +1094,13 @@ extension ContentUploadViewController: PlaceSearchDelegate {
                 loadingAlert.dismiss(animated: true) {
                     switch result {
                     case .success(let response):
-                        print("📹 ContentUpload: Complete response received - success: \(response.success)")
+                        Logger.debug("📹 ContentUpload: Complete response received - success: \(response.success)")
                         if let video = response.data {
-                            print("📹 ContentUpload: Video data - ID: \(video.id), Status: \(video.uploadStatus), URLs: video=\(video.videoUrl ?? "nil"), preview=\(video.previewUrl ?? "nil"), thumbnail=\(video.thumbnailUrl ?? "nil")")
+                            Logger.debug("📹 ContentUpload: Video data - ID: \(video.id), Status: \(video.uploadStatus), URLs: video=\(video.videoUrl ?? "nil"), preview=\(video.previewUrl ?? "nil"), thumbnail=\(video.thumbnailUrl ?? "nil")")
                             
                             // Check if upload actually succeeded
                             if video.uploadStatus == .error || video.uploadStatus == .failed {
-                                print("❌ ContentUpload: Upload failed with status: \(video.uploadStatus)")
+                                Logger.debug("❌ ContentUpload: Upload failed with status: \(video.uploadStatus)")
                                 // Delay to ensure loading alert is fully dismissed
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                                     self?.showErrorAlert("Upload failed. Please try again.")
@@ -1192,13 +1192,13 @@ extension ContentUploadViewController: PlaceSearchDelegate {
                 loadingAlert.dismiss(animated: true) {
                     switch result {
                     case .success(let response):
-                        print("📹 ContentUpload: Complete response received - success: \(response.success)")
+                        Logger.debug("📹 ContentUpload: Complete response received - success: \(response.success)")
                         if let video = response.data {
-                            print("📹 ContentUpload: Video data - ID: \(video.id), Status: \(video.uploadStatus), URLs: video=\(video.videoUrl ?? "nil"), preview=\(video.previewUrl ?? "nil"), thumbnail=\(video.thumbnailUrl ?? "nil")")
+                            Logger.debug("📹 ContentUpload: Video data - ID: \(video.id), Status: \(video.uploadStatus), URLs: video=\(video.videoUrl ?? "nil"), preview=\(video.previewUrl ?? "nil"), thumbnail=\(video.thumbnailUrl ?? "nil")")
                             
                             // Check if upload actually succeeded
                             if video.uploadStatus == .error || video.uploadStatus == .failed {
-                                print("❌ ContentUpload: Upload failed with status: \(video.uploadStatus)")
+                                Logger.debug("❌ ContentUpload: Upload failed with status: \(video.uploadStatus)")
                                 // Delay to ensure loading alert is fully dismissed
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                                     self?.showErrorAlert("Upload failed. Please try again.")

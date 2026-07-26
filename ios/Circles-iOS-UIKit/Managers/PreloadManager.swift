@@ -61,7 +61,7 @@ class PreloadManager {
                        completion: @escaping (Result<PreloadedData, Error>) -> Void) {
         
         guard !isPreloading else {
-            print("🔄 PreloadManager: Already preloading, skipping duplicate request")
+            Logger.debug("🔄 PreloadManager: Already preloading, skipping duplicate request")
             return
         }
         
@@ -70,15 +70,15 @@ class PreloadManager {
            let existingUserId = existingData.user?.id,
            let currentUserId = AuthService.shared.getUserId(),
            existingUserId != currentUserId {
-            print("⚠️ PreloadManager: Detected user change, clearing stale data")
-            print("   Previous user: \(existingUserId)")
-            print("   Current user: \(currentUserId)")
+            Logger.debug("⚠️ PreloadManager: Detected user change, clearing stale data")
+            Logger.debug("   Previous user: \(existingUserId)")
+            Logger.debug("   Current user: \(currentUserId)")
             clearPreloadedData()
         }
         
         // Check cache first
         if let cachedData = loadFromCache() {
-            print("🚀 PreloadManager: Using cached data, skipping network requests")
+            Logger.debug("🚀 PreloadManager: Using cached data, skipping network requests")
             self.preloadedData = cachedData
             progressHandler(1.0, "Ready!")
             completion(.success(cachedData))
@@ -92,11 +92,11 @@ class PreloadManager {
         retryAttempts.removeAll()
         self.progressHandler = progressHandler
         
-        print("🚀 PreloadManager: Starting data preload")
+        Logger.debug("🚀 PreloadManager: Starting data preload")
         
         // Validate authentication state before proceeding
         guard AuthService.shared.isLoggedIn else {
-            print("❌ PreloadManager: User not logged in, aborting preload")
+            Logger.debug("❌ PreloadManager: User not logged in, aborting preload")
             isPreloading = false
             let error = NSError(domain: "PreloadManager", code: -2, userInfo: [
                 NSLocalizedDescriptionKey: "You are not logged in. Please log in again."
@@ -107,19 +107,19 @@ class PreloadManager {
         
         // Check if token is expired and handle appropriately
         if AuthService.shared.isTokenExpired() {
-            print("⚠️ PreloadManager: Token is expired, attempting refresh before preload")
+            Logger.debug("⚠️ PreloadManager: Token is expired, attempting refresh before preload")
             AuthService.shared.refreshToken { [weak self] result in
                 guard let self = self else { return }
                 
                 switch result {
                 case .success():
-                    print("✅ PreloadManager: Token refreshed successfully, proceeding with preload")
+                    Logger.debug("✅ PreloadManager: Token refreshed successfully, proceeding with preload")
                     // Important: Reset the isPreloading flag before continuing
                     self.isPreloading = false
                     // Continue with the preload process inline rather than recursively
                     self.performPreloadAfterTokenRefresh(progressHandler: progressHandler, completion: completion)
                 case .failure(let error):
-                    print("❌ PreloadManager: Token refresh failed: \(error)")
+                    Logger.debug("❌ PreloadManager: Token refresh failed: \(error)")
                     self.isPreloading = false
                     if AuthService.isDefinitiveAuthFailure(error) {
                         // Server rejected the token - session is genuinely dead
@@ -133,7 +133,7 @@ class PreloadManager {
                         // server-side (client-side expiry uses a conservative fallback).
                         // Proceed optimistically; if the token is truly dead, individual
                         // requests will 401 and the APIService handler takes over.
-                        print("⚠️ PreloadManager: Transient refresh failure, proceeding with existing token")
+                        Logger.debug("⚠️ PreloadManager: Transient refresh failure, proceeding with existing token")
                         self.performPreloadAfterTokenRefresh(progressHandler: progressHandler, completion: completion)
                     }
                 }
@@ -165,10 +165,10 @@ class PreloadManager {
     /// silent: a definitive 401 already routes through APIService's token handling.
     func refreshInBackground() {
         guard !isPreloading else {
-            print("🔄 PreloadManager: Already preloading, skipping background refresh")
+            Logger.debug("🔄 PreloadManager: Already preloading, skipping background refresh")
             return
         }
-        print("🔄 PreloadManager: Starting silent background refresh")
+        Logger.debug("🔄 PreloadManager: Starting silent background refresh")
         isPreloading = true
         completedTasks = 0
         taskErrors.removeAll()
@@ -176,9 +176,9 @@ class PreloadManager {
         retryAttempts.removeAll()
         continuePreloadProcess(progressHandler: { _, _ in }) { result in
             if case .success = result {
-                print("✅ PreloadManager: Background refresh complete, cache updated")
+                Logger.debug("✅ PreloadManager: Background refresh complete, cache updated")
             } else {
-                print("⚠️ PreloadManager: Background refresh failed (silent)")
+                Logger.debug("⚠️ PreloadManager: Background refresh failed (silent)")
             }
         }
     }
@@ -198,7 +198,7 @@ class PreloadManager {
         for key in dictionary.keys {
             if key.hasPrefix("PreloadedDataCache_") || key.hasPrefix("PreloadedDataCacheTimestamp_") {
                 userDefaults.removeObject(forKey: key)
-                print("🗑️ PreloadManager: Removed cached data for key: \(key)")
+                Logger.debug("🗑️ PreloadManager: Removed cached data for key: \(key)")
             }
         }
     }
@@ -211,21 +211,21 @@ class PreloadManager {
             let encoded = try encoder.encode(data)
             UserDefaults.standard.set(encoded, forKey: cacheKey)
             UserDefaults.standard.set(Date(), forKey: cacheTimestampKey)
-            print("💾 PreloadManager: Saved preloaded data to cache")
+            Logger.debug("💾 PreloadManager: Saved preloaded data to cache")
         } catch {
-            print("❌ PreloadManager: Failed to cache preloaded data: \(error)")
+            Logger.debug("❌ PreloadManager: Failed to cache preloaded data: \(error)")
         }
     }
     
     private func loadFromCache(maxAge: TimeInterval? = nil) -> PreloadedData? {
         // Check cache timestamp
         guard let timestamp = UserDefaults.standard.object(forKey: cacheTimestampKey) as? Date else {
-            print("📭 PreloadManager: No cache timestamp found")
+            Logger.debug("📭 PreloadManager: No cache timestamp found")
             return nil
         }
         let age = Date().timeIntervalSince(timestamp)
         guard age < (maxAge ?? cacheExpiryInterval) else {
-            print("⏰ PreloadManager: Cache expired (age: \(Int(age))s)")
+            Logger.debug("⏰ PreloadManager: Cache expired (age: \(Int(age))s)")
             // Only physically delete once the data is too old even for stale display
             if age >= staleCacheMaxAge {
                 clearCache()
@@ -235,7 +235,7 @@ class PreloadManager {
         
         // Load cached data
         guard let cached = UserDefaults.standard.data(forKey: cacheKey) else {
-            print("📭 PreloadManager: No cached data found")
+            Logger.debug("📭 PreloadManager: No cached data found")
             return nil
         }
         
@@ -247,18 +247,18 @@ class PreloadManager {
             guard let currentUserId = AuthService.shared.getUserId(),
                   let cachedUserId = data.user?.id,
                   currentUserId == cachedUserId else {
-                print("⚠️ PreloadManager: Cached data belongs to different user, clearing cache")
-                print("   Current user: \(AuthService.shared.getUserId() ?? "nil")")
-                print("   Cached user: \(data.user?.id ?? "nil")")
+                Logger.debug("⚠️ PreloadManager: Cached data belongs to different user, clearing cache")
+                Logger.debug("   Current user: \(AuthService.shared.getUserId() ?? "nil")")
+                Logger.debug("   Cached user: \(data.user?.id ?? "nil")")
                 clearCache()
                 clearAllUserCaches()
                 return nil
             }
             
-            print("💾 PreloadManager: Loaded preloaded data from cache (age: \(Int(Date().timeIntervalSince(timestamp)))s)")
+            Logger.debug("💾 PreloadManager: Loaded preloaded data from cache (age: \(Int(Date().timeIntervalSince(timestamp)))s)")
             return data
         } catch {
-            print("❌ PreloadManager: Failed to decode cached data: \(error)")
+            Logger.debug("❌ PreloadManager: Failed to decode cached data: \(error)")
             clearCache()
             return nil
         }
@@ -272,7 +272,7 @@ class PreloadManager {
         UserDefaults.standard.removeObject(forKey: "PreloadedDataCache")
         UserDefaults.standard.removeObject(forKey: "PreloadedDataCacheTimestamp")
         
-        print("🗑️ PreloadManager: Cleared cache for user \(AuthService.shared.getUserId() ?? "Unknown")")
+        Logger.debug("🗑️ PreloadManager: Cleared cache for user \(AuthService.shared.getUserId() ?? "Unknown")")
     }
     
     /// True when the disk cache is within the freshness window - used at launch
@@ -290,7 +290,7 @@ class PreloadManager {
                                                 completion: @escaping (Result<PreloadedData, Error>) -> Void) {
         // Check cache first (in case it was populated during token refresh)
         if let cachedData = loadFromCache() {
-            print("🚀 PreloadManager: Using cached data after token refresh")
+            Logger.debug("🚀 PreloadManager: Using cached data after token refresh")
             self.preloadedData = cachedData
             progressHandler(1.0, "Ready!")
             completion(.success(cachedData))
@@ -305,7 +305,7 @@ class PreloadManager {
         retryAttempts.removeAll()
         self.progressHandler = progressHandler
         
-        print("🚀 PreloadManager: Starting data preload after token refresh")
+        Logger.debug("🚀 PreloadManager: Starting data preload after token refresh")
         
         // Continue with the normal preload flow
         continuePreloadProcess(progressHandler: progressHandler, completion: completion)
@@ -344,7 +344,7 @@ class PreloadManager {
 
             if let error = loadError {
                 self.isPreloading = false
-                print("❌ PreloadManager: Preload failed with error: \(error)")
+                Logger.debug("❌ PreloadManager: Preload failed with error: \(error)")
                 self.logDetailedErrorInfo()
                 completion(.failure(error))
                 return
@@ -372,7 +372,7 @@ class PreloadManager {
             guard let self = self else { return }
             guard !didFinish else { return }
 
-            print("⏰ PreloadManager: Loading timeout reached (30 seconds)")
+            Logger.debug("⏰ PreloadManager: Loading timeout reached (30 seconds)")
             self.logDetailedErrorInfo()
 
             didFinish = true
@@ -402,11 +402,11 @@ class PreloadManager {
             case .success(let user):
                 loadedUser = user
                 self?.incrementProgress(status: "Loading your circles and network data...")
-                print("✅ PreloadManager: User profile loaded")
+                Logger.debug("✅ PreloadManager: User profile loaded")
             case .failure(let error):
                 self?.taskErrors["user"] = error
                 loadError = error
-                print("❌ PreloadManager: Failed to load user profile: \(error.localizedDescription)")
+                Logger.debug("❌ PreloadManager: Failed to load user profile: \(error.localizedDescription)")
             }
         }
 
@@ -429,11 +429,11 @@ class PreloadManager {
             case .success(let circles):
                 loadedCircles = circles
                 self?.incrementProgress(status: "Loading network circles...")
-                print("✅ PreloadManager: Loaded \(circles.count) circles")
+                Logger.debug("✅ PreloadManager: Loaded \(circles.count) circles")
             case .failure(let error):
                 self?.taskErrors["circles"] = error
                 loadError = error
-                print("❌ PreloadManager: Failed to load circles: \(error.localizedDescription)")
+                Logger.debug("❌ PreloadManager: Failed to load circles: \(error.localizedDescription)")
             }
         }
         
@@ -469,11 +469,11 @@ class PreloadManager {
             case .success(let circles):
                 loadedNetworkCircles = circles
                 self?.incrementProgress(status: "Checking connection requests...")
-                print("✅ PreloadManager: Loaded \(circles.count) network circles")
+                Logger.debug("✅ PreloadManager: Loaded \(circles.count) network circles")
             case .failure(let error):
                 self?.taskErrors["networkCircles"] = error
                 // Don't fail entire preload for network circles
-                print("⚠️ PreloadManager: Failed to load network circles, continuing without them")
+                Logger.debug("⚠️ PreloadManager: Failed to load network circles, continuing without them")
             }
         }
         
@@ -497,12 +497,12 @@ class PreloadManager {
             case .success(let connections):
                 loadedConnections = connections.filter { $0.status == ConnectionStatus.accepted }
                 self?.incrementProgress(status: "Checking messages...")
-                print("✅ PreloadManager: Loaded \(loadedConnections.count) connections")
+                Logger.debug("✅ PreloadManager: Loaded \(loadedConnections.count) connections")
             case .failure(let error):
                 self?.taskErrors["connections"] = error
                 // Non-fatal: the home screen reloads connections on appear
                 // (userListView.refresh()), so don't sink the whole preload.
-                print("⚠️ PreloadManager: Failed to load connections, continuing without them")
+                Logger.debug("⚠️ PreloadManager: Failed to load connections, continuing without them")
             }
         }
         
@@ -518,7 +518,7 @@ class PreloadManager {
             
             unreadCount = MessagingManager.shared.unreadCount
             self?.incrementProgress(status: "Checking connection requests...")
-            print("✅ PreloadManager: Unread messages: \(unreadCount)")
+            Logger.debug("✅ PreloadManager: Unread messages: \(unreadCount)")
         }
         
         // 7. Load Pending Connection Count
@@ -531,7 +531,7 @@ class PreloadManager {
             
             pendingCount = count
             self?.incrementProgress(status: "Loading activities...")
-            print("✅ PreloadManager: Pending connections: \(count)")
+            Logger.debug("✅ PreloadManager: Pending connections: \(count)")
         }
         
         // 8. Load Activities
@@ -547,10 +547,10 @@ class PreloadManager {
             case .success(let response):
                 loadedActivities = response.activities
                 self?.incrementProgress(status: "Loading moments...")
-                print("✅ PreloadManager: Loaded \(response.activities.count) activities")
+                Logger.debug("✅ PreloadManager: Loaded \(response.activities.count) activities")
             case .failure(let error):
                 // Don't fail the entire preload for activities
-                print("⚠️ PreloadManager: Failed to load activities: \(error)")
+                Logger.debug("⚠️ PreloadManager: Failed to load activities: \(error)")
                 self?.taskErrors["activities"] = error
             }
         }
@@ -578,17 +578,17 @@ class PreloadManager {
             case .success(let response):
                 loadedMoments = response.data
                 self?.incrementProgress(status: "Almost ready...")
-                print("✅ PreloadManager: Loaded \(response.data.count) moments")
+                Logger.debug("✅ PreloadManager: Loaded \(response.data.count) moments")
             case .failure(let error):
                 // Don't fail the entire preload for moments
-                print("⚠️ PreloadManager: Failed to load moments: \(error)")
+                Logger.debug("⚠️ PreloadManager: Failed to load moments: \(error)")
                 self?.taskErrors["moments"] = error
             }
         }
         
         // Ideal path: everything (including non-critical tasks) finished.
         loadGroup.notify(queue: .main) {
-            print("🏁 PreloadManager: All tasks completed")
+            Logger.debug("🏁 PreloadManager: All tasks completed")
             finishPreload()
         }
 
@@ -602,7 +602,7 @@ class PreloadManager {
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                 if !didFinish {
-                    print("⏳ PreloadManager: Grace period elapsed, finishing with partial non-critical data")
+                    Logger.debug("⏳ PreloadManager: Grace period elapsed, finishing with partial non-critical data")
                 }
                 finishPreload()
             }
@@ -649,16 +649,16 @@ class PreloadManager {
         // Save to cache for future use
         self.saveToCache(preloadedData)
         
-        print("🎉 PreloadManager: All data preloaded successfully")
-        print("   - User: \(user?.displayName ?? "nil")")
-        print("   - Circles: \(circles.count)")
-        print("   - Network circles: \(networkCircles.count)")
-        print("   - Places: \(places.count)")
-        print("   - Connections: \(connections.count)")
-        print("   - Unread messages: \(unreadCount)")
-        print("   - Pending connections: \(pendingCount)")
-        print("   - Activities: \(activities.count)")
-        print("   - Moments: \(moments.count)")
+        Logger.debug("🎉 PreloadManager: All data preloaded successfully")
+        Logger.debug("   - User: \(user?.displayName ?? "nil")")
+        Logger.debug("   - Circles: \(circles.count)")
+        Logger.debug("   - Network circles: \(networkCircles.count)")
+        Logger.debug("   - Places: \(places.count)")
+        Logger.debug("   - Connections: \(connections.count)")
+        Logger.debug("   - Unread messages: \(unreadCount)")
+        Logger.debug("   - Pending connections: \(pendingCount)")
+        Logger.debug("   - Activities: \(activities.count)")
+        Logger.debug("   - Moments: \(moments.count)")
         
         completion(.success(preloadedData))
     }
@@ -686,7 +686,7 @@ class PreloadManager {
                 // Check if we should retry
                 if currentAttempt < self.maxRetries && self.shouldRetryError(error) {
                     let delay = self.calculateRetryDelay(attempt: currentAttempt)
-                    print("🔄 PreloadManager: Retrying \(taskName) (attempt \(currentAttempt))")
+                    Logger.debug("🔄 PreloadManager: Retrying \(taskName) (attempt \(currentAttempt))")
                     
                     DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                         self.retryTask(taskName: taskName, operation: operation, completion: completion)
@@ -739,9 +739,9 @@ class PreloadManager {
     
     private func logDetailedErrorInfo() {
         if !taskErrors.isEmpty {
-            print("❌ PreloadManager: Failed tasks:")
+            Logger.debug("❌ PreloadManager: Failed tasks:")
             for (task, error) in taskErrors {
-                print("   - \(task): \(error.localizedDescription)")
+                Logger.debug("   - \(task): \(error.localizedDescription)")
             }
         }
     }

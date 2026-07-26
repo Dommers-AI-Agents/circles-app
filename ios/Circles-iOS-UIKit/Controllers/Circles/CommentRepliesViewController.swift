@@ -227,7 +227,7 @@ class CommentRepliesViewController: BaseViewController {
                     self?.replies.insert(reply, at: 0)
                     self?.tableView.insertRows(at: [IndexPath(row: 0, section: 0)], with: .automatic)
                 case .failure(let error):
-                    print("Failed to add reply: \(error)")
+                    Logger.debug("Failed to add reply: \(error)")
                     self?.showError("Failed to add reply. Please try again.")
                 }
             }
@@ -264,7 +264,7 @@ class CommentRepliesViewController: BaseViewController {
                     self?.replies = replies
                     self?.tableView.reloadData()
                 case .failure(let error):
-                    print("Failed to fetch replies: \(error)")
+                    Logger.debug("Failed to fetch replies: \(error)")
                     self?.showError("Failed to load replies")
                 }
                 completion?()
@@ -327,7 +327,7 @@ extension CommentRepliesViewController: UITableViewDelegate, UITableViewDataSour
                     self?.tableView.deleteRows(at: [indexPath], with: .automatic)
                     completionHandler(true)
                 case .failure(let error):
-                    print("Failed to delete reply: \(error)")
+                    Logger.debug("Failed to delete reply: \(error)")
                     self?.showError("Failed to delete reply. Please try again.")
                     completionHandler(false)
                 }
@@ -373,11 +373,11 @@ extension CommentRepliesViewController: CircleCommentCellDelegate {
         generator.impactOccurred()
         
         // TODO: Implement reply liking when backend supports it
-        print("Reply like tapped - not yet implemented")
+        Logger.debug("Reply like tapped - not yet implemented")
     }
     
     func circleCommentCell(_ cell: CircleCommentCell, didTapReplyButton comment: CircleComment) {
         // We don't allow replies to replies (single level nesting only)
-        print("Reply to reply not supported")
+        Logger.debug("Reply to reply not supported")
     }
 }

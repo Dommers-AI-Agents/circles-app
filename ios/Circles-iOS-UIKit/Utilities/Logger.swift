@@ -61,10 +61,10 @@ class Logger {
         let timestamp = DateFormatter.logFormatter.string(from: Date())
 
         #if DEBUG
-        print("\(level.prefix) [\(timestamp)] \(fileName):\(line) \(function) - \(message())")
+        Logger.debug("\(level.prefix) [\(timestamp)] \(fileName):\(line) \(function) - \(message())")
         #else
         if level == .error {
-            print("\(level.prefix) [\(timestamp)] \(fileName):\(line) - \(message())")
+            Logger.debug("\(level.prefix) [\(timestamp)] \(fileName):\(line) - \(message())")
         }
         #endif
     }

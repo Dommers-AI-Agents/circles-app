@@ -590,14 +590,14 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
             // Log the final size for debugging
             if let data = coverImageData {
                 let sizeKB = data.count / 1024
-                print("Optimized image size: \(sizeKB) KB")
+                Logger.debug("Optimized image size: \(sizeKB) KB")
                 
                 // Extra safety check - if still too large, make it even smaller
                 if sizeKB > 100 {
-                    print("Image still too large, applying extra compression")
+                    Logger.debug("Image still too large, applying extra compression")
                     coverImageData = image.optimizedForUpload(maxDimension: 200, targetSizeKB: 50)
                     if let newData = coverImageData {
-                        print("Final compressed size: \(newData.count / 1024) KB")
+                        Logger.debug("Final compressed size: \(newData.count / 1024) KB")
                     }
                 }
             }
@@ -888,7 +888,7 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
                     self?.editors = editors
                     self?.updateEditorsDisplay()
                 case .failure(let error):
-                    print("Failed to load editors: \(error)")
+                    Logger.debug("Failed to load editors: \(error)")
                 }
             }
         }

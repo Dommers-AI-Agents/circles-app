@@ -215,12 +215,12 @@ class NotificationOnboardingViewController: BaseViewController {
         NotificationService.shared.requestNotificationPermissions { [weak self] granted in
             DispatchQueue.main.async {
                 if granted {
-                    print("✅ Notifications enabled during onboarding")
+                    Logger.debug("✅ Notifications enabled during onboarding")
                     // Register for remote notifications
                     UIApplication.shared.registerForRemoteNotifications()
                     self?.showSuccess("Notifications enabled! You'll stay connected with your network.")
                 } else {
-                    print("❌ User denied notifications during onboarding")
+                    Logger.debug("❌ User denied notifications during onboarding")
                     self?.showNotificationDeniedAlert()
                 }
                 
@@ -236,7 +236,7 @@ class NotificationOnboardingViewController: BaseViewController {
     }
     
     @objc private func skipNotifications() {
-        print("⏭️ User skipped notifications during onboarding")
+        Logger.debug("⏭️ User skipped notifications during onboarding")
         
         // Record skip
         UserDefaults.standard.set(true, forKey: "hasShownNotificationOnboarding")

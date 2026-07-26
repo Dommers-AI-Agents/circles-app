@@ -482,14 +482,14 @@ class RegisterViewController: BaseViewController {
                 
                 switch result {
                 case .success(let user):
-                    print("Successfully registered user: \(user.displayName)")
+                    Logger.debug("Successfully registered user: \(user.displayName)")
                     AnalyticsService.shared.trackSignUp(method: "email")
                     
                     // Apply referral code if we have one
                     if let _ = referralCode, !referralCode!.isEmpty {
                         ReferralService.shared.applyPendingReferralCodeIfNeeded { success in
                             if success {
-                                print("Successfully applied referral code")
+                                Logger.debug("Successfully applied referral code")
                             }
                         }
                     }
@@ -507,7 +507,7 @@ class RegisterViewController: BaseViewController {
     }
     
     @objc private func appleSignInButtonTapped() {
-        print("🍎 Apple Sign-In button tapped in RegisterViewController - Action triggered successfully!")
+        Logger.debug("🍎 Apple Sign-In button tapped in RegisterViewController - Action triggered successfully!")
         
         // Show informative message about email options
         let alert = UIAlertController(
@@ -526,7 +526,7 @@ class RegisterViewController: BaseViewController {
     }
     
     private func proceedWithAppleSignIn() {
-        print("🍎 Proceeding with Apple Sign-In after warning")
+        Logger.debug("🍎 Proceeding with Apple Sign-In after warning")
         isRegistering = true
         
         SocialAuthService.shared.signInWithApple(from: self) { [weak self] result in
@@ -535,10 +535,10 @@ class RegisterViewController: BaseViewController {
                 
                 switch result {
                 case .success(let user):
-                    print("🍎 Successfully registered with Apple: \(user.displayName)")
+                    Logger.debug("🍎 Successfully registered with Apple: \(user.displayName)")
                     self?.showSuccessMessage()
                 case .failure(let error):
-                    print("🍎 Apple Sign-In Failed with error: \(error.localizedDescription)")
+                    Logger.debug("🍎 Apple Sign-In Failed with error: \(error.localizedDescription)")
                     
                     self?.showError("Apple Sign-In Failed: \(error.localizedDescription)")
                 }
@@ -602,7 +602,7 @@ class RegisterViewController: BaseViewController {
                 
                 switch result {
                 case .success(let user):
-                    print("Successfully registered with social auth: \(user.displayName)")
+                    Logger.debug("Successfully registered with social auth: \(user.displayName)")
                     self?.showSuccessMessage()
                 case .failure(let error):
                     self?.showError(error)

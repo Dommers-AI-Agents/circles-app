@@ -181,7 +181,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         // Enable POI selection (iOS 16+)
         if #available(iOS 16.0, *) {
             mapView.selectableMapFeatures = [.pointsOfInterest]
-            print("✅ POI selection enabled in map view init")
+            Logger.debug("✅ POI selection enabled in map view init")
         }
         
         return mapView
@@ -527,18 +527,18 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     @objc private func handleMapTap(_ gesture: UITapGestureRecognizer) {
         let location = gesture.location(in: mapView)
         let coordinate = mapView.convert(location, toCoordinateFrom: mapView)
-        print("🗺️ Map tapped at coordinate: \(coordinate.latitude), \(coordinate.longitude)")
+        Logger.debug("🗺️ Map tapped at coordinate: \(coordinate.latitude), \(coordinate.longitude)")
         
         // Check if we tapped on any annotations
         let point = gesture.location(in: mapView)
         if let tappedViews = mapView.hitTest(point, with: nil) {
-            print("   Tapped views: \(tappedViews)")
+            Logger.debug("   Tapped views: \(tappedViews)")
         }
         
         // On iOS < 16 or if POI selection isn't working, offer to add a place at the tapped location
         if #available(iOS 16.0, *) {
             // POI selection should handle this on iOS 16+
-            print("   iOS 16+ - POI selection should handle taps on POIs")
+            Logger.debug("   iOS 16+ - POI selection should handle taps on POIs")
         } else {
             // For older iOS versions, allow adding a place at tapped location
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
@@ -726,14 +726,14 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     private func switchToPrivacyConstraint() {
         circleInfoViewBottomToEditorsConstraint?.isActive = false
         circleInfoViewBottomToPrivacyConstraint?.isActive = true
-        print("📐 Switched to privacy constraint - reduced spacing for no editors")
+        Logger.debug("📐 Switched to privacy constraint - reduced spacing for no editors")
     }
     
     /// Switches to editors constraint when editors exist (normal spacing)
     private func switchToEditorsConstraint() {
         circleInfoViewBottomToPrivacyConstraint?.isActive = false
         circleInfoViewBottomToEditorsConstraint?.isActive = true
-        print("📐 Switched to editors constraint - normal spacing for editors section")
+        Logger.debug("📐 Switched to editors constraint - normal spacing for editors section")
     }
     
     private func loadEditors() {
@@ -744,7 +744,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                     self?.editors = editors
                     self?.displayEditors()
                 case .failure(let error):
-                    print("Failed to load editors: \(error)")
+                    Logger.debug("Failed to load editors: \(error)")
                     // Hide editors container and switch to privacy constraint
                     self?.editorsContainerView.isHidden = true
                     self?.switchToPrivacyConstraint()
@@ -850,10 +850,10 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         mapView.isZoomEnabled = true
         
         // Debug: Print all gesture recognizers
-        print("🗺️ Map gesture recognizers: \(mapView.gestureRecognizers?.count ?? 0)")
+        Logger.debug("🗺️ Map gesture recognizers: \(mapView.gestureRecognizers?.count ?? 0)")
         if let gestures = mapView.gestureRecognizers {
             for (index, gesture) in gestures.enumerated() {
-                print("  Gesture \(index): \(type(of: gesture)) - enabled: \(gesture.isEnabled)")
+                Logger.debug("  Gesture \(index): \(type(of: gesture)) - enabled: \(gesture.isEnabled)")
             }
         }
     }
@@ -864,9 +864,9 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     }
     
     private func fetchPlaces() {
-        print("🔍 CircleDetailViewController: About to fetch places for circle: \(circle.name) (ID: \(circle.id))")
-        print("   - Circle privacy: \(circle.privacy)")
-        print("   - Is shared via link: \(isSharedViaLink)")
+        Logger.debug("🔍 CircleDetailViewController: About to fetch places for circle: \(circle.name) (ID: \(circle.id))")
+        Logger.debug("   - Circle privacy: \(circle.privacy)")
+        Logger.debug("   - Is shared via link: \(isSharedViaLink)")
         
         // Use public endpoint for public circles accessed via share link
         if circle.privacy == .public && isSharedViaLink {
@@ -1278,24 +1278,24 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         var placesWithNoLocation = 0
         var placesWithInvalidLocation = 0
         
-        print("🗺️ Adding annotations to map for circle: \(circle.name)")
-        print("🗺️ Total filtered places to process: \(filteredPlaces.count)")
+        Logger.debug("🗺️ Adding annotations to map for circle: \(circle.name)")
+        Logger.debug("🗺️ Total filtered places to process: \(filteredPlaces.count)")
         
         // Add place annotations
         for (index, place) in filteredPlaces.enumerated() {
-            print("🗺️ Place \(index + 1): \(place.name)")
+            Logger.debug("🗺️ Place \(index + 1): \(place.name)")
             
             // Check if location exists
             if let location = place.location {
-                print("  📍 Has location object with coordinates: \(location.coordinates)")
-                print("  📍 Coordinates count: \(location.coordinates.count)")
+                Logger.debug("  📍 Has location object with coordinates: \(location.coordinates)")
+                Logger.debug("  📍 Coordinates count: \(location.coordinates.count)")
                 
                 if location.coordinates.count == 2 {
-                    print("  📍 Longitude: \(location.coordinates[0]), Latitude: \(location.coordinates[1])")
+                    Logger.debug("  📍 Longitude: \(location.coordinates[0]), Latitude: \(location.coordinates[1])")
                     
                     if let clLocation = location.clLocation {
                         let coord = clLocation.coordinate
-                        print("  ✅ Valid CLLocation created: \(coord.latitude), \(coord.longitude)")
+                        Logger.debug("  ✅ Valid CLLocation created: \(coord.latitude), \(coord.longitude)")
                         
                         // Validate coordinates are within valid ranges
                         if coord.latitude >= -90 && coord.latitude <= 90 && 
@@ -1310,27 +1310,27 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                             coordinates.append(coord)
                             placesWithValidLocation += 1
                         } else {
-                            print("  ❌ Invalid coordinates: lat=\(coord.latitude), lon=\(coord.longitude)")
+                            Logger.debug("  ❌ Invalid coordinates: lat=\(coord.latitude), lon=\(coord.longitude)")
                             placesWithInvalidLocation += 1
                         }
                     } else {
-                        print("  ❌ CLLocation creation failed despite having 2 coordinates")
+                        Logger.debug("  ❌ CLLocation creation failed despite having 2 coordinates")
                         placesWithInvalidLocation += 1
                     }
                 } else {
-                    print("  ❌ Invalid coordinates array count: \(location.coordinates.count)")
+                    Logger.debug("  ❌ Invalid coordinates array count: \(location.coordinates.count)")
                     placesWithInvalidLocation += 1
                 }
             } else {
-                print("  ❌ No location object")
+                Logger.debug("  ❌ No location object")
                 placesWithNoLocation += 1
             }
         }
         
-        print("🗺️ Location Summary:")
-        print("  ✅ Places with valid location: \(placesWithValidLocation)")
-        print("  ❌ Places with no location: \(placesWithNoLocation)")
-        print("  ❌ Places with invalid location: \(placesWithInvalidLocation)")
+        Logger.debug("🗺️ Location Summary:")
+        Logger.debug("  ✅ Places with valid location: \(placesWithValidLocation)")
+        Logger.debug("  ❌ Places with no location: \(placesWithNoLocation)")
+        Logger.debug("  ❌ Places with invalid location: \(placesWithInvalidLocation)")
         
         // Include user location if available
         if let userLocation = locationManager.location {
@@ -1338,24 +1338,24 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             if coord.latitude >= -90 && coord.latitude <= 90 && 
                coord.longitude >= -180 && coord.longitude <= 180 {
                 coordinates.append(coord)
-                print("📍 User location added to map: \(coord.latitude), \(coord.longitude)")
+                Logger.debug("📍 User location added to map: \(coord.latitude), \(coord.longitude)")
             } else {
-                print("❌ Invalid user location: lat=\(coord.latitude), lon=\(coord.longitude)")
+                Logger.debug("❌ Invalid user location: lat=\(coord.latitude), lon=\(coord.longitude)")
             }
         } else if let userLocation = self.userLocation {
             let coord = userLocation.coordinate
             if coord.latitude >= -90 && coord.latitude <= 90 && 
                coord.longitude >= -180 && coord.longitude <= 180 {
                 coordinates.append(coord)
-                print("📍 Cached user location added to map: \(coord.latitude), \(coord.longitude)")
+                Logger.debug("📍 Cached user location added to map: \(coord.latitude), \(coord.longitude)")
             } else {
-                print("❌ Invalid cached user location: lat=\(coord.latitude), lon=\(coord.longitude)")
+                Logger.debug("❌ Invalid cached user location: lat=\(coord.latitude), lon=\(coord.longitude)")
             }
         } else {
-            print("⚠️ No user location available")
+            Logger.debug("⚠️ No user location available")
         }
         
-        print("🗺️ Total coordinates to show: \(coordinates.count)")
+        Logger.debug("🗺️ Total coordinates to show: \(coordinates.count)")
         
         // Adjust map to show annotations
         if !coordinates.isEmpty {
@@ -1374,23 +1374,23 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                 var minLon = coordinates[0].longitude
                 var maxLon = coordinates[0].longitude
                 
-                print("🗺️ Calculating bounds for \(coordinates.count) coordinates")
+                Logger.debug("🗺️ Calculating bounds for \(coordinates.count) coordinates")
                 for (index, coordinate) in coordinates.enumerated() {
-                    print("  📍 Coordinate \(index): lat=\(coordinate.latitude), lon=\(coordinate.longitude)")
+                    Logger.debug("  📍 Coordinate \(index): lat=\(coordinate.latitude), lon=\(coordinate.longitude)")
                     minLat = min(minLat, coordinate.latitude)
                     maxLat = max(maxLat, coordinate.latitude)
                     minLon = min(minLon, coordinate.longitude)
                     maxLon = max(maxLon, coordinate.longitude)
                 }
                 
-                print("🗺️ Bounds: minLat=\(minLat), maxLat=\(maxLat), minLon=\(minLon), maxLon=\(maxLon)")
+                Logger.debug("🗺️ Bounds: minLat=\(minLat), maxLat=\(maxLat), minLon=\(minLon), maxLon=\(maxLon)")
                 
                 let centerLat = (minLat + maxLat) / 2
                 let centerLon = (minLon + maxLon) / 2
                 
                 // Validate center coordinates
                 guard centerLat >= -90 && centerLat <= 90 && centerLon >= -180 && centerLon <= 180 else {
-                    print("❌ Invalid center coordinates: lat=\(centerLat), lon=\(centerLon)")
+                    Logger.debug("❌ Invalid center coordinates: lat=\(centerLat), lon=\(centerLon)")
                     // Fall back to default location
                     let defaultCenter = CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060)
                     let region = MKCoordinateRegion(
@@ -1426,7 +1426,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                 if let region = createSafeRegion(center: center, span: span) {
                     mapView.setRegion(region, animated: true)
                 } else {
-                    print("❌ Failed to create valid region, using meters-based region")
+                    Logger.debug("❌ Failed to create valid region, using meters-based region")
                     // Fall back to a reasonable zoom level
                     let region = MKCoordinateRegion(
                         center: center,
@@ -1913,7 +1913,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                     case .success(let gmsPlace):
                         self?.addGooglePlace(gmsPlace: gmsPlace, placeID: placeID)
                     case .failure(let error):
-                        print("Failed to fetch place details: \(error)")
+                        Logger.debug("Failed to fetch place details: \(error)")
                         // Fallback to basic place info
                         self?.addPlaceWithCoordinates(name: name, location: location, placeID: placeID)
                     }
@@ -2026,7 +2026,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                         self?.tableView.reloadRows(at: [IndexPath(row: index, section: 0)], with: .none)
                     }
                 case .failure(let error):
-                    print("Failed to like place: \(error)")
+                    Logger.debug("Failed to like place: \(error)")
                     // Show error alert
                     let alert = UIAlertController(
                         title: "Error",
@@ -2094,20 +2094,20 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
         let place = filteredPlaces[indexPath.row]
         
         // Debug logging
-        print("🔍 CircleDetailViewController - Selected place:")
-        print("  - Place name: \(place.name)")
-        print("  - Place ID: \(place.id)")
-        print("  - Has photos: \(place.hasPhotos)")
-        print("  - Photos array: \(place.photos ?? [])")
-        print("  - Photos count: \(place.photos?.count ?? 0)")
+        Logger.debug("🔍 CircleDetailViewController - Selected place:")
+        Logger.debug("  - Place name: \(place.name)")
+        Logger.debug("  - Place ID: \(place.id)")
+        Logger.debug("  - Has photos: \(place.hasPhotos)")
+        Logger.debug("  - Photos array: \(place.photos ?? [])")
+        Logger.debug("  - Photos count: \(place.photos?.count ?? 0)")
         
         // Mark place as viewed if it's new
         if place.isNew == true {
             NetworkManager.shared.markPlaceAsViewed(placeId: place.id, circleId: circle.id) { error in
                 if let error = error {
-                    print("Error marking place as viewed: \(error)")
+                    Logger.debug("Error marking place as viewed: \(error)")
                 } else {
-                    print("Successfully marked place as viewed")
+                    Logger.debug("Successfully marked place as viewed")
                 }
             }
         }
@@ -2522,7 +2522,7 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
                     self.addAnnotationsToMap()
                 }
             } catch {
-                print("Failed to update place order: \(error)")
+                Logger.debug("Failed to update place order: \(error)")
                 // Optionally, revert the changes if the API call fails
                 await MainActor.run {
                     self.fetchPlaces()
@@ -3318,29 +3318,29 @@ extension CircleDetailViewController {
         // Handle Google Place photos
         if let photos = gmsPlace.photos, !photos.isEmpty {
             // Load the first photo and save it
-            print("📸 Loading photo from Google Places...")
+            Logger.debug("📸 Loading photo from Google Places...")
             GooglePlacesService.shared.loadPhoto(from: photos[0], maxSize: CGSize(width: 800, height: 800)) { [weak self] photoResult in
                 switch photoResult {
                 case .success(let image):
-                    print("📸 Successfully loaded Google photo")
+                    Logger.debug("📸 Successfully loaded Google photo")
                     // Convert image to data and upload
                     if let imageData = image.jpegData(compressionQuality: 0.8) {
-                        print("📸 Uploading photo to backend... Size: \(imageData.count / 1024)KB")
+                        Logger.debug("📸 Uploading photo to backend... Size: \(imageData.count / 1024)KB")
                         self?.uploadImageAndCreatePlace(placeData: placeData, imageData: imageData, loadingAlert: loadingAlert)
                     } else {
-                        print("📸 Failed to convert image to JPEG data")
+                        Logger.debug("📸 Failed to convert image to JPEG data")
                         // Create place without photo if conversion fails
                         self?.createPlaceWithData(placeData, loadingAlert: loadingAlert)
                     }
                 case .failure(let error):
-                    print("📸 Failed to load Google photo: \(error)")
+                    Logger.debug("📸 Failed to load Google photo: \(error)")
                     // Create place without photo if loading fails
                     self?.createPlaceWithData(placeData, loadingAlert: loadingAlert)
                 }
             }
         } else {
             // No photos available, create place without photo
-            print("📸 No photos available from Google Places")
+            Logger.debug("📸 No photos available from Google Places")
             createPlaceWithData(placeData, loadingAlert: loadingAlert)
         }
     }
@@ -3350,14 +3350,14 @@ extension CircleDetailViewController {
         PlaceService.shared.uploadMultipleImages([imageData]) { [weak self] result in
             switch result {
             case .success(let imageUrls):
-                print("📸 Photo uploaded successfully: \(imageUrls)")
+                Logger.debug("📸 Photo uploaded successfully: \(imageUrls)")
                 // Add photo URLs to place data
                 var updatedPlaceData = placeData
                 updatedPlaceData["photos"] = imageUrls
                 self?.createPlaceWithData(updatedPlaceData, loadingAlert: loadingAlert)
                 
             case .failure(let error):
-                print("📸 Failed to upload photo: \(error)")
+                Logger.debug("📸 Failed to upload photo: \(error)")
                 // Create place without photo if upload fails
                 self?.createPlaceWithData(placeData, loadingAlert: loadingAlert)
             }
@@ -3367,12 +3367,12 @@ extension CircleDetailViewController {
     
     private func createPlaceWithData(_ placeData: [String: Any], loadingAlert: UIAlertController) {
         // Debug: Log place data being sent
-        print("📍 Creating place with data:")
-        print("📍 Name: \(placeData["name"] ?? "No name")")
-        print("📍 Category: \(placeData["category"] ?? "No category")")
-        print("📍 Photos: \(placeData["photos"] ?? "No photos")")
-        print("📍 Rating: \(placeData["rating"] ?? "No rating")")
-        print("📍 Description: \(placeData["description"] ?? "No description")")
+        Logger.debug("📍 Creating place with data:")
+        Logger.debug("📍 Name: \(placeData["name"] ?? "No name")")
+        Logger.debug("📍 Category: \(placeData["category"] ?? "No category")")
+        Logger.debug("📍 Photos: \(placeData["photos"] ?? "No photos")")
+        Logger.debug("📍 Rating: \(placeData["rating"] ?? "No rating")")
+        Logger.debug("📍 Description: \(placeData["description"] ?? "No description")")
         
         PlaceService.shared.createPlaceFromGoogleData(placeData) { [weak self] result in
             DispatchQueue.main.async {
@@ -3380,11 +3380,11 @@ extension CircleDetailViewController {
                     switch result {
                     case .success(let newPlace):
                         // Debug: Log created place
-                        print("✅ Place created successfully:")
-                        print("✅ ID: \(newPlace.id)")
-                        print("✅ Name: \(newPlace.name)")
-                        print("✅ Photos: \(newPlace.photos ?? [])")
-                        print("✅ Description: \(newPlace.description ?? "nil")")
+                        Logger.debug("✅ Place created successfully:")
+                        Logger.debug("✅ ID: \(newPlace.id)")
+                        Logger.debug("✅ Name: \(newPlace.name)")
+                        Logger.debug("✅ Photos: \(newPlace.photos ?? [])")
+                        Logger.debug("✅ Description: \(newPlace.description ?? "nil")")
                         
                         self?.places.append(newPlace)
                         self?.tableView.reloadData()
@@ -3401,7 +3401,7 @@ extension CircleDetailViewController {
                         self?.present(successAlert, animated: true)
                         
                     case .failure(let error):
-                        print("❌ Failed to create place: \(error)")
+                        Logger.debug("❌ Failed to create place: \(error)")
                         let errorAlert = UIAlertController(
                             title: "Error",
                             message: "Failed to add place: \(error.localizedDescription)",
@@ -3493,9 +3493,9 @@ extension CircleDetailViewController {
         ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
             switch result {
             case .success:
-                print("✅ Circle marked as viewed, new indicators cleared")
+                Logger.debug("✅ Circle marked as viewed, new indicators cleared")
             case .failure(let error):
-                print("⚠️ Failed to mark circle as viewed: \(error.localizedDescription)")
+                Logger.debug("⚠️ Failed to mark circle as viewed: \(error.localizedDescription)")
                 // Not critical, so we don't show an error to the user
             }
         }
@@ -3505,19 +3505,19 @@ extension CircleDetailViewController {
         // Validate center coordinates
         guard center.latitude >= -90 && center.latitude <= 90 &&
               center.longitude >= -180 && center.longitude <= 180 else {
-            print("❌ Invalid center for safe region: lat=\(center.latitude), lon=\(center.longitude)")
+            Logger.debug("❌ Invalid center for safe region: lat=\(center.latitude), lon=\(center.longitude)")
             return nil
         }
         
         // Validate span values are positive
         guard span.latitudeDelta > 0 && span.longitudeDelta > 0 else {
-            print("❌ Invalid span for safe region: latDelta=\(span.latitudeDelta), lonDelta=\(span.longitudeDelta)")
+            Logger.debug("❌ Invalid span for safe region: latDelta=\(span.latitudeDelta), lonDelta=\(span.longitudeDelta)")
             return nil
         }
         
         // Additional validation for reasonable span values
         guard span.latitudeDelta <= 180 && span.longitudeDelta <= 360 else {
-            print("❌ Span too large: latDelta=\(span.latitudeDelta), lonDelta=\(span.longitudeDelta)")
+            Logger.debug("❌ Span too large: latDelta=\(span.latitudeDelta), lonDelta=\(span.longitudeDelta)")
             return nil
         }
         
@@ -3556,7 +3556,7 @@ extension CircleDetailViewController {
     
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         // Location error occurred - map will stay at default NYC location
-        print("Location error: \(error.localizedDescription)")
+        Logger.debug("Location error: \(error.localizedDescription)")
     }
 }
 
@@ -3574,52 +3574,52 @@ extension CircleDetailViewController {
     
     // Handle annotation selection
     func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
-        print("🗺️ Map annotation selected: \(type(of: view.annotation))")
-        print("   Annotation: \(view.annotation?.description ?? "nil")")
+        Logger.debug("🗺️ Map annotation selected: \(type(of: view.annotation))")
+        Logger.debug("   Annotation: \(view.annotation?.description ?? "nil")")
         
         // Handle POI selection for iOS 16+
         if #available(iOS 16.0, *) {
-            print("📱 iOS 16+ device - checking for POI")
+            Logger.debug("📱 iOS 16+ device - checking for POI")
             if let featureAnnotation = view.annotation as? MKMapFeatureAnnotation {
-                print("✅ POI feature annotation detected")
-                print("   Feature type: \(featureAnnotation.featureType.rawValue)")
-                print("   Title: \(featureAnnotation.title ?? "nil")")
+                Logger.debug("✅ POI feature annotation detected")
+                Logger.debug("   Feature type: \(featureAnnotation.featureType.rawValue)")
+                Logger.debug("   Title: \(featureAnnotation.title ?? "nil")")
                 handlePOISelection(featureAnnotation)
                 return
             } else {
-                print("❌ Not a MKMapFeatureAnnotation")
+                Logger.debug("❌ Not a MKMapFeatureAnnotation")
             }
         } else {
-            print("⚠️ iOS version < 16, POI selection not available")
+            Logger.debug("⚠️ iOS version < 16, POI selection not available")
         }
         
         // For regular place annotations, navigate to place detail
         if let placeAnnotation = view.annotation as? PlaceAnnotation {
-            print("📍 Place annotation selected: \(placeAnnotation.place.name)")
+            Logger.debug("📍 Place annotation selected: \(placeAnnotation.place.name)")
             let placeDetailVC = PlaceDetailViewController(place: placeAnnotation.place, circle: circle)
             navigationController?.pushViewController(placeDetailVC, animated: true)
             // Deselect the annotation
             mapView.deselectAnnotation(placeAnnotation, animated: true)
         } else if view.annotation is MKUserLocation {
-            print("👤 User location selected")
+            Logger.debug("👤 User location selected")
         } else {
-            print("❓ Unknown annotation type: \(type(of: view.annotation))")
+            Logger.debug("❓ Unknown annotation type: \(type(of: view.annotation))")
         }
     }
     
     @available(iOS 16.0, *)
     private func handlePOISelection(_ featureAnnotation: MKMapFeatureAnnotation) {
-        print("🗺️ POI Selected: \(featureAnnotation.featureType.rawValue)")
+        Logger.debug("🗺️ POI Selected: \(featureAnnotation.featureType.rawValue)")
         
         let poiName = featureAnnotation.title ?? "Unknown Place"
         let poiSubtitle = featureAnnotation.subtitle ?? ""
         let coordinate = featureAnnotation.coordinate
         
-        print("📍 POI Details:")
-        print("   Name: \(poiName)")
-        print("   Subtitle: \(poiSubtitle)")
-        print("   Coordinate: \(coordinate.latitude), \(coordinate.longitude)")
-        print("   Feature Type: \(featureAnnotation.featureType.rawValue)")
+        Logger.debug("📍 POI Details:")
+        Logger.debug("   Name: \(poiName)")
+        Logger.debug("   Subtitle: \(poiSubtitle)")
+        Logger.debug("   Coordinate: \(coordinate.latitude), \(coordinate.longitude)")
+        Logger.debug("   Feature Type: \(featureAnnotation.featureType.rawValue)")
         
         // Navigate to AddPlaceViewController with pre-filled data
         // DO NOT create the place yet - just pass the POI data

@@ -835,9 +835,9 @@ class EditPlaceViewController: BaseViewController {
         
         // Log category changes for debugging
         if let customCategory = customCategory, !customCategory.isEmpty {
-            print("💾 Saving place with custom category: '\(customCategory)' (parent: \(category.rawValue))")
+            Logger.debug("💾 Saving place with custom category: '\(customCategory)' (parent: \(category.rawValue))")
         } else {
-            print("💾 Saving place with standard category: \(category.rawValue)")
+            Logger.debug("💾 Saving place with standard category: \(category.rawValue)")
         }
         
         // Format the address string
@@ -1465,7 +1465,7 @@ extension EditPlaceViewController: CLLocationManagerDelegate {
     }
     
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        print("Location manager failed with error: \(error.localizedDescription)")
+        Logger.debug("Location manager failed with error: \(error.localizedDescription)")
     }
     
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {

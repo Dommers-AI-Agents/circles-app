@@ -196,10 +196,10 @@ class VideoThumbnailCell: UICollectionViewCell {
             currentThumbnailLoadId = loadId
             
             // Debug logging with URL
-            print("🖼️ VideoThumbnailCell: Loading thumbnail for video \(video.id)")
-            print("   - URL: \(thumbnailUrl)")
-            print("   - LoadId: \(loadId)")
-            print("   - ContentType: \(video.contentType ?? "video")")
+            Logger.debug("🖼️ VideoThumbnailCell: Loading thumbnail for video \(video.id)")
+            Logger.debug("   - URL: \(thumbnailUrl)")
+            Logger.debug("   - LoadId: \(loadId)")
+            Logger.debug("   - ContentType: \(video.contentType ?? "video")")
             
             // Use a unique cache key that includes the video ID
             let uniqueCacheKey = "\(thumbnailUrl)_\(video.id)"
@@ -208,21 +208,21 @@ class VideoThumbnailCell: UICollectionViewCell {
                 DispatchQueue.main.async {
                     // Only update image if this is still the current load request
                     guard let self = self else {
-                        print("🖼️ VideoThumbnailCell: Cell deallocated for loadId: \(loadId)")
+                        Logger.debug("🖼️ VideoThumbnailCell: Cell deallocated for loadId: \(loadId)")
                         return
                     }
                     
                     guard self.currentThumbnailLoadId == loadId else {
-                        print("🖼️ VideoThumbnailCell: Ignoring stale load. Current: \(self.currentThumbnailLoadId ?? "nil"), Received: \(loadId)")
+                        Logger.debug("🖼️ VideoThumbnailCell: Ignoring stale load. Current: \(self.currentThumbnailLoadId ?? "nil"), Received: \(loadId)")
                         return
                     }
                     
                     if let image = image {
-                        print("🖼️ VideoThumbnailCell: Successfully applied image for video \(video.id)")
+                        Logger.debug("🖼️ VideoThumbnailCell: Successfully applied image for video \(video.id)")
                         self.thumbnailImageView.image = image
                         self.thumbnailImageView.backgroundColor = .clear
                     } else {
-                        print("⚠️ VideoThumbnailCell: Failed to load image for video \(video.id)")
+                        Logger.debug("⚠️ VideoThumbnailCell: Failed to load image for video \(video.id)")
                         self.thumbnailImageView.image = nil
                         self.thumbnailImageView.backgroundColor = Constants.Colors.secondaryBackground
                     }
@@ -232,7 +232,7 @@ class VideoThumbnailCell: UICollectionViewCell {
             currentThumbnailLoadId = nil
             currentThumbnailUrl = nil
             thumbnailImageView.image = nil
-            print("🖼️ VideoThumbnailCell: No thumbnail URL for video \(video.id)")
+            Logger.debug("🖼️ VideoThumbnailCell: No thumbnail URL for video \(video.id)")
         }
     }
     

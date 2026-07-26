@@ -139,8 +139,8 @@ class UserActivityCell: UICollectionViewCell {
             
             // Debug logging for Dan Wickner issue
             if user.displayName.isEmpty || user.displayName == "Dan Wickner" {
-                print("DEBUG UserActivityCell: User \(user.id) has displayName: '\(user.displayName)' (length: \(user.displayName.count))")
-                print("DEBUG UserActivityCell: Using display text: '\(displayName)'")
+                Logger.debug("DEBUG UserActivityCell: User \(user.id) has displayName: '\(user.displayName)' (length: \(user.displayName.count))")
+                Logger.debug("DEBUG UserActivityCell: Using display text: '\(displayName)'")
             }
             
             // Load profile image using ImageService with caching

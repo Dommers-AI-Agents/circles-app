@@ -268,7 +268,7 @@ class ActivityCommentRepliesViewController: BaseViewController {
                         self?.tableView.insertRows(at: [IndexPath(row: 0, section: 0)], with: .automatic)
                     }
                 case .failure(let error):
-                    print("Failed to add reply: \(error)")
+                    Logger.debug("Failed to add reply: \(error)")
                     self?.showError("Failed to add reply. Please try again.")
                 }
             }
@@ -309,7 +309,7 @@ class ActivityCommentRepliesViewController: BaseViewController {
                     self?.replies = response.data
                     self?.tableView.reloadData()
                 case .failure(let error):
-                    print("Failed to fetch replies: \(error)")
+                    Logger.debug("Failed to fetch replies: \(error)")
                 }
                 completion?()
             }
@@ -331,7 +331,7 @@ class ActivityCommentRepliesViewController: BaseViewController {
                     self?.tableView.deleteRows(at: [indexPath], with: .automatic)
                     completionHandler(true)
                 case .failure(let error):
-                    print("Failed to delete reply: \(error)")
+                    Logger.debug("Failed to delete reply: \(error)")
                     self?.showError("Failed to delete reply. Please try again.")
                     completionHandler(false)
                 }
@@ -430,7 +430,7 @@ extension ActivityCommentRepliesViewController: ActivityCommentCellDelegate {
                     // Reload data to update like state
                     self?.loadData(completion: nil)
                 case .failure(let error):
-                    print("Failed to like reply: \(error)")
+                    Logger.debug("Failed to like reply: \(error)")
                     self?.showError("Failed to update like. Please try again.")
                 }
             }

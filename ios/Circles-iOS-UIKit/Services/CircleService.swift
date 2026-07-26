@@ -316,7 +316,7 @@ class CircleService {
         
         if let coverImageUrl = coverImageUrl {
             body["coverImage"] = coverImageUrl
-            print("Updating circle with cover image URL: \(coverImageUrl)")
+            Logger.debug("Updating circle with cover image URL: \(coverImageUrl)")
         }
         
         // Only proceed if there are changes to make
@@ -325,7 +325,7 @@ class CircleService {
             return
         }
         
-        print("Updating circle \(id) with body: \(body)")
+        Logger.debug("Updating circle \(id) with body: \(body)")
         
         APIService.shared.request(
             endpoint: "circles/\(id)",
@@ -337,10 +337,10 @@ class CircleService {
                 
                 switch result {
                 case .success(let response):
-                    print("Circle updated successfully with coverImage: \(response.circle.coverImage ?? "nil")")
+                    Logger.debug("Circle updated successfully with coverImage: \(response.circle.coverImage ?? "nil")")
                     completion(.success(response.circle))
                 case .failure(let error):
-                    print("Circle update failed: \(error)")
+                    Logger.debug("Circle update failed: \(error)")
                     completion(.failure(error))
                 }
             }
@@ -459,7 +459,7 @@ class CircleService {
         let maxDataSizeKB: Double = 750
         
         if imageSizeInKB > maxDataSizeKB {
-            print("⚠️ Circle image size (\(String(format: "%.0f", imageSizeInKB)) KB) exceeds limit, compressing...")
+            Logger.debug("⚠️ Circle image size (\(String(format: "%.0f", imageSizeInKB)) KB) exceeds limit, compressing...")
             
             if let image = UIImage(data: imageData) {
                 // Try progressive compression
@@ -468,7 +468,7 @@ class CircleService {
                 for quality in compressionLevels {
                     if let compressedData = image.jpegData(compressionQuality: quality) {
                         let compressedSizeKB = Double(compressedData.count) / 1024.0
-                        print("📸 Compressed to \(String(format: "%.0f", compressedSizeKB)) KB with quality \(quality)")
+                        Logger.debug("📸 Compressed to \(String(format: "%.0f", compressedSizeKB)) KB with quality \(quality)")
                         
                         if compressedSizeKB <= maxDataSizeKB {
                             dataToUpload = compressedData
@@ -490,7 +490,7 @@ class CircleService {
                         if let resizedImage = UIGraphicsGetImageFromCurrentImageContext(),
                            let resizedData = resizedImage.jpegData(compressionQuality: 0.5) {
                             dataToUpload = resizedData
-                            print("📐 Resized and compressed to \(Double(resizedData.count) / 1024.0) KB")
+                            Logger.debug("📐 Resized and compressed to \(Double(resizedData.count) / 1024.0) KB")
                         }
                         UIGraphicsEndImageContext()
                     }
@@ -501,7 +501,7 @@ class CircleService {
         // Convert image data to base64
         let base64String = dataToUpload.base64EncodedString()
         
-        print("Uploading image - size: \(dataToUpload.count) bytes, base64 length: \(base64String.count)")
+        Logger.debug("Uploading image - size: \(dataToUpload.count) bytes, base64 length: \(base64String.count)")
         
         let body: [String: Any] = [
             "image": base64String,
@@ -518,10 +518,10 @@ class CircleService {
                 
                 switch result {
                 case .success(let response):
-                    print("Image uploaded successfully: \(response.url)")
+                    Logger.debug("Image uploaded successfully: \(response.url)")
                     completion(.success(response.url))
                 case .failure(let error):
-                    print("Image upload failed: \(error)")
+                    Logger.debug("Image upload failed: \(error)")
                     completion(.failure(error))
                 }
             }

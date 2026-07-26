@@ -35,7 +35,7 @@ class ImageViewerService {
     ///   - from: The presenting view controller
     func presentImageFromImageView(_ imageView: UIImageView, from viewController: UIViewController) {
         guard let image = imageView.image else {
-            print("⚠️ ImageViewerService: No image found in ImageView")
+            Logger.debug("⚠️ ImageViewerService: No image found in ImageView")
             return
         }
         

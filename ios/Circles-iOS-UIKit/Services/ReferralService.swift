@@ -147,7 +147,7 @@ class ReferralService {
                 self?.clearPendingReferralCode()
                 completion(true)
             case .failure(let error):
-                print("Failed to apply pending referral code: \(error)")
+                Logger.debug("Failed to apply pending referral code: \(error)")
                 completion(false)
             }
         }

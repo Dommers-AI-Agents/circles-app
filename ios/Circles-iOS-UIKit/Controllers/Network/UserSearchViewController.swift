@@ -207,7 +207,7 @@ class UserSearchViewController: BaseViewController {
                     }
                     
                 case .failure(let error):
-                    print("Search error: \(error)")
+                    Logger.debug("Search error: \(error)")
                     self.searchResults = []
                     self.tableView.reloadData()
                     self.showErrorState()
@@ -253,7 +253,7 @@ class UserSearchViewController: BaseViewController {
                     }
                     
                 case .failure(let error):
-                    print("Failed to load connections: \\(error)")
+                    Logger.debug("Failed to load connections: \\(error)")
                     if self.searchController.searchBar.text?.isEmpty ?? true {
                         self.showEmptyState()
                     }

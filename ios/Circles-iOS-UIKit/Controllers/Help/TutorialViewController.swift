@@ -142,7 +142,7 @@ class TutorialViewController: UIViewController {
         let videoURLString = "https://firebasestorage.googleapis.com/v0/b/circles-app-83b67.firebasestorage.app/o/tutorial%2Ftutorial.mov?alt=media"
         
         guard let videoURL = URL(string: videoURLString) else {
-            print("Invalid video URL")
+            Logger.debug("Invalid video URL")
             showError()
             return
         }

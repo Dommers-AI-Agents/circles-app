@@ -318,13 +318,13 @@ class NotificationPromptManager {
     private func handleEnableNotifications(from viewController: UIViewController) {
         NotificationService.shared.requestNotificationPermissions { granted in
             if granted {
-                print("✅ Notifications enabled via prompt banner")
+                Logger.debug("✅ Notifications enabled via prompt banner")
                 // Register device token if needed
                 DispatchQueue.main.async {
                     UIApplication.shared.registerForRemoteNotifications()
                 }
             } else {
-                print("❌ User denied notification permissions")
+                Logger.debug("❌ User denied notification permissions")
             }
         }
         recordPromptShown()

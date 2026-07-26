@@ -465,7 +465,7 @@ extension DiscoverViewController: UICollectionViewDataSource, UICollectionViewDe
         case usersCollectionView:
             let user = popularUsers[indexPath.item]
             // Navigate to user profile (in a real app)
-            print("Selected user: \(user.displayName)")
+            Logger.debug("Selected user: \(user.displayName)")
             
         case categoriesCollectionView:
             let category = trendingCategories[indexPath.item]
@@ -478,7 +478,7 @@ extension DiscoverViewController: UICollectionViewDataSource, UICollectionViewDe
     
     private func searchByCategory(_ category: CircleCategory) {
         // In a real app, this would filter by category
-        print("Searching circles in category: \(category.rawValue)")
+        Logger.debug("Searching circles in category: \(category.rawValue)")
     }
 }
 
@@ -489,7 +489,7 @@ extension DiscoverViewController: UISearchBarDelegate {
         searchBar.resignFirstResponder()
         
         // In a real app, this would perform a search
-        print("Searching for: \(searchText)")
+        Logger.debug("Searching for: \(searchText)")
     }
 }
 

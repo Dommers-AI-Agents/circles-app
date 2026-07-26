@@ -370,7 +370,7 @@ class LoginViewController: BaseViewController {
 
                 switch result {
                 case .success(let user):
-                    print("Successfully logged in user: \(user.displayName)")
+                    Logger.debug("Successfully logged in user: \(user.displayName)")
                     AnalyticsService.shared.trackLogin(method: "email")
                     UserDefaults.standard.set(email, forKey: self?.savedEmailKey ?? "savedUserEmail")
 
@@ -408,12 +408,12 @@ class LoginViewController: BaseViewController {
     }
 
     @objc private func appleSignInButtonTapped() {
-        print("🍎 Apple Sign-In button tapped in LoginViewController - Action triggered successfully!")
+        Logger.debug("🍎 Apple Sign-In button tapped in LoginViewController - Action triggered successfully!")
         proceedWithAppleSignIn()
     }
 
     private func proceedWithAppleSignIn() {
-        print("🍎 Proceeding with Apple Sign-In")
+        Logger.debug("🍎 Proceeding with Apple Sign-In")
         isLoggingIn = true
 
         SocialAuthService.shared.signInWithApple(from: self) { [weak self] result in
@@ -422,10 +422,10 @@ class LoginViewController: BaseViewController {
 
                 switch result {
                 case .success(let user):
-                    print("🍎 Successfully logged in with Apple: \(user.displayName)")
+                    Logger.debug("🍎 Successfully logged in with Apple: \(user.displayName)")
                     AnalyticsService.shared.trackLogin(method: "apple")
                 case .failure(let error):
-                    print("🍎 Apple Sign-In Failed with error: \(error.localizedDescription)")
+                    Logger.debug("🍎 Apple Sign-In Failed with error: \(error.localizedDescription)")
 
                     self?.showError("Apple Sign-In Failed: \(error.localizedDescription)")
                 }
@@ -436,7 +436,7 @@ class LoginViewController: BaseViewController {
     @objc private func googleSignInButtonTapped() {
         isLoggingIn = true
 
-        print("🔍 Google Sign-In button tapped in LoginViewController")
+        Logger.debug("🔍 Google Sign-In button tapped in LoginViewController")
 
         SocialAuthService.shared.signInWithGoogle(from: self) { [weak self] result in
             DispatchQueue.main.async {
@@ -444,10 +444,10 @@ class LoginViewController: BaseViewController {
 
                 switch result {
                 case .success(let user):
-                    print("🔍 Successfully logged in with Google: \(user.displayName)")
+                    Logger.debug("🔍 Successfully logged in with Google: \(user.displayName)")
                     AnalyticsService.shared.trackLogin(method: "google")
                 case .failure(let error):
-                    print("🔍 Google Sign-In failed with error: \(error.localizedDescription)")
+                    Logger.debug("🔍 Google Sign-In failed with error: \(error.localizedDescription)")
                     self?.showError("Google Sign-In Failed: \(error.localizedDescription)")
                 }
             }
@@ -457,7 +457,7 @@ class LoginViewController: BaseViewController {
     @objc private func facebookSignInButtonTapped() {
         isLoggingIn = true
 
-        print("📘 Facebook Sign-In button tapped in LoginViewController")
+        Logger.debug("📘 Facebook Sign-In button tapped in LoginViewController")
 
         SocialAuthService.shared.signInWithFacebook(from: self) { [weak self] result in
             DispatchQueue.main.async {
@@ -465,10 +465,10 @@ class LoginViewController: BaseViewController {
 
                 switch result {
                 case .success(let user):
-                    print("📘 Successfully logged in with Facebook: \(user.displayName)")
+                    Logger.debug("📘 Successfully logged in with Facebook: \(user.displayName)")
                     AnalyticsService.shared.trackLogin(method: "facebook")
                 case .failure(let error):
-                    print("📘 Facebook Sign-In failed with error: \(error.localizedDescription)")
+                    Logger.debug("📘 Facebook Sign-In failed with error: \(error.localizedDescription)")
                     self?.showError("Facebook Sign-In Failed: \(error.localizedDescription)")
                 }
             }

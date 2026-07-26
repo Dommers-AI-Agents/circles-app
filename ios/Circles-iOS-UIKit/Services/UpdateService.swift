@@ -18,16 +18,16 @@ class UpdateService {
         // Get current app version
         guard let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
               let currentBuild = Bundle.main.infoDictionary?["CFBundleVersion"] as? String else {
-            print("🔄 UpdateService: Failed to get current version info")
+            Logger.debug("🔄 UpdateService: Failed to get current version info")
             completion(false, nil, false)
             return
         }
         
-        print("🔄 UpdateService: Current version: \(currentVersion) build: \(currentBuild)")
+        Logger.debug("🔄 UpdateService: Current version: \(currentVersion) build: \(currentBuild)")
         
         // Check if we should perform the check (rate limiting)
         if !shouldCheckForUpdate() {
-            print("🔄 UpdateService: Skipping check due to rate limiting")
+            Logger.debug("🔄 UpdateService: Skipping check due to rate limiting")
             completion(false, nil, false)
             return
         }
@@ -37,7 +37,7 @@ class UpdateService {
         
         // Check if running in TestFlight or App Store
         let isTestFlight = isRunningInTestFlight()
-        print("🔄 UpdateService: Running in TestFlight: \(isTestFlight)")
+        Logger.debug("🔄 UpdateService: Running in TestFlight: \(isTestFlight)")
         
         if isTestFlight {
             // Skip update checks for TestFlight builds
