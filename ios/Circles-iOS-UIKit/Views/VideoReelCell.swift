@@ -339,9 +339,9 @@ class VideoReelCell: UICollectionViewCell {
             soundButton.widthAnchor.constraint(equalToConstant: 40),
             soundButton.heightAnchor.constraint(equalToConstant: 40),
 
-            // More/options button (owner only) — just left of the sound button
-            moreButton.centerYAnchor.constraint(equalTo: soundButton.centerYAnchor),
-            moreButton.trailingAnchor.constraint(equalTo: soundButton.leadingAnchor, constant: -12),
+            // More/options button (owner only) — stacked directly below the sound button
+            moreButton.trailingAnchor.constraint(equalTo: soundButton.trailingAnchor),
+            moreButton.topAnchor.constraint(equalTo: soundButton.bottomAnchor, constant: 12),
             moreButton.widthAnchor.constraint(equalToConstant: 40),
             moreButton.heightAnchor.constraint(equalToConstant: 40),
 
