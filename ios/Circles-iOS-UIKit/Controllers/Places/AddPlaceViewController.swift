@@ -31,51 +31,51 @@ class PlaceSearchAnnotation: NSObject, MKAnnotation {
 class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     
     // MARK: - Properties
-    private var selectedCircleId: String
-    private var selectedCircle: Circle?
-    private var userCircles: [Circle] = []
-    private var isCircleDropdownVisible = false
-    private let locationManager = CLLocationManager()
-    private var userLocation: CLLocation?
-    private var selectedLocation: CLLocationCoordinate2D?
-    private var currentPOIData: POIPlaceData?
-    private var searchCompleter = MKLocalSearchCompleter()
-    private var searchResults: [MKLocalSearchCompletion] = []
-    private var showPlaceTypeSuggestion = false
-    private var placeTypeSuggestionQuery = ""
-    private var selectedMapItem: MKMapItem?
-    private var annotations: [MKAnnotation] = []
-    private var annotationToPlaceIdMap: [ObjectIdentifier: String] = [:]
-    private var placesClient: GMSPlacesClient!  // Keep only for photos
-    private var placeIdsByCoordinate: [String: String] = [:] // Additional storage by coordinate
-    private var selectedGooglePlaceDetails: GooglePlaceDetails? {
+    var selectedCircleId: String
+    var selectedCircle: Circle?
+    var userCircles: [Circle] = []
+    var isCircleDropdownVisible = false
+    let locationManager = CLLocationManager()
+    var userLocation: CLLocation?
+    var selectedLocation: CLLocationCoordinate2D?
+    var currentPOIData: POIPlaceData?
+    var searchCompleter = MKLocalSearchCompleter()
+    var searchResults: [MKLocalSearchCompletion] = []
+    var showPlaceTypeSuggestion = false
+    var placeTypeSuggestionQuery = ""
+    var selectedMapItem: MKMapItem?
+    var annotations: [MKAnnotation] = []
+    var annotationToPlaceIdMap: [ObjectIdentifier: String] = [:]
+    var placesClient: GMSPlacesClient!  // Keep only for photos
+    var placeIdsByCoordinate: [String: String] = [:] // Additional storage by coordinate
+    var selectedGooglePlaceDetails: GooglePlaceDetails? {
         didSet { applyVenueSourceLockIfNeeded() }
     }
-    private var isSuperUserForVenueEdits: Bool?
-    private var ownedGooglePlaceIds = Set<String>()
-    private var venueExemptionChecksInFlight = Set<String>()
-    private var selectedCategory: PlaceCategory = .restaurant
-    private var selectedSubcategory: String?
-    private var isCategoryDropdownVisible = false
-    private var categoryDropdownItems: [(category: PlaceCategory, subcategory: String?)] = []
-    private var searchTimer: Timer?
+    var isSuperUserForVenueEdits: Bool?
+    var ownedGooglePlaceIds = Set<String>()
+    var venueExemptionChecksInFlight = Set<String>()
+    var selectedCategory: PlaceCategory = .restaurant
+    var selectedSubcategory: String?
+    var isCategoryDropdownVisible = false
+    var categoryDropdownItems: [(category: PlaceCategory, subcategory: String?)] = []
+    var searchTimer: Timer?
     
     // MARK: - UI Elements
-    private let scrollView: UIScrollView = {
+    let scrollView: UIScrollView = {
         let scrollView = UIScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.keyboardDismissMode = .onDrag
         return scrollView
     }()
     
-    private let contentView: UIView = {
+    let contentView: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
     
     // Hint label
-    private let hintLabel: UILabel = {
+    let hintLabel: UILabel = {
         let label = UILabel()
         label.text = "Tap a place on the map or use the search bar to add it"
         label.font = UIFont.systemFont(ofSize: 14, weight: .medium)
@@ -87,7 +87,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     }()
     
     // Search container for visual emphasis
-    private let searchContainer: UIView = {
+    let searchContainer: UIView = {
         let view = UIView()
         view.backgroundColor = .white
         view.layer.cornerRadius = 16
@@ -100,7 +100,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     }()
     
     // Search bar at the top
-    private let searchBar: UISearchBar = {
+    let searchBar: UISearchBar = {
         let searchBar = UISearchBar()
         searchBar.placeholder = "🔍 Search address or place name"
         searchBar.searchBarStyle = .minimal
@@ -113,7 +113,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     }()
     
     // Map container for rounded corners
-    private let mapContainer: UIView = {
+    let mapContainer: UIView = {
         let view = UIView()
         view.backgroundColor = .systemBackground
         view.layer.cornerRadius = 12
@@ -123,7 +123,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     }()
     
     // Map view that shows immediately
-    private let mapView: MKMapView = {
+    let mapView: MKMapView = {
         let mapView = MKMapView()
         mapView.translatesAutoresizingMaskIntoConstraints = false
         mapView.showsUserLocation = true
@@ -138,7 +138,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     }()
     
     // Category buttons scroll view
-    private let categoryScrollView: UIScrollView = {
+    let categoryScrollView: UIScrollView = {
         let scrollView = UIScrollView()
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -146,7 +146,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return scrollView
     }()
     
-    private let categoryStackView: UIStackView = {
+    let categoryStackView: UIStackView = {
         let stackView = UIStackView()
         stackView.axis = .horizontal
         stackView.spacing = 10
@@ -155,7 +155,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     }()
     
     // Search results overlay
-    private let searchResultsTableView: UITableView = {
+    let searchResultsTableView: UITableView = {
         let tableView = UITableView()
         tableView.translatesAutoresizingMaskIntoConstraints = false
         tableView.backgroundColor = .systemBackground
@@ -169,7 +169,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     }()
     
     // Manual entry toggle
-    private let manualEntryButton: UIButton = {
+    let manualEntryButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle("Can't find it? Add the address to the search bar above", for: .normal)
         button.titleLabel?.font = UIFont.systemFont(ofSize: 14)
@@ -181,14 +181,14 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     }()
     
     // Form fields container
-    private let formContainer: UIView = {
+    let formContainer: UIView = {
         let view = UIView()
         view.backgroundColor = .clear
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
     
-    private let nameLabel: UILabel = {
+    let nameLabel: UILabel = {
         let label = UILabel()
         label.text = "Place Name"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
@@ -197,7 +197,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return label
     }()
     
-    private let nameTextField: UITextField = {
+    let nameTextField: UITextField = {
         let textField = UITextField()
         textField.placeholder = "Enter a name for this place"
         textField.borderStyle = .none
@@ -215,7 +215,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return textField
     }()
     
-    private let circleLabel: UILabel = {
+    let circleLabel: UILabel = {
         let label = UILabel()
         label.text = "Circle"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
@@ -224,7 +224,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return label
     }()
     
-    private let circleButton: UIButton = {
+    let circleButton: UIButton = {
         let button = UIButton(type: .system)
         button.titleLabel?.font = UIFont.systemFont(ofSize: 16)
         button.titleLabel?.lineBreakMode = .byTruncatingTail
@@ -252,7 +252,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return button
     }()
     
-    private let circleDropdownTableView: UITableView = {
+    let circleDropdownTableView: UITableView = {
         let tableView = UITableView()
         tableView.backgroundColor = .systemBackground
         tableView.layer.cornerRadius = 8
@@ -268,7 +268,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return tableView
     }()
     
-    private let categoryLabel: UILabel = {
+    let categoryLabel: UILabel = {
         let label = UILabel()
         label.text = "Category"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
@@ -277,7 +277,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return label
     }()
     
-    private let categoryButton: UIButton = {
+    let categoryButton: UIButton = {
         let button = UIButton(type: .system)
         button.backgroundColor = .white
         button.layer.cornerRadius = 8
@@ -302,7 +302,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return button
     }()
     
-    private let categoryDropdownTableView: UITableView = {
+    let categoryDropdownTableView: UITableView = {
         let tableView = UITableView()
         tableView.backgroundColor = .systemBackground
         tableView.layer.cornerRadius = 8
@@ -320,7 +320,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return tableView
     }()
     
-    private let descriptionLabel: UILabel = {
+    let descriptionLabel: UILabel = {
         let label = UILabel()
         label.text = "Description"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
@@ -329,7 +329,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return label
     }()
     
-    private let descriptionTextView: UITextView = {
+    let descriptionTextView: UITextView = {
         let textView = UITextView()
         textView.font = UIFont.systemFont(ofSize: 16)
         textView.backgroundColor = .white
@@ -342,7 +342,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return textView
     }()
     
-    private let privateNotesLabel: UILabel = {
+    let privateNotesLabel: UILabel = {
         let label = UILabel()
         label.text = "Private Notes (only visible to you)"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
@@ -351,7 +351,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return label
     }()
     
-    private let privateNotesTextView: UITextView = {
+    let privateNotesTextView: UITextView = {
         let textView = UITextView()
         textView.font = UIFont.systemFont(ofSize: 16)
         textView.backgroundColor = .white
@@ -364,7 +364,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return textView
     }()
     
-    private let publicNotesLabel: UILabel = {
+    let publicNotesLabel: UILabel = {
         let label = UILabel()
         label.text = "Public Notes (visible to others)"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
@@ -373,7 +373,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return label
     }()
     
-    private let publicNotesTextView: UITextView = {
+    let publicNotesTextView: UITextView = {
         let textView = UITextView()
         textView.font = UIFont.systemFont(ofSize: 16)
         textView.backgroundColor = .white
@@ -386,7 +386,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return textView
     }()
     
-    private let addressLabel: UILabel = {
+    let addressLabel: UILabel = {
         let label = UILabel()
         label.text = "Address"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
@@ -395,7 +395,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return label
     }()
     
-    private let addressTextView: UITextView = {
+    let addressTextView: UITextView = {
         let textView = UITextView()
         textView.font = UIFont.systemFont(ofSize: 16)
         textView.backgroundColor = .systemGray6
@@ -409,7 +409,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return textView
     }()
     
-    private let privacyLabel: UILabel = {
+    let privacyLabel: UILabel = {
         let label = UILabel()
         label.text = "Privacy"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
@@ -418,7 +418,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return label
     }()
     
-    private let privacySegmentedControl: UISegmentedControl = {
+    let privacySegmentedControl: UISegmentedControl = {
         let items = ["Follow Circle", "Private"]
         let segmentedControl = UISegmentedControl(items: items)
         segmentedControl.selectedSegmentIndex = 0
@@ -435,7 +435,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     }()
     
     // Photo selection elements
-    private let photoLabel: UILabel = {
+    let photoLabel: UILabel = {
         let label = UILabel()
         label.text = "Photo"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
@@ -444,7 +444,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return label
     }()
     
-    private let photoImageView: UIImageView = {
+    let photoImageView: UIImageView = {
         let imageView = UIImageView()
         imageView.contentMode = .scaleAspectFill
         imageView.clipsToBounds = true
@@ -457,7 +457,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return imageView
     }()
     
-    private let addPhotoButton: UIButton = {
+    let addPhotoButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle("Add Photo", for: .normal)
         button.setImage(UIImage(systemName: "camera.fill"), for: .normal)
@@ -472,7 +472,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return button
     }()
     
-    private let removePhotoButton: UIButton = {
+    let removePhotoButton: UIButton = {
         let button = UIButton(type: .system)
         button.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
         button.tintColor = .systemRed
@@ -487,12 +487,12 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return button
     }()
     
-    private var selectedImage: UIImage?
-    private var downloadedGoogleImage: UIImage?
-    private var downloadedLookAroundImage: UIImage?
-    private var uploadedPhotoUrls: [String] = []
+    var selectedImage: UIImage?
+    var downloadedGoogleImage: UIImage?
+    var downloadedLookAroundImage: UIImage?
+    var uploadedPhotoUrls: [String] = []
     
-    private let addPlaceButton: UIButton = {
+    let addPlaceButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle("Save Place", for: .normal)
         button.setTitleColor(.white, for: .normal)
@@ -503,7 +503,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return button
     }()
     
-    private let zoomToMeButton: UIButton = {
+    let zoomToMeButton: UIButton = {
         let button = UIButton(type: .system)
         button.setImage(UIImage(systemName: "location.fill"), for: .normal)
         button.tintColor = .white
@@ -517,11 +517,11 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return button
     }()
     
-    private var isSearchingNearby = false
-    private var mapRegionTimer: Timer?
-    private var hasSearchedCategory = false
-    private var hasPerformedInitialSearch = false
-    private var isFillingForm = false
+    var isSearchingNearby = false
+    var mapRegionTimer: Timer?
+    var hasSearchedCategory = false
+    var hasPerformedInitialSearch = false
+    var isFillingForm = false
     
     // MARK: - Lifecycle
     
@@ -533,16 +533,16 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         super.init(nibName: nil, bundle: nil)
     }
 
-    private let injectedCircles: [Circle]?
+    let injectedCircles: [Circle]?
 
     /// Manual "empty map" tap handling is delayed so a POI/annotation selection
     /// (which arrives through the map's own gesture handling) can cancel it -
     /// otherwise the reverse-geocode callback clears the form the selection
     /// just filled.
-    private var pendingManualMapTap: DispatchWorkItem?
+    var pendingManualMapTap: DispatchWorkItem?
     /// Dedup guard: feature selection can arrive through both didSelect variants
-    private var lastHandledPOIName: String?
-    private var lastPOISelectionTime: Date?
+    var lastHandledPOIName: String?
+    var lastPOISelectionTime: Date?
 
     /// Per-user UserDefaults key remembering the last circle a place was saved to,
     /// so the home quick-add button can skip the circle picker.
@@ -632,7 +632,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     /// One-time bubble pointing at the search bar (hovering over the map)
     /// telling new users how to add a place. Marked as shown immediately so
     /// it only ever appears once.
-    private func showAddPlaceMapHintBubble() {
+    func showAddPlaceMapHintBubble() {
         guard OnboardingManager.shared.shouldShowAddPlaceMapHint() else { return }
         OnboardingManager.shared.markAddPlaceMapHintShown()
 
@@ -653,7 +653,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         bubble.show()
     }
 
-    private func checkLocationAuthorizationOnAppear() {
+    func checkLocationAuthorizationOnAppear() {
         switch locationManager.authorizationStatus {
         case .authorizedWhenInUse, .authorizedAlways:
             // Already authorized, start updating location
@@ -679,7 +679,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     
     // MARK: - Setup Methods
     
-    private func setupUI() {
+    func setupUI() {
         view.backgroundColor = UIColor.systemGray6
         title = "Add Place"
         
@@ -929,7 +929,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         view.bringSubviewToFront(categoryDropdownTableView)
     }
     
-    private func setupCategoryButtons() {
+    func setupCategoryButtons() {
         let categories = [
             ("🍽", "Restaurants"),
             ("☕️", "Coffee"),
@@ -963,7 +963,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    private func setupMap() {
+    func setupMap() {
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
         
@@ -989,7 +989,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         mapView.setRegion(region, animated: false)
     }
     
-    private func setupSearchCompleter() {
+    func setupSearchCompleter() {
         // Keep Google Places client only for photos
         placesClient = GMSPlacesClient.shared()
         
@@ -1008,7 +1008,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         searchBar.delegate = self
     }
     
-    private func setupActions() {
+    func setupActions() {
         addPlaceButton.addTarget(self, action: #selector(addPlaceButtonTapped), for: .touchUpInside)
         manualEntryButton.addTarget(self, action: #selector(manualEntryButtonTapped), for: .touchUpInside)
         addPhotoButton.addTarget(self, action: #selector(addPhotoButtonTapped), for: .touchUpInside)
@@ -1018,7 +1018,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         zoomToMeButton.addTarget(self, action: #selector(zoomToCurrentLocation), for: .touchUpInside)
     }
     
-    private func setupCategoryDropdownItems() {
+    func setupCategoryDropdownItems() {
         categoryDropdownItems = []
         
         // Show only parent categories in the dropdown
@@ -1041,7 +1041,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     // MARK: - Actions
     
     
-    @objc private func handleMapTap(_ gesture: UITapGestureRecognizer) {
+    @objc func handleMapTap(_ gesture: UITapGestureRecognizer) {
         let location = gesture.location(in: mapView)
         let coordinate = mapView.convert(location, toCoordinateFrom: mapView)
 
@@ -1056,7 +1056,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: workItem)
     }
     
-    private func handleMapTapAtCoordinate(_ coordinate: CLLocationCoordinate2D) {
+    func handleMapTapAtCoordinate(_ coordinate: CLLocationCoordinate2D) {
         // Tapping the map should select the place at that spot, not drop a bare
         // pin - find the nearest POI around the tap and treat it as a selection.
         // Only when nothing is nearby does it fall back to a manual location pin.
@@ -1089,7 +1089,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
 
     /// Fallback when no POI exists near the tapped point: drop a pin and
     /// reverse geocode the address for manual entry.
-    private func handleManualLocationTap(at coordinate: CLLocationCoordinate2D) {
+    func handleManualLocationTap(at coordinate: CLLocationCoordinate2D) {
         // Remove any existing "Selected Location" annotations
         let selectedAnnotations = mapView.annotations.filter { ($0 as? PlaceSearchAnnotation)?.title == "Selected Location" }
         mapView.removeAnnotations(selectedAnnotations)
@@ -1147,7 +1147,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    private func searchNearbyPlaces(at coordinate: CLLocationCoordinate2D) {
+    func searchNearbyPlaces(at coordinate: CLLocationCoordinate2D) {
         Logger.debug("🔍 Searching for nearby places at \(coordinate.latitude), \(coordinate.longitude)")
         
         // Use Google Places to search for nearby businesses
@@ -1199,7 +1199,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     /// popViewController alone silently no-ops when this controller is the
     /// root of a presented navigation stack (or has no nav controller at all)
     /// — that was the "tap Discard, nothing happens" bug.
-    private func closeAddPlaceScreen() {
+    func closeAddPlaceScreen() {
         if let nav = navigationController, nav.viewControllers.first !== self {
             nav.popViewController(animated: true)
         } else if presentingViewController != nil {
@@ -1209,7 +1209,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
 
-    @objc private func cancelButtonTapped() {
+    @objc func cancelButtonTapped() {
         // Show confirmation if user has entered data
         let hasEnteredData = !(nameTextField.text?.isEmpty ?? true) ||
                             !addressTextView.text.isEmpty ||
@@ -1238,7 +1238,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    @objc private func manualEntryButtonTapped() {
+    @objc func manualEntryButtonTapped() {
         // Show message about using the search bar
         let alert = UIAlertController(
             title: "How to Add Places",
@@ -1254,7 +1254,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         present(alert, animated: true)
     }
     
-    @objc private func addPhotoButtonTapped() {
+    @objc func addPhotoButtonTapped() {
         var config = PHPickerConfiguration()
         config.selectionLimit = 1
         config.filter = .images
@@ -1264,7 +1264,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         present(picker, animated: true)
     }
     
-    @objc private func removePhotoButtonTapped() {
+    @objc func removePhotoButtonTapped() {
         selectedImage = nil
         photoImageView.image = nil
         photoImageView.isHidden = true
@@ -1286,7 +1286,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         scrollView.layoutIfNeeded()
     }
     
-    @objc private func categoryButtonTapped() {
+    @objc func categoryButtonTapped() {
         isCategoryDropdownVisible.toggle()
         
         if isCategoryDropdownVisible {
@@ -1325,12 +1325,12 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    @objc private func dismissDropdowns() {
+    @objc func dismissDropdowns() {
         dismissCategoryDropdown()
         dismissCircleDropdown()
     }
     
-    @objc private func dismissCategoryDropdown() {
+    @objc func dismissCategoryDropdown() {
         if isCategoryDropdownVisible {
             isCategoryDropdownVisible = false
             UIView.animate(withDuration: 0.3) {
@@ -1341,7 +1341,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    @objc private func searchCategoryButtonTapped(_ sender: UIButton) {
+    @objc func searchCategoryButtonTapped(_ sender: UIButton) {
         guard let buttonTitle = sender.title(for: .normal) else { return }
         
         // Extract the category name (remove emoji and trim)
@@ -1357,7 +1357,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         searchForCategory(category)
     }
     
-    @objc private func circleButtonTapped() {
+    @objc func circleButtonTapped() {
         isCategoryDropdownVisible = false
         updateCategoryButtonTitle()
         
@@ -1365,7 +1365,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         updateCircleDropdown()
     }
     
-    private func updateCircleDropdown() {
+    func updateCircleDropdown() {
         if isCircleDropdownVisible {
             // Position dropdown below button
             let buttonFrame = circleButton.convert(circleButton.bounds, to: view)
@@ -1400,7 +1400,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    @objc private func dismissCircleDropdown() {
+    @objc func dismissCircleDropdown() {
         if isCircleDropdownVisible {
             isCircleDropdownVisible = false
             UIView.animate(withDuration: 0.3) {
@@ -1415,19 +1415,19 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
 
     /// Prevents double-tapping Save (or the map callout "+") from creating
     /// duplicate places while a create flow is in progress.
-    private var isSaving = false
+    var isSaving = false
 
-    private func beginSaving() {
+    func beginSaving() {
         isSaving = true
         addPlaceButton.isEnabled = false
     }
 
-    private func endSaving() {
+    func endSaving() {
         isSaving = false
         addPlaceButton.isEnabled = true
     }
 
-    @objc private func addPlaceButtonTapped() {
+    @objc func addPlaceButtonTapped() {
         guard !isSaving else { return }
         guard let name = nameTextField.text, !name.isEmpty,
               let address = addressTextView.text, !address.isEmpty else {
@@ -1536,7 +1536,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    private func checkForDuplicatePlace(name: String, address: String, googlePlaceId: String?, completion: @escaping (Place?, Circle?) -> Void) {
+    func checkForDuplicatePlace(name: String, address: String, googlePlaceId: String?, completion: @escaping (Place?, Circle?) -> Void) {
         // Get all circles for the user
         CircleService.shared.fetchUserCircles { result in
             switch result {
@@ -1685,7 +1685,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    private func proceedWithPlaceCreation(name: String, address: String, description: String, 
+    func proceedWithPlaceCreation(name: String, address: String, description: String, 
                                         category: PlaceCategory, customCategory: String?, 
                                         subcategory: String?, privacy: PlacePrivacy,
                                         privateNotes: String?, publicNotes: String?,
@@ -1915,7 +1915,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    private func createPlaceWithLocation(name: String, description: String, address: String, 
+    func createPlaceWithLocation(name: String, description: String, address: String, 
                                        category: PlaceCategory, customCategory: String?, 
                                        subcategory: String?, privacy: PlacePrivacy,
                                        photoData: [Data]?, location: CLLocationCoordinate2D,
@@ -1993,7 +1993,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    private func createPlaceWithGoogleDetails(googleDetails: GooglePlaceDetails,
+    func createPlaceWithGoogleDetails(googleDetails: GooglePlaceDetails,
                                             name: String,
                                             address: String,
                                             location: GeoLocation,
@@ -2066,7 +2066,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    private func enableManualEntry() {
+    func enableManualEntry() {
         UIView.animate(withDuration: 0.3) {
             self.formContainer.alpha = 1.0
             self.formContainer.isUserInteractionEnabled = true
@@ -2088,7 +2088,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     /// view is always read-only here. Description, notes, privacy and photos
     /// stay editable. Super-users and the venue's verified owner (approved
     /// ownership claim) keep full edit access.
-    private func applyVenueSourceLockIfNeeded() {
+    func applyVenueSourceLockIfNeeded() {
         guard let googlePlaceId = selectedGooglePlaceDetails?.placeID, !googlePlaceId.isEmpty else {
             setVenueFieldsLocked(false)
             return
@@ -2101,7 +2101,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         resolveVenueLockExemption(for: googlePlaceId)
     }
 
-    private func setVenueFieldsLocked(_ locked: Bool) {
+    func setVenueFieldsLocked(_ locked: Bool) {
         let venueControls: [UIView] = [nameTextField, categoryButton]
         venueControls.forEach {
             $0.isUserInteractionEnabled = !locked
@@ -2111,7 +2111,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         categoryLabel.text = locked ? "Category (from Google Places)" : "Category"
     }
 
-    private func resolveVenueLockExemption(for googlePlaceId: String) {
+    func resolveVenueLockExemption(for googlePlaceId: String) {
         guard !venueExemptionChecksInFlight.contains(googlePlaceId) else { return }
         venueExemptionChecksInFlight.insert(googlePlaceId)
 
@@ -2136,7 +2136,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
 
-    private func selectSearchResult(_ result: MKLocalSearchCompletion) {
+    func selectSearchResult(_ result: MKLocalSearchCompletion) {
         // Hide search results
         searchResultsTableView.isHidden = true
         searchBar.resignFirstResponder()
@@ -2183,7 +2183,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    private func performPlaceTypeSearch(_ query: String) {
+    func performPlaceTypeSearch(_ query: String) {
         // Hide search results
         searchResultsTableView.isHidden = true
         searchBar.resignFirstResponder()
@@ -2259,7 +2259,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    private func showBothUserAndPlace(placeCoordinate: CLLocationCoordinate2D) {
+    func showBothUserAndPlace(placeCoordinate: CLLocationCoordinate2D) {
         guard let userLocation = locationManager.location else {
             // If no user location, just show the place
             let region = MKCoordinateRegion(
@@ -2295,7 +2295,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         mapView.setRegion(region, animated: true)
     }
     
-    private func showAnnotations(coordinates: [CLLocationCoordinate2D]) {
+    func showAnnotations(coordinates: [CLLocationCoordinate2D]) {
         guard !coordinates.isEmpty else { return }
         
         var minLat = coordinates[0].latitude
@@ -2326,7 +2326,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         mapView.setRegion(region, animated: true)
     }
     
-    private func captureStreetViewImage(for coordinate: CLLocationCoordinate2D) {
+    func captureStreetViewImage(for coordinate: CLLocationCoordinate2D) {
         // First check if street view is available at this location
         GoogleStreetViewService.shared.checkStreetViewAvailability(at: coordinate) { [weak self] available in
             guard available else {
@@ -2361,7 +2361,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    private func fillFormWithMapItem(_ mapItem: MKMapItem) {
+    func fillFormWithMapItem(_ mapItem: MKMapItem) {
         Logger.debug("📝 fillFormWithMapItem called with: \(mapItem.name ?? "Unknown")")
         Logger.debug("📝 Category search active: \(hasSearchedCategory)")
         
@@ -2653,7 +2653,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     /// Failed place creation: subscription-limit refusals get an Upgrade path
     /// to the paywall instead of a dead-end error alert; everything else
     /// shows the server's message as-is.
-    private func presentPlaceCreationError(_ error: Error) {
+    func presentPlaceCreationError(_ error: Error) {
         let message = error.localizedDescription
         guard message.localizedCaseInsensitiveContains("premium") else {
             presentAlert(title: "Error", message: message)
@@ -2675,7 +2675,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     /// Attach a googlePlaceId and photos to the place being added. Our own
     /// database is checked first: if another user already saved this venue,
     /// the canonical record supplies both and Google Places is never queried.
-    private func fetchPlaceAssets(name: String, coordinate: CLLocationCoordinate2D, address: String?) {
+    func fetchPlaceAssets(name: String, coordinate: CLLocationCoordinate2D, address: String?) {
         GlobalPlaceService.shared.matchKnownPlace(
             name: name,
             latitude: coordinate.latitude,
@@ -2709,7 +2709,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
 
     /// The Google Places pipeline (Find Place → Details → photo upload),
     /// used only when the venue is new to our database.
-    private func searchGoogleForPlaceAssets(name: String, coordinate: CLLocationCoordinate2D, address: String?) {
+    func searchGoogleForPlaceAssets(name: String, coordinate: CLLocationCoordinate2D, address: String?) {
         Logger.debug("🔍 Searching Google Places for: \(name)")
         GooglePlacesService.shared.searchPlaceByNameAndLocation(
             name: name,
@@ -2746,7 +2746,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
 
-    private func fillFormWithGMSPlace(_ place: GMSPlace) {
+    func fillFormWithGMSPlace(_ place: GMSPlace) {
         // Convert GMSPlace to GooglePlaceDetails
         let placeDetails = GooglePlaceDetails(from: place)
         fillFormWithGooglePlace(placeDetails)
@@ -2775,7 +2775,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    private func loadAndFillFormWithGooglePlace(placeId: String, markerTitle: String) {
+    func loadAndFillFormWithGooglePlace(placeId: String, markerTitle: String) {
         // Show loading indicator
         let loadingAlert = UIAlertController(title: "Loading Place Details", message: "Please wait...", preferredStyle: .alert)
         present(loadingAlert, animated: true)
@@ -2802,7 +2802,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    private func updateMapForLocation(_ coordinate: CLLocationCoordinate2D) {
+    func updateMapForLocation(_ coordinate: CLLocationCoordinate2D) {
         let region = MKCoordinateRegion(
             center: coordinate,
             latitudinalMeters: 500,
@@ -2830,7 +2830,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    private func performReverseGeocoding(for coordinate: CLLocationCoordinate2D) {
+    func performReverseGeocoding(for coordinate: CLLocationCoordinate2D) {
         let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
         let geocoder = CLGeocoder()
         
@@ -2857,7 +2857,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    private func preloadAndUploadPhotosForPlace(_ placeDetails: GooglePlaceDetails) {
+    func preloadAndUploadPhotosForPlace(_ placeDetails: GooglePlaceDetails) {
         Logger.debug("🚀 Pre-loading photos for place: \(placeDetails.name)")
         Logger.debug("📸 DEBUG: Starting photo pre-load process")
         Logger.debug("📸 DEBUG: Existing uploaded URLs count: \(self.uploadedPhotoUrls.count)")
@@ -3020,7 +3020,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    private func uploadImageData(_ imageData: Data, completion: @escaping (String?) -> Void) {
+    func uploadImageData(_ imageData: Data, completion: @escaping (String?) -> Void) {
         PlaceService.shared.uploadMultipleImages([imageData]) { result in
             switch result {
             case .success(let urls):
@@ -3032,7 +3032,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    private func fillFormWithGooglePlace(_ placeDetails: GooglePlaceDetails) {
+    func fillFormWithGooglePlace(_ placeDetails: GooglePlaceDetails) {
         // Store the Google Place details
         self.selectedGooglePlaceDetails = placeDetails
         
@@ -3114,7 +3114,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    private func setCategoryFromGoogleTypes(_ types: [String]) {
+    func setCategoryFromGoogleTypes(_ types: [String]) {
         // Reset subcategory
         selectedSubcategory = nil
         
@@ -3193,18 +3193,18 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    private func presentAlert(title: String, message: String, completion: ((UIAlertAction) -> Void)? = nil) {
+    func presentAlert(title: String, message: String, completion: ((UIAlertAction) -> Void)? = nil) {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default, handler: completion))
         present(alert, animated: true)
     }
     
-    private func searchForNearbyPlaces(around coordinate: CLLocationCoordinate2D) {
+    func searchForNearbyPlaces(around coordinate: CLLocationCoordinate2D) {
         // Don't automatically search when location is first obtained
         // Let user choose a category instead
     }
     
-    private func searchForCategory(_ category: String) {
+    func searchForCategory(_ category: String) {
         Logger.debug("Searching for category: \(category)")
         
         // Mark that we've searched for a category
@@ -3261,7 +3261,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    private func showAllAnnotations() {
+    func showAllAnnotations() {
         if annotations.isEmpty { return }
         
         var coordinates = annotations.map { $0.coordinate }
@@ -3298,7 +3298,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         mapView.setRegion(region, animated: true)
     }
     
-    private func addGooglePlace(placeId: String, markerTitle: String) {
+    func addGooglePlace(placeId: String, markerTitle: String) {
         // Same double-tap guard as the Save button — the callout "+" creates too
         guard !isSaving else { return }
         beginSaving()
@@ -3426,7 +3426,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    private func createPlaceWithGoogleData(_ placeData: [String: Any], loadingAlert: UIAlertController) {
+    func createPlaceWithGoogleData(_ placeData: [String: Any], loadingAlert: UIAlertController) {
         // Debug: Log place data being sent
         Logger.debug("📍 Creating place with data:")
         Logger.debug("📍 Name: \(placeData["name"] ?? "No name")")
@@ -3502,7 +3502,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    private func finalizeCreatePlace(_ placeData: [String: Any], loadingAlert: UIAlertController) {
+    func finalizeCreatePlace(_ placeData: [String: Any], loadingAlert: UIAlertController) {
         PlaceService.shared.createPlaceFromGoogleData(placeData) { [weak self] result in
             DispatchQueue.main.async {
                 loadingAlert.dismiss(animated: true) {
@@ -3539,7 +3539,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    private func formatAddress(for placemark: MKPlacemark) -> String {
+    func formatAddress(for placemark: MKPlacemark) -> String {
         let addressComponents = [
             placemark.subThoroughfare,
             placemark.thoroughfare,
@@ -3552,7 +3552,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return addressComponents.joined(separator: ", ")
     }
     
-    private func determinePlaceCategory(from types: [String]) -> PlaceCategory {
+    func determinePlaceCategory(from types: [String]) -> PlaceCategory {
         // Check for specific types in order of priority
         if types.contains("restaurant") { return .restaurant }
         if types.contains("cafe") { return .cafe }
@@ -3568,7 +3568,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return .service
     }
     
-    private func getCategoryForMapItem(_ mapItem: MKMapItem) -> String {
+    func getCategoryForMapItem(_ mapItem: MKMapItem) -> String {
         if let category = mapItem.pointOfInterestCategory {
             switch category {
             case .restaurant: return "Restaurant"
@@ -3586,7 +3586,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return "Place"
     }
     
-    private func getCategoryDescription(for category: MKPointOfInterestCategory) -> String {
+    func getCategoryDescription(for category: MKPointOfInterestCategory) -> String {
         switch category {
         case .restaurant: return "A dining establishment"
         case .cafe: return "A coffee shop or casual dining spot"
@@ -3696,7 +3696,7 @@ extension AddPlaceViewController: CLLocationManagerDelegate {
 // MARK: - Map Helpers
 
 extension AddPlaceViewController {
-    @objc private func zoomToCurrentLocation() {
+    @objc func zoomToCurrentLocation() {
         guard let location = userLocation else {
             // Request location if not available
             locationManager.requestWhenInUseAuthorization()
@@ -3712,7 +3712,7 @@ extension AddPlaceViewController {
         mapView.setRegion(region, animated: true)
     }
 
-    private func scrollToFormTop() {
+    func scrollToFormTop() {
         // Calculate the offset to show the form nicely
         let formY = formContainer.frame.origin.y - 20 // Add some padding
         let maxOffset = scrollView.contentSize.height - scrollView.bounds.height
@@ -3722,7 +3722,7 @@ extension AddPlaceViewController {
         scrollView.setContentOffset(CGPoint(x: 0, y: targetOffset), animated: true)
     }
     
-    private func searchNearbyPlaces(query: String? = nil) {
+    func searchNearbyPlaces(query: String? = nil) {
         // Only search if we're not already searching
         guard !isSearchingNearby else { return }
         
@@ -3765,7 +3765,7 @@ extension AddPlaceViewController {
 
 extension AddPlaceViewController: MKMapViewDelegate {
     @available(iOS 16.0, *)
-    private func handlePOISelection(_ featureAnnotation: MKMapFeatureAnnotation) {
+    func handlePOISelection(_ featureAnnotation: MKMapFeatureAnnotation) {
         let poiName = featureAnnotation.title ?? "Unknown Place"
         let poiSubtitle = featureAnnotation.subtitle ?? ""
         let coordinate = featureAnnotation.coordinate
@@ -4070,7 +4070,7 @@ extension AddPlaceViewController: UISearchBarDelegate {
 // MARK: - Apple Maps Search
 
 extension AddPlaceViewController {
-    private func performAppleMapsSearch(_ query: String) {
+    func performAppleMapsSearch(_ query: String) {
         guard !query.isEmpty else {
             searchResults = []
             showPlaceTypeSuggestion = false
@@ -4339,7 +4339,7 @@ extension AddPlaceViewController {
         updateCategoryButtonTitle()
     }
     
-    private func updateCategoryButtonTitle() {
+    func updateCategoryButtonTitle() {
         if let subcategory = selectedSubcategory {
             categoryButton.setTitle("\(selectedCategory.displayName) - \(subcategory)", for: .normal)
         } else {
@@ -4347,7 +4347,7 @@ extension AddPlaceViewController {
         }
     }
     
-    private func clearPreviousAnnotations() {
+    func clearPreviousAnnotations() {
         // Remove any existing temporary annotations (like "Selected Location")
         let annotationsToRemove = mapView.annotations.filter { annotation in
             if let placeAnnotation = annotation as? PlaceSearchAnnotation {
@@ -4358,7 +4358,7 @@ extension AddPlaceViewController {
         mapView.removeAnnotations(annotationsToRemove)
     }
     
-    private func addSelectedLocationPin(at coordinate: CLLocationCoordinate2D) {
+    func addSelectedLocationPin(at coordinate: CLLocationCoordinate2D) {
         // Remove any existing "Selected Location" pins
         clearPreviousAnnotations()
         
@@ -4679,7 +4679,7 @@ extension AddPlaceViewController {
     
     // MARK: - Circle Management
     
-    private func loadUserCircles() {
+    func loadUserCircles() {
         CircleService.shared.fetchUserCircles { [weak self] result in
             guard let self = self else { return }
 
@@ -4696,7 +4696,7 @@ extension AddPlaceViewController {
         }
     }
 
-    private func applyUserCircles(_ circles: [Circle]) {
+    func applyUserCircles(_ circles: [Circle]) {
         // Sort circles alphabetically for easy finding
         userCircles = circles.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
 
@@ -4717,7 +4717,7 @@ extension AddPlaceViewController {
     }
     
     // MARK: - Navigation Helpers
-    private func navigateToCircleDetail() {
+    func navigateToCircleDetail() {
         // Reached only after a successful save - remember the circle so the home
         // quick-add button can skip the circle picker next time
         UserDefaults.standard.set(selectedCircleId, forKey: Self.lastUsedCircleKey)
