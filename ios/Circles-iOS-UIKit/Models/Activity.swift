@@ -213,6 +213,8 @@ extension Array where Element == Activity {
             }
 
             switch activity.type {
+            case .placeAdded:
+                parts.append("added \(count) places")
             case .placeLiked, .globalPlaceLiked:
                 parts.append("liked \(count) places")
             case .placeCommented, .commentAdded:

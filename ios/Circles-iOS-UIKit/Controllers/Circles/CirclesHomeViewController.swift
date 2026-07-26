@@ -2818,7 +2818,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
     /// Place-added rows are the feed's core content — never grouped
     func isStandaloneActivity(_ activity: Activity) -> Bool {
-        return activity.type == .placeAdded || activity.type == .checkIn
+        // Only check-ins stay ungrouped. Place-adds DO group now: a burst of
+        // same-actor adds (e.g. someone importing many places at once) would
+        // otherwise flood the feed — the exact case grouping exists to collapse.
+        return activity.type == .checkIn
     }
 
     /// Collapses consecutive same-actor activities (rolling 60-minute window)
