@@ -22,318 +22,141 @@ const calculateUserPlaceCounts = async (userId) => {
   return { placesCount: totalPlaces, circlesCount };
 };
 
-// Get user discovery suggestions (popular users, nearby, friend-of-friends)
+// Bulk place/circle counts for ALL users from a single circles read, avoiding
+// an N+1 per-candidate query. ownerId -> { placesCount, circlesCount }.
+const buildPlaceCountMap = async () => {
+  const snap = await db.collection(COLLECTIONS.CIRCLES).get();
+  const map = new Map();
+  snap.docs.forEach((doc) => {
+    const c = doc.data();
+    if (!c.owner) return;
+    const cur = map.get(c.owner) || { placesCount: 0, circlesCount: 0 };
+    cur.placesCount += (c.placesCount || 0);
+    cur.circlesCount += 1;
+    map.set(c.owner, cur);
+  });
+  return map;
+};
+
+// Get user discovery suggestions for the network tabs:
+//   popular          - scorecard of ALL users, ranked by places (connections/follows included)
+//   discover / all   - only people you are NOT connected to and do NOT follow, ranked by places
+//   nearby           - users closest by zipcode
+//   friendsOfFriends - mutual connections (people your connections know)
 const getDiscoverUsers = async (req, res) => {
   try {
     const userId = req.user.uid;
-    const { 
-      type = 'all', // 'popular', 'nearby', 'friendsOfFriends', 'all'
-      lat,
-      lng,
-      radius = 50, // km
-      limit = 20 
-    } = req.query;
-    
-    console.log(`🔍 Getting discovery users for ${userId}, type: ${type}`);
-    
-    // Get current user's connections and following list
-    const [currentUserDoc, connectionsSnapshot] = await Promise.all([
+    const { type = 'all', limit = 20 } = req.query;
+    const limitNum = parseInt(limit) || 20;
+
+    // Current user, BOTH connection directions, and the bulk place-count map,
+    // all in parallel.
+    const [currentUserDoc, outConns, inConns, placeCounts] = await Promise.all([
       db.collection(COLLECTIONS.USERS).doc(userId).get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get()
+      db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', userId).get(),
+      db.collection(COLLECTIONS.CONNECTIONS).where('connectedUserId', '==', userId).get(),
+      buildPlaceCountMap()
     ]);
-    
-    const currentUserData = currentUserDoc.data();
-    const userFollowing = new Set(currentUserData.following || []);
-    const connectedUserIds = new Set();
-    
-    connectionsSnapshot.forEach(doc => {
-      connectedUserIds.add(doc.data().connectedUserId);
+
+    const currentUserData = currentUserDoc.exists ? currentUserDoc.data() : {};
+    const following = new Set(currentUserData.following || []);
+
+    // Connection status by the OTHER user's id, from both directions. (The old
+    // code only checked connections the user initiated, so half of a user's
+    // connections leaked into/were hidden from these lists inconsistently.)
+    const connStatus = new Map();
+    outConns.docs.forEach((d) => connStatus.set(d.data().connectedUserId, d.data().status));
+    inConns.docs.forEach((d) => {
+      if (!connStatus.has(d.data().userId)) connStatus.set(d.data().userId, d.data().status);
     });
-    
-    let discoveryUsers = [];
-    
-    // 1. Popular Users (users with most places and followers)
-    if (type === 'popular' || type === 'all') {
-      const popularUsersQuery = await db.collection(COLLECTIONS.USERS)
-        .orderBy('followersCount', 'desc')
-        .limit(50)
-        .get();
-      
-      for (const doc of popularUsersQuery.docs) {
-        if (doc.id === userId || connectedUserIds.has(doc.id)) continue;
-        
-        const userData = doc.data();
-        const { placesCount, circlesCount } = await calculateUserPlaceCounts(doc.id);
-        
-        // Only include users with at least 5 places
-        if (placesCount >= 5) {
-          discoveryUsers.push({
-            id: doc.id,
-            ...userData,
-            placesCount,
-            circlesCount,
-            discoveryType: 'popular',
-            isFollowing: userFollowing.has(doc.id),
-            connectionStatus: connectedUserIds.has(doc.id) ? 'accepted' : 'none'
-          });
-        }
-      }
-    }
-    
-    // 2. Nearby Users (if location provided)
-    const latNum = lat !== undefined ? parseFloat(lat) : NaN;
-    const lngNum = lng !== undefined ? parseFloat(lng) : NaN;
-    const radiusKm = parseFloat(radius) || 50;
-    if ((type === 'nearby' || type === 'all') && !isNaN(latNum) && !isNaN(lngNum)) {
-      const center = [latNum, lngNum];
-      const radiusInM = radiusKm * 1000;
-      const nearbyUserDocs = [];
-      
-      // First try to get users with geohash (more efficient)
-      try {
-        const bounds = geofire.geohashQueryBounds(center, radiusInM);
-        const promises = [];
-        
-        for (const b of bounds) {
-          const q = db.collection(COLLECTIONS.USERS)
-            .orderBy('geohash')
-            .startAt(b[0])
-            .endAt(b[1]);
-          promises.push(q.get());
-        }
-        
-        const snapshots = await Promise.all(promises);
-        
-        for (const snap of snapshots) {
-          for (const doc of snap.docs) {
-            if (doc.id === userId || connectedUserIds.has(doc.id)) continue;
-            
-            const userData = doc.data();
-            
-            // Filter by actual distance
-            if (userData.lastKnownLocation) {
-              const lat2 = userData.lastKnownLocation.latitude;
-              const lng2 = userData.lastKnownLocation.longitude;
-              const distanceInKm = geofire.distanceBetween(center, [lat2, lng2]);
+    const hasActiveConnection = (id) => ['accepted', 'pending'].includes(connStatus.get(id));
 
-              if (distanceInKm <= radiusKm) {
-                nearbyUserDocs.push({ doc, distance: distanceInKm });
-              }
-            }
-          }
-        }
-      } catch (error) {
-        console.log('⚠️ Geohash query failed, falling back to all users:', error.message);
-      }
-      
-      // If no nearby users found with geohash, check all users with lastKnownLocation
-      if (nearbyUserDocs.length === 0) {
-        console.log('📍 No geohash users found, checking all users with location...');
-        const allUsersQuery = await db.collection(COLLECTIONS.USERS)
-          .where('lastKnownLocation', '!=', null)
-          .limit(100)
-          .get();
-        
-        for (const doc of allUsersQuery.docs) {
-          if (doc.id === userId || connectedUserIds.has(doc.id)) continue;
+    const shape = (doc, discoveryType, extra = {}) => {
+      const u = doc.data();
+      const { placesCount, circlesCount } = placeCounts.get(doc.id) || { placesCount: 0, circlesCount: 0 };
+      return {
+        id: doc.id,
+        ...u,
+        placesCount,
+        circlesCount,
+        discoveryType,
+        isFollowing: following.has(doc.id),
+        connectionStatus: connStatus.get(doc.id) || 'none',
+        ...extra
+      };
+    };
 
-          const userData = doc.data();
-          if (userData.lastKnownLocation) {
-            const lat2 = userData.lastKnownLocation.latitude;
-            const lng2 = userData.lastKnownLocation.longitude;
-            const distanceInKm = geofire.distanceBetween(center, [lat2, lng2]);
+    let users = [];
 
-            if (distanceInKm <= radiusKm) {
-              nearbyUserDocs.push({ doc, distance: distanceInKm });
-            }
-          }
-        }
-      }
-      
-      // Sort by distance and take closest
-      nearbyUserDocs.sort((a, b) => a.distance - b.distance);
-      
-      for (const { doc, distance } of nearbyUserDocs.slice(0, 20)) {
-        const userData = doc.data();
-        const { placesCount, circlesCount } = await calculateUserPlaceCounts(doc.id);
-        
-        if (placesCount > 0) {
-          discoveryUsers.push({
-            id: doc.id,
-            ...userData,
-            placesCount,
-            circlesCount,
-            discoveryType: 'nearby',
-            distance: Math.round(distance * 10) / 10, // Round to 1 decimal
-            isFollowing: userFollowing.has(doc.id),
-            connectionStatus: connectedUserIds.has(doc.id) ? 'accepted' : 'none'
-          });
-        }
-      }
-      
-    }
-
-    // 2b. Same-area users by zipcode (3-digit prefix ≈ same metro area).
-    // Most users never share GPS location, so this is the tier that usually
-    // fills Nearby. No geocoding available in this project — prefix matching
-    // stands in for zip-to-distance. NOTE: no popular-users fallback here;
-    // far-away users must never be presented under Nearby.
-    if (type === 'nearby' || type === 'all') {
-      const requesterZip = String(req.query.zipcode || currentUserData.zipcode || '').trim();
-      if (/^\d{5}/.test(requesterZip)) {
-        const zipPrefix = requesterZip.slice(0, 3);
-        const alreadyIncluded = new Set(discoveryUsers.map(u => u.id));
-        const zipUsersQuery = await db.collection(COLLECTIONS.USERS)
-          .orderBy('zipcode')
-          .startAt(zipPrefix)
-          .endAt(zipPrefix + '\uf8ff')
-          .limit(50)
-          .get();
-
-        for (const doc of zipUsersQuery.docs) {
-          if (doc.id === userId || connectedUserIds.has(doc.id) || alreadyIncluded.has(doc.id)) continue;
-
-          const userData = doc.data();
-          const { placesCount, circlesCount } = await calculateUserPlaceCounts(doc.id);
-
-          if (placesCount > 0) {
-            discoveryUsers.push({
-              id: doc.id,
-              ...userData,
-              placesCount,
-              circlesCount,
-              discoveryType: 'nearby',
-              isFollowing: userFollowing.has(doc.id),
-              connectionStatus: 'none'
-            });
-          }
-        }
-      } else if (type === 'nearby') {
-        console.log(`📍 Requester has no usable zipcode ("${requesterZip}") — zip tier skipped`);
-      }
-    }
-    
-    // 3. Friends of Friends
-    if (type === 'friendsOfFriends' || type === 'all') {
-      const friendsOfFriendsMap = new Map();
-      
-      // Check if user has any connections first
-      if (connectedUserIds.size === 0) {
-        console.log('👥 User has no connections, cannot show mutual connections');
-        
-        // If no connections and specifically asking for friendsOfFriends, return empty
-        if (type === 'friendsOfFriends') {
-          // Return empty array - user needs connections first to see mutual connections
-          console.log('👥 Returning empty array for mutual connections - user has no connections');
-        }
-      } else {
-        // Get connections of connected users
-        for (const connectedUserId of connectedUserIds) {
-          const friendConnectionsQuery = await db.collection(COLLECTIONS.CONNECTIONS)
-            .where('userId', '==', connectedUserId)
-            .where('status', '==', 'accepted')
-            .get();
-          
-          friendConnectionsQuery.forEach(doc => {
-            const friendOfFriendId = doc.data().connectedUserId;
-            
-            // Skip self and already connected users
-            if (friendOfFriendId !== userId && !connectedUserIds.has(friendOfFriendId)) {
-              if (!friendsOfFriendsMap.has(friendOfFriendId)) {
-                friendsOfFriendsMap.set(friendOfFriendId, []);
-              }
-              friendsOfFriendsMap.get(friendOfFriendId).push(connectedUserId);
+    if (type === 'popular') {
+      // Scorecard: every user except you, ranked by places. Connections and
+      // people you follow are intentionally included.
+      const snap = await db.collection(COLLECTIONS.USERS).limit(500).get();
+      users = snap.docs
+        .filter((d) => d.id !== userId)
+        .map((d) => shape(d, 'popular'))
+        .sort((a, b) => (b.placesCount - a.placesCount) || ((b.followersCount || 0) - (a.followersCount || 0)));
+    } else if (type === 'nearby') {
+      // Closest by zipcode: rank by numeric distance between the requester's
+      // zip and each user's zip. Only users with a comparable zipcode qualify.
+      const myZip = parseInt(String(req.query.zipcode || currentUserData.zipcode || '').slice(0, 5), 10);
+      const snap = await db.collection(COLLECTIONS.USERS).limit(500).get();
+      users = snap.docs
+        .filter((d) => d.id !== userId)
+        .map((d) => {
+          const z = parseInt(String(d.data().zipcode || '').slice(0, 5), 10);
+          const zipDistance = (Number.isFinite(myZip) && Number.isFinite(z)) ? Math.abs(z - myZip) : null;
+          return { doc: d, zipDistance };
+        })
+        .filter((x) => x.zipDistance !== null)
+        .sort((a, b) => a.zipDistance - b.zipDistance)
+        .map((x) => shape(x.doc, 'nearby', { zipDistance: x.zipDistance }));
+    } else if (type === 'friendsOfFriends') {
+      // Mutual: people your accepted connections are connected to, that you
+      // are not already connected to.
+      const connectionIds = [...connStatus.keys()].filter((id) => connStatus.get(id) === 'accepted');
+      const foFMap = new Map(); // fofId -> [via connection ids]
+      if (connectionIds.length > 0) {
+        const foFSnaps = await Promise.all(connectionIds.map((cid) =>
+          db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', cid).where('status', '==', 'accepted').get()
+        ));
+        foFSnaps.forEach((snap, i) => {
+          const via = connectionIds[i];
+          snap.docs.forEach((d) => {
+            const fof = d.data().connectedUserId;
+            if (fof !== userId && !hasActiveConnection(fof)) {
+              if (!foFMap.has(fof)) foFMap.set(fof, []);
+              foFMap.get(fof).push(via);
             }
           });
-        }
-        
-        // Get user data for friends of friends
-        const sortedFriendsOfFriends = Array.from(friendsOfFriendsMap.entries())
-          .sort((a, b) => b[1].length - a[1].length) // Sort by mutual connections count
-          .slice(0, 30);
-        
-        // If no friends of friends found, return empty for mutual connections request
-        if (sortedFriendsOfFriends.length === 0 && type === 'friendsOfFriends') {
-          console.log('👥 No friends of friends found');
-          // Return empty array - no mutual connections available
-        } else {
-          // Process friends of friends normally
-          for (const [friendOfFriendId, mutualConnections] of sortedFriendsOfFriends) {
-            const userDoc = await db.collection(COLLECTIONS.USERS).doc(friendOfFriendId).get();
-            
-            if (userDoc.exists) {
-              const userData = userDoc.data();
-              const { placesCount, circlesCount } = await calculateUserPlaceCounts(friendOfFriendId);
-              
-              if (placesCount > 0) {
-                // Get names of mutual connections
-                const mutualNames = [];
-                for (const mutualId of mutualConnections.slice(0, 3)) {
-                  const mutualDoc = await db.collection(COLLECTIONS.USERS).doc(mutualId).get();
-                  if (mutualDoc.exists) {
-                    mutualNames.push(mutualDoc.data().displayName);
-                  }
-                }
-                
-                discoveryUsers.push({
-                  id: friendOfFriendId,
-                  ...userData,
-                  placesCount,
-                  circlesCount,
-                  discoveryType: 'friendsOfFriends',
-                  mutualConnectionsCount: mutualConnections.length,
-                  mutualConnectionNames: mutualNames,
-                  isFollowing: userFollowing.has(friendOfFriendId),
-                  connectionStatus: 'none'
-                });
-              }
-            }
-          }
-        }
+        });
       }
+      const sorted = [...foFMap.entries()].sort((a, b) => b[1].length - a[1].length).slice(0, limitNum);
+      if (sorted.length > 0) {
+        const docs = await db.getAll(...sorted.map(([id]) => db.collection(COLLECTIONS.USERS).doc(id)));
+        const byId = new Map(docs.filter((d) => d.exists).map((d) => [d.id, d]));
+        users = sorted
+          .filter(([id]) => byId.has(id))
+          .map(([id, via]) => shape(byId.get(id), 'friendsOfFriends', { mutualConnectionsCount: via.length }))
+          .filter((u) => u.placesCount > 0);
+      }
+    } else {
+      // 'discover' / 'all': people you have NO active connection with and do
+      // not follow, ranked by places (new people worth discovering).
+      const snap = await db.collection(COLLECTIONS.USERS).limit(500).get();
+      users = snap.docs
+        .filter((d) => d.id !== userId && !hasActiveConnection(d.id) && !following.has(d.id))
+        .map((d) => shape(d, 'discover'))
+        .filter((u) => u.placesCount > 0)
+        .sort((a, b) => b.placesCount - a.placesCount);
     }
-    
-    // Remove duplicates and sort by relevance
-    const uniqueUsers = new Map();
-    discoveryUsers.forEach(user => {
-      if (!uniqueUsers.has(user.id)) {
-        uniqueUsers.set(user.id, user);
-      }
-    });
-    
-    const finalUsers = Array.from(uniqueUsers.values())
-      .sort((a, b) => {
-        // Prioritize friends of friends
-        if (a.discoveryType === 'friendsOfFriends' && b.discoveryType !== 'friendsOfFriends') return -1;
-        if (b.discoveryType === 'friendsOfFriends' && a.discoveryType !== 'friendsOfFriends') return 1;
-        
-        // Then nearby users
-        if (a.discoveryType === 'nearby' && b.discoveryType === 'popular') return -1;
-        if (b.discoveryType === 'nearby' && a.discoveryType === 'popular') return 1;
-        
-        // Finally sort by places count
-        return (b.placesCount || 0) - (a.placesCount || 0);
-      })
-      .slice(0, parseInt(limit));
-    
-    console.log(`✅ Found ${finalUsers.length} discovery users`);
-    
-    res.json({
-      success: true,
-      users: finalUsers,
-      count: finalUsers.length
-    });
-    
+
+    const finalUsers = users.slice(0, limitNum);
+    console.log(`✅ Discovery (${type}): ${finalUsers.length} users`);
+    res.json({ success: true, users: finalUsers, count: finalUsers.length });
   } catch (error) {
     console.error('Error getting discovery users:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get discovery users',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Failed to get discovery users', error: error.message });
   }
 };
 
