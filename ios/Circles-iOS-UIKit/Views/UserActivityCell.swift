@@ -143,31 +143,40 @@ class UserActivityCell: UICollectionViewCell {
                 print("DEBUG UserActivityCell: Using display text: '\(displayName)'")
             }
             
-            // Set placeholder first
-            profileImageView.image = createInitialsImage(for: displayName)
-            
             // Load profile image using ImageService with caching
             if let profilePicture = user.profilePicture {
                 // Store the current user ID to check later
                 let currentUserId = user.id
-                
+
                 // Use a namespaced cache key to prevent collisions with place images
                 let profileCacheKey = "profile_\(currentUserId)_\(profilePicture)"
-                
-                ImageService.shared.loadImageWithKey(from: profilePicture, cacheKey: profileCacheKey) { [weak self] image in
-                    DispatchQueue.main.async {
-                        // Check if the cell is still displaying the same user
-                        guard let self = self,
-                              let currentConnection = self.connection,
-                              currentConnection.connectedUser?.id == currentUserId else {
-                            return
-                        }
-                        
-                        if let image = image {
-                            self.profileImageView.image = image
+
+                if let cached = ImageService.shared.cachedImage(forKey: profileCacheKey) {
+                    // Cache hit: set the real avatar immediately. Setting the
+                    // initials placeholder first (as before) caused a one-frame
+                    // gray flash on every reload — the visible "flashing".
+                    profileImageView.image = cached
+                } else {
+                    // Cache miss: show initials, then swap in the downloaded image
+                    profileImageView.image = createInitialsImage(for: displayName)
+                    ImageService.shared.loadImageWithKey(from: profilePicture, cacheKey: profileCacheKey) { [weak self] image in
+                        DispatchQueue.main.async {
+                            // Check if the cell is still displaying the same user
+                            guard let self = self,
+                                  let currentConnection = self.connection,
+                                  currentConnection.connectedUser?.id == currentUserId else {
+                                return
+                            }
+
+                            if let image = image {
+                                self.profileImageView.image = image
+                            }
                         }
                     }
                 }
+            } else {
+                // No profile picture at all — show initials
+                profileImageView.image = createInitialsImage(for: displayName)
             }
         }
         

@@ -20,20 +20,58 @@ class HorizontalUserListView: UIView {
     var selectedUserId: String? {
         didSet {
             guard oldValue != selectedUserId else { return }
-            applySelectionPinning(scrollToFront: selectedUserId != nil)
-            collectionView.reloadData()
+            // Update ONLY the affected cells' highlight rings and animate the
+            // selected avatar to the front — a full reloadData() here tore down
+            // every visible cell on each tap, which (with async image loads)
+            // was the visible "flashing".
+            refreshSelectionHighlights()
+            animateSelectedToFront()
         }
     }
 
-    /// Moves the selected connection to the front of the list. Score-based
-    /// re-sorts on refresh must never shuffle the selected avatar away from
-    /// position 0 while its filter is active.
-    private func applySelectionPinning(scrollToFront: Bool = false) {
-        defer {
-            if scrollToFront && !connections.isEmpty {
-                collectionView.setContentOffset(.zero, animated: true)
-            }
+    /// Toggles the blue selection ring on the currently visible cells without
+    /// reconfiguring them (no image reload, no flash).
+    private func refreshSelectionHighlights() {
+        for cell in collectionView.visibleCells {
+            guard let userCell = cell as? UserActivityCell,
+                  let indexPath = collectionView.indexPath(for: cell),
+                  indexPath.item < connections.count,
+                  let userId = connections[indexPath.item].connectedUser?.id else { continue }
+            let isSelected = selectedUserId.map { IDNormalizer.isSameUser($0, userId) } ?? false
+            userCell.setSelectedHighlight(isSelected)
         }
+    }
+
+    /// Moves the selected connection to the front of the list with an animated
+    /// move (not a full reload). Score-based re-sorts on refresh must never
+    /// shuffle the selected avatar away from position 0 while its filter is active.
+    private func animateSelectedToFront() {
+        guard let selectedUserId = selectedUserId,
+              let index = connections.firstIndex(where: { connection in
+                  guard let userId = connection.connectedUser?.id else { return false }
+                  return IDNormalizer.isSameUser(selectedUserId, userId)
+              }),
+              index > 0 else {
+            // Nothing to reorder — just make sure the front is visible when a
+            // selection was cleared
+            if selectedUserId == nil, !connections.isEmpty {
+                collectionView.scrollToItem(at: IndexPath(item: 0, section: 0), at: .left, animated: true)
+            }
+            return
+        }
+        collectionView.performBatchUpdates({
+            let selected = connections.remove(at: index)
+            connections.insert(selected, at: 0)
+            collectionView.moveItem(at: IndexPath(item: index, section: 0), to: IndexPath(item: 0, section: 0))
+        }, completion: { [weak self] _ in
+            self?.collectionView.scrollToItem(at: IndexPath(item: 0, section: 0), at: .left, animated: true)
+        })
+    }
+
+    /// Reorders the model so the selected avatar sits at index 0. Used by the
+    /// data-refresh path (which does its own reloadData), separate from the
+    /// selection animation above.
+    private func applySelectionPinning() {
         guard let selectedUserId = selectedUserId,
               let index = connections.firstIndex(where: { connection in
                   guard let userId = connection.connectedUser?.id else { return false }
@@ -817,16 +855,12 @@ extension HorizontalUserListView: UICollectionViewDelegate {
             
             delegate?.didSelectUser(user, connectionId: connection.id)
             
-            // Clear activity notification after viewing if they had new activity or recent place
+            // Clear activity notification after viewing if they had new activity
+            // or recent place. clearActivityForConnection already refreshes the
+            // list after the server clears — a second refresh() here just
+            // double-reloaded the row (extra avatar re-flash ~0.5s after the tap).
             if connection.hasNewActivity ?? false || connection.hasRecentPlace ?? false {
-                // Just call clearActivityForConnection which now handles everything
                 clearActivityForConnection(connection.id)
-                
-                // Refresh all connections after viewing to ensure UI stays in sync
-                // This fixes the issue where all dots become solid after viewing one connection
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                    self?.refresh()
-                }
             }
         }
     }

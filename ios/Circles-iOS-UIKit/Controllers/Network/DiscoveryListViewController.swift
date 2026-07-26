@@ -237,38 +237,56 @@ class DiscoveryListViewController: BaseViewController {
     }
     
     private func followUser(_ user: User, at indexPath: IndexPath) {
+        // Ignore taps on users we've already followed (the optimistic flip
+        // below disables the button, but guard against a stale indexPath too)
+        guard indexPath.row < discoveryUsers.count,
+              !(discoveryUsers[indexPath.row].isFollowing ?? false) else { return }
+
+        // Optimistic: flip to "Following" (and disable the button) IMMEDIATELY,
+        // before the round trip — on a slow signal the tap used to look dead,
+        // so users re-tapped and fired duplicate requests.
+        setFollowing(true, forUserId: user.id)
+
         APIService.shared.request(
             endpoint: "users/\(user.id)/follow",
             method: .post,
             body: [:]
         ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
-            DispatchQueue.main.async { [weak self] in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
                 switch result {
                 case .success:
-                    // Update the user's following status
-                    if indexPath.row < self?.discoveryUsers.count ?? 0 {
-                        var updatedUser = self?.discoveryUsers[indexPath.row]
-                        updatedUser = updatedUser?.copy(isFollowing: true)
-                        if let updatedUser = updatedUser {
-                            self?.discoveryUsers[indexPath.row] = updatedUser
-                        }
-                    }
-                    self?.tableView.reloadRows(at: [indexPath], with: .none)
-                    
-                    // Send connection request
-                    self?.sendConnectionRequest(to: user)
-                    
+                    // Follow stuck — now fire the connection request
+                    self.sendConnectionRequest(to: user)
                 case .failure(let error):
-                    self?.showError(error)
+                    // Roll back the optimistic state so the button is tappable again
+                    self.setFollowing(false, forUserId: user.id)
+                    self.showError(error)
                 }
             }
         }
     }
-    
+
+    /// Updates a user's follow flag in the backing array (by id, so it's
+    /// robust to reordering) and reloads just that row.
+    private func setFollowing(_ isFollowing: Bool, forUserId userId: String) {
+        guard let idx = discoveryUsers.firstIndex(where: { $0.id == userId }) else { return }
+        discoveryUsers[idx] = discoveryUsers[idx].copy(isFollowing: isFollowing)
+        tableView.reloadRows(at: [IndexPath(row: idx, section: 0)], with: .none)
+    }
+
     private func sendConnectionRequest(to user: User) {
-        NetworkManager.shared.sendConnectionRequest(to: user.id) { error in
-            if error == nil {
-                NotificationCenter.default.post(name: .connectionRequestSent, object: nil)
+        NetworkManager.shared.sendConnectionRequest(to: user.id) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    NotificationCenter.default.post(name: .connectionRequestSent, object: nil)
+                case .failure(let error):
+                    // Follow succeeded but the connection request didn't — the
+                    // user still sees "Following", so this is non-fatal; log it
+                    // rather than fail silently.
+                    Logger.error("Connection request to \(user.id) failed: \(error.localizedDescription)")
+                }
             }
         }
     }

@@ -331,49 +331,56 @@ class DiscoverUsersViewController: BaseViewController {
     }
     
     private func followUser(_ user: User, at indexPath: IndexPath) {
+        // Ignore taps on users we've already followed
+        let currentList = isSearching ? searchResults : discoveryUsers
+        guard indexPath.row < currentList.count,
+              !(currentList[indexPath.row].isFollowing ?? false) else { return }
+
+        // Optimistic: flip to "Following" (and disable the button) IMMEDIATELY,
+        // before the round trip, so a slow signal doesn't look like a dead tap.
+        setFollowing(true, forUserId: user.id)
+
         APIService.shared.request(
             endpoint: "users/\(user.id)/follow",
             method: .post,
             body: [:]
         ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
             DispatchQueue.main.async {
+                guard let self = self else { return }
                 switch result {
                 case .success:
-                    // Update the user's following status
-                    if self?.isSearching == true {
-                        if indexPath.row < self?.searchResults.count ?? 0 {
-                            var updatedUser = self?.searchResults[indexPath.row]
-                            updatedUser = updatedUser?.copy(isFollowing: true)
-                            if let updatedUser = updatedUser {
-                                self?.searchResults[indexPath.row] = updatedUser
-                            }
-                        }
-                    } else {
-                        if indexPath.row < self?.discoveryUsers.count ?? 0 {
-                            var updatedUser = self?.discoveryUsers[indexPath.row]
-                            updatedUser = updatedUser?.copy(isFollowing: true)
-                            if let updatedUser = updatedUser {
-                                self?.discoveryUsers[indexPath.row] = updatedUser
-                            }
-                        }
-                    }
-                    self?.tableView.reloadRows(at: [indexPath], with: .none)
-                    
-                    // Send connection request
-                    self?.sendConnectionRequest(to: user)
-                    
+                    self.sendConnectionRequest(to: user)
                 case .failure(let error):
-                    self?.showError(error)
+                    self.setFollowing(false, forUserId: user.id)
+                    self.showError(error)
                 }
             }
         }
     }
-    
+
+    /// Updates a user's follow flag in whichever list is showing (by id) and
+    /// reloads just that row.
+    private func setFollowing(_ isFollowing: Bool, forUserId userId: String) {
+        if isSearching {
+            guard let idx = searchResults.firstIndex(where: { $0.id == userId }) else { return }
+            searchResults[idx] = searchResults[idx].copy(isFollowing: isFollowing)
+            tableView.reloadRows(at: [IndexPath(row: idx, section: 0)], with: .none)
+        } else {
+            guard let idx = discoveryUsers.firstIndex(where: { $0.id == userId }) else { return }
+            discoveryUsers[idx] = discoveryUsers[idx].copy(isFollowing: isFollowing)
+            tableView.reloadRows(at: [IndexPath(row: idx, section: 0)], with: .none)
+        }
+    }
+
     private func sendConnectionRequest(to user: User) {
-        NetworkManager.shared.sendConnectionRequest(to: user.id) { error in
-            if error == nil {
-                // Connection request sent successfully
-                NotificationCenter.default.post(name: .connectionRequestSent, object: nil)
+        NetworkManager.shared.sendConnectionRequest(to: user.id) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    NotificationCenter.default.post(name: .connectionRequestSent, object: nil)
+                case .failure(let error):
+                    Logger.error("Connection request to \(user.id) failed: \(error.localizedDescription)")
+                }
             }
         }
     }

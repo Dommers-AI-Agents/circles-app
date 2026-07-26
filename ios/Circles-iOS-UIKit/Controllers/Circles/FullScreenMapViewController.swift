@@ -321,17 +321,17 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     
     func updatePlacesWithConnections(_ userPlaces: [Place], connections: [Connection], connectionPlaces: [String: [Place]]) {
         // Debug logging
-        print("🔍 FullScreenMap: updatePlacesWithConnections called")
-        print("🔍 Connections count: \(connections.count)")
+        Logger.debug("🔍 FullScreenMap: updatePlacesWithConnections called")
+        Logger.debug("🔍 Connections count: \(connections.count)")
         for (index, connection) in connections.enumerated() {
-            print("  \(index): \(connection.connectedUser?.displayName ?? "Unknown") - ID: \(connection.connectedUserId)")
+            Logger.debug("  \(index): \(connection.connectedUser?.displayName ?? "Unknown") - ID: \(connection.connectedUserId)")
         }
-        print("🔍 Connection places map keys: \(connectionPlaces.keys.sorted())")
+        Logger.debug("🔍 Connection places map keys: \(connectionPlaces.keys.sorted())")
         
         // Combine all places
         var allPlaces = userPlaces
         for (userId, places) in connectionPlaces {
-            print("  User \(userId) has \(places.count) places")
+            Logger.debug("  User \(userId) has \(places.count) places")
             allPlaces.append(contentsOf: places)
         }
         
@@ -498,7 +498,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     
     private func setupMap() {
         mapView.delegate = self
-        print("🗺️ Map delegate set. View mode: \(viewMode)")
+        Logger.debug("🗺️ Map delegate set. View mode: \(viewMode)")
         
         // Enable POI selection for iOS 16+ only in allPlaces mode
         // In circle mode, we don't want POI selection to interfere with place annotations
@@ -550,7 +550,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
 
     private func updateMapAnnotationsSmooth(adjustRegion: Bool = true) {
         let startTime = CFAbsoluteTimeGetCurrent()
-        print("🗺️ [SmoothMap] Starting smooth annotation update...")
+        Logger.debug("🗺️ [SmoothMap] Starting smooth annotation update...")
         
         // Get places that should be on the map
         let placesWithLocation = filteredPlaces.filter { $0.location?.clLocation != nil }
@@ -567,10 +567,10 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             return !newPlaceIds.contains(place.id)
         }
         
-        print("🗺️ [SmoothMap] Differential update:")
-        print("   Current: \(currentAnnotations.count) annotations")
-        print("   To add: \(placesToAdd.count) places")
-        print("   To remove: \(annotationsToRemove.count) annotations")
+        Logger.debug("🗺️ [SmoothMap] Differential update:")
+        Logger.debug("   Current: \(currentAnnotations.count) annotations")
+        Logger.debug("   To add: \(placesToAdd.count) places")
+        Logger.debug("   To remove: \(annotationsToRemove.count) annotations")
         
         // Remove obsolete annotations smoothly
         if !annotationsToRemove.isEmpty {
@@ -592,74 +592,27 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         }
         
         let loadTime = CFAbsoluteTimeGetCurrent() - startTime
-        print("🗺️ [SmoothMap] Update completed in \(String(format: "%.3f", loadTime))s")
+        Logger.debug("🗺️ [SmoothMap] Update completed in \(String(format: "%.3f", loadTime))s")
     }
     
     private func addAnnotationsBatched(_ places: [Place], adjustRegion: Bool = true) {
-        let batchSize = 15 // Optimal batch size for smooth animation
-        let batches = places.chunked(into: batchSize)
-
-        print("🗺️ [SmoothMap] Adding \(places.count) annotations in \(batches.count) batches")
-
-        var batchIndex = 0
-        var addedCount = 0
-
-        func addNextBatch() {
-            guard batchIndex < batches.count else {
-                // All batches processed - adjust map region
-                print("🗺️ [SmoothMap] All batches loaded (\(addedCount) annotations)")
-                if adjustRegion {
-                    DispatchQueue.main.async { [weak self] in
-                        self?.adjustMapRegion()
-                    }
-                }
-                return
-            }
-            
-            let batch = batches[batchIndex]
-            let batchAnnotations = batch.compactMap { place -> PlaceAnnotation? in
-                guard place.location?.clLocation != nil else {
-                    print("⚠️ Skipping place without location: '\(place.name)'")
-                    return nil
-                }
-                return PlaceAnnotation(place: place)
-            }
-            
-            // Add batch to map with smooth animation
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
-                
-                // Store place references
-                for annotation in batchAnnotations {
-                    if let place = batch.first(where: { $0.id == annotation.place.id }) {
-                        self.annotationPlaceMap[ObjectIdentifier(annotation)] = place
-                    }
-                }
-                
-                // Add to map - MapKit will animate automatically
-                self.mapView.addAnnotations(batchAnnotations)
-                addedCount += batchAnnotations.count
-                
-                print("🗺️ [SmoothMap] Batch \(batchIndex + 1)/\(batches.count): +\(batchAnnotations.count) annotations")
-                
-                batchIndex += 1
-                
-                // Schedule next batch with small delay for smooth visual progression
-                if batchIndex < batches.count {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        addNextBatch()
-                    }
-                } else {
-                    // Final batch - adjust region
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        addNextBatch() // This will trigger adjustMapRegion
-                    }
-                }
-            }
+        // Add all annotations in one pass. The previous 15-at-a-time staggering
+        // (0.05s between batches + a 0.1s tail) delayed the camera by up to
+        // ~0.75s on a filter change — the map felt slow to settle. MapKit
+        // handles a bulk add fine, and the zoom can happen immediately after.
+        let annotations = places.compactMap { place -> PlaceAnnotation? in
+            guard place.location?.clLocation != nil else { return nil }
+            let annotation = PlaceAnnotation(place: place)
+            annotationPlaceMap[ObjectIdentifier(annotation)] = place
+            return annotation
         }
-        
-        // Start batch processing
-        addNextBatch()
+
+        mapView.addAnnotations(annotations)
+        Logger.debug("🗺️ [SmoothMap] Added \(annotations.count) annotations in one pass")
+
+        if adjustRegion {
+            adjustMapRegion()
+        }
     }
     
     // MARK: - Helper Extensions
@@ -668,29 +621,29 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // Honor an explicitly provided opening region (e.g. expanding the
         // embedded map) — cleared when the user changes a filter in here
         guard !hasExplicitInitialRegion else {
-            print("📍 adjustMapRegion: Skipping - honoring explicit initial region")
+            Logger.debug("📍 adjustMapRegion: Skipping - honoring explicit initial region")
             return
         }
 
         // Prevent concurrent adjustments
         guard !isAdjustingRegion else {
-            print("📍 adjustMapRegion: Skipping - already adjusting")
+            Logger.debug("📍 adjustMapRegion: Skipping - already adjusting")
             return
         }
         isAdjustingRegion = true
         var issuedRegionChange = false
 
-        print("📍 adjustMapRegion called:")
-        print("  - selectedConnectionId: \(selectedConnectionId ?? "nil")")
-        print("  - selectedCategory: \(selectedCategory?.displayName ?? "nil")")
-        print("  - filteredPlaces.count: \(filteredPlaces.count)")
-        print("  - hasInitiallyZoomed: \(hasInitiallyZoomed)")
+        Logger.debug("📍 adjustMapRegion called:")
+        Logger.debug("  - selectedConnectionId: \(selectedConnectionId ?? "nil")")
+        Logger.debug("  - selectedCategory: \(selectedCategory?.displayName ?? "nil")")
+        Logger.debug("  - filteredPlaces.count: \(filteredPlaces.count)")
+        Logger.debug("  - hasInitiallyZoomed: \(hasInitiallyZoomed)")
         
         // If a specific connection is selected, always zoom to show their places
         let shouldZoomToFilteredPlaces = (selectedConnectionId != nil && selectedConnectionId != "my_places_only") || 
                                         selectedCategory != nil
         
-        print("  - shouldZoomToFilteredPlaces: \(shouldZoomToFilteredPlaces)")
+        Logger.debug("  - shouldZoomToFilteredPlaces: \(shouldZoomToFilteredPlaces)")
         
         if shouldZoomToFilteredPlaces && filteredPlaces.count > 0 {
             // Every filter change re-frames the map to include ALL of the
@@ -704,7 +657,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                 }
             }
 
-            print("  - Coordinates for zoom: \(coordinates.count)")
+            Logger.debug("  - Coordinates for zoom: \(coordinates.count)")
 
             if !coordinates.isEmpty {
                 // Calculate center and span to show all filtered places
@@ -728,7 +681,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                     longitudeDelta: lonDelta
                 )
                 
-                print("  - Setting region to center: \(center), span: \(span)")
+                Logger.debug("  - Setting region to center: \(center), span: \(span)")
                 
                 let region = MKCoordinateRegion(center: center, span: span)
                 mapView.setRegion(region, animated: true)
@@ -768,7 +721,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                     }
                 }
 
-                print("  - Default region: \(focusPlaces.count) focus places (\(ownPlaces.count) own), radius \(Int(radius))m")
+                Logger.debug("  - Default region: \(focusPlaces.count) focus places (\(ownPlaces.count) own), radius \(Int(radius))m")
 
                 let region = MKCoordinateRegion(
                     center: userLocation.coordinate,
@@ -887,24 +840,24 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     
     func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView, calloutAccessoryControlTapped control: UIControl) {
         let timestamp = Date().timeIntervalSince1970
-        print("🔵 [DEBUG-\(timestamp)] Info button tapped!")
+        Logger.debug("🔵 [DEBUG-\(timestamp)] Info button tapped!")
         guard let placeAnnotation = view.annotation as? PlaceAnnotation else { 
-            print("❌ [DEBUG-\(timestamp)] Failed to cast annotation to PlaceAnnotation")
+            Logger.debug("❌ [DEBUG-\(timestamp)] Failed to cast annotation to PlaceAnnotation")
             return 
         }
         
-        print("✅ [DEBUG-\(timestamp)] Place: \(placeAnnotation.place.name)")
-        print("📱 [DEBUG-\(timestamp)] Delegate exists: \(delegate != nil)")
-        print("🗺️ [DEBUG-\(timestamp)] View mode: \(viewMode)")
-        print("📍 [DEBUG-\(timestamp)] isPresentedModally: \(isPresentedModally)")
+        Logger.debug("✅ [DEBUG-\(timestamp)] Place: \(placeAnnotation.place.name)")
+        Logger.debug("📱 [DEBUG-\(timestamp)] Delegate exists: \(delegate != nil)")
+        Logger.debug("🗺️ [DEBUG-\(timestamp)] View mode: \(viewMode)")
+        Logger.debug("📍 [DEBUG-\(timestamp)] isPresentedModally: \(isPresentedModally)")
         
         // Notify delegate
         if let delegate = delegate {
-            print("🎯 [DEBUG-\(timestamp)] Calling delegate.mapViewController for place: \(placeAnnotation.place.name)")
+            Logger.debug("🎯 [DEBUG-\(timestamp)] Calling delegate.mapViewController for place: \(placeAnnotation.place.name)")
             delegate.mapViewController(self, didSelectPlace: placeAnnotation.place)
-            print("🎯 [DEBUG-\(timestamp)] Delegate call completed")
+            Logger.debug("🎯 [DEBUG-\(timestamp)] Delegate call completed")
         } else {
-            print("⚠️ [DEBUG-\(timestamp)] No delegate set!")
+            Logger.debug("⚠️ [DEBUG-\(timestamp)] No delegate set!")
         }
         
         // Dismiss if not in allPlaces mode — but only when the delegate didn't
@@ -928,7 +881,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // For regular place annotations, don't interfere with the default behavior
         // The callout with info button will be shown automatically
         if let placeAnnotation = annotation as? PlaceAnnotation {
-            print("📍 Selected place annotation: \(placeAnnotation.place.name)")
+            Logger.debug("📍 Selected place annotation: \(placeAnnotation.place.name)")
         }
     }
     
@@ -1349,7 +1302,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     }
 
     private func selectConnection(_ connectionId: String?) {
-        print("🔍 FullScreenMap: selectConnection called with: \(connectionId ?? "nil")")
+        Logger.debug("🔍 FullScreenMap: selectConnection called with: \(connectionId ?? "nil")")
         selectedConnectionId = connectionId
         if connectionId == nil || connectionId == "my_places_only" {
             selectedConnectionUser = nil
@@ -1369,10 +1322,10 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     private func applyFilter(adjustRegion: Bool = true) {
         let currentUserId = AuthService.shared.getUserId() ?? ""
         
-        print("🔍 FullScreenMap: applyFilter called")
-        print("  selectedConnectionId: \(selectedConnectionId ?? "nil")")
-        print("  viewMode: \(viewMode)")
-        print("  Total places: \(places.count)")
+        Logger.debug("🔍 FullScreenMap: applyFilter called")
+        Logger.debug("  selectedConnectionId: \(selectedConnectionId ?? "nil")")
+        Logger.debug("  viewMode: \(viewMode)")
+        Logger.debug("  Total places: \(places.count)")
         
         // Start with all places or connection-specific places
         var placesToFilter = places
@@ -1387,7 +1340,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                 if connectionId == "my_places_only" {
                     // Filter to show only user's places
                     placesToFilter = places.filter { IDNormalizer.isSameUser($0.addedBy, currentUserId) }
-                    print("  Filtered to user's places: \(placesToFilter.count)")
+                    Logger.debug("  Filtered to user's places: \(placesToFilter.count)")
                 } else {
                     // Union of the pre-bucketed list (covers circle-owner
                     // semantics) and an added-by match over the CURRENT places
@@ -1400,7 +1353,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                         !bucketedIds.contains($0.id) && IDNormalizer.isSameUser($0.addedBy, connectionId)
                     }
                     placesToFilter = connectionScoped
-                    print("  Filtered to connection \(connectionId): \(placesToFilter.count) places (\(bucketedIds.count) bucketed)")
+                    Logger.debug("  Filtered to connection \(connectionId): \(placesToFilter.count) places (\(bucketedIds.count) bucketed)")
                 }
                 // If nil (All Connections), use all places
             }
@@ -1411,7 +1364,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         
         // Apply category filter
         filteredPlaces = placesToFilter.filtered(by: selectedCategory)
-        print("  Final filtered places: \(filteredPlaces.count)")
+        Logger.debug("  Final filtered places: \(filteredPlaces.count)")
         
         updatePlacesCount()
         // The annotation pipeline zooms exactly once: at batch completion when

@@ -51,6 +51,13 @@ class ImageService {
         let cacheKey = NSString(string: urlString)
         return cache.object(forKey: cacheKey)
     }
+
+    /// Synchronous cache lookup by the SAME custom key used in
+    /// loadImageWithKey. Lets callers set a cached image immediately (no
+    /// placeholder flash) and only fall back to async loading on a miss.
+    func cachedImage(forKey cacheKey: String) -> UIImage? {
+        return cache.object(forKey: NSString(string: cacheKey))
+    }
     
     // MARK: - Specialized Loading Methods
     
