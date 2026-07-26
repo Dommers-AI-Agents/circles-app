@@ -2960,6 +2960,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
            !isLoadingActivities,
            !isLoadingMoreActivities,
            activities.count < 300 {
+            // Launch paths (cache/fast-API/performInitialDataLoad) populate
+            // `activities` without maintaining currentOffset, so anchor the next
+            // page to what's actually loaded — otherwise loadMore re-fetches
+            // page 1 and dedup drops it, stalling the fill.
+            currentOffset = activities.count
             fetchActivities(loadMore: true)
         }
     }
