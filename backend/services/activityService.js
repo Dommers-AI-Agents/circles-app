@@ -351,7 +351,74 @@ const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedBy
         }
       }
     });
-    
+
+    // Also notify FOLLOWERS of the actor. A follow is itself the opt-in:
+    // unlike connections (which need the per-connection activityNotifications
+    // flag), following someone means you want their activity. Followers only
+    // have access to PUBLIC circles, so this fires for public adds only.
+    if (circlePrivacy === 'public') {
+      try {
+        // Who already received something via the connection loop above:
+        const allConnectionOtherIds = new Set(allConnections.map(doc => {
+          const cd = doc.data();
+          return cd.userId === addedByUserId ? cd.connectedUserId : cd.userId;
+        }));
+        const alreadyPushedIds = new Set(allConnections
+          .filter(doc => doc.data().activityNotificationsEnabled === true)
+          .map(doc => {
+            const cd = doc.data();
+            return cd.userId === addedByUserId ? cd.connectedUserId : cd.userId;
+          }));
+
+        const actorDoc = await db.collection(COLLECTIONS.USERS).doc(addedByUserId).get();
+        const actorName = actorDoc.exists ? (actorDoc.data().displayName || 'Someone') : 'Someone';
+        const followers = (actorDoc.exists ? actorDoc.data().followers : []) || [];
+
+        let followerPushCount = 0;
+        await Promise.all(followers
+          .filter(fid => fid !== addedByUserId)
+          .map(async (followerId) => {
+            // Pure followers (not connections) also need the real-time feed
+            // event; connection-followers already got it in the loop above.
+            if (!allConnectionOtherIds.has(followerId)) {
+              SSEService.sendEvent(followerId, {
+                type: 'new_activity',
+                data: {
+                  type: 'place_added',
+                  actorId: addedByUserId,
+                  entityType: 'place',
+                  entityId: placeId,
+                  entityName: placeName || 'Unknown Place',
+                  timestamp: new Date().toISOString()
+                }
+              });
+            }
+            // Push once: skip anyone the connection loop already pushed.
+            if (alreadyPushedIds.has(followerId)) return;
+            try {
+              await notificationService.sendToUser(followerId, {
+                type: 'activity_notification',
+                title: 'New Place Added',
+                body: `${actorName} added ${placeName} to ${circleName}`,
+                data: {
+                  type: 'place_added',
+                  placeId: placeId,
+                  circleId: circleId,
+                  addedByUserId: addedByUserId,
+                  deepLink: `circles://place/${placeId}?circleId=${circleId}`
+                }
+              });
+              followerPushCount++;
+            } catch (pushError) {
+              console.warn('Failed to send follower place-add push:', pushError.message);
+            }
+          }));
+        console.log(`✅ Notified ${followerPushCount} followers of place add by ${addedByUserId}`);
+      } catch (followerError) {
+        console.error('Follower notification failed:', followerError.message);
+      }
+    }
+
   } catch (error) {
     console.error('Error tracking place addition:', error);
   }
