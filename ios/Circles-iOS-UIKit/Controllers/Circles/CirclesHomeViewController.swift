@@ -162,9 +162,9 @@ enum ProgressiveLoadingStage {
 
 // MARK: - Optimized Cache System
 class HomeScreenCache {
-    private var cachedData: HomeScreenContent?
-    private var cacheExpiry: Date?
-    private let cacheValidityMinutes: TimeInterval = 3 // 3 minutes for memory cache
+    var cachedData: HomeScreenContent?
+    var cacheExpiry: Date?
+    let cacheValidityMinutes: TimeInterval = 3 // 3 minutes for memory cache
     
     var isValid: Bool {
         guard let expiry = cacheExpiry else { return false }
@@ -215,37 +215,37 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     // MARK: - Properties
     var circles: [Circle] = []
-    private var networkCircles: [Circle] = []
-    private var isShowingNetworkCircles = false
+    var networkCircles: [Circle] = []
+    var isShowingNetworkCircles = false
     var allPlaces: [Place] = []
     var filteredPlaces: [Place] = []
     var isSearching = false
-    private var selectedCategory: UnifiedCategory?
-    private var mapUpdateTimer: Timer? // Debounce timer for map updates
-    private var notificationBadgeTimer: Timer? // Periodic refresh timer for notification badge
-    private var isReturningFromFullScreenMap = false // Prevent map updates when returning from full screen
-    private var isLoadingCircles = false // Track when circles are being loaded
-    private var isLoadingPlaces = false // Track when places are being loaded
-    private var isPerformingInitialLoad = false // Track if we're in the middle of initial loading
-    private var isShowingLoadingUI = false // Track if loading UI is currently shown
-    private static var hasLoadedInitialData = false // Track if we've loaded data at least once this session
-    private var hasStartedLoading = false // Instance flag to prevent multiple loads in the same instance
-    private var isMapDataReady = false // Track if map data is ready to be displayed
+    var selectedCategory: UnifiedCategory?
+    var mapUpdateTimer: Timer? // Debounce timer for map updates
+    var notificationBadgeTimer: Timer? // Periodic refresh timer for notification badge
+    var isReturningFromFullScreenMap = false // Prevent map updates when returning from full screen
+    var isLoadingCircles = false // Track when circles are being loaded
+    var isLoadingPlaces = false // Track when places are being loaded
+    var isPerformingInitialLoad = false // Track if we're in the middle of initial loading
+    var isShowingLoadingUI = false // Track if loading UI is currently shown
+    static var hasLoadedInitialData = false // Track if we've loaded data at least once this session
+    var hasStartedLoading = false // Instance flag to prevent multiple loads in the same instance
+    var isMapDataReady = false // Track if map data is ready to be displayed
     
     // MARK: - Place Detail Deduplication Properties
-    private var lastPresentedPlaceId: String?
-    private var lastPresentationTime: TimeInterval = 0
-    private let presentationDebounceInterval: TimeInterval = 1.0 // 1 second to prevent double-taps
+    var lastPresentedPlaceId: String?
+    var lastPresentationTime: TimeInterval = 0
+    let presentationDebounceInterval: TimeInterval = 1.0 // 1 second to prevent double-taps
     
     // MARK: - Enhanced Performance Properties
-    private var optimizedCache: HomeScreenCache = HomeScreenCache()
-    private var isUsingFastLoad = false // Track if we're using optimized fast loading
-    private var skeletonLoadingView: HomeScreenSkeletonView? // Progressive loading skeleton
+    var optimizedCache: HomeScreenCache = HomeScreenCache()
+    var isUsingFastLoad = false // Track if we're using optimized fast loading
+    var skeletonLoadingView: HomeScreenSkeletonView? // Progressive loading skeleton
     
     // Instance-based cache with expiry
-    private var placesCacheExpiry: Date?
-    private var cachedPlaces: [Place] = []
-    private var userOwnPlaces: [Place] = [] { // Separate array for user's own places only
+    var placesCacheExpiry: Date?
+    var cachedPlaces: [Place] = []
+    var userOwnPlaces: [Place] = [] { // Separate array for user's own places only
         didSet {
             // Keep the embedded map informed so it can center on the user's favorites
             mapViewController?.ownPlaceIds = Set(userOwnPlaces.map { $0.id })
@@ -254,7 +254,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     // MARK: - Helper Methods
     /// Helper function to create a type-safe completion handler for API requests
-    private func createAPICompletion<T>(_ completion: @escaping (Result<T, Error>) -> Void) -> (Result<T, APIError>) -> Void {
+    func createAPICompletion<T>(_ completion: @escaping (Result<T, Error>) -> Void) -> (Result<T, APIError>) -> Void {
         return { [weak self] result in
             guard let self = self else { return }
             
@@ -266,43 +266,43 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             }
         }
     }
-    private let cacheExpiryMinutes: TimeInterval = 5 // 5 minutes cache expiry
-    private var loadDebounceTimer: Timer? // Debounce timer to prevent rapid successive loads
-    private var preloadedData: PreloadedData? // Store preloaded data from splash screen
-    private var preloadedConnections: [Connection]? // Store preloaded connections for userListView
-    private var notificationBadgeLabel: UILabel? // Badge label for notification count
-    private var notificationBarButton: UIBarButtonItem? // Store reference to notification button
-    private var rewardsBadgeLabel: UILabel? // Badge label showing reward points balance
-    private var rewardsBarButton: UIBarButtonItem? // Store reference to rewards ($) button
+    let cacheExpiryMinutes: TimeInterval = 5 // 5 minutes cache expiry
+    var loadDebounceTimer: Timer? // Debounce timer to prevent rapid successive loads
+    var preloadedData: PreloadedData? // Store preloaded data from splash screen
+    var preloadedConnections: [Connection]? // Store preloaded connections for userListView
+    var notificationBadgeLabel: UILabel? // Badge label for notification count
+    var notificationBarButton: UIBarButtonItem? // Store reference to notification button
+    var rewardsBadgeLabel: UILabel? // Badge label showing reward points balance
+    var rewardsBarButton: UIBarButtonItem? // Store reference to rewards ($) button
     
     // Search scope properties
-    private var currentSearchScope: SearchScope = .myPlaces
-    private var networkPlaces: [Place] = [] // Cache for network places
-    private var isLoadingNetworkPlaces = false
+    var currentSearchScope: SearchScope = .myPlaces
+    var networkPlaces: [Place] = [] // Cache for network places
+    var isLoadingNetworkPlaces = false
 
     // Unified search: places (local, instant) + people (server, debounced).
     // People results are the PEOPLE section of the search overlay; tapping one
     // filters the map to a connection/followee, or opens a stranger's profile.
-    private var searchedUsers: [User] = []
-    private var userSearchWorkItem: DispatchWorkItem?
+    var searchedUsers: [User] = []
+    var userSearchWorkItem: DispatchWorkItem?
 
     // MARK: - Viewport-Based Network Place Loading
     // When true, network places load on demand for the visible map region
     // instead of the per-circle fan-out. Flip to false to restore old behavior.
-    private let useViewportNetworkLoading = true
-    private var fetchedViewportCircles: [(center: CLLocationCoordinate2D, radiusM: Double)] = []
-    private var isFetchingViewport = false
+    let useViewportNetworkLoading = true
+    var fetchedViewportCircles: [(center: CLLocationCoordinate2D, radiusM: Double)] = []
+    var isFetchingViewport = false
     
     // Suggested users overlay
-    private var suggestedUsersOverlay: SuggestedUsersOverlayView?
-    private var visitTrackingPermissionOverlay: VisitTrackingPermissionView?
-    private var addPlaceTutorialOverlay: AddFirstPlaceTutorialView?
+    var suggestedUsersOverlay: SuggestedUsersOverlayView?
+    var visitTrackingPermissionOverlay: VisitTrackingPermissionView?
+    var addPlaceTutorialOverlay: AddFirstPlaceTutorialView?
     
     // Welcome tour tracking
-    private var isShowingWelcomeTour = false
+    var isShowingWelcomeTour = false
     
     // Reaction picker tracking
-    private var currentReactionActivity: Activity?
+    var currentReactionActivity: Activity?
     
     // MARK: - BaseViewController Configuration (DISABLED for debugging)
     override var loadsDataOnViewDidLoad: Bool { false } // Disable auto-loading to prevent conflicts
@@ -318,13 +318,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     // Define response structure for network circles
-    private struct NetworkCirclesResponse: Codable {
+    struct NetworkCirclesResponse: Codable {
         let success: Bool
         let data: [Circle]
     }
     
     // MARK: - UI Elements
-    private let scrollView: UIScrollView = {
+    let scrollView: UIScrollView = {
         let scrollView = UIScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.backgroundColor = Constants.Colors.background
@@ -333,7 +333,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return scrollView
     }()
     
-    private let contentView: UIView = {
+    let contentView: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
         view.backgroundColor = Constants.Colors.background
@@ -349,7 +349,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return searchBar
     }()
     
-    private let searchScopeButton: UIButton = {
+    let searchScopeButton: UIButton = {
         let button = UIButton(type: .system)
         button.setImage(UIImage(systemName: "chevron.down"), for: .normal)
         button.tintColor = .systemBlue
@@ -361,7 +361,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return button
     }()
     
-    private let searchScopeDropdownView: UIView = {
+    let searchScopeDropdownView: UIView = {
         let view = UIView()
         view.backgroundColor = .systemBackground
         view.layer.cornerRadius = 8
@@ -374,7 +374,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return view
     }()
     
-    private let searchScopeTableView: UITableView = {
+    let searchScopeTableView: UITableView = {
         let tableView = UITableView()
         tableView.backgroundColor = .clear
         tableView.separatorStyle = .none
@@ -387,28 +387,28 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     // Quick-access bar (Home / Places / Work cards) removed from the home page —
     // it added visual weight above the map and connections without earning it.
     
-    private let filterContainer: UIView = {
+    let filterContainer: UIView = {
         let view = UIView()
         view.backgroundColor = .clear
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
     
-    private let userListView: HorizontalUserListView = {
+    let userListView: HorizontalUserListView = {
         let view = HorizontalUserListView()
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
     
     
-    private let emptyStateView: UIView = {
+    let emptyStateView: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
         view.isHidden = true
         return view
     }()
     
-    private let emptyStateImageView: UIImageView = {
+    let emptyStateImageView: UIImageView = {
         let imageView = UIImageView()
         imageView.image = UIImage(systemName: "circle.dashed")
         imageView.tintColor = Constants.Colors.secondaryLabel
@@ -417,7 +417,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return imageView
     }()
     
-    private let emptyStateLabel: UILabel = {
+    let emptyStateLabel: UILabel = {
         let label = UILabel()
         label.text = "You don't have any circles yet"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.large)
@@ -428,7 +428,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }()
 
     // Direct CTAs so a brand-new user can act from the empty state
-    private lazy var emptyStateButtonsStack: UIStackView = {
+    lazy var emptyStateButtonsStack: UIStackView = {
         let addButton = UIButton.smallActionButton(title: "Add Your Places", style: .primary)
         addButton.addTarget(self, action: #selector(openQuickStartAddPlaces), for: .touchUpInside)
 
@@ -443,7 +443,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }()
     
     
-    private let quickAddPlaceButton: UIButton = {
+    let quickAddPlaceButton: UIButton = {
         let button = UIButton(type: .system)
         button.setImage(UIImage(systemName: "plus.circle.fill"), for: .normal)
         button.setTitle(" Add Place", for: .normal)
@@ -458,7 +458,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }()
     
     
-    private let mapContainerView: UIView = {
+    let mapContainerView: UIView = {
         let view = UIView()
         view.backgroundColor = Constants.Colors.background
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -466,7 +466,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return view
     }()
     
-    private let mapLoadingView: UIView = {
+    let mapLoadingView: UIView = {
         let view = UIView()
         view.backgroundColor = Constants.Colors.secondaryBackground
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -475,7 +475,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return view
     }()
     
-    private let mapLoadingIndicator: UIActivityIndicatorView = {
+    let mapLoadingIndicator: UIActivityIndicatorView = {
         let indicator = UIActivityIndicatorView(style: .medium)
         indicator.color = .white
         indicator.backgroundColor = UIColor.black.withAlphaComponent(0.6)
@@ -485,7 +485,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return indicator
     }()
     
-    private let mapLoadingLabel: UILabel = {
+    let mapLoadingLabel: UILabel = {
         let label = UILabel()
         label.text = "Loading your places..."
         label.font = UIFont.systemFont(ofSize: 16, weight: .medium)
@@ -495,7 +495,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return label
     }()
     
-    private let mapLoadingProgressView: UIProgressView = {
+    let mapLoadingProgressView: UIProgressView = {
         let progressView = UIProgressView(progressViewStyle: .default)
         progressView.progressTintColor = Constants.Colors.primary
         progressView.trackTintColor = Constants.Colors.primary.withAlphaComponent(0.2)
@@ -506,7 +506,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return progressView
     }()
     
-    private let mapExpandButton: UIButton = {
+    let mapExpandButton: UIButton = {
         let button = UIButton(type: .system)
         button.setImage(UIImage(systemName: "arrow.up.left.and.arrow.down.right"), for: .normal)
         button.tintColor = .white
@@ -516,7 +516,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return button
     }()
     
-    private let mapPlaceCountLabel: UIButton = {
+    let mapPlaceCountLabel: UIButton = {
         let button = UIButton(type: .custom)
         button.titleLabel?.font = UIFont.systemFont(ofSize: 12, weight: .semibold)
         button.setTitleColor(.white, for: .normal)
@@ -530,12 +530,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return button
     }()
     
-    private var mapViewController: FullScreenMapViewController?
+    var mapViewController: FullScreenMapViewController?
     // The modally-presented full map (weak: auto-clears on dismissal). Data
     // refreshes must reach it too, not just the embedded child above.
-    private weak var presentedFullScreenMap: FullScreenMapViewController?
+    weak var presentedFullScreenMap: FullScreenMapViewController?
     
-    private let filterStackView: UIStackView = {
+    let filterStackView: UIStackView = {
         let stack = UIStackView()
         stack.axis = .horizontal
         stack.spacing = 6
@@ -545,7 +545,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return stack
     }()
     
-    private lazy var mapMenuButton: UIButton = {
+    lazy var mapMenuButton: UIButton = {
         let button = UIButton.iconButton(systemName: "line.3.horizontal", pointSize: 15)
         button.backgroundColor = Constants.Colors.secondaryBackground.withAlphaComponent(0.9)
         button.layer.cornerRadius = 14
@@ -565,7 +565,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }()
 
     // Toggles between the map and a distance-sorted list of the same places
-    private lazy var listToggleButton: UIButton = {
+    lazy var listToggleButton: UIButton = {
         let button = UIButton.iconButton(systemName: "list.bullet", pointSize: 15)
         button.backgroundColor = Constants.Colors.secondaryBackground.withAlphaComponent(0.9)
         button.layer.cornerRadius = 14
@@ -575,7 +575,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return button
     }()
 
-    private lazy var placesListTableView: UITableView = {
+    lazy var placesListTableView: UITableView = {
         let tableView = UITableView()
         tableView.backgroundColor = Constants.Colors.secondaryBackground
         tableView.separatorStyle = .none
@@ -588,11 +588,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return tableView
     }()
 
-    private var isShowingPlacesList = false
-    private var distanceSortedPlaces: [(place: Place, distance: CLLocationDistance?)] = []
-    private let listDistanceFormatter = MKDistanceFormatter()
+    var isShowingPlacesList = false
+    var distanceSortedPlaces: [(place: Place, distance: CLLocationDistance?)] = []
+    let listDistanceFormatter = MKDistanceFormatter()
 
-    private lazy var myPlacesToggleButton: UIButton = {
+    lazy var myPlacesToggleButton: UIButton = {
         // Icon stacked over a "Me" label, matching the main navigation's profile tab
         var config = UIButton.Configuration.plain()
         config.imagePlacement = .top
@@ -614,13 +614,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return button
     }()
 
-    private var selectedConnectionId: String? = nil // Default to All Connections
-    private var selectedConnectionUser: User? = nil // Set only when a specific connection is filtered
+    var selectedConnectionId: String? = nil // Default to All Connections
+    var selectedConnectionUser: User? = nil // Set only when a specific connection is filtered
 
     /// Whose places are on the map: the selected connection's avatar shown as
     /// the first chip beside the map controls (hidden when no connection
     /// filter is active). Tapping opens their profile.
-    private lazy var selectedConnectionAvatarButton: UIButton = {
+    lazy var selectedConnectionAvatarButton: UIButton = {
         let button = UIButton(type: .custom)
         button.backgroundColor = Constants.Colors.secondaryBackground.withAlphaComponent(0.9)
         button.layer.cornerRadius = 14
@@ -635,7 +635,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return button
     }()
 
-    private func updateSelectedConnectionAvatar() {
+    func updateSelectedConnectionAvatar() {
         guard let user = selectedConnectionUser,
               let id = selectedConnectionId, id != "my_places_only" else {
             selectedConnectionAvatarButton.isHidden = true
@@ -655,7 +655,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
 
-    @objc private func selectedConnectionAvatarTapped() {
+    @objc func selectedConnectionAvatarTapped() {
         guard let user = selectedConnectionUser else { return }
         let profileVC = ProfileViewController()
         profileVC.configureWith(user: user)
@@ -680,7 +680,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     var searchResultsHeightConstraint: NSLayoutConstraint?
     
-    private let locationStatusLabel: UILabel = {
+    let locationStatusLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: 12, weight: .medium)
         label.textColor = Constants.Colors.secondaryLabel
@@ -690,7 +690,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return label
     }()
     
-    private let loadingIndicator: UIActivityIndicatorView = {
+    let loadingIndicator: UIActivityIndicatorView = {
         let indicator = UIActivityIndicatorView(style: .large)
         indicator.color = Constants.Colors.primary
         indicator.translatesAutoresizingMaskIntoConstraints = false
@@ -698,7 +698,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return indicator
     }()
     
-    private let loadingLabel: UILabel = {
+    let loadingLabel: UILabel = {
         let label = UILabel()
         label.text = "Loading places..."
         label.font = UIFont.systemFont(ofSize: 16, weight: .medium)
@@ -708,7 +708,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return label
     }()
     
-    private let loadingContentView: UIView = {
+    let loadingContentView: UIView = {
         let view = UIView()
         view.backgroundColor = Constants.Colors.secondaryBackground
         view.layer.cornerRadius = 16
@@ -720,7 +720,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return view
     }()
     
-    private let loadingContainerView: UIView = {
+    let loadingContainerView: UIView = {
         let view = UIView()
         view.backgroundColor = UIColor.black.withAlphaComponent(0.3)
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -728,54 +728,54 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return view
     }()
     
-    private var availableCategories: [UnifiedCategory] = []
-    private var mapHeightConstraint: NSLayoutConstraint?
+    var availableCategories: [UnifiedCategory] = []
+    var mapHeightConstraint: NSLayoutConstraint?
     
     // Search scope dropdown properties
-    private var isSearchScopeDropdownOpen = false
-    private var searchScopeDropdownHeightConstraint: NSLayoutConstraint?
+    var isSearchScopeDropdownOpen = false
+    var searchScopeDropdownHeightConstraint: NSLayoutConstraint?
     
     // Activity Feed Properties
     // Any mutation re-derives the grouped feed rows — several load paths
     // (cache apply, fast-path load) reload the table without going through
     // updateActivityFeed(), and the table renders from feedItems
-    private var activities: [Activity] = [] {
+    var activities: [Activity] = [] {
         didSet { regroupActivities() }
     }
-    private var isLoadingActivities = false
-    private var activityTableHeightConstraint: NSLayoutConstraint?
+    var isLoadingActivities = false
+    var activityTableHeightConstraint: NSLayoutConstraint?
     
     // Daily Summary Properties
-    private var dailySummaryCard: DailySummaryCardView?
-    private var hasDailySummaryData = false
+    var dailySummaryCard: DailySummaryCardView?
+    var hasDailySummaryData = false
     
     // Reels Properties
-    private var reels: [PlaceVideo] = []
-    private var isLoadingReels = false
-    private var reelsOffset = 0
-    private var hasMoreReels = true
-    private var isLoadingMoreReels = false
+    var reels: [PlaceVideo] = []
+    var isLoadingReels = false
+    var reelsOffset = 0
+    var hasMoreReels = true
+    var isLoadingMoreReels = false
     
     // Suggested Users Overlay
-    private var hasCheckedForSuggestedUsers = false
-    private var hasCheckedTutorialAndOverlay = false
-    private var tutorialCheckRetryCount = 0
-    private let maxTutorialCheckRetries = 3
+    var hasCheckedForSuggestedUsers = false
+    var hasCheckedTutorialAndOverlay = false
+    var tutorialCheckRetryCount = 0
+    let maxTutorialCheckRetries = 3
     
     // Pagination properties
-    private var currentOffset = 0
-    private var hasMoreActivities = true
-    private var isLoadingMoreActivities = false
+    var currentOffset = 0
+    var hasMoreActivities = true
+    var isLoadingMoreActivities = false
     
     // Activity Feed UI Elements
-    private let activityFeedSection: UIView = {
+    let activityFeedSection: UIView = {
         let view = UIView()
         view.backgroundColor = Constants.Colors.background
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
     
-    private let activityHeaderLabel: UILabel = {
+    let activityHeaderLabel: UILabel = {
         let label = UILabel()
         label.text = "Recent Activity"
         label.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
@@ -794,7 +794,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }()
     
     // Camera button for Moments tab
-    private let momentsCameraButton: UIButton = {
+    let momentsCameraButton: UIButton = {
         let button = UIButton(type: .system)
         button.backgroundColor = Constants.Colors.primary
         button.tintColor = .white
@@ -810,7 +810,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return button
     }()
     
-    private let activityTableView: UITableView = {
+    let activityTableView: UITableView = {
         let tableView = UITableView()
         tableView.backgroundColor = Constants.Colors.background
         tableView.separatorStyle = .none
@@ -824,7 +824,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
     // Specials tab: live offers and announcements from participating venues,
     // one row per deal in the server's order (saved venues first, then nearest)
-    private let specialsTableView: UITableView = {
+    let specialsTableView: UITableView = {
         let tableView = UITableView()
         tableView.backgroundColor = Constants.Colors.background
         tableView.separatorStyle = .none
@@ -836,11 +836,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return tableView
     }()
 
-    private var specials: [SpecialItem] = []
-    private var isLoadingSpecials = false
+    var specials: [SpecialItem] = []
+    var isLoadingSpecials = false
 
     // Reels collection view for vertical video feed
-    private let reelsCollectionView: UICollectionView = {
+    let reelsCollectionView: UICollectionView = {
         let layout = UICollectionViewFlowLayout()
         layout.scrollDirection = .vertical
         layout.minimumInteritemSpacing = 0
@@ -856,8 +856,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }()
     
     // Track current video index for auto-play
-    private var currentReelIndex = 0
-    private var reelPlayers: [Int: AVPlayer] = [:]
+    var currentReelIndex = 0
+    var reelPlayers: [Int: AVPlayer] = [:]
     
     // Track video loading states to prevent index misalignment
     enum VideoLoadState {
@@ -866,9 +866,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         case ready
         case failed
     }
-    private var reelVideoStates: [Int: VideoLoadState] = [:]
+    var reelVideoStates: [Int: VideoLoadState] = [:]
     
-    private let activityEmptyStateLabel: UILabel = {
+    let activityEmptyStateLabel: UILabel = {
         let label = UILabel()
         label.text = "No recent activity from your network"
         label.font = UIFont.systemFont(ofSize: 16)
@@ -880,7 +880,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return label
     }()
     
-    private let activityLoadingContainer: UIView = {
+    let activityLoadingContainer: UIView = {
         let container = UIView()
         container.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.95)
         container.layer.cornerRadius = 12
@@ -909,13 +909,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return container
     }()
     
-    private var activityLoadingIndicator: UIActivityIndicatorView {
+    var activityLoadingIndicator: UIActivityIndicatorView {
         // Get the indicator from the container using the tag
         return activityLoadingContainer.subviews.first(where: { $0 is UIActivityIndicatorView }) as? UIActivityIndicatorView ?? UIActivityIndicatorView()
     }
     
     // Floating record button for Reels tab
-    private let floatingRecordButton: UIButton = {
+    let floatingRecordButton: UIButton = {
         let button = UIButton(type: .system)
         button.backgroundColor = Constants.Colors.primary
         button.tintColor = .white
@@ -930,7 +930,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return button
     }()
     
-    private let loadMoreIndicatorView: UIView = {
+    let loadMoreIndicatorView: UIView = {
         let view = UIView()
         view.backgroundColor = Constants.Colors.background
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -1073,7 +1073,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     */
     
     // MARK: - Safe Cache Optimization (Step 1)
-    private func tryLoadFromCache() {
+    func tryLoadFromCache() {
         // Only try cache if we haven't started loading yet
         guard !hasStartedLoading && circles.isEmpty else { 
             Logger.debug("📦 [SafeCache] Skipping - already loading or have data")
@@ -1112,7 +1112,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    private func preloadImagesFromCache(_ data: HomeScreenContent) {
+    func preloadImagesFromCache(_ data: HomeScreenContent) {
         var imageUrls: [String] = []
         
         // Collect user profile images
@@ -1139,7 +1139,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     // MARK: - Background Image Preloading (Step 2)
-    private func startBackgroundImagePreloading() {
+    func startBackgroundImagePreloading() {
         DispatchQueue.global(qos: .background).async {
             // Check if we have any data to preload from
             if !self.allPlaces.isEmpty {
@@ -1151,7 +1151,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    private func preloadPlaceImages() {
+    func preloadPlaceImages() {
         let imageUrls = allPlaces.compactMap { place in
             // Extract first photo URL from Place model
             return place.photos?.first
@@ -1169,9 +1169,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     // MARK: - Optional Skeleton Loading (Step 3)
-    private var skeletonTimer: Timer?
+    var skeletonTimer: Timer?
     
-    private func scheduleOptionalSkeletonLoading() {
+    func scheduleOptionalSkeletonLoading() {
         // Only show skeleton if we have no data and loading takes longer than 1.5 seconds
         guard circles.isEmpty && activities.isEmpty else { return }
         
@@ -1186,7 +1186,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    private func showOptionalSkeletonLoading() {
+    func showOptionalSkeletonLoading() {
         guard skeletonLoadingView == nil else { return }
         
         Logger.debug("💀 [OptionalSkeleton] Showing skeleton for slow connection")
@@ -1200,7 +1200,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         userListView.alpha = 0.3
     }
     
-    private func hideOptionalSkeletonLoading() {
+    func hideOptionalSkeletonLoading() {
         skeletonTimer?.invalidate()
         skeletonTimer = nil
         
@@ -1220,9 +1220,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     // MARK: - Step 4: Fast API Integration as Alternative Data Source
-    private var hasTriedFastAPI = false
+    var hasTriedFastAPI = false
     
-    private func tryFastAPIAsAlternative() {
+    func tryFastAPIAsAlternative() {
         // Only try once per session and only if we don't have data yet
         guard !hasTriedFastAPI && circles.isEmpty && activities.isEmpty else { return }
         
@@ -1290,7 +1290,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     // MARK: - Progressive Skeleton Loading
-    private func showProgressiveSkeletonLoading() {
+    func showProgressiveSkeletonLoading() {
         guard skeletonLoadingView == nil else { return }
         
         Logger.debug("💀 [Skeleton] Showing progressive loading skeleton")
@@ -1304,7 +1304,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         userListView.alpha = 0
     }
     
-    private func hideProgressiveSkeletonLoading() {
+    func hideProgressiveSkeletonLoading() {
         guard let skeleton = skeletonLoadingView else { return }
         
         Logger.debug("💀 [Skeleton] Hiding progressive loading skeleton")
@@ -1320,7 +1320,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         skeletonLoadingView = nil
     }
     
-    private func updateProgressiveLoading(stage: ProgressiveLoadingStage) {
+    func updateProgressiveLoading(stage: ProgressiveLoadingStage) {
         Logger.debug("💀 [Progressive] Loading stage: \(stage)")
         
         switch stage {
@@ -1349,7 +1349,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     // MARK: - Ultra-Fast Home Screen Loading
-    private func loadHomeScreenDataFast(completion: @escaping (Bool) -> Void) {
+    func loadHomeScreenDataFast(completion: @escaping (Bool) -> Void) {
         Logger.debug("⚡ [FastLoad] Fetching ultra-fast home screen data...")
         
         APIService.shared.request(
@@ -1387,7 +1387,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     // MARK: - Full Dashboard Data Loading (Background)
-    private func loadFullDashboardData() {
+    func loadFullDashboardData() {
         Logger.debug("📊 [FullLoad] Loading complete dashboard data...")
         
         APIService.shared.request(
@@ -1428,7 +1428,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     // MARK: - Fast Data Application Methods
-    private func applyFastUserList(_ userList: [UserListItem]) {
+    func applyFastUserList(_ userList: [UserListItem]) {
         Logger.debug("⚡ [FastApply] Applying user list with \(userList.count) users")
         
         // For now, trigger a refresh of the user list view to show the most recent data
@@ -1442,7 +1442,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         Logger.debug("⚡ [FastApply] User list updated and visible")
     }
     
-    private func applyFastActivities(_ activities: [Activity]) {
+    func applyFastActivities(_ activities: [Activity]) {
         Logger.debug("⚡ [FastApply] Applying \(activities.count) activities")
         
         self.activities = activities
@@ -1460,7 +1460,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         Logger.debug("⚡ [FastApply] Activities updated and visible")
     }
     
-    private func showHomeScreenUI() {
+    func showHomeScreenUI() {
         Logger.debug("⚡ [FastApply] Showing home screen UI")
         
         // Hide loading states
@@ -1479,7 +1479,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         Logger.debug("⚡ [FastApply] Home screen UI visible")
     }
     
-    private func applyHomeScreenData(_ data: HomeScreenContent) {
+    func applyHomeScreenData(_ data: HomeScreenContent) {
         Logger.debug("📊 [FullApply] Applying complete home screen data")
         
         // Apply circles data
@@ -1516,7 +1516,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     // MARK: - Image Preloading
-    private func preloadImages(from data: HomeScreenContent) {
+    func preloadImages(from data: HomeScreenContent) {
         var imageUrls: [String] = []
         
         // Collect user profile images
@@ -1548,7 +1548,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    private func applyMapData(_ mapData: MapData) {
+    func applyMapData(_ mapData: MapData) {
         Logger.debug("🗺️ [MapApply] Applying map data with \(mapData.places.count) places")
         
         // Set map region immediately for better UX
@@ -1562,7 +1562,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     // MARK: - Progressive Map Loading
-    private func loadMapPlacesProgressively(_ mapPlaces: [MapPlace]) {
+    func loadMapPlacesProgressively(_ mapPlaces: [MapPlace]) {
         Logger.debug("🗺️ [Progressive] Starting progressive map loading for \(mapPlaces.count) places")
         
         // Load places in batches for smooth performance
@@ -1610,7 +1610,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     // MARK: - Async Map Updates
-    private func updateMapWithPlaces(_ places: [Place], animated: Bool = false) {
+    func updateMapWithPlaces(_ places: [Place], animated: Bool = false) {
         Logger.debug("🗺️ [UpdateMap] Map update requested for \(places.count) places")
         
         // Update the embedded map controller with smooth loading
@@ -1625,7 +1625,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         Logger.debug("🗺️ [UpdateMap] Map update delegated to embedded map controller")
     }
     
-    private func updateUIAfterDataLoad() {
+    func updateUIAfterDataLoad() {
         // TODO: Re-enable these methods once they're identified in the existing codebase
         // For now, we'll skip these updates to get the basic functionality working
         
@@ -1789,7 +1789,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         pauseAllVideos()
     }
 
-    private func checkAndRetryOnboardingIfNeeded() {
+    func checkAndRetryOnboardingIfNeeded() {
         // If user has no circles and data has loaded, try onboarding
         if circles.isEmpty && !isLoadingCircles {
             APIService.shared.request(
@@ -1814,7 +1814,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    @objc private func connectionsLoadedHandler() {
+    @objc func connectionsLoadedHandler() {
         Logger.debug("🔔 Connections loaded notification received")
         // Remove observer to prevent multiple calls
         NotificationCenter.default.removeObserver(self, name: .connectionsLoaded, object: nil)
@@ -1823,7 +1823,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         checkTutorialAndOverlay()
     }
     
-    private func checkTutorialAndOverlay() {
+    func checkTutorialAndOverlay() {
         // Only check once per session
         guard !hasCheckedTutorialAndOverlay else {
             Logger.debug("⚠️ Already checked tutorial and overlay")
@@ -1926,7 +1926,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    private func checkAndShowSuggestedUsers() {
+    func checkAndShowSuggestedUsers() {
         // Only check once per session
         guard !hasCheckedForSuggestedUsers else { 
             Logger.debug("⚠️ checkAndShowSuggestedUsers - Already checked this session")
@@ -1951,7 +1951,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// two gestures: tap shows that person's places on the map, long press
     /// opens their profile. Marked as shown immediately so it only ever
     /// appears once.
-    private func maybeShowConnectionAvatarHint() {
+    func maybeShowConnectionAvatarHint() {
         guard OnboardingManager.shared.shouldShowConnectionAvatarHint(),
               !userListView.isHidden,
               userListView.connectionCount > 0,
@@ -1975,7 +1975,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         bubble.show()
     }
 
-    private func showSuggestedUsersOverlay() {
+    func showSuggestedUsersOverlay() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
@@ -1991,7 +1991,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    private func showAddPlaceTutorialIfNeeded() {
+    func showAddPlaceTutorialIfNeeded() {
         // Check if should show add place tutorial
         // (Visit-tracking card intentionally removed from first-run onboarding)
         guard OnboardingManager.shared.shouldShowAddPlaceTutorial() else {
@@ -2015,7 +2015,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     // MARK: - Forced Display Methods (for Welcome Tour)
     
-    private func forceShowSuggestedUsersOverlay() {
+    func forceShowSuggestedUsersOverlay() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
@@ -2035,7 +2035,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    private func forceShowAddPlaceTutorial() {
+    func forceShowAddPlaceTutorial() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
@@ -2055,7 +2055,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    private func showVisitTrackingPermissionIfNeeded() {
+    func showVisitTrackingPermissionIfNeeded() {
         // Check if should show visit tracking permission
         guard OnboardingManager.shared.shouldShowVisitTrackingPermission() else {
             // Continue with normal flow
@@ -2087,7 +2087,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    private func updateAppearance() {
+    func updateAppearance() {
         // Update border colors that don't automatically adapt
         mapMenuButton.layer.borderColor = Constants.Colors.separator.cgColor
         listToggleButton.layer.borderColor = Constants.Colors.separator.cgColor
@@ -2095,7 +2095,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     // MARK: - UI Setup
-    private func setupUI() {
+    func setupUI() {
         view.backgroundColor = Constants.Colors.background
         navigationController?.navigationBar.prefersLargeTitles = false
         navigationItem.largeTitleDisplayMode = .never
@@ -2446,7 +2446,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         setupActivityFeed()
     }
     
-    private func setupMapView() {
+    func setupMapView() {
         let mapVC = FullScreenMapViewController()
         mapVC.viewMode = .allPlaces
         mapVC.delegate = self
@@ -2471,7 +2471,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         contentView.bringSubviewToFront(mapPlaceCountLabel)
     }
     
-    private func setupDropdownViews() {
+    func setupDropdownViews() {
         // Distance-sorted places list (map/list toggle)
         placesListTableView.delegate = self
         placesListTableView.dataSource = self
@@ -2490,7 +2490,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         searchScopeTableView.canCancelContentTouches = true
     }
     
-    private func setupActivityFeed() {
+    func setupActivityFeed() {
         // Setup activity table view
         activityTableView.delegate = self
         activityTableView.dataSource = self
@@ -2521,7 +2521,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         scrollView.refreshControl = refreshControl
     }
     
-    private func setupSearchBar() {
+    func setupSearchBar() {
         searchBar.delegate = self
         
         // Add toolbar with Done button to search bar
@@ -2535,7 +2535,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         searchBar.inputAccessoryView = toolbar
     }
     
-    @objc private func dismissKeyboard() {
+    @objc func dismissKeyboard() {
         // Called from Done button, always dismiss
         searchBar.resignFirstResponder()
     }
@@ -2544,19 +2544,19 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
     // MARK: - Cache Management
     
-    private func isCacheValid() -> Bool {
+    func isCacheValid() -> Bool {
         guard let expiry = placesCacheExpiry else { return false }
         return Date() < expiry && !cachedPlaces.isEmpty
     }
     
-    private func invalidateCache() {
+    func invalidateCache() {
         cachedPlaces.removeAll()
         userOwnPlaces.removeAll()
         placesCacheExpiry = nil
         Logger.debug("🗑️ Places cache invalidated")
     }
     
-    private func shouldUseCachedData() -> Bool {
+    func shouldUseCachedData() -> Bool {
         return isCacheValid() && !isPerformingInitialLoad
     }
     
@@ -2567,7 +2567,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         self.preloadedData = data
     }
     
-    private func usePreloadedData(_ data: PreloadedData) {
+    func usePreloadedData(_ data: PreloadedData) {
         // Set circles and places
         self.circles = data.circles
         
@@ -2653,7 +2653,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     // MARK: - Activity Feed Methods
-    @objc private func refreshActivityFeed() {
+    @objc func refreshActivityFeed() {
         // Refresh the horizontal user list
         userListView.refresh()
         
@@ -2751,7 +2751,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// Loads live deals from participating venues and flattens them into one
     /// row per offer/announcement, preserving the server's venue order
     /// (saved venues first, then nearest).
-    private func fetchSpecials(force: Bool = false) {
+    func fetchSpecials(force: Bool = false) {
         guard !isLoadingSpecials else { return }
         isLoadingSpecials = true
 
@@ -2813,7 +2813,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
     /// Opens the tapped deal's place page — same resolution as the Rewards
     /// screen: canonical global place by id, venue-built fallback otherwise.
-    private func openSpecialPlace(_ venue: OfferVenue) {
+    func openSpecialPlace(_ venue: OfferVenue) {
         guard let placeId = venue.globalPlaceId ?? venue.googlePlaceId else {
             pushSpecialPlaceFallback(venue)
             return
@@ -2839,7 +2839,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
     /// Long-press share on a Specials row: the deal's text plus the venue's
     /// place link (or the App Store link when the venue has no linked place)
-    private func shareSpecial(_ item: SpecialItem) {
+    func shareSpecial(_ item: SpecialItem) {
         var shareText: String
         switch item.kind {
         case .offer(let offer):
@@ -2861,7 +2861,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         present(activityVC, animated: true)
     }
 
-    private func pushSpecialPlaceFallback(_ venue: OfferVenue) {
+    func pushSpecialPlaceFallback(_ venue: OfferVenue) {
         var location: GeoLocation?
         if let coordinate = venue.location {
             // GeoJSON order: [longitude, latitude]
@@ -2906,7 +2906,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         navigationController?.pushViewController(detailVC, animated: true)
     }
 
-    private func fetchActivities(loadMore: Bool = false, completion: ((Bool) -> Void)? = nil) {
+    func fetchActivities(loadMore: Bool = false, completion: ((Bool) -> Void)? = nil) {
         guard !isLoadingActivities && !isLoadingMoreActivities else { 
             Logger.debug("🔄 Already loading activities, skipping...")
             completion?(false)
@@ -3018,12 +3018,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
     /// Derived render model for the activity table. Rebuilt from `activities`
     /// in updateActivityFeed() — never mutated directly.
-    private var feedItems: [ActivityFeedItem] = []
+    var feedItems: [ActivityFeedItem] = []
     /// Groups the user has expanded inline, keyed by the group's first activity id
-    private var expandedGroupKeys: Set<String> = []
+    var expandedGroupKeys: Set<String> = []
 
     /// Place-added rows are the feed's core content — never grouped
-    private func isStandaloneActivity(_ activity: Activity) -> Bool {
+    func isStandaloneActivity(_ activity: Activity) -> Bool {
         return activity.type == .placeAdded || activity.type == .checkIn
     }
 
@@ -3031,7 +3031,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// into groups of ≥2. Standalone rows interleaved in a burst don't break
     /// the surrounding group: the group is inserted back at the position of
     /// its newest member.
-    private func regroupActivities() {
+    func regroupActivities() {
         var items: [ActivityFeedItem] = []
         var pendingGroup: [Activity] = []
         var pendingStartIndex: Int?
@@ -3075,12 +3075,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         feedItems = items
     }
 
-    private func activityFeedItem(at row: Int) -> ActivityFeedItem? {
+    func activityFeedItem(at row: Int) -> ActivityFeedItem? {
         return row < feedItems.count ? feedItems[row] : nil
     }
 
     /// The single activity backing a row, or nil for group summary rows
-    private func singleActivity(at row: Int) -> Activity? {
+    func singleActivity(at row: Int) -> Activity? {
         switch activityFeedItem(at: row) {
         case .single(let activity), .groupChild(let activity):
             return activity
@@ -3089,7 +3089,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
 
-    private func toggleActivityGroup(withKey key: String) {
+    func toggleActivityGroup(withKey key: String) {
         let expanding = !expandedGroupKeys.contains(key)
         if expanding {
             expandedGroupKeys.insert(key)
@@ -3125,7 +3125,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         activityTableView.reloadRows(at: [IndexPath(row: header, section: 0)], with: .none)
     }
 
-    private func updateActivityFeed() {
+    func updateActivityFeed() {
         regroupActivities()
         isLoadingActivities = false
         activityLoadingIndicator.stopAnimating()
@@ -3154,7 +3154,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     // MARK: - Reels Methods
-    private func fetchReels(loadMore: Bool = false, completion: ((Bool) -> Void)? = nil) {
+    func fetchReels(loadMore: Bool = false, completion: ((Bool) -> Void)? = nil) {
         guard !isLoadingReels && !isLoadingMoreReels else {
             completion?(false)
             return
@@ -3258,7 +3258,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    private func updateReelsFeed() {
+    func updateReelsFeed() {
         isLoadingReels = false
         activityLoadingIndicator.stopAnimating()
         activityLoadingContainer.isHidden = true
@@ -3323,7 +3323,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    private func showFirestoreQueryLimitError() {
+    func showFirestoreQueryLimitError() {
         isLoadingReels = false
         activityLoadingIndicator.stopAnimating()
         activityLoadingContainer.isHidden = true
@@ -3348,7 +3348,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    private func showMomentsFeedFallback() {
+    func showMomentsFeedFallback() {
         isLoadingReels = false
         activityLoadingIndicator.stopAnimating()
         activityLoadingContainer.isHidden = true
@@ -3371,7 +3371,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     // MARK: - Data Fetching
-    private func performInitialDataLoad() {
+    func performInitialDataLoad() {
         
         // Unified method to load both circles and places
         Logger.debug("🚀 Starting OPTIMIZED initial data load")
@@ -3642,7 +3642,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    private func showMapLoadingState() {
+    func showMapLoadingState() {
         // Prevent showing loading state multiple times
         guard !isShowingLoadingUI else { 
             Logger.debug("🗺️ Map loading state already showing")
@@ -3669,7 +3669,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         mapPlaceCountLabel.isHidden = true
     }
     
-    private func hideMapLoadingState() {
+    func hideMapLoadingState() {
         Logger.debug("🗺️ Hiding map loading state, showing populated map")
         Logger.debug("🗺️ About to call fetchActivities from hideMapLoadingState")
         isShowingLoadingUI = false
@@ -3707,7 +3707,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     // NEW: Immediate loading state to prevent empty map confusion
-    private func showMapLoadingStateImmediate() {
+    func showMapLoadingStateImmediate() {
         Logger.debug("🗺️ [IMMEDIATE] Showing map loading state on viewWillAppear")
         
         // Show map container immediately so it's not empty
@@ -3739,7 +3739,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     // PROGRESSIVE PLACE LOADING: Show cached places immediately
-    private func extractAndShowCachedPlaces() {
+    func extractAndShowCachedPlaces() {
         // For now, skip cached place extraction since creating dummy Place objects
         // requires complex initialization. The immediate loading indicator is more important
         // and provides the main UX benefit the user requested.
@@ -3752,7 +3752,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     // PROGRESSIVE MAP UPDATES: Update map with places as they become available
-    private func updateMapProgressively(with places: [Place], isFromCache: Bool = false) {
+    func updateMapProgressively(with places: [Place], isFromCache: Bool = false) {
         // Only update if we have places and the map is ready
         guard !places.isEmpty else { return }
         
@@ -3807,7 +3807,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         updateEmptyState()
     }
     
-    private func fetchCircles(completion: (() -> Void)? = nil) {
+    func fetchCircles(completion: (() -> Void)? = nil) {
         // Only show loading state on the very first app launch
         isLoadingCircles = true
         
@@ -3860,7 +3860,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    private func fetchNetworkCircles(completion: (() -> Void)? = nil) {
+    func fetchNetworkCircles(completion: (() -> Void)? = nil) {
         // Use CircleService to fetch network circles
         APIService.shared.request(
             endpoint: "network/my-network-circles",
@@ -3904,7 +3904,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    private func createSampleCircles() -> [Circle] {
+    func createSampleCircles() -> [Circle] {
         let userId = AuthService.shared.getUserId() ?? "user123"
         
         let date = Date()
@@ -3997,7 +3997,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return [travelCircle, foodCircle, shoppingCircle]
     }
     
-    private func updateEmptyState() {
+    func updateEmptyState() {
         // Hide empty state if loading
         if isLoadingCircles || isLoadingPlaces {
             emptyStateView.isHidden = true
@@ -4055,7 +4055,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         updateEmptyState()
     }
     
-    private func fetchAllPlacesFromCircles() {
+    func fetchAllPlacesFromCircles() {
         // Reset map data ready flag at the start of any fetch
         isMapDataReady = false
         
@@ -4310,7 +4310,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     // MARK: - Map Update Coordination
     
-    private func updateMapWhenReady() {
+    func updateMapWhenReady() {
         // Only update map if data is ready and we have places to display
         guard isMapDataReady else {
             Logger.debug("🗺️ Map data not ready yet, deferring update")
@@ -4340,7 +4340,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         self.updateEmptyState()
     }
     
-    private func updatePlaceCountLabel(count: Int) {
+    func updatePlaceCountLabel(count: Int) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
@@ -4353,7 +4353,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    private func setupNavigationBar() {
+    func setupNavigationBar() {
         // Create help button for left side
         let helpButton = UIBarButtonItem(
             image: UIImage(systemName: "questionmark.circle"),
@@ -4383,7 +4383,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// can't drift. Reuses the stored notification/rewards buttons to keep
     /// their badge custom views alive across rebuilds.
     @MainActor
-    private func makeRightBarButtons() -> [UIBarButtonItem] {
+    func makeRightBarButtons() -> [UIBarButtonItem] {
         let checkInButton = UIBarButtonItem(
             image: UIImage(systemName: "checkmark.circle"),
             style: .plain,
@@ -4426,7 +4426,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     // MARK: - Notifications
     
-    private func setupNotifications() {
+    func setupNotifications() {
         // Listen for circle deletion notifications
         NotificationCenter.default.addObserver(
             self,
@@ -4485,7 +4485,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         )
     }
     
-    @objc private func handleCircleDeleted(_ notification: Notification) {
+    @objc func handleCircleDeleted(_ notification: Notification) {
         guard let circleId = notification.userInfo?["circleId"] as? String else { return }
         
         DispatchQueue.main.async { [weak self] in
@@ -4512,14 +4512,14 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    @objc private func handleRefreshCircles() {
+    @objc func handleRefreshCircles() {
         // Invalidate cache when circles/places are modified
         invalidateCache()
         // Refresh circles to get updated place counts
         refreshData()
     }
     
-    @objc private func handleAppWillEnterForeground() {
+    @objc func handleAppWillEnterForeground() {
         // Check if cache is expired when app comes to foreground
         if !isCacheValid() {
             Logger.debug("📱 App entering foreground - cache expired, will refresh on next load")
@@ -4528,7 +4528,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    @objc private func handleMomentDeleted(_ notification: Notification) {
+    @objc func handleMomentDeleted(_ notification: Notification) {
         guard let videoId = notification.userInfo?["videoId"] as? String else { return }
         
         Logger.debug("📢 Received MomentDeleted notification for video: \(videoId)")
@@ -4571,7 +4571,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    @objc private func handleShowOnboardingTour(_ notification: Notification) {
+    @objc func handleShowOnboardingTour(_ notification: Notification) {
         // Called when user taps "Show Welcome Tour" from Help view
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
@@ -4593,7 +4593,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     // MARK: - Actions
-    @objc private func addButtonTapped() {
+    @objc func addButtonTapped() {
         let createCircleVC = CreateCircleViewController()
         createCircleVC.delegate = self
         
@@ -4603,11 +4603,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         present(navController, animated: true)
     }
     
-    @objc private func upgradeButtonTapped() {
+    @objc func upgradeButtonTapped() {
         SubscriptionManager.shared.showPaywall(from: self, reason: .generalUpgrade)
     }
     
-    private func updateNavigationBarForSubscription() {
+    func updateNavigationBarForSubscription() {
         Task { @MainActor in
             navigationItem.rightBarButtonItems = makeRightBarButtons()
         }
@@ -4615,7 +4615,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     
     
-    @objc private func expandMapButtonTapped() {
+    @objc func expandMapButtonTapped() {
         // Set flag to prevent map updates when returning
         isReturningFromFullScreenMap = true
         
@@ -4633,7 +4633,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    private func presentFullScreenMapWithCurrentState() {
+    func presentFullScreenMapWithCurrentState() {
         // Present full screen map with current filter states, opening at the
         // same region the embedded map is showing
         let fullScreenMap = FullScreenMapViewController(
@@ -4661,20 +4661,20 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         present(fullScreenMap, animated: true)
     }
     
-    @objc private func emptyStateFindFriendsTapped() {
+    @objc func emptyStateFindFriendsTapped() {
         // Jump to My Network and open the contacts import flow
         tabBarController?.selectedIndex = 1
         NotificationCenter.default.post(name: Notification.Name("ShowContactsImport"), object: nil)
     }
 
-    @objc private func handleQuickStartPlaceAdded() {
+    @objc func handleQuickStartPlaceAdded() {
         // Debounced full refetch (places were added outside the normal flow)
         updateMapPlaces()
     }
 
     /// Opens the lightweight "add 3 places" flow, seeding the default circles
     /// first if the account has none yet.
-    @objc private func openQuickStartAddPlaces() {
+    @objc func openQuickStartAddPlaces() {
         if let circle = circles.first(where: { $0.name == "Favorite Local Spots" }) ?? circles.first {
             presentQuickStart(with: circle)
             return
@@ -4703,14 +4703,14 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
 
-    private func presentQuickStart(with circle: Circle) {
+    func presentQuickStart(with circle: Circle) {
         let quickStartVC = QuickStartAddPlacesViewController(targetCircle: circle)
         let navController = UINavigationController(rootViewController: quickStartVC)
         navController.modalPresentationStyle = .pageSheet
         present(navController, animated: true)
     }
 
-    @objc private func quickAddPlaceButtonTapped() {
+    @objc func quickAddPlaceButtonTapped() {
         // Debug: Log current circle state
         Logger.debug("🔍 DEBUG quickAddPlaceButtonTapped - circles.count: \(circles.count)")
         Logger.debug("🔍 DEBUG quickAddPlaceButtonTapped - circles.isEmpty: \(circles.isEmpty)")
@@ -4745,7 +4745,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// Ensures at least one circle exists (the server-side default seeding is
     /// idempotent), then continues straight into the add-place flow. Only if
     /// seeding fails does the user see the create-circle prompt.
-    private func recoverCirclesThenAddPlace() {
+    func recoverCirclesThenAddPlace() {
         APIService.shared.request(
             endpoint: "users/me/complete-onboarding",
             method: .post,
@@ -4776,7 +4776,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
 
-    private func promptCreateFirstCircle() {
+    func promptCreateFirstCircle() {
         let alert = UIAlertController(
             title: "No Circles Yet",
             message: "You need to create a circle first before adding places.",
@@ -4794,7 +4794,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         present(alert, animated: true)
     }
 
-    private func showCirclePicker() {
+    func showCirclePicker() {
         // Sort circles alphabetically for easy finding
         let sortedCircles = circles.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         
@@ -4833,7 +4833,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     
     
-    private func updateMapVisibility() {
+    func updateMapVisibility() {
         // Map is always visible, just ensure it's shown
         mapContainerView.isHidden = false
         filterStackView.isHidden = false
@@ -4841,7 +4841,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         updateMapPlaces()
     }
     
-    private func deduplicatePlaces(userPlaces: [Place], networkPlaces: [Place]) -> [Place] {
+    func deduplicatePlaces(userPlaces: [Place], networkPlaces: [Place]) -> [Place] {
         var seenPlaceIds = Set<String>()
         var deduplicatedPlaces: [Place] = []
         
@@ -4875,7 +4875,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return deduplicatedPlaces
     }
     
-    private func removeDuplicatePlaces(_ places: [Place]) -> [Place] {
+    func removeDuplicatePlaces(_ places: [Place]) -> [Place] {
         var seenPlaceIds = Set<String>()
         var deduplicatedPlaces: [Place] = []
         var duplicatesFound = 0
@@ -4898,7 +4898,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return deduplicatedPlaces
     }
     
-    private func fetchNetworkPlacesAndCombineWithCached() {
+    func fetchNetworkPlacesAndCombineWithCached() {
         var networkPlaces: [Place] = []
         let group = DispatchGroup()
 
@@ -4949,7 +4949,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    private func applyFiltersAndUpdateMap() {
+    func applyFiltersAndUpdateMap() {
         // Apply filtering to all places
         let filteredPlaces = applyFiltersToPlaces(allPlaces)
         self.filteredPlaces = filteredPlaces
@@ -4963,7 +4963,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         hideLoadingState()
     }
     
-    private func applyFiltersToPlaces(_ places: [Place]) -> [Place] {
+    func applyFiltersToPlaces(_ places: [Place]) -> [Place] {
         Logger.debug("📍 Connection filter - selectedConnectionId: \(self.selectedConnectionId ?? "nil")")
         
         // Apply connection filter if selected
@@ -5073,7 +5073,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     
-    private func updateMapPlaces() {
+    func updateMapPlaces() {
         // Skip update if returning from full screen map
         if isReturningFromFullScreenMap {
             return
@@ -5108,7 +5108,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// Buckets allPlaces into the user's own places and per-connection lists
     /// using circle-owner mapping — the owner id is authoritative here, since
     /// place.addedBy can carry a connection's legacy account id.
-    private func buildConnectionPlaceBuckets() -> (userPlaces: [Place], connectionPlaces: [String: [Place]]) {
+    func buildConnectionPlaceBuckets() -> (userPlaces: [Place], connectionPlaces: [String: [Place]]) {
         var userPlaces: [Place] = []
         var connectionPlacesMap: [String: [Place]] = [:]
         let currentUserId = AuthService.shared.getUserId() ?? ""
@@ -5146,7 +5146,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// If the backend flagged a possible second account at sign-in, offer the
     /// merge flow. Consuming the suggestion means the user is asked at most
     /// once per login.
-    private func promptForDuplicateAccountsIfNeeded() {
+    func promptForDuplicateAccountsIfNeeded() {
         guard let suggestion = AuthService.shared.consumeDuplicateSuggestion(),
               let candidate = suggestion.duplicateAccounts.first else { return }
 
@@ -5164,7 +5164,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         )
     }
 
-    private func refreshMapDisplay(adjustRegion: Bool = true) {
+    func refreshMapDisplay(adjustRegion: Bool = true) {
         Logger.debug("🗺️ [RefreshMapDisplay] Refreshing map with current filters")
 
         // Skip if we don't have data yet
@@ -5212,7 +5212,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
     /// Fetches network places for the given map region and merges them into
     /// `allPlaces`. Called (debounced) whenever the map's visible region changes.
-    private func fetchViewportPlaces(region: MKCoordinateRegion, for controller: FullScreenMapViewController) {
+    func fetchViewportPlaces(region: MKCoordinateRegion, for controller: FullScreenMapViewController) {
         guard useViewportNetworkLoading else { return }
 
         // Region → covering circle: half the bounding-box diagonal, +10% pad
@@ -5287,7 +5287,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// Uses the same user-circles + per-circle path as the profile map — the
     /// places/batch endpoint re-checks connections by exact id and can silently
     /// drop circles when connection docs and circle owners use different id formats.
-    private func fetchAllPlacesForConnection(_ connectionId: String) {
+    func fetchAllPlacesForConnection(_ connectionId: String) {
         Logger.debug("📍 Fetching circles for connection \(connectionId)")
         APIService.shared.request(
             endpoint: "network/user-circles/\(connectionId)",
@@ -5342,7 +5342,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
 
-    private func fetchPlacesForConnectionCircles(_ connectionCircles: [Circle]) {
+    func fetchPlacesForConnectionCircles(_ connectionCircles: [Circle]) {
         guard !connectionCircles.isEmpty else {
             refreshMapDisplay()
             return
@@ -5376,7 +5376,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     
-    private func buildMapMenuElements() -> [UIMenuElement] {
+    func buildMapMenuElements() -> [UIMenuElement] {
         var elements: [UIMenuElement] = []
 
         // Connection filter submenu
@@ -5450,13 +5450,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return elements
     }
 
-    private func selectCategory(_ category: UnifiedCategory?) {
+    func selectCategory(_ category: UnifiedCategory?) {
         selectedCategory = category
         Logger.debug("📍 Category filter changed to: \(selectedCategory?.displayName ?? "All Categories")")
         refreshMapDisplay()
     }
 
-    private func updateAvailableCategories() {
+    func updateAvailableCategories() {
         Logger.debug("🏷️ [Categories] Updating available categories with connection filter: \(selectedConnectionId ?? "none")")
         Logger.debug("🏷️ [Categories] Total allPlaces count: \(allPlaces.count)")
         
@@ -5488,7 +5488,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     // Helper method to apply only connection filtering (without category filter)
-    private func applyConnectionFilterToPlaces(_ places: [Place]) -> [Place] {
+    func applyConnectionFilterToPlaces(_ places: [Place]) -> [Place] {
         var filteredPlaces = places
         
         if let connectionId = self.selectedConnectionId {
@@ -5545,7 +5545,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return filteredPlaces
     }
     
-    private func openProfileFromMapMenu() {
+    func openProfileFromMapMenu() {
         let profileVC = ProfileViewController()
         // Without a configured user, ProfileViewController shows the current user's own profile
         if let user = selectedConnectionUser {
@@ -5554,7 +5554,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         navigationController?.pushViewController(profileVC, animated: true)
     }
 
-    @objc private func listToggleTapped() {
+    @objc func listToggleTapped() {
         isShowingPlacesList.toggle()
 
         // Flip the icon: show what tapping will switch to
@@ -5577,7 +5577,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
     /// Rebuilds the distance-sorted data source for the places list from the
     /// currently filtered places. Places without a location sort last.
-    private func rebuildDistanceSortedPlaces() {
+    func rebuildDistanceSortedPlaces() {
         let filtered = applyFiltersToPlaces(allPlaces)
         let referenceLocation = mapViewController?.currentUserLocation
             ?? mapViewController.map { CLLocation(latitude: $0.currentRegion.center.latitude, longitude: $0.currentRegion.center.longitude) }
@@ -5615,7 +5615,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// Resolves the circle a place belongs to: circleId back-reference first
     /// (always present, even when a circle's places array is stale), then
     /// places-array membership. Shared by map pin callouts and the places list.
-    private func resolveCircle(for place: Place) -> Circle? {
+    func resolveCircle(for place: Place) -> Circle? {
         return circles.first(where: { $0.id == place.circleId })
             ?? circles.first(where: { $0.places?.contains(place.id) == true })
             ?? networkCircles.first(where: { $0.id == place.circleId })
@@ -5623,7 +5623,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
 
     /// Pushes the detail screen for a place (used by the places list).
-    private func presentDetailForPlace(_ place: Place) {
+    func presentDetailForPlace(_ place: Place) {
         guard let circle = resolveCircle(for: place) else {
             Logger.debug("⚠️ Place not found in any circle (circleId: \(place.circleId ?? "nil"))")
             return
@@ -5633,7 +5633,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         navigationController?.pushViewController(placeDetailVC, animated: true)
     }
 
-    @objc private func myPlacesToggleTapped() {
+    @objc func myPlacesToggleTapped() {
         if selectedConnectionId == "my_places_only" {
             selectConnection(id: nil, user: nil)
         } else {
@@ -5641,7 +5641,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
 
-    private func updateMyPlacesToggleAppearance() {
+    func updateMyPlacesToggleAppearance() {
         let isActive = selectedConnectionId == "my_places_only"
         var config = myPlacesToggleButton.configuration ?? .plain()
         config.image = UIImage(
@@ -5654,7 +5654,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         myPlacesToggleButton.layer.borderColor = isActive ? Constants.Colors.primary.cgColor : Constants.Colors.separator.cgColor
     }
 
-    private func selectConnection(id: String?, user: User?) {
+    func selectConnection(id: String?, user: User?) {
         selectedConnectionId = id
         selectedConnectionUser = user
         updateMyPlacesToggleAppearance()
@@ -5704,7 +5704,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    private func showSearchScopeDropdown() {
+    func showSearchScopeDropdown() {
         // Calculate dropdown height for 2 options
         let numberOfRows = SearchScope.allCases.count
         let dropdownHeight = CGFloat(numberOfRows) * 44
@@ -5727,7 +5727,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         searchScopeTableView.reloadData()
     }
     
-    private func hideSearchScopeDropdown() {
+    func hideSearchScopeDropdown() {
         UIView.animate(withDuration: 0.2, animations: {
             self.searchScopeDropdownView.alpha = 0
             self.searchScopeDropdownHeightConstraint?.constant = 0
@@ -5740,7 +5740,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    @objc private func dismissDropdowns(_ gesture: UITapGestureRecognizer? = nil) {
+    @objc func dismissDropdowns(_ gesture: UITapGestureRecognizer? = nil) {
         // Handle keyboard dismissal first
         if searchBar.isFirstResponder {
             if let gesture = gesture {
@@ -5761,7 +5761,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
 
-    @objc private func searchScopeButtonTapped() {
+    @objc func searchScopeButtonTapped() {
         isSearchScopeDropdownOpen.toggle()
 
         if isSearchScopeDropdownOpen {
@@ -5771,7 +5771,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    @objc private func recordReelTapped() {
+    @objc func recordReelTapped() {
         let contentUploadVC = ContentUploadViewController()
         contentUploadVC.delegate = self
         let navController = UINavigationController(rootViewController: contentUploadVC)
@@ -5834,21 +5834,21 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    @objc private func checkInButtonTapped() {
+    @objc func checkInButtonTapped() {
         let checkInVC = CheckInViewController()
         let navController = UINavigationController(rootViewController: checkInVC)
         navController.modalPresentationStyle = .fullScreen
         present(navController, animated: true)
     }
     
-    @objc private func helpButtonTapped() {
+    @objc func helpButtonTapped() {
         let helpVC = HelpViewController()
         let navController = UINavigationController(rootViewController: helpVC)
         navController.modalPresentationStyle = .fullScreen
         present(navController, animated: true)
     }
 
-    @objc private func inviteButtonTapped() {
+    @objc func inviteButtonTapped() {
         // Same share-invite flow as the My Network tab's person.badge.plus button
         let shareItems = NetworkManager.shared.shareConnectionInvite()
         let activityViewController = UIActivityViewController(
@@ -5864,12 +5864,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         present(activityViewController, animated: true)
     }
     
-    @objc private func notificationButtonTapped() {
+    @objc func notificationButtonTapped() {
         let notificationsVC = NotificationsViewController()
         navigationController?.pushViewController(notificationsVC, animated: true)
     }
     
-    private func setupNotificationBadge() {
+    func setupNotificationBadge() {
         // Create a custom button with badge capability
         let button = UIButton(type: .custom)
         button.setImage(UIImage(systemName: "bell"), for: .normal)
@@ -5904,7 +5904,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         notificationBarButton?.customView = button
     }
     
-    private func updateNotificationBadge() {
+    func updateNotificationBadge() {
         // Always ensure badge is set up first
         if notificationBadgeLabel == nil {
             setupNotificationBadge()
@@ -5940,16 +5940,16 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    @objc private func rewardsButtonTapped() {
+    @objc func rewardsButtonTapped() {
         let rewardsVC = RewardsViewController()
         navigationController?.pushViewController(rewardsVC, animated: true)
     }
 
-    @objc private func handleRewardBalanceChanged() {
+    @objc func handleRewardBalanceChanged() {
         updateRewardsBadge()
     }
 
-    private func setupRewardsBadge() {
+    func setupRewardsBadge() {
         // Custom button with a badge, mirroring the notification bell badge
         let button = UIButton(type: .custom)
         button.setImage(UIImage(systemName: "dollarsign.circle"), for: .normal)
@@ -5981,7 +5981,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         rewardsBarButton?.customView = button
     }
 
-    private func updateRewardsBadge() {
+    func updateRewardsBadge() {
         if rewardsBadgeLabel == nil {
             setupRewardsBadge()
         }
@@ -6007,14 +6007,14 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
     
     // MARK: - Circle Management
-    private func editCircle(at indexPath: IndexPath) {
+    func editCircle(at indexPath: IndexPath) {
         let circle = circles[indexPath.row]
         let editVC = EditCircleViewController(circle: circle)
         editVC.delegate = self
         navigationController?.pushViewController(editVC, animated: true)
     }
     
-    private func deleteCircle(at indexPath: IndexPath) {
+    func deleteCircle(at indexPath: IndexPath) {
         let circle = circles[indexPath.row]
         
         let alert = UIAlertController(
@@ -6032,7 +6032,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         present(alert, animated: true)
     }
     
-    private func performDelete(circle: Circle, at indexPath: IndexPath) {
+    func performDelete(circle: Circle, at indexPath: IndexPath) {
         CircleService.shared.deleteCircle(id: circle.id) { [weak self] result in
             guard let self = self else { return }
             DispatchQueue.main.async {
@@ -6051,7 +6051,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    private func presentAlert(title: String, message: String) {
+    func presentAlert(title: String, message: String) {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
@@ -6060,7 +6060,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
 // MARK: - Search overlay sections
 // The unified search overlay has two sections: places first, then people.
-private enum SearchSection: Int, CaseIterable {
+enum SearchSection: Int, CaseIterable {
     case places
     case people
 }
@@ -6505,7 +6505,7 @@ extension CirclesHomeViewController: FullScreenMapViewControllerDelegate {
         presentPlaceDetail(placeDetailVC, from: controller)
     }
     
-    private func presentPlaceDetail(_ placeDetailVC: PlaceDetailViewController, from controller: FullScreenMapViewController) {
+    func presentPlaceDetail(_ placeDetailVC: PlaceDetailViewController, from controller: FullScreenMapViewController) {
         let timestamp = Date().timeIntervalSince1970
         Logger.debug("🎭 [DEBUG-\(timestamp)] presentPlaceDetail called")
         Logger.debug("🗺️ [DEBUG-\(timestamp)] Controller isPresentedModally: \(controller.isPresentedModally)")
@@ -6577,7 +6577,7 @@ extension CirclesHomeViewController: UISearchBarDelegate {
     }
 
     /// Shows the results overlay if either section has matches, hides it otherwise.
-    private func refreshSearchOverlay() {
+    func refreshSearchOverlay() {
         if isSearching && (!filteredPlaces.isEmpty || !searchedUsers.isEmpty) {
             showSearchResults()
         } else {
@@ -6654,7 +6654,7 @@ extension CirclesHomeViewController {
 
     /// Handles a tap on a PEOPLE result: connections/followees filter the map
     /// (like tapping their avatar); everyone else opens their profile to act.
-    private func selectSearchedUser(_ user: User) {
+    func selectSearchedUser(_ user: User) {
         // Clear the search UI first
         searchBar.text = ""
         searchBar.resignFirstResponder()
@@ -6825,7 +6825,7 @@ extension CirclesHomeViewController {
         present(summaryVC, animated: true, completion: nil)
     }
     
-    private func checkForDailySummary() {
+    func checkForDailySummary() {
         // Remove any existing card since we're not using this feature anymore
         // Daily summaries should be shown as modals when notification is tapped
         removeDailySummaryCard()
@@ -6837,7 +6837,7 @@ extension CirclesHomeViewController {
         }
     }
     
-    private func showDailySummaryCard(with data: [String: Any]) {
+    func showDailySummaryCard(with data: [String: Any]) {
         // Don't show if already showing
         if dailySummaryCard != nil { return }
         
@@ -6881,7 +6881,7 @@ extension CirclesHomeViewController {
         hasDailySummaryData = true
     }
     
-    private func removeDailySummaryCard() {
+    func removeDailySummaryCard() {
         guard let card = dailySummaryCard else { return }
         
         // Restore segmented control constraint
@@ -6984,7 +6984,7 @@ extension CirclesHomeViewController: ActivityFeedCellDelegate {
         navigateToPlaceFromActivity(activity)
     }
     
-    private func navigateToVideoFromActivity(_ activity: Activity) {
+    func navigateToVideoFromActivity(_ activity: Activity) {
         // The targetId contains the video ID for video upload activities
         let videoId = activity.targetId
         guard !videoId.isEmpty else { return }
@@ -7037,7 +7037,7 @@ extension CirclesHomeViewController: ActivityFeedCellDelegate {
         }
     }
     
-    private func navigateToPlaceFromActivity(_ activity: Activity) {
+    func navigateToPlaceFromActivity(_ activity: Activity) {
         // For video uploads, use placeId from metadata; for check-ins use metadata placeId; otherwise use targetId
         let placeId: String
         if activity.type == .videoUploaded || activity.type == .checkIn {
@@ -7140,7 +7140,7 @@ extension CirclesHomeViewController: ActivityFeedCellDelegate {
     /// Applies a reaction toggle to the in-memory feed and reloads the table
     /// without touching scroll position; the next natural feed load brings
     /// the server-computed counts.
-    private func applyLocalReaction(activityId: String, emoji: String?) {
+    func applyLocalReaction(activityId: String, emoji: String?) {
         guard let index = activities.firstIndex(where: { $0.id == activityId }) else { return }
         let current = activities[index]
 
@@ -7286,7 +7286,7 @@ extension CirclesHomeViewController {
         navigationController?.pushViewController(detailVC, animated: true)
     }
     
-    private func loadCircleAndNavigate(circleId: String) {
+    func loadCircleAndNavigate(circleId: String) {
         // Show loading
         let loadingAlert = UIAlertController(title: "Loading", message: "Loading circle...", preferredStyle: .alert)
         present(loadingAlert, animated: true)
@@ -7330,7 +7330,7 @@ extension CirclesHomeViewController {
         }
     }
     
-    private func navigateToVideo(withId videoId: String) {
+    func navigateToVideo(withId videoId: String) {
         // Show loading indicator
         let loadingAlert = AlertPresenter.showLoading(message: "Loading video...", from: self)
         
@@ -7368,7 +7368,7 @@ extension CirclesHomeViewController {
         }
     }
     
-    private func navigateToCheckInPlace(activity: Activity) {
+    func navigateToCheckInPlace(activity: Activity) {
         // First check if we have the place ID and can find it in our loaded data
         if let placeId = activity.metadata?.placeId,
            let place = allPlaces.first(where: { $0.id == placeId }) {
@@ -7406,7 +7406,7 @@ extension CirclesHomeViewController {
         }
     }
     
-    private func navigateToCheckInPlaceFromMetadata(activity: Activity) {
+    func navigateToCheckInPlaceFromMetadata(activity: Activity) {
         // Create a temporary place from check-in metadata
         guard let metadata = activity.metadata else {
             showError("Unable to load place details for this check-in")
@@ -7473,7 +7473,7 @@ extension CirclesHomeViewController {
         navigationController?.pushViewController(placeDetailVC, animated: true)
     }
     
-    private func loadPlaceAndNavigate(placeId: String) {
+    func loadPlaceAndNavigate(placeId: String) {
         // Show loading
         let loadingAlert = UIAlertController(title: "Loading", message: "Loading place...", preferredStyle: .alert)
         present(loadingAlert, animated: true)
@@ -7554,7 +7554,7 @@ extension CirclesHomeViewController {
     }
     
     // Helper method to confirm and delete activity
-    private func confirmDeleteActivity(at indexPath: IndexPath, completion: @escaping (Bool) -> Void) {
+    func confirmDeleteActivity(at indexPath: IndexPath, completion: @escaping (Bool) -> Void) {
         guard let activity = singleActivity(at: indexPath.row) else {
             completion(false)
             return
@@ -7579,7 +7579,7 @@ extension CirclesHomeViewController {
     }
     
     // Method to delete activity from backend and update UI
-    private func deleteActivity(_ activity: Activity, at indexPath: IndexPath, completion: @escaping (Bool) -> Void) {
+    func deleteActivity(_ activity: Activity, at indexPath: IndexPath, completion: @escaping (Bool) -> Void) {
         // Call API to delete activity
         let endpoint = "activities/\(activity.id)"
         
@@ -7809,7 +7809,7 @@ extension CirclesHomeViewController {
         }
     }
     
-    private func refreshActivityFeedWithNewItem() {
+    func refreshActivityFeedWithNewItem() {
         // Smart refresh - only load new items without full reload
         // This prevents scroll position loss and provides better UX
         
@@ -8131,7 +8131,7 @@ extension CirclesHomeViewController: VideoLinkInputDelegate {
 // MARK: - Video Management
 
 extension CirclesHomeViewController {
-    private func loadReelVideo(at index: Int) {
+    func loadReelVideo(at index: Int) {
         guard index >= 0 && index < reels.count else { 
             reelVideoStates[index] = .failed
             return 
@@ -8197,7 +8197,7 @@ extension CirclesHomeViewController {
         }
     }
     
-    private func updateCurrentReelIndex() {
+    func updateCurrentReelIndex() {
         let center = CGPoint(x: reelsCollectionView.frame.size.width / 2 + reelsCollectionView.contentOffset.x,
                             y: reelsCollectionView.frame.size.height / 2 + reelsCollectionView.contentOffset.y)
         
@@ -8216,7 +8216,7 @@ extension CirclesHomeViewController {
         }
     }
     
-    private func playVideo(at index: Int) {
+    func playVideo(at index: Int) {
         guard index >= 0 && index < reels.count else { return }
         
         // Track view for both photos and videos
@@ -8241,20 +8241,20 @@ extension CirclesHomeViewController {
         }
     }
     
-    private func pauseVideo(at index: Int) {
+    func pauseVideo(at index: Int) {
         if let player = reelPlayers[index] {
             player.pause()
             Logger.debug("⏸ CirclesHome: Paused video at index \(index)")
         }
     }
     
-    private func pauseAllVideos() {
+    func pauseAllVideos() {
         for player in reelPlayers.values {
             player.pause()
         }
     }
     
-    private func trackReelView(at index: Int) {
+    func trackReelView(at index: Int) {
         guard index >= 0 && index < reels.count else { return }
         
         let reel = reels[index]
@@ -8276,7 +8276,7 @@ extension CirclesHomeViewController {
         }
     }
     
-    private func preloadAdjacentVideos() {
+    func preloadAdjacentVideos() {
         // Preload videos around current index
         let preloadRange = max(0, currentReelIndex - 1)...min(reels.count - 1, currentReelIndex + 1)
         
@@ -8292,7 +8292,7 @@ extension CirclesHomeViewController {
         releaseDistantVideos()
     }
     
-    private func releaseDistantVideos() {
+    func releaseDistantVideos() {
         // Release videos that are more than 2 positions away
         for (index, player) in reelPlayers {
             if abs(index - currentReelIndex) > 2 {
@@ -8515,7 +8515,7 @@ extension CirclesHomeViewController: VideoReelCellDelegate {
     
     // MARK: - Notification Badge Timer Management
     
-    private func startNotificationBadgeRefresh() {
+    func startNotificationBadgeRefresh() {
         // Invalidate existing timer
         notificationBadgeTimer?.invalidate()
 
@@ -8526,7 +8526,7 @@ extension CirclesHomeViewController: VideoReelCellDelegate {
         }
     }
     
-    private func stopNotificationBadgeRefresh() {
+    func stopNotificationBadgeRefresh() {
         notificationBadgeTimer?.invalidate()
         notificationBadgeTimer = nil
         Logger.debug("🔔 [Timer] Stopped periodic notification badge refresh")
