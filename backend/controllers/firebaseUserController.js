@@ -791,7 +791,12 @@ exports.searchUsers = async (req, res, next) => {
       const displayNameMatch = user.displayName && user.displayName.toLowerCase().startsWith(searchTerm);
       const firstNameMatch = user.firstName && user.firstName.toLowerCase().startsWith(searchTerm);
       const lastNameMatch = user.lastName && user.lastName.toLowerCase().startsWith(searchTerm);
-      const phoneMatch = user.phoneNumber && user.phoneNumber.replace(/\D/g, '').startsWith(searchTerm.replace(/\D/g, ''));
+      // Phone match ONLY when the query actually contains digits. Previously
+      // a text query (e.g. "william") stripped to "" and every phone number
+      // ".startsWith('')" → true, so everyone with a phone matched.
+      const queryDigits = searchTerm.replace(/\D/g, '');
+      const phoneMatch = queryDigits.length >= 3 && user.phoneNumber &&
+        user.phoneNumber.replace(/\D/g, '').includes(queryDigits);
       
       // Also check if any word in display name starts with search term
       const displayNameWords = user.displayName ? user.displayName.toLowerCase().split(' ') : [];
@@ -848,21 +853,22 @@ exports.searchUsers = async (req, res, next) => {
       }
     }
     
-    // Sort results by relevance (exact matches first, then partial matches)
+    // Sort by relevance: exact name/email, then name-prefix, then a word in
+    // the name starting with the query, then email-prefix, then everything
+    // else (e.g. phone-only) — alphabetical within each tier.
+    const relevanceRank = (u) => {
+      const name = (u.displayName || '').toLowerCase();
+      const email = (u.email || '').toLowerCase();
+      if (name === searchTerm || email === searchTerm) return 0;
+      if (name.startsWith(searchTerm)) return 1;
+      if (name.split(' ').some(w => w.startsWith(searchTerm))) return 2;
+      if (email.startsWith(searchTerm)) return 3;
+      return 4;
+    };
     matchingUsers.sort((a, b) => {
-      // Prioritize exact email matches
-      const aExact = a.email?.toLowerCase() === searchTerm;
-      const bExact = b.email?.toLowerCase() === searchTerm;
-      if (aExact && !bExact) return -1;
-      if (!aExact && bExact) return 1;
-      
-      // Then prioritize display name matches
-      const aNameExact = a.displayName?.toLowerCase() === searchTerm;
-      const bNameExact = b.displayName?.toLowerCase() === searchTerm;
-      if (aNameExact && !bNameExact) return -1;
-      if (!aNameExact && bNameExact) return 1;
-      
-      // Finally sort alphabetically
+      const ra = relevanceRank(a);
+      const rb = relevanceRank(b);
+      if (ra !== rb) return ra - rb;
       return (a.displayName || '').localeCompare(b.displayName || '');
     });
     
