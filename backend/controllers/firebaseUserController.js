@@ -224,13 +224,6 @@ exports.updateUser = async (req, res, next) => {
       if (preferences.defaultHomeView !== undefined && typeof preferences.defaultHomeView === 'string') {
         updateData['preferences.defaultHomeView'] = preferences.defaultHomeView;
       }
-      if (preferences.enabledNewsSources !== undefined) {
-        const { isValidSourceId } = require('../services/newsService');
-        const sources = Array.isArray(preferences.enabledNewsSources)
-          ? preferences.enabledNewsSources.filter((id) => typeof id === 'string' && isValidSourceId(id))
-          : [];
-        updateData['preferences.enabledNewsSources'] = sources;
-      }
     }
     if (profilePicture !== undefined) {
       updateData.profilePicture = profilePicture;

@@ -2,7 +2,7 @@ import UIKit
 
 /// One row in the home-page Specials tab: a live offer or announcement from a
 /// participating venue. Flat list — one row per deal, venue repeated as the
-/// subtitle. Structure mirrors NewsArticleCell.
+/// subtitle.
 struct SpecialItem {
     enum Kind {
         case offer(RewardOffer)

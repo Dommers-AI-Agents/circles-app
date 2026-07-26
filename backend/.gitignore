@@ -49,3 +49,17 @@ ios-config-update.txt
 
 # Package lock files (if using yarn)
 yarn.lock
+# Firestore data dumps — never commit (PII)
+backups/
+# One-off ops/debug/migration scripts kept local, not deployed
+debug-*.js
+delete-*.js
+find-*.js
+fix-*.js
+list-*.js
+migrate-*.js
+remove-*.js
+reset-*.js
+send-*.js
+trigger-*.js
+verify-*.js

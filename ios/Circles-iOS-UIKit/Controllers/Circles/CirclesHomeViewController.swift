@@ -822,36 +822,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return tableView
     }()
 
-    // News tab: merged publisher-RSS headlines (fetched via the backend)
-    private let newsFeedTableView: UITableView = {
-        let tableView = UITableView()
-        tableView.backgroundColor = Constants.Colors.background
-        tableView.separatorStyle = .none
-        tableView.rowHeight = UITableView.automaticDimension
-        tableView.estimatedRowHeight = 100
-        tableView.showsVerticalScrollIndicator = true
-        tableView.translatesAutoresizingMaskIntoConstraints = false
-        tableView.isHidden = true // Hidden until the News tab is selected
-        return tableView
-    }()
-
-    // Gear overlay on the News tab — reopens the source picker
-    private let newsSettingsButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "gearshape"), for: .normal)
-        button.tintColor = Constants.Colors.primary
-        button.isHidden = true // Shown only on the News tab
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.accessibilityLabel = "Feed sources"
-        return button
-    }()
-
-    private var newsArticles: [NewsArticle] = []
-    private var isLoadingNews = false
-    private var newsSourceCatalog: [NewsSource] = []
-    private var newsEnabledSourceIds: [String]? = nil // nil = never configured
-    private var hasAutoPresentedNewsPicker = false
-
     // Specials tab: live offers and announcements from participating venues,
     // one row per deal in the server's order (saved venues first, then nearest)
     private let specialsTableView: UITableView = {
@@ -868,10 +838,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
     private var specials: [SpecialItem] = []
     private var isLoadingSpecials = false
-    // Suppresses the reset-to-Activity-on-appear when a modal presented over
-    // the Feeds tab (article sheet, source picker) is dismissed
-    private var skipTabResetOnNextAppear = false
-    
+
     // Reels collection view for vertical video feed
     private let reelsCollectionView: UICollectionView = {
         let layout = UICollectionViewFlowLayout()
@@ -1725,12 +1692,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Check for daily summary data
         checkForDailySummary()
         
-        // Ensure Activity tab is selected when returning to home — but not
-        // when this appearance is just a modal (e.g. an article's Safari
-        // sheet) being dismissed over the Feeds tab
-        if skipTabResetOnNextAppear {
-            skipTabResetOnNextAppear = false
-        } else if contentSegmentedControl.selectedSegmentIndex != 0 {
+        // Ensure Activity tab is selected when returning to home
+        if contentSegmentedControl.selectedSegmentIndex != 0 {
             contentSegmentedControl.selectedSegmentIndex = 0
             contentSegmentChanged()
         }
@@ -2186,9 +2149,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         activityFeedSection.addSubview(momentsCameraButton)
         activityFeedSection.addSubview(activityTableView)
         activityFeedSection.addSubview(reelsCollectionView)
-        activityFeedSection.addSubview(newsFeedTableView)
         activityFeedSection.addSubview(specialsTableView)
-        activityFeedSection.addSubview(newsSettingsButton)
         activityFeedSection.addSubview(activityEmptyStateLabel)
         activityFeedSection.addSubview(activityLoadingContainer)
         
@@ -2196,7 +2157,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         activityFeedSection.bringSubviewToFront(activityLoadingContainer)
         // Ensure camera button is on top of segmented control
         activityFeedSection.bringSubviewToFront(momentsCameraButton)
-        activityFeedSection.bringSubviewToFront(newsSettingsButton)
         
         // Add loading container
         view.addSubview(loadingContainerView)
@@ -2410,23 +2370,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             reelsCollectionView.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor),
             reelsCollectionView.bottomAnchor.constraint(equalTo: activityFeedSection.bottomAnchor),
 
-            // News feed table (same slot as the other two content views)
-            newsFeedTableView.topAnchor.constraint(equalTo: contentSegmentedControl.bottomAnchor, constant: Constants.Spacing.small),
-            newsFeedTableView.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor),
-            newsFeedTableView.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor),
-            newsFeedTableView.bottomAnchor.constraint(equalTo: activityFeedSection.bottomAnchor),
-
             // Specials table (same slot as the other content views)
             specialsTableView.topAnchor.constraint(equalTo: contentSegmentedControl.bottomAnchor, constant: Constants.Spacing.small),
             specialsTableView.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor),
             specialsTableView.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor),
             specialsTableView.bottomAnchor.constraint(equalTo: activityFeedSection.bottomAnchor),
-
-            // News settings gear - overlay on the right side of the News segment
-            newsSettingsButton.centerYAnchor.constraint(equalTo: contentSegmentedControl.centerYAnchor),
-            newsSettingsButton.trailingAnchor.constraint(equalTo: contentSegmentedControl.trailingAnchor, constant: -5),
-            newsSettingsButton.widthAnchor.constraint(equalToConstant: 32),
-            newsSettingsButton.heightAnchor.constraint(equalToConstant: 32),
 
             // Activity empty state
             activityEmptyStateLabel.centerXAnchor.constraint(equalTo: activityFeedSection.centerXAnchor),
@@ -2553,15 +2501,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         reelsCollectionView.dataSource = self
         reelsCollectionView.register(VideoReelCell.self, forCellWithReuseIdentifier: "VideoReelCell")
 
-        // Setup news feed table view
-        newsFeedTableView.delegate = self
-        newsFeedTableView.dataSource = self
-        newsFeedTableView.register(NewsArticleCell.self, forCellReuseIdentifier: NewsArticleCell.identifier)
-
         specialsTableView.delegate = self
         specialsTableView.dataSource = self
         specialsTableView.register(SpecialItemCell.self, forCellReuseIdentifier: SpecialItemCell.identifier)
-        newsSettingsButton.addTarget(self, action: #selector(newsSettingsTapped), for: .touchUpInside)
 
         // Setup segmented control
         contentSegmentedControl.addTarget(self, action: #selector(contentSegmentChanged), for: .valueChanged)
@@ -2740,10 +2682,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             // Show Activity feed
             activityTableView.isHidden = false
             reelsCollectionView.isHidden = true
-            newsFeedTableView.isHidden = true
             specialsTableView.isHidden = true
             momentsCameraButton.isHidden = true
-            newsSettingsButton.isHidden = true
             activityHeaderLabel.text = "Recent Activity"
 
             // Pause any playing videos
@@ -2757,9 +2697,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             // Show Reels feed
             activityTableView.isHidden = true
             reelsCollectionView.isHidden = false
-            newsFeedTableView.isHidden = true
             specialsTableView.isHidden = true
-            newsSettingsButton.isHidden = true
 
             // Reset to first video
             currentReelIndex = 0
@@ -2790,10 +2728,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             // Show Specials (live offers + announcements from participating venues)
             activityTableView.isHidden = true
             reelsCollectionView.isHidden = true
-            newsFeedTableView.isHidden = true
             specialsTableView.isHidden = false
             momentsCameraButton.isHidden = true
-            newsSettingsButton.isHidden = true
             activityHeaderLabel.text = "Specials"
 
             // Pause any playing videos (may be arriving from Moments)
@@ -2966,108 +2902,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         navigationController?.pushViewController(detailVC, animated: true)
     }
 
-    // MARK: - News Feed Methods
-
-    private func fetchNewsFeed(force: Bool = false) {
-        guard !isLoadingNews else { return }
-        isLoadingNews = true
-
-        if newsArticles.isEmpty {
-            activityLoadingContainer.isHidden = false
-            activityLoadingIndicator.startAnimating()
-            activityEmptyStateLabel.isHidden = true
-        }
-
-        NewsService.shared.fetchFeed { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                self.isLoadingNews = false
-                self.activityLoadingIndicator.stopAnimating()
-                self.activityLoadingContainer.isHidden = true
-                self.scrollView.refreshControl?.endRefreshing()
-
-                // Only touch shared UI if News is still the visible tab
-                let onNewsTab = self.contentSegmentedControl.selectedSegmentIndex == 2
-
-                switch result {
-                case .success(let response):
-                    self.newsArticles = response.articles
-                    self.newsFeedTableView.reloadData()
-
-                    if !response.configured {
-                        // Never configured (or explicitly no sources)
-                        if onNewsTab {
-                            self.activityEmptyStateLabel.text = "Choose your feeds to get started"
-                            self.activityEmptyStateLabel.isHidden = false
-                        }
-                        // First-run: open the picker automatically, once
-                        if !self.hasAutoPresentedNewsPicker && onNewsTab {
-                            self.hasAutoPresentedNewsPicker = true
-                            self.presentNewsSourcePicker()
-                        }
-                    } else if response.articles.isEmpty {
-                        if onNewsTab {
-                            self.activityEmptyStateLabel.text = "No articles right now — pull to refresh"
-                            self.activityEmptyStateLabel.isHidden = false
-                        }
-                    } else if onNewsTab {
-                        self.activityEmptyStateLabel.isHidden = true
-                    }
-
-                case .failure:
-                    if self.newsArticles.isEmpty && onNewsTab {
-                        self.activityEmptyStateLabel.text = "Couldn't load your feeds — pull to refresh"
-                        self.activityEmptyStateLabel.isHidden = false
-                    }
-                }
-            }
-        }
-    }
-
-    @objc private func newsSettingsTapped() {
-        presentNewsSourcePicker()
-    }
-
-    private func presentNewsSourcePicker() {
-        guard presentedViewController == nil else { return }
-
-        NewsService.shared.fetchSources { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                switch result {
-                case .success(let response):
-                    self.newsSourceCatalog = response.sources
-                    self.newsEnabledSourceIds = response.enabledSourceIds
-
-                    let picker = NewsSourcePickerViewController(
-                        sources: response.sources,
-                        enabledIds: response.enabledSourceIds
-                    )
-                    picker.onSave = { [weak self] ids in
-                        guard let self = self else { return }
-                        self.newsEnabledSourceIds = ids
-                        self.newsArticles = []
-                        self.newsFeedTableView.reloadData()
-                        self.fetchNewsFeed(force: true)
-                    }
-                    let nav = UINavigationController(rootViewController: picker)
-                    nav.modalPresentationStyle = .pageSheet
-                    self.present(nav, animated: true)
-                case .failure(let error):
-                    self.showError(error)
-                }
-            }
-        }
-    }
-
-    private func openNewsArticle(_ article: NewsArticle) {
-        guard let url = URL(string: article.link), url.scheme?.hasPrefix("http") == true else { return }
-        let safari = SFSafariViewController(url: url)
-        safari.preferredControlTintColor = Constants.Colors.primary
-        skipTabResetOnNextAppear = true // stay on Feeds when the sheet closes
-        present(safari, animated: true)
-    }
-    
     private func fetchActivities(loadMore: Bool = false, completion: ((Bool) -> Void)? = nil) {
         guard !isLoadingActivities && !isLoadingMoreActivities else { 
             print("🔄 Already loading activities, skipping...")
@@ -6249,8 +6083,6 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             }
         } else if tableView == activityTableView {
             return feedItems.count
-        } else if tableView == newsFeedTableView {
-            return newsArticles.count
         } else if tableView == specialsTableView {
             return specials.count
         }
@@ -6422,11 +6254,6 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 cell.setGroupChildStyle(false)
             }
             return cell
-        } else if tableView == newsFeedTableView {
-            let cell = tableView.dequeueReusableCell(withIdentifier: NewsArticleCell.identifier, for: indexPath) as! NewsArticleCell
-            guard indexPath.row < newsArticles.count else { return cell }
-            cell.configure(with: newsArticles[indexPath.row])
-            return cell
         } else if tableView == specialsTableView {
             let cell = tableView.dequeueReusableCell(withIdentifier: SpecialItemCell.identifier, for: indexPath) as! SpecialItemCell
             guard indexPath.row < specials.count else { return cell }
@@ -6483,12 +6310,6 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
         if tableView == placesListTableView {
             guard indexPath.row < distanceSortedPlaces.count else { return }
             presentDetailForPlace(distanceSortedPlaces[indexPath.row].place)
-            return
-        }
-
-        if tableView == newsFeedTableView {
-            guard indexPath.row < newsArticles.count else { return }
-            openNewsArticle(newsArticles[indexPath.row])
             return
         }
 
