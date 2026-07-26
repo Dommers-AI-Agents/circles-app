@@ -534,7 +534,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     // (cache apply, fast-path load) reload the table without going through
     // updateActivityFeed(), and the table renders from feedItems
     var activities: [Activity] = [] {
-        didSet { regroupActivities() }
+        didSet {
+            regroupActivities()
+            // Runs for EVERY load path (cache/fast-API/preload set activities
+            // then reloadData directly, bypassing updateActivityFeed) so the
+            // viewport-fill isn't tied to one code path.
+            fillActivityViewportIfNeeded()
+        }
     }
     var isLoadingActivities = false
     var activityTableHeightConstraint: NSLayoutConstraint?
@@ -2949,24 +2955,26 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Table view now handles its own scrolling with fixed height
         view.layoutIfNeeded()
 
-        // Grouping can collapse an entire fetched page into a single row (e.g.
-        // one actor bulk-adding many places), leaving too few rows to scroll —
-        // so the scroll-triggered load-more never fires and the rest of the
-        // history never loads. Auto-load the next page until there's enough to
-        // fill the viewport (capped so a huge single-actor import can't loop).
-        if contentSegmentedControl.selectedSegmentIndex == 0,
-           feedItems.count < 8,
-           hasMoreActivities,
-           !isLoadingActivities,
-           !isLoadingMoreActivities,
-           activities.count < 300 {
-            // Launch paths (cache/fast-API/performInitialDataLoad) populate
-            // `activities` without maintaining currentOffset, so anchor the next
-            // page to what's actually loaded — otherwise loadMore re-fetches
-            // page 1 and dedup drops it, stalling the fill.
-            currentOffset = activities.count
-            fetchActivities(loadMore: true)
-        }
+        fillActivityViewportIfNeeded()
+    }
+
+    /// Grouping can collapse an entire fetched page into a single row (e.g. one
+    /// actor bulk-adding many places), leaving too few rows to scroll — so the
+    /// scroll-triggered load-more never fires and the rest of the history never
+    /// loads. Auto-load the next page until there's enough to fill the viewport
+    /// (capped so a huge single-actor import can't loop).
+    func fillActivityViewportIfNeeded() {
+        guard contentSegmentedControl.selectedSegmentIndex == 0,
+              feedItems.count < 8,
+              hasMoreActivities,
+              !isLoadingActivities,
+              !isLoadingMoreActivities,
+              activities.count < 300 else { return }
+        // Launch paths populate `activities` without maintaining currentOffset,
+        // so anchor the next page to what's actually loaded — otherwise loadMore
+        // re-fetches page 1 and dedup drops it, stalling the fill.
+        currentOffset = activities.count
+        fetchActivities(loadMore: true)
     }
 
     // MARK: - Reels Methods
