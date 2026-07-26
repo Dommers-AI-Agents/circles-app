@@ -60,11 +60,13 @@ class Logger {
         let fileName = (file as NSString).lastPathComponent
         let timestamp = DateFormatter.logFormatter.string(from: Date())
 
+        // Must use raw print(): this IS the logger's output. (A print->Logger
+        // .debug sweep once rewrote these and caused infinite recursion.)
         #if DEBUG
-        Logger.debug("\(level.prefix) [\(timestamp)] \(fileName):\(line) \(function) - \(message())")
+        print("\(level.prefix) [\(timestamp)] \(fileName):\(line) \(function) - \(message())")
         #else
         if level == .error {
-            Logger.debug("\(level.prefix) [\(timestamp)] \(fileName):\(line) - \(message())")
+            print("\(level.prefix) [\(timestamp)] \(fileName):\(line) - \(message())")
         }
         #endif
     }
