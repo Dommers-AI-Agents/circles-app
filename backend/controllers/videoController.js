@@ -758,13 +758,30 @@ exports.getVideoDetails = async (req, res) => {
     }
     
     const videoData = videoDoc.data();
-    
-    // Check visibility
-    if (videoData.visibility === 'private' && videoData.userId !== userId) {
-      return res.status(403).json({
-        success: false,
-        message: 'Video is private'
-      });
+
+    // Visibility check based on the viewer's relationship to the owner.
+    // (Previously only 'private' was blocked, so network/followers moments were
+    // viewable by anyone holding the id.)
+    if (videoData.userId !== userId) {
+      const owner = videoData.userId;
+      let allowed = videoData.visibility === 'public';
+      if (!allowed && videoData.visibility === 'network') {
+        const [c1, c2] = await Promise.all([
+          db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', userId).where('connectedUserId', '==', owner).where('status', '==', 'accepted').get(),
+          db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', owner).where('connectedUserId', '==', userId).where('status', '==', 'accepted').get()
+        ]);
+        allowed = !c1.empty || !c2.empty;
+      } else if (!allowed && videoData.visibility === 'followers') {
+        const meDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+        allowed = (meDoc.exists ? (meDoc.data().following || []) : []).includes(owner);
+      }
+      // 'private' (or unknown) → allowed stays false
+      if (!allowed) {
+        return res.status(403).json({
+          success: false,
+          message: 'You do not have access to this moment'
+        });
+      }
     }
     
     // Update view count and last viewed
@@ -1006,7 +1023,7 @@ exports.updateVideo = async (req, res) => {
     }
     
     if (visibility !== undefined) {
-      const validVisibility = ['public', 'network', 'private'];
+      const validVisibility = ['public', 'followers', 'network', 'private'];
       if (!validVisibility.includes(visibility)) {
         return res.status(400).json({
           success: false,
@@ -1125,234 +1142,52 @@ exports.getReelsFeed = async (req, res) => {
     // Combine for user content discovery
     const allUserIds = new Set([...connectionIds, ...followingIds]);
     
-    // Algorithm: Mix of following (40%), popular (30%), nearby (20%), random (10%)
-    const videos = [];
+    // A viewer may see a moment by its visibility + their relationship to the
+    // owner: public (anyone in their graph), network/"Connections" (accepted
+    // connections only), followers (people who follow the owner), private (self).
+    const canView = (v) => {
+      if (v.userId === userId) return true;
+      switch (v.visibility) {
+        case 'public': return true;
+        case 'network': return connectionIds.has(v.userId);
+        case 'followers': return followingIds.has(v.userId);
+        case 'private': return false;
+        default: return v.visibility === 'public';
+      }
+    };
+
+    // Fetch recent ready moments from everyone in the viewer's graph, batched for
+    // Firestore's 30-value IN limit. Visibility is filtered in JS (Firestore
+    // allows only one IN per query, so userId-IN can't be combined with a
+    // visibility filter) — over-fetch a little to cover filtered-out items.
+    const graphIds = Array.from(allUserIds);
+    const idBatches = [];
+    for (let i = 0; i < graphIds.length; i += 30) idBatches.push(graphIds.slice(i, i + 30));
+    const need = parseInt(offset) + parseInt(limit);
+
+    const snaps = graphIds.length > 0 ? await Promise.all(idBatches.map(batch =>
+      db.collection(COLLECTIONS.PLACE_VIDEOS)
+        .where('userId', 'in', batch)
+        .where('uploadStatus', '==', 'ready')
+        .where('deletedAt', '==', null)
+        .orderBy('createdAt', 'desc')
+        .limit(need + 20)
+        .get()
+    )) : [];
+
     const seenVideoIds = new Set();
-    
-    // 1. Recent videos from ALL connections/following (prioritize recency)
-    if (allUserIds.size > 1) {
-      // First, get most recent videos from ALL connections to ensure newest content appears
-      const allUserIdsArray = Array.from(allUserIds);
-      
-      // Handle Firestore IN query limit (30 values max) with batching
-      let recentVideos = [];
-      
-      if (allUserIdsArray.length <= 30) {
-        // Split visibility query to avoid too many disjunctions
-        const [publicQuery, networkQuery] = await Promise.all([
-          db.collection(COLLECTIONS.PLACE_VIDEOS)
-            .where('userId', 'in', allUserIdsArray)
-            .where('uploadStatus', '==', 'ready')
-            .where('deletedAt', '==', null)
-            .where('visibility', '==', 'public')
-            .orderBy('createdAt', 'desc')
-            .limit(8)
-            .get(),
-          db.collection(COLLECTIONS.PLACE_VIDEOS)
-            .where('userId', 'in', allUserIdsArray)
-            .where('uploadStatus', '==', 'ready')
-            .where('deletedAt', '==', null)
-            .where('visibility', '==', 'network')
-            .orderBy('createdAt', 'desc')
-            .limit(8)
-            .get()
-        ]);
-        
-        // Combine and sort results, then take top 8
-        const allVideos = [...publicQuery.docs, ...networkQuery.docs];
-        recentVideos = allVideos
-          .sort((a, b) => {
-            const dateA = a.data().createdAt;
-            const dateB = b.data().createdAt;
-            return new Date(dateB) - new Date(dateA);
-          })
-          .slice(0, 8);
-      } else {
-        // Batch queries for users with large networks
-        const userBatches = [];
-        for (let i = 0; i < allUserIdsArray.length; i += 30) {
-          userBatches.push(allUserIdsArray.slice(i, i + 30));
-        }
-        
-        const batchPromises = userBatches.flatMap(batch => [
-          db.collection(COLLECTIONS.PLACE_VIDEOS)
-            .where('userId', 'in', batch)
-            .where('uploadStatus', '==', 'ready')
-            .where('deletedAt', '==', null)
-            .where('visibility', '==', 'public')
-            .orderBy('createdAt', 'desc')
-            .limit(4) // Limit per batch to avoid too many results
-            .get(),
-          db.collection(COLLECTIONS.PLACE_VIDEOS)
-            .where('userId', 'in', batch)
-            .where('uploadStatus', '==', 'ready')
-            .where('deletedAt', '==', null)
-            .where('visibility', '==', 'network')
-            .orderBy('createdAt', 'desc')
-            .limit(4)
-            .get()
-        ]);
-        
-        const batchResults = await Promise.all(batchPromises);
-        const allDocs = batchResults.flatMap(result => result.docs);
-        
-        // Sort all results by createdAt and take top 8
-        recentVideos = allDocs
-          .sort((a, b) => {
-            const dateA = a.data().createdAt;
-            const dateB = b.data().createdAt;
-            return new Date(dateB) - new Date(dateA);
-          })
-          .slice(0, 8);
-      }
-      
-      console.log(`📹 Found ${recentVideos.length} most recent videos from network`);
-      
-      recentVideos.forEach(doc => {
-        if (!seenVideoIds.has(doc.id)) {
-          videos.push({ ...serializeDoc(doc), algorithm: 'recent' });
-          seenVideoIds.add(doc.id);
-        }
-      });
-      
-      // 2. Additional videos from connections (if we need more variety)
-      if (videos.length < 12) {
-        const connectionArray = Array.from(connectionIds);
-        if (connectionArray.length > 1) {
-          // Use deterministic selection instead of random to ensure consistency
-          const selectedConnections = connectionArray.length > 10 
-            ? connectionArray.slice(0, 10) // Take first 10 instead of random
-            : connectionArray;
-          
-          console.log(`📹 Fetching additional reels from ${selectedConnections.length} connections`);
-          
-          // Split visibility query to avoid too many disjunctions
-          const [publicConnVideos, networkConnVideos] = await Promise.all([
-            db.collection(COLLECTIONS.PLACE_VIDEOS)
-              .where('userId', 'in', selectedConnections)
-              .where('uploadStatus', '==', 'ready')
-              .where('deletedAt', '==', null)
-              .where('visibility', '==', 'public')
-              .orderBy('createdAt', 'desc')
-              .limit(6)
-              .get(),
-            db.collection(COLLECTIONS.PLACE_VIDEOS)
-              .where('userId', 'in', selectedConnections)
-              .where('uploadStatus', '==', 'ready')
-              .where('deletedAt', '==', null)
-              .where('visibility', '==', 'network')
-              .orderBy('createdAt', 'desc')
-              .limit(6)
-              .get()
-          ]);
-          
-          const connectionVideos = {
-            docs: [...publicConnVideos.docs, ...networkConnVideos.docs]
-              .sort((a, b) => {
-                const dateA = a.data().createdAt;
-                const dateB = b.data().createdAt;
-                return new Date(dateB) - new Date(dateA);
-              })
-              .slice(0, 6)
-          };
-          
-          connectionVideos.docs.forEach(doc => {
-            if (!seenVideoIds.has(doc.id)) {
-              videos.push({ ...serializeDoc(doc), algorithm: 'connections' });
-              seenVideoIds.add(doc.id);
-            }
-          });
-        }
-      }
-    }
-    
-    // Final check: if we still don't have enough videos, fetch more from any network user
-    if (videos.length < 10 && allUserIds.size > 1) {
-      const connectionArray = Array.from(connectionIds);
-      // Limit to 10 users to avoid Firestore query limits
-      const limitedConnections = connectionArray.length > 10 
-        ? connectionArray.sort(() => 0.5 - Math.random()).slice(0, 10)
-        : connectionArray;
-      console.log(`📹 Fetching additional reels from ${limitedConnections.length} connections`);
-      
-      // Split visibility query to avoid too many disjunctions
-      const [publicMoreVideos, networkMoreVideos] = await Promise.all([
-        db.collection(COLLECTIONS.PLACE_VIDEOS)
-          .where('userId', 'in', limitedConnections)
-          .where('uploadStatus', '==', 'ready')
-          .where('deletedAt', '==', null)
-          .where('visibility', '==', 'public')
-          .orderBy('createdAt', 'desc')
-          .limit(20)
-          .get(),
-        db.collection(COLLECTIONS.PLACE_VIDEOS)
-          .where('userId', 'in', limitedConnections)
-          .where('uploadStatus', '==', 'ready')
-          .where('deletedAt', '==', null)
-          .where('visibility', '==', 'network')
-          .orderBy('createdAt', 'desc')
-          .limit(20)
-          .get()
-      ]);
-      
-      const moreConnectionVideos = {
-        docs: [...publicMoreVideos.docs, ...networkMoreVideos.docs]
-          .sort((a, b) => {
-            const dateA = a.data().createdAt;
-            const dateB = b.data().createdAt;
-            return new Date(dateB) - new Date(dateA);
-          })
-          .slice(0, 20)
-      };
-      
-      moreConnectionVideos.docs.forEach(doc => {
-        if (!seenVideoIds.has(doc.id)) {
-          videos.push({ ...serializeDoc(doc), algorithm: 'connections' });
-          seenVideoIds.add(doc.id);
-        }
-      });
-    }
-    
-    // 3. More videos from following if still need more
-    if (videos.length < 15 && followingIds.size > 0) {
-      const followingArray = Array.from(followingIds).filter(id => !connectionIds.has(id));
-      if (followingArray.length > 0) {
-        // Limit to 10 users to avoid Firestore query limits
-        const limitedFollowing = followingArray.length > 10
-          ? followingArray.sort(() => 0.5 - Math.random()).slice(0, 10)
-          : followingArray;
-        console.log(`📹 Fetching additional reels from ${limitedFollowing.length} followed users`);
-        
-        const moreFollowingVideos = await db.collection(COLLECTIONS.PLACE_VIDEOS)
-          .where('userId', 'in', limitedFollowing)
-          .where('uploadStatus', '==', 'ready')
-          .where('deletedAt', '==', null)
-          .where('visibility', '==', 'public')  // Following can only see public
-          .orderBy('createdAt', 'desc')
-          .limit(10)
-          .get();
-        
-        moreFollowingVideos.docs.forEach(doc => {
-          if (!seenVideoIds.has(doc.id)) {
-            videos.push({ ...serializeDoc(doc), algorithm: 'following' });
-            seenVideoIds.add(doc.id);
-          }
-        });
-      }
-    }
-    
-    // NO random or popular videos from unknown users - respecting privacy
-    
-    // Sort by most recent first
-    const shuffledVideos = videos.sort((a, b) => {
-      // Sort by createdAt in descending order (most recent first)
-      const dateA = new Date(a.createdAt);
-      const dateB = new Date(b.createdAt);
-      return dateB - dateA;
+    const videos = [];
+    snaps.flatMap(s => s.docs).forEach(doc => {
+      if (seenVideoIds.has(doc.id)) return;
+      const v = serializeDoc(doc);
+      if (!canView(v)) return;
+      seenVideoIds.add(doc.id);
+      videos.push(v);
     });
-    
+    videos.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
     // Apply pagination
-    const paginatedVideos = shuffledVideos.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
+    const paginatedVideos = videos.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
     
     // Populate user details
     const userIds = [...new Set(paginatedVideos.map(v => v.userId))];
@@ -1443,11 +1278,12 @@ exports.getUserReels = async (req, res) => {
     
     if (currentUserId === userId) {
       // User viewing their own content - show all
-      console.log(`📹 User viewing their own reels`);
-      visibilityFilter = ['public', 'network', 'private'];
+      visibilityFilter = ['public', 'followers', 'network', 'private'];
     } else {
-      // Check if users are connected
-      const [connection1, connection2] = await Promise.all([
+      // Build the filter from BOTH relationships: connections can see 'network',
+      // people who follow the owner can see 'followers'. They're independent
+      // audiences, so a viewer may qualify for either, both, or neither.
+      const [connection1, connection2, currentUserDoc] = await Promise.all([
         db.collection(COLLECTIONS.CONNECTIONS)
           .where('userId', '==', currentUserId)
           .where('connectedUserId', '==', userId)
@@ -1457,28 +1293,16 @@ exports.getUserReels = async (req, res) => {
           .where('userId', '==', userId)
           .where('connectedUserId', '==', currentUserId)
           .where('status', '==', 'accepted')
-          .get()
+          .get(),
+        db.collection(COLLECTIONS.USERS).doc(currentUserId).get()
       ]);
-      
+
       const isConnected = !connection1.empty || !connection2.empty;
-      
-      if (isConnected) {
-        // Connected users can see public and network content
-        console.log(`📹 Users are connected - showing public and network reels`);
-        visibilityFilter = ['public', 'network'];
-      } else {
-        // Check if current user is following the target user
-        const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(currentUserId).get();
-        if (currentUserDoc.exists) {
-          const following = currentUserDoc.data().following || [];
-          if (following.includes(userId)) {
-            console.log(`📹 User is following - showing public reels only`);
-            visibilityFilter = ['public'];
-          } else {
-            console.log(`📹 No relationship - showing public reels only`);
-          }
-        }
-      }
+      const isFollowing = (currentUserDoc.exists ? (currentUserDoc.data().following || []) : []).includes(userId);
+
+      visibilityFilter = ['public'];
+      if (isConnected) visibilityFilter.push('network');
+      if (isFollowing) visibilityFilter.push('followers');
     }
     
     const videosQuery = await db.collection(COLLECTIONS.PLACE_VIDEOS)
@@ -1621,12 +1445,14 @@ exports.getPlaceReels = async (req, res) => {
       
       if (video.visibility === 'public') {
         return true; // Public videos visible to all
+      } else if (video.visibility === 'followers') {
+        return isFollowing; // Followers-only: viewer must follow the owner
       } else if (video.visibility === 'network') {
-        return isConnected; // Network videos only visible to connections
+        return isConnected; // Connections-only ("network") visible to connections
       } else if (video.visibility === 'private') {
         return false; // Private videos not visible in place feeds
       }
-      
+
       return false; // Default deny
     });
     
@@ -1845,10 +1671,10 @@ exports.addEmbeddedVideo = async (req, res) => {
       placeName,
       title,
       description,
-      visibility = 'public',
+      visibility = 'followers',
       tags = []
     } = req.body;
-    
+
     // Validate URL
     if (!url || !url.startsWith('http')) {
       return res.status(400).json({

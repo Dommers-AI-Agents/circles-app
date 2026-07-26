@@ -398,7 +398,7 @@ const createPlaceVideo = (videoData, userId) => {
     fileSize: videoData.fileSize || 0, // bytes after compression
     originalSize: videoData.originalSize || 0, // bytes before compression
     compressionRatio: videoData.compressionRatio || 0,
-    visibility: videoData.visibility || 'public', // public, network, private
+    visibility: videoData.visibility || 'followers', // public, followers, network(=connections), private
     viewCount: 0,
     lastViewedAt: null,
     likeCount: 0,

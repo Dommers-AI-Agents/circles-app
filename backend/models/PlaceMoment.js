@@ -11,7 +11,8 @@ const CONTENT_TYPES = {
 
 const VISIBILITY_LEVELS = {
   PUBLIC: 'public',
-  NETWORK: 'network',
+  FOLLOWERS: 'followers',
+  NETWORK: 'network',   // "Connections" in the UI
   PRIVATE: 'private'
 };
 
@@ -36,7 +37,7 @@ const createPlaceMoment = (data) => {
     title: data.title || '',
     description: data.description || '',
     contentType: data.contentType, // video_uploaded, video_embedded, photo, carousel
-    visibility: data.visibility || VISIBILITY_LEVELS.PUBLIC,
+    visibility: data.visibility || VISIBILITY_LEVELS.FOLLOWERS,
     tags: data.tags || [],
     
     // Media URLs (for uploaded content)
