@@ -280,6 +280,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     private var networkPlaces: [Place] = [] // Cache for network places
     private var isLoadingNetworkPlaces = false
 
+    // Unified search: places (local, instant) + people (server, debounced).
+    // People results are the PEOPLE section of the search overlay; tapping one
+    // filters the map to a connection/followee, or opens a stranger's profile.
+    private var searchedUsers: [User] = []
+    private var userSearchWorkItem: DispatchWorkItem?
+
     // MARK: - Viewport-Based Network Place Loading
     // When true, network places load on demand for the visible map region
     // instead of the per-circle fan-out. Flip to false to restore old behavior.
@@ -336,7 +342,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     let searchBar: UISearchBar = {
         let searchBar = UISearchBar()
-        searchBar.placeholder = "Search your places..."
+        searchBar.placeholder = "Search places and people"
         searchBar.searchBarStyle = .minimal
         searchBar.backgroundColor = Constants.Colors.background
         searchBar.translatesAutoresizingMaskIntoConstraints = false
@@ -378,99 +384,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return tableView
     }()
     
-    private let quickAccessContainer: UIView = {
-        let view = UIView()
-        view.backgroundColor = Constants.Colors.white
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
-    
-    private let homeCard: UIView = {
-        let view = UIView()
-        // Google Maps blue color
-        view.backgroundColor = UIColor(red: 66/255.0, green: 133/255.0, blue: 244/255.0, alpha: 1.0) // #4285F4
-        view.layer.cornerRadius = 8
-        view.layer.shadowColor = UIColor.black.cgColor
-        view.layer.shadowOpacity = 0.1
-        view.layer.shadowOffset = CGSize(width: 0, height: 2)
-        view.layer.shadowRadius = 4
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
-    
-    private let workCard: UIView = {
-        let view = UIView()
-        // Google Maps blue color
-        view.backgroundColor = UIColor(red: 66/255.0, green: 133/255.0, blue: 244/255.0, alpha: 1.0) // #4285F4
-        view.layer.cornerRadius = 8
-        view.layer.shadowColor = UIColor.black.cgColor
-        view.layer.shadowOpacity = 0.1
-        view.layer.shadowOffset = CGSize(width: 0, height: 2)
-        view.layer.shadowRadius = 4
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
-    
-    private let quickAccessCard: UIView = {
-        let view = UIView()
-        // Google Maps blue color
-        view.backgroundColor = UIColor(red: 66/255.0, green: 133/255.0, blue: 244/255.0, alpha: 1.0) // #4285F4
-        view.layer.cornerRadius = 8
-        view.layer.shadowColor = UIColor.black.cgColor
-        view.layer.shadowOpacity = 0.1
-        view.layer.shadowOffset = CGSize(width: 0, height: 2)
-        view.layer.shadowRadius = 4
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
-    
-    private let homeButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-    
-    private let workButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-    
-    private let homeNavigateButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "location.fill"), for: .normal)
-        button.tintColor = .white
-        button.backgroundColor = UIColor.white.withAlphaComponent(0.2)
-        button.layer.cornerRadius = 12
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-    
-    private let workNavigateButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "location.fill"), for: .normal)
-        button.tintColor = .white
-        button.backgroundColor = UIColor.white.withAlphaComponent(0.2)
-        button.layer.cornerRadius = 12
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-    
-    private let quickAccessButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-    
-    private let quickAccessNavigateButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "location.fill"), for: .normal)
-        button.tintColor = .white
-        button.backgroundColor = UIColor.white.withAlphaComponent(0.2)
-        button.layer.cornerRadius = 12
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    // Quick-access bar (Home / Places / Work cards) removed from the home page —
+    // it added visual weight above the map and connections without earning it.
     
     private let filterContainer: UIView = {
         let view = UIView()
@@ -1763,19 +1678,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         if reelsCollectionView.bounds.width > 0 {
             reelsCollectionView.collectionViewLayout.invalidateLayout()
         }
-        
-        // Apply gradients to cards with Google Maps blue
-        let googleMapsBlue = UIColor(red: 66/255.0, green: 133/255.0, blue: 244/255.0, alpha: 1.0)
-        
-        addGradientToCard(homeCard, colors: [
-            googleMapsBlue,
-            googleMapsBlue.withAlphaComponent(0.85)
-        ])
-        
-        addGradientToCard(workCard, colors: [
-            googleMapsBlue,
-            googleMapsBlue.withAlphaComponent(0.85)
-        ])
     }
     
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
@@ -1908,7 +1810,18 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             self?.checkTutorialAndOverlay()
         }
     }
-    
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+
+        // Stop Moments audio the moment the user leaves this screen (switching
+        // bottom tabs, opening a moment full-screen, presenting any modal).
+        // Without this the currently-playing reel keeps playing — its audio
+        // bleeds into whatever screen the user moved to. Segment changes within
+        // the tab already pause; this covers navigating away entirely.
+        pauseAllVideos()
+    }
+
     private func checkAndRetryOnboardingIfNeeded() {
         // If user has no circles and data has loaded, try onboarding
         if circles.isEmpty && !isLoadingCircles {
@@ -2209,9 +2122,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     private func updateAppearance() {
         // Update border colors that don't automatically adapt
-        homeCard.layer.borderColor = Constants.Colors.separator.cgColor
-        workCard.layer.borderColor = Constants.Colors.separator.cgColor
-        quickAccessContainer.layer.shadowColor = Constants.Colors.label.cgColor
         mapMenuButton.layer.borderColor = Constants.Colors.separator.cgColor
         listToggleButton.layer.borderColor = Constants.Colors.separator.cgColor
         updateMyPlacesToggleAppearance()
@@ -2231,10 +2141,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         emptyStateView.addSubview(emptyStateImageView)
         emptyStateView.addSubview(emptyStateLabel)
         emptyStateView.addSubview(emptyStateButtonsStack)
-        
-        // Setup quick access buttons
-        setupQuickAccessButtons()
-        
+
         // Add scroll view
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
@@ -2242,6 +2149,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Add search bar to main view (not scrolling)
         view.addSubview(searchBar)
         view.addSubview(searchScopeButton)
+        searchScopeButton.isHidden = true // unified search: scope dropdown retired
         view.addSubview(quickAddPlaceButton)
         
         // Add search scope dropdown
@@ -2249,16 +2157,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         searchScopeDropdownView.addSubview(searchScopeTableView)
         
         // Add content to scroll view
-        contentView.addSubview(quickAccessContainer)
-        quickAccessContainer.addSubview(homeCard)
-        quickAccessContainer.addSubview(workCard)
-        quickAccessContainer.addSubview(quickAccessCard)
-        homeCard.addSubview(homeButton)
-        homeCard.addSubview(homeNavigateButton)
-        workCard.addSubview(workButton)
-        workCard.addSubview(workNavigateButton)
-        quickAccessCard.addSubview(quickAccessButton)
-        quickAccessCard.addSubview(quickAccessNavigateButton)
         contentView.addSubview(userListView)
         contentView.addSubview(mapContainerView)
         contentView.addSubview(filterContainer)
@@ -2331,18 +2229,21 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         view.addGestureRecognizer(tapGesture)
         
         NSLayoutConstraint.activate([
-            // Search bar (fixed at top)
+            // Search bar (fixed at top). Unified search removed the scope
+            // dropdown button, so the bar now runs to the quick-add button.
             searchBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             searchBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Constants.Spacing.medium),
-            searchBar.trailingAnchor.constraint(equalTo: searchScopeButton.leadingAnchor, constant: -8),
+            searchBar.trailingAnchor.constraint(equalTo: quickAddPlaceButton.leadingAnchor, constant: -Constants.Spacing.small),
             searchBar.heightAnchor.constraint(equalToConstant: 44),
-            
-            // Search scope button
+
+            // Scope button retired (unified search): collapsed to zero size and
+            // hidden. Kept in the hierarchy so the (now dormant) dropdown
+            // constraints/wiring still resolve without a layout rewrite.
             searchScopeButton.centerYAnchor.constraint(equalTo: searchBar.centerYAnchor),
-            searchScopeButton.trailingAnchor.constraint(equalTo: quickAddPlaceButton.leadingAnchor, constant: -Constants.Spacing.small),
-            searchScopeButton.widthAnchor.constraint(equalToConstant: 32),
-            searchScopeButton.heightAnchor.constraint(equalToConstant: 32),
-            
+            searchScopeButton.trailingAnchor.constraint(equalTo: quickAddPlaceButton.leadingAnchor),
+            searchScopeButton.widthAnchor.constraint(equalToConstant: 0),
+            searchScopeButton.heightAnchor.constraint(equalToConstant: 0),
+
             // Scroll view
             scrollView.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -2355,75 +2256,15 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             contentView.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
             contentView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
             contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
-            
-            // Quick access container (now in content view)
-            quickAccessContainer.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Constants.Spacing.small),
-            quickAccessContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            quickAccessContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            quickAccessContainer.heightAnchor.constraint(equalToConstant: 50),
-            
+
             // Quick Add Place button
             quickAddPlaceButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.large),
             quickAddPlaceButton.centerYAnchor.constraint(equalTo: searchBar.centerYAnchor),
             quickAddPlaceButton.heightAnchor.constraint(equalToConstant: 40),
             quickAddPlaceButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 120),
-            
-            // Home card
-            homeCard.leadingAnchor.constraint(equalTo: quickAccessContainer.leadingAnchor, constant: Constants.Spacing.large),
-            homeCard.centerYAnchor.constraint(equalTo: quickAccessContainer.centerYAnchor),
-            homeCard.widthAnchor.constraint(equalTo: quickAccessContainer.widthAnchor, multiplier: 0.28),
-            homeCard.heightAnchor.constraint(equalToConstant: 40),
-            
-            // Quick Access card (with spacing from home card)
-            quickAccessCard.leadingAnchor.constraint(equalTo: homeCard.trailingAnchor, constant: Constants.Spacing.small),
-            quickAccessCard.centerYAnchor.constraint(equalTo: quickAccessContainer.centerYAnchor),
-            quickAccessCard.widthAnchor.constraint(equalTo: quickAccessContainer.widthAnchor, multiplier: 0.28),
-            quickAccessCard.heightAnchor.constraint(equalToConstant: 40),
-            
-            // Work card (with spacing from quick access card)
-            workCard.leadingAnchor.constraint(equalTo: quickAccessCard.trailingAnchor, constant: Constants.Spacing.small),
-            workCard.centerYAnchor.constraint(equalTo: quickAccessContainer.centerYAnchor),
-            workCard.widthAnchor.constraint(equalTo: quickAccessContainer.widthAnchor, multiplier: 0.28),
-            workCard.heightAnchor.constraint(equalToConstant: 40),
-            
-            // Home button (inside home card)
-            homeButton.leadingAnchor.constraint(equalTo: homeCard.leadingAnchor),
-            homeButton.topAnchor.constraint(equalTo: homeCard.topAnchor),
-            homeButton.bottomAnchor.constraint(equalTo: homeCard.bottomAnchor),
-            homeButton.trailingAnchor.constraint(equalTo: homeNavigateButton.leadingAnchor, constant: -8),
-            
-            // Home navigate button
-            homeNavigateButton.centerYAnchor.constraint(equalTo: homeCard.centerYAnchor),
-            homeNavigateButton.trailingAnchor.constraint(equalTo: homeCard.trailingAnchor, constant: -8),
-            homeNavigateButton.widthAnchor.constraint(equalToConstant: 24),
-            homeNavigateButton.heightAnchor.constraint(equalToConstant: 24),
-            
-            // Work button (inside work card)
-            workButton.leadingAnchor.constraint(equalTo: workCard.leadingAnchor),
-            workButton.topAnchor.constraint(equalTo: workCard.topAnchor),
-            workButton.bottomAnchor.constraint(equalTo: workCard.bottomAnchor),
-            workButton.trailingAnchor.constraint(equalTo: workNavigateButton.leadingAnchor, constant: -8),
-            
-            // Work navigate button
-            workNavigateButton.centerYAnchor.constraint(equalTo: workCard.centerYAnchor),
-            workNavigateButton.trailingAnchor.constraint(equalTo: workCard.trailingAnchor, constant: -8),
-            workNavigateButton.widthAnchor.constraint(equalToConstant: 24),
-            workNavigateButton.heightAnchor.constraint(equalToConstant: 24),
-            
-            // Quick Access button (inside quick access card)
-            quickAccessButton.leadingAnchor.constraint(equalTo: quickAccessCard.leadingAnchor),
-            quickAccessButton.topAnchor.constraint(equalTo: quickAccessCard.topAnchor),
-            quickAccessButton.bottomAnchor.constraint(equalTo: quickAccessCard.bottomAnchor),
-            quickAccessButton.trailingAnchor.constraint(equalTo: quickAccessNavigateButton.leadingAnchor, constant: -8),
-            
-            // Quick Access navigate button
-            quickAccessNavigateButton.centerYAnchor.constraint(equalTo: quickAccessCard.centerYAnchor),
-            quickAccessNavigateButton.trailingAnchor.constraint(equalTo: quickAccessCard.trailingAnchor, constant: -8),
-            quickAccessNavigateButton.widthAnchor.constraint(equalToConstant: 24),
-            quickAccessNavigateButton.heightAnchor.constraint(equalToConstant: 24),
-            
-            // User list view
-            userListView.topAnchor.constraint(equalTo: quickAccessContainer.bottomAnchor, constant: Constants.Spacing.small),
+
+            // User list view (now the first content section; quick-access bar removed)
+            userListView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Constants.Spacing.small),
             userListView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
             userListView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
             userListView.heightAnchor.constraint(equalToConstant: 118),
@@ -2753,75 +2594,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         searchBar.resignFirstResponder()
     }
     
-    private func setupQuickAccessButtons() {
-        // Configure Home button
-        var homeConfig = UIButton.Configuration.filled()
-        homeConfig.image = UIImage(systemName: "house.fill")?.withConfiguration(UIImage.SymbolConfiguration(pointSize: 13, weight: .medium))
-        homeConfig.title = "Home"
-        homeConfig.imagePlacement = .leading
-        homeConfig.imagePadding = 4
-        homeConfig.baseBackgroundColor = .clear
-        homeConfig.baseForegroundColor = .white
-        homeConfig.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 0)
-        homeConfig.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
-            var outgoing = incoming
-            outgoing.font = UIFont.systemFont(ofSize: 13, weight: .medium)
-            return outgoing
-        }
-        homeButton.configuration = homeConfig
-        homeButton.addTarget(self, action: #selector(homeButtonTapped), for: .touchUpInside)
-        
-        // Configure Work button
-        var workConfig = UIButton.Configuration.filled()
-        workConfig.image = UIImage(systemName: "building.2.fill")?.withConfiguration(UIImage.SymbolConfiguration(pointSize: 13, weight: .medium))
-        workConfig.title = "Work"
-        workConfig.imagePlacement = .leading
-        workConfig.imagePadding = 4
-        workConfig.baseBackgroundColor = .clear
-        workConfig.baseForegroundColor = .white
-        workConfig.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 0)
-        workConfig.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
-            var outgoing = incoming
-            outgoing.font = UIFont.systemFont(ofSize: 13, weight: .medium)
-            return outgoing
-        }
-        workButton.configuration = workConfig
-        workButton.addTarget(self, action: #selector(workButtonTapped), for: .touchUpInside)
-        
-        // Configure Quick Access button
-        var quickAccessConfig = UIButton.Configuration.filled()
-        quickAccessConfig.image = UIImage(systemName: "star.fill")?.withConfiguration(UIImage.SymbolConfiguration(pointSize: 13, weight: .medium))
-        quickAccessConfig.title = "Places"
-        quickAccessConfig.imagePlacement = .leading
-        quickAccessConfig.imagePadding = 4
-        quickAccessConfig.baseBackgroundColor = .clear
-        quickAccessConfig.baseForegroundColor = .white
-        quickAccessConfig.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 0)
-        quickAccessConfig.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
-            var outgoing = incoming
-            outgoing.font = UIFont.systemFont(ofSize: 13, weight: .medium)
-            return outgoing
-        }
-        quickAccessButton.configuration = quickAccessConfig
-        quickAccessButton.addTarget(self, action: #selector(quickAccessButtonTapped), for: .touchUpInside)
-        
-        // Update Quick Access button title based on saved places count
-        updateQuickAccessButtonTitle()
-        
-        // Add targets for navigate buttons
-        homeNavigateButton.addTarget(self, action: #selector(homeNavigateButtonTapped), for: .touchUpInside)
-        workNavigateButton.addTarget(self, action: #selector(workNavigateButtonTapped), for: .touchUpInside)
-        quickAccessNavigateButton.addTarget(self, action: #selector(quickAccessNavigateButtonTapped), for: .touchUpInside)
-        
-        // Remove shadow from container since cards have their own shadows
-        quickAccessContainer.layer.shadowOpacity = 0
-        
-        // Apply appearance
-        updateAppearance()
-    }
-    
     // Navigation title tap removed since we no longer show the title
-    
+
     // MARK: - Cache Management
     
     private func isCacheValid() -> Bool {
@@ -2838,20 +2612,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     private func shouldUseCachedData() -> Bool {
         return isCacheValid() && !isPerformingInitialLoad
-    }
-    
-    private func addGradientToCard(_ card: UIView, colors: [UIColor]) {
-        // Remove any existing gradient layers
-        card.layer.sublayers?.removeAll(where: { $0 is CAGradientLayer })
-        
-        let gradientLayer = CAGradientLayer()
-        gradientLayer.frame = card.bounds
-        gradientLayer.colors = colors.map { $0.cgColor }
-        gradientLayer.startPoint = CGPoint(x: 0, y: 0)
-        gradientLayer.endPoint = CGPoint(x: 1, y: 1)
-        gradientLayer.cornerRadius = 8
-        
-        card.layer.insertSublayer(gradientLayer, at: 0)
     }
     
     // MARK: - Preloaded Data
@@ -4407,8 +4167,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
         
         if isSearching {
-            emptyStateView.isHidden = !filteredPlaces.isEmpty
-            emptyStateLabel.text = "No places found"
+            // The overlay itself shows results; only surface the empty state
+            // when NEITHER places nor people matched.
+            emptyStateView.isHidden = !(filteredPlaces.isEmpty && searchedUsers.isEmpty)
+            emptyStateLabel.text = "No results found"
         } else {
             let isEmpty = isShowingNetworkCircles ? networkCircles.isEmpty : circles.isEmpty
             emptyStateView.isHidden = !isEmpty
@@ -5285,16 +5047,16 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 seenPlaceIds.insert(place.id)
                 deduplicatedPlaces.append(place)
             } else {
+                // No per-place logging here — this runs on the main thread on
+                // every place merge, and a line per duplicate flooded the
+                // console (hundreds per avatar tap on large place sets).
                 duplicatesFound += 1
-                print("🔍 Skipping duplicate place: '\(place.name)' (ID: \(place.id)) - already exists")
             }
         }
-        
+
         if duplicatesFound > 0 {
-            print("⚠️ Found and removed \(duplicatesFound) duplicate places from fetched data")
+            Logger.debug("⚠️ Removed \(duplicatesFound) duplicate places (\(places.count) → \(deduplicatedPlaces.count))")
         }
-        
-        print("📍 Deduplication summary: \(places.count) fetched places = \(deduplicatedPlaces.count) unique places")
         return deduplicatedPlaces
     }
     
@@ -5364,7 +5126,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     private func applyFiltersToPlaces(_ places: [Place]) -> [Place] {
-        print("📍 Connection filter - selectedConnectionId: \(self.selectedConnectionId ?? "nil")")
+        Logger.debug("📍 Connection filter - selectedConnectionId: \(self.selectedConnectionId ?? "nil")")
         
         // Apply connection filter if selected
         var mapFilteredPlaces = places
@@ -5374,13 +5136,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 // Show only places from user's own circles
                 let currentUserId = AuthService.shared.getUserId() ?? ""
                 let userCircleIds = self.circles.map { $0.id }
-                print("📍 FILTER: my_places_only selected")
-                print("📍 Total places to filter: \(places.count)")
-                print("📍 User has \(self.circles.count) circles")
-                print("📍 Current user ID: \(currentUserId)")
+                Logger.debug("📍 FILTER: my_places_only selected")
+                Logger.debug("📍 Total places to filter: \(places.count)")
+                Logger.debug("📍 User has \(self.circles.count) circles")
+                Logger.debug("📍 Current user ID: \(currentUserId)")
                 
                 if userCircleIds.isEmpty && networkCircles.isEmpty {
-                    print("⚠️ Warning: No circles loaded, showing empty results")
+                    Logger.debug("⚠️ Warning: No circles loaded, showing empty results")
                     mapFilteredPlaces = []
                 } else {
                     // Filter to only include places from user's circles
@@ -5401,7 +5163,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                                 if IDNormalizer.isSameUser(circle.owner, currentUserId) {
                                     isUserPlace = true
                                     networkCircleUserPlaces += 1
-                                    print("📍 Found user place in network circle: '\(place.name)' from circle '\(circle.name)'")
+                                    Logger.debug("📍 Found user place in network circle: '\(place.name)' from circle '\(circle.name)'")
                                 }
                             }
                         }
@@ -5414,14 +5176,14 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     }
                     
                     mapFilteredPlaces = filteredPlaces
-                    print("📍 FILTER RESULT: Kept \(mapFilteredPlaces.count) places, excluded \(excludedCount) places")
-                    print("📍 Found \(networkCircleUserPlaces) user places that were in network circles")
-                    print("📍 User should have 124 places total according to user")
+                    Logger.debug("📍 FILTER RESULT: Kept \(mapFilteredPlaces.count) places, excluded \(excludedCount) places")
+                    Logger.debug("📍 Found \(networkCircleUserPlaces) user places that were in network circles")
+                    Logger.debug("📍 User should have 124 places total according to user")
                 }
             } else {
                 // Show only places from the selected connection
                 // Get all places from circles owned by this connection
-                print("📍 FILTER: Specific connection selected: \(connectionId)")
+                Logger.debug("📍 FILTER: Specific connection selected: \(connectionId)")
                 var connectionFilteredPlaces: [Place] = []
                 var debugCircleOwners = Set<String>()
                 
@@ -5432,7 +5194,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                         // Use IDNormalizer to compare IDs properly
                         if IDNormalizer.isSameUser(circle.owner, connectionId) {
                             connectionFilteredPlaces.append(place)
-                            print("   ✅ Found place '\(place.name)' from circle '\(circle.name)' owned by connection")
+                            Logger.debug("   ✅ Found place '\(place.name)' from circle '\(circle.name)' owned by connection")
                         }
                     } else if IDNormalizer.isSameUser(place.addedBy, connectionId) {
                         // Circle metadata not loaded (e.g. viewport-fetched
@@ -5442,14 +5204,14 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 }
                 
                 mapFilteredPlaces = connectionFilteredPlaces
-                print("   Available circle owners: \(debugCircleOwners)")
-                print("   Looking for connectionId: \(connectionId)")
-                print("   Filtered to connection '\(connectionId)': \(mapFilteredPlaces.count) places")
+                Logger.debug("   Available circle owners: \(debugCircleOwners)")
+                Logger.debug("   Looking for connectionId: \(connectionId)")
+                Logger.debug("   Filtered to connection '\(connectionId)': \(mapFilteredPlaces.count) places")
             }
         } else {
             // "All Connections" selected - show all places (user's + connections')
             mapFilteredPlaces = places
-            print("   Showing all connections' places: \(mapFilteredPlaces.count) places")
+            Logger.debug("   Showing all connections' places: \(mapFilteredPlaces.count) places")
         }
         
         // Apply category filter
@@ -5460,15 +5222,15 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 
                 // Debug logging for filter matching
                 if !matches {
-                    print("   🚫 Place '\(place.name)' does not match filter '\(category.displayName)' - place category: \(place.category), customCategoryId: \(place.customCategoryId ?? "none")")
+                    Logger.debug("   🚫 Place '\(place.name)' does not match filter '\(category.displayName)' - place category: \(place.category), customCategoryId: \(place.customCategoryId ?? "none")")
                 }
                 
                 return matches
             }
-            print("   Category filter '\(category.displayName)' applied: \(beforeCategoryFilter) → \(mapFilteredPlaces.count) places")
+            Logger.debug("   Category filter '\(category.displayName)' applied: \(beforeCategoryFilter) → \(mapFilteredPlaces.count) places")
         }
         
-        print("   Final places after filtering: \(mapFilteredPlaces.count)")
+        Logger.debug("   Final places after filtering: \(mapFilteredPlaces.count)")
         return mapFilteredPlaces
     }
     
@@ -5565,18 +5327,18 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
 
     private func refreshMapDisplay(adjustRegion: Bool = true) {
-        print("🗺️ [RefreshMapDisplay] Refreshing map with current filters")
+        Logger.debug("🗺️ [RefreshMapDisplay] Refreshing map with current filters")
 
         // Skip if we don't have data yet
         if allPlaces.isEmpty {
-            print("🗺️ [RefreshMapDisplay] No places data available, skipping refresh")
+            Logger.debug("🗺️ [RefreshMapDisplay] No places data available, skipping refresh")
             return
         }
 
         // Apply current filters to existing data
         let placesToDisplay = applyFiltersToPlaces(allPlaces)
 
-        print("🗺️ [RefreshMapDisplay] Displaying \(placesToDisplay.count) filtered places (from \(allPlaces.count) total)")
+        Logger.debug("🗺️ [RefreshMapDisplay] Displaying \(placesToDisplay.count) filtered places (from \(allPlaces.count) total)")
 
         // Update the map immediately (no debouncing needed for filters).
         // updatePlaces zooms exactly once via the annotation pipeline when
@@ -6074,11 +5836,14 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         updateAvailableCategories()
 
         if let connectionId = id, connectionId != "my_places_only" {
-            // Refilter the map with what's already loaded BEFORE any async
-            // fetch — otherwise other connections' pins linger on screen
-            // until this connection's places arrive, which reads as showing
-            // the wrong person's places
-            refreshMapDisplay()
+            // Re-scope pins with what's already loaded BEFORE any async fetch —
+            // otherwise other connections' pins linger until this connection's
+            // places arrive. But DEFER the zoom when we're about to fetch this
+            // connection's full place set (the viewport path): zooming here to
+            // the partial/stale set and again after the fetch made the camera
+            // visibly fly twice. Let the post-fetch pass do the one zoom.
+            let deferZoom = useViewportNetworkLoading
+            refreshMapDisplay(adjustRegion: !deferZoom)
 
             if networkCircles.isEmpty {
                 print("📍 Need to fetch network circles for connection filtering")
@@ -6229,30 +5994,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             let totalTime = CFAbsoluteTimeGetCurrent() - startTime
             print("✅ OPTIMIZED refresh completed in \(String(format: "%.2f", totalTime)) seconds")
         }
-    }
-    
-    @objc private func homeButtonTapped() {
-        handleQuickAccessTapped(type: .home)
-    }
-    
-    @objc private func workButtonTapped() {
-        handleQuickAccessTapped(type: .work)
-    }
-    
-    @objc private func homeNavigateButtonTapped() {
-        navigateToQuickAccess(type: .home)
-    }
-    
-    @objc private func workNavigateButtonTapped() {
-        navigateToQuickAccess(type: .work)
-    }
-    
-    @objc private func quickAccessButtonTapped() {
-        handleQuickAccessPlacesTapped()
-    }
-    
-    @objc private func quickAccessNavigateButtonTapped() {
-        navigateToQuickAccessPlaces()
     }
     
     @objc private func checkInButtonTapped() {
@@ -6426,406 +6167,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
 
-    private func navigateToQuickAccess(type: QuickAccessType) {
-        let key = type == .home ? "userHomeAddress" : "userWorkAddress"
-        let savedAddress = UserDefaults.standard.string(forKey: key)
-        
-        if let address = savedAddress, !address.isEmpty {
-            // Create the same place object that would be created for viewing
-            // This ensures we use the same geocoded location
-            navigateToQuickAccessPlace(type: type, address: address, directNavigation: true)
-        } else {
-            // Show setup prompt
-            let alert = UIAlertController(
-                title: "Set \(type.rawValue) Address",
-                message: "You need to set your \(type.rawValue.lowercased()) address first.",
-                preferredStyle: .alert
-            )
-            alert.addAction(UIAlertAction(title: "Set Address", style: .default) { [weak self] _ in
-                self?.showAddressEntry(for: type)
-            })
-            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-            present(alert, animated: true)
-        }
-    }
-    
-    private func handleQuickAccessTapped(type: QuickAccessType) {
-        // Check if address is already saved
-        let key = type == .home ? "userHomeAddress" : "userWorkAddress"
-        let savedAddress = UserDefaults.standard.string(forKey: key)
-        
-        if let address = savedAddress, !address.isEmpty {
-            // Create a place from saved address and navigate to detail view
-            navigateToQuickAccessPlace(type: type, address: address)
-        } else {
-            // Show address entry
-            showAddressEntry(for: type)
-        }
-    }
-    
-    private func showAddressEntry(for type: QuickAccessType) {
-        let alert = UIAlertController(
-            title: "Set \(type.rawValue) Address",
-            message: "Enter your \(type.rawValue.lowercased()) address",
-            preferredStyle: .alert
-        )
-        
-        alert.addTextField { textField in
-            textField.placeholder = "123 Main St, City, State"
-            textField.autocapitalizationType = .words
-        }
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Save", style: .default) { [weak self] _ in
-            if let address = alert.textFields?.first?.text, !address.isEmpty {
-                // Save address
-                let key = type == .home ? "userHomeAddress" : "userWorkAddress"
-                UserDefaults.standard.set(address, forKey: key)
-                
-                // Navigate to place detail
-                self?.navigateToQuickAccessPlace(type: type, address: address)
-            }
-        })
-        
-        present(alert, animated: true)
-    }
-    
-    private func navigateToQuickAccessPlace(type: QuickAccessType, address: String, directNavigation: Bool = false) {
-        // Show loading indicator
-        let loadingAlert = UIAlertController(title: "Loading", message: "Finding location...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
-        
-        // Geocode the address to get coordinates
-        let geocoder = CLGeocoder()
-        geocoder.geocodeAddressString(address) { [weak self] placemarks, error in
-            guard let self = self else { return }
-            loadingAlert.dismiss(animated: true) { [weak self] in
-                guard let self = self else { return }
-                
-                var location: GeoLocation? = nil
-                if let placemark = placemarks?.first,
-                   let clLocation = placemark.location {
-                    // Convert to GeoLocation format (MongoDB uses [longitude, latitude])
-                    location = GeoLocation(type: "Point", coordinates: [clLocation.coordinate.longitude, clLocation.coordinate.latitude])
-                }
-                
-                if directNavigation {
-                    // Navigate directly using the geocoded location
-                    if let location = location?.clLocation {
-                        // Try Google Maps first
-                        let googleMapsURL = URL(string: "comgooglemaps://?daddr=\(location.coordinate.latitude),\(location.coordinate.longitude)&directionsmode=driving")
-                        
-                        if let url = googleMapsURL, UIApplication.shared.canOpenURL(url) {
-                            UIApplication.shared.open(url)
-                        } else {
-                            // Fallback to Apple Maps
-                            let appleMapsURL = URL(string: "maps://?daddr=\(location.coordinate.latitude),\(location.coordinate.longitude)&dirflg=d")
-                            if let url = appleMapsURL {
-                                UIApplication.shared.open(url)
-                            }
-                        }
-                    } else {
-                        let alert = UIAlertController(title: "Navigation Error", message: "Could not find location for this address.", preferredStyle: .alert)
-                        alert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self.present(alert, animated: true)
-                    }
-                } else {
-                    // Show home/work address details
-                    self.showAddressDetails(type: type, address: address, location: location)
-                }
-            }
-        }
-    }
-    
-    private func showAddressDetails(type: QuickAccessType, address: String, location: GeoLocation?) {
-        let detailVC = UIViewController()
-        detailVC.view.backgroundColor = .systemBackground
-        detailVC.title = type.rawValue
-        
-        // Create content stack view
-        let stackView = UIStackView()
-        stackView.axis = .vertical
-        stackView.spacing = 20
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        
-        // Address section
-        let addressContainer = UIView()
-        addressContainer.backgroundColor = Constants.Colors.lightGray.withAlphaComponent(0.1)
-        addressContainer.layer.cornerRadius = 12
-        
-        let addressLabel = UILabel()
-        addressLabel.text = "Address"
-        addressLabel.font = .systemFont(ofSize: 14, weight: .medium)
-        addressLabel.textColor = .secondaryLabel
-        
-        let addressValueLabel = UILabel()
-        addressValueLabel.text = address
-        addressValueLabel.font = .systemFont(ofSize: 16)
-        addressValueLabel.numberOfLines = 0
-        
-        let addressStack = UIStackView(arrangedSubviews: [addressLabel, addressValueLabel])
-        addressStack.axis = .vertical
-        addressStack.spacing = 4
-        addressStack.translatesAutoresizingMaskIntoConstraints = false
-        
-        addressContainer.addSubview(addressStack)
-        NSLayoutConstraint.activate([
-            addressStack.topAnchor.constraint(equalTo: addressContainer.topAnchor, constant: 16),
-            addressStack.leadingAnchor.constraint(equalTo: addressContainer.leadingAnchor, constant: 16),
-            addressStack.trailingAnchor.constraint(equalTo: addressContainer.trailingAnchor, constant: -16),
-            addressStack.bottomAnchor.constraint(equalTo: addressContainer.bottomAnchor, constant: -16)
-        ])
-        
-        stackView.addArrangedSubview(addressContainer)
-        
-        // Navigate button
-        let navigateButton = UIButton(type: .system)
-        navigateButton.setTitle("Navigate", for: .normal)
-        navigateButton.setImage(UIImage(systemName: "location.arrow"), for: .normal)
-        navigateButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .medium)
-        navigateButton.backgroundColor = Constants.Colors.primary
-        navigateButton.setTitleColor(.white, for: .normal)
-        navigateButton.tintColor = .white
-        navigateButton.layer.cornerRadius = 12
-        navigateButton.heightAnchor.constraint(equalToConstant: 50).isActive = true
-        
-        navigateButton.addAction(UIAction { [weak self] _ in
-            if let location = location?.clLocation {
-                // Try Google Maps first
-                let googleMapsURL = URL(string: "comgooglemaps://?daddr=\(location.coordinate.latitude),\(location.coordinate.longitude)&directionsmode=driving")
-                
-                if let url = googleMapsURL, UIApplication.shared.canOpenURL(url) {
-                    UIApplication.shared.open(url)
-                } else {
-                    // Fallback to Apple Maps
-                    let appleMapsURL = URL(string: "maps://?daddr=\(location.coordinate.latitude),\(location.coordinate.longitude)&dirflg=d")
-                    if let url = appleMapsURL {
-                        UIApplication.shared.open(url)
-                    }
-                }
-            }
-        }, for: .touchUpInside)
-        
-        stackView.addArrangedSubview(navigateButton)
-        
-        // Edit button
-        let editButton = UIButton(type: .system)
-        editButton.setTitle("Edit Address", for: .normal)
-        editButton.setImage(UIImage(systemName: "pencil"), for: .normal)
-        editButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .medium)
-        editButton.backgroundColor = Constants.Colors.lightGray.withAlphaComponent(0.2)
-        editButton.layer.cornerRadius = 12
-        editButton.heightAnchor.constraint(equalToConstant: 50).isActive = true
-        
-        editButton.addAction(UIAction { [weak self] _ in
-            self?.setupQuickAccess(forType: type)
-        }, for: .touchUpInside)
-        
-        stackView.addArrangedSubview(editButton)
-        
-        detailVC.view.addSubview(stackView)
-        NSLayoutConstraint.activate([
-            stackView.topAnchor.constraint(equalTo: detailVC.view.safeAreaLayoutGuide.topAnchor, constant: 20),
-            stackView.leadingAnchor.constraint(equalTo: detailVC.view.leadingAnchor, constant: 20),
-            stackView.trailingAnchor.constraint(equalTo: detailVC.view.trailingAnchor, constant: -20)
-        ])
-        
-        self.navigationController?.pushViewController(detailVC, animated: true)
-    }
-    
-    private enum QuickAccessType: String {
-        case home = "Home"
-        case work = "Work"
-    }
-    
-    private func setupQuickAccess(forType type: QuickAccessType) {
-        let alert = UIAlertController(title: "Set \(type.rawValue) Address", message: "Enter your \(type.rawValue.lowercased()) address", preferredStyle: .alert)
-        
-        alert.addTextField { textField in
-            textField.placeholder = "Enter address"
-            textField.autocapitalizationType = .words
-            textField.returnKeyType = .done
-            
-            // Load existing address if available
-            let key = type == .home ? "userHomeAddress" : "userWorkAddress"
-            if let existingAddress = UserDefaults.standard.string(forKey: key) {
-                textField.text = existingAddress
-            }
-        }
-        
-        let saveAction = UIAlertAction(title: "Save", style: .default) { [weak self] _ in
-            guard let address = alert.textFields?.first?.text, !address.isEmpty else { return }
-            
-            // Save to UserDefaults
-            let key = type == .home ? "userHomeAddress" : "userWorkAddress"
-            UserDefaults.standard.set(address, forKey: key)
-            
-            // Geocode the address
-            let geocoder = CLGeocoder()
-            geocoder.geocodeAddressString(address) { placemarks, error in
-                if let placemark = placemarks?.first, let location = placemark.location {
-                    // Save location
-                    let locationKey = type == .home ? "userHomeLocation" : "userWorkLocation"
-                    let locationData = [
-                        "latitude": location.coordinate.latitude,
-                        "longitude": location.coordinate.longitude
-                    ]
-                    UserDefaults.standard.set(locationData, forKey: locationKey)
-                    
-                    // Update UI
-                    DispatchQueue.main.async { [weak self] in
-                        self?.setupQuickAccessButtons()
-                    }
-                }
-            }
-        }
-        
-        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel)
-        
-        alert.addAction(saveAction)
-        alert.addAction(cancelAction)
-        
-        present(alert, animated: true)
-    }
-    
-    // MARK: - Quick Access Places
-    
-    private func handleQuickAccessPlacesTapped() {
-        let savedPlaces = getQuickAccessPlaces()
-        
-        if savedPlaces.isEmpty {
-            // Show place selection if no places saved
-            showQuickAccessPlaceSelection()
-        } else {
-            // Show menu with saved places
-            showQuickAccessMenu()
-        }
-    }
-    
-    private func navigateToQuickAccessPlaces() {
-        let savedPlaces = getQuickAccessPlaces()
-        
-        if savedPlaces.isEmpty {
-            showError("No quick access places saved. Tap the button to add places.")
-            return
-        }
-        
-        if savedPlaces.count == 1 {
-            // Navigate directly to the single place
-            navigateToQuickAccessPlace(savedPlaces[0])
-        } else {
-            // Show action sheet to select which place
-            let actionSheet = UIAlertController(title: "Navigate to", message: nil, preferredStyle: .actionSheet)
-            
-            for place in savedPlaces {
-                actionSheet.addAction(UIAlertAction(title: place["name"] as? String ?? "Unknown", style: .default) { [weak self] _ in
-                    self?.navigateToQuickAccessPlace(place)
-                })
-            }
-            
-            actionSheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-            
-            // iPad support
-            if let popover = actionSheet.popoverPresentationController {
-                popover.sourceView = quickAccessNavigateButton
-                popover.sourceRect = quickAccessNavigateButton.bounds
-            }
-            
-            present(actionSheet, animated: true)
-        }
-    }
-    
-    private func navigateToQuickAccessPlace(_ placeData: [String: Any]) {
-        guard let latitude = placeData["latitude"] as? Double,
-              let longitude = placeData["longitude"] as? Double,
-              let name = placeData["name"] as? String else {
-            showError("Invalid place data")
-            return
-        }
-        
-        let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
-        let mapItem = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
-        mapItem.name = name
-        
-        let launchOptions = [
-            MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving as NSString
-        ]
-        
-        mapItem.openInMaps(launchOptions: launchOptions)
-    }
-    
-    private func showQuickAccessMenu() {
-        let savedPlaces = getQuickAccessPlaces()
-        let actionSheet = UIAlertController(title: "Quick Access Places", message: nil, preferredStyle: .actionSheet)
-        
-        // Show saved places
-        for place in savedPlaces {
-            if let name = place["name"] as? String {
-                actionSheet.addAction(UIAlertAction(title: name, style: .default) { [weak self] _ in
-                    self?.navigateToQuickAccessPlace(place)
-                })
-            }
-        }
-        
-        // Add manage option
-        actionSheet.addAction(UIAlertAction(title: "Manage Places", style: .default) { [weak self] _ in
-            self?.showQuickAccessPlaceSelection()
-        })
-        
-        actionSheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        
-        // iPad support
-        if let popover = actionSheet.popoverPresentationController {
-            popover.sourceView = quickAccessButton
-            popover.sourceRect = quickAccessButton.bounds
-        }
-        
-        present(actionSheet, animated: true)
-    }
-    
-    private func showQuickAccessPlaceSelection() {
-        // Get current user ID
-        guard let currentUserId = AuthService.shared.getUserId() else {
-            showError("Unable to determine current user")
-            return
-        }
-        
-        // Filter to only show the current user's places (not network places)
-        let userPlaces = self.allPlaces.filter { place in
-            place.addedBy == currentUserId
-        }
-        
-        // Ensure we have user places before showing the selection
-        guard !userPlaces.isEmpty else {
-            showError("No places found. Add some places to your circles first.")
-            return
-        }
-        
-        // Log for debugging
-        print("📍 QuickAccessPlaces: Passing \(userPlaces.count) user places (out of \(self.allPlaces.count) total)")
-        
-        let quickAccessVC = QuickAccessPlacesViewController()
-        quickAccessVC.allPlaces = userPlaces
-        quickAccessVC.delegate = self
-        let navController = UINavigationController(rootViewController: quickAccessVC)
-        present(navController, animated: true)
-    }
-    
-    private func getQuickAccessPlaces() -> [[String: Any]] {
-        return UserDefaults.standard.array(forKey: "userQuickAccessPlaces") as? [[String: Any]] ?? []
-    }
-    
-    private func saveQuickAccessPlaces(_ places: [[String: Any]]) {
-        UserDefaults.standard.set(places, forKey: "userQuickAccessPlaces")
-        updateQuickAccessButtonTitle()
-    }
-    
-    private func updateQuickAccessButtonTitle() {
-        var config = quickAccessButton.configuration ?? UIButton.Configuration.filled()
-        config.title = "Quick"
-        quickAccessButton.configuration = config
-    }
-    
     
     // MARK: - Circle Management
     private func editCircle(at indexPath: IndexPath) {
@@ -6879,15 +6220,33 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
 }
 
+// MARK: - Search overlay sections
+// The unified search overlay has two sections: places first, then people.
+private enum SearchSection: Int, CaseIterable {
+    case places
+    case people
+}
+
 // MARK: - Dropdown TableView Delegate & DataSource
 extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource {
+    func numberOfSections(in tableView: UITableView) -> Int {
+        // Only the search overlay is sectioned (Places / People); every other
+        // shared table stays single-section.
+        return tableView == searchResultsTableView ? SearchSection.allCases.count : 1
+    }
+
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         if tableView == placesListTableView {
             return distanceSortedPlaces.count
         } else if tableView == searchScopeTableView {
             return SearchScope.allCases.count
         } else if tableView == searchResultsTableView {
-            return numberOfRowsInSearchResults()
+            guard isSearching else { return 0 }
+            switch SearchSection(rawValue: section) {
+            case .places: return filteredPlaces.count
+            case .people: return searchedUsers.count
+            case .none: return 0
+            }
         } else if tableView == activityTableView {
             return feedItems.count
         } else if tableView == newsFeedTableView {
@@ -6930,15 +6289,44 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             
             return cell
         } else if tableView == searchResultsTableView {
+            // PEOPLE section: a person result
+            if SearchSection(rawValue: indexPath.section) == .people {
+                let cell = tableView.dequeueReusableCell(withIdentifier: "SearchResultCell", for: indexPath)
+                cell.accessoryView = nil
+                guard indexPath.row < searchedUsers.count else { return cell }
+                let user = searchedUsers[indexPath.row]
+
+                var content = cell.defaultContentConfiguration()
+                content.text = user.displayName
+
+                let isConnected = user.connectionStatus == "connected" || user.connectionStatus == "accepted"
+                let isFollowing = user.isFollowing == true
+                if isConnected {
+                    content.secondaryText = "Connected · tap to see on map"
+                } else if isFollowing {
+                    content.secondaryText = "Following · tap to see on map"
+                } else {
+                    content.secondaryText = "Tap to view profile"
+                }
+                content.secondaryTextProperties.color = Constants.Colors.secondaryLabel
+                content.secondaryTextProperties.font = UIFont.systemFont(ofSize: 13)
+                content.image = UIImage(systemName: "person.crop.circle.fill")
+                content.imageProperties.tintColor = Constants.Colors.primary
+                cell.contentConfiguration = content
+                cell.accessoryType = (isConnected || isFollowing) ? .none : .disclosureIndicator
+                return cell
+            }
+
+            // PLACES section: a place result
             let cell = tableView.dequeueReusableCell(withIdentifier: "SearchResultCell", for: indexPath)
-            
+
             // Add bounds check
             guard indexPath.row < filteredPlaces.count else {
                 return cell
             }
-            
+
             let place = filteredPlaces[indexPath.row]
-            
+
             var content = cell.defaultContentConfiguration()
             content.text = place.name
             
@@ -7056,6 +6444,26 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
         // Use automatic dimensions for all table views to avoid constraint conflicts
         return UITableView.automaticDimension
     }
+
+    // Search overlay section headers (PLACES / PEOPLE) — hidden when the
+    // section is empty so a places-only or people-only search reads cleanly.
+    func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
+        guard tableView == searchResultsTableView, isSearching else { return nil }
+        switch SearchSection(rawValue: section) {
+        case .places: return filteredPlaces.isEmpty ? nil : "PLACES"
+        case .people: return searchedUsers.isEmpty ? nil : "PEOPLE"
+        case .none: return nil
+        }
+    }
+
+    func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
+        guard tableView == searchResultsTableView, isSearching else { return 0 }
+        switch SearchSection(rawValue: section) {
+        case .places: return filteredPlaces.isEmpty ? 0 : 28
+        case .people: return searchedUsers.isEmpty ? 0 : 28
+        case .none: return 0
+        }
+    }
     
     // Long-press a Specials row to share the deal (with the place link)
     func tableView(_ tableView: UITableView, contextMenuConfigurationForRowAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
@@ -7114,9 +6522,13 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             hideSearchScopeDropdown()
             isSearchScopeDropdownOpen = false
         } else if tableView == searchResultsTableView {
-            // Add bounds check
-            guard indexPath.row < filteredPlaces.count else { return }
-            handleSearchResultSelection(at: indexPath)
+            if SearchSection(rawValue: indexPath.section) == .people {
+                guard indexPath.row < searchedUsers.count else { return }
+                selectSearchedUser(searchedUsers[indexPath.row])
+            } else {
+                guard indexPath.row < filteredPlaces.count else { return }
+                handleSearchResultSelection(at: indexPath)
+            }
         } else if tableView == activityTableView {
             guard let item = activityFeedItem(at: indexPath.row) else { return }
 
@@ -7292,43 +6704,89 @@ extension CirclesHomeViewController: FullScreenMapViewControllerDelegate {
 
 // MARK: - UISearchBarDelegate
 extension CirclesHomeViewController: UISearchBarDelegate {
-    // Override to add updateEmptyState call
+    // Unified search: places filter instantly (local), people are fetched from
+    // the server (debounced). Results render in one overlay as PLACES / PEOPLE.
     func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
-        // Call the protocol's default implementation
-        (self as PlaceSearchable).searchBar(searchBar, textDidChange: searchText)
-        // Update empty state after search
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !trimmed.isEmpty else {
+            isSearching = false
+            filteredPlaces = []
+            searchedUsers = []
+            userSearchWorkItem?.cancel()
+            hideSearchResults()
+            updateEmptyState()
+            return
+        }
+
+        isSearching = true
+
+        // Places — local, instant
+        filterPlaces(searchText: trimmed)
+
+        // People — debounced server search so we don't fire a request per
+        // keystroke. Clear stale people up front so the PEOPLE section never
+        // shows results that don't match the current text (places carry the
+        // overlay in the meantime).
+        searchedUsers = []
+        userSearchWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            UserService.shared.searchUsers(query: trimmed) { result in
+                DispatchQueue.main.async {
+                    guard let self = self,
+                          self.searchBar.text?.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed else { return }
+                    if case .success(let users) = result {
+                        // Cap for a tidy overlay; already excludes the current user server-side
+                        self.searchedUsers = Array(users.prefix(12))
+                        self.refreshSearchOverlay()
+                    }
+                }
+            }
+        }
+        userSearchWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+
+        // Show place matches right away; people fill in when the fetch returns
+        refreshSearchOverlay()
         updateEmptyState()
     }
-    
+
+    /// Shows the results overlay if either section has matches, hides it otherwise.
+    private func refreshSearchOverlay() {
+        if isSearching && (!filteredPlaces.isEmpty || !searchedUsers.isEmpty) {
+            showSearchResults()
+        } else {
+            hideSearchResults()
+        }
+    }
+
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
         // Dismiss the keyboard when "Done" is tapped
         searchBar.resignFirstResponder()
         // Update empty state if needed
         updateEmptyState()
     }
-    
+
     func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
-        // Call the protocol's default implementation
-        (self as PlaceSearchable).searchBarCancelButtonClicked(searchBar)
-        // Update empty state after clearing search
+        searchBar.text = ""
+        searchBar.resignFirstResponder()
+        isSearching = false
+        filteredPlaces = []
+        searchedUsers = []
+        userSearchWorkItem?.cancel()
+        hideSearchResults()
         updateEmptyState()
     }
 }
 
 // MARK: - Custom Search Implementation
 extension CirclesHomeViewController {
-    // Override the default filterPlaces to support search scope
+    // Unified place search: always searches your places AND your network's
+    // (deduplicated) — the old "your places / all places" scope split was
+    // low value since "all" already includes yours and the text narrows it.
     func filterPlaces(searchText: String) {
-        let searchSource: [Place]
-        
-        switch currentSearchScope {
-        case .myPlaces:
-            searchSource = userOwnPlaces // Use only user's own places
-        case .networkPlaces:
-            // Combine user's places with network places, removing duplicates
-            searchSource = deduplicatePlaces(userPlaces: userOwnPlaces, networkPlaces: networkPlaces)
-        }
-        
+        let searchSource = deduplicatePlaces(userPlaces: userOwnPlaces, networkPlaces: networkPlaces)
+
         filteredPlaces = searchSource.filter { place in
             place.name.localizedCaseInsensitiveContains(searchText) ||
             place.address.localizedCaseInsensitiveContains(searchText) ||
@@ -7336,6 +6794,60 @@ extension CirclesHomeViewController {
             (place.notes ?? "").localizedCaseInsensitiveContains(searchText) ||
             (place.publicNotes ?? "").localizedCaseInsensitiveContains(searchText) ||
             (place.privateNotes ?? "").localizedCaseInsensitiveContains(searchText)
+        }
+
+        // Network places power the search superset — load them once in the
+        // background (previously only loaded when the user picked the scope).
+        if networkPlaces.isEmpty && !isLoadingNetworkPlaces {
+            loadNetworkPlaces()
+        }
+    }
+
+    /// Sizes the unified overlay for both the PLACES and PEOPLE sections
+    /// (each with a header), capped so it never swallows the whole screen.
+    func showSearchResults() {
+        let cellHeight: CGFloat = 60
+        let headerHeight: CGFloat = 28
+        let placeRows = min(filteredPlaces.count, 6)
+        let userRows = min(searchedUsers.count, 6)
+
+        var height: CGFloat = 0
+        if placeRows > 0 { height += headerHeight + CGFloat(placeRows) * cellHeight }
+        if userRows > 0 { height += headerHeight + CGFloat(userRows) * cellHeight }
+        height = min(height, 400) // cap — the overlay scrolls beyond this
+
+        searchResultsTableView.isHidden = false
+        searchResultsTableView.isScrollEnabled = true
+        searchResultsHeightConstraint?.constant = height
+
+        UIView.animate(withDuration: 0.3) {
+            self.searchResultsTableView.alpha = 1
+            self.view.layoutIfNeeded()
+        }
+        searchResultsTableView.reloadData()
+    }
+
+    /// Handles a tap on a PEOPLE result: connections/followees filter the map
+    /// (like tapping their avatar); everyone else opens their profile to act.
+    private func selectSearchedUser(_ user: User) {
+        // Clear the search UI first
+        searchBar.text = ""
+        searchBar.resignFirstResponder()
+        isSearching = false
+        filteredPlaces = []
+        searchedUsers = []
+        userSearchWorkItem?.cancel()
+        hideSearchResults()
+        updateEmptyState()
+
+        let isConnected = user.connectionStatus == "connected" || user.connectionStatus == "accepted"
+        let isFollowing = user.isFollowing == true
+        if isConnected || isFollowing {
+            selectConnection(id: user.id, user: user)
+        } else {
+            let profileVC = ProfileViewController()
+            profileVC.configureWith(user: user)
+            navigationController?.pushViewController(profileVC, animated: true)
         }
     }
     
@@ -7403,14 +6915,11 @@ extension CirclesHomeViewController {
             self.networkPlaces = deduplicatedNetworkPlaces
             print("🔍 Loaded \(allNetworkPlaces.count) raw network places, deduplicated to \(deduplicatedNetworkPlaces.count) unique places for search")
             
-            // If currently searching in network scope, refresh results
-            if self.currentSearchScope == .networkPlaces && self.isSearching == true {
-                self.filterPlaces(searchText: self.searchBar.text ?? "")
-                if !self.filteredPlaces.isEmpty {
-                    self.showSearchResults()
-                } else {
-                    self.hideSearchResults()
-                }
+            // If a search is active, fold the newly-loaded network places into
+            // the current results
+            if self.isSearching, let text = self.searchBar.text, !text.isEmpty {
+                self.filterPlaces(searchText: text)
+                self.refreshSearchOverlay()
                 self.updateEmptyState()
             }
         }
@@ -8690,25 +8199,6 @@ extension CirclesHomeViewController: VisitTrackingPermissionViewDelegate {
         
         // Continue with normal flow
         checkTutorialAndOverlay()
-    }
-}
-
-// MARK: - QuickAccessPlacesDelegate
-
-extension CirclesHomeViewController: QuickAccessPlacesDelegate {
-    func didUpdateQuickAccessPlaces(_ places: [Place]) {
-        // Convert places to dictionary format for storage
-        let placesData = places.map { place -> [String: Any] in
-            return [
-                "id": place.id,
-                "name": place.name,
-                "address": place.address,
-                "latitude": place.location?.coordinates[1] ?? 0,
-                "longitude": place.location?.coordinates[0] ?? 0
-            ]
-        }
-        
-        saveQuickAccessPlaces(placesData)
     }
 }
 
