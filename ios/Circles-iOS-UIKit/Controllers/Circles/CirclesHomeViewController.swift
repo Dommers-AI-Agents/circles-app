@@ -1760,7 +1760,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Surface the sign-in-time duplicate-account hint (once per login)
         promptForDuplicateAccountsIfNeeded()
         
-        // Listen for connections to be loaded before checking tutorial/overlay
+        // Listen for connections to be loaded before checking tutorial/overlay.
+        // Remove-before-add: this runs on every appearance but the handler only
+        // removes the observer when the notification actually fires, so without
+        // this the observer would accumulate across appearances.
+        NotificationCenter.default.removeObserver(self, name: .connectionsLoaded, object: nil)
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(connectionsLoadedHandler),
