@@ -288,7 +288,15 @@ class ActivityFeedCell: UITableViewCell {
             reactionPillsContainer.bottomAnchor.constraint(lessThanOrEqualTo: containerView.bottomAnchor, constant: -Constants.Spacing.small)
         ])
     }
-    
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // Explicit shadowPath so Core Animation stops recomputing the shadow
+        // from the layer's alpha channel every frame during scroll.
+        containerView.layer.shadowPath = UIBezierPath(
+            roundedRect: containerView.bounds, cornerRadius: 12).cgPath
+    }
+
     // MARK: - Configuration
     func configure(with activity: Activity) {
         // Store the current activity

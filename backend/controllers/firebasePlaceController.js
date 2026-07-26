@@ -392,73 +392,12 @@ exports.getPlacesByCircleId = async (req, res, next) => {
       .orderBy('createdAt', 'desc')
       .get();
       
-    console.log('🔍 Places query results:', {
-      isEmpty: placesSnapshot.empty,
-      size: placesSnapshot.size,
-      docs: placesSnapshot.docs.map(doc => ({
-        id: doc.id,
-        data: doc.data()
-      }))
-    });
-    
-    // DEBUG: Let's check what the deletedAt field actually contains for these places
-    if (circle.places && circle.places.length > 0) {
-      console.log('🔍 DEBUG: Checking first 3 places in circle for deletedAt values...');
-      for (let i = 0; i < Math.min(3, circle.places.length); i++) {
-        const placeId = circle.places[i];
-        try {
-          const debugPlaceDoc = await db.collection(COLLECTIONS.PLACES).doc(placeId).get();
-          if (debugPlaceDoc.exists) {
-            const placeData = debugPlaceDoc.data();
-            console.log(`🔍 Place ${placeId}:`, {
-              id: placeId,
-              deletedAt: placeData.deletedAt,
-              deletedAtType: typeof placeData.deletedAt,
-              circleId: placeData.circleId,
-              hasDeletedAtField: placeData.hasOwnProperty('deletedAt')
-            });
-          } else {
-            console.log(`🔍 Place ${placeId}: Document does not exist`);
-          }
-        } catch (error) {
-          console.log(`🔍 Place ${placeId}: Error fetching:`, error.message);
-        }
-      }
-    }
-
     // Filter out soft-deleted places (where deletedAt is not null/undefined)
     const allPlaces = serializeQuerySnapshot(placesSnapshot);
-    const places = allPlaces.filter(place => {
-      const isDeleted = place.deletedAt !== null && place.deletedAt !== undefined;
-      console.log(`🔍 Place ${place.id} (${place.name}): deletedAt=${place.deletedAt}, isDeleted=${isDeleted}`);
-      return !isDeleted;
-    });
-    
-    console.log('🔍 Filtering results:', {
-      totalPlacesFromQuery: allPlaces.length,
-      nonDeletedPlaces: places.length,
-      filteredOutCount: allPlaces.length - places.length
-    });
-    
-    // Debug location data for the first few places
-    console.log('🗺️ Location data debug:');
-    places.slice(0, 3).forEach((place, index) => {
-      console.log(`🗺️ Place ${index + 1}: ${place.name}`);
-      console.log(`  📍 Location field:`, place.location);
-      if (place.location) {
-        console.log(`  📍 Location type: ${typeof place.location}`);
-        console.log(`  📍 Coordinates:`, place.location.coordinates);
-        console.log(`  📍 Coordinates type: ${typeof place.location.coordinates}`);
-        console.log(`  📍 Coordinates length: ${place.location.coordinates ? place.location.coordinates.length : 'N/A'}`);
-        if (place.location.coordinates && place.location.coordinates.length === 2) {
-          console.log(`  📍 Lng: ${place.location.coordinates[0]} (${typeof place.location.coordinates[0]})`);
-          console.log(`  📍 Lat: ${place.location.coordinates[1]} (${typeof place.location.coordinates[1]})`);
-        }
-      } else {
-        console.log(`  ❌ No location field`);
-      }
-    });
-    
+    const places = allPlaces.filter(place =>
+      place.deletedAt === null || place.deletedAt === undefined
+    );
+
     // Get unique user IDs who added places
     const userIds = [...new Set(places.map(place => place.addedBy))];
     

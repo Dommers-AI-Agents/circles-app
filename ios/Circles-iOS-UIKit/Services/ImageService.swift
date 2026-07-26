@@ -2,10 +2,45 @@ import UIKit
 
 class ImageService {
     static let shared = ImageService()
-    
+
     private let cache = NSCache<NSString, UIImage>()
     private let mediaCacheService = MediaCacheService.shared
-    
+
+    // Source images larger than this on their longest side are downsampled
+    // before caching — feed thumbnails/avatars never need more, and full-res
+    // decode was the main-thread scroll cost.
+    private let maxCachedDimension: CGFloat = 1200
+
+    init() {
+        // Bound the in-memory cache (was unbounded — grew until OS eviction)
+        cache.countLimit = 150
+        cache.totalCostLimit = 100 * 1024 * 1024 // ~100 MB
+    }
+
+    /// Cost (approx bytes) for NSCache accounting.
+    private func cost(of image: UIImage) -> Int {
+        guard let cg = image.cgImage else { return 1 }
+        return cg.bytesPerRow * cg.height
+    }
+
+    /// Decodes image data off the main thread, downsampling to
+    /// `maxCachedDimension` so huge source images don't blow up memory or
+    /// cost a full-res main-thread decode on first draw.
+    private func decodedImage(from data: Data) -> UIImage? {
+        let opts: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxCachedDimension * UIScreen.main.scale
+        ]
+        if let src = CGImageSourceCreateWithData(data as CFData, nil),
+           let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) {
+            return UIImage(cgImage: cg)
+        }
+        // Fallback: full decode, forced off first-draw
+        return UIImage(data: data)?.preparingForDisplay()
+    }
+
     // Alias for loadImage to maintain compatibility
     func loadImage(from urlString: String, completion: @escaping (UIImage?) -> Void) {
         downloadImage(from: urlString, completion: completion)
@@ -24,9 +59,9 @@ class ImageService {
         
         // If not in cache with custom key, download normally
         downloadImage(from: urlString) { [weak self] image in
-            if let image = image {
+            if let image = image, let self = self {
                 // Store with custom cache key
-                self?.cache.setObject(image, forKey: key)
+                self.cache.setObject(image, forKey: key, cost: self.cost(of: image))
             }
             completion(image)
         }
@@ -185,18 +220,16 @@ class ImageService {
             }
             
             guard let self = self else { return }
-            guard let data = data, let image = UIImage(data: data) else {
+            guard let data = data, let image = self.decodedImage(from: data) else {
                 Logger.error("ImageService: Failed to create image from data")
                 DispatchQueue.main.async {
                     completion(nil)
                 }
                 return
             }
-            
-            Logger.debug("ImageService: Successfully downloaded image")
-            
+
             // Cache the image in memory
-            self.cache.setObject(image, forKey: cacheKey)
+            self.cache.setObject(image, forKey: cacheKey, cost: self.cost(of: image))
             
             // Cache the image to disk
             // Determine if this is user's own content based on URL patterns
