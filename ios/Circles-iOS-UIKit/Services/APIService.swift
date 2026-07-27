@@ -561,6 +561,12 @@ class APIService {
         // Add default headers
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
         request.addValue("application/json", forHTTPHeaderField: "Accept")
+
+        // Advertise that this build understands the "followers" moment
+        // visibility tier. Without this header the backend downgrades that
+        // value to "network" on the wire so older app builds (whose
+        // VideoVisibility enum lacks the case) can still decode moment feeds.
+        request.addValue("1", forHTTPHeaderField: "X-FC-Moments-Followers")
         
         // Add cache control headers to prevent 304 responses
         if method == .get {

@@ -1048,7 +1048,18 @@ exports.updateVideo = async (req, res) => {
           message: 'Invalid visibility setting'
         });
       }
-      updates.visibility = visibility;
+      // Back-compat guard: a client that doesn't advertise followers support
+      // saw this moment's 'followers' value downgraded to 'network' on the wire
+      // (see responseNormalizer). If it now echoes 'network' back on an edit,
+      // don't clobber the owner's real 'followers' setting — the old client
+      // couldn't have intended a change to a value it can't even represent.
+      const clientKnowsFollowers = req.headers['x-fc-moments-followers'] === '1';
+      const echoingDowngrade = !clientKnowsFollowers
+        && visibility === 'network'
+        && videoData.visibility === 'followers';
+      if (!echoingDowngrade) {
+        updates.visibility = visibility;
+      }
     }
     
     if (tags !== undefined) {

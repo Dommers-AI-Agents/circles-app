@@ -441,7 +441,7 @@ const validatePlaceVideo = (videoData) => {
     errors.push('Description must be 500 characters or less');
   }
   
-  const validVisibility = ['public', 'network', 'private'];
+  const validVisibility = ['public', 'followers', 'network', 'private'];
   if (videoData.visibility && !validVisibility.includes(videoData.visibility)) {
     errors.push('Invalid visibility setting');
   }
