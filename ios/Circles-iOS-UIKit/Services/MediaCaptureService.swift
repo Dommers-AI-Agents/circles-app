@@ -163,46 +163,68 @@ class MediaCaptureService: NSObject {
         }
         
         guard let viewController = presentingViewController else { return }
-        
-        let imagePicker = UIImagePickerController()
-        imagePicker.sourceType = .camera
-        imagePicker.delegate = self
-        imagePicker.allowsEditing = false
-        
-        switch type {
-        case .photo:
-            imagePicker.mediaTypes = ["public.image"]
-        case .video:
-            imagePicker.mediaTypes = ["public.movie"]
-            imagePicker.videoMaximumDuration = 15 // 15 seconds max for consistency with Moments
-            imagePicker.videoQuality = .typeHigh
-        case .both:
-            imagePicker.mediaTypes = ["public.image", "public.movie"]
-            imagePicker.videoMaximumDuration = 15
-            imagePicker.videoQuality = .typeHigh
+
+        // The camera subsystem is slow to spin up — show an immediate indicator.
+        presentPickerWithWarmupHUD(from: viewController, message: "Opening Camera…") {
+            let imagePicker = UIImagePickerController()
+            imagePicker.sourceType = .camera
+            imagePicker.delegate = self
+            imagePicker.allowsEditing = false
+
+            switch type {
+            case .photo:
+                imagePicker.mediaTypes = ["public.image"]
+            case .video:
+                imagePicker.mediaTypes = ["public.movie"]
+                imagePicker.videoMaximumDuration = 15 // 15 seconds max for consistency with Moments
+                imagePicker.videoQuality = .typeHigh
+            case .both:
+                imagePicker.mediaTypes = ["public.image", "public.movie"]
+                imagePicker.videoMaximumDuration = 15
+                imagePicker.videoQuality = .typeHigh
+            }
+            return imagePicker
         }
-        
-        viewController.present(imagePicker, animated: true)
     }
     
     private func presentPhotoLibrary(for type: MediaCaptureType) {
         guard let viewController = presentingViewController else { return }
-        
-        let imagePicker = UIImagePickerController()
-        imagePicker.sourceType = .photoLibrary
-        imagePicker.delegate = self
-        imagePicker.allowsEditing = false
-        
+
+        let mediaTypes: [String]
         switch type {
-        case .photo:
-            imagePicker.mediaTypes = ["public.image"]
-        case .video:
-            imagePicker.mediaTypes = ["public.movie"]
-        case .both:
-            imagePicker.mediaTypes = ["public.image", "public.movie"]
+        case .photo: mediaTypes = ["public.image"]
+        case .video: mediaTypes = ["public.movie"]
+        case .both:  mediaTypes = ["public.image", "public.movie"]
         }
-        
-        viewController.present(imagePicker, animated: true)
+
+        // The photo library takes a moment to warm up. Show an immediate
+        // "Opening Photos…" indicator so the tap doesn't feel dead, then swap
+        // in the picker once it's built.
+        presentPickerWithWarmupHUD(from: viewController, message: "Opening Photos…") {
+            let imagePicker = UIImagePickerController()
+            imagePicker.sourceType = .photoLibrary
+            imagePicker.delegate = self
+            imagePicker.allowsEditing = false
+            imagePicker.mediaTypes = mediaTypes
+            return imagePicker
+        }
+    }
+
+    /// Shows a brief loading HUD, builds the (slow-to-init) picker on the next
+    /// runloop so the HUD is visible during the warm-up, then dismisses the HUD
+    /// and presents the picker.
+    private func presentPickerWithWarmupHUD(
+        from viewController: UIViewController,
+        message: String,
+        build: @escaping () -> UIImagePickerController
+    ) {
+        let hud = AlertPresenter.showLoading(message: message, from: viewController)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            let picker = build()
+            hud.dismiss(animated: false) {
+                viewController.present(picker, animated: true)
+            }
+        }
     }
     
     private func checkPhotoLibraryPermission(completion: @escaping (Bool) -> Void) {

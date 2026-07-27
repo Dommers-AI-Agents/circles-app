@@ -17,6 +17,7 @@ extension UIButton {
         button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.heightAnchor.constraint(equalToConstant: 50).isActive = true
+        button.enableTapFeedback()
         return button
     }
     
@@ -32,6 +33,7 @@ extension UIButton {
         button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.heightAnchor.constraint(equalToConstant: 50).isActive = true
+        button.enableTapFeedback()
         return button
     }
     
@@ -45,6 +47,7 @@ extension UIButton {
         button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.heightAnchor.constraint(equalToConstant: 50).isActive = true
+        button.enableTapFeedback()
         return button
     }
     
@@ -70,6 +73,7 @@ extension UIButton {
             button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 8)
         }
         
+        button.enableTapFeedback()
         return button
     }
     
@@ -93,6 +97,7 @@ extension UIButton {
             button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 8)
         }
         
+        button.enableTapFeedback()
         return button
     }
     
@@ -114,6 +119,7 @@ extension UIButton {
             button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 8)
         }
         
+        button.enableTapFeedback()
         return button
     }
     
@@ -135,6 +141,7 @@ extension UIButton {
             button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 8)
         }
         
+        button.enableTapFeedback()
         return button
     }
     
@@ -170,6 +177,7 @@ extension UIButton {
             button.layer.borderWidth = 0
         }
         
+        button.enableTapFeedback()
         return button
     }
     
@@ -180,6 +188,7 @@ extension UIButton {
         button.setImage(UIImage(systemName: systemName, withConfiguration: config), for: .normal)
         button.tintColor = Constants.Colors.label
         button.translatesAutoresizingMaskIntoConstraints = false
+        button.enableTapFeedback()
         return button
     }
     
@@ -195,28 +204,62 @@ extension UIButton {
     
     // MARK: - Convenience Methods
     
-    /// Updates button to loading state
+    private enum TapFeedbackKeys {
+        static var savedTitle = "fc.button.savedTitle"
+    }
+
+    /// Updates button to loading state. Captures and restores its own title so
+    /// callers don't have to (the previous version left the title cleared).
     func setLoading(_ isLoading: Bool) {
         self.isEnabled = !isLoading
         self.alpha = isLoading ? 0.6 : 1.0
-        
+
         if isLoading {
+            guard viewWithTag(999) == nil else { return } // already loading
+            objc_setAssociatedObject(self, &TapFeedbackKeys.savedTitle, currentTitle, .OBJC_ASSOCIATION_RETAIN)
+
             let spinner = UIActivityIndicatorView(style: .medium)
             spinner.translatesAutoresizingMaskIntoConstraints = false
             spinner.startAnimating()
             spinner.color = self.titleColor(for: .normal)
             spinner.tag = 999 // Tag for removal
-            
+
             self.addSubview(spinner)
             NSLayoutConstraint.activate([
                 spinner.centerXAnchor.constraint(equalTo: self.centerXAnchor),
                 spinner.centerYAnchor.constraint(equalTo: self.centerYAnchor)
             ])
-            
+
             self.setTitle("", for: .normal)
         } else {
             self.viewWithTag(999)?.removeFromSuperview()
-            // Title needs to be restored by caller
+            if let saved = objc_getAssociatedObject(self, &TapFeedbackKeys.savedTitle) as? String {
+                self.setTitle(saved, for: .normal)
+                objc_setAssociatedObject(self, &TapFeedbackKeys.savedTitle, nil, .OBJC_ASSOCIATION_RETAIN)
+            }
+        }
+    }
+
+    /// Adds instant tap feedback — a light haptic and a brief press dip — so a
+    /// tap always registers visibly/physically even before a slow action (a
+    /// network call, or the photo picker warming up) follows through. Called
+    /// automatically by the factory methods; call it manually on non-factory
+    /// buttons to opt in.
+    func enableTapFeedback() {
+        addTarget(self, action: #selector(_fcTapFeedbackDown), for: [.touchDown, .touchDragEnter])
+        addTarget(self, action: #selector(_fcTapFeedbackUp), for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit])
+    }
+
+    @objc private func _fcTapFeedbackDown() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        UIView.animate(withDuration: 0.06, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) {
+            self.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
+        }
+    }
+
+    @objc private func _fcTapFeedbackUp() {
+        UIView.animate(withDuration: 0.12, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) {
+            self.transform = .identity
         }
     }
     
