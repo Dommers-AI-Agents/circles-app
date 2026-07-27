@@ -27,6 +27,14 @@ const REWARD_EVENT_TYPES = [
 
 // Venue with a window sticker (discovery) and a register card (purchase proof).
 // Offers are venue-honored discounts users redeem with points.
+// Default comp expiry for an unclaimed enrollment: open-ended (null) unless a
+// bounded runway is configured via rewardConfig.UNCLAIMED_COMP_DAYS.
+const compDefaultUntil = (nowIso) => {
+  const days = rewardConfig.UNCLAIMED_COMP_DAYS;
+  if (!Number.isInteger(days) || days <= 0) return null;
+  return new Date(new Date(nowIso).getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+};
+
 const createStickerVenue = (data, windowCode, registerCode) => {
   const now = new Date().toISOString();
   const emptyStats = { scans: 0, signups: 0, saves: 0, visits: 0, redemptions: 0 };
@@ -60,6 +68,19 @@ const createStickerVenue = (data, windowCode, registerCode) => {
       active: offer.active !== false
     })),
     announcements: [],
+    // Loyalty comp: keeps the program live for a venue with no paying owner,
+    // replacing the old implicit "unowned => live forever" rule with an
+    // explicit, auditable, sunsettable flag. Venues enrolled without an owner
+    // are comped by default; owner-created venues are not (they subscribe).
+    // `loyaltyCompedUntil` is an ISO string or null (null = open-ended).
+    loyaltyComped: data.loyaltyComped !== undefined
+      ? data.loyaltyComped === true
+      : !data.ownerUserId,
+    loyaltyCompedUntil: data.loyaltyCompedUntil !== undefined
+      ? data.loyaltyCompedUntil
+      : (!data.ownerUserId ? compDefaultUntil(now) : null),
+    loyaltyCompReason: data.loyaltyCompReason
+      || (!data.ownerUserId ? 'unclaimed_enrollment' : null),
     stats: { ...emptyStats },
     // { "2026-07": { scans: 3, ... } } — fed into the monthly venue report email
     statsMonthly: {},

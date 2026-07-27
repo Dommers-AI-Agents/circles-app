@@ -26,5 +26,12 @@ module.exports = {
   // Venue sticker codes: 6 uppercase alphanumeric chars (same alphabet as referral codes)
   CODE_LENGTH: 6,
 
+  // Loyalty comp for venues with no paying owner (hands-on pilot enrollments).
+  // A venue enrolled without an ownerUserId is comped so its field stickers keep
+  // working while the owner signs up and subscribes. null = open-ended comp
+  // (preserves the historical "unowned runs forever" behavior); set to a number
+  // of days to give new enrollments a bounded runway toward a Business sub.
+  UNCLAIMED_COMP_DAYS: null,
+
   APP_STORE_URL: 'https://apps.apple.com/us/app/favcircles/id6746807095'
 };

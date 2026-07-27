@@ -20,7 +20,7 @@ const rewardConfig = require('../config/rewardConfig');
 const emailService = require('../services/emailService');
 const { resolveGlobalPlace } = require('../services/globalPlaceResolver');
 const { GLOBAL_COLLECTIONS } = require('../models/GlobalPlace');
-const { isOwnerPremiumUser, isVenueLoyaltyActive } = require('../services/ownerSubscriptionService');
+const { isOwnerPremiumUser, isVenueLoyaltyActive, isCompActive, venueLoyaltyStatus } = require('../services/ownerSubscriptionService');
 const { createActivity } = require('./activityController');
 const sseService = require('../services/sseService');
 
@@ -139,7 +139,9 @@ exports.scan = async (req, res) => {
     // gate — points come from the venue's owner-configured earn rate).
     // Loyalty pauses gracefully when the owner's business subscription lapses —
     // never a scary error at the register.
-    if (!(await isVenueLoyaltyActive(venue))) {
+    const loyalty = await venueLoyaltyStatus(venue);
+    if (!loyalty.active) {
+      console.warn(`[loyalty-integrity] register scan paused venue=${venue.venueId} reason=${loyalty.reason}`);
       const { rewardPoints } = await rewardService.getBalance(userId);
       return res.json({
         success: true,
@@ -152,6 +154,11 @@ exports.scan = async (req, res) => {
           offers: []
         }
       });
+    }
+    // Comped venue awarding points has no paying subscriber — surface it so
+    // revenue leakage is measurable, not invisible.
+    if (loyalty.reason === 'comp') {
+      console.info(`[loyalty-integrity] comped award venue=${venue.venueId} until=${venue.loyaltyCompedUntil || 'open-ended'} reason=${venue.loyaltyCompReason || 'unspecified'}`);
     }
 
     const visitResult = await rewardService.awardVenueVisit(userId, venue);
@@ -289,14 +296,18 @@ exports.getOffers = async (req, res) => {
       );
       ownerDocs.forEach((doc) => ownerPremium.set(doc.id, doc.exists && isOwnerPremiumUser(doc.data())));
     }
-    const loyaltyLive = (venue) => !venue.ownerUserId || ownerPremium.get(venue.ownerUserId) === true;
+    // Loyalty is live via an explicit comp OR a premium owner — no longer the
+    // implicit "unowned => always live" pass (that ran the paid program free
+    // and invisibly). Comp keeps hands-on pilot venues working.
+    const loyaltyLive = (venue) => isCompActive(venue) || ownerPremium.get(venue.ownerUserId) === true;
 
-    // A venue belongs in the browse list while it has anything live to show —
-    // a redeemable offer or an announcement ("Happy Hour 3-6pm" style promos)
+    // A venue belongs in the browse list only while its loyalty is live and it
+    // has something to show — a redeemable offer or an announcement. A lapsed
+    // owner's offers AND announcements are both hidden (consistent behavior).
     const liveVenues = allVenues
       .filter((venue) =>
-        (loyaltyLive(venue) && activeOffers(venue).length > 0) ||
-        rewardService.activeAnnouncements(venue).length > 0
+        loyaltyLive(venue) &&
+        (activeOffers(venue).length > 0 || rewardService.activeAnnouncements(venue).length > 0)
       );
 
     const savedPlaceIds = await rewardService.getSavedVenuePlaceIds(
@@ -416,8 +427,9 @@ exports.getVenueByPlace = async (req, res) => {
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
     const balance = (userDoc.exists && userDoc.data().rewardPoints) || 0;
 
-    // Offers hide while the owner's business subscription is lapsed;
-    // announcements stay up until their natural expiry
+    // While the owner's business subscription is lapsed (and the venue isn't
+    // comped), both offers AND announcements hide — a lapsed owner shouldn't
+    // keep broadcasting a paid feature.
     const venueLoyaltyLive = await isVenueLoyaltyActive(venue);
 
     res.json({
@@ -430,7 +442,7 @@ exports.getVenueByPlace = async (req, res) => {
         offers: (venueLoyaltyLive ? activeOffers(venue) : []).map(({ offerId, title, pointsCost }) => ({
           offerId, title, pointsCost
         })),
-        announcements: rewardService.activeAnnouncements(venue),
+        announcements: venueLoyaltyLive ? rewardService.activeAnnouncements(venue) : [],
         balance,
         isOwner,
         // For the owner viewing their own place: drives the in-place
