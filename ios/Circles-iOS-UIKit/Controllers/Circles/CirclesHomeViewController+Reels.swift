@@ -232,6 +232,50 @@ extension CirclesHomeViewController {
             player.pause()
         }
     }
+
+    /// Switch the home content to the Moments tab and land on a specific moment.
+    /// Used when a moment activity (or its thumbnail) is tapped: instead of a
+    /// modal player, drop the user into the inline Moments feed positioned on
+    /// that moment (prepending it if the network feed doesn't already include
+    /// it — e.g. paginated out, just created, or follower-gated).
+    func openMomentInMomentsTab(_ video: PlaceVideo) {
+        // Show the Moments segment. Setting selectedSegmentIndex in code does
+        // not fire .valueChanged, so mirror contentSegmentChanged's case 1.
+        contentSegmentedControl.selectedSegmentIndex = 1
+        activityTableView.isHidden = true
+        specialsTableView.isHidden = true
+        reelsCollectionView.isHidden = false
+        momentsCameraButton.isHidden = false
+        activityHeaderLabel.text = "Moments"
+        pauseAllVideos()
+
+        // Load the network feed, then open on the tapped moment. The feed's
+        // index 0 is the video updateReelsFeed plays, so move the target to the
+        // front (insert if the feed doesn't include it) for a deterministic
+        // landing with no scroll race. Reordering invalidates the index-keyed
+        // player cache, so clear it before playing.
+        fetchReels { [weak self] _ in
+            guard let self = self else { return }
+            if let existing = self.reels.firstIndex(where: { $0.id == video.id }) {
+                if existing != 0 {
+                    let moment = self.reels.remove(at: existing)
+                    self.reels.insert(moment, at: 0)
+                }
+            } else {
+                self.reels.insert(video, at: 0)
+                self.reelsOffset = self.reels.count
+            }
+
+            for player in self.reelPlayers.values { player.pause() }
+            self.reelPlayers.removeAll()
+            self.reelVideoStates.removeAll()
+
+            self.reelsCollectionView.reloadData()
+            self.reelsCollectionView.setContentOffset(.zero, animated: false)
+            self.currentReelIndex = 0
+            self.playVideo(at: 0)
+        }
+    }
     
     func trackReelView(at index: Int) {
         guard index >= 0 && index < reels.count else { return }

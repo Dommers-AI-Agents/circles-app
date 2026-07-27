@@ -62,56 +62,25 @@ extension CirclesHomeViewController: ActivityFeedCellDelegate {
     }
     
     func navigateToVideoFromActivity(_ activity: Activity) {
-        // The targetId contains the video ID for video upload activities
+        // The targetId contains the video ID for video upload/like activities
         let videoId = activity.targetId
         guard !videoId.isEmpty, !isOpeningMoment else { return }
         isOpeningMoment = true
 
-        // Fetch the video details
+        // Fetch the moment, then drop the user into the inline Moments tab
+        // positioned on it (rather than a separate full-screen player).
         APIService.shared.request(
             endpoint: "videos/\(videoId)",
             method: .get
         ) { [weak self] (result: Result<PlaceVideoResponse, APIError>) in
             DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.isOpeningMoment = false
                 switch result {
                 case .success(let response):
-                    let video = response.data
-                    // Create and present the video player with just this video
-                    let videoReelsVC = VideoReelsViewController(reels: [video], startIndex: 0)
-                        videoReelsVC.modalPresentationStyle = .fullScreen
-                        
-                        // Set up navigation handler for when user taps on place in video
-                        videoReelsVC.placeNavigationHandler = { [weak self] placeId in
-                            // Dismiss the video player first
-                            self?.dismiss(animated: true) {
-                                // Then navigate to place
-                                let tempActivity = Activity(
-                                    id: activity.id,
-                                    type: .placeAdded,
-                                    actorId: activity.actorId,
-                                    actor: activity.actor,
-                                    targetType: "place",
-                                    targetId: placeId,
-                                    targetName: activity.targetName,
-                                    circleId: activity.circleId,
-                                    circleName: activity.circleName,
-                                    metadata: activity.metadata,
-                                    timestamp: activity.timestamp,
-                                    isRead: activity.isRead,
-                                    reactionCount: activity.reactionCount,
-                                    commentCount: activity.commentCount,
-                                    userReaction: activity.userReaction,
-                                    reactionSummary: activity.reactionSummary
-                                )
-                                self?.navigateToPlaceFromActivity(tempActivity)
-                            }
-                        }
-                        
-                        self?.isOpeningMoment = false
-                        self?.present(videoReelsVC, animated: true)
+                    self.openMomentInMomentsTab(response.data)
                 case .failure(let error):
-                    self?.isOpeningMoment = false
-                    self?.showError("Failed to load video: \(error.localizedDescription)")
+                    self.showError("Failed to load video: \(error.localizedDescription)")
                 }
             }
         }
@@ -317,9 +286,19 @@ extension CirclesHomeViewController {
         }
     }
 
+    /// Tab-bar Home re-tap: return the content segment to the Activity tab
+    /// (from Moments/Specials) so Home always opens on Activity.
+    func resetContentTabToActivity() {
+        guard contentSegmentedControl.selectedSegmentIndex != 0 else { return }
+        contentSegmentedControl.selectedSegmentIndex = 0
+        contentSegmentChanged()
+    }
+
     /// Tab-bar Home re-tap: return the map to its original state — no
-    /// connection or category filter, framed on the default region
+    /// connection or category filter, framed on the default region, and back
+    /// to map (not list) view.
     func resetMapToDefault() {
+        resetPlacesListToMap()
         if selectedConnectionId != nil || selectedCategory != nil {
             selectedCategory = nil
             selectConnection(id: nil, user: nil)
@@ -412,14 +391,14 @@ extension CirclesHomeViewController {
     
     func navigateToVideo(withId videoId: String) {
         // A blank id would hit `GET /videos/` → server 500; and a duplicate tap
-        // (see `isOpeningMoment`) would stack a second loading alert.
+        // (see `isOpeningMoment`) would double-open.
         guard !videoId.isEmpty, !isOpeningMoment else { return }
         isOpeningMoment = true
 
         // Show loading indicator
         let loadingAlert = AlertPresenter.showLoading(message: "Loading video...", from: self)
 
-        // Fetch video details
+        // Fetch the moment, then drop into the inline Moments tab on it.
         APIService.shared.request(
             endpoint: "videos/\(videoId)",
             method: .get
@@ -431,21 +410,7 @@ extension CirclesHomeViewController {
 
                     switch result {
                     case .success(let response):
-                        // Create array with just this video
-                        let reels = [response.data]
-                        
-                        // Open VideoReelsViewController
-                        let reelsVC = VideoReelsViewController(reels: reels, startIndex: 0)
-                        
-                        // Set the place navigation handler
-                        reelsVC.placeNavigationHandler = { [weak self] placeId in
-                            // Navigate to place after video is dismissed
-                            self?.navigateToPlace(withId: placeId)
-                        }
-                        
-                        reelsVC.modalPresentationStyle = .fullScreen
-                        self.present(reelsVC, animated: true)
-                        
+                        self.openMomentInMomentsTab(response.data)
                     case .failure(let error):
                         self.showError("Unable to load video: \(error.localizedDescription)")
                     }

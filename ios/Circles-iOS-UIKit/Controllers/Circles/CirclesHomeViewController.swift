@@ -1497,6 +1497,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             contentSegmentedControl.selectedSegmentIndex = 0
             contentSegmentChanged()
         }
+
+        // If the map was left in list view, flip it back to the map (filters
+        // are intentionally preserved across a tab switch — the Home re-tap
+        // clears those via resetMapToDefault).
+        resetPlacesListToMap()
         
         // If returning from full screen map, skip updates
         if isReturningFromFullScreenMap {
@@ -5397,6 +5402,16 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         placesListTableView.isHidden = !isShowingPlacesList
         mapExpandButton.isHidden = isShowingPlacesList
         mapPlaceCountLabel.isHidden = isShowingPlacesList
+    }
+
+    /// Force the home map's list overlay back to the map (no-op if already on
+    /// the map). Called when the Home tab is tapped so the map never stays
+    /// stuck in list view. Reuses listToggleTapped so all side effects (icon,
+    /// expand button, place-count) stay in sync.
+    func resetPlacesListToMap() {
+        if isShowingPlacesList {
+            listToggleTapped()
+        }
     }
 
     /// Rebuilds the distance-sorted data source for the places list from the

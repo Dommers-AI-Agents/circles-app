@@ -320,6 +320,7 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
                 switch currentIndex {
                 case 0: // Home tab
                     if let circlesVC = navController.topViewController as? CirclesHomeViewController {
+                        circlesVC.resetContentTabToActivity()
                         circlesVC.scrollToTop()
                         circlesVC.resetMapToDefault()
                         circlesVC.refreshData()
