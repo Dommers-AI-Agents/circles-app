@@ -6,6 +6,7 @@ class CheckInViewController: BaseViewController {
     
     // MARK: - Properties
     private var myPlaces: [Place] = []
+    private var nearbyPlaces: [Place] = []   // network places nearby (not mine), distance-sorted
     private var searchCompleter = MKLocalSearchCompleter()
     private var searchResults: [MKLocalSearchCompletion] = []
     private var filteredPlaces: [Place] = []
@@ -396,11 +397,46 @@ class CheckInViewController: BaseViewController {
             // Load My Places
             loadMyPlaces()
         } else {
-            // For Nearby tab, don't pre-load anything - let user search
-            placesTableView.reloadData()
-            hideLoadingState()
+            // Nearby: populate with network places by distance (same source as
+            // the moment place picker). Typing still runs the POI search.
+            loadNearbyPlaces()
         }
         completion?()
+    }
+
+    /// Nearby = all network places near the user (not the user's own),
+    /// distance-sorted. Shared with the moment picker via
+    /// PlaceService.getNearbyPlaces so both tabs behave identically.
+    private func loadNearbyPlaces() {
+        guard let location = currentLocation else {
+            // Location not resolved yet; didUpdateLocations will retry.
+            placesTableView.reloadData()
+            hideLoadingState()
+            return
+        }
+        showLoadingState()
+        PlaceService.shared.getNearbyPlaces(near: location) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.hideLoadingState()
+                switch result {
+                case .success(let places):
+                    self.nearbyPlaces = places
+                    if self.placeSelectionSegmentedControl.selectedSegmentIndex == 1 {
+                        self.placesTableView.reloadData()
+                        if places.isEmpty {
+                            self.customEmptyStateMessage = "No nearby places in your network yet. Search to find a place."
+                            self.showEmptyState()
+                        }
+                    }
+                case .failure:
+                    self.nearbyPlaces = []
+                    if self.placeSelectionSegmentedControl.selectedSegmentIndex == 1 {
+                        self.placesTableView.reloadData()
+                    }
+                }
+            }
+        }
     }
     
     private func loadMyPlaces() {
@@ -505,8 +541,9 @@ class CheckInViewController: BaseViewController {
             searchBar.placeholder = "Search for nearby places..."
             filteredPlaces = []
             myPlaces = []
-            
-            // Check location authorization
+
+            // Check location authorization; populate the nearby list once we
+            // have a fix (didUpdateLocations retries if it's still resolving).
             if currentLocation == nil {
                 switch locationManager.authorizationStatus {
                 case .authorizedWhenInUse, .authorizedAlways:
@@ -514,13 +551,15 @@ class CheckInViewController: BaseViewController {
                 case .notDetermined:
                     locationManager.requestWhenInUseAuthorization()
                 case .denied, .restricted:
-                    showError("Location access is required to search nearby places.")
+                    showError("Location access is required to find nearby places.")
                 @unknown default:
                     break
                 }
+            } else {
+                loadNearbyPlaces()
             }
         }
-        
+
         placesTableView.reloadData()
     }
     
@@ -692,12 +731,12 @@ extension CheckInViewController: UITableViewDataSource {
             return searchResults.count
         }
         
-        // Otherwise show filtered places for My Places tab
+        // Otherwise show the loaded list for the active tab
         if placeSelectionSegmentedControl.selectedSegmentIndex == 0 {
             return filteredPlaces.count
         } else {
-            // For Nearby tab, only show results when searching
-            return 0
+            // Nearby: network places by distance (until the user searches)
+            return nearbyPlaces.count
         }
     }
     
@@ -721,14 +760,15 @@ extension CheckInViewController: UITableViewDataSource {
                 cell.detailTextLabel?.text = result.subtitle
             }
         }
-        // Show filtered places for My Places tab
-        else if placeSelectionSegmentedControl.selectedSegmentIndex == 0 {
-            let place = filteredPlaces[indexPath.row]
+        // Otherwise show the loaded place for the active tab
+        else {
+            let isMyPlaces = placeSelectionSegmentedControl.selectedSegmentIndex == 0
+            let place = isMyPlaces ? filteredPlaces[indexPath.row] : nearbyPlaces[indexPath.row]
             cell.textLabel?.text = place.name
-            
-            // Build detail text with address, distance, and circle name
+
+            // Build detail text with distance, circle name, and address
             var detailComponents: [String] = []
-            
+
             // Add distance if available
             if let location = currentLocation,
                let distance = calculateDistanceToPlace(place, from: location) {
@@ -737,17 +777,17 @@ extension CheckInViewController: UITableViewDataSource {
                 let distanceString = formatter.string(fromDistance: distance)
                 detailComponents.append(distanceString)
             }
-            
-            // Add circle name if available
-            if let circleName = place.circleName {
+
+            // Add circle name for My Places (not meaningful for others' places)
+            if isMyPlaces, let circleName = place.circleName {
                 detailComponents.append(circleName)
             }
-            
+
             // Add address
             if !place.address.isEmpty {
                 detailComponents.append(place.address)
             }
-            
+
             cell.detailTextLabel?.text = detailComponents.joined(separator: " • ")
         }
         
@@ -778,11 +818,12 @@ extension CheckInViewController: UITableViewDelegate {
             let result = searchResults[indexPath.row]
             selectSearchResult(result)
         }
-        // Handle My Places selection
-        else if placeSelectionSegmentedControl.selectedSegmentIndex == 0 {
-            selectedPlace = filteredPlaces[indexPath.row]
+        // Handle a place from the active tab (My Places or Nearby)
+        else {
+            let isMyPlaces = placeSelectionSegmentedControl.selectedSegmentIndex == 0
+            selectedPlace = isMyPlaces ? filteredPlaces[indexPath.row] : nearbyPlaces[indexPath.row]
             selectedCompletion = nil
-            
+
             // Enable next button
             nextButton.isEnabled = true
             nextButton.alpha = 1.0
@@ -838,9 +879,13 @@ extension CheckInViewController: CLLocationManagerDelegate {
             longitudinalMeters: 5000
         )
         
-        // If on Nearby tab, prompt user to search
+        // If on Nearby tab, populate the distance-sorted network list now that
+        // we have a location fix (only if not already loaded).
         if placeSelectionSegmentedControl.selectedSegmentIndex == 1 {
             searchBar.placeholder = "Search for nearby places..."
+            if nearbyPlaces.isEmpty {
+                loadNearbyPlaces()
+            }
         }
     }
     

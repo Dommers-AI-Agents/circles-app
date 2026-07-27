@@ -21,8 +21,9 @@ class MomentPlacePickerViewController: BaseViewController {
 
     private var currentLocation: CLLocation?
     private var myPlaces: [Place] = []      // full distance-sorted list
-    private var nearbyPlaces: [Place] = []  // from POI/search
+    private var nearbyPlaces: [Place] = []  // network places nearby (not mine)
     private var myPlacesQuery = ""          // search filter for My Places
+    private var nearbyQuery = ""            // search filter for Nearby
     private var isLoading = false
 
     init(initialVisibility: VideoVisibility) {
@@ -99,11 +100,16 @@ class MomentPlacePickerViewController: BaseViewController {
         setupConstraints()
         updatePrivacySubtitle()
 
-        // Get location, then load My Places (sorted by distance)
+        // Load My Places right away (sorts alphabetically until we have a
+        // location), then re-sort by distance and load the active tab once the
+        // location resolves.
+        loadMyPlaces()
         LocationService.shared.getCurrentLocation { [weak self] location in
             DispatchQueue.main.async {
-                self?.currentLocation = location
-                self?.loadMyPlaces()
+                guard let self = self else { return }
+                self.currentLocation = location
+                self.myPlaces = self.sortByDistance(self.myPlaces)
+                if self.isMyPlaces { self.tableView.reloadData() } else { self.loadNearby() }
             }
         }
     }
@@ -155,20 +161,25 @@ class MomentPlacePickerViewController: BaseViewController {
 
     @objc private func sourceChanged() {
         searchBar.text = ""
-        if sourceControl.selectedSegmentIndex == 0 {
+        myPlacesQuery = ""
+        nearbyQuery = ""
+        if isMyPlaces {
             tableView.reloadData()
+        } else if nearbyPlaces.isEmpty {
+            loadNearby()
         } else {
-            loadNearby(query: nil)
+            tableView.reloadData()
         }
     }
 
     private var isMyPlaces: Bool { sourceControl.selectedSegmentIndex == 0 }
     private var rows: [Place] {
-        guard isMyPlaces else { return nearbyPlaces }
-        guard !myPlacesQuery.isEmpty else { return myPlaces }
-        return myPlaces.filter {
-            $0.name.localizedCaseInsensitiveContains(myPlacesQuery) ||
-            $0.address.localizedCaseInsensitiveContains(myPlacesQuery)
+        let source = isMyPlaces ? myPlaces : nearbyPlaces
+        let query = isMyPlaces ? myPlacesQuery : nearbyQuery
+        guard !query.isEmpty else { return source }
+        return source.filter {
+            $0.name.localizedCaseInsensitiveContains(query) ||
+            $0.address.localizedCaseInsensitiveContains(query)
         }
     }
 
@@ -205,49 +216,25 @@ class MomentPlacePickerViewController: BaseViewController {
         return loc.distance(from: CLLocation(latitude: lat, longitude: lng))
     }
 
-    /// Nearby list via Apple Maps — POIs around the user, or search matches.
-    private func loadNearby(query: String?) {
+    /// Nearby = all network places near the user (not the user's own),
+    /// distance-sorted. Shared with check-in via PlaceService.getNearbyPlaces.
+    private func loadNearby() {
         guard let loc = currentLocation else {
             nearbyPlaces = []
             tableView.reloadData()
             return
         }
         setLoading(true)
-        let region = MKCoordinateRegion(center: loc.coordinate, latitudinalMeters: 2000, longitudinalMeters: 2000)
-        let request = MKLocalSearch.Request()
-        request.naturalLanguageQuery = (query?.isEmpty == false) ? query : "points of interest"
-        request.region = region
-        MKLocalSearch(request: request).start { [weak self] response, _ in
+        PlaceService.shared.getNearbyPlaces(near: loc) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.setLoading(false)
-                let items = response?.mapItems ?? []
-                self.nearbyPlaces = items.map { self.place(from: $0) }
+                if case .success(let places) = result {
+                    self.nearbyPlaces = places
+                }
                 if !self.isMyPlaces { self.tableView.reloadData() }
             }
         }
-    }
-
-    private func place(from item: MKMapItem) -> Place {
-        let coord = item.placemark.coordinate
-        let addr = [item.placemark.thoroughfare, item.placemark.locality, item.placemark.administrativeArea]
-            .compactMap { $0 }.joined(separator: ", ")
-        return Place(
-            id: UUID().uuidString,
-            name: item.name ?? "Unknown place",
-            description: nil,
-            address: addr,
-            location: GeoLocation(type: "Point", coordinates: [coord.longitude, coord.latitude]),
-            website: item.url?.absoluteString,
-            phone: item.phoneNumber,
-            googlePlaceId: nil, photos: nil, videos: nil,
-            category: .other, customCategoryId: nil, subcategory: nil,
-            rating: nil, userRatingsTotal: nil, notes: nil, privateNotes: nil, publicNotes: nil,
-            tags: nil, reviews: nil, openingHours: nil, priceLevel: nil,
-            likes: nil, likesCount: nil, commentsCount: nil,
-            circleId: "", addedBy: AuthService.shared.getUserId() ?? "", addedByUser: nil,
-            privacy: .public, createdAt: Date(), updatedAt: Date(), isNew: nil
-        )
     }
 
     private func setLoading(_ loading: Bool) {
@@ -295,13 +282,13 @@ extension MomentPlacePickerViewController: UITableViewDataSource, UITableViewDel
 extension MomentPlacePickerViewController: UISearchBarDelegate {
     func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
         let q = searchText.trimmingCharacters(in: .whitespaces)
+        // Both tabs filter their already-loaded, distance-sorted list locally
         if isMyPlaces {
-            // Local filter over the already-loaded places (see `rows`)
             myPlacesQuery = q
-            tableView.reloadData()
         } else {
-            loadNearby(query: q)
+            nearbyQuery = q
         }
+        tableView.reloadData()
     }
 
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {

@@ -294,6 +294,32 @@ class PlaceService {
             }
         )
     }
+
+    /// Nearby places for the "Nearby" tab shared by check-in and moment
+    /// posting: all places in the user's network near `location`, EXCLUDING
+    /// the user's own saves, sorted by distance (the viewport endpoint already
+    /// returns them nearest-first).
+    func getNearbyPlaces(near location: CLLocation,
+                         radiusM: Double = 50_000,
+                         limit: Int = 100,
+                         completion: @escaping (Result<[Place], Error>) -> Void) {
+        fetchNetworkPlacesInViewport(
+            centerLat: location.coordinate.latitude,
+            centerLng: location.coordinate.longitude,
+            radiusM: radiusM,
+            limit: limit
+        ) { result in
+            switch result {
+            case .success(let places):
+                let currentUserId = AuthService.shared.getUserId() ?? ""
+                // "Other than my places" — drop the user's own saves
+                let others = places.filter { !IDNormalizer.isSameUser($0.addedBy, currentUserId) }
+                completion(.success(others)) // already distance-sorted server-side
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
     
     // MARK: - Create, Update, Delete
     
