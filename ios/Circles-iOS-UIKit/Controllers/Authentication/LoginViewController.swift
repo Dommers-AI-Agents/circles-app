@@ -246,7 +246,10 @@ class LoginViewController: BaseViewController {
         // last: Sign in with Apple offers relay emails, which fragment account
         // identity when the same person later signs in with their real address.
         buttonsStackView.addArrangedSubview(googleSignInButton)
-        buttonsStackView.addArrangedSubview(facebookSignInButton)
+        // Facebook Sign-In is intentionally omitted from the login screen — it's
+        // not wired up. The button, action, and handler are kept below so it can
+        // be re-added by uncommenting this line if we enable Facebook later.
+        // buttonsStackView.addArrangedSubview(facebookSignInButton)
         buttonsStackView.addArrangedSubview(appleSignInContainerView)
 
         orDividerLabel.heightAnchor.constraint(equalToConstant: 20).isActive = true
