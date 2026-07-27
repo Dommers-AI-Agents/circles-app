@@ -252,17 +252,18 @@ class ContentUploadViewController: UIViewController {
         dismiss(animated: true)
     }
     
+    // Privacy is now chosen on the place-picker (the bubble selector), so these
+    // capture entry points no longer gate on an up-front privacy action sheet.
     @objc private func recordVideoTapped() {
-        showPrivacySelection { [weak self] in
-            // Present video recording controller
-            let videoRecordingVC = VideoRecordingViewController()
-            videoRecordingVC.delegate = self
-            videoRecordingVC.modalPresentationStyle = .fullScreen
-            self?.present(videoRecordingVC, animated: true)
-        }
+        let videoRecordingVC = VideoRecordingViewController()
+        videoRecordingVC.delegate = self
+        videoRecordingVC.modalPresentationStyle = .fullScreen
+        present(videoRecordingVC, animated: true)
     }
-    
+
     @objc private func linkFromSocialTapped() {
+        // The link flow posts directly (no place picker), so it keeps the
+        // up-front privacy selection.
         showPrivacySelection { [weak self] in
             let linkInputVC = VideoLinkInputViewController()
             linkInputVC.delegate = self
@@ -271,21 +272,15 @@ class ContentUploadViewController: UIViewController {
             self?.present(nav, animated: true)
         }
     }
-    
+
     @objc private func takePhotoTapped() {
-        showPrivacySelection { [weak self] in
-            guard let self = self else { return }
-            self.mediaCaptureService.delegate = self
-            self.mediaCaptureService.presentCamera(from: self, for: .photo)
-        }
+        mediaCaptureService.delegate = self
+        mediaCaptureService.presentCamera(from: self, for: .photo)
     }
-    
+
     @objc private func chooseFromLibraryTapped() {
-        showPrivacySelection { [weak self] in
-            guard let self = self else { return }
-            self.mediaCaptureService.delegate = self
-            self.mediaCaptureService.presentPhotoLibrary(from: self, for: .both) // Allow both photos and videos
-        }
+        mediaCaptureService.delegate = self
+        mediaCaptureService.presentPhotoLibrary(from: self, for: .both) // Allow both photos and videos
     }
     
     // MARK: - Legacy Methods Removed
@@ -515,22 +510,22 @@ extension ContentUploadViewController: MediaCaptureServiceDelegate {
     
     
     private func showPlaceSelection(for content: ContentType) {
-        let placeSearchVC = PlaceSearchViewController()
-        placeSearchVC.delegate = self
-        // Store content type for later use
         self.pendingContent = content
-        let nav = UINavigationController(rootViewController: placeSearchVC)
+        let picker = MomentPlacePickerViewController(initialVisibility: selectedVisibility)
+        picker.delegate = self
+        let nav = UINavigationController(rootViewController: picker)
         present(nav, animated: true)
     }
-    
+
     private func startUploadAndShowPlaceSelection(for content: ContentType) {
-        // Show place selection UI immediately
-        let placeSearchVC = PlaceSearchViewController()
+        // Show place selection UI immediately (check-in style, with the
+        // privacy bubble on top)
+        let placeSearchVC = MomentPlacePickerViewController(initialVisibility: selectedVisibility)
         placeSearchVC.delegate = self
-        
+
         // Store content for upload completion
         self.pendingContent = content
-        
+
         // Present place search
         let nav = UINavigationController(rootViewController: placeSearchVC)
         
@@ -588,6 +583,23 @@ extension ContentUploadViewController: VideoLinkInputDelegate {
     
     func videoLinkInputDidCancel() {
         // User cancelled link input
+    }
+}
+
+// MARK: - MomentPlacePickerDelegate
+extension ContentUploadViewController: MomentPlacePickerDelegate {
+    func momentPlacePicker(_ picker: MomentPlacePickerViewController, didSelect place: Place, visibility: VideoVisibility) {
+        guard let content = pendingContent else { return }
+        selectedVisibility = visibility
+        selectedPlace = place
+        pendingContent = nil
+        if let presentedVC = presentedViewController {
+            presentedVC.dismiss(animated: true) { [weak self] in
+                self?.showProcessingAndUpload(content: content, place: place)
+            }
+        } else {
+            showProcessingAndUpload(content: content, place: place)
+        }
     }
 }
 
