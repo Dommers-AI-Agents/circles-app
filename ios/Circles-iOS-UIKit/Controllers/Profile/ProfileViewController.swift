@@ -419,7 +419,44 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         control.translatesAutoresizingMaskIntoConstraints = false
         return control
     }()
-    
+
+    // MARK: - Sticky tab bar
+    // A mirror of the tab control (+ add-circle button) pinned to the top,
+    // revealed once the profile header scrolls past it so the tabs stay
+    // reachable while scrolling a long circle/uploads list.
+    private lazy var stickyTabBar: UIView = {
+        let v = UIView()
+        v.backgroundColor = Constants.Colors.background
+        v.isHidden = true
+        v.alpha = 0
+        v.translatesAutoresizingMaskIntoConstraints = false
+        return v
+    }()
+    private let stickyTabSeparator: UIView = {
+        let v = UIView()
+        v.backgroundColor = .separator
+        v.translatesAutoresizingMaskIntoConstraints = false
+        return v
+    }()
+    private lazy var stickySegmentedControl: UISegmentedControl = {
+        let c = UISegmentedControl(items: ["Circles", "Moments", "Uploads"])
+        c.selectedSegmentIndex = 0
+        c.addTarget(self, action: #selector(stickySegmentChanged), for: .valueChanged)
+        c.translatesAutoresizingMaskIntoConstraints = false
+        return c
+    }()
+    private lazy var stickyAddButton: UIButton = {
+        let b = UIButton(type: .system)
+        b.setImage(UIImage(systemName: "plus.circle.fill"), for: .normal)
+        b.tintColor = Constants.Colors.primary
+        b.addTarget(self, action: #selector(createCircleButtonTapped), for: .touchUpInside)
+        b.accessibilityLabel = "New circle"
+        b.translatesAutoresizingMaskIntoConstraints = false
+        return b
+    }()
+    private var isStickyTabBarVisible = false
+
+
     // Search bar container
     let searchBarContainer: UIView = {
         let view = UIView()
@@ -571,7 +608,11 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         return collectionView
     }()
     
-    var uploads: [UserUploadedPhoto] = []
+    var uploads: [UserUploadedPhoto] = [] {
+        didSet { uploadGroups = uploads.groupedByPlace() }
+    }
+    /// Uploads collapsed to one entry per place (the grid renders these).
+    var uploadGroups: [UploadPlaceGroup] = []
     var uploadsCollectionHeightConstraint: NSLayoutConstraint?
     
     let uploadsEmptyLabel: UILabel = {
@@ -602,15 +643,11 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     lazy var floatingAddButton: UIButton = {
         let button = UIButton(type: .system)
         button.setImage(UIImage(systemName: "plus.circle.fill"), for: .normal)
-        button.tintColor = .white
-        button.backgroundColor = Constants.Colors.primary
-        button.layer.cornerRadius = 28
-        button.layer.shadowColor = UIColor.black.cgColor
-        button.layer.shadowOffset = CGSize(width: 0, height: 2)
-        button.layer.shadowOpacity = 0.2
-        button.layer.shadowRadius = 4
+        button.tintColor = Constants.Colors.primary
+        button.backgroundColor = .clear
         button.translatesAutoresizingMaskIntoConstraints = false
         button.addTarget(self, action: #selector(createCircleButtonTapped), for: .touchUpInside)
+        button.accessibilityLabel = "New circle"
         return button
     }()
     
@@ -776,6 +813,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         
         // Register for SSE events
         SSEService.shared.addDelegate(self)
+
+        // Sticky tab bar (revealed on scroll)
+        setupStickyTabBar()
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -976,7 +1016,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         contentView.addSubview(versionLabel)
         
         // Add floating add button last so it's on top
-        view.addSubview(floatingAddButton)
+        // Add-circle button now lives beside the Circles/Moments/Uploads tabs
+        // (in the scroll content) rather than as a lower-right floating button.
+        contentView.addSubview(floatingAddButton)
         
         // Add search results table view on top of everything
         view.addSubview(searchResultsTableView)
@@ -1283,11 +1325,11 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             versionLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
             versionLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large),
             
-            // Floating add button
-            floatingAddButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
-            floatingAddButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
-            floatingAddButton.widthAnchor.constraint(equalToConstant: 56),
-            floatingAddButton.heightAnchor.constraint(equalToConstant: 56)
+            // Add-circle button: compact, just left of the tab control
+            floatingAddButton.centerYAnchor.constraint(equalTo: contentTypeSegmentedControl.centerYAnchor),
+            floatingAddButton.trailingAnchor.constraint(equalTo: contentTypeSegmentedControl.leadingAnchor, constant: -12),
+            floatingAddButton.widthAnchor.constraint(equalToConstant: 34),
+            floatingAddButton.heightAnchor.constraint(equalToConstant: 34)
         ])
         
         // Create height constraints for collection views
@@ -1732,8 +1774,11 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             logoutButtonTopToVideosConstraint?.isActive = false
             logoutButtonTopToUploadsConstraint?.isActive = true
         }
+
+        // Keep the sticky mirror (selection + add-button visibility) in step
+        syncStickyTabBar()
     }
-    
+
     @objc func toggleViewMode() {
         isShowingMap.toggle()
         
@@ -3476,8 +3521,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         let itemWidth = (collectionWidth - totalSpacing) / numberOfColumns
         let itemHeight = itemWidth // Square items
         
-        // Calculate number of rows
-        let numberOfRows = ceil(Double(uploads.count) / Double(numberOfColumns))
+        // Calculate number of rows (one tile per place group, not per photo)
+        let numberOfRows = ceil(Double(uploadGroups.count) / Double(numberOfColumns))
         let totalRowSpacing = spacing * (CGFloat(numberOfRows) - 1)
         let totalHeight = (CGFloat(numberOfRows) * itemHeight) + totalRowSpacing + 20 // Add some padding
         
@@ -3492,8 +3537,120 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         Logger.debug("📐 ProfileViewController: Updated uploads collection height to \(totalHeight) for \(uploads.count) uploads in \(numberOfRows) rows")
     }
     
+    // MARK: - Sticky tab bar
+
+    private func setupStickyTabBar() {
+        view.addSubview(stickyTabBar)
+        stickyTabBar.addSubview(stickySegmentedControl)
+        stickyTabBar.addSubview(stickyAddButton)
+        stickyTabBar.addSubview(stickyTabSeparator)
+
+        NSLayoutConstraint.activate([
+            stickyTabBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            stickyTabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            stickyTabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            stickyTabBar.heightAnchor.constraint(equalToConstant: 48),
+
+            stickySegmentedControl.centerXAnchor.constraint(equalTo: stickyTabBar.centerXAnchor),
+            stickySegmentedControl.centerYAnchor.constraint(equalTo: stickyTabBar.centerYAnchor),
+            stickySegmentedControl.widthAnchor.constraint(equalToConstant: 200),
+            stickySegmentedControl.heightAnchor.constraint(equalToConstant: 32),
+
+            stickyAddButton.centerYAnchor.constraint(equalTo: stickySegmentedControl.centerYAnchor),
+            stickyAddButton.trailingAnchor.constraint(equalTo: stickySegmentedControl.leadingAnchor, constant: -12),
+            stickyAddButton.widthAnchor.constraint(equalToConstant: 34),
+            stickyAddButton.heightAnchor.constraint(equalToConstant: 34),
+
+            stickyTabSeparator.leadingAnchor.constraint(equalTo: stickyTabBar.leadingAnchor),
+            stickyTabSeparator.trailingAnchor.constraint(equalTo: stickyTabBar.trailingAnchor),
+            stickyTabSeparator.bottomAnchor.constraint(equalTo: stickyTabBar.bottomAnchor),
+            stickyTabSeparator.heightAnchor.constraint(equalToConstant: 0.5)
+        ])
+
+        view.bringSubviewToFront(stickyTabBar)
+        scrollView.delegate = self
+    }
+
+    @objc private func stickySegmentChanged() {
+        contentTypeSegmentedControl.selectedSegmentIndex = stickySegmentedControl.selectedSegmentIndex
+        contentTypeChanged()
+    }
+
+    /// Keeps the sticky bar's selection and add-button visibility mirrored to
+    /// the inline controls. Call after any inline tab/visibility change.
+    func syncStickyTabBar() {
+        stickySegmentedControl.selectedSegmentIndex = contentTypeSegmentedControl.selectedSegmentIndex
+        // Add-circle only on the Circles tab; mirror the inline button's state
+        stickyAddButton.isHidden = floatingAddButton.isHidden
+    }
+
+    private func setStickyTabBar(visible: Bool) {
+        guard visible != isStickyTabBarVisible else { return }
+        isStickyTabBarVisible = visible
+        syncStickyTabBar()
+        if visible { stickyTabBar.isHidden = false }
+        UIView.animate(withDuration: 0.15, animations: {
+            self.stickyTabBar.alpha = visible ? 1 : 0
+        }, completion: { _ in
+            if !visible { self.stickyTabBar.isHidden = true }
+        })
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        // Only the main profile scroll drives the sticky bar — the collection
+        // views are also delegates of self and fire this too.
+        guard scrollView == self.scrollView else { return }
+        // Reveal once the inline tab control has scrolled up under the top edge.
+        let controlFrame = contentTypeSegmentedControl.convert(contentTypeSegmentedControl.bounds, to: view)
+        setStickyTabBar(visible: controlFrame.minY <= view.safeAreaInsets.top)
+    }
+
     // MARK: - Navigation Helpers
-    
+
+    /// Expand a place's uploaded photos into a gallery. Deleting a photo there
+    /// removes it server-side and keeps both the gallery and the grouped grid
+    /// in sync (the `uploads` didSet re-groups automatically).
+    func openUploadsGallery(for group: UploadPlaceGroup) {
+        weak var galleryRef: PlaceUploadsGalleryViewController?
+        let galleryVC = PlaceUploadsGalleryViewController(
+            placeName: group.placeName,
+            photos: group.photos,
+            onDelete: { [weak self] photo in
+                guard let self = self, let gallery = galleryRef else { return }
+                let confirm = UIAlertController(
+                    title: "Delete Photo",
+                    message: "Delete this photo from \(photo.placeName)? This can't be undone.",
+                    preferredStyle: .alert
+                )
+                confirm.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+                confirm.addAction(UIAlertAction(title: "Delete", style: .destructive) { _ in
+                    let loading = AlertPresenter.showLoading(message: "Deleting photo...", from: gallery)
+                    GlobalPlaceService.shared.deleteUpload(photo) { result in
+                        DispatchQueue.main.async {
+                            loading.dismiss(animated: true) {
+                                switch result {
+                                case .success:
+                                    self.uploads.removeAll { $0.id == photo.id } // didSet re-groups
+                                    if self.contentTypeSegmentedControl.selectedSegmentIndex == 2 {
+                                        self.uploadsCollectionView.reloadData()
+                                        self.updateUploadsCollectionHeight()
+                                        self.uploadsEmptyLabel.isHidden = !self.uploads.isEmpty
+                                    }
+                                    gallery.remove(photo)
+                                case .failure(let error):
+                                    gallery.showError(error)
+                                }
+                            }
+                        }
+                    }
+                })
+                gallery.present(confirm, animated: true)
+            }
+        )
+        galleryRef = galleryVC
+        navigationController?.pushViewController(galleryVC, animated: true)
+    }
+
     func navigateToPlaceDetail(from upload: UserUploadedPhoto) {
         // Show loading indicator
         let loadingAlert = AlertPresenter.showLoading(message: "Loading place details...", from: self)

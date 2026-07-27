@@ -77,3 +77,46 @@ class StatView: UIView {
         titleLabel.text = title
     }
 }
+
+// MARK: - Uploads grouped by place
+
+/// One place's worth of uploaded photos, for the grouped Uploads grid
+/// (one tile per place → tap to expand into that place's gallery).
+struct UploadPlaceGroup {
+    let placeId: String
+    let placeName: String
+    let placeCategory: PlaceCategory
+    let placeAddress: String?
+    let photos: [UserUploadedPhoto]   // newest first
+
+    var cover: UserUploadedPhoto { photos[0] }
+    var count: Int { photos.count }
+}
+
+extension Array where Element == UserUploadedPhoto {
+    /// Groups uploads by place, preserving the order places first appear in
+    /// the source array (server returns newest-first). Cover is the newest
+    /// photo for each place.
+    func groupedByPlace() -> [UploadPlaceGroup] {
+        var order: [String] = []
+        var byPlace: [String: [UserUploadedPhoto]] = [:]
+        for photo in self {
+            if byPlace[photo.placeId] == nil {
+                order.append(photo.placeId)
+                byPlace[photo.placeId] = []
+            }
+            byPlace[photo.placeId]?.append(photo)
+        }
+        return order.compactMap { placeId in
+            guard let photos = byPlace[placeId], let first = photos.first else { return nil }
+            let sorted = photos.sorted { $0.uploadedAt > $1.uploadedAt }
+            return UploadPlaceGroup(
+                placeId: placeId,
+                placeName: first.placeName,
+                placeCategory: first.placeCategory,
+                placeAddress: first.placeAddress,
+                photos: sorted
+            )
+        }
+    }
+}

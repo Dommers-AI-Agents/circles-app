@@ -44,6 +44,35 @@ class UploadThumbnailCell: UICollectionViewCell {
         indicator.translatesAutoresizingMaskIntoConstraints = false
         return indicator
     }()
+
+    // Top-right badge showing how many photos are in this place's group
+    // (e.g. a stacked-photos icon + count). Hidden for single-photo places.
+    private let countBadgeView: UIView = {
+        let view = UIView()
+        view.backgroundColor = UIColor.black.withAlphaComponent(0.75)
+        view.layer.cornerRadius = 6
+        view.clipsToBounds = true
+        view.isHidden = true
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+
+    private let countBadgeLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 11, weight: .semibold)
+        label.textColor = .white
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    private let countBadgeIcon: UIImageView = {
+        let iv = UIImageView(image: UIImage(systemName: "square.on.square"))
+        iv.tintColor = .white
+        iv.contentMode = .scaleAspectFit
+        iv.translatesAutoresizingMaskIntoConstraints = false
+        return iv
+    }()
     
     // MARK: - Initialization
     
@@ -67,7 +96,10 @@ class UploadThumbnailCell: UICollectionViewCell {
         contentView.addSubview(placeTagView)
         placeTagView.addSubview(placeTagLabel)
         contentView.addSubview(loadingIndicator)
-        
+        contentView.addSubview(countBadgeView)
+        countBadgeView.addSubview(countBadgeIcon)
+        countBadgeView.addSubview(countBadgeLabel)
+
         setupConstraints()
     }
     
@@ -93,16 +125,43 @@ class UploadThumbnailCell: UICollectionViewCell {
             
             // Loading indicator centered
             loadingIndicator.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            loadingIndicator.centerYAnchor.constraint(equalTo: contentView.centerYAnchor)
+            loadingIndicator.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+
+            // Count badge, top-right
+            countBadgeView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
+            countBadgeView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8),
+            countBadgeView.heightAnchor.constraint(equalToConstant: 22),
+
+            countBadgeIcon.leadingAnchor.constraint(equalTo: countBadgeView.leadingAnchor, constant: 6),
+            countBadgeIcon.centerYAnchor.constraint(equalTo: countBadgeView.centerYAnchor),
+            countBadgeIcon.widthAnchor.constraint(equalToConstant: 12),
+            countBadgeIcon.heightAnchor.constraint(equalToConstant: 12),
+
+            countBadgeLabel.leadingAnchor.constraint(equalTo: countBadgeIcon.trailingAnchor, constant: 4),
+            countBadgeLabel.trailingAnchor.constraint(equalTo: countBadgeView.trailingAnchor, constant: -6),
+            countBadgeLabel.centerYAnchor.constraint(equalTo: countBadgeView.centerYAnchor)
         ])
     }
     
     // MARK: - Configuration
     
+    /// Configure as a place GROUP tile: cover photo, place name, and a count
+    /// badge when the place has more than one photo.
+    func configure(with group: UploadPlaceGroup) {
+        configure(with: group.cover)
+        if group.count > 1 {
+            countBadgeLabel.text = "\(group.count)"
+            countBadgeView.isHidden = false
+        } else {
+            countBadgeView.isHidden = true
+        }
+    }
+
     func configure(with upload: UserUploadedPhoto) {
         // Set place name
         placeTagLabel.text = upload.placeName
-        
+        countBadgeView.isHidden = true
+
         // Reset state
         imageView.image = nil
         currentImageUrl = upload.imageUrl
@@ -142,6 +201,7 @@ class UploadThumbnailCell: UICollectionViewCell {
         currentImageUrl = nil
         imageView.image = nil
         placeTagLabel.text = nil
+        countBadgeView.isHidden = true
         loadingIndicator.stopAnimating()
         imageView.backgroundColor = Constants.Colors.secondaryBackground
     }

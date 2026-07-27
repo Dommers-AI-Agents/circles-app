@@ -11,7 +11,7 @@ extension ProfileViewController: UICollectionViewDataSource {
         if collectionView == videosCollectionView {
             return videos.count
         } else if collectionView == uploadsCollectionView {
-            return uploads.count
+            return uploadGroups.count // one tile per place
         }
         return circles.count
     }
@@ -24,8 +24,7 @@ extension ProfileViewController: UICollectionViewDataSource {
             return cell
         } else if collectionView == uploadsCollectionView {
             let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "UploadThumbnailCell", for: indexPath) as! UploadThumbnailCell
-            let upload = uploads[indexPath.item]
-            cell.configure(with: upload)
+            cell.configure(with: uploadGroups[indexPath.item])
             return cell
         }
         
@@ -45,9 +44,8 @@ extension ProfileViewController: UICollectionViewDelegate {
             reelsVC.modalPresentationStyle = .fullScreen
             present(reelsVC, animated: true)
         } else if collectionView == uploadsCollectionView {
-            // Navigate to the place detail for the uploaded image
-            let upload = uploads[indexPath.item]
-            navigateToPlaceDetail(from: upload)
+            // Expand the place's photos into a gallery
+            openUploadsGallery(for: uploadGroups[indexPath.item])
         } else {
             let circle = circles[indexPath.item]
             let detailVC = CircleDetailViewController(circle: circle)
@@ -77,23 +75,9 @@ extension ProfileViewController: UICollectionViewDelegate {
                 return UIMenu(title: "", children: [deleteAction])
             }
         } else if collectionView == uploadsCollectionView {
-            // Handle context menu for uploads
-            let upload = uploads[indexPath.item]
-            
-            // Only show delete for user's own uploads (they should always be the user's own uploads)
-            return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
-                guard let self = self else { return UIMenu(title: "", children: []) }
-                
-                let deleteAction = UIAction(
-                    title: "Delete Photo",
-                    image: UIImage(systemName: "trash"),
-                    attributes: .destructive
-                ) { _ in
-                    self.confirmDeleteUpload(upload, at: indexPath)
-                }
-                
-                return UIMenu(title: "", children: [deleteAction])
-            }
+            // Group tiles have no context menu — tapping expands into the
+            // place's gallery, where individual photos can be deleted.
+            return nil
         }
         
         // Handle context menu for circles
