@@ -4280,7 +4280,18 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             name: Notification.Name("PlaceAdded"),
             object: nil
         )
-        
+
+        // Your OWN place-add isn't echoed back to you over SSE (that only goes
+        // to your connections/followers), so the activity feed used to stay
+        // stale until a manual refresh. AddPlaceViewController posts this when
+        // a place is saved to a circle — refresh the feed to show your own add.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handlePlaceAddedToActivityFeed),
+            name: Notification.Name("PlaceAddedToCircle"),
+            object: nil
+        )
+
         // Listen for refresh circles notification (e.g., when a place is added)
         NotificationCenter.default.addObserver(
             self,
@@ -4499,6 +4510,18 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     @objc func handleQuickStartPlaceAdded() {
         // Debounced full refetch (places were added outside the normal flow)
         updateMapPlaces()
+    }
+
+    /// Refresh the activity feed after the user adds a place so their own
+    /// activity shows without a manual refresh. The server writes the activity
+    /// just AFTER the create response returns (fire-and-forget trackPlaceAdded),
+    /// so refetch on a short delay to avoid racing the write. fetchActivities
+    /// already includes the user's own activity, so this works whether or not
+    /// the Activity segment is currently showing.
+    @objc func handlePlaceAddedToActivityFeed() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            self?.fetchActivities()
+        }
     }
 
     /// Opens the lightweight "add 3 places" flow, seeding the default circles
