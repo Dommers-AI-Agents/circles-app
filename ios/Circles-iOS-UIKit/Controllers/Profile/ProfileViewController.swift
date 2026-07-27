@@ -1612,6 +1612,13 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             circlesCollectionView.isHidden = isShowingMap
             videosCollectionView.isHidden = true
             videosEmptyLabel.isHidden = true
+            videosLoadingIndicator.stopAnimating()
+            // Hide the Uploads views too — the Circles branch previously only
+            // hid the Moments views, so switching from Uploads → Circles left
+            // the uploads grid on screen.
+            uploadsCollectionView.isHidden = true
+            uploadsEmptyLabel.isHidden = true
+            uploadsLoadingIndicator.stopAnimating()
             searchBar.placeholder = "Search places..."
             mapToggleButton.isHidden = false
             
@@ -1628,7 +1635,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             logoutButtonTopToCollectionConstraint?.isActive = !isShowingMap
             logoutButtonTopToMapConstraint?.isActive = isShowingMap
             logoutButtonTopToVideosConstraint?.isActive = false
-            
+            logoutButtonTopToUploadsConstraint?.isActive = false
+
             // Force layout update
             view.setNeedsLayout()
             view.layoutIfNeeded()
