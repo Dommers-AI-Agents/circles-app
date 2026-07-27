@@ -3617,6 +3617,14 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         // Only the main profile scroll drives the sticky bar — the collection
         // views are also delegates of self and fire this too.
         guard scrollView == self.scrollView else { return }
+        // Never stick while at (or above) the top. This also avoids a transient
+        // false reveal on first layout: scrollViewDidScroll fires while content
+        // sizes settle, when the inline control's converted frame isn't final
+        // yet — which used to show the sticky bar on first visit at offset 0.
+        guard scrollView.contentOffset.y > 1 else {
+            setStickyTabBar(visible: false)
+            return
+        }
         // Reveal once the inline tab control has scrolled up under the top edge.
         let controlFrame = contentTypeSegmentedControl.convert(contentTypeSegmentedControl.bounds, to: view)
         setStickyTabBar(visible: controlFrame.minY <= view.safeAreaInsets.top)
