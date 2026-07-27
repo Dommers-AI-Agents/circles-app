@@ -367,6 +367,7 @@ class ActivityFeedCell: UITableViewCell {
                                    activity.type == .placeAdded ||
                                    activity.type == .placeLiked ||
                                    activity.type == .videoUploaded ||
+                                   activity.type == .videoLiked ||
                                    activity.type == .photoUploaded) &&
                                    thumbnailUrl != nil
 
@@ -561,12 +562,13 @@ class ActivityFeedCell: UITableViewCell {
 
         guard let activity = currentActivity else { return }
 
-        // Navigate for all place-related activities
+        // Navigate for all place- and moment-related activities
         if activity.type == .placeAdded ||
            activity.type == .placeLiked ||
            activity.type == .placeCommented ||
            activity.type == .checkIn ||
            activity.type == .videoUploaded ||
+           activity.type == .videoLiked ||
            activity.type == .photoUploaded {
             delegate?.didTapActivityContent(activity: activity)
         }

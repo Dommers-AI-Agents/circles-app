@@ -16,8 +16,9 @@ extension CirclesHomeViewController: ActivityFeedCellDelegate {
     func didTapActivityContent(activity: Activity) {
         // Navigate based on activity type
         switch activity.type {
-        case .videoUploaded:
-            // For video uploads, navigate to the video player
+        case .videoUploaded, .videoLiked:
+            // For moment upload/like activities, open the moment player
+            // (targetId is the video id in both cases)
             navigateToVideoFromActivity(activity)
         case .placeAdded, .placeLiked, .placeCommented, .checkIn:
             // For place-related activities, navigate to place detail

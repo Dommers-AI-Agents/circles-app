@@ -14,6 +14,40 @@ const SSEService = require('./sseService');
 // Import notification service for push notifications
 const notificationService = require('./notificationService');
 
+// Resolve a place's thumbnail (photos are {url} objects or bare strings),
+// falling back to the canonical globalPlaces record. Best-effort → null.
+const resolvePlacePhoto = async (placeId) => {
+  const firstUrl = (data) => {
+    const first = (data.photos || [])[0];
+    return typeof first === 'string' ? first : (first && first.url) || null;
+  };
+  try {
+    const placeDoc = await db.collection(COLLECTIONS.PLACES).doc(placeId).get();
+    if (!placeDoc.exists) return null;
+    const data = placeDoc.data();
+    let url = firstUrl(data);
+    if (!url && data.globalPlaceId) {
+      const g = await db.collection('globalPlaces').doc(data.globalPlaceId).get();
+      if (g.exists) url = firstUrl(g.data());
+    }
+    return url;
+  } catch (e) {
+    console.error('⚠️ resolvePlacePhoto failed:', e.message);
+    return null;
+  }
+};
+
+// Resolve a moment's thumbnail from its placeVideos doc. Best-effort → null.
+const resolveVideoThumbnail = async (videoId) => {
+  try {
+    const doc = await db.collection(COLLECTIONS.PLACE_VIDEOS).doc(videoId).get();
+    return doc.exists ? (doc.data().thumbnailUrl || null) : null;
+  } catch (e) {
+    console.error('⚠️ resolveVideoThumbnail failed:', e.message);
+    return null;
+  }
+};
+
 // Track when a user adds a new circle
 const trackCircleCreated = async (circleId, createdByUserId) => {
   try {
@@ -1541,7 +1575,8 @@ const trackPlaceLiked = async (placeId, placeName, circleId, circleName, likedBy
       return;
     }
 
-    // Create activity record
+    // Create activity record (with the place thumbnail so the feed row shows it)
+    const placePhoto = await resolvePlacePhoto(placeId);
     await createActivity(
       'place_liked',
       likedByUserId,
@@ -1551,6 +1586,7 @@ const trackPlaceLiked = async (placeId, placeName, circleId, circleName, likedBy
       {
         placeId: placeId,
         placeName: placeName,
+        placePhoto: placePhoto,
         circleId: circleId,
         circleName: circleName,
         likedByUserId: likedByUserId
@@ -1662,7 +1698,8 @@ const trackVideoLiked = async (videoId, placeId, placeName, likedByUserId, video
       return;
     }
 
-    // Create activity record
+    // Create activity record (with the moment thumbnail so the feed row shows it)
+    const videoThumbnail = await resolveVideoThumbnail(videoId);
     await createActivity(
       'video_liked',
       likedByUserId,
@@ -1673,6 +1710,7 @@ const trackVideoLiked = async (videoId, placeId, placeName, likedByUserId, video
         videoId: videoId,
         placeId: placeId,
         placeName: placeName,
+        videoThumbnail: videoThumbnail,
         likedByUserId: likedByUserId
       }
     );
