@@ -1698,8 +1698,13 @@ const trackVideoLiked = async (videoId, placeId, placeName, likedByUserId, video
       return;
     }
 
-    // Create activity record (with the moment thumbnail so the feed row shows it)
-    const videoThumbnail = await resolveVideoThumbnail(videoId);
+    // One read for both the thumbnail and the moment's visibility. The
+    // like activity is gated in the feed by the viewer's relationship to the
+    // moment OWNER (not the liker) — only people who could also see the moment
+    // should see that it was liked.
+    const videoDoc = await db.collection(COLLECTIONS.PLACE_VIDEOS).doc(videoId).get();
+    const videoThumbnail = videoDoc.exists ? (videoDoc.data().thumbnailUrl || null) : null;
+    const momentVisibility = videoDoc.exists ? (videoDoc.data().visibility || 'public') : 'public';
     await createActivity(
       'video_liked',
       likedByUserId,
@@ -1711,7 +1716,9 @@ const trackVideoLiked = async (videoId, placeId, placeName, likedByUserId, video
         placeId: placeId,
         placeName: placeName,
         videoThumbnail: videoThumbnail,
-        likedByUserId: likedByUserId
+        likedByUserId: likedByUserId,
+        momentVisibility: momentVisibility,
+        momentOwnerId: videoOwnerId
       }
     );
 

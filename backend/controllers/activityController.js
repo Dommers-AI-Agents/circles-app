@@ -49,25 +49,31 @@ exports.getNetworkActivities = async (req, res, next) => {
       db.collection(COLLECTIONS.USERS).doc(userId).get()
     ]);
     
-    // Extract connected user IDs
+    // Extract connected user IDs. Keep connections and follows in SEPARATE sets
+    // too — moment-privacy gating needs to tell "connected to" from "follows".
     const connectedUserIds = new Set();
-    
+    const connectionSet = new Set();
+    const followingSet = new Set();
+
     connections1.docs.forEach(doc => {
       const data = doc.data();
       connectedUserIds.add(data.connectedUserId);
+      connectionSet.add(data.connectedUserId);
     });
-    
+
     connections2.docs.forEach(doc => {
       const data = doc.data();
       connectedUserIds.add(data.userId);
+      connectionSet.add(data.userId);
     });
-    
+
     // Add followed users to the activity feed (LinkedIn-style)
     if (currentUserDoc.exists) {
       const userData = currentUserDoc.data();
       const following = userData.following || [];
       following.forEach(followedUserId => {
         connectedUserIds.add(followedUserId);
+        followingSet.add(followedUserId);
       });
       // Followed places surface their announcements/offers here — their
       // activities are keyed by the synthetic actor id 'place_<globalPlaceId>'
@@ -326,14 +332,31 @@ exports.getNetworkActivities = async (req, res, next) => {
     // Filter activities based on privacy using cached circles
     const filteredActivities = enrichedActivities.filter(activity => {
       try {
+        // Moment privacy gate: a video_uploaded/video_liked row is only shown
+        // to a viewer entitled to the underlying moment, judged by their
+        // relationship to the moment OWNER (the uploader, or — for a like —
+        // the moment's owner, not the liker). Legacy rows lack the stamp and
+        // fall through as public so existing content isn't hidden.
+        if (activity.type === 'video_uploaded' || activity.type === 'video_liked') {
+          const vis = activity.metadata && activity.metadata.momentVisibility;
+          const ownerId = activity.metadata && activity.metadata.momentOwnerId;
+          if (vis && ownerId && ownerId !== userId) {
+            if (vis === 'public') return true;
+            if (vis === 'followers') return followingSet.has(ownerId);
+            if (vis === 'network') return connectionSet.has(ownerId);
+            return false; // private/unknown → owner only
+          }
+          return true;
+        }
+
         let circleId = null;
-        
+
         if (activity.targetType === 'circle') {
           circleId = activity.targetId;
         } else if (activity.circleId) {
           circleId = activity.circleId;
         }
-        
+
         if (!circleId) return true; // Include if no circle reference
         
         const circle = circlesMap.get(circleId);
@@ -498,7 +521,12 @@ exports.createActivity = async (type, actorId, targetType, targetId, targetName,
         // renders it when placePhoto is absent
         videoTitle: metadata.videoTitle || null,
         videoThumbnail: metadata.videoThumbnail || null,
-        videoDuration: metadata.videoDuration || null
+        videoDuration: metadata.videoDuration || null,
+        // Moment privacy gating: the feed only shows a video_uploaded/
+        // video_liked row to viewers entitled to the moment, judged by their
+        // relationship to momentOwnerId.
+        momentVisibility: metadata.momentVisibility || null,
+        momentOwnerId: metadata.momentOwnerId || null
       },
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
       viewers: [], // Track who has seen this activity

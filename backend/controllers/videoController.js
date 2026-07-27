@@ -523,32 +523,39 @@ exports.completeVideoUpload = async (req, res) => {
       updatedAt: new Date().toISOString()
     });
     
-    // Create activity and store the ID
-    const activityRef = await db.collection(COLLECTIONS.ACTIVITIES).add({
-      type: 'video_uploaded',
-      actorId: userId,
-      targetType: 'place_video',
-      targetId: videoId,
-      targetName: videoData.placeName,
-      circleId: null,
-      circleName: null,
-      metadata: {
-        videoTitle: videoData.title,
-        videoThumbnail: thumbnailUrl,
-        videoDuration: videoData.duration,
-        placeId: videoData.placeId
-      },
-      timestamp: FieldValue.serverTimestamp(),
-      isRead: false,
-      viewers: [],
-      reactionCount: 0,
-      commentCount: 0
-    });
-    
-    // Store activity ID in video document
-    await videoRef.update({
-      activityId: activityRef.id
-    });
+    // Create the feed activity — but never for a private ("only me") moment,
+    // which must not broadcast to connections/followers. The stamped
+    // momentVisibility/momentOwnerId let the feed gate the row to viewers who
+    // are actually entitled to the moment (see getNetworkActivities).
+    if (videoData.visibility !== 'private') {
+      const activityRef = await db.collection(COLLECTIONS.ACTIVITIES).add({
+        type: 'video_uploaded',
+        actorId: userId,
+        targetType: 'place_video',
+        targetId: videoId,
+        targetName: videoData.placeName,
+        circleId: null,
+        circleName: null,
+        metadata: {
+          videoTitle: videoData.title,
+          videoThumbnail: thumbnailUrl,
+          videoDuration: videoData.duration,
+          placeId: videoData.placeId,
+          momentVisibility: videoData.visibility || 'public',
+          momentOwnerId: userId
+        },
+        timestamp: FieldValue.serverTimestamp(),
+        isRead: false,
+        viewers: [],
+        reactionCount: 0,
+        commentCount: 0
+      });
+
+      // Store activity ID in video document
+      await videoRef.update({
+        activityId: activityRef.id
+      });
+    }
     
     // Get updated video
     const updatedDoc = await videoRef.get();
@@ -741,6 +748,38 @@ exports.getVideoFeed = async (req, res) => {
 };
 
 // Get video details (and track view)
+// Build a human, actionable access-denied payload for a gated moment. The
+// message tells the viewer exactly what to do; the structured fields let the
+// client offer a "Send request"/"Follow" affordance.
+function momentAccessDenied(visibility, ownerName, ownerId) {
+  const name = ownerName || 'this person';
+  if (visibility === 'network') {
+    return {
+      reason: 'not_connected',
+      action: 'connect',
+      ownerId,
+      ownerName: ownerName || null,
+      message: `You're not connected to ${name}. Send them a connection request to view this moment.`
+    };
+  }
+  if (visibility === 'followers') {
+    return {
+      reason: 'not_following',
+      action: 'follow',
+      ownerId,
+      ownerName: ownerName || null,
+      message: `This moment is for ${name}'s followers. Follow ${name} to view it.`
+    };
+  }
+  return {
+    reason: 'private',
+    action: null,
+    ownerId,
+    ownerName: ownerName || null,
+    message: 'This moment is private.'
+  };
+}
+
 exports.getVideoDetails = async (req, res) => {
   try {
     const { videoId } = req.params;
@@ -774,30 +813,32 @@ exports.getVideoDetails = async (req, res) => {
     // viewable by anyone holding the id.)
     if (videoData.userId !== userId) {
       const owner = videoData.userId;
-      let allowed = videoData.visibility === 'public';
-      // A relationship-gated moment needs a known viewer. Without one (no auth),
-      // only public moments are visible — never fall through to a .doc(undefined).
-      if (!allowed && !userId) {
-        return res.status(403).json({
-          success: false,
-          message: 'You do not have access to this moment'
-        });
+      const visibility = videoData.visibility || 'private';
+      let allowed = visibility === 'public';
+      // A relationship-gated moment needs a known viewer. Without one (no auth)
+      // only public moments are visible — the checks below simply don't run.
+      if (!allowed && userId) {
+        if (visibility === 'network') {
+          const [c1, c2] = await Promise.all([
+            db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', userId).where('connectedUserId', '==', owner).where('status', '==', 'accepted').get(),
+            db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', owner).where('connectedUserId', '==', userId).where('status', '==', 'accepted').get()
+          ]);
+          allowed = !c1.empty || !c2.empty;
+        } else if (visibility === 'followers') {
+          const meDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+          allowed = (meDoc.exists ? (meDoc.data().following || []) : []).includes(owner);
+        }
       }
-      if (!allowed && videoData.visibility === 'network') {
-        const [c1, c2] = await Promise.all([
-          db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', userId).where('connectedUserId', '==', owner).where('status', '==', 'accepted').get(),
-          db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', owner).where('connectedUserId', '==', userId).where('status', '==', 'accepted').get()
-        ]);
-        allowed = !c1.empty || !c2.empty;
-      } else if (!allowed && videoData.visibility === 'followers') {
-        const meDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
-        allowed = (meDoc.exists ? (meDoc.data().following || []) : []).includes(owner);
-      }
-      // 'private' (or unknown) → allowed stays false
+      // Not allowed → return a friendly, actionable message naming the owner.
       if (!allowed) {
+        let ownerName = null;
+        try {
+          const ownerDoc = await db.collection(COLLECTIONS.USERS).doc(owner).get();
+          if (ownerDoc.exists) ownerName = ownerDoc.data().displayName || null;
+        } catch (_) { /* name is best-effort */ }
         return res.status(403).json({
           success: false,
-          message: 'You do not have access to this moment'
+          ...momentAccessDenied(visibility, ownerName, owner)
         });
       }
     }
@@ -1814,19 +1855,24 @@ exports.addEmbeddedVideo = async (req, res) => {
     const videoId = videoRef.id;
     
     // Create activity (positional args — the object form silently failed and
-    // embedded videos never appeared in the feed)
-    await createActivity(
-      'video_uploaded',
-      userId,
-      'place_video',
-      videoId,
-      placeName,
-      {
-        videoTitle: videoData.title,
-        videoThumbnail: videoData.thumbnailUrl || null,
-        placeId: placeId
-      }
-    );
+    // embedded videos never appeared in the feed). Skip for private moments so
+    // "only me" never broadcasts; stamp visibility/owner for feed gating.
+    if (videoData.visibility !== 'private') {
+      await createActivity(
+        'video_uploaded',
+        userId,
+        'place_video',
+        videoId,
+        placeName,
+        {
+          videoTitle: videoData.title,
+          videoThumbnail: videoData.thumbnailUrl || null,
+          placeId: placeId,
+          momentVisibility: videoData.visibility || 'public',
+          momentOwnerId: userId
+        }
+      );
+    }
     
     res.json({
       success: true,

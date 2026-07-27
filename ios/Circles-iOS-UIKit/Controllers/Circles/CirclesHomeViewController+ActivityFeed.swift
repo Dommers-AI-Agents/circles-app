@@ -80,7 +80,10 @@ extension CirclesHomeViewController: ActivityFeedCellDelegate {
                 case .success(let response):
                     self.openMomentInMomentsTab(response.data)
                 case .failure(let error):
-                    self.showError("Failed to load video: \(error.localizedDescription)")
+                    // Prefer the server's friendly, actionable message (e.g.
+                    // "You're not connected to X. Send them a connection
+                    // request to view this moment.") over a generic string.
+                    self.showError(error.serverMessage ?? "Unable to load this moment. Please try again.")
                 }
             }
         }
@@ -412,7 +415,7 @@ extension CirclesHomeViewController {
                     case .success(let response):
                         self.openMomentInMomentsTab(response.data)
                     case .failure(let error):
-                        self.showError("Unable to load video: \(error.localizedDescription)")
+                        self.showError(error.serverMessage ?? "Unable to load this moment. Please try again.")
                     }
                 }
             }
