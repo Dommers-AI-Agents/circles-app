@@ -333,9 +333,11 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
                     if let messagesVC = navController.topViewController as? ConversationsListViewController {
                         messagesVC.refreshConversations()
                     }
-                case 3: // Profile tab
-                    if let profileVC = navController.topViewController as? ProfileViewController {
-                        profileVC.resetToListViewIfNeeded()
+                case 3: // Profile tab — re-tap returns to the default state
+                    // Pop any pushed detail so we're on the profile root
+                    navController.popToRootViewController(animated: false)
+                    if let profileVC = navController.viewControllers.first as? ProfileViewController {
+                        profileVC.resetToDefaultState()
                         profileVC.loadData()
                     }
                 default:
@@ -355,6 +357,14 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         // Clear pending requests when switching to Profile tab
         if tabBarController.selectedIndex == 3 { // Profile tab (was 4, now 3 without Discover)
             APIService.shared.clearPendingRequests()
+            // Switching to Me also returns the profile to its default state
+            // (Circles tab, top). Re-tap on the same tab is handled in
+            // shouldSelect; this covers switching in from another tab.
+            if let navController = viewController as? UINavigationController,
+               let profileVC = navController.viewControllers.first as? ProfileViewController,
+               navController.viewControllers.count == 1 {
+                profileVC.resetToDefaultState()
+            }
         }
     }
     

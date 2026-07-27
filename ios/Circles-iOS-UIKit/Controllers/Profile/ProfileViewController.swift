@@ -60,6 +60,23 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             toggleViewMode()
         }
     }
+
+    /// Returns the profile to its default state — Circles tab, list (not map),
+    /// scrolled to the top, sticky bar hidden. Called when the Me tab is tapped
+    /// so re-entering the profile always starts fresh.
+    func resetToDefaultState() {
+        // Back to the Circles tab
+        if contentTypeSegmentedControl.selectedSegmentIndex != 0 {
+            contentTypeSegmentedControl.selectedSegmentIndex = 0
+            contentTypeChanged()
+        }
+        // Map → list
+        resetToListViewIfNeeded()
+        // Scroll to the top
+        scrollView.setContentOffset(CGPoint(x: 0, y: -scrollView.adjustedContentInset.top), animated: false)
+        // Collapse the sticky tab bar (we're back at the top)
+        setStickyTabBar(visible: false)
+    }
     
     /// Force clear all profile picture caches and refresh the profile
     /// Call this when profile picture corruption is detected
