@@ -61,7 +61,10 @@ router.post('/:videoId/comments/:commentId/like', protect, require('../controlle
 router.post('/:videoId/comments/:commentId/replies', protect, require('../controllers/videoController').createVideoCommentReply);
 router.get('/:videoId/comments/:commentId/replies', protect, require('../controllers/videoController').getVideoCommentReplies);
 
-router.get('/:videoId', getVideoDetails);
+// `protect` is required: getVideoDetails resolves the viewer's relationship to
+// the owner (followers/connections visibility), which needs req.user.uid.
+// Unauthenticated/public access goes through GET /videos/public/:videoId.
+router.get('/:videoId', protect, getVideoDetails);
 
 // Video status check for polling
 router.get('/:videoId/status', protect, require('../controllers/videoController').checkVideoStatus);

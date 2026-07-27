@@ -746,7 +746,17 @@ exports.getVideoDetails = async (req, res) => {
     const { videoId } = req.params;
     const { quality = 'preview' } = req.query; // preview or full
     const userId = req.user?.uid;
-    
+
+    // Guard against an empty/whitespace id reaching Firestore's .doc(), which
+    // throws a raw "documentPath must be a non-empty string" 500. Treat a
+    // missing id as a not-found request instead.
+    if (!videoId || typeof videoId !== 'string' || videoId.trim() === '') {
+      return res.status(404).json({
+        success: false,
+        message: 'Video not found'
+      });
+    }
+
     const videoRef = db.collection(COLLECTIONS.PLACE_VIDEOS).doc(videoId);
     const videoDoc = await videoRef.get();
     
@@ -765,6 +775,14 @@ exports.getVideoDetails = async (req, res) => {
     if (videoData.userId !== userId) {
       const owner = videoData.userId;
       let allowed = videoData.visibility === 'public';
+      // A relationship-gated moment needs a known viewer. Without one (no auth),
+      // only public moments are visible — never fall through to a .doc(undefined).
+      if (!allowed && !userId) {
+        return res.status(403).json({
+          success: false,
+          message: 'You do not have access to this moment'
+        });
+      }
       if (!allowed && videoData.visibility === 'network') {
         const [c1, c2] = await Promise.all([
           db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', userId).where('connectedUserId', '==', owner).where('status', '==', 'accepted').get(),

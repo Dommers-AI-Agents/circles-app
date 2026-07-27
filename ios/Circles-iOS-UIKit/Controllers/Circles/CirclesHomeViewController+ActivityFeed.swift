@@ -1,8 +1,23 @@
 import UIKit
 import CoreLocation
+import ObjectiveC
 
 // Activity-feed cell, reaction picker, notification-navigation, and
 // swipe-action handling for CirclesHomeViewController. Extracted (Wave 4).
+
+private var momentOpenInFlightKey: UInt8 = 0
+
+extension CirclesHomeViewController {
+    /// Guards against the same moment-open firing twice. A single activity-row
+    /// tap can trigger BOTH `tableView(_:didSelectRowAt:)` (→ `navigateToVideo`)
+    /// and the cell's content-tap gesture (→ `navigateToVideoFromActivity`),
+    /// which otherwise stacks two "Loading video..." alerts and fires two
+    /// detail requests. Reset once the open resolves (present or error).
+    fileprivate var isOpeningMoment: Bool {
+        get { (objc_getAssociatedObject(self, &momentOpenInFlightKey) as? Bool) ?? false }
+        set { objc_setAssociatedObject(self, &momentOpenInFlightKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+    }
+}
 
 // MARK: - ActivityFeedCellDelegate
 extension CirclesHomeViewController: ActivityFeedCellDelegate {
@@ -36,14 +51,22 @@ extension CirclesHomeViewController: ActivityFeedCellDelegate {
     }
     
     func didTapPlaceImage(activity: Activity) {
-        navigateToPlaceFromActivity(activity)
+        // The thumbnail on a moment activity is the moment itself — open the
+        // player, not a place lookup (which 404s: these have no place detail).
+        switch activity.type {
+        case .videoUploaded, .videoLiked:
+            navigateToVideoFromActivity(activity)
+        default:
+            navigateToPlaceFromActivity(activity)
+        }
     }
     
     func navigateToVideoFromActivity(_ activity: Activity) {
         // The targetId contains the video ID for video upload activities
         let videoId = activity.targetId
-        guard !videoId.isEmpty else { return }
-        
+        guard !videoId.isEmpty, !isOpeningMoment else { return }
+        isOpeningMoment = true
+
         // Fetch the video details
         APIService.shared.request(
             endpoint: "videos/\(videoId)",
@@ -84,14 +107,16 @@ extension CirclesHomeViewController: ActivityFeedCellDelegate {
                             }
                         }
                         
+                        self?.isOpeningMoment = false
                         self?.present(videoReelsVC, animated: true)
                 case .failure(let error):
+                    self?.isOpeningMoment = false
                     self?.showError("Failed to load video: \(error.localizedDescription)")
                 }
             }
         }
     }
-    
+
     func navigateToPlaceFromActivity(_ activity: Activity) {
         // For video uploads, use placeId from metadata; for check-ins use metadata placeId; otherwise use targetId
         let placeId: String
@@ -386,9 +411,14 @@ extension CirclesHomeViewController {
     }
     
     func navigateToVideo(withId videoId: String) {
+        // A blank id would hit `GET /videos/` → server 500; and a duplicate tap
+        // (see `isOpeningMoment`) would stack a second loading alert.
+        guard !videoId.isEmpty, !isOpeningMoment else { return }
+        isOpeningMoment = true
+
         // Show loading indicator
         let loadingAlert = AlertPresenter.showLoading(message: "Loading video...", from: self)
-        
+
         // Fetch video details
         APIService.shared.request(
             endpoint: "videos/\(videoId)",
@@ -397,7 +427,8 @@ extension CirclesHomeViewController {
             DispatchQueue.main.async {
                 loadingAlert.dismiss(animated: true) {
                     guard let self = self else { return }
-                    
+                    self.isOpeningMoment = false
+
                     switch result {
                     case .success(let response):
                         // Create array with just this video
