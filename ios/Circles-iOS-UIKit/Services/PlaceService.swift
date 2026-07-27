@@ -296,13 +296,36 @@ class PlaceService {
     }
 
     /// Nearby places for the "Nearby" tab shared by check-in and moment
-    /// posting: all places in the user's network near `location`, EXCLUDING
-    /// the user's own saves, sorted by distance (the viewport endpoint already
-    /// returns them nearest-first).
+    /// posting: venues in the user's network near `location` that the user has
+    /// NOT already saved, one row per venue, sorted by distance (the viewport
+    /// endpoint already returns them nearest-first).
+    ///
+    /// The viewport endpoint's allowed circles include the user's own circles,
+    /// and a single real-world venue can have many save records (the user's own
+    /// plus each friend who saved it). So filtering by `addedBy` alone leaves
+    /// duplicates and venues the user already has. We key on the venue instead:
+    /// drop any venue the user has saved, and collapse duplicate saves of the
+    /// same venue to the nearest copy.
     func getNearbyPlaces(near location: CLLocation,
                          radiusM: Double = 50_000,
                          limit: Int = 100,
                          completion: @escaping (Result<[Place], Error>) -> Void) {
+        let group = DispatchGroup()
+        var savedVenueKeys = Set<String>()
+        var nearby: [Place] = []
+        var fetchError: Error?
+
+        // The user's own saved venues (to exclude from "other places nearby")
+        group.enter()
+        getMyPlacesForCheckIn { result in
+            if case .success(let mine) = result {
+                savedVenueKeys = Set(mine.map { PlaceService.venueKey($0) })
+            }
+            group.leave()
+        }
+
+        // All network places in the viewport (already distance-sorted)
+        group.enter()
         fetchNetworkPlacesInViewport(
             centerLat: location.coordinate.latitude,
             centerLng: location.coordinate.longitude,
@@ -310,15 +333,43 @@ class PlaceService {
             limit: limit
         ) { result in
             switch result {
-            case .success(let places):
-                let currentUserId = AuthService.shared.getUserId() ?? ""
-                // "Other than my places" — drop the user's own saves
-                let others = places.filter { !IDNormalizer.isSameUser($0.addedBy, currentUserId) }
-                completion(.success(others)) // already distance-sorted server-side
-            case .failure(let error):
-                completion(.failure(error))
+            case .success(let places): nearby = places
+            case .failure(let error): fetchError = error
             }
+            group.leave()
         }
+
+        group.notify(queue: .main) {
+            if let error = fetchError {
+                completion(.failure(error))
+                return
+            }
+            let currentUserId = AuthService.shared.getUserId() ?? ""
+            var seenVenues = Set<String>()
+            let others = nearby.filter { place in
+                // Never the user's own copy
+                if IDNormalizer.isSameUser(place.addedBy, currentUserId) { return false }
+                let key = PlaceService.venueKey(place)
+                // Not a venue the user has already saved
+                if savedVenueKeys.contains(key) { return false }
+                // One row per venue — keep the nearest (list is distance-sorted)
+                if seenVenues.contains(key) { return false }
+                seenVenues.insert(key)
+                return true
+            }
+            completion(.success(others))
+        }
+    }
+
+    /// Stable identity for a real-world venue across different save records.
+    /// Prefers the canonical globalPlaceId, then the Google id, then a
+    /// name+coordinate fallback for legacy docs missing both.
+    static func venueKey(_ place: Place) -> String {
+        if let g = place.globalPlaceId, !g.isEmpty { return "g:" + g }
+        if let gp = place.googlePlaceId, !gp.isEmpty { return "gp:" + gp }
+        let lat = place.latitude.map { String(format: "%.4f", $0) } ?? "?"
+        let lng = place.longitude.map { String(format: "%.4f", $0) } ?? "?"
+        return "n:\(place.name.lowercased())|\(lat),\(lng)"
     }
     
     // MARK: - Create, Update, Delete
