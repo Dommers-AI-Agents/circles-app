@@ -44,8 +44,10 @@ extension ProfileViewController: UICollectionViewDelegate {
             reelsVC.modalPresentationStyle = .fullScreen
             present(reelsVC, animated: true)
         } else if collectionView == uploadsCollectionView {
-            // Expand the place's photos into a gallery
-            openUploadsGallery(for: uploadGroups[indexPath.item])
+            // Open the place's page — its media carousel scrolls through all of
+            // the place's photos (the uploads included). Long-press the tile to
+            // manage/delete individual uploads.
+            navigateToPlaceDetail(from: uploadGroups[indexPath.item].cover)
         } else {
             let circle = circles[indexPath.item]
             let detailVC = CircleDetailViewController(circle: circle)
@@ -75,9 +77,16 @@ extension ProfileViewController: UICollectionViewDelegate {
                 return UIMenu(title: "", children: [deleteAction])
             }
         } else if collectionView == uploadsCollectionView {
-            // Group tiles have no context menu — tapping expands into the
-            // place's gallery, where individual photos can be deleted.
-            return nil
+            // Tap opens the place page; long-press manages this place's photos
+            // in a gallery where individual uploads can be deleted.
+            guard indexPath.item < uploadGroups.count else { return nil }
+            let group = uploadGroups[indexPath.item]
+            return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
+                let manage = UIAction(title: "View / manage photos", image: UIImage(systemName: "photo.on.rectangle")) { _ in
+                    self?.openUploadsGallery(for: group)
+                }
+                return UIMenu(children: [manage])
+            }
         }
         
         // Handle context menu for circles
