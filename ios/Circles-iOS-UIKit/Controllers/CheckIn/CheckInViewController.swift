@@ -7,18 +7,16 @@ class CheckInViewController: BaseViewController {
     // MARK: - Properties
     private var myPlaces: [Place] = []
     private var nearbyPlaces: [Place] = []   // network places nearby (not mine), distance-sorted
-    private var searchCompleter = MKLocalSearchCompleter()
+    private let nearbySearch = NearbyPlaceSearch()  // shared POI search (also used by moments)
     private var searchResults: [MKLocalSearchCompletion] = []
     private var filteredPlaces: [Place] = []
     private var selectedPlace: Place?
-    private var selectedCompletion: MKLocalSearchCompletion?
     private let locationManager = CLLocationManager()
     private var currentLocation: CLLocation?
     
     // Step tracking
     private var currentStep = 1
     private var selectedIndexPath: IndexPath?
-    private var tempCheckInData: [String: Any] = [:]  // Temporary storage for search result data
     
     // MARK: - Configuration
     override var showsLoadingIndicator: Bool { true }
@@ -375,12 +373,11 @@ class CheckInViewController: BaseViewController {
     }
     
     private func setupSearchCompleter() {
-        searchCompleter.delegate = self
-        searchCompleter.resultTypes = .pointOfInterest
-        
-        // Set region if we have current location
+        nearbySearch.delegate = self
+
+        // Bias suggestions toward the user's area if we have a location
         if let location = currentLocation {
-            searchCompleter.region = MKCoordinateRegion(
+            nearbySearch.region = MKCoordinateRegion(
                 center: location.coordinate,
                 latitudinalMeters: 5000,  // 5km radius
                 longitudinalMeters: 5000
@@ -525,7 +522,6 @@ class CheckInViewController: BaseViewController {
         searchResults = []
         selectedIndexPath = nil
         selectedPlace = nil
-        selectedCompletion = nil
         nextButton.isEnabled = false
         nextButton.alpha = 0.6
         
@@ -582,9 +578,6 @@ class CheckInViewController: BaseViewController {
         if let place = selectedPlace {
             selectedPlaceNameLabel.text = place.name
             selectedPlaceAddressLabel.text = place.address
-        } else if let completion = selectedCompletion {
-            selectedPlaceNameLabel.text = completion.title
-            selectedPlaceAddressLabel.text = completion.subtitle
         }
         
         // Hide step 1 views
@@ -614,23 +607,24 @@ class CheckInViewController: BaseViewController {
         let durationOptions = ["30", "60", "120", "until_leave"]
         checkInData["duration"] = durationOptions[durationSegmentedControl.selectedSegmentIndex]
         
-        // Add place info
+        // Add place info. A resolved POI that isn't already saved comes back
+        // with an empty circleId — the backend creates it from the name/address/
+        // coordinates below. An existing saved place is referenced by id.
         if let place = selectedPlace {
-            checkInData["placeId"] = place.id
+            let isNewPlace = place.circleId?.isEmpty ?? true
             checkInData["placeName"] = place.name
             checkInData["placeAddress"] = place.address
             checkInData["placeCategory"] = place.category.rawValue
-            if let circleId = place.circleId {
-                checkInData["circleId"] = circleId
-            }
-            
             if let location = place.location?.clLocation {
                 checkInData["latitude"] = location.coordinate.latitude
                 checkInData["longitude"] = location.coordinate.longitude
             }
-        } else if selectedCompletion != nil {
-            // Use the stored data from selectSearchResult()
-            checkInData.merge(tempCheckInData) { _, new in new }
+            if !isNewPlace {
+                checkInData["placeId"] = place.id
+                if let circleId = place.circleId {
+                    checkInData["circleId"] = circleId
+                }
+            }
         }
         
         recipientVC.checkInData = checkInData
@@ -657,69 +651,36 @@ class CheckInViewController: BaseViewController {
     }
     
     private func selectSearchResult(_ result: MKLocalSearchCompletion) {
-        // Show loading while getting place details
+        // Resolve via the shared POI search (same code path as the moment
+        // picker). It matches an existing saved place when possible, otherwise
+        // returns a new place with an empty circleId. Result arrives in the
+        // NearbyPlaceSearchDelegate callbacks below.
+        nearbySearch.resolve(result, near: currentLocation, existingPlaces: myPlaces)
+    }
+}
+
+// MARK: - NearbyPlaceSearchDelegate (shared POI search)
+extension CheckInViewController: NearbyPlaceSearchDelegate {
+    func nearbyPlaceSearch(_ search: NearbyPlaceSearch, didUpdate completions: [MKLocalSearchCompletion]) {
+        searchResults = completions
+        Logger.debug("📍 CheckIn: POI search found \(completions.count) results")
+        placesTableView.reloadData()
+    }
+
+    func nearbyPlaceSearchWillResolve(_ search: NearbyPlaceSearch) {
         showLoadingState()
-        
-        let searchRequest = MKLocalSearch.Request(completion: result)
-        
-        // Add region constraint if we have location
-        if let location = currentLocation {
-            searchRequest.region = MKCoordinateRegion(
-                center: location.coordinate,
-                latitudinalMeters: 10000,  // 10km radius
-                longitudinalMeters: 10000
-            )
-        }
-        
-        let search = MKLocalSearch(request: searchRequest)
-        search.start { [weak self] response, error in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                
-                self.hideLoadingState()
-                
-                if let error = error {
-                    self.showError("Could not get place details: \(error.localizedDescription)")
-                    return
-                }
-                
-                guard let mapItem = response?.mapItems.first else {
-                    self.showError("Could not get place details")
-                    return
-                }
-                
-                // Store the selected map item
-                self.selectedCompletion = result
-                self.selectedPlace = nil
-                
-                let placeName = mapItem.name ?? result.title
-                let placeAddress = mapItem.placemark.title ?? result.subtitle
-                
-                // Store the map item data for later use
-                self.tempCheckInData["placeName"] = placeName
-                self.tempCheckInData["placeAddress"] = placeAddress
-                self.tempCheckInData["latitude"] = mapItem.placemark.coordinate.latitude
-                self.tempCheckInData["longitude"] = mapItem.placemark.coordinate.longitude
-                self.tempCheckInData["placeCategory"] = "other"
-                
-                // Check if this place already exists in our loaded places
-                // This would help match places like "Crunch Fitness"
-                if let existingPlace = self.myPlaces.first(where: { place in
-                    place.name.lowercased() == placeName.lowercased() &&
-                    place.address.lowercased().contains(placeAddress.lowercased().prefix(20))
-                }) {
-                    // Found a matching place! Use it instead
-                    self.selectedPlace = existingPlace
-                    self.selectedCompletion = nil
-                    self.tempCheckInData.removeAll()
-                    Logger.debug("✅ Found existing place match: \(existingPlace.name) with ID: \(existingPlace.id)")
-                }
-                
-                // Enable next button
-                self.nextButton.isEnabled = true
-                self.nextButton.alpha = 1.0
-            }
-        }
+    }
+
+    func nearbyPlaceSearch(_ search: NearbyPlaceSearch, didResolve place: Place) {
+        hideLoadingState()
+        selectedPlace = place
+        nextButton.isEnabled = true
+        nextButton.alpha = 1.0
+    }
+
+    func nearbyPlaceSearch(_ search: NearbyPlaceSearch, didFailWith error: Error) {
+        hideLoadingState()
+        showError("Could not get place details: \(error.localizedDescription)")
     }
 }
 
@@ -822,7 +783,6 @@ extension CheckInViewController: UITableViewDelegate {
         else {
             let isMyPlaces = placeSelectionSegmentedControl.selectedSegmentIndex == 0
             selectedPlace = isMyPlaces ? filteredPlaces[indexPath.row] : nearbyPlaces[indexPath.row]
-            selectedCompletion = nil
 
             // Enable next button
             nextButton.isEnabled = true
@@ -853,8 +813,8 @@ extension CheckInViewController: UISearchBarDelegate {
             }
             placesTableView.reloadData()
         } else {
-            // Use search completer for both tabs
-            searchCompleter.queryFragment = searchText
+            // POI search via the shared completer (same code as the moment picker)
+            nearbySearch.updateQuery(searchText)
         }
     }
     
@@ -872,8 +832,8 @@ extension CheckInViewController: CLLocationManagerDelegate {
         Logger.debug("📍 CheckIn: Received location update: \(location.coordinate.latitude), \(location.coordinate.longitude)")
         Logger.debug("📍 CheckIn: Location accuracy: \(location.horizontalAccuracy)m")
         
-        // Update search completer region
-        searchCompleter.region = MKCoordinateRegion(
+        // Bias POI suggestions toward the user's area
+        nearbySearch.region = MKCoordinateRegion(
             center: location.coordinate,
             latitudinalMeters: 5000,  // 5km radius
             longitudinalMeters: 5000
@@ -919,18 +879,6 @@ extension CheckInViewController: CLLocationManagerDelegate {
     }
 }
 
-// MARK: - MKLocalSearchCompleterDelegate
-extension CheckInViewController: MKLocalSearchCompleterDelegate {
-    func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
-        searchResults = completer.results
-        Logger.debug("📍 CheckIn: Search completer found \(searchResults.count) results")
-        placesTableView.reloadData()
-    }
-    
-    func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
-        Logger.debug("❌ CheckIn: Search completer error: \(error.localizedDescription)")
-    }
-}
 
 // MARK: - CheckInRecipientSelectionDelegate
 extension CheckInViewController: CheckInRecipientSelectionDelegate {

@@ -22,8 +22,8 @@ class MomentPlacePickerViewController: BaseViewController {
     private var currentLocation: CLLocation?
     private var myPlaces: [Place] = []      // full distance-sorted list
     private var nearbyPlaces: [Place] = []  // network places nearby (not mine)
-    private var myPlacesQuery = ""          // search filter for My Places
-    private var nearbyQuery = ""            // search filter for Nearby
+    private var searchResults: [MKLocalSearchCompletion] = []  // POI suggestions while typing
+    private let nearbySearch = NearbyPlaceSearch()             // shared with check-in
     private var isLoading = false
 
     init(initialVisibility: VideoVisibility) {
@@ -95,6 +95,7 @@ class MomentPlacePickerViewController: BaseViewController {
         searchBar.delegate = self
         tableView.delegate = self
         tableView.dataSource = self
+        nearbySearch.delegate = self
 
         [privacyLabel, privacyControl, privacySubtitle, sourceControl, searchBar, tableView, loadingIndicator].forEach { view.addSubview($0) }
         setupConstraints()
@@ -108,6 +109,12 @@ class MomentPlacePickerViewController: BaseViewController {
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.currentLocation = location
+                if let location = location {
+                    self.nearbySearch.region = MKCoordinateRegion(
+                        center: location.coordinate,
+                        latitudinalMeters: 5000, longitudinalMeters: 5000
+                    )
+                }
                 self.myPlaces = self.sortByDistance(self.myPlaces)
                 if self.isMyPlaces { self.tableView.reloadData() } else { self.loadNearby() }
             }
@@ -161,11 +168,8 @@ class MomentPlacePickerViewController: BaseViewController {
 
     @objc private func sourceChanged() {
         searchBar.text = ""
-        myPlacesQuery = ""
-        nearbyQuery = ""
-        if isMyPlaces {
-            tableView.reloadData()
-        } else if nearbyPlaces.isEmpty {
+        searchResults = []
+        if !isMyPlaces && nearbyPlaces.isEmpty {
             loadNearby()
         } else {
             tableView.reloadData()
@@ -173,15 +177,8 @@ class MomentPlacePickerViewController: BaseViewController {
     }
 
     private var isMyPlaces: Bool { sourceControl.selectedSegmentIndex == 0 }
-    private var rows: [Place] {
-        let source = isMyPlaces ? myPlaces : nearbyPlaces
-        let query = isMyPlaces ? myPlacesQuery : nearbyQuery
-        guard !query.isEmpty else { return source }
-        return source.filter {
-            $0.name.localizedCaseInsensitiveContains(query) ||
-            $0.address.localizedCaseInsensitiveContains(query)
-        }
-    }
+    /// The place list for the active tab (shown when not searching).
+    private var rows: [Place] { isMyPlaces ? myPlaces : nearbyPlaces }
 
     // MARK: - Data
 
@@ -248,13 +245,29 @@ class MomentPlacePickerViewController: BaseViewController {
 // MARK: - Table
 
 extension MomentPlacePickerViewController: UITableViewDataSource, UITableViewDelegate {
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { rows.count }
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        // While the user is typing, show POI suggestions (shared with check-in);
+        // otherwise the active tab's place list.
+        searchResults.isEmpty ? rows.count : searchResults.count
+    }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "PlaceCell") ?? UITableViewCell(style: .subtitle, reuseIdentifier: "PlaceCell")
+        cell.imageView?.image = UIImage(systemName: "mappin.circle.fill")
+        cell.imageView?.tintColor = Constants.Colors.primary
+        cell.accessoryType = .disclosureIndicator
+        cell.detailTextLabel?.textColor = Constants.Colors.secondaryLabel
+
+        if !searchResults.isEmpty {
+            // POI suggestion (no coordinates until resolved on selection)
+            let result = searchResults[indexPath.row]
+            cell.textLabel?.text = result.title
+            cell.detailTextLabel?.text = result.subtitle
+            return cell
+        }
+
         let place = rows[indexPath.row]
         cell.textLabel?.text = place.name
-
         var detail: [String] = []
         if let loc = currentLocation, let d = distance(to: place, from: loc) {
             let f = MKDistanceFormatter(); f.unitStyle = .abbreviated
@@ -263,15 +276,16 @@ extension MomentPlacePickerViewController: UITableViewDataSource, UITableViewDel
         if isMyPlaces, let circleName = place.circleName { detail.append(circleName) }
         if !place.address.isEmpty { detail.append(place.address) }
         cell.detailTextLabel?.text = detail.joined(separator: " • ")
-        cell.detailTextLabel?.textColor = Constants.Colors.secondaryLabel
-        cell.imageView?.image = UIImage(systemName: "mappin.circle.fill")
-        cell.imageView?.tintColor = Constants.Colors.primary
-        cell.accessoryType = .disclosureIndicator
         return cell
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
+        if !searchResults.isEmpty {
+            // Resolve the POI suggestion into a Place, then hand it back.
+            nearbySearch.resolve(searchResults[indexPath.row], near: currentLocation, existingPlaces: myPlaces)
+            return
+        }
         let place = rows[indexPath.row]
         delegate?.momentPlacePicker(self, didSelect: place, visibility: visibility)
     }
@@ -282,16 +296,40 @@ extension MomentPlacePickerViewController: UITableViewDataSource, UITableViewDel
 extension MomentPlacePickerViewController: UISearchBarDelegate {
     func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
         let q = searchText.trimmingCharacters(in: .whitespaces)
-        // Both tabs filter their already-loaded, distance-sorted list locally
-        if isMyPlaces {
-            myPlacesQuery = q
+        if q.isEmpty {
+            // Back to the active tab's list
+            searchResults = []
+            tableView.reloadData()
         } else {
-            nearbyQuery = q
+            // POI search via the shared completer (same as check-in)
+            nearbySearch.updateQuery(q)
         }
-        tableView.reloadData()
     }
 
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
         searchBar.resignFirstResponder()
+    }
+}
+
+// MARK: - NearbyPlaceSearchDelegate (shared POI search)
+
+extension MomentPlacePickerViewController: NearbyPlaceSearchDelegate {
+    func nearbyPlaceSearch(_ search: NearbyPlaceSearch, didUpdate completions: [MKLocalSearchCompletion]) {
+        searchResults = completions
+        tableView.reloadData()
+    }
+
+    func nearbyPlaceSearchWillResolve(_ search: NearbyPlaceSearch) {
+        setLoading(true)
+    }
+
+    func nearbyPlaceSearch(_ search: NearbyPlaceSearch, didResolve place: Place) {
+        setLoading(false)
+        delegate?.momentPlacePicker(self, didSelect: place, visibility: visibility)
+    }
+
+    func nearbyPlaceSearch(_ search: NearbyPlaceSearch, didFailWith error: Error) {
+        setLoading(false)
+        showError(error.localizedDescription)
     }
 }
