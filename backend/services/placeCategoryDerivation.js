@@ -132,8 +132,11 @@ function deriveCategory(signals = {}) {
     return { category: fromApple, source: 'apple', confidence: 0.9 };
   }
 
-  // Tier 2: text inference over name/description/address
-  const fromText = categoryFromText(name, description, address);
+  // Tier 2: text inference over the NAME (and description) only. The address is
+  // deliberately excluded — town/street names like "Asbury Park", "Spring Lake"
+  // or "Ocean Beach" would otherwise trip the outdoor/geo keywords and mislabel
+  // a venue by where it is rather than what it is.
+  const fromText = categoryFromText(name, description);
   if (fromText !== 'other') {
     return { category: fromText, source: 'text', confidence: 0.6 };
   }
