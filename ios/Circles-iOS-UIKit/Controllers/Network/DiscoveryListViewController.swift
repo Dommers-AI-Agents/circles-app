@@ -1,23 +1,51 @@
 import UIKit
 import CoreLocation
 
+/// Discover: people who aren't in your network yet.
+///
+/// This used to be four separate chips (Discover / Popular / Nearby / Mutual)
+/// that all hit the same endpoint with a different sort, so finding anyone
+/// meant guessing which of four lists they'd be in. It's now one list of
+/// labelled sections, so every reason to follow someone is visible at once.
 class DiscoveryListViewController: BaseViewController {
-    
-    // MARK: - Properties
-    private var discoveryUsers: [User] = []
-    private var currentDiscoveryType: MyNetworkViewController.NetworkTab = .discover
+
+    /// A group of suggestions that share a reason.
+    private struct SuggestionSection {
+        let type: String          // the API's `type` query value
+        let title: String
+        let blurb: String?
+        var users: [User]
+    }
+
+    // Ordered by conversion, then aspiration. "Follows you" is first because
+    // the other person has already opted in — following back is one tap and
+    // can't be rejected. "Most active" is second: a big collection is the
+    // app's value made visible ("follow this person, inherit 200 places") and
+    // the strongest motivator to grow a network.
+    private static let sectionPlan: [(type: String, title: String, blurb: String?)] = [
+        ("followsYou", "Follows you", "Following back is instant — no approval needed."),
+        ("popular", "Most active", "The biggest collections on FavCircles — follow to see all their spots."),
+        // Backed by the suggestion engine, so these rows carry a real reason —
+        // a venue you both saved, a shared taste, or who already follows them.
+        // Each row states its own reason, so they belong in one section rather
+        // than split across tabs nobody would think to check.
+        ("friendsOfFriends", "Suggested for you", nil),
+        ("nearby", "Near you", nil)
+    ]
+
+    private var sections: [SuggestionSection] = []
+    private var searchQuery: String = ""
     private let locationManager = CLLocationManager()
     private var currentLocation: CLLocation?
-    
-    // MARK: - UI Elements
+
     private let tableView: UITableView = {
-        let table = UITableView(frame: .zero, style: .plain)
+        let table = UITableView(frame: .zero, style: .grouped)
         table.backgroundColor = Constants.Colors.background
         table.separatorStyle = .none
         table.translatesAutoresizingMaskIntoConstraints = false
         return table
     }()
-    
+
     private let locationPermissionView: UIView = {
         let view = UIView()
         view.backgroundColor = .systemBackground
@@ -26,10 +54,10 @@ class DiscoveryListViewController: BaseViewController {
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
-    
+
     private let locationPermissionLabel: UILabel = {
         let label = UILabel()
-        label.text = "Enable location to discover nearby users"
+        label.text = "Turn on location to find people near you"
         label.font = .systemFont(ofSize: 14)
         label.textColor = .secondaryLabel
         label.textAlignment = .center
@@ -37,192 +65,162 @@ class DiscoveryListViewController: BaseViewController {
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-    
+
     private lazy var enableLocationButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setTitle("Enable Location", for: .normal)
+        button.setTitle("Turn On Location", for: .normal)
         button.titleLabel?.font = .systemFont(ofSize: 14, weight: .medium)
         button.addTarget(self, action: #selector(enableLocationTapped), for: .touchUpInside)
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
-    
-    // MARK: - BaseViewController Configuration
+
     override var enablesPullToRefresh: Bool { true }
     override var emptyStateMessage: String? {
-        switch currentDiscoveryType {
-        case .nearby:
-            if CLLocationManager.authorizationStatus() == .denied ||
-               CLLocationManager.authorizationStatus() == .restricted {
-                return "Enable location services to find users near you\n\nGo to Settings > Privacy > Location Services"
-            } else if currentLocation == nil {
-                return "Getting your location...\n\nMake sure location services are enabled"
-            } else {
-                return "No users found near you yet\n\nInvite friends to join Circles, or add your zipcode in your profile"
-            }
-        case .popular:
-            return "No popular users found\n\nCheck back later as more people join"
-        case .mutual:
-            return "No mutual connections yet\n\nConnect with others to discover mutual connections"
-        case .discover:
-            return "No users to discover\n\nCheck back later"
-        default:
-            return "No users found"
-        }
+        searchQuery.isEmpty
+            ? "No suggestions right now\n\nInvite a friend, or add your zipcode in your profile so we can find people near you."
+            : "Nobody matching \"\(searchQuery)\""
     }
-    
+
     // MARK: - Lifecycle
+
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
         setupTableView()
-        setupLocationManager()
+        locationManager.delegate = self
+        locationManager.desiredAccuracy = kCLLocationAccuracyKilometer
+        checkLocationPermission()
     }
-    
-    // MARK: - Setup
+
     private func setupUI() {
         view.backgroundColor = Constants.Colors.background
-        
         view.addSubview(tableView)
         view.addSubview(locationPermissionView)
-        
         locationPermissionView.addSubview(locationPermissionLabel)
         locationPermissionView.addSubview(enableLocationButton)
-        
+
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: view.topAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            
+
             locationPermissionView.topAnchor.constraint(equalTo: view.topAnchor, constant: 16),
             locationPermissionView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             locationPermissionView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             locationPermissionView.heightAnchor.constraint(equalToConstant: 80),
-            
+
             locationPermissionLabel.topAnchor.constraint(equalTo: locationPermissionView.topAnchor, constant: 16),
             locationPermissionLabel.leadingAnchor.constraint(equalTo: locationPermissionView.leadingAnchor, constant: 16),
             locationPermissionLabel.trailingAnchor.constraint(equalTo: locationPermissionView.trailingAnchor, constant: -16),
-            
+
             enableLocationButton.topAnchor.constraint(equalTo: locationPermissionLabel.bottomAnchor, constant: 8),
             enableLocationButton.centerXAnchor.constraint(equalTo: locationPermissionView.centerXAnchor)
         ])
     }
-    
+
     private func setupTableView() {
         tableView.delegate = self
         tableView.dataSource = self
         tableView.register(DiscoverUserCell.self, forCellReuseIdentifier: "DiscoverUserCell")
-        
-        // Pull to refresh is handled by BaseViewController
         tableView.refreshControl = refreshControl
     }
-    
-    private func setupLocationManager() {
-        locationManager.delegate = self
-        locationManager.desiredAccuracy = kCLLocationAccuracyKilometer
-    }
-    
-    // MARK: - Public Methods
-    func setDiscoveryType(_ type: MyNetworkViewController.NetworkTab) {
-        currentDiscoveryType = type
-        
-        // Check if we need location permission for nearby
-        if type == .nearby {
-            checkLocationPermission()
-        } else {
-            locationPermissionView.isHidden = true
-        }
-        
-        loadData()
-    }
-    
-    // MARK: - Data Loading
+
+    // MARK: - Data
+
+    /// Fetches every section in parallel. Four small concurrent requests beat
+    /// making someone tap through four tabs to discover the same people.
     override func loadData(completion: (() -> Void)? = nil) {
-        let discoveryType: String
-        switch currentDiscoveryType {
-        case .discover:
-            discoveryType = "all"
-        case .popular:
-            discoveryType = "popular"
-        case .nearby:
-            discoveryType = "nearby"
-        case .mutual:
-            discoveryType = "friendsOfFriends"
-        default:
-            completion?()
-            return
-        }
-        
-        var endpoint = "users/contacts/discover?type=\(discoveryType)"
-        
-        // Add location for nearby searches
-        if (currentDiscoveryType == .nearby || currentDiscoveryType == .discover), 
-           let location = currentLocation {
-            endpoint += "&lat=\(location.coordinate.latitude)&lng=\(location.coordinate.longitude)"
-            updateUserLocation(location)
-        }
-        
-        APIService.shared.request(
-            endpoint: endpoint,
-            method: .get
-        ) { [weak self] (result: Result<DiscoveryUsersResponse, APIError>) in
-            guard let self = self else { return }
-            
-            DispatchQueue.main.async {
-                completion?()
-                
-                switch result {
-                case .success(let response):
-                    self.discoveryUsers = response.users
-                    self.tableView.reloadData()
-                    
-                    if self.discoveryUsers.isEmpty {
-                        self.showEmptyState(message: self.emptyStateMessage)
-                    } else {
-                        self.hideEmptyState()
-                    }
-                    
-                case .failure(let error):
-                    Logger.error("Failed to load discovery users: \(error)")
-                    self.showError(error)
+        let group = DispatchGroup()
+        var loaded: [String: [User]] = [:]
+        let lock = NSLock()
+
+        for plan in Self.sectionPlan {
+            group.enter()
+            var endpoint = "users/contacts/discover?type=\(plan.type)"
+            if plan.type == "nearby", let location = currentLocation {
+                endpoint += "&lat=\(location.coordinate.latitude)&lng=\(location.coordinate.longitude)"
+            }
+
+            APIService.shared.request(
+                endpoint: endpoint,
+                method: .get
+            ) { (result: Result<DiscoveryUsersResponse, APIError>) in
+                if case .success(let response) = result {
+                    lock.lock()
+                    loaded[plan.type] = response.users
+                    lock.unlock()
                 }
+                group.leave()
+            }
+        }
+
+        group.notify(queue: .main) { [weak self] in
+            guard let self = self else { return }
+            completion?()
+
+            // Someone should appear under their strongest reason only, so once
+            // a person shows up in an earlier section later ones skip them.
+            var alreadyShown = Set<String>()
+            self.sections = Self.sectionPlan.compactMap { plan in
+                let users = (loaded[plan.type] ?? []).filter { alreadyShown.insert($0.id).inserted }
+                guard !users.isEmpty else { return nil }
+                return SuggestionSection(type: plan.type, title: plan.title, blurb: plan.blurb, users: users)
+            }
+
+            self.tableView.reloadData()
+            if self.visibleSections.isEmpty {
+                self.showEmptyState(message: self.emptyStateMessage)
+            } else {
+                self.hideEmptyState()
             }
         }
     }
-    
+
+    /// Filters the loaded suggestions. These lists are small and already in
+    /// memory, so this needs no extra request — and it means the search field
+    /// above this segment is no longer inert.
+    func updateSearchQuery(_ query: String) {
+        searchQuery = query
+        tableView.reloadData()
+    }
+
+    private var visibleSections: [SuggestionSection] {
+        guard !searchQuery.isEmpty else { return sections }
+        let query = searchQuery.lowercased()
+        return sections.compactMap { section in
+            let matches = section.users.filter {
+                $0.displayName.lowercased().contains(query)
+                    || ($0.username?.lowercased().contains(query) ?? false)
+            }
+            guard !matches.isEmpty else { return nil }
+            return SuggestionSection(type: section.type, title: section.title, blurb: section.blurb, users: matches)
+        }
+    }
+
     private func updateUserLocation(_ location: CLLocation) {
-        let body: [String: Any] = [
-            "latitude": location.coordinate.latitude,
-            "longitude": location.coordinate.longitude
-        ]
-        
         APIService.shared.request(
             endpoint: "users/contacts/update-location",
             method: .post,
-            body: body
-        ) { (result: Result<SimpleAPIResponse, APIError>) in
-            // Silent update, no need to handle response
-        }
+            body: ["latitude": location.coordinate.latitude, "longitude": location.coordinate.longitude]
+        ) { (_: Result<SimpleAPIResponse, APIError>) in }
     }
-    
+
     // MARK: - Actions
+
     @objc private func enableLocationTapped() {
         if CLLocationManager.authorizationStatus() == .denied {
-            // Open settings
             if let settingsUrl = URL(string: UIApplication.openSettingsURLString) {
                 UIApplication.shared.open(settingsUrl)
             }
         } else {
-            // Request permission
             locationManager.requestWhenInUseAuthorization()
         }
     }
-    
+
     private func checkLocationPermission() {
-        let status = CLLocationManager.authorizationStatus()
-        
-        switch status {
+        switch CLLocationManager.authorizationStatus() {
         case .authorizedWhenInUse, .authorizedAlways:
             locationPermissionView.isHidden = true
             locationManager.requestLocation()
@@ -235,16 +233,8 @@ class DiscoveryListViewController: BaseViewController {
             break
         }
     }
-    
-    private func followUser(_ user: User, at indexPath: IndexPath) {
-        // Ignore taps on users we've already followed (the optimistic flip
-        // below disables the button, but guard against a stale indexPath too)
-        guard indexPath.row < discoveryUsers.count,
-              !(discoveryUsers[indexPath.row].isFollowing ?? false) else { return }
 
-        // Optimistic: flip to "Following" (and disable the button) IMMEDIATELY,
-        // before the round trip — on a slow signal the tap used to look dead,
-        // so users re-tapped and fired duplicate requests.
+    private func follow(_ user: User) {
         setFollowing(true, forUserId: user.id)
 
         APIService.shared.request(
@@ -254,70 +244,70 @@ class DiscoveryListViewController: BaseViewController {
         ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                switch result {
-                case .success:
-                    // Follow stuck — now fire the connection request
-                    self.sendConnectionRequest(to: user)
-                case .failure(let error):
-                    // Roll back the optimistic state so the button is tappable again
+                if case .failure(let error) = result {
                     self.setFollowing(false, forUserId: user.id)
                     self.showError(error)
                 }
+                // Following no longer secretly fires a connection request as
+                // well. Connect is offered on its own once you follow each
+                // other, so a tap does exactly what its label says.
             }
         }
     }
 
-    /// Updates a user's follow flag in the backing array (by id, so it's
-    /// robust to reordering) and reloads just that row.
     private func setFollowing(_ isFollowing: Bool, forUserId userId: String) {
-        guard let idx = discoveryUsers.firstIndex(where: { $0.id == userId }) else { return }
-        discoveryUsers[idx] = discoveryUsers[idx].copy(isFollowing: isFollowing)
-        tableView.reloadRows(at: [IndexPath(row: idx, section: 0)], with: .none)
+        for sectionIndex in sections.indices {
+            if let userIndex = sections[sectionIndex].users.firstIndex(where: { $0.id == userId }) {
+                sections[sectionIndex].users[userIndex] =
+                    sections[sectionIndex].users[userIndex].copy(isFollowing: isFollowing)
+            }
+        }
+        tableView.reloadData()
     }
 
-    private func sendConnectionRequest(to user: User) {
-        NetworkManager.shared.sendConnectionRequest(to: user.id) { result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success:
-                    NotificationCenter.default.post(name: .connectionRequestSent, object: nil)
-                case .failure(let error):
-                    // Follow succeeded but the connection request didn't — the
-                    // user still sees "Following", so this is non-fatal; log it
-                    // rather than fail silently.
-                    Logger.error("Connection request to \(user.id) failed: \(error.localizedDescription)")
-                }
-            }
+    /// Removes a suggestion for good. Without this the same faces come back
+    /// every time, which reads as the list being broken.
+    private func dismiss(_ user: User) {
+        for sectionIndex in sections.indices {
+            sections[sectionIndex].users.removeAll { $0.id == user.id }
+        }
+        sections.removeAll { $0.users.isEmpty }
+        tableView.reloadData()
+
+        APIService.shared.request(
+            endpoint: "users/contacts/dismiss-suggestion",
+            method: .post,
+            body: ["userId": user.id]
+        ) { (_: Result<SimpleAPIResponse, APIError>) in }
+
+        if visibleSections.isEmpty {
+            showEmptyState(message: emptyStateMessage)
         }
     }
 }
 
 // MARK: - UITableViewDataSource
+
 extension DiscoveryListViewController: UITableViewDataSource {
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return discoveryUsers.count
+    func numberOfSections(in tableView: UITableView) -> Int {
+        visibleSections.count
     }
-    
+
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        visibleSections[section].users.count
+    }
+
+    func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
+        visibleSections[section].title
+    }
+
+    func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
+        visibleSections[section].blurb
+    }
+
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "DiscoverUserCell", for: indexPath) as! DiscoverUserCell
-        let user = discoveryUsers[indexPath.row]
-        
-        // Map the discovery type for the cell
-        let cellDiscoveryType: DiscoverUserCell.DiscoveryType
-        switch currentDiscoveryType {
-        case .discover:
-            cellDiscoveryType = .all
-        case .popular:
-            cellDiscoveryType = .popular
-        case .nearby:
-            cellDiscoveryType = .nearby
-        case .mutual:
-            cellDiscoveryType = .friendsOfFriends
-        default:
-            cellDiscoveryType = .all
-        }
-        
-        cell.configure(with: user, discoveryType: cellDiscoveryType)
+        cell.configure(with: visibleSections[indexPath.section].users[indexPath.row])
         cell.delegate = self
         cell.indexPath = indexPath
         return cell
@@ -325,50 +315,50 @@ extension DiscoveryListViewController: UITableViewDataSource {
 }
 
 // MARK: - UITableViewDelegate
+
 extension DiscoveryListViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        
-        let user = discoveryUsers[indexPath.row]
-        
-        // Navigate to user profile
-        let profileVC = ProfileViewController(user: user)
-        navigationController?.pushViewController(profileVC, animated: true)
+        let user = visibleSections[indexPath.section].users[indexPath.row]
+        navigationController?.pushViewController(ProfileViewController(user: user), animated: true)
     }
-    
-    func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        return 88
-    }
+
+    func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat { 88 }
 }
 
 // MARK: - CLLocationManagerDelegate
+
 extension DiscoveryListViewController: CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        currentLocation = locations.last
-        
-        // Reload if we're on nearby tab
-        if currentDiscoveryType == .nearby || currentDiscoveryType == .discover {
-            loadData()
-        }
+        guard let location = locations.last else { return }
+        currentLocation = location
+        updateUserLocation(location)
+        loadData()
     }
-    
+
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         Logger.error("Location error: \(error)")
     }
-    
+
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         checkLocationPermission()
     }
 }
 
 // MARK: - DiscoverUserCellDelegate
+
 extension DiscoveryListViewController: DiscoverUserCellDelegate {
     func discoverUserCellDidTapFollow(_ cell: DiscoverUserCell) {
-        guard let indexPath = cell.indexPath else { return }
-        let user = discoveryUsers[indexPath.row]
-        followUser(user, at: indexPath)
+        guard let indexPath = cell.indexPath,
+              indexPath.section < visibleSections.count,
+              indexPath.row < visibleSections[indexPath.section].users.count else { return }
+        follow(visibleSections[indexPath.section].users[indexPath.row])
+    }
+
+    func discoverUserCellDidTapDismiss(_ cell: DiscoverUserCell) {
+        guard let indexPath = cell.indexPath,
+              indexPath.section < visibleSections.count,
+              indexPath.row < visibleSections[indexPath.section].users.count else { return }
+        dismiss(visibleSections[indexPath.section].users[indexPath.row])
     }
 }
-
-// MARK: - Response Models
-// Response models are defined in Models/NetworkResponses.swift

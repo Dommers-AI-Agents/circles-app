@@ -2,6 +2,7 @@ import UIKit
 
 protocol DiscoverUserCellDelegate: AnyObject {
     func discoverUserCellDidTapFollow(_ cell: DiscoverUserCell)
+    func discoverUserCellDidTapDismiss(_ cell: DiscoverUserCell)
 }
 
 class DiscoverUserCell: UITableViewCell {
@@ -83,6 +84,18 @@ class DiscoverUserCell: UITableViewCell {
         return label
     }()
     
+    /// "Not interested". Suggestions have to be able to run out, or the same
+    /// faces reappear forever.
+    private lazy var dismissButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "xmark"), for: .normal)
+        button.tintColor = .tertiaryLabel
+        button.accessibilityLabel = "Not interested"
+        button.addTarget(self, action: #selector(dismissButtonTapped), for: .touchUpInside)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+
     private lazy var followButton: UIButton = {
         let button = UIButton(type: .system)
         button.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
@@ -115,6 +128,7 @@ class DiscoverUserCell: UITableViewCell {
         containerView.addSubview(detailLabel)
         containerView.addSubview(discoveryReasonLabel)
         containerView.addSubview(followButton)
+        containerView.addSubview(dismissButton)
         
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
@@ -144,7 +158,12 @@ class DiscoverUserCell: UITableViewCell {
             discoveryReasonLabel.topAnchor.constraint(equalTo: detailLabel.bottomAnchor, constant: 2),
             discoveryReasonLabel.trailingAnchor.constraint(lessThanOrEqualTo: followButton.leadingAnchor, constant: -8),
             
-            followButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
+            dismissButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -10),
+            dismissButton.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
+            dismissButton.widthAnchor.constraint(equalToConstant: 28),
+            dismissButton.heightAnchor.constraint(equalToConstant: 28),
+
+            followButton.trailingAnchor.constraint(equalTo: dismissButton.leadingAnchor, constant: -4),
             followButton.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
             followButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 80),
             followButton.heightAnchor.constraint(equalToConstant: 32)
@@ -152,21 +171,43 @@ class DiscoverUserCell: UITableViewCell {
     }
     
     // MARK: - Configuration
-    func configure(with user: User, discoveryType: DiscoveryType) {
+    /// The section header already states the reason these people are grouped
+    /// together, so the cell no longer needs to be told which list it's in.
+    func configure(with user: User) {
         self.user = user
-        
+
         // Name and verification
         nameLabel.text = user.displayName
         verifiedBadge.isHidden = !(user.isVerified ?? false)
-        
-        // Details (places and circles)
-        let placesText = "\(user.placesCount ?? 0) place\(user.placesCount == 1 ? "" : "s")"
-        let circlesText = "\(user.circlesCount ?? 0) circle\(user.circlesCount == 1 ? "" : "s")"
-        let followersText = "\(user.followersCount ?? 0) follower\(user.followersCount == 1 ? "" : "s")"
-        detailLabel.text = "\(placesText) • \(circlesText) • \(followersText)"
-        
-        // Discovery reason
-        configureDiscoveryReason(user: user, type: discoveryType)
+
+        // The stat line is the sell: following someone hands you their whole
+        // collection, so the size of that collection is the headline —
+        // "214 places · 18 circles", count in the primary color. Someone with
+        // no places yet falls back to the standard relationship subtitle.
+        let placesCount = user.placesCount ?? 0
+        if placesCount > 0 {
+            let stat = NSMutableAttributedString(
+                string: "\(placesCount) \(placesCount == 1 ? "place" : "places")",
+                attributes: [
+                    .font: UIFont.systemFont(ofSize: 14, weight: .semibold),
+                    .foregroundColor: Constants.Colors.primary
+                ])
+            if let circlesCount = user.circlesCount, circlesCount > 0 {
+                stat.append(NSAttributedString(
+                    string: "  ·  \(circlesCount) \(circlesCount == 1 ? "circle" : "circles")",
+                    attributes: [
+                        .font: UIFont.systemFont(ofSize: 14),
+                        .foregroundColor: Constants.Colors.secondaryLabel
+                    ]))
+            }
+            detailLabel.attributedText = stat
+        } else {
+            detailLabel.attributedText = nil
+            detailLabel.text = RelationshipTier(user: user).subtitle(for: user)
+        }
+
+        // Per-person reason, where one exists beyond the section heading.
+        configureDiscoveryReason(user: user, type: .all)
         
         // Profile image - use profile-specific loading to prevent cache collisions
         if let profilePicture = user.profilePicture, !profilePicture.isEmpty {
@@ -195,6 +236,16 @@ class DiscoverUserCell: UITableViewCell {
     }
     
     private func configureDiscoveryReason(user: User, type: DiscoveryType) {
+        // The server now phrases the reason itself — "Also saved Café Mogador
+        // + 5 more" is something only the backend can know, and it beats
+        // anything the client can infer from a bare discovery type. Fall
+        // through to the derived text only when there's no server reason.
+        if let reason = user.suggestionReason, !reason.isEmpty {
+            discoveryReasonLabel.text = reason
+            discoveryReasonLabel.isHidden = false
+            return
+        }
+
         var reasonText = ""
         var reasonIcon = ""
         
@@ -219,28 +270,24 @@ class DiscoverUserCell: UITableViewCell {
                     reasonText = "📍 \(distance) km away"
                 }
             case "popular":
-                reasonText = "⭐ Popular user"
+                // The stat line and the "Most active" section header already
+                // say it — a third "Popular user" badge is noise.
+                break
             default:
                 break
             }
         }
-        
-        // Fallback to type-based reasons
+
+        // Fallback to type-based reasons (the stat line covers place counts,
+        // so no "active contributor"-style duplication here)
         if reasonText.isEmpty {
             switch type {
-            case .popular:
-                reasonText = "⭐ Popular user"
             case .nearby:
                 reasonText = "📍 Nearby"
             case .friendsOfFriends:
                 reasonText = "👥 Mutual connections"
-            case .all:
-                // Show most relevant reason
-                if user.followersCount ?? 0 > 100 {
-                    reasonText = "⭐ Popular user"
-                } else if user.placesCount ?? 0 > 20 {
-                    reasonText = "🏆 Active contributor"
-                }
+            case .popular, .all:
+                break
             }
         }
         
@@ -284,6 +331,10 @@ class DiscoverUserCell: UITableViewCell {
     // MARK: - Actions
     @objc private func followButtonTapped() {
         delegate?.discoverUserCellDidTapFollow(self)
+    }
+
+    @objc private func dismissButtonTapped() {
+        delegate?.discoverUserCellDidTapDismiss(self)
     }
     
     // MARK: - Reuse

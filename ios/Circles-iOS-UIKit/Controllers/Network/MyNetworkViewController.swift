@@ -2,30 +2,21 @@ import UIKit
 
 class MyNetworkViewController: BaseViewController {
     
-    // MARK: - Tab Types
+    // MARK: - Segments
+    //
+    // This page is about PEOPLE: the ones you know, and the ones worth knowing.
+    // (It was once six chips — My Network, Discover, Popular, Nearby, Mutual,
+    // Circles — four of which were the same endpoint sorted differently. The
+    // shared-circles list was removed from here entirely: circle management
+    // doesn't belong in a people space.)
     enum NetworkTab: String, CaseIterable {
-        case myNetwork = "My Network"
+        case people = "People"
         case discover = "Discover"
-        case popular = "Popular"
-        case nearby = "Nearby"
-        case mutual = "Mutual"
-        case sharedCircles = "Circles"
-        
-        var icon: UIImage? {
-            switch self {
-            case .myNetwork: return UIImage(systemName: "person.2.fill")
-            case .discover: return UIImage(systemName: "person.3.fill")
-            case .popular: return UIImage(systemName: "star.fill")
-            case .nearby: return UIImage(systemName: "location.fill")
-            case .mutual: return UIImage(systemName: "person.2.badge.plus")
-            case .sharedCircles: return UIImage(systemName: "circle.hexagongrid.fill")
-            }
-        }
     }
-    
+
     // MARK: - SSE Integration
     private var sseConnected = false
-    private var selectedTab: NetworkTab = .myNetwork
+    private var selectedTab: NetworkTab = .people
     
     // MARK: - UI Elements
     private let searchBar: UISearchBar = {
@@ -37,24 +28,14 @@ class MyNetworkViewController: BaseViewController {
         return searchBar
     }()
     
-    private let tabScrollView: UIScrollView = {
-        let scrollView = UIScrollView()
-        scrollView.showsHorizontalScrollIndicator = false
-        scrollView.showsVerticalScrollIndicator = false
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        return scrollView
+    private lazy var segmentedControl: UISegmentedControl = {
+        let control = UISegmentedControl(items: NetworkTab.allCases.map { $0.rawValue })
+        control.selectedSegmentIndex = 0
+        control.addTarget(self, action: #selector(segmentChanged), for: .valueChanged)
+        control.translatesAutoresizingMaskIntoConstraints = false
+        return control
     }()
-    
-    private let tabStackView: UIStackView = {
-        let stackView = UIStackView()
-        stackView.axis = .horizontal
-        stackView.distribution = .fillProportionally
-        stackView.spacing = 8
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        return stackView
-    }()
-    
-    private var tabButtons: [UIButton] = []
+
     
     private let findContactsBar: UIView = {
         let view = UIView()
@@ -103,7 +84,6 @@ class MyNetworkViewController: BaseViewController {
     // Child View Controllers
     private var allUsersListVC: AllUsersListViewController?
     private var discoveryListVC: DiscoveryListViewController?
-    private var sharedCirclesListVC: SharedCirclesListViewController?
     private var currentViewController: UIViewController?
     
     // Search properties
@@ -115,7 +95,7 @@ class MyNetworkViewController: BaseViewController {
         setupView()
         setupNavigationBar()
         setupChildViewControllers()
-        selectTab(.myNetwork)  // Start with My Network tab
+        selectTab(.people)
         setupSSE()
         
         // Check if user needs notification prompt for connections
@@ -128,12 +108,37 @@ class MyNetworkViewController: BaseViewController {
             name: NSNotification.Name("ShowContactsImport"),
             object: nil
         )
+
+        // Child lists hand off to Discover rather than pushing their own copy.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(showDiscoverSegment),
+            name: .showDiscoverSegment,
+            object: nil
+        )
     }
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         // Force refresh connections to ensure badge is accurate
         NetworkManager.shared.refreshBadgeCount()
+    }
+
+    /// Refreshes whichever segment is visible.
+    ///
+    /// `CirclesTabBarController` calls this when the Network tab is re-tapped
+    /// while already selected. This class never overrode it, so the call landed
+    /// on `BaseViewController`'s empty implementation and re-tapping the tab
+    /// did nothing at all.
+    override func loadData(completion: (() -> Void)? = nil) {
+        switch selectedTab {
+        case .people:
+            allUsersListVC?.loadPeople()
+        case .discover:
+            discoveryListVC?.loadData()
+        }
+        NetworkManager.shared.refreshBadgeCount()
+        completion?()
     }
     
     override func viewDidAppear(_ animated: Bool) {
@@ -197,13 +202,9 @@ class MyNetworkViewController: BaseViewController {
         navigationItem.rightBarButtonItem = addConnectionButton
         
         view.addSubview(searchBar)
-        view.addSubview(tabScrollView)
-        tabScrollView.addSubview(tabStackView)
+        view.addSubview(segmentedControl)
         view.addSubview(findContactsBar)
         view.addSubview(containerView)
-        
-        // Create tab buttons
-        setupTabButtons()
         
         // Add subviews to findContactsBar
         findContactsBar.addSubview(findContactsIcon)
@@ -216,18 +217,11 @@ class MyNetworkViewController: BaseViewController {
             searchBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             searchBar.heightAnchor.constraint(equalToConstant: 44),
             
-            tabScrollView.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 16),
-            tabScrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            tabScrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tabScrollView.heightAnchor.constraint(equalToConstant: 44),
-            
-            tabStackView.topAnchor.constraint(equalTo: tabScrollView.topAnchor),
-            tabStackView.leadingAnchor.constraint(equalTo: tabScrollView.leadingAnchor, constant: 16),
-            tabStackView.trailingAnchor.constraint(equalTo: tabScrollView.trailingAnchor, constant: -16),
-            tabStackView.bottomAnchor.constraint(equalTo: tabScrollView.bottomAnchor),
-            tabStackView.heightAnchor.constraint(equalTo: tabScrollView.heightAnchor),
-            
-            findContactsBar.topAnchor.constraint(equalTo: tabScrollView.bottomAnchor, constant: 16),
+            segmentedControl.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 12),
+            segmentedControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            segmentedControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+
+            findContactsBar.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 12),
             findContactsBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             findContactsBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             findContactsBar.heightAnchor.constraint(equalToConstant: 56),
@@ -260,67 +254,61 @@ class MyNetworkViewController: BaseViewController {
         findContactsBar.isUserInteractionEnabled = true
     }
     
-    private func setupTabButtons() {
-        // Create a button for each tab
-        for (index, tab) in NetworkTab.allCases.enumerated() {
-            let button = UIButton(type: .system)
-            button.setTitle(tab.rawValue, for: .normal)
-            button.titleLabel?.font = .systemFont(ofSize: 14, weight: .medium)
-            button.tag = index
-            button.addTarget(self, action: #selector(tabButtonTapped(_:)), for: .touchUpInside)
-            
-            // Style the button
-            button.backgroundColor = index == 0 ? Constants.Colors.primary : Constants.Colors.secondaryBackground
-            button.setTitleColor(index == 0 ? .white : Constants.Colors.secondaryLabel, for: .normal)
-            button.layer.cornerRadius = 18
-            button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
-            
-            tabButtons.append(button)
-            tabStackView.addArrangedSubview(button)
-        }
-    }
-    
     private func setupChildViewControllers() {
         // Create child view controllers
         allUsersListVC = AllUsersListViewController()
         discoveryListVC = DiscoveryListViewController()
-        sharedCirclesListVC = SharedCirclesListViewController()
     }
     
     // MARK: - Actions
-    @objc private func tabButtonTapped(_ sender: UIButton) {
-        let tab = NetworkTab.allCases[sender.tag]
-        selectTab(tab)
+    @objc private func segmentChanged() {
+        let index = segmentedControl.selectedSegmentIndex
+        guard index >= 0 && index < NetworkTab.allCases.count else { return }
+        selectTab(NetworkTab.allCases[index])
     }
-    
+
     private func selectTab(_ tab: NetworkTab) {
         selectedTab = tab
-        
-        // Update button styles
-        for (index, button) in tabButtons.enumerated() {
-            let isSelected = NetworkTab.allCases[index] == tab
-            button.backgroundColor = isSelected ? Constants.Colors.primary : Constants.Colors.secondaryBackground
-            button.setTitleColor(isSelected ? .white : Constants.Colors.secondaryLabel, for: .normal)
+        if let index = NetworkTab.allCases.firstIndex(of: tab) {
+            segmentedControl.selectedSegmentIndex = index
         }
-        
-        // Show appropriate view controller
+
         switch tab {
-        case .myNetwork:
+        case .people:
             showConnectionsList()
-        case .discover, .popular, .nearby, .mutual:
-            showDiscoveryList(type: tab)
-        case .sharedCircles:
-            showSharedCirclesList()
+        case .discover:
+            showDiscoveryList()
         }
-        
-        // Update Find Contacts bar visibility
-        findContactsBar.isHidden = (tab == .sharedCircles)
+
+        // Finding people is a Discover activity, so the bar only earns its
+        // 56pt there. It used to sit on every tab, pushing your own
+        // connections further down the screen.
+        findContactsBar.isHidden = (tab != .discover)
+
+        // Whatever is showing has to reflect the current query — the search
+        // field is shared across segments.
+        filterUsers(with: searchBar.text ?? "")
     }
-    
+
+    /// The nav-bar button offers the two ways to bring someone in. It used to
+    /// be labelled "Add Connection" and open a share sheet immediately, which
+    /// is neither adding nor a connection.
     @objc private func showConnectionMenu() {
-        // Directly show the share sheet without a menu
-        shareConnectionInvite()
+        AlertPresenter.showActionSheet(
+            title: "Add people",
+            actions: [
+                ("Find people you know", .default, { [weak self] in self?.findContactsTapped() }),
+                ("Share an invite link", .default, { [weak self] in self?.shareConnectionInvite() })
+            ],
+            from: self,
+            sourceView: view
+        )
     }
+
+    @objc private func showDiscoverSegment() {
+        selectTab(.discover)
+    }
+
     
     @objc private func findContactsTapped() {
         // Check if contacts permission is already granted
@@ -352,20 +340,17 @@ class MyNetworkViewController: BaseViewController {
     }
     
     private func showContactsPermissionDenied() {
-        let alert = UIAlertController(
-            title: "Contacts Access Required",
-            message: "To find and invite your contacts, please enable contacts access in Settings.",
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Open Settings", style: .default) { _ in
-            if let url = URL(string: UIApplication.openSettingsURLString) {
-                UIApplication.shared.open(url)
+        AlertPresenter.showConfirmation(
+            title: "Contacts access is off",
+            message: "Turn on contacts access in Settings to find people you already know.",
+            confirmTitle: "Open Settings",
+            from: self,
+            onConfirm: {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
             }
-        })
-        
-        present(alert, animated: true)
+        )
     }
     
     @objc private func handleShowContactsImport() {
@@ -384,20 +369,21 @@ class MyNetworkViewController: BaseViewController {
         }
     }
     
+    /// Routes the query to whichever segment is showing.
+    ///
+    /// The search field sits above both segments but used to filter only
+    /// the first — on the other chips typing did nothing at all, with no
+    /// indication why. A control that silently does nothing is worse than no
+    /// control.
     private func filterUsers(with query: String) {
-        // Filter based on selected tab
         switch selectedTab {
-        case .myNetwork:
+        case .people:
             allUsersListVC?.updateSearchQuery(query)
-        case .discover, .popular, .nearby, .mutual:
-            // Discovery tabs handle search differently - would need to implement search in DiscoveryListViewController
-            break
-        case .sharedCircles:
-            // Shared circles might have its own search logic
-            break
+        case .discover:
+            discoveryListVC?.updateSearchQuery(query)
         }
     }
-    
+
     private func shareConnectionInvite() {
         let shareItems = NetworkManager.shared.shareConnectionInvite()
         let activityViewController = UIActivityViewController(
@@ -436,16 +422,15 @@ class MyNetworkViewController: BaseViewController {
         currentViewController = allUsersListVC
     }
     
-    private func showDiscoveryList(type: NetworkTab) {
+    private func showDiscoveryList() {
         guard let discoveryListVC = discoveryListVC else { return }
         
         if currentViewController != nil {
             removeCurrentViewController()
         }
         
-        // Configure discovery list for the selected type
-        discoveryListVC.setDiscoveryType(type)
-        
+        discoveryListVC.loadData()
+
         addChild(discoveryListVC)
         containerView.addSubview(discoveryListVC.view)
         discoveryListVC.view.translatesAutoresizingMaskIntoConstraints = false
@@ -459,28 +444,6 @@ class MyNetworkViewController: BaseViewController {
         
         discoveryListVC.didMove(toParent: self)
         currentViewController = discoveryListVC
-    }
-    
-    private func showSharedCirclesList() {
-        guard let sharedCirclesListVC = sharedCirclesListVC else { return }
-        
-        if currentViewController != nil {
-            removeCurrentViewController()
-        }
-        
-        addChild(sharedCirclesListVC)
-        containerView.addSubview(sharedCirclesListVC.view)
-        sharedCirclesListVC.view.translatesAutoresizingMaskIntoConstraints = false
-        
-        NSLayoutConstraint.activate([
-            sharedCirclesListVC.view.topAnchor.constraint(equalTo: containerView.topAnchor),
-            sharedCirclesListVC.view.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            sharedCirclesListVC.view.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            sharedCirclesListVC.view.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
-        ])
-        
-        sharedCirclesListVC.didMove(toParent: self)
-        currentViewController = sharedCirclesListVC
     }
     
     
@@ -565,7 +528,7 @@ extension MyNetworkViewController: SSEServiceDelegate {
             NetworkManager.shared.loadConnections()
             
             // If showing all users list, refresh it
-            if self?.selectedTab == .myNetwork {
+            if self?.selectedTab == .people {
                 self?.allUsersListVC?.loadAllUsers()
             }
             
@@ -580,7 +543,7 @@ extension MyNetworkViewController: SSEServiceDelegate {
             NetworkManager.shared.loadConnections()
             
             // Refresh the current view
-            if self?.selectedTab == .myNetwork {
+            if self?.selectedTab == .people {
                 self?.allUsersListVC?.loadAllUsers()
             }
         }
@@ -592,7 +555,7 @@ extension MyNetworkViewController: SSEServiceDelegate {
             NetworkManager.shared.loadConnections()
             
             // Refresh the current view
-            if self?.selectedTab == .myNetwork {
+            if self?.selectedTab == .people {
                 self?.allUsersListVC?.loadAllUsers()
             }
         }
