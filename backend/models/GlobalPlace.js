@@ -47,6 +47,16 @@ const createGlobalPlace = (placeData) => {
     categoryConfidence: placeData.categoryConfidence != null ? placeData.categoryConfidence : null,
     categoryBefore: placeData.categoryBefore != null ? placeData.categoryBefore : null,
     categoryClassifiedAt: placeData.categoryClassifiedAt || null,
+
+    // Derived location lens (from the address string; see
+    // services/placeLocationDerivation.js). state/city null == Unplaced.
+    state: placeData.state || null,
+    stateCode: placeData.stateCode || null,
+    city: placeData.city || null,
+    cityKey: placeData.cityKey || null,          // "charlotte|NC" for grouping
+    neighborhood: placeData.neighborhood || null, // optional; often null
+    locationSource: placeData.locationSource || null, // 'address' | 'geocode' | 'client'
+    locationDerivedAt: placeData.locationDerivedAt || null,
     
     // Unified media with attribution
     photos: placeData.photos || [],
