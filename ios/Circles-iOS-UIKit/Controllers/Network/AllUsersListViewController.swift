@@ -70,19 +70,23 @@ class AllUsersListViewController: UIViewController {
     private var connectedUsers: [User] = []
     private var pendingIncomingUsers: [User] = []
     private var pendingOutgoingUsers: [User] = []
+    /// People you follow who aren't connections yet — the middle of the ladder,
+    /// and where most relationships will live once Follow is the primary action.
+    private var followingUsers: [User] = []
+    /// Only populated while searching: people outside your network entirely.
     private var nonConnectedUsers: [User] = []
     private var filteredConnectedUsers: [User] = []
     private var filteredPendingIncomingUsers: [User] = []
     private var filteredPendingOutgoingUsers: [User] = []
+    private var filteredFollowingUsers: [User] = []
     private var filteredNonConnectedUsers: [User] = []
     
     private let cellIdentifier = "UserCell"
     private var searchQuery: String = ""
 
-    // Collapsible pending-request sections: collapsed by default so actual
-    // connections are visible without scrolling past requests. An active
-    // search expands them so matches aren't hidden.
-    private var isPendingIncomingExpanded = false
+    // Incoming requests are no longer collapsible at all — the tab badge
+    // announces them, so they have to be visible the moment you arrive.
+    // Only "Sent" still collapses, since it is status rather than a task.
     private var isPendingOutgoingExpanded = false
     private var isSearchActive: Bool { !searchQuery.isEmpty }
 
@@ -127,8 +131,9 @@ class AllUsersListViewController: UIViewController {
         if !hasLoadedInitialData {
             showLoadingState()
         }
-        
-        loadAllUsers()
+
+        installExplainerCardIfNeeded()
+        loadPeople()
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -145,7 +150,7 @@ class AllUsersListViewController: UIViewController {
         
         // Only refresh if we're not currently loading
         if !isLoadingData {
-            loadAllUsers()
+            loadPeople()
         }
     }
     
@@ -219,190 +224,206 @@ class AllUsersListViewController: UIViewController {
     }
     
     // MARK: - Data Loading
-    func loadAllUsers() {
-        // Show loading indicator only on initial load
+
+    /// Loads the people who are actually in your network.
+    ///
+    /// This used to call `searchUsers(query: "")`, which returns the *entire*
+    /// users collection — so opening the tab read every account in the database
+    /// and buried your own connections in the middle of a directory of
+    /// strangers. Now it reads two bounded lists: your connections and the
+    /// people you follow. Strangers appear only when you search for them.
+    func loadPeople() {
         if !hasLoadedInitialData && !isLoadingData {
             showLoadingState()
-            
-            // Start minimum loading timer to prevent jarring transitions
-            minimumLoadingTimer?.invalidate()
-            minimumLoadingTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { _ in
-                // Timer will be checked when data loads
+        }
+        isLoadingData = true
+
+        let group = DispatchGroup()
+        var connectionUsers: [User] = []
+        var followingUsers: [User] = []
+        var loadError: Error?
+
+        group.enter()
+        NetworkManager.shared.fetchConnectionUsers { result in
+            switch result {
+            case .success(let users): connectionUsers = users
+            case .failure(let error): loadError = error
+            }
+            group.leave()
+        }
+
+        group.enter()
+        UserService.shared.getFollowing { result in
+            switch result {
+            case .success(let users): followingUsers = users
+            // A failure here shouldn't blank the whole tab — connections are
+            // the more important half and may well have loaded fine.
+            case .failure(let error): Logger.debug("Following list failed: \(error)")
+            }
+            group.leave()
+        }
+
+        group.notify(queue: .main) { [weak self] in
+            guard let self = self else { return }
+            self.tableView.refreshControl?.endRefreshing()
+            self.isLoadingData = false
+            self.hasLoadedInitialData = true
+            self.hideLoadingState()
+
+            if connectionUsers.isEmpty, followingUsers.isEmpty, let error = loadError {
+                Logger.debug("Failed to load network: \(error)")
+                self.showEmptyState()
+                return
+            }
+
+            // Connections win on conflict: their payload carries connectionId
+            // and status, which the following list doesn't always have.
+            var merged: [String: User] = [:]
+            for user in followingUsers { merged[user.id] = user }
+            for user in connectionUsers { merged[user.id] = user }
+
+            self.allUsers = Array(merged.values)
+            self.sortAndFilterUsers()
+            self.tableView.reloadData()
+
+            if self.visibleSectionsAreEmpty {
+                self.showNoConnectionsState()
+            } else {
+                self.hideEmptyState()
             }
         }
-        
-        isLoadingData = true
-        
-        // Load all users (empty query returns all)
-        UserService.shared.searchUsers(query: "") { [weak self] result in
-            guard let self = self else { return }
+    }
+
+    /// Kept so existing callers (and the parent tab) keep compiling.
+    func loadAllUsers() { loadPeople() }
+
+    private var visibleSectionsAreEmpty: Bool {
+        connectedUsers.isEmpty && followingUsers.isEmpty
+            && pendingIncomingUsers.isEmpty && pendingOutgoingUsers.isEmpty
+    }
+
+    /// Searching reaches past your own network to everybody else — which is the
+    /// only time a stranger belongs on this screen.
+    private func searchBeyondNetwork(_ query: String) {
+        guard query.count >= 2 else {
+            nonConnectedUsers = []
+            filterUsers()
+            tableView.reloadData()
+            return
+        }
+
+        UserService.shared.searchUsers(query: query) { [weak self] result in
             DispatchQueue.main.async {
-                self.tableView.refreshControl?.endRefreshing()
-                
-                // Wait for minimum loading time if this is initial load
-                let completion = {
-                    self.isLoadingData = false
-                    self.hasLoadedInitialData = true
-                    self.hideLoadingState()
-                    
-                    switch result {
-                    case .success(let users):
-                        Logger.debug("🔍 AllUsersListVC: Received \(users.count) users from server")
-                        self.allUsers = users
-                        self.sortAndFilterUsers()
-                        Logger.debug("🔍 AllUsersListVC: After filtering - Connected: \(self.connectedUsers.count ?? 0), Pending: \(self.pendingIncomingUsers.count ?? 0), Others: \(self.nonConnectedUsers.count ?? 0)")
-                        self.tableView.reloadData()
-                        
-                        // Track if we've ever had connections
-                        if !self.connectedUsers.isEmpty {
-                            AllUsersListViewController.hasEverLoadedConnections = true
-                        }
-                        
-                        // Only show empty state if we have no users at all
-                        if self.allUsers.isEmpty == true {
-                            self.showEmptyState()
-                        } else {
-                            self.hideEmptyState()
-                        }
-                        
-                    case .failure(let error):
-                        Logger.debug("Failed to load users: \(error)")
-                        
-                        // Check if it's a duplicate request error
-                        if case .duplicateRequest = error as? APIError {
-                            // Don't show empty state for duplicate requests
-                            // Keep the loading state active - the other request will complete
-                            Logger.debug("Ignoring duplicate request error - keeping loading state")
-                            // Don't update any state, just return
-                            return
-                        }
-                        
-                        self.allUsers = []
-                        self.sortAndFilterUsers()
-                        self.tableView.reloadData()
-                        
-                        // Show error state only if we have no users at all
-                        if self.allUsers.isEmpty == true {
-                            self.showEmptyState()
-                        }
-                    }
-                }
-                
-                // If minimum loading timer is still active, wait for it
-                if let timer = self.minimumLoadingTimer, timer.isValid {
-                    timer.invalidate()
-                    self.minimumLoadingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: false) { _ in
-                        completion()
-                    }
-                } else {
-                    completion()
+                guard let self = self, self.searchQuery == query else { return }
+                if case .success(let users) = result {
+                    let known = Set(self.allUsers.map { $0.id })
+                    self.nonConnectedUsers = users.filter { !known.contains($0.id) }
+                    self.filterUsers()
+                    self.tableView.reloadData()
                 }
             }
         }
     }
-    
+
     private func sortAndFilterUsers() {
-        // Separate users by connection status
-        connectedUsers = allUsers.filter { user in
-            user.connectionStatus == "connected" || user.connectionStatus == "accepted"
+        connectedUsers = allUsers.filter { RelationshipTier(user: $0) == .connected }
+        pendingIncomingUsers = allUsers.filter { RelationshipTier(user: $0) == .requestReceived }
+        pendingOutgoingUsers = allUsers.filter { RelationshipTier(user: $0) == .requestSent }
+        followingUsers = allUsers.filter {
+            let tier = RelationshipTier(user: $0)
+            return tier == .following || tier == .mutualFollow
         }
-        
-        pendingIncomingUsers = allUsers.filter { user in
-            user.connectionStatus == "pending" && user.connectionDirection == "incoming"
+
+        // Mutual follows first inside Following — those are the rows offering
+        // Connect, which is the action worth surfacing.
+        followingUsers.sort { lhs, rhs in
+            let lhsMutual = RelationshipTier(user: lhs) == .mutualFollow
+            let rhsMutual = RelationshipTier(user: rhs) == .mutualFollow
+            if lhsMutual != rhsMutual { return lhsMutual }
+            return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
         }
-        
-        pendingOutgoingUsers = allUsers.filter { user in
-            user.connectionStatus == "pending" && user.connectionDirection == "outgoing"
+
+        let byName: (User, User) -> Bool = {
+            $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
         }
-        
-        nonConnectedUsers = allUsers.filter { user in
-            (user.connectionStatus != "connected" && user.connectionStatus != "accepted") &&
-            !(user.connectionStatus == "pending" && user.connectionDirection == "incoming") &&
-            !(user.connectionStatus == "pending" && user.connectionDirection == "outgoing")
-        }
-        
-        // Sort each group alphabetically
-        connectedUsers.sort { ($0.displayName ?? "") < ($1.displayName ?? "") }
-        pendingIncomingUsers.sort { ($0.displayName ?? "") < ($1.displayName ?? "") }
-        pendingOutgoingUsers.sort { ($0.displayName ?? "") < ($1.displayName ?? "") }
-        nonConnectedUsers.sort { ($0.displayName ?? "") < ($1.displayName ?? "") }
-        
-        // Apply search filter if needed
+        connectedUsers.sort(by: byName)
+        pendingIncomingUsers.sort(by: byName)
+        pendingOutgoingUsers.sort(by: byName)
+
         filterUsers()
     }
-    
+
     private func filterUsers() {
-        if searchQuery.isEmpty {
+        guard !searchQuery.isEmpty else {
             filteredConnectedUsers = connectedUsers
             filteredPendingIncomingUsers = pendingIncomingUsers
             filteredPendingOutgoingUsers = pendingOutgoingUsers
-            filteredNonConnectedUsers = nonConnectedUsers
-        } else {
-            let query = searchQuery.lowercased()
-            
-            filteredConnectedUsers = connectedUsers.filter { user in
-                user.displayName.lowercased().contains(query) ||
-(user.email?.lowercased().contains(query) ?? false)
-            }
-            
-            filteredPendingIncomingUsers = pendingIncomingUsers.filter { user in
-                user.displayName.lowercased().contains(query) ||
-(user.email?.lowercased().contains(query) ?? false)
-            }
-            
-            filteredPendingOutgoingUsers = pendingOutgoingUsers.filter { user in
-                user.displayName.lowercased().contains(query) ||
-(user.email?.lowercased().contains(query) ?? false)
-            }
-            
-            filteredNonConnectedUsers = nonConnectedUsers.filter { user in
-                user.displayName.lowercased().contains(query) ||
-(user.email?.lowercased().contains(query) ?? false)
-            }
+            filteredFollowingUsers = followingUsers
+            filteredNonConnectedUsers = []
+            return
         }
+
+        let query = searchQuery.lowercased()
+        let matches: (User) -> Bool = { user in
+            user.displayName.lowercased().contains(query)
+                || (user.email?.lowercased().contains(query) ?? false)
+                || (user.username?.lowercased().contains(query) ?? false)
+        }
+
+        filteredConnectedUsers = connectedUsers.filter(matches)
+        filteredPendingIncomingUsers = pendingIncomingUsers.filter(matches)
+        filteredPendingOutgoingUsers = pendingOutgoingUsers.filter(matches)
+        filteredFollowingUsers = followingUsers.filter(matches)
+        filteredNonConnectedUsers = nonConnectedUsers.filter(matches)
     }
-    
+
     func updateSearchQuery(_ query: String) {
         searchQuery = query
         filterUsers()
         tableView.reloadData()
+        searchBeyondNetwork(query)
     }
-    
+
     @objc private func refreshUsers() {
-        loadAllUsers()
+        loadPeople()
     }
-    
+
     @objc private func discoverUsersTapped() {
-        // No longer needed - discovery is integrated into MyNetworkViewController
-        // This button can be removed from the UI
+        // The parent tab owns the segmented control, so ask it to switch rather
+        // than pushing a duplicate discovery screen on top of this one.
+        NotificationCenter.default.post(name: .showDiscoverSegment, object: nil)
     }
-    
+
     // MARK: - Empty State
     private func showEmptyState() {
-        // Never show empty state while loading
         guard !isLoadingData else { return }
-        
+
         emptyStateView.isHidden = false
         tableView.isHidden = true
         emptyImageView.image = UIImage(systemName: "person.2.slash")
-        emptyTitleLabel.text = "No Users Found"
-        emptySubtitleLabel.text = "There are no users in the system yet."
+        emptyTitleLabel.text = "Couldn't load your network"
+        emptySubtitleLabel.text = "Pull down to try again."
         emptySubtitleLabel.isHidden = false
+        discoverUsersButton.isHidden = true
     }
-    
+
+    /// Shown when the account is real but the network is empty. This existed
+    /// before and was never called, so a new account saw "There are no users in
+    /// the system yet" — which reads as the app being broken rather than the
+    /// network being new. Now it points at the one useful next step.
     private func showNoConnectionsState() {
-        // Never show empty state while loading
         guard !isLoadingData else { return }
-        
+
         emptyStateView.isHidden = false
         tableView.isHidden = true
-        emptyImageView.image = UIImage(systemName: "person.2.badge.gearshape")
-        emptyTitleLabel.text = "No Connections Yet"
-        emptySubtitleLabel.text = "Start building your network by discovering and connecting with people."
+        emptyImageView.image = UIImage(systemName: "person.2")
+        emptyTitleLabel.text = "Your network is empty"
+        emptySubtitleLabel.text = "Follow someone to see the places they save. They don't have to approve it."
         emptySubtitleLabel.isHidden = false
-        discoverUsersButton.isHidden = true  // Discovery is now integrated in parent view
+        discoverUsersButton.setTitle("Find people", for: .normal)
+        discoverUsersButton.isHidden = false
     }
-    
+
     private func hideEmptyState() {
         emptyStateView.isHidden = true
         tableView.isHidden = false
@@ -424,32 +445,60 @@ class AllUsersListViewController: UIViewController {
 extension AllUsersListViewController: UITableViewDataSource {
 
     // MARK: Section Model
+    //
+    // Order encodes urgency. Incoming requests are a task someone else handed
+    // you, so they sit first and open. Sent requests are only status, so they
+    // sit last and closed. "Everyone else" is no longer a permanent section at
+    // all — strangers belong in Discover, and surface here only when you
+    // actually search for them.
     private enum NetworkListSection {
-        case pendingIncoming
-        case pendingOutgoing
-        case connected
-        case others
+        case requests
+        case connections
+        case following
+        case sent
+        case searchResults
     }
 
     private var visibleSections: [NetworkListSection] {
         var sections: [NetworkListSection] = []
-        if !filteredPendingIncomingUsers.isEmpty { sections.append(.pendingIncoming) }
-        if !filteredPendingOutgoingUsers.isEmpty { sections.append(.pendingOutgoing) }
-        if !filteredConnectedUsers.isEmpty { sections.append(.connected) }
-        if !filteredNonConnectedUsers.isEmpty { sections.append(.others) }
+        if !filteredPendingIncomingUsers.isEmpty { sections.append(.requests) }
+        if !filteredConnectedUsers.isEmpty { sections.append(.connections) }
+        if !filteredFollowingUsers.isEmpty { sections.append(.following) }
+        if !filteredPendingOutgoingUsers.isEmpty { sections.append(.sent) }
+        if isSearchActive && !filteredNonConnectedUsers.isEmpty { sections.append(.searchResults) }
         return sections
     }
 
     private func users(for section: NetworkListSection) -> [User] {
         switch section {
-        case .pendingIncoming:
-            return (isPendingIncomingExpanded || isSearchActive) ? filteredPendingIncomingUsers : []
-        case .pendingOutgoing:
-            return (isPendingOutgoingExpanded || isSearchActive) ? filteredPendingOutgoingUsers : []
-        case .connected:
+        case .requests:
+            // Never collapsed. The tab badge already announced these; hiding
+            // them behind a chevron is what makes tapping the badge feel broken.
+            return filteredPendingIncomingUsers
+        case .connections:
             return filteredConnectedUsers
-        case .others:
+        case .following:
+            return filteredFollowingUsers
+        case .sent:
+            return (isPendingOutgoingExpanded || isSearchActive) ? filteredPendingOutgoingUsers : []
+        case .searchResults:
             return filteredNonConnectedUsers
+        }
+    }
+
+    private func title(for section: NetworkListSection) -> String {
+        switch section {
+        case .requests:
+            let count = filteredPendingIncomingUsers.count
+            return count == 1 ? "Wants to connect" : "\(count) want to connect"
+        case .connections:
+            return "Your connections (\(filteredConnectedUsers.count))"
+        case .following:
+            return "Following (\(filteredFollowingUsers.count))"
+        case .sent:
+            return "Sent"
+        case .searchResults:
+            return "Not in your network"
         }
     }
 
@@ -467,39 +516,134 @@ extension AllUsersListViewController: UITableViewDataSource {
     }
 
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        guard section < visibleSections.count else { return nil }
-        switch visibleSections[section] {
-        case .pendingIncoming, .pendingOutgoing:
-            return nil // Collapsible custom headers
-        case .connected:
-            return "Your Connections"
-        case .others:
-            return "Other Users"
-        }
+        // All headers are custom views so they can carry an info button.
+        return nil
     }
 
     func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
         guard section < visibleSections.count else { return nil }
-        switch visibleSections[section] {
-        case .pendingIncoming:
+        let listSection = visibleSections[section]
+
+        switch listSection {
+        case .sent:
+            // The one section still worth collapsing: it is pure status, and
+            // most people never act on it.
             return makeCollapsibleHeader(
-                title: "PENDING REQUESTS",
-                count: filteredPendingIncomingUsers.count,
-                color: Constants.Colors.brightOrange,
-                isExpanded: isPendingIncomingExpanded || isSearchActive,
-                action: #selector(togglePendingIncomingSection)
-            )
-        case .pendingOutgoing:
-            return makeCollapsibleHeader(
-                title: "CONNECTION REQUESTS PENDING",
+                title: "SENT",
                 count: filteredPendingOutgoingUsers.count,
-                color: Constants.Colors.brightOrange,
+                color: .secondaryLabel,
                 isExpanded: isPendingOutgoingExpanded || isSearchActive,
                 action: #selector(togglePendingOutgoingSection)
             )
-        case .connected, .others:
-            return nil // Default title-based headers
+        case .requests:
+            return makeSectionHeader(title: title(for: listSection).uppercased(),
+                                     color: Constants.Colors.brightOrange,
+                                     showsInfo: false)
+        case .connections, .following:
+            // These two are exactly what the Follow/Connect explainer is about,
+            // so each carries the info affordance.
+            return makeSectionHeader(title: title(for: listSection).uppercased(),
+                                     color: .secondaryLabel,
+                                     showsInfo: true)
+        case .searchResults:
+            return makeSectionHeader(title: title(for: listSection).uppercased(),
+                                     color: .secondaryLabel,
+                                     showsInfo: false)
         }
+    }
+
+    /// Plain section header, optionally with an ⓘ that opens the Follow vs
+    /// Connect explainer. One per section rather than one per row: it is a fact
+    /// you learn once, and fifty of them down a scroll is just noise.
+    private func makeSectionHeader(title: String, color: UIColor, showsInfo: Bool) -> UIView {
+        let header = UIView()
+        header.backgroundColor = .clear
+
+        let label = UILabel()
+        label.text = title
+        label.font = .systemFont(ofSize: 13, weight: .semibold)
+        label.textColor = color
+        label.translatesAutoresizingMaskIntoConstraints = false
+        header.addSubview(label)
+
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 16),
+            label.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+            label.topAnchor.constraint(equalTo: header.topAnchor, constant: 8),
+            label.bottomAnchor.constraint(equalTo: header.bottomAnchor, constant: -8)
+        ])
+
+        if showsInfo {
+            let info = UIButton(type: .system)
+            info.setImage(UIImage(systemName: "info.circle"), for: .normal)
+            info.tintColor = .tertiaryLabel
+            info.accessibilityLabel = "What's the difference between following and connecting?"
+            info.addTarget(self, action: #selector(showRelationshipExplainer), for: .touchUpInside)
+            info.translatesAutoresizingMaskIntoConstraints = false
+            header.addSubview(info)
+
+            NSLayoutConstraint.activate([
+                info.leadingAnchor.constraint(equalTo: label.trailingAnchor, constant: 6),
+                info.centerYAnchor.constraint(equalTo: label.centerYAnchor),
+                info.widthAnchor.constraint(equalToConstant: 22),
+                info.heightAnchor.constraint(equalToConstant: 22)
+            ])
+        }
+
+        return header
+    }
+
+    @objc private func showRelationshipExplainer() {
+        RelationshipExplainer.present(from: self)
+    }
+
+    @objc private func dismissExplainerCard() {
+        RelationshipExplainer.markInlineCardSeen()
+        guard let header = tableView.tableHeaderView else { return }
+        // Collapse the header's height and reassign it so the table reclaims the
+        // space (setting tableHeaderView straight to nil leaves a gap the size of
+        // the card). The list slides up as it shrinks; remove it when done.
+        UIView.animate(withDuration: 0.25, animations: {
+            header.alpha = 0
+            header.frame.size.height = 0
+            self.tableView.tableHeaderView = header
+            self.tableView.layoutIfNeeded()
+        }, completion: { _ in
+            self.tableView.tableHeaderView = nil
+        })
+    }
+
+    /// Puts the first-run Follow/Connect card at the top of the list, where it
+    /// scrolls away with the content instead of permanently occupying the tab.
+    func installExplainerCardIfNeeded() {
+        guard let card = RelationshipExplainer.makeInlineCard(
+            target: self,
+            dismissAction: #selector(dismissExplainerCard),
+            infoAction: #selector(showRelationshipExplainer)
+        ) else {
+            tableView.tableHeaderView = nil
+            return
+        }
+
+        // A tableHeaderView can't use Auto Layout against the table, so size it
+        // once against the current width and wrap it for inset margins.
+        let container = UIView()
+        container.addSubview(card)
+        NSLayoutConstraint.activate([
+            card.topAnchor.constraint(equalTo: container.topAnchor, constant: 4),
+            card.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            card.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+            card.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -8)
+        ])
+
+        let width = tableView.bounds.width > 0 ? tableView.bounds.width : UIScreen.main.bounds.width
+        let height = container.systemLayoutSizeFitting(
+            CGSize(width: width, height: UIView.layoutFittingCompressedSize.height),
+            withHorizontalFittingPriority: .required,
+            verticalFittingPriority: .fittingSizeLevel
+        ).height
+        container.frame = CGRect(x: 0, y: 0, width: width, height: height)
+        tableView.tableHeaderView = container
     }
 
     private func makeCollapsibleHeader(title: String, count: Int, color: UIColor, isExpanded: Bool, action: Selector) -> UIView {
@@ -535,11 +679,6 @@ extension AllUsersListViewController: UITableViewDataSource {
         return headerView
     }
 
-    @objc private func togglePendingIncomingSection() {
-        isPendingIncomingExpanded.toggle()
-        tableView.reloadData()
-    }
-
     @objc private func togglePendingOutgoingSection() {
         isPendingOutgoingExpanded.toggle()
         tableView.reloadData()
@@ -572,354 +711,40 @@ extension AllUsersListViewController: UITableViewDelegate {
 
 // MARK: - AllUsersCellDelegate
 extension AllUsersListViewController: AllUsersCellDelegate {
-    func allUsersCell(_ cell: AllUsersCell, didTapActionButton user: User) {
-        switch user.connectionStatus {
-        case "connected", "accepted":
-            viewUserProfile(user)
-        case "pending":
-            if user.connectionDirection == "incoming" {
-                // Accept the incoming request
-                acceptConnectionRequest(user)
-            } else {
-                // Cancel outgoing request
-                cancelConnectionRequest(with: user)
-            }
-        default:
-            sendConnectionRequest(to: user)
+
+    /// One entry point for every row button. The cell reports what the person
+    /// meant; this decides how to carry it out.
+    func allUsersCell(_ cell: AllUsersCell, didTap action: RelationshipTier.Action, for user: User) {
+        switch action {
+        case .follow:      setFollow(true, for: user)
+        case .unfollow:    confirmUnfollow(user)
+        case .connect:     sendConnectionRequest(to: user)
+        case .cancelRequest: confirmCancelRequest(user)
+        case .accept:      acceptConnectionRequest(user)
+        case .decline:     confirmDecline(user)
+        case .message:     openConversation(with: user)
+        case .more:        presentMoreMenu(for: user, from: cell)
         }
     }
-    
-    func allUsersCell(_ cell: AllUsersCell, didTapRemoveButton user: User) {
-        removeConnection(with: user)
+
+    func allUsersCell(_ cell: AllUsersCell, didTapProfileImage user: User) {
+        viewUserProfile(user)
     }
-    
+
     private func viewUserProfile(_ user: User) {
-        // Navigate to profile view
         let profileVC = ProfileViewController(user: user)
         navigationController?.pushViewController(profileVC, animated: true)
     }
-    
-    private func updateUserFollowStatus(userId: String, isFollowing: Bool) {
-        // Update in all user arrays
-        if let index = allUsers.firstIndex(where: { $0.id == userId }) {
-            allUsers[index] = createUpdatedUser(from: allUsers[index], isFollowing: isFollowing)
-        }
-        
-        if let index = pendingIncomingUsers.firstIndex(where: { $0.id == userId }) {
-            pendingIncomingUsers[index] = createUpdatedUser(from: pendingIncomingUsers[index], isFollowing: isFollowing)
-        }
-        
-        if let index = pendingOutgoingUsers.firstIndex(where: { $0.id == userId }) {
-            pendingOutgoingUsers[index] = createUpdatedUser(from: pendingOutgoingUsers[index], isFollowing: isFollowing)
-        }
-        
-        if let index = connectedUsers.firstIndex(where: { $0.id == userId }) {
-            connectedUsers[index] = createUpdatedUser(from: connectedUsers[index], isFollowing: isFollowing)
-        }
-        
-        if let index = nonConnectedUsers.firstIndex(where: { $0.id == userId }) {
-            nonConnectedUsers[index] = createUpdatedUser(from: nonConnectedUsers[index], isFollowing: isFollowing)
-        }
-        
-        // Refresh the table view to update the UI
-        filterUsers()
-        tableView.reloadData()
-    }
-    
-    private func updateUserWithServerData(userId: String, updatedUser: User) {
-        // Update in all user arrays with server data
-        if let index = allUsers.firstIndex(where: { $0.id == userId }) {
-            allUsers[index] = updatedUser
-        }
-        
-        if let index = pendingIncomingUsers.firstIndex(where: { $0.id == userId }) {
-            pendingIncomingUsers[index] = updatedUser
-        }
-        
-        if let index = pendingOutgoingUsers.firstIndex(where: { $0.id == userId }) {
-            pendingOutgoingUsers[index] = updatedUser
-        }
-        
-        if let index = connectedUsers.firstIndex(where: { $0.id == userId }) {
-            connectedUsers[index] = updatedUser
-        }
-        
-        if let index = nonConnectedUsers.firstIndex(where: { $0.id == userId }) {
-            nonConnectedUsers[index] = updatedUser
-        }
-        
-        // Refresh the table view to update the UI
-        filterUsers()
-        tableView.reloadData()
-    }
-    
-    private func createUpdatedUser(from user: User, isFollowing: Bool) -> User {
-        return user.copy(isFollowing: isFollowing)
-    }
-    
-    private func sendConnectionRequest(to user: User) {
-        // Show loading indicator
-        let loadingAlert = UIAlertController(title: "Sending Request", message: "Please wait...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
-        
-        NetworkManager.shared.sendConnectionRequest(to: user.id) { [weak self] result in
-            guard let self = self else { return }
-            DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true) {
-                    switch result {
-                    case .success:
-                        let successAlert = UIAlertController(
-                            title: "Request Sent",
-                            message: "Connection request sent to \(user.displayName)",
-                            preferredStyle: .alert
-                        )
-                        successAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self.present(successAlert, animated: true)
-                        
-                        // Reload users to update status
-                        self.loadAllUsers()
-                        
-                    case .failure(let error):
-                        let errorAlert = UIAlertController(
-                            title: "Error",
-                            message: error.localizedDescription,
-                            preferredStyle: .alert
-                        )
-                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self.present(errorAlert, animated: true)
-                    }
-                }
-            }
-        }
-    }
-    
-    private func cancelConnectionRequest(with user: User) {
-        let alert = UIAlertController(
-            title: "Cancel Request",
-            message: "Cancel connection request to \(user.displayName)?",
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "Cancel Request", style: .destructive) { [weak self] _ in
-            guard let self = self else { return }
-            // Show loading
-            let loadingAlert = UIAlertController(title: "Canceling...", message: nil, preferredStyle: .alert)
-            self.present(loadingAlert, animated: true)
-            
-            // Find the pending connection and cancel it
-            NetworkManager.shared.loadConnections()
-            
-            // Wait for connections to load then find the pending one
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                if let pendingConnection = NetworkManager.shared.pendingConnections.first(where: { 
-                    $0.connectedUserId == user.id || $0.userId == user.id 
-                }) {
-                    NetworkManager.shared.declineConnection(pendingConnection.id) { result in
-                        DispatchQueue.main.async {
-                            loadingAlert.dismiss(animated: true) {
-                                switch result {
-                                case .success:
-                                    let successAlert = UIAlertController(
-                                        title: "Request Canceled",
-                                        message: "Connection request has been canceled.",
-                                        preferredStyle: .alert
-                                    )
-                                    successAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                                    self.present(successAlert, animated: true)
-                                    
-                                    // Reload users to update status
-                                    self.loadAllUsers()
-                                    
-                                case .failure(let error):
-                                    let errorAlert = UIAlertController(
-                                        title: "Error",
-                                        message: error.localizedDescription,
-                                        preferredStyle: .alert
-                                    )
-                                    errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                                    self.present(errorAlert, animated: true)
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    loadingAlert.dismiss(animated: true) {
-                        let errorAlert = UIAlertController(
-                            title: "Error",
-                            message: "Could not find the pending connection request.",
-                            preferredStyle: .alert
-                        )
-                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self.present(errorAlert, animated: true)
-                    }
-                }
-            }
-        })
-        
-        alert.addAction(UIAlertAction(title: "Keep Request", style: .cancel))
-        present(alert, animated: true)
-    }
-    
-    private func removeConnection(with user: User) {
-        let alert = UIAlertController(
-            title: "Remove Connection",
-            message: "Are you sure you want to remove \(user.displayName) from your connections?",
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "Remove", style: .destructive) { [weak self] _ in
-            guard let self = self else { return }
-            // Show loading
-            let loadingAlert = UIAlertController(title: "Removing...", message: nil, preferredStyle: .alert)
-            self.present(loadingAlert, animated: true)
-            
-            // Find the connection to remove
-            NetworkManager.shared.loadConnections()
-            
-            // Wait for connections to load then find the one to remove
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                if let connection = NetworkManager.shared.connections.first(where: { 
-                    $0.connectedUserId == user.id || $0.userId == user.id 
-                }) {
-                    NetworkManager.shared.removeConnection(connectionId: connection.id) { error in
-                        DispatchQueue.main.async {
-                            loadingAlert.dismiss(animated: true) {
-                                if let error = error {
-                                    let errorAlert = UIAlertController(
-                                        title: "Error",
-                                        message: error.localizedDescription,
-                                        preferredStyle: .alert
-                                    )
-                                    errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                                    self.present(errorAlert, animated: true)
-                                } else {
-                                    let successAlert = UIAlertController(
-                                        title: "Connection Removed",
-                                        message: "You are no longer connected with \(user.displayName).",
-                                        preferredStyle: .alert
-                                    )
-                                    successAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                                    self.present(successAlert, animated: true)
-                                    
-                                    // Reload users to update status
-                                    self.loadAllUsers()
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    loadingAlert.dismiss(animated: true) {
-                        let errorAlert = UIAlertController(
-                            title: "Error",
-                            message: "Could not find the connection to remove.",
-                            preferredStyle: .alert
-                        )
-                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self.present(errorAlert, animated: true)
-                    }
-                }
-            }
-        })
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        present(alert, animated: true)
-    }
-    
-    private func acceptConnectionRequest(_ user: User) {
-        guard let connectionId = user.connectionId else {
-            Logger.debug("No connection ID for incoming request")
-            return
-        }
-        
-        // Show loading
-        let loadingAlert = UIAlertController(title: "Accepting...", message: nil, preferredStyle: .alert)
-        present(loadingAlert, animated: true)
-        
-        NetworkManager.shared.acceptConnection(connectionId) { [weak self] result in
-            guard let self = self else { return }
-            DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true) {
-                    switch result {
-                    case .success:
-                        let successAlert = UIAlertController(
-                            title: "Connection Accepted",
-                            message: "You are now connected with \(user.displayName)",
-                            preferredStyle: .alert
-                        )
-                        successAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self.present(successAlert, animated: true)
-                        
-                        // Reload users to update status
-                        self.loadAllUsers()
-                        
-                    case .failure(let error):
-                        let errorAlert = UIAlertController(
-                            title: "Error",
-                            message: error.localizedDescription,
-                            preferredStyle: .alert
-                        )
-                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self.present(errorAlert, animated: true)
-                    }
-                }
-            }
-        }
-    }
-    
-    func allUsersCell(_ cell: AllUsersCell, didTapDeclineButton user: User) {
-        guard let connectionId = user.connectionId else {
-            Logger.debug("No connection ID for incoming request")
-            return
-        }
-        
-        let alert = UIAlertController(
-            title: "Decline Request",
-            message: "Decline connection request from \(user.displayName)?",
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "Decline", style: .destructive) { [weak self] _ in
-            guard let self = self else { return }
-            // Show loading
-            let loadingAlert = UIAlertController(title: "Declining...", message: nil, preferredStyle: .alert)
-            self.present(loadingAlert, animated: true)
-            
-            NetworkManager.shared.declineConnection(connectionId) { (result: Result<Void, Error>) in
-                DispatchQueue.main.async {
-                    loadingAlert.dismiss(animated: true) {
-                        switch result {
-                        case .success:
-                            // Reload users to update status
-                            self.loadAllUsers()
-                            
-                        case .failure(let error):
-                            let errorAlert = UIAlertController(
-                                title: "Error",
-                                message: error.localizedDescription,
-                                preferredStyle: .alert
-                            )
-                            errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                            self.present(errorAlert, animated: true)
-                        }
-                    }
-                }
-            }
-        })
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        present(alert, animated: true)
-    }
-    
-    func allUsersCell(_ cell: AllUsersCell, didTapFollowButton user: User) {
-        let isCurrentlyFollowing = user.isFollowing ?? false
-        let action = isCurrentlyFollowing ? "unfollow" : "follow"
-        let endpoint = "users/\(user.id)/\(action)"
-        
-        Logger.debug("🔵 Follow button tapped - Action: \(action), User: \(user.displayName)")
-        
-        // Optimistically update the UI
-        updateUserFollowStatus(userId: user.id, isFollowing: !isCurrentlyFollowing)
-        
+
+    // MARK: - Follow
+
+    /// Follow and unfollow flip the row immediately and reconcile with the
+    /// server afterwards. A follow is cheap and reversible, so making someone
+    /// watch a spinner for one is a poor trade.
+    private func setFollow(_ shouldFollow: Bool, for user: User) {
+        applyLocalUpdate(userId: user.id) { $0.copy(isFollowing: shouldFollow) }
+
+        let endpoint = "users/\(user.id)/\(shouldFollow ? "follow" : "unfollow")"
         APIService.shared.request(
             endpoint: endpoint,
             method: .post,
@@ -927,37 +752,205 @@ extension AllUsersListViewController: AllUsersCellDelegate {
         ) { [weak self] (result: Result<FollowResponse, APIError>) in
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                
                 switch result {
                 case .success(let response):
-                    Logger.debug("✅ Successfully \(action)ed user: \(user.displayName)")
-                    
-                    // Use the server response to update user data instead of optimistic update
-                    if let updatedUser = response.user {
-                        // Update the user with the server response data
-                        self.updateUserWithServerData(userId: user.id, updatedUser: updatedUser)
+                    // Prefer the server's version of the user when it sends one,
+                    // but keep followsYou: the follow endpoint doesn't compute it
+                    // and losing it would silently demote a mutual follow.
+                    if let updated = response.user {
+                        self.applyLocalUpdate(userId: user.id) { current in
+                            updated.copy(followsYou: current.followsYou)
+                        }
                     }
-                    // If no user data in response, keep the optimistic update
-                    
                 case .failure(let error):
-                    Logger.debug("❌ Failed to \(action) user: \(error)")
-                    // Revert the optimistic update
-                    self.updateUserFollowStatus(userId: user.id, isFollowing: isCurrentlyFollowing)
-                    
-                    let alert = UIAlertController(
-                        title: "Error",
-                        message: "Failed to \(action) user: \(error.localizedDescription)",
-                        preferredStyle: .alert
-                    )
-                    alert.addAction(UIAlertAction(title: "OK", style: .default))
-                    self.present(alert, animated: true)
+                    self.applyLocalUpdate(userId: user.id) { $0.copy(isFollowing: !shouldFollow) }
+                    self.showError(error)
                 }
             }
         }
     }
-    
-    func allUsersCell(_ cell: AllUsersCell, didTapProfileImage user: User) {
-        // Navigate to user profile
-        viewUserProfile(user)
+
+    private func confirmUnfollow(_ user: User) {
+        AlertPresenter.showConfirmation(
+            title: "Unfollow \(user.displayName)?",
+            message: "Their places will stop appearing in your feed. You can follow again any time.",
+            confirmTitle: "Unfollow",
+            isDestructive: true,
+            from: self,
+            onConfirm: { [weak self] in self?.setFollow(false, for: user) }
+        )
+    }
+
+    // MARK: - Connect
+
+    private func sendConnectionRequest(to user: User) {
+        // Optimistic: the row becomes "Requested" on tap. This used to raise a
+        // modal "Sending Request" alert followed by a second success alert —
+        // two dismissals for one tap.
+        applyLocalUpdate(userId: user.id) {
+            $0.copy(connectionStatus: "pending", connectionDirection: "outgoing")
+        }
+
+        NetworkManager.shared.sendConnectionRequest(to: user.id) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if case .failure(let error) = result {
+                    self.applyLocalUpdate(userId: user.id) {
+                        $0.copy(connectionStatus: "none", connectionDirection: nil)
+                    }
+                    self.showError(error)
+                }
+            }
+        }
+    }
+
+    private func acceptConnectionRequest(_ user: User) {
+        guard let connectionId = user.connectionId else {
+            showError("That request is no longer available. Pull to refresh.")
+            return
+        }
+
+        applyLocalUpdate(userId: user.id) { $0.copy(connectionStatus: "accepted") }
+
+        NetworkManager.shared.acceptConnection(connectionId) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success:
+                    NetworkManager.shared.refreshBadgeCount()
+                    self.loadPeople()
+                case .failure(let error):
+                    self.applyLocalUpdate(userId: user.id) {
+                        $0.copy(connectionStatus: "pending", connectionDirection: "incoming")
+                    }
+                    self.showError(error)
+                }
+            }
+        }
+    }
+
+    private func confirmDecline(_ user: User) {
+        AlertPresenter.showConfirmation(
+            title: "Decline request?",
+            message: "\(user.displayName) won't be told you declined.",
+            confirmTitle: "Decline",
+            isDestructive: true,
+            from: self,
+            onConfirm: { [weak self] in self?.resolveConnection(user, successMessage: nil) }
+        )
+    }
+
+    private func confirmCancelRequest(_ user: User) {
+        AlertPresenter.showConfirmation(
+            title: "Cancel request?",
+            message: "Withdraw your connection request to \(user.displayName)?",
+            confirmTitle: "Cancel Request",
+            isDestructive: true,
+            from: self,
+            onConfirm: { [weak self] in self?.resolveConnection(user, successMessage: nil) }
+        )
+    }
+
+    private func confirmDisconnect(_ user: User) {
+        AlertPresenter.showConfirmation(
+            title: "Disconnect from \(user.displayName)?",
+            message: "You'll lose access to each other's network-only circles and can no longer message each other.",
+            confirmTitle: "Disconnect",
+            isDestructive: true,
+            from: self,
+            onConfirm: { [weak self] in self?.resolveConnection(user, successMessage: nil) }
+        )
+    }
+
+    /// Tears down whichever connection record exists between the two of you —
+    /// pending or accepted, in either direction.
+    ///
+    /// This used to call `loadConnections()` and then guess that 0.5 seconds was
+    /// long enough for it to finish before searching the result for an id. On a
+    /// slow connection it simply failed with "Could not find the pending
+    /// connection request". The id is already on the user model, put there by
+    /// the server's connection map, so no lookup is needed at all.
+    private func resolveConnection(_ user: User, successMessage: String?) {
+        guard let connectionId = user.connectionId else {
+            showError("That connection is no longer available. Pull to refresh.")
+            return
+        }
+
+        NetworkManager.shared.declineConnection(connectionId) { [weak self] (result: Result<Void, Error>) in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success:
+                    NetworkManager.shared.refreshBadgeCount()
+                    if let message = successMessage {
+                        AlertPresenter.showSuccess(message, from: self)
+                    }
+                    self.loadPeople()
+                case .failure(let error):
+                    self.showError(error)
+                }
+            }
+        }
+    }
+
+    // MARK: - Message
+
+    private func openConversation(with user: User) {
+        MessagingManager.shared.createOrGetDirectConversation(with: user.id) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success(let conversation):
+                    let chatVC = ChatViewController()
+                    chatVC.conversation = conversation
+                    self.navigationController?.pushViewController(chatVC, animated: true)
+                case .failure(let error):
+                    self.showError(error)
+                }
+            }
+        }
+    }
+
+    // MARK: - Overflow menu
+
+    /// Destructive options live here rather than as a permanent red button on
+    /// every row.
+    private func presentMoreMenu(for user: User, from cell: AllUsersCell) {
+        let tier = RelationshipTier(user: user)
+        var actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = [
+            ("View Profile", .default, { [weak self] in self?.viewUserProfile(user) })
+        ]
+
+        for action in tier.menuActions {
+            switch action {
+            case .unfollow:
+                actions.append(("Unfollow", .destructive, { [weak self] in self?.confirmUnfollow(user) }))
+            case .cancelRequest:
+                actions.append(("Cancel Request", .destructive, { [weak self] in self?.confirmCancelRequest(user) }))
+            case .decline:
+                actions.append(("Disconnect", .destructive, { [weak self] in self?.confirmDisconnect(user) }))
+            default:
+                break
+            }
+        }
+
+        AlertPresenter.showActionSheet(
+            title: user.displayName,
+            actions: actions,
+            from: self,
+            sourceView: cell
+        )
+    }
+
+    // MARK: - Local state
+
+    /// Applies a change to a person wherever they currently sit, then rebuilds
+    /// the sections so they move to the right one.
+    private func applyLocalUpdate(userId: String, _ transform: (User) -> User) {
+        if let index = allUsers.firstIndex(where: { $0.id == userId }) {
+            allUsers[index] = transform(allUsers[index])
+        }
+        sortAndFilterUsers()
+        tableView.reloadData()
     }
 }
