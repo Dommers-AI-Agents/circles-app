@@ -12,6 +12,8 @@ const { Client } = require('@googlemaps/google-maps-services-js');
 const geofire = require('geofire-common');
 const { normalizeUserId, isSameUser } = require('../services/idService');
 const { ensureGlobalPlaceLink } = require('../services/globalPlaceResolver');
+const { indexPlaceAdded, indexPlaceRemoved, indexPlaceMoved } = require('../services/circleLocationSummary');
+const { deriveLocation } = require('../services/placeLocationDerivation');
 const { GLOBAL_COLLECTIONS, buildSearchTokens } = require('../models/GlobalPlace');
 const { googleMapsApiKey } = require('../config/config');
 const notificationService = require('../services/notificationService');
@@ -1247,6 +1249,14 @@ exports.createPlace = async (req, res, next) => {
       place.globalPlaceId = globalPlaceId;
     }
 
+    // Keep the browse location tree fresh: bump this circle's summary and drop
+    // the adder's cached tree (best-effort; rebuild job corrects any drift).
+    try {
+      const loc = deriveLocation({ address: placeData.address, location: placeData.location });
+      indexPlaceAdded(circleId, loc);
+      placeCache.clear('browseTree', req.user.uid);
+    } catch (e) { /* never block a save on browse indexing */ }
+
     // Update circle's places array and increment count (only add if place.id is defined)
     const currentPlaces = circle.places || [];
     if (place.id) {
@@ -1566,8 +1576,12 @@ exports.deletePlace = async (req, res, next) => {
       
       // Commit the batch
       await batch.commit();
-      
+
       console.log('✅ Place soft deleted successfully:', req.params.id);
+
+      // Browse tree upkeep: decrement this circle's summary + drop cached tree.
+      indexPlaceRemoved(place.circleId, place);
+      placeCache.clear('browseTree', place.addedBy || req.user.uid);
 
       res.status(200).json({
         success: true,
@@ -3811,7 +3825,11 @@ exports.movePlace = async (req, res, next) => {
     // Get updated place
     const updatedPlaceDoc = await placeRef.get();
     const updatedPlace = serializeDoc(updatedPlaceDoc);
-    
+
+    // Browse tree upkeep: same venue, different circle — move the density count.
+    indexPlaceMoved(place.circleId, targetCircleId, place);
+    placeCache.clear('browseTree', userId);
+
     // Track activity
     if (trackPlaceAdded) {
       await trackPlaceAdded(placeId, targetCircleId, updatedPlace.name, targetCircle.name, userId);
