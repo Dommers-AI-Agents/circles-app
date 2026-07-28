@@ -2433,12 +2433,13 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
     
     @objc func expandMapButtonTapped() {
-        // Pass all places to the full screen map, not the filtered ones
-        // Don't pass the selected category so the full screen map starts fresh
+        // Expand THIS view: the full-screen map gets exactly the filtered set,
+        // so its list shows the same places and its category hamburger builds
+        // from (and further narrows within) what's actually on screen.
         let fullScreenMapVC = FullScreenMapViewController(
-            places: allPlaces,  // Pass all places
+            places: filteredPlaces,
             initialRegion: mapView.region,
-            selectedCategory: nil,  // Don't pass the filter
+            selectedCategory: nil,  // set already reflects the filters
             selectedConnectionId: nil
         )
         fullScreenMapVC.delegate = self
