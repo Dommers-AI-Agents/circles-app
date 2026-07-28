@@ -37,15 +37,10 @@ enum RegionGrouper {
             makeGroup(id: "state:\(code)", title: stateNames[code] ?? code, places: statePlaces)
         }
 
-        // Nearest state first when we know where the user is; otherwise the
-        // busiest.
+        // Most places first — the chip order then mirrors where your saving
+        // actually happens, and it never reshuffles as you move around.
         return result.sorted { lhs, rhs in
-            if let origin = origin, let l = lhs.centroid, let r = rhs.centroid {
-                let ld = origin.distance(from: CLLocation(latitude: l.latitude, longitude: l.longitude))
-                let rd = origin.distance(from: CLLocation(latitude: r.latitude, longitude: r.longitude))
-                if ld != rd { return ld < rd }
-            }
-            return lhs.count == rhs.count ? lhs.title < rhs.title : lhs.count > rhs.count
+            lhs.count == rhs.count ? lhs.title < rhs.title : lhs.count > rhs.count
         }
     }
 
