@@ -13,87 +13,33 @@ struct RegionGroup {
     func contains(_ place: Place) -> Bool { placeIds.contains(place.id) }
 }
 
-/// Groups places into region chips whose size makes sense for the number of
-/// places the user actually has.
+/// Groups places into region chips — one chip per STATE.
 ///
 /// The old chips were one-per-extracted-city, which at ZIP/typo granularity
-/// produced duplicate slivers ("28269 (1)", "28269 (2)"). The rules here:
-///
-///  - Group by STATE by default — "New Jersey (102)".
-///  - A state with MORE than `maxGroup` places is too big to be one chip (its
-///    pins also blur into one blob on the map), so it splits into its cities;
-///    cities under `minGroup` fold into a single "<State> · more" remainder.
-///  - States with FEWER than `minGroup` places merge into one "Elsewhere" chip
-///    (with places that have no derivable location at all), so tiny groups
-///    never clutter the bar.
-///  - A state never appears alongside its own cities — a place belongs to
-///    exactly one chip.
+/// produced duplicate slivers ("28269 (1)", "28269 (2)"). An adaptive
+/// state/city/Elsewhere scheme was tried next and read as arbitrary — so this
+/// is deliberately simple: every state with places gets a chip ("New Jersey
+/// (102)", "New York (8)"). Places whose state can't be derived have no chip
+/// and remain reachable under "All places".
 enum RegionGrouper {
 
-    static let minGroup = 4
-    static let maxGroup = 50
-
     static func groups(for places: [Place], origin: CLLocation?) -> [RegionGroup] {
-        // Bucket by state, remembering each place's city within it.
         var byState: [String: [Place]] = [:]   // stateCode -> places
         var stateNames: [String: String] = [:] // stateCode -> display name
-        var unplaced: [Place] = []
 
         for place in places {
-            if let code = place.lensStateCode {
-                byState[code, default: []].append(place)
-                if stateNames[code] == nil { stateNames[code] = place.lensStateName ?? code }
-            } else {
-                unplaced.append(place)
-            }
+            guard let code = place.lensStateCode else { continue }
+            byState[code, default: []].append(place)
+            if stateNames[code] == nil { stateNames[code] = place.lensStateName ?? code }
         }
 
-        var result: [RegionGroup] = []
-        var elsewhere: [Place] = unplaced
-
-        for (code, statePlaces) in byState {
-            let stateName = stateNames[code] ?? code
-
-            if statePlaces.count < minGroup {
-                elsewhere.append(contentsOf: statePlaces)
-                continue
-            }
-
-            if statePlaces.count <= maxGroup {
-                result.append(makeGroup(id: "state:\(code)", title: stateName, places: statePlaces))
-                continue
-            }
-
-            // Too big for one chip: split into cities, remainder into "· more".
-            var byCity: [String: [Place]] = [:]
-            var cityless: [Place] = []
-            for place in statePlaces {
-                if let city = place.lensCity { byCity[city, default: []].append(place) }
-                else { cityless.append(place) }
-            }
-
-            var remainder: [Place] = cityless
-            for (city, cityPlaces) in byCity {
-                if cityPlaces.count >= minGroup {
-                    result.append(makeGroup(id: "city:\(city.lowercased())|\(code)", title: city, places: cityPlaces))
-                } else {
-                    remainder.append(contentsOf: cityPlaces)
-                }
-            }
-            if !remainder.isEmpty {
-                result.append(makeGroup(id: "state-more:\(code)", title: "\(stateName) · more", places: remainder))
-            }
+        let result = byState.map { code, statePlaces in
+            makeGroup(id: "state:\(code)", title: stateNames[code] ?? code, places: statePlaces)
         }
 
-        if !elsewhere.isEmpty {
-            result.append(makeGroup(id: "elsewhere", title: "Elsewhere", places: elsewhere))
-        }
-
-        // Nearest region first when we know where the user is; otherwise the
-        // busiest. "Elsewhere" always sits last — it's the junk drawer.
+        // Nearest state first when we know where the user is; otherwise the
+        // busiest.
         return result.sorted { lhs, rhs in
-            if lhs.id == "elsewhere" { return false }
-            if rhs.id == "elsewhere" { return true }
             if let origin = origin, let l = lhs.centroid, let r = rhs.centroid {
                 let ld = origin.distance(from: CLLocation(latitude: l.latitude, longitude: l.longitude))
                 let rd = origin.distance(from: CLLocation(latitude: r.latitude, longitude: r.longitude))
