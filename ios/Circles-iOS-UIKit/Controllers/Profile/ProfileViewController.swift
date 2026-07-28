@@ -957,12 +957,11 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             }
         }
         
-        // Always land on the circles grid when navigating to the Profile tab.
-        // setViewMode owns the visibility and constraint changes, so there's
-        // nothing to repeat here.
-        if viewMode != .circles {
-            setViewMode(.circles)
-        }
+        // NOTE: no viewMode reset here. "Land on Circles when navigating to the
+        // Me tab" is owned by CirclesTabBarController (re-tap in shouldSelect,
+        // tab-switch in didSelect) — resetting on every appearance also fired
+        // when popping back from a pushed place page, yanking the user off the
+        // Places/Map view they navigated from.
     }
     
     override func viewDidAppear(_ animated: Bool) {
