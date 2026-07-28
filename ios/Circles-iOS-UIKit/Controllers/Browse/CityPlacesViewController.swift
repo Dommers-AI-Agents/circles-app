@@ -1,6 +1,16 @@
 import UIKit
 import MapKit
 
+/// Map pin that carries its venue's category so the marker can show the right
+/// color + glyph (matching the rest of the app's category pins).
+final class VenueAnnotation: MKPointAnnotation {
+    let category: PlaceCategory
+    init(category: PlaceCategory) {
+        self.category = category
+        super.init()
+    }
+}
+
 /// Third level of the location lens: every venue in a city, drawn from ALL of
 /// the user's circles, each labeled with its source circle(s). A map header
 /// shows the pins; a category chip bar filters the list across circles, and the
@@ -124,9 +134,9 @@ final class CityPlacesViewController: BaseTableViewController {
 
     private func updateMap() {
         mapView.removeAnnotations(mapView.annotations)
-        let annotations: [MKPointAnnotation] = filteredVenues.compactMap { venue in
+        let annotations: [VenueAnnotation] = filteredVenues.compactMap { venue in
             guard let coord = venue.coordinate else { return nil }
-            let a = MKPointAnnotation()
+            let a = VenueAnnotation(category: PlaceCategory(rawValue: venue.category) ?? .other)
             a.coordinate = coord
             a.title = venue.name
             a.subtitle = venue.subtitle
@@ -173,8 +183,13 @@ extension CityPlacesViewController: MKMapViewDelegate {
         let view = (mapView.dequeueReusableAnnotationView(withIdentifier: id) as? MKMarkerAnnotationView)
             ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: id)
         view.annotation = annotation
-        view.markerTintColor = Constants.Colors.primary
         view.canShowCallout = true
+        if let venue = annotation as? VenueAnnotation {
+            view.markerTintColor = venue.category.color
+            view.glyphImage = UIImage(systemName: venue.category.systemIconName)
+        } else {
+            view.markerTintColor = Constants.Colors.primary
+        }
         return view
     }
 }
