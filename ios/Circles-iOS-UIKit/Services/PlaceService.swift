@@ -393,7 +393,7 @@ class PlaceService {
         )
     }
     
-    func createPlace(name: String, description: String?, address: String, category: PlaceCategory, customCategory: String? = nil, subcategory: String? = nil, circleId: String, privacy: PlacePrivacy = .followCirclePrivacy, website: String? = nil, phone: String? = nil, tags: [String]? = nil, photos: [Data]? = nil, photoUrls: [String]? = nil, location: CLLocationCoordinate2D? = nil, googlePlaceId: String? = nil, privateNotes: String? = nil, publicNotes: String? = nil, force: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
+    func createPlace(name: String, description: String?, address: String, category: PlaceCategory, customCategory: String? = nil, subcategory: String? = nil, circleId: String, privacy: PlacePrivacy = .followCirclePrivacy, website: String? = nil, phone: String? = nil, tags: [String]? = nil, photos: [Data]? = nil, photoUrls: [String]? = nil, location: CLLocationCoordinate2D? = nil, googlePlaceId: String? = nil, privateNotes: String? = nil, publicNotes: String? = nil, neighborhood: String? = nil, applePoiCategory: String? = nil, force: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
         
         // Use provided location or geocode the address
         if let providedLocation = location {
@@ -438,6 +438,8 @@ class PlaceService {
                 photoUrls: photoUrls,
                 privateNotes: privateNotes,
                 publicNotes: publicNotes,
+                neighborhood: neighborhood,
+                applePoiCategory: applePoiCategory,
                 force: force,
                 completion: completion
             )
@@ -463,6 +465,8 @@ class PlaceService {
                         photoUrls: photoUrls,
                         privateNotes: privateNotes,
                         publicNotes: publicNotes,
+                        neighborhood: neighborhood,
+                        applePoiCategory: applePoiCategory,
                         force: force,
                         completion: completion
                     )
@@ -473,7 +477,7 @@ class PlaceService {
         }
     }
     
-    private func continueCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photos: [Data]?, photoUrls: [String]?, privateNotes: String?, publicNotes: String?, force: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
+    private func continueCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photos: [Data]?, photoUrls: [String]?, privateNotes: String?, publicNotes: String?, neighborhood: String? = nil, applePoiCategory: String? = nil, force: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
         // If we already have photo URLs, use them directly
         if let urls = photoUrls, !urls.isEmpty {
             Logger.debug("Using \(urls.count) pre-uploaded photo URLs")
@@ -493,6 +497,8 @@ class PlaceService {
                 photoUrls: urls,
                 privateNotes: privateNotes,
                 publicNotes: publicNotes,
+                neighborhood: neighborhood,
+                applePoiCategory: applePoiCategory,
                 force: force,
                 completion: completion
             )
@@ -520,6 +526,8 @@ class PlaceService {
                         photoUrls: photoUrls,
                         privateNotes: privateNotes,
                         publicNotes: publicNotes,
+                        neighborhood: neighborhood,
+                        applePoiCategory: applePoiCategory,
                         force: force,
                         completion: completion
                     )
@@ -543,6 +551,8 @@ class PlaceService {
                         photoUrls: nil,
                         privateNotes: privateNotes,
                         publicNotes: publicNotes,
+                        neighborhood: neighborhood,
+                        applePoiCategory: applePoiCategory,
                         force: force,
                         completion: completion
                     )
@@ -567,13 +577,15 @@ class PlaceService {
                 photoUrls: nil,
                 privateNotes: privateNotes,
                 publicNotes: publicNotes,
+                neighborhood: neighborhood,
+                applePoiCategory: applePoiCategory,
                 force: force,
                 completion: completion
             )
         }
     }
     
-    private func performCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photoUrls: [String]?, privateNotes: String?, publicNotes: String?, force: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
+    private func performCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photoUrls: [String]?, privateNotes: String?, publicNotes: String?, neighborhood: String? = nil, applePoiCategory: String? = nil, force: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
         
         // Validate coordinates before sending to backend
         guard location.latitude >= -90 && location.latitude <= 90 &&
@@ -622,7 +634,16 @@ class PlaceService {
         if let subcategory = subcategory {
             body["subcategory"] = subcategory
         }
-        
+
+        // Location/category signals for backend derivation (neighborhood comes
+        // from Apple placemark.subLocality; POI category helps categorize).
+        if let neighborhood = neighborhood, !neighborhood.isEmpty {
+            body["neighborhood"] = neighborhood
+        }
+        if let applePoiCategory = applePoiCategory, !applePoiCategory.isEmpty {
+            body["applePoiCategory"] = applePoiCategory
+        }
+
         if let website = website {
             body["website"] = website
         }

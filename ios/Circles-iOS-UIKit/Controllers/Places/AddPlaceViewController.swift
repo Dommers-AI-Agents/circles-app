@@ -32,6 +32,10 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     var venueExemptionChecksInFlight = Set<String>()
     var selectedCategory: PlaceCategory = .restaurant
     var selectedSubcategory: String?
+    // Captured from the resolved Apple Maps placemark so the backend can derive
+    // a neighborhood + refine the category (see placeLocationDerivation).
+    var selectedNeighborhood: String?
+    var selectedApplePoiCategory: String?
     var isCategoryDropdownVisible = false
     var categoryDropdownItems: [(category: PlaceCategory, subcategory: String?)] = []
     var searchTimer: Timer?
@@ -1930,6 +1934,8 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             googlePlaceId: nil,
             privateNotes: privateNotes.isEmpty ? nil : privateNotes,
             publicNotes: publicNotes.isEmpty ? nil : publicNotes,
+            neighborhood: selectedNeighborhood,
+            applePoiCategory: selectedApplePoiCategory,
             force: force
         ) { [weak self] result in
             DispatchQueue.main.async {
@@ -2437,6 +2443,10 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             
             self.addressTextView.text = finalAddress
             
+            // Capture neighborhood + POI category for backend derivation
+            self.selectedNeighborhood = placemark.subLocality
+            self.selectedApplePoiCategory = mapItem.pointOfInterestCategory?.rawValue
+
             // Generate enhanced description
             var description = ""
             if let poiCategory = mapItem.pointOfInterestCategory {
