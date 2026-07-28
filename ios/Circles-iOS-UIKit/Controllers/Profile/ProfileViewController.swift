@@ -2373,21 +2373,25 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
     
     @objc func expandMapButtonTapped() {
-        // Expand THIS view: the full-screen map gets exactly the filtered set,
-        // so its list shows the same places and its category hamburger builds
-        // from (and further narrows within) what's actually on screen.
+        // Expand with the SAME chips as the small map: pass all places and seed
+        // the current selections, so the large view opens showing exactly this
+        // filter but can broaden it as well as narrow it. The hamburger is
+        // replaced by the chip bars (showsFilterChips).
         let fullScreenMapVC = FullScreenMapViewController(
-            places: filteredPlaces,
+            places: allPlaces,
             initialRegion: mapView.region,
-            selectedCategory: nil,  // set already reflects the filters
+            selectedCategory: nil,
             selectedConnectionId: nil
         )
         fullScreenMapVC.delegate = self
         fullScreenMapVC.viewMode = .allPlaces
         fullScreenMapVC.isPresentedModally = true
-        // A profile map shows one person's places — use the content filter
-        // (Category), not the network-connection filter/avatar strip.
+        // A profile map shows one person's places — no network-connection
+        // filter/avatar strip; filtering is the chip bars.
         fullScreenMapVC.showsConnectionFilter = false
+        fullScreenMapVC.showsFilterChips = true
+        fullScreenMapVC.initialChipGroup = selectedPlacesGroup
+        fullScreenMapVC.initialChipRegionId = selectedRegionGroupId
 
         let navigationController = UINavigationController(rootViewController: fullScreenMapVC)
         navigationController.modalPresentationStyle = .fullScreen

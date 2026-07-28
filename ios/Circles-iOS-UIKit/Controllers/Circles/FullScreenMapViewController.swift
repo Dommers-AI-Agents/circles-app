@@ -46,7 +46,65 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     weak var delegate: FullScreenMapViewControllerDelegate?
     var viewMode: MapViewMode = .circle
     var isPresentedModally: Bool = false
+    /// A profile map shows ONE person's places, so the network-connection
+    /// filter (avatar strip, Connections menu, "My Places") is meaningless
+    /// there. Set false to show only the content filter (Category) + list
+    /// toggle. Default true keeps the home map's behavior unchanged.
+    var showsConnectionFilter: Bool = true
     var showFilters: Bool = true // Control whether to show category/connection filters
+    /// Profile-style filtering: replaces the hamburger's Category menu with the
+    /// same category + state chip bars the profile map uses, overlaid on the
+    /// map. Seed the initial selections so expanding carries the small view's
+    /// filters over (while still letting the user broaden them here).
+    var showsFilterChips: Bool = false
+    var initialChipGroup: PlaceCategoryGroup = .all
+    var initialChipRegionId: String?
+
+    private var selectedChipGroup: PlaceCategoryGroup = .all
+    private var chipRegionGroups: [RegionGroup] = []
+    private var selectedChipRegionId: String?
+
+    private lazy var filterCategoryChipBar: CategoryChipBar = {
+        let bar = CategoryChipBar()
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        bar.onSelect = { [weak self] group in
+            self?.selectedChipGroup = group
+            self?.applyFilter()
+        }
+        return bar
+    }()
+
+    private lazy var filterRegionChipBar: BrowseChipBar = {
+        let bar = BrowseChipBar()
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        bar.onSelect = { [weak self] id in
+            self?.selectedChipRegionId = (id == "__all") ? nil : id
+            self?.applyFilter()
+        }
+        return bar
+    }()
+
+    /// Translucent backing so the chips read over any map content.
+    private lazy var filterChipsContainer: UIView = {
+        let container = UIView()
+        container.backgroundColor = Constants.Colors.background.withAlphaComponent(0.92)
+        container.layer.cornerRadius = 12
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(filterCategoryChipBar)
+        container.addSubview(filterRegionChipBar)
+        NSLayoutConstraint.activate([
+            filterCategoryChipBar.topAnchor.constraint(equalTo: container.topAnchor, constant: 6),
+            filterCategoryChipBar.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            filterCategoryChipBar.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            filterCategoryChipBar.heightAnchor.constraint(equalToConstant: 36),
+            filterRegionChipBar.topAnchor.constraint(equalTo: filterCategoryChipBar.bottomAnchor, constant: 4),
+            filterRegionChipBar.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            filterRegionChipBar.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            filterRegionChipBar.heightAnchor.constraint(equalToConstant: 36),
+            filterRegionChipBar.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -6)
+        ])
+        return container
+    }()
     // IDs of the current user's own places. When set, the default map region
     // centers on the user's favorites instead of just their raw location.
     var ownPlaceIds: Set<String> = []
@@ -299,6 +357,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
 
         self.places = newPlaces
         updateAvailableCategories()
+        refreshFilterChips()
         // Apply existing filters to the new places
         applyFilter(adjustRegion: adjustRegion)
         // adjustMapRegion is already called in addAnnotationsToMap, no need to call it again
@@ -361,11 +420,34 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
+        // Carry the small view's chip selections into the expanded view
+        selectedChipGroup = initialChipGroup
+        selectedChipRegionId = initialChipRegionId
         setupUI()
         setupMap()
         setupTableView()
         updateAvailableCategories()
+        refreshFilterChips()
         applyFilter()
+    }
+
+    /// Rebuilds both chip bars from the full place set (chip-bar mode only), so
+    /// the expanded view can broaden a filter as well as narrow it.
+    private func refreshFilterChips() {
+        guard showsFilterChips else { return }
+        filterCategoryChipBar.setGroups(
+            PlaceCategoryGroup.present(in: places.map { $0.category.rawValue }),
+            selected: selectedChipGroup
+        )
+        chipRegionGroups = RegionGrouper.groups(for: places, origin: nil)
+        if selectedChipRegionId != nil && !chipRegionGroups.contains(where: { $0.id == selectedChipRegionId }) {
+            selectedChipRegionId = nil
+        }
+        var items: [BrowseChipBar.Item] = [BrowseChipBar.Item(id: "__all", title: "All places")]
+        items.append(contentsOf: chipRegionGroups.map {
+            BrowseChipBar.Item(id: $0.id, title: "\($0.title) (\($0.count))")
+        })
+        filterRegionChipBar.setItems(items, selectedId: selectedChipRegionId ?? "__all")
     }
     
     override var preferredStatusBarStyle: UIStatusBarStyle {
@@ -393,9 +475,16 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // Add overlay control chips only if presented modally and filters are enabled
         if isPresentedModally && showFilters {
             // Avatar first so "who is being mapped" reads before the controls
-            overlayChipStack.addArrangedSubview(connectionAvatarChip)
-            overlayChipStack.addArrangedSubview(menuChipButton)
-            if viewMode == .allPlaces {
+            // (omitted on profile maps — there's only one person)
+            if showsConnectionFilter {
+                overlayChipStack.addArrangedSubview(connectionAvatarChip)
+            }
+            // Chip-bar mode replaces the hamburger entirely — category (and
+            // region) filtering happens in the always-visible bars instead.
+            if !showsFilterChips {
+                overlayChipStack.addArrangedSubview(menuChipButton)
+            }
+            if viewMode == .allPlaces && showsConnectionFilter {
                 overlayChipStack.addArrangedSubview(myPlacesChipButton)
             }
             overlayChipStack.addArrangedSubview(listChipButton)
@@ -404,10 +493,14 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             // List added before the chips so the chips stay tappable above it
             view.addSubview(placesListTableView)
             view.addSubview(overlayChipStack)
+            if showsFilterChips {
+                view.addSubview(filterChipsContainer)
+            }
 
             // Connection avatar row: same tap-to-filter row as the home screen,
-            // overlaid below the chips so connections are switchable in full view
-            if viewMode == .allPlaces {
+            // overlaid below the chips so connections are switchable in full
+            // view. Skipped on profile maps (one person → nothing to switch).
+            if viewMode == .allPlaces && showsConnectionFilter {
                 let row = HorizontalUserListView(frame: .zero, initialConnections: connections)
                 row.translatesAutoresizingMaskIntoConstraints = false
                 row.backgroundColor = .clear
@@ -458,12 +551,25 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                 connectionAvatarChip.widthAnchor.constraint(equalToConstant: 36),
                 connectionAvatarChip.heightAnchor.constraint(equalToConstant: 36),
 
-                // Places list fills the map area below the chips
-                placesListTableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 60),
+                // Places list fills the map area below the chips (and below the
+                // chip bars when they're shown, so filtering stays reachable
+                // while the list is up)
+                placesListTableView.topAnchor.constraint(
+                    equalTo: showsFilterChips ? filterChipsContainer.bottomAnchor : view.safeAreaLayoutGuide.topAnchor,
+                    constant: showsFilterChips ? 8 : 60
+                ),
                 placesListTableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                 placesListTableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
                 placesListTableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
             ])
+
+            if showsFilterChips {
+                NSLayoutConstraint.activate([
+                    filterChipsContainer.topAnchor.constraint(equalTo: overlayChipStack.bottomAnchor, constant: 8),
+                    filterChipsContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+                    filterChipsContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12)
+                ])
+            }
 
             if viewMode == .allPlaces {
                 myPlacesChipButton.widthAnchor.constraint(equalToConstant: 36).isActive = true
@@ -1122,8 +1228,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         var elements: [UIMenuElement] = []
         let currentUserId = AuthService.shared.getUserId() ?? ""
 
-        // Connection filter submenu (allPlaces mode only)
-        if viewMode == .allPlaces {
+        // Connection filter submenu (allPlaces mode only; not on profile maps)
+        if viewMode == .allPlaces && showsConnectionFilter {
             var connectionActions: [UIAction] = [
                 UIAction(title: "All Connections", state: selectedConnectionId == nil ? .on : .off) { [weak self] _ in
                     self?.selectConnection(nil)
@@ -1189,8 +1295,9 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             ))
         }
 
-        // View Profile: the filtered connection's profile, or the user's own
-        if viewMode == .allPlaces {
+        // View Profile: the filtered connection's profile, or the user's own.
+        // Omitted on profile maps — you're already looking at the profile.
+        if viewMode == .allPlaces && showsConnectionFilter {
             let profileTitle: String
             if let connectionId = selectedConnectionId, connectionId != "my_places_only",
                let name = connections.first(where: { $0.otherUserId(currentUserId: AuthService.shared.getUserId() ?? "") == connectionId })?.connectedUser?.displayName,
@@ -1361,9 +1468,21 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         
         // Update available categories based on connection-filtered places
         updateAvailableCategories(from: placesToFilter)
-        
+
         // Apply category filter
         filteredPlaces = placesToFilter.filtered(by: selectedCategory)
+
+        // Chip-bar mode: the always-visible category-group + state chips
+        // (replacing the hamburger's Category menu)
+        if showsFilterChips {
+            if selectedChipGroup != .all {
+                filteredPlaces = filteredPlaces.filter { selectedChipGroup.matches($0.category.rawValue) }
+            }
+            if let regionId = selectedChipRegionId,
+               let region = chipRegionGroups.first(where: { $0.id == regionId }) {
+                filteredPlaces = filteredPlaces.filter { region.contains($0) }
+            }
+        }
         Logger.debug("  Final filtered places: \(filteredPlaces.count)")
         
         updatePlacesCount()
