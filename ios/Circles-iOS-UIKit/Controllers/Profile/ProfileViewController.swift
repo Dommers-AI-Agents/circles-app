@@ -1080,9 +1080,11 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
 
         // Filter chips (category + state) sit above the map; the old
         // hamburger/Me chips they replace are gone. The list toggle stays.
+        // The list chip must be in the hierarchy BEFORE setupPlacesLens —
+        // the category bar constrains its trailing edge to it.
         mapContainerView.addSubview(filterContainerView)
-        setupPlacesLens()
         filterContainerView.addSubview(mapListChipButton)
+        setupPlacesLens()
         mapContainerView.addSubview(mapView)
         mapContainerView.addSubview(mapPlacesListTableView)
         mapContainerView.addSubview(mapExpandButton)
