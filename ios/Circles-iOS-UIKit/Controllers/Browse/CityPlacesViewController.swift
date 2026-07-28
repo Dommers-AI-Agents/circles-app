@@ -1,26 +1,31 @@
 import UIKit
 import MapKit
 
-/// Map pin that carries its venue's category so the marker can show the right
-/// color + glyph (matching the rest of the app's category pins).
+/// Map pin carrying its venue so the marker can show the category glyph, the
+/// callout can name who added it, and tapping through can open the place page.
 final class VenueAnnotation: MKPointAnnotation {
-    let category: PlaceCategory
-    init(category: PlaceCategory) {
-        self.category = category
+    let venue: CityVenue
+    var category: PlaceCategory { PlaceCategory(rawValue: venue.category) ?? .other }
+    init(venue: CityVenue) {
+        self.venue = venue
         super.init()
     }
 }
 
-/// Third level of the location lens: every venue in a city, drawn from ALL of
-/// the user's circles, each labeled with its source circle(s). A map header
-/// shows the pins; a category chip bar filters the list across circles, and the
-/// densest neighborhood is surfaced for the active filter.
+/// Third level of the location lens: every venue in a city, drawn from ALL the
+/// user's network (own + shared), each showing who added it and its rating.
+/// Filter by People (Everyone / Me / a connection) and by category; tap a row or
+/// a pin to open the real place page (back returns to the filtered view).
 final class CityPlacesViewController: BaseTableViewController {
 
     private let cityKey: String
     private let titleText: String
     private var allVenues: [CityVenue] = []
+    private var people: [BrowsePerson] = []
     private var selectedGroup: PlaceCategoryGroup = .all
+    private var selectedPersonId: String = PeopleFilter.everyone
+
+    private enum PeopleFilter { static let everyone = "__all"; static let me = "me" }
 
     private let mapView: MKMapView = {
         let m = MKMapView()
@@ -29,14 +34,15 @@ final class CityPlacesViewController: BaseTableViewController {
         m.autoresizingMask = [.flexibleWidth]
         return m
     }()
+    private let peopleBar: BrowseChipBar = {
+        let b = BrowseChipBar(); b.autoresizingMask = [.flexibleWidth]; return b
+    }()
     private let chipBar: CategoryChipBar = {
-        let bar = CategoryChipBar()
-        bar.autoresizingMask = [.flexibleWidth]
-        return bar
+        let bar = CategoryChipBar(); bar.autoresizingMask = [.flexibleWidth]; return bar
     }()
 
     private let mapHeight: CGFloat = 200
-    private let chipsHeight: CGFloat = 52
+    private let barHeight: CGFloat = 48
 
     override var emptyStateMessage: String? { "No places here yet." }
 
@@ -52,27 +58,46 @@ final class CityPlacesViewController: BaseTableViewController {
         title = titleText
         tableView.register(CityVenueCell.self, forCellReuseIdentifier: CityVenueCell.reuseId)
         tableView.rowHeight = UITableView.automaticDimension
-        tableView.estimatedRowHeight = 76
+        tableView.estimatedRowHeight = 84
         mapView.delegate = self
-        chipBar.onSelect = { [weak self] group in self?.applyFilter(group) }
-        setupHeader()
+        chipBar.onSelect = { [weak self] group in self?.selectedGroup = group; self?.refresh() }
+        peopleBar.onSelect = { [weak self] id in self?.selectedPersonId = id; self?.refresh() }
+        buildHeader(showPeople: false)
     }
 
-    private func setupHeader() {
+    private func buildHeader(showPeople: Bool) {
         let width = view.bounds.width
-        let container = UIView(frame: CGRect(x: 0, y: 0, width: width, height: mapHeight + chipsHeight))
+        let height = mapHeight + (showPeople ? barHeight : 0) + barHeight
+        let container = UIView(frame: CGRect(x: 0, y: 0, width: width, height: height))
         container.autoresizingMask = [.flexibleWidth]
+
         mapView.frame = CGRect(x: 0, y: 0, width: width, height: mapHeight)
-        chipBar.frame = CGRect(x: 0, y: mapHeight, width: width, height: chipsHeight)
         container.addSubview(mapView)
+        var y = mapHeight
+        if showPeople {
+            peopleBar.frame = CGRect(x: 0, y: y, width: width, height: barHeight)
+            container.addSubview(peopleBar)
+            y += barHeight
+        }
+        chipBar.frame = CGRect(x: 0, y: y, width: width, height: barHeight)
         container.addSubview(chipBar)
+
         tableView.tableHeaderView = container
     }
 
     // MARK: - Data
 
     private var filteredVenues: [CityVenue] {
-        selectedGroup == .all ? allVenues : allVenues.filter { selectedGroup.matches($0.category) }
+        allVenues.filter { venue in
+            let categoryOK = selectedGroup == .all || selectedGroup.matches(venue.category)
+            let personOK: Bool
+            switch selectedPersonId {
+            case PeopleFilter.everyone: personOK = true
+            case PeopleFilter.me:       personOK = venue.savedByMe
+            default:                    personOK = venue.savers.contains { $0.id == selectedPersonId }
+            }
+            return categoryOK && personOK
+        }
     }
 
     override func loadData(completion: (() -> Void)? = nil) {
@@ -82,10 +107,9 @@ final class CityPlacesViewController: BaseTableViewController {
                 switch result {
                 case .success(let resp):
                     self.allVenues = resp.places
-                    self.chipBar.setGroups(
-                        PlaceCategoryGroup.present(in: self.allVenues.map { $0.category }),
-                        selected: .all
-                    )
+                    self.people = resp.people
+                    self.chipBar.setGroups(PlaceCategoryGroup.present(in: self.allVenues.map { $0.category }), selected: .all)
+                    self.configurePeopleBar()
                     self.refresh()
                     if self.allVenues.isEmpty { self.showEmptyState() }
                 case .failure(let error):
@@ -96,12 +120,19 @@ final class CityPlacesViewController: BaseTableViewController {
         }
     }
 
-    private func applyFilter(_ group: PlaceCategoryGroup) {
-        selectedGroup = group
-        refresh()
+    /// Build the People filter (Everyone / Me / each connection with places here).
+    /// Only shown when someone besides you has a place in this city.
+    private func configurePeopleBar() {
+        guard !people.isEmpty else { buildHeader(showPeople: false); return }
+        var items: [BrowseChipBar.Item] = [
+            .init(id: PeopleFilter.everyone, title: "Everyone"),
+            .init(id: PeopleFilter.me, title: "Me")
+        ]
+        items += people.map { .init(id: $0.id, title: $0.name) }
+        peopleBar.setItems(items, selectedId: selectedPersonId)
+        buildHeader(showPeople: true)
     }
 
-    /// Re-render the list, map, and header stat for the active filter.
     private func refresh() {
         tableView.reloadData()
         updateMap()
@@ -110,18 +141,12 @@ final class CityPlacesViewController: BaseTableViewController {
 
     private func updateHeaderStat() {
         let venues = filteredVenues
-        let noun = selectedGroup == .all
-            ? (venues.count == 1 ? "pin" : "pins")
-            : selectedGroup.title.lowercased()
+        let noun = selectedGroup == .all ? (venues.count == 1 ? "pin" : "pins") : selectedGroup.title.lowercased()
         var text = "\(venues.count) \(noun)"
-        if let hood = densestNeighborhood(in: venues) {
-            text += " · Most in \(hood)"
-        }
+        if let hood = densestNeighborhood(in: venues) { text += " · Most in \(hood)" }
         navigationItem.prompt = text
     }
 
-    /// The neighborhood holding the most pins for the current filter, shown only
-    /// when it's meaningful (≥2 pins share it). Falls back to nothing (→ city).
     private func densestNeighborhood(in venues: [CityVenue]) -> String? {
         var counts: [String: Int] = [:]
         for v in venues {
@@ -136,14 +161,34 @@ final class CityPlacesViewController: BaseTableViewController {
         mapView.removeAnnotations(mapView.annotations)
         let annotations: [VenueAnnotation] = filteredVenues.compactMap { venue in
             guard let coord = venue.coordinate else { return nil }
-            let a = VenueAnnotation(category: PlaceCategory(rawValue: venue.category) ?? .other)
+            let a = VenueAnnotation(venue: venue)
             a.coordinate = coord
             a.title = venue.name
-            a.subtitle = venue.subtitle
+            // Callout subtitle: who added it (+ rating when present).
+            a.subtitle = [venue.ratingText, venue.addedByText].compactMap { $0 }.joined(separator: " · ")
             return a
         }
         mapView.addAnnotations(annotations)
         if !annotations.isEmpty { mapView.showAnnotations(annotations, animated: false) }
+    }
+
+    /// Fetch the full place and push the real place page. Back returns here with
+    /// the current filters intact (it's the same nav stack).
+    private func openPlace(_ venue: CityVenue) {
+        let loading = AlertPresenter.showLoading(from: self)
+        PlaceService.shared.fetchPlaceById(id: venue.placeId) { [weak self] result in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: false) {
+                    guard let self = self else { return }
+                    switch result {
+                    case .success(let place):
+                        self.navigationController?.pushViewController(PlaceDetailViewController(place: place), animated: true)
+                    case .failure(let error):
+                        self.showError(error)
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Table
@@ -162,17 +207,7 @@ final class CityPlacesViewController: BaseTableViewController {
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        // v1: focus the pin on the map. (Full pin-detail card is Part 4.)
-        let venue = filteredVenues[indexPath.row]
-        guard let coord = venue.coordinate else { return }
-        let region = MKCoordinateRegion(center: coord, latitudinalMeters: 800, longitudinalMeters: 800)
-        mapView.setRegion(region, animated: true)
-        if let match = mapView.annotations.first(where: {
-            $0.coordinate.latitude == coord.latitude && $0.coordinate.longitude == coord.longitude
-        }) {
-            mapView.selectAnnotation(match, animated: true)
-        }
-        tableView.scrollRectToVisible(mapView.frame, animated: true)
+        openPlace(filteredVenues[indexPath.row])
     }
 }
 
@@ -184,6 +219,7 @@ extension CityPlacesViewController: MKMapViewDelegate {
             ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: id)
         view.annotation = annotation
         view.canShowCallout = true
+        view.rightCalloutAccessoryView = UIButton(type: .detailDisclosure)
         if let venue = annotation as? VenueAnnotation {
             view.markerTintColor = venue.category.color
             view.glyphImage = UIImage(systemName: venue.category.systemIconName)
@@ -191,5 +227,9 @@ extension CityPlacesViewController: MKMapViewDelegate {
             view.markerTintColor = Constants.Colors.primary
         }
         return view
+    }
+
+    func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView, calloutAccessoryControlTapped control: UIControl) {
+        if let venue = (view.annotation as? VenueAnnotation)?.venue { openPlace(venue) }
     }
 }

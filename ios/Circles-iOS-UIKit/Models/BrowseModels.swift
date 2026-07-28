@@ -35,7 +35,23 @@ struct CityPlacesResponse: Decodable {
     let stateCode: String?
     let count: Int
     let topNeighborhood: TopNeighborhood?
+    let people: [BrowsePerson]
     let places: [CityVenue]
+}
+
+/// A person who saved a place (network view).
+struct VenueSaver: Decodable {
+    let id: String
+    let name: String
+    let profilePicture: String?
+}
+
+/// An entry in the adaptive People filter for a city.
+struct BrowsePerson: Decodable {
+    let id: String
+    let name: String
+    let profilePicture: String?
+    let count: Int
 }
 
 struct TopNeighborhood: Decodable {
@@ -59,10 +75,28 @@ struct CityVenue: Decodable {
     let state: String?
     let stateCode: String?
     let location: GeoLocation?
+    let rating: Double?
     let circles: [VenueCircleChip]
+    let savers: [VenueSaver]
+    let savedByMe: Bool
 
     /// A stable id for the venue (prefers the canonical global id).
     var venueId: String { globalPlaceId ?? placeId }
+
+    /// "Added by you" / "Added by Wes" / "Added by Wes +2".
+    var addedByText: String? {
+        guard !savers.isEmpty else { return nil }
+        if savedByMe && savers.count == 1 { return "Added by you" }
+        let lead = savers.first?.name ?? "Someone"
+        let extra = savers.count - 1
+        return extra > 0 ? "Added by \(lead) +\(extra)" : "Added by \(lead)"
+    }
+
+    /// "★ 4.5" when a rating is present.
+    var ratingText: String? {
+        guard let r = rating else { return nil }
+        return String(format: "★ %.1f", r)
+    }
 
     var coordinate: CLLocationCoordinate2D? {
         guard let coords = location?.coordinates, coords.count == 2 else { return nil }
