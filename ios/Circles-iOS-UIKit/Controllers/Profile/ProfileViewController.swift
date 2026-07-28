@@ -16,6 +16,77 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     var availableCategories: [UnifiedCategory] = []
     var selectedCity: String?
     var selectedConnectionId: String? // nil means "All Connections" (default)
+
+    // MARK: Places lens
+    //
+    // How the profile is currently being viewed. Circles organise places by
+    // whatever scheme made sense when they were created — city, type, person,
+    // a particular trip — so `places` exists to cut across all of them at once.
+    enum ProfileViewMode { case circles, places, map }
+    var viewMode: ProfileViewMode = .circles
+    var selectedPlacesGroup: PlaceCategoryGroup = .all
+    var placesLensRows: [Place] = []
+    var placesLensHeightConstraint: NSLayoutConstraint?
+    // Adaptive region chips (see RegionGrouper): sized by how many places the
+    // user has, so the bar is never a parade of one-place ZIP codes.
+    var placesRegionGroups: [RegionGroup] = []
+    var selectedRegionGroupId: String?
+    var selectedRegionGroup: RegionGroup? {
+        selectedRegionGroupId.flatMap { id in placesRegionGroups.first { $0.id == id } }
+    }
+
+    /// Opens the circle advisor. Only shown on your own profile, on the
+    /// Circles segment — it has nothing to say about anyone else's circles or
+    /// about the flat Places list.
+    lazy var organizeCirclesButton: UIButton = {
+        let button = UIButton.iconButton(systemName: "wand.and.stars", pointSize: 16)
+        button.accessibilityLabel = "Organize circles"
+        button.addTarget(self, action: #selector(organizeCirclesTapped), for: .touchUpInside)
+        button.isHidden = true
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+
+    /// Supplies the "where am I" anchor for ordering cities in the Places lens.
+    lazy var placesLensLocationProvider = OneShotLocationProvider()
+    var placesLensResolvedLocation: CLLocation?
+
+    lazy var placesLensContainer: UIView = {
+        let view = UIView()
+        view.isHidden = true
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+
+    lazy var placesCategoryChipBar: CategoryChipBar = {
+        let bar = CategoryChipBar()
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        return bar
+    }()
+
+    lazy var placesCityChipBar = BrowseChipBar()
+
+    lazy var placesLensTableView: UITableView = {
+        let table = UITableView()
+        table.backgroundColor = .clear
+        table.separatorStyle = .none
+        table.rowHeight = 72
+        table.isScrollEnabled = false // lives inside the profile's scroll view
+        table.register(QuickAccessPlaceCell.self, forCellReuseIdentifier: "ProfilePlacesLensCell")
+        table.translatesAutoresizingMaskIntoConstraints = false
+        return table
+    }()
+
+    lazy var placesLensEmptyLabel: UILabel = {
+        let label = UILabel()
+        label.font = .systemFont(ofSize: 14)
+        label.textColor = .secondaryLabel
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.isHidden = true
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
     var isSearching = false
     var searchResultsHeightConstraint: NSLayoutConstraint?
     var videos: [PlaceVideo] = []
@@ -56,8 +127,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
     
     func resetToListViewIfNeeded() {
-        if isShowingMap {
-            toggleViewMode()
+        if viewMode != .circles {
+            setViewMode(.circles)
         }
     }
 
@@ -164,23 +235,37 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         label.font = UIFont.systemFont(ofSize: 10, weight: .bold)
         label.textColor = .white
         label.translatesAutoresizingMaskIntoConstraints = false
-        
+
+        // "i" affordance — tap the badge to see what Premium includes
+        let infoIcon = UIImageView()
+        infoIcon.image = UIImage(systemName: "info.circle")
+        infoIcon.tintColor = UIColor.white.withAlphaComponent(0.9)
+        infoIcon.contentMode = .scaleAspectFit
+        infoIcon.translatesAutoresizingMaskIntoConstraints = false
+
         view.addSubview(crownIcon)
         view.addSubview(label)
-        
+        view.addSubview(infoIcon)
+        view.isUserInteractionEnabled = true
+
         NSLayoutConstraint.activate([
             crownIcon.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 6),
             crownIcon.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             crownIcon.widthAnchor.constraint(equalToConstant: 12),
             crownIcon.heightAnchor.constraint(equalToConstant: 12),
-            
+
             label.leadingAnchor.constraint(equalTo: crownIcon.trailingAnchor, constant: 4),
             label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            label.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),
-            
+
+            infoIcon.leadingAnchor.constraint(equalTo: label.trailingAnchor, constant: 4),
+            infoIcon.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            infoIcon.widthAnchor.constraint(equalToConstant: 11),
+            infoIcon.heightAnchor.constraint(equalToConstant: 11),
+            infoIcon.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),
+
             view.heightAnchor.constraint(equalToConstant: 24)
         ])
-        
+
         return view
     }()
     
@@ -208,8 +293,17 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         view.translatesAutoresizingMaskIntoConstraints = false
         view.isHidden = true
 
+        // "i" affordance — tap the badge to see all the place levels
+        let infoIcon = UIImageView()
+        infoIcon.image = UIImage(systemName: "info.circle")
+        infoIcon.tintColor = UIColor.white.withAlphaComponent(0.9)
+        infoIcon.contentMode = .scaleAspectFit
+        infoIcon.translatesAutoresizingMaskIntoConstraints = false
+
         view.addSubview(milestoneBadgeIcon)
         view.addSubview(milestoneBadgeLabel)
+        view.addSubview(infoIcon)
+        view.isUserInteractionEnabled = true
 
         NSLayoutConstraint.activate([
             milestoneBadgeIcon.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 6),
@@ -219,7 +313,12 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
 
             milestoneBadgeLabel.leadingAnchor.constraint(equalTo: milestoneBadgeIcon.trailingAnchor, constant: 4),
             milestoneBadgeLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            milestoneBadgeLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),
+
+            infoIcon.leadingAnchor.constraint(equalTo: milestoneBadgeLabel.trailingAnchor, constant: 4),
+            infoIcon.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            infoIcon.widthAnchor.constraint(equalToConstant: 11),
+            infoIcon.heightAnchor.constraint(equalToConstant: 11),
+            infoIcon.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),
 
             view.heightAnchor.constraint(equalToConstant: 24)
         ])
@@ -505,15 +604,18 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }()
     
     // Map toggle button (now next to search bar)
-    lazy var mapToggleButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Map", for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
-        button.backgroundColor = Constants.Colors.secondaryBackground
-        button.layer.cornerRadius = 8
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.addTarget(self, action: #selector(toggleViewMode), for: .touchUpInside)
-        return button
+    /// Circles / Places / Map.
+    ///
+    /// This replaced a two-state "Map"/"List" button. The category and city
+    /// filters already existed but were reachable only from a hamburger inside
+    /// the map, so the one view that cuts across circles was three non-obvious
+    /// taps away from the screen whose default state is the pile of circles.
+    lazy var mapToggleButton: UISegmentedControl = {
+        let control = UISegmentedControl(items: ["Circles", "Places", "Map"])
+        control.selectedSegmentIndex = 0
+        control.translatesAutoresizingMaskIntoConstraints = false
+        control.addTarget(self, action: #selector(viewModeChanged), for: .valueChanged)
+        return control
     }()
     
     // Search results table view
@@ -653,6 +755,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     var isLoadingUploads = false
     var logoutButtonTopToCollectionConstraint: NSLayoutConstraint?
     var logoutButtonTopToMapConstraint: NSLayoutConstraint?
+    var logoutButtonTopToPlacesConstraint: NSLayoutConstraint?
     var logoutButtonTopToVideosConstraint: NSLayoutConstraint?
     var logoutButtonTopToUploadsConstraint: NSLayoutConstraint?
     
@@ -819,11 +922,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         // Setup segmented control
         contentTypeSegmentedControl.addTarget(self, action: #selector(contentTypeChanged), for: .valueChanged)
         
-        // Always start in list view
-        isShowingMap = false
-        circlesCollectionView.isHidden = false
-        mapContainerView.isHidden = true
-        mapToggleButton.setTitle("Map", for: .normal)
+        // Always start on the circles grid
+        setViewMode(.circles)
         
         // Clear any old saved view mode preference
         UserDefaults.standard.removeObject(forKey: "profileViewMode")
@@ -857,25 +957,11 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             }
         }
         
-        // Always reset to list view when navigating to Profile tab
-        if isShowingMap {
-            isShowingMap = false
-            
-            // Update toggle button title
-            mapToggleButton.setTitle("Map", for: .normal)
-            
-            // Show/hide views
-            circlesCollectionView.isHidden = false
-            mapContainerView.isHidden = true
-            
-            // Update constraints
-            logoutButtonTopToCollectionConstraint?.isActive = true
-            logoutButtonTopToMapConstraint?.isActive = false
-            
-            // Update scroll view layout
-            UIView.animate(withDuration: 0.3) {
-                self.view.layoutIfNeeded()
-            }
+        // Always land on the circles grid when navigating to the Profile tab.
+        // setViewMode owns the visibility and constraint changes, so there's
+        // nothing to repeat here.
+        if viewMode != .circles {
+            setViewMode(.circles)
         }
     }
     
@@ -974,6 +1060,12 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         profileHeaderView.addSubview(usernameLabel)
         profileHeaderView.addSubview(premiumBadgeView)
         profileHeaderView.addSubview(milestoneBadgeView)
+
+        // Tapping a badge (via its "i") explains what it means
+        premiumBadgeView.addGestureRecognizer(
+            UITapGestureRecognizer(target: self, action: #selector(premiumBadgeTapped)))
+        milestoneBadgeView.addGestureRecognizer(
+            UITapGestureRecognizer(target: self, action: #selector(milestoneBadgeTapped)))
         profileHeaderView.addSubview(profileImageView)
         profileHeaderView.addSubview(topStatsContainer)
         profileHeaderView.addSubview(bottomStatsContainer)
@@ -1006,7 +1098,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         contentView.addSubview(searchBarContainer)
         searchBarContainer.addSubview(searchBar)
         searchBarContainer.addSubview(searchScopeButton)
-        searchBarContainer.addSubview(mapToggleButton)
+        contentView.addSubview(mapToggleButton)
+        contentView.addSubview(organizeCirclesButton)
         updateSearchScopeMenu()
         contentView.addSubview(circlesHeaderView)
         circlesHeaderView.addSubview(circlesHeaderLabel)
@@ -1020,6 +1113,11 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         
         // Add map container (initially hidden)
         contentView.addSubview(mapContainerView)
+
+        // Must be in the hierarchy before the constraint block below references it.
+        setupPlacesLens()
+        placesLensHeightConstraint = placesLensContainer.heightAnchor.constraint(equalToConstant: 200)
+        placesLensHeightConstraint?.isActive = true
         mapContainerView.addSubview(filterContainerView)
         filterContainerView.addSubview(mapMenuChipButton)
         filterContainerView.addSubview(mapMyPlacesChipButton)
@@ -1223,18 +1321,25 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             searchBar.trailingAnchor.constraint(equalTo: searchScopeButton.leadingAnchor, constant: -4),
 
             searchScopeButton.centerYAnchor.constraint(equalTo: searchBarContainer.centerYAnchor),
-            searchScopeButton.trailingAnchor.constraint(equalTo: mapToggleButton.leadingAnchor, constant: -4),
+            searchScopeButton.trailingAnchor.constraint(equalTo: searchBarContainer.trailingAnchor),
             searchScopeButton.widthAnchor.constraint(equalToConstant: 32),
             searchScopeButton.heightAnchor.constraint(equalToConstant: 32),
-            
-            // Map toggle button
-            mapToggleButton.centerYAnchor.constraint(equalTo: searchBarContainer.centerYAnchor),
-            mapToggleButton.trailingAnchor.constraint(equalTo: searchBarContainer.trailingAnchor),
-            mapToggleButton.widthAnchor.constraint(equalToConstant: 60),
-            mapToggleButton.heightAnchor.constraint(equalToConstant: 36),
+
+            // Circles / Places / Map switcher — its own row. Three segments
+            // cannot share the search row with the field and the scope button
+            // without truncating; the old 2-state button was 60pt wide.
+            mapToggleButton.topAnchor.constraint(equalTo: searchBarContainer.bottomAnchor, constant: 8),
+            mapToggleButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
+            mapToggleButton.trailingAnchor.constraint(equalTo: organizeCirclesButton.leadingAnchor, constant: -8),
+            mapToggleButton.heightAnchor.constraint(equalToConstant: 32),
+
+            organizeCirclesButton.centerYAnchor.constraint(equalTo: mapToggleButton.centerYAnchor),
+            organizeCirclesButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+            organizeCirclesButton.widthAnchor.constraint(equalToConstant: 32),
+            organizeCirclesButton.heightAnchor.constraint(equalToConstant: 32),
             
             // Circles header
-            circlesHeaderView.topAnchor.constraint(equalTo: searchBarContainer.bottomAnchor, constant: Constants.Spacing.small),
+            circlesHeaderView.topAnchor.constraint(equalTo: mapToggleButton.bottomAnchor, constant: Constants.Spacing.small),
             circlesHeaderView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             circlesHeaderView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             circlesHeaderView.heightAnchor.constraint(equalToConstant: 0), // Hide header for Instagram style
@@ -1279,6 +1384,10 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             uploadsLoadingIndicator.centerYAnchor.constraint(equalTo: uploadsEmptyLabel.centerYAnchor),
             
             // Map container (same position as circles collection)
+            placesLensContainer.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor),
+            placesLensContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            placesLensContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+
             mapContainerView.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor),
             mapContainerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             mapContainerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
@@ -1362,6 +1471,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         // Create switchable constraints for logout button
         logoutButtonTopToCollectionConstraint = logoutButton.topAnchor.constraint(equalTo: circlesCollectionView.bottomAnchor, constant: Constants.Spacing.xlarge)
         logoutButtonTopToMapConstraint = logoutButton.topAnchor.constraint(equalTo: mapContainerView.bottomAnchor, constant: Constants.Spacing.xlarge)
+        logoutButtonTopToPlacesConstraint = logoutButton.topAnchor.constraint(equalTo: placesLensContainer.bottomAnchor, constant: Constants.Spacing.xlarge)
         logoutButtonTopToVideosConstraint = logoutButton.topAnchor.constraint(equalTo: videosCollectionView.bottomAnchor, constant: Constants.Spacing.xlarge)
         logoutButtonTopToUploadsConstraint = logoutButton.topAnchor.constraint(equalTo: uploadsCollectionView.bottomAnchor, constant: Constants.Spacing.xlarge)
         
@@ -1500,7 +1610,15 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         let followingTapGesture = UITapGestureRecognizer(target: self, action: #selector(followingStatTapped))
         followingStatView.addGestureRecognizer(followingTapGesture)
         followingStatView.isUserInteractionEnabled = true
-        
+
+        // Connections opens the same list UI. Owner-only — the API scopes
+        // connections to the caller — so updateButtonVisibility() switches the
+        // tap off when this profile belongs to someone else.
+        let connectionsTapGesture = UITapGestureRecognizer(target: self, action: #selector(connectionsStatTapped))
+        connectionsStatView.addGestureRecognizer(connectionsTapGesture)
+        connectionsStatView.isUserInteractionEnabled = true
+
+
         // Add tap gesture for profile image to view full-screen
         let profileImageTapGesture = UITapGestureRecognizer(target: self, action: #selector(profileImageTapped))
         profileImageView.addGestureRecognizer(profileImageTapGesture)
@@ -1796,36 +1914,76 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         syncStickyTabBar()
     }
 
-    @objc func toggleViewMode() {
-        isShowingMap.toggle()
-        
-        // Update toggle button title
-        mapToggleButton.setTitle(isShowingMap ? "List" : "Map", for: .normal)
-        
-        // Show/hide views
-        circlesCollectionView.isHidden = isShowingMap
-        mapContainerView.isHidden = !isShowingMap
-        
-        // Update constraints
-        if isShowingMap {
-            logoutButtonTopToCollectionConstraint?.isActive = false
-            logoutButtonTopToMapConstraint?.isActive = true
-            
-            // Load places for map if not already loaded
+    @objc func organizeCirclesTapped() {
+        let organizeVC = OrganizeCirclesViewController(circles: circles)
+        let nav = UINavigationController(rootViewController: organizeVC)
+        present(nav, animated: true)
+    }
+
+    @objc func viewModeChanged() {
+        switch mapToggleButton.selectedSegmentIndex {
+        case 1: setViewMode(.places)
+        case 2: setViewMode(.map)
+        default: setViewMode(.circles)
+        }
+    }
+
+    func setViewMode(_ mode: ProfileViewMode) {
+        viewMode = mode
+        isShowingMap = (mode == .map)
+
+        if let index = [ProfileViewMode.circles, .places, .map].firstIndex(of: mode) {
+            mapToggleButton.selectedSegmentIndex = index
+        }
+
+        circlesCollectionView.isHidden = (mode != .circles)
+        // Only your own circles — the advisor has nothing to say about
+        // someone else's, and no right to propose changes to them.
+        //
+        // Also Premium-only. The server enforces that (and would paywall a free
+        // account that got here anyway), but hiding the control is kinder than
+        // offering something that can only end in a paywall. A wand icon that
+        // always leads to an upsell teaches people to ignore it.
+        let isOwnProfile = user?.id == AuthService.shared.getUserId()
+        let isPremium = SubscriptionManager.shared.isSubscribed
+        organizeCirclesButton.isHidden = (mode != .circles) || !isOwnProfile || !isPremium
+        placesLensContainer.isHidden = (mode != .places)
+        mapContainerView.isHidden = (mode != .map)
+
+        logoutButtonTopToCollectionConstraint?.isActive = (mode == .circles)
+        logoutButtonTopToMapConstraint?.isActive = (mode == .map)
+        logoutButtonTopToPlacesConstraint?.isActive = (mode == .places)
+
+        // Places and Map read from the same `allPlaces`, so whichever is opened
+        // first pays the load and the other is instant.
+        if mode == .places {
+            refreshPlacesLensLocation()
+        }
+
+        if mode == .places || mode == .map {
             if allPlaces.isEmpty {
                 loadAllPlaces()
             } else {
-                // Places already loaded, just filter and update map
                 filterPlaces()
+                if mode == .places {
+                    refreshPlacesLensChips()
+                    reloadPlacesLens()
+                }
             }
-        } else {
-            logoutButtonTopToMapConstraint?.isActive = false
-            logoutButtonTopToCollectionConstraint?.isActive = true
         }
-        
+
         // Update scroll view layout
         UIView.animate(withDuration: 0.3) {
             self.view.layoutIfNeeded()
+        }
+
+        // The fit computed while the map was still hidden used a stale frame —
+        // redo it once the map is actually on screen so the zoom matches the
+        // filtered pins (Arizona filter -> Arizona, not the whole US).
+        if mode == .map {
+            DispatchQueue.main.async { [weak self] in
+                self?.zoomMapToFilteredPins(animated: false)
+            }
         }
         
         // Note: We don't save view mode preference - always default to list view
@@ -1881,10 +2039,11 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             children: categoryActions
         ))
 
-        // City submenu (profile-specific)
+        // City submenu (profile-specific). lensCity prefers the server-derived
+        // city and never returns a ZIP or country fragment.
         var cityPlaceCount: [String: Int] = [:]
         for place in allPlaces {
-            if let city = extractCityFromAddress(place.address) {
+            if let city = place.lensCity {
                 cityPlaceCount[city, default: 0] += 1
             }
         }
@@ -2052,10 +2211,21 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         showFollowersList(userId: user.id, listType: .following)
     }
     
+    @objc func connectionsStatTapped() {
+        guard let currentUserId = AuthService.shared.getUserId() else { return }
+
+        // Own profile only: `GET /connections` always returns the caller's own
+        // connections, so there's nothing to show for another user.
+        let profileUserId = user?.id ?? currentUserId
+        guard IDNormalizer.isSameUser(profileUserId, currentUserId) else { return }
+
+        showFollowersList(userId: currentUserId, listType: .connections)
+    }
+
     @objc func dismissKeyboard() {
         view.endEditing(true)
     }
-    
+
     func showFollowersList(userId: String, listType: FollowListType) {
         let followersVC = FollowersListViewController()
         followersVC.userId = userId
@@ -2274,7 +2444,10 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         fullScreenMapVC.delegate = self
         fullScreenMapVC.viewMode = .allPlaces
         fullScreenMapVC.isPresentedModally = true
-        
+        // A profile map shows one person's places — use the content filter
+        // (Category), not the network-connection filter/avatar strip.
+        fullScreenMapVC.showsConnectionFilter = false
+
         let navigationController = UINavigationController(rootViewController: fullScreenMapVC)
         navigationController.modalPresentationStyle = .fullScreen
         present(navigationController, animated: true)
@@ -2527,7 +2700,11 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     func updateButtonVisibility() {
         guard let user = user else { return }
         let isCurrentUser = user.id == AuthService.shared.getUserId()
-        
+
+        // Only your own Connections stat opens a list; there's no endpoint for
+        // another user's connections.
+        connectionsStatView.isUserInteractionEnabled = isCurrentUser
+
         // Don't show connection buttons for current user
         if isCurrentUser {
             messageButton.isHidden = true
@@ -2666,14 +2843,23 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         // Use centralized filtering extensions
         let unifiedCategory = selectedCategory.map { UnifiedCategory.standard($0) }
         let currentUserId = AuthService.shared.getUserId() ?? ""
-        
+
         filteredPlaces = allPlaces.filtered(
             category: unifiedCategory,
             connectionId: selectedConnectionId,
             city: selectedCity,
             currentUserId: currentUserId
         )
-        
+
+        // Places-lens filters apply here too, so switching to the Map tab shows
+        // exactly the places the lens is filtered to.
+        if let group = selectedRegionGroup {
+            filteredPlaces = filteredPlaces.filter { group.contains($0) }
+        }
+        if selectedPlacesGroup != .all {
+            filteredPlaces = filteredPlaces.filter { selectedPlacesGroup.matches($0.category.rawValue) }
+        }
+
         // Update map pins
         updateMapPins()
 
@@ -2687,7 +2873,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     func updateMapPins() {
         // Remove existing annotations
         mapView.removeAnnotations(mapView.annotations)
-        
+
         // Add filtered places as pins using PlaceAnnotation for custom styling
         for place in filteredPlaces {
             if place.location?.clLocation != nil {
@@ -2695,11 +2881,35 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                 mapView.addAnnotation(annotation)
             }
         }
-        
-        // Zoom to show all pins
-        if !filteredPlaces.isEmpty {
-            mapView.showAnnotations(mapView.annotations, animated: true)
+
+        zoomMapToFilteredPins(animated: true)
+    }
+
+    /// Fits the map to exactly the filtered pins: an Arizona filter fills the
+    /// screen with Arizona, a coast-to-coast result shows the country. Padded
+    /// so edge pins aren't glued to the frame; a single pin gets a city-scale
+    /// span instead of a useless max-zoom.
+    func zoomMapToFilteredPins(animated: Bool) {
+        let annotations = mapView.annotations.filter { !($0 is MKUserLocation) }
+        guard !annotations.isEmpty else { return }
+
+        if annotations.count == 1, let only = annotations.first {
+            let region = MKCoordinateRegion(
+                center: only.coordinate,
+                latitudinalMeters: 2_000,
+                longitudinalMeters: 2_000
+            )
+            mapView.setRegion(region, animated: animated)
+            return
         }
+
+        var union = MKMapRect.null
+        for annotation in annotations {
+            let point = MKMapPoint(annotation.coordinate)
+            union = union.union(MKMapRect(origin: point, size: MKMapSize(width: 0, height: 0)))
+        }
+        let padding = UIEdgeInsets(top: 56, left: 40, bottom: 40, right: 40)
+        mapView.setVisibleMapRect(union, edgePadding: padding, animated: animated)
     }
     
     
@@ -3131,6 +3341,45 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             milestoneBadgeToNameConstraint?.isActive = false
             milestoneBadgeToPremiumConstraint?.isActive = true
         }
+    }
+
+    // Tapping the place-level badge shows every tier, with the current one
+    // highlighted, so people can see what they've earned and what's next.
+    @objc func milestoneBadgeTapped() {
+        let current = PlaceMilestones.badge(for: lastKnownPlaceCount)
+        let rows = PlaceMilestones.all.map { tier in
+            BadgeInfoViewController.Row(
+                iconName: tier.iconName,
+                iconColor: tier.color,
+                title: tier.name,
+                subtitle: "\(tier.threshold)+ places",
+                isCurrent: current?.threshold == tier.threshold
+            )
+        }
+        let vc = BadgeInfoViewController(
+            title: "Place Levels",
+            subtitle: "Earn a new badge as you save more places. Your current badge shows next to your name.",
+            rows: rows
+        )
+        present(vc, animated: true)
+    }
+
+    // Tapping the premium badge shows what the subscription includes.
+    @objc func premiumBadgeTapped() {
+        let rows = PremiumFeatures.features.map { feature in
+            BadgeInfoViewController.Row(
+                iconName: feature.iconName,
+                iconColor: Constants.Colors.primary,
+                title: feature.title,
+                subtitle: feature.description
+            )
+        }
+        let vc = BadgeInfoViewController(
+            title: "FavCircles Premium",
+            subtitle: "Thanks for being a member — here's what's included:",
+            rows: rows
+        )
+        present(vc, animated: true)
     }
 
     func fetchUserStats(userId: String) {

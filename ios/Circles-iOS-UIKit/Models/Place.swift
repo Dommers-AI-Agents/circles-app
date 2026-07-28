@@ -115,6 +115,13 @@ struct Place: Codable, Identifiable {
     var circleName: String? // Added by backend for check-in place selection
     var followersCount: Int? = nil // Venue followers (from the canonical global place record)
     var isFollowing: Bool? = nil // Whether the current user follows this venue
+    // Derived location lens (cached server-side from the address; see the
+    // backend's placeLocationDerivation). Nil on legacy docs the backfill
+    // couldn't place — callers fall back to parsing the address.
+    var city: String? = nil
+    var state: String? = nil          // "North Carolina"
+    var stateCode: String? = nil      // "NC"
+    var neighborhood: String? = nil   // e.g. Apple subLocality, often nil
 
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -123,6 +130,7 @@ struct Place: Codable, Identifiable {
         case photos, videos, category, customCategoryId, subcategory, rating, userRatingsTotal, notes, privateNotes, publicNotes, tags, reviews, openingHours
         case priceLevel, likes, likesCount, commentsCount, circleId, addedBy, addedByUser, privacy, createdAt, updatedAt, isNew, circleName
         case followersCount, isFollowing
+        case city, state, stateCode, neighborhood
     }
     
     init(from decoder: Decoder) throws {
@@ -210,6 +218,10 @@ struct Place: Codable, Identifiable {
         self.isNew = try container.decodeIfPresent(Bool.self, forKey: .isNew)
         self.followersCount = try container.decodeIfPresent(Int.self, forKey: .followersCount)
         self.isFollowing = try container.decodeIfPresent(Bool.self, forKey: .isFollowing)
+        self.city = try container.decodeIfPresent(String.self, forKey: .city)
+        self.state = try container.decodeIfPresent(String.self, forKey: .state)
+        self.stateCode = try container.decodeIfPresent(String.self, forKey: .stateCode)
+        self.neighborhood = try container.decodeIfPresent(String.self, forKey: .neighborhood)
     }
     
     // Manual initializer for creating Place instances in code
@@ -752,14 +764,11 @@ extension Array where Element == Place {
     // Filter by city
     func filtered(by city: String?) -> [Place] {
         guard let city = city else { return self }
+        // lensCity prefers the server-derived city and handles every address
+        // format (the old component parse landed on the ZIP for Apple-style
+        // "..., City, ST, 12345, United States" addresses).
         return self.filter { place in
-            // Extract city from address (assumes format: "..., City, State/Country")
-            let components = place.address.components(separatedBy: ", ")
-            if components.count >= 2 {
-                let cityComponent = components[components.count - 2]
-                return cityComponent.localizedCaseInsensitiveContains(city)
-            }
-            return false
+            place.lensCity?.localizedCaseInsensitiveCompare(city) == .orderedSame
         }
     }
     
