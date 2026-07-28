@@ -4200,7 +4200,17 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         )
         inviteButton.accessibilityLabel = "Invite Connections"
 
-        navigationItem.leftBarButtonItems = [helpButton, inviteButton]
+        // Browse the user's places by location (State › City), independent of
+        // how their circles are organized.
+        let browseButton = UIBarButtonItem(
+            image: UIImage(systemName: "map"),
+            style: .plain,
+            target: self,
+            action: #selector(browseByLocationTapped)
+        )
+        browseButton.accessibilityLabel = "Browse by Location"
+
+        navigationItem.leftBarButtonItems = [helpButton, inviteButton, browseButton]
         
         Task { @MainActor in
             navigationItem.rightBarButtonItems = makeRightBarButtons()
@@ -5708,6 +5718,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         let navController = UINavigationController(rootViewController: helpVC)
         navController.modalPresentationStyle = .fullScreen
         present(navController, animated: true)
+    }
+
+    @objc func browseByLocationTapped() {
+        navigationController?.pushViewController(LocationBrowseViewController(), animated: true)
     }
 
     @objc func inviteButtonTapped() {
