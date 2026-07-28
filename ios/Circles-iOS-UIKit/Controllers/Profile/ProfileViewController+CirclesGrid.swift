@@ -511,6 +511,10 @@ extension ProfileViewController: UICollectionViewDropDelegate {
             Logger.debug("🔍 ProfileViewController - Loaded \(self.allPlaces.count) total unique places for search (after deduplication)")
             // Update map with all places by default
             self.filterPlaces()
+
+            // The map's filter chips build from what's actually saved, so they
+            // can only populate once the places have arrived.
+            self.refreshPlacesLensChips()
         }
     }
     

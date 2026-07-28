@@ -22,13 +22,10 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     // How the profile is currently being viewed. Circles organise places by
     // whatever scheme made sense when they were created — city, type, person,
     // a particular trip — so `places` exists to cut across all of them at once.
-    enum ProfileViewMode { case circles, places, map }
+    enum ProfileViewMode { case circles, map }
     var viewMode: ProfileViewMode = .circles
     var selectedPlacesGroup: PlaceCategoryGroup = .all
-    var placesLensRows: [Place] = []
-    var placesLensHeightConstraint: NSLayoutConstraint?
-    // Adaptive region chips (see RegionGrouper): sized by how many places the
-    // user has, so the bar is never a parade of one-place ZIP codes.
+    // Region chips (see RegionGrouper): one per state, most places first.
     var placesRegionGroups: [RegionGroup] = []
     var selectedRegionGroupId: String?
     var selectedRegionGroup: RegionGroup? {
@@ -47,17 +44,6 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         return button
     }()
 
-    /// Supplies the "where am I" anchor for ordering cities in the Places lens.
-    lazy var placesLensLocationProvider = OneShotLocationProvider()
-    var placesLensResolvedLocation: CLLocation?
-
-    lazy var placesLensContainer: UIView = {
-        let view = UIView()
-        view.isHidden = true
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
-
     lazy var placesCategoryChipBar: CategoryChipBar = {
         let bar = CategoryChipBar()
         bar.translatesAutoresizingMaskIntoConstraints = false
@@ -66,27 +52,6 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
 
     lazy var placesCityChipBar = BrowseChipBar()
 
-    lazy var placesLensTableView: UITableView = {
-        let table = UITableView()
-        table.backgroundColor = .clear
-        table.separatorStyle = .none
-        table.rowHeight = 72
-        table.isScrollEnabled = false // lives inside the profile's scroll view
-        table.register(QuickAccessPlaceCell.self, forCellReuseIdentifier: "ProfilePlacesLensCell")
-        table.translatesAutoresizingMaskIntoConstraints = false
-        return table
-    }()
-
-    lazy var placesLensEmptyLabel: UILabel = {
-        let label = UILabel()
-        label.font = .systemFont(ofSize: 14)
-        label.textColor = .secondaryLabel
-        label.textAlignment = .center
-        label.numberOfLines = 0
-        label.isHidden = true
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
     var isSearching = false
     var searchResultsHeightConstraint: NSLayoutConstraint?
     var videos: [PlaceVideo] = []
@@ -604,14 +569,15 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }()
     
     // Map toggle button (now next to search bar)
-    /// Circles / Places / Map.
+    /// Circles / Map.
     ///
-    /// This replaced a two-state "Map"/"List" button. The category and city
-    /// filters already existed but were reachable only from a hamburger inside
-    /// the map, so the one view that cuts across circles was three non-obvious
-    /// taps away from the screen whose default state is the pile of circles.
+    /// There was briefly a third "Places" segment (a filterable flat list), but
+    /// it duplicated the map's list mode — so the category/state filter chips
+    /// moved onto the Map view itself and the list segment went away. Circles
+    /// is the default; Map is the cross-circle browse (chips + pins + a
+    /// closest-first list with distances).
     lazy var mapToggleButton: UISegmentedControl = {
-        let control = UISegmentedControl(items: ["Circles", "Places", "Map"])
+        let control = UISegmentedControl(items: ["Circles", "Map"])
         control.selectedSegmentIndex = 0
         control.translatesAutoresizingMaskIntoConstraints = false
         control.addTarget(self, action: #selector(viewModeChanged), for: .valueChanged)
@@ -755,7 +721,6 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     var isLoadingUploads = false
     var logoutButtonTopToCollectionConstraint: NSLayoutConstraint?
     var logoutButtonTopToMapConstraint: NSLayoutConstraint?
-    var logoutButtonTopToPlacesConstraint: NSLayoutConstraint?
     var logoutButtonTopToVideosConstraint: NSLayoutConstraint?
     var logoutButtonTopToUploadsConstraint: NSLayoutConstraint?
     
@@ -1113,13 +1078,10 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         // Add map container (initially hidden)
         contentView.addSubview(mapContainerView)
 
-        // Must be in the hierarchy before the constraint block below references it.
-        setupPlacesLens()
-        placesLensHeightConstraint = placesLensContainer.heightAnchor.constraint(equalToConstant: 200)
-        placesLensHeightConstraint?.isActive = true
+        // Filter chips (category + state) sit above the map; the old
+        // hamburger/Me chips they replace are gone. The list toggle stays.
         mapContainerView.addSubview(filterContainerView)
-        filterContainerView.addSubview(mapMenuChipButton)
-        filterContainerView.addSubview(mapMyPlacesChipButton)
+        setupPlacesLens()
         filterContainerView.addSubview(mapListChipButton)
         mapContainerView.addSubview(mapView)
         mapContainerView.addSubview(mapPlacesListTableView)
@@ -1383,34 +1345,21 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             uploadsLoadingIndicator.centerYAnchor.constraint(equalTo: uploadsEmptyLabel.centerYAnchor),
             
             // Map container (same position as circles collection)
-            placesLensContainer.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor),
-            placesLensContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            placesLensContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-
             mapContainerView.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor),
             mapContainerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             mapContainerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            mapContainerView.heightAnchor.constraint(equalToConstant: 400),
-            
-            // Filter container
+            mapContainerView.heightAnchor.constraint(equalToConstant: 440),
+
+            // Filter bars above the map: category chips (with the list toggle
+            // beside them) over the state chips. The chip bars themselves are
+            // constrained in setupPlacesLens.
             filterContainerView.topAnchor.constraint(equalTo: mapContainerView.topAnchor),
             filterContainerView.leadingAnchor.constraint(equalTo: mapContainerView.leadingAnchor),
             filterContainerView.trailingAnchor.constraint(equalTo: mapContainerView.trailingAnchor),
-            filterContainerView.heightAnchor.constraint(equalToConstant: 44),
-            
-            // Overlay control chips (hamburger, Me, list — same as home map)
-            mapMenuChipButton.leadingAnchor.constraint(equalTo: filterContainerView.leadingAnchor, constant: Constants.Spacing.medium),
-            mapMenuChipButton.centerYAnchor.constraint(equalTo: filterContainerView.centerYAnchor),
-            mapMenuChipButton.widthAnchor.constraint(equalToConstant: 36),
-            mapMenuChipButton.heightAnchor.constraint(equalToConstant: 36),
+            filterContainerView.heightAnchor.constraint(equalToConstant: 88),
 
-            mapMyPlacesChipButton.leadingAnchor.constraint(equalTo: mapMenuChipButton.trailingAnchor, constant: 8),
-            mapMyPlacesChipButton.centerYAnchor.constraint(equalTo: filterContainerView.centerYAnchor),
-            mapMyPlacesChipButton.widthAnchor.constraint(equalToConstant: 36),
-            mapMyPlacesChipButton.heightAnchor.constraint(equalToConstant: 36),
-
-            mapListChipButton.leadingAnchor.constraint(equalTo: mapMyPlacesChipButton.trailingAnchor, constant: 8),
-            mapListChipButton.centerYAnchor.constraint(equalTo: filterContainerView.centerYAnchor),
+            mapListChipButton.trailingAnchor.constraint(equalTo: filterContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
+            mapListChipButton.topAnchor.constraint(equalTo: filterContainerView.topAnchor, constant: 6),
             mapListChipButton.widthAnchor.constraint(equalToConstant: 36),
             mapListChipButton.heightAnchor.constraint(equalToConstant: 36),
 
@@ -1470,7 +1419,6 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         // Create switchable constraints for logout button
         logoutButtonTopToCollectionConstraint = logoutButton.topAnchor.constraint(equalTo: circlesCollectionView.bottomAnchor, constant: Constants.Spacing.xlarge)
         logoutButtonTopToMapConstraint = logoutButton.topAnchor.constraint(equalTo: mapContainerView.bottomAnchor, constant: Constants.Spacing.xlarge)
-        logoutButtonTopToPlacesConstraint = logoutButton.topAnchor.constraint(equalTo: placesLensContainer.bottomAnchor, constant: Constants.Spacing.xlarge)
         logoutButtonTopToVideosConstraint = logoutButton.topAnchor.constraint(equalTo: videosCollectionView.bottomAnchor, constant: Constants.Spacing.xlarge)
         logoutButtonTopToUploadsConstraint = logoutButton.topAnchor.constraint(equalTo: uploadsCollectionView.bottomAnchor, constant: Constants.Spacing.xlarge)
         
@@ -1921,8 +1869,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
 
     @objc func viewModeChanged() {
         switch mapToggleButton.selectedSegmentIndex {
-        case 1: setViewMode(.places)
-        case 2: setViewMode(.map)
+        case 1: setViewMode(.map)
         default: setViewMode(.circles)
         }
     }
@@ -1931,7 +1878,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         viewMode = mode
         isShowingMap = (mode == .map)
 
-        if let index = [ProfileViewMode.circles, .places, .map].firstIndex(of: mode) {
+        if let index = [ProfileViewMode.circles, .map].firstIndex(of: mode) {
             mapToggleButton.selectedSegmentIndex = index
         }
 
@@ -1946,28 +1893,17 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         let isOwnProfile = user?.id == AuthService.shared.getUserId()
         let isPremium = SubscriptionManager.shared.isSubscribed
         organizeCirclesButton.isHidden = (mode != .circles) || !isOwnProfile || !isPremium
-        placesLensContainer.isHidden = (mode != .places)
         mapContainerView.isHidden = (mode != .map)
 
         logoutButtonTopToCollectionConstraint?.isActive = (mode == .circles)
         logoutButtonTopToMapConstraint?.isActive = (mode == .map)
-        logoutButtonTopToPlacesConstraint?.isActive = (mode == .places)
 
-        // Places and Map read from the same `allPlaces`, so whichever is opened
-        // first pays the load and the other is instant.
-        if mode == .places {
-            refreshPlacesLensLocation()
-        }
-
-        if mode == .places || mode == .map {
+        if mode == .map {
             if allPlaces.isEmpty {
                 loadAllPlaces()
             } else {
                 filterPlaces()
-                if mode == .places {
-                    refreshPlacesLensChips()
-                    reloadPlacesLens()
-                }
+                refreshPlacesLensChips()
             }
         }
 
@@ -1984,8 +1920,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                 self?.zoomMapToFilteredPins(animated: false)
             }
         }
-        
-        // Note: We don't save view mode preference - always default to list view
+
+        // Note: We don't save view mode preference - always default to circles
     }
     
     /// Builds the hamburger chip's menu: Connections, Category and City
@@ -2424,7 +2360,10 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                         // Refresh connections to get updated list
                         NetworkManager.shared.loadConnections()
                     case .failure(let error):
-                        self.showAlert(title: "Error", message: "Failed to send connection request: \(error.localizedDescription)")
+                        // Show the server's own wording ("Cannot connect to
+                        // yourself", "Connection request already sent") rather
+                        // than appending a raw localizedDescription.
+                        self.showError((error as? APIError)?.serverMessage ?? "Failed to send connection request")
                     }
                 }
             }
