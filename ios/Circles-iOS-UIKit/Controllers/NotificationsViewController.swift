@@ -354,41 +354,88 @@ class NotificationsViewController: BaseViewController {
     
     // MARK: - Navigation
     private func navigateToPlace(notification: AppNotification) {
-        guard let placeId = notification.data?.placeId,
-              let circleId = notification.data?.circleId else { return }
-        
-        // Show loading indicator
+        // circleId is optional — a like/comment notification often has none, and
+        // PlaceDetailViewController takes an optional circle. Open the place
+        // either way; the circle is just extra context when we have it.
+        guard let placeId = notification.data?.placeId, !placeId.isEmpty else { return }
+
         let loadingAlert = AlertPresenter.showLoading(message: "Opening place...", from: self)
-        
-        // First, fetch the circle
-        CircleService.shared.fetchCircleById(id: circleId) { [weak self] result in
-            switch result {
-            case .success(let circle):
-                // Then fetch the place
-                PlaceService.shared.fetchPlaceById(id: placeId) { placeResult in
-                    DispatchQueue.main.async {
-                        loadingAlert.dismiss(animated: true) {
-                            switch placeResult {
-                            case .success(let place):
-                                // Navigate to place detail
-                                let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
-                                self?.navigationController?.pushViewController(placeDetailVC, animated: true)
-                                
-                            case .failure(let error):
-                                self?.showError(error)
-                            }
-                        }
-                    }
-                }
-                
-            case .failure(let error):
+        let circleId = notification.data?.circleId
+
+        let openPlace: (Circle?) -> Void = { [weak self] circle in
+            PlaceService.shared.fetchPlaceById(id: placeId) { placeResult in
                 DispatchQueue.main.async {
                     loadingAlert.dismiss(animated: true) {
-                        self?.showError(error)
+                        guard let self = self else { return }
+                        switch placeResult {
+                        case .success(let place):
+                            self.navigationController?.pushViewController(
+                                PlaceDetailViewController(place: place, circle: circle), animated: true)
+                        case .failure(let error):
+                            self.showError(error)
+                        }
                     }
                 }
             }
         }
+
+        if let circleId = circleId, !circleId.isEmpty {
+            CircleService.shared.fetchCircleById(id: circleId) { result in
+                DispatchQueue.main.async {
+                    // Open the place even if the circle can't be fetched.
+                    openPlace((try? result.get()))
+                }
+            }
+        } else {
+            openPlace(nil)
+        }
+    }
+
+    /// Open a user's profile from a notification (fetches the full user first,
+    /// same fetch-then-open pattern as navigateToPlace).
+    private func navigateToProfile(userId: String) {
+        let loadingAlert = AlertPresenter.showLoading(message: "Opening profile...", from: self)
+        UserService.shared.fetchUserProfile(userId: userId) { [weak self] result in
+            DispatchQueue.main.async {
+                loadingAlert.dismiss(animated: true) {
+                    guard let self = self else { return }
+                    switch result {
+                    case .success(let user):
+                        self.navigationController?.pushViewController(ProfileViewController(user: user), animated: true)
+                    case .failure(let error):
+                        self.showError(error)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Route a tapped notification to the most relevant destination.
+    private func route(_ notification: AppNotification) {
+        let fromUserId = notification.data?.fromUserId ?? ""
+        switch notification.type {
+        case "connection_request":
+            // Actioned via inline Accept/Decline; row body → My Network.
+            routeToMyNetwork()
+        case "connection_accepted":
+            fromUserId.isEmpty ? routeToMyNetwork() : navigateToProfile(userId: fromUserId)
+        case "new_follower":
+            fromUserId.isEmpty ? routeToMyNetwork() : navigateToProfile(userId: fromUserId)
+        default:
+            // Place-centric (like/comment/new place/suggestion) → the place;
+            // otherwise the person who triggered it; otherwise nothing to open.
+            if let placeId = notification.data?.placeId, !placeId.isEmpty {
+                navigateToPlace(notification: notification)
+            } else if !fromUserId.isEmpty {
+                navigateToProfile(userId: fromUserId)
+            }
+        }
+    }
+
+    /// Mark a notification read on tap so the bell badge reflects triage.
+    private func markReadIfNeeded(_ notification: AppNotification) {
+        guard !notification.read else { return }
+        NotificationService.shared.markNotificationAsRead(notificationId: notification.id) { _ in }
     }
 }
 
@@ -401,6 +448,7 @@ extension NotificationsViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "NotificationCell", for: indexPath) as! NotificationCell
         let notification = notifications[indexPath.row]
+        cell.delegate = self
         cell.configure(with: notification)
         return cell
     }
@@ -411,7 +459,8 @@ extension NotificationsViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         let notification = notifications[indexPath.row]
-        navigateToPlace(notification: notification)
+        markReadIfNeeded(notification)
+        route(notification)
     }
     
     func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
@@ -468,9 +517,103 @@ extension NotificationsViewController: UITableViewDelegate {
     }
 }
 
+// MARK: - Inline connection request actions
+extension NotificationsViewController: NotificationCellDelegate {
+    func notificationCell(_ cell: NotificationCell, didTapAcceptFor notification: AppNotification) {
+        guard let connectionId = notification.data?.connectionId, !connectionId.isEmpty else {
+            routeToMyNetwork() // Older notification without an id — send them where they can act
+            return
+        }
+        NetworkManager.shared.acceptConnection(connectionId) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success:
+                    self.showSuccess("Connection accepted")
+                    self.removeActionedNotification(notification)
+                case .failure(let error):
+                    self.showError(error)
+                    self.tableView.reloadData() // re-enable the row's buttons
+                }
+            }
+        }
+    }
+
+    func notificationCell(_ cell: NotificationCell, didTapDeclineFor notification: AppNotification) {
+        guard let connectionId = notification.data?.connectionId, !connectionId.isEmpty else {
+            routeToMyNetwork()
+            return
+        }
+        NetworkManager.shared.declineConnection(connectionId) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success:
+                    self.removeActionedNotification(notification)
+                case .failure(let error):
+                    self.showError(error)
+                    self.tableView.reloadData()
+                }
+            }
+        }
+    }
+
+    func notificationCell(_ cell: NotificationCell, didTapFollowBackFor notification: AppNotification) {
+        guard let userId = notification.data?.fromUserId, !userId.isEmpty else {
+            routeToMyNetwork()
+            return
+        }
+
+        // The cell has already flipped to "Following" — a follow is instant and
+        // reversible, so there's nothing to wait for. Only failure needs to say
+        // anything.
+        APIService.shared.request(
+            endpoint: "users/\(userId)/follow",
+            method: .post,
+            body: [:],
+            requiresAuth: true
+        ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if case .failure(let error) = result {
+                    self.showError(error)
+                    self.tableView.reloadData()
+                }
+            }
+        }
+    }
+
+    /// Once a request is accepted/declined the notification is stale — drop it
+    /// from the list and clean it up server-side so it doesn't reappear on
+    /// refresh. The tab badge is driven separately by pendingConnections, which
+    /// acceptConnection/declineConnection already update.
+    private func removeActionedNotification(_ notification: AppNotification) {
+        NotificationService.shared.deleteNotification(notificationId: notification.id) { _ in }
+        activeNotifications.removeAll { $0.id == notification.id }
+        archivedNotifications.removeAll { $0.id == notification.id }
+        tableView.reloadData()
+        updateUI()
+    }
+
+    private func routeToMyNetwork() {
+        // My Network is tab index 1 (see CirclesTabBarController)
+        tabBarController?.selectedIndex = 1
+    }
+}
+
+// MARK: - NotificationCellDelegate
+protocol NotificationCellDelegate: AnyObject {
+    func notificationCell(_ cell: NotificationCell, didTapAcceptFor notification: AppNotification)
+    func notificationCell(_ cell: NotificationCell, didTapDeclineFor notification: AppNotification)
+    func notificationCell(_ cell: NotificationCell, didTapFollowBackFor notification: AppNotification)
+}
+
 // MARK: - NotificationCell
 class NotificationCell: UITableViewCell {
-    
+
+    weak var delegate: NotificationCellDelegate?
+    private var notification: AppNotification?
+
     // MARK: - UI Elements
     private let containerView: UIView = {
         let view = UIView()
@@ -532,7 +675,44 @@ class NotificationCell: UITableViewCell {
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-    
+
+    // Inline Accept/Decline for connection_request notifications, so a
+    // recipient (often with push off) can act right where they see the request
+    // instead of hunting through the My Network tab.
+    private lazy var acceptButton: UIButton = {
+        let button = UIButton.smallActionButton(title: "Accept", style: .primary)
+        button.addTarget(self, action: #selector(acceptTapped), for: .touchUpInside)
+        return button
+    }()
+
+    private lazy var declineButton: UIButton = {
+        let button = UIButton.smallActionButton(title: "Decline", style: .secondary)
+        button.addTarget(self, action: #selector(declineTapped), for: .touchUpInside)
+        return button
+    }()
+
+    /// "X started following you" is the single best moment to offer a follow
+    /// back: the other person has already opted in, so it's one tap with no
+    /// approval step. Previously this row was read-only and the moment passed.
+    private lazy var followBackButton: UIButton = {
+        let button = UIButton.smallActionButton(title: "Follow back", style: .primary)
+        button.addTarget(self, action: #selector(followBackTapped), for: .touchUpInside)
+        return button
+    }()
+
+    private lazy var actionStack: UIStackView = {
+        let stack = UIStackView(arrangedSubviews: [acceptButton, declineButton, followBackButton])
+        stack.axis = .horizontal
+        stack.distribution = .fillEqually
+        stack.spacing = 10
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.isHidden = true
+        return stack
+    }()
+
+    // Activated only for connection-request rows (adds the button row's height)
+    private var actionConstraints: [NSLayoutConstraint] = []
+
     // MARK: - Init
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -555,7 +735,20 @@ class NotificationCell: UITableViewCell {
         containerView.addSubview(titleLabel)
         containerView.addSubview(bodyLabel)
         containerView.addSubview(timeLabel)
-        
+        containerView.addSubview(actionStack)
+
+        // Toggled on for connection_request rows in configure(). bodyLabel's
+        // existing bottom constraint is a `<=`, so when these are inactive the
+        // cell sizes exactly as before; when active the stack pins the bottom
+        // and the cell grows to include the button row.
+        actionConstraints = [
+            actionStack.topAnchor.constraint(equalTo: bodyLabel.bottomAnchor, constant: 10),
+            actionStack.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+            actionStack.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
+            actionStack.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -12),
+            actionStack.heightAnchor.constraint(equalToConstant: 34)
+        ]
+
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
             containerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
@@ -593,17 +786,19 @@ class NotificationCell: UITableViewCell {
     
     // MARK: - Configuration
     func configure(with notification: AppNotification) {
+        self.notification = notification
+        followedBack = false
         titleLabel.text = notification.title
         bodyLabel.text = notification.body
         timeLabel.text = formatTime(notification.createdAt)
-        
+
         // Set background tint for unread notifications
         if !notification.read {
             containerView.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.05)
         } else {
             containerView.backgroundColor = .secondarySystemGroupedBackground
         }
-        
+
         // Configure icon based on type
         switch notification.type {
         case "place_like":
@@ -612,11 +807,42 @@ class NotificationCell: UITableViewCell {
         case "place_comment":
             iconView.image = UIImage(systemName: "bubble.left.fill")
             iconBackgroundView.backgroundColor = .systemBlue
+        case "connection_request":
+            iconView.image = UIImage(systemName: "person.badge.plus.fill")
+            iconBackgroundView.backgroundColor = Constants.Colors.primary
+        case "new_follower":
+            iconView.image = UIImage(systemName: "person.fill.checkmark")
+            iconBackgroundView.backgroundColor = Constants.Colors.primary
         default:
             iconView.image = UIImage(systemName: "bell.fill")
             iconBackgroundView.backgroundColor = .systemGray
         }
-        
+
+        // Inline Accept/Decline only for a live, actionable connection request
+        // (needs a connectionId; archived requests are read-only history)
+        let hasConnectionId = !(notification.data?.connectionId ?? "").isEmpty
+        let isLive = notification.archived != true
+        let showConnectionActions = notification.type == "connection_request" && hasConnectionId && isLive
+        // Follow back needs someone to follow, and is pointless once you
+        // already follow them.
+        let showFollowBack = notification.type == "new_follower"
+            && !(notification.data?.fromUserId ?? "").isEmpty
+            && isLive
+            && !followedBack
+
+        acceptButton.isHidden = !showConnectionActions
+        declineButton.isHidden = !showConnectionActions
+        followBackButton.isHidden = !showFollowBack
+
+        if showConnectionActions || showFollowBack {
+            actionStack.isHidden = false
+            NSLayoutConstraint.activate(actionConstraints)
+            setActionsEnabled(true)
+        } else {
+            NSLayoutConstraint.deactivate(actionConstraints)
+            actionStack.isHidden = true
+        }
+
         // Load user image if available
         if let photoUrl = notification.data?.fromUserPhoto, !photoUrl.isEmpty {
             ImageService.shared.loadImage(from: photoUrl) { [weak self] image in
@@ -625,6 +851,37 @@ class NotificationCell: UITableViewCell {
                 }
             }
         }
+    }
+
+    // MARK: - Connection request actions
+    private func setActionsEnabled(_ enabled: Bool) {
+        acceptButton.isEnabled = enabled
+        declineButton.isEnabled = enabled
+        acceptButton.alpha = enabled ? 1.0 : 0.5
+        declineButton.alpha = enabled ? 1.0 : 0.5
+    }
+
+    /// Set once the follow succeeds so the button doesn't reappear on reuse.
+    private var followedBack = false
+
+    @objc private func followBackTapped() {
+        guard let notification = notification else { return }
+        followedBack = true
+        followBackButton.isEnabled = false
+        followBackButton.setTitle("Following", for: .normal)
+        delegate?.notificationCell(self, didTapFollowBackFor: notification)
+    }
+
+    @objc private func acceptTapped() {
+        guard let notification = notification else { return }
+        setActionsEnabled(false) // prevent double-taps; row is removed on success
+        delegate?.notificationCell(self, didTapAcceptFor: notification)
+    }
+
+    @objc private func declineTapped() {
+        guard let notification = notification else { return }
+        setActionsEnabled(false)
+        delegate?.notificationCell(self, didTapDeclineFor: notification)
     }
     
     private func formatTime(_ dateString: String) -> String {
@@ -685,6 +942,7 @@ struct NotificationData: Codable {
     let placeName: String?
     let circleId: String?
     let commentText: String?
+    let connectionId: String? // Present on connection_request notifications
 }
 
 // Response structure for notifications
