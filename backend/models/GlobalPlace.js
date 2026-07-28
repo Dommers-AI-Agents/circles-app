@@ -34,6 +34,19 @@ const createGlobalPlace = (placeData) => {
     location: placeData.location, // GeoPoint { type: 'Point', coordinates: [lng, lat] }
     category: placeData.category,
     subcategory: placeData.subcategory || null,
+
+    // Raw category signals kept so the category can be re-derived later without
+    // re-fetching from Google/Apple. Populated when the client/import forwards
+    // them; otherwise empty. See services/placeCategoryDerivation.js.
+    googleTypes: placeData.googleTypes || [],
+    googlePrimaryType: placeData.googlePrimaryType || null,
+    applePoiCategory: placeData.applePoiCategory || null,
+    // How `category` was set: 'google' | 'apple' | 'text' | 'llm' | 'client' |
+    // 'manual' | null. Plus the prior value for one-command rollback.
+    categorySource: placeData.categorySource || null,
+    categoryConfidence: placeData.categoryConfidence != null ? placeData.categoryConfidence : null,
+    categoryBefore: placeData.categoryBefore != null ? placeData.categoryBefore : null,
+    categoryClassifiedAt: placeData.categoryClassifiedAt || null,
     
     // Unified media with attribution
     photos: placeData.photos || [],

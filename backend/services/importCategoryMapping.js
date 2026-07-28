@@ -126,6 +126,19 @@ function categoryFromFoursquareNames(categoryNames = []) {
   return 'other';
 }
 
+// Infer a category from free text (a place name, description, and/or address).
+// Reuses the Foursquare name rules — they're broad English keyword patterns
+// that work well on venue names ("Cafe Monte", "Que Onda Tacos", "Gold's Gym").
+// Returns 'other' when nothing matches. First (most specific) rule wins.
+function categoryFromText(...parts) {
+  const text = parts.filter(Boolean).join(' ');
+  if (!text.trim()) return 'other';
+  for (const rule of FOURSQUARE_NAME_RULES) {
+    if (rule.pattern.test(text)) return rule.category;
+  }
+  return 'other';
+}
+
 // Mapstr tags are free-form user text, often French or English.
 const MAPSTR_TAG_RULES = [
   { pattern: /resto|restaurant|food|pizza|sushi|burger|dîner|diner|manger|brunch/i, category: 'restaurant' },
@@ -154,5 +167,6 @@ function categoryFromMapstrTags(tags = []) {
 module.exports = {
   categoryFromGoogleTypes,
   categoryFromFoursquareNames,
-  categoryFromMapstrTags
+  categoryFromMapstrTags,
+  categoryFromText
 };

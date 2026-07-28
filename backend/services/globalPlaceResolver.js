@@ -13,6 +13,7 @@ const {
   calculateQualityScore,
   generatePlaceKey
 } = require('../models/GlobalPlace');
+const { deriveCategory } = require('./placeCategoryDerivation');
 
 const db = getFirestore();
 
@@ -141,12 +142,39 @@ async function createGlobalPlaceFromLegacy(legacyPlaceDoc) {
     try { deduplicationKey = generatePlaceKey(legacyPlace); } catch (e) { /* malformed doc */ }
   }
 
+  // Derive a real category when the save arrived as 'other'/blank (the common
+  // case for check-in/moment saves and thin imports). Non-destructive: a
+  // category the client already resolved is kept and marked source 'client'.
+  const incomingCategory = legacyPlace.category || 'other';
+  let category = incomingCategory;
+  let categoryMeta = { categorySource: incomingCategory === 'other' ? null : 'client' };
+  if (incomingCategory === 'other') {
+    const derived = deriveCategory({
+      googlePrimaryType: legacyPlace.googlePrimaryType,
+      googleTypes: legacyPlace.googleTypes,
+      applePoiCategory: legacyPlace.applePoiCategory,
+      name: legacyPlace.name,
+      description: legacyPlace.description,
+      address: legacyPlace.address
+    });
+    if (derived.category !== 'other') {
+      category = derived.category;
+      categoryMeta = {
+        categorySource: derived.source,
+        categoryConfidence: derived.confidence,
+        categoryBefore: 'other',
+        categoryClassifiedAt: new Date().toISOString()
+      };
+    }
+  }
+
   const globalPlaceData = createGlobalPlace({
     ...legacyPlace,
     name: legacyPlace.name || 'Unknown Place',
     address: legacyPlace.address || '',
     location: legacyPlace.location || null,
-    category: legacyPlace.category || 'other',
+    category,
+    ...categoryMeta,
     deduplicationKey,
     legacyPlaceIds: [legacyId],
     photos: attributedPhotos,
@@ -187,10 +215,12 @@ async function ensureGlobalPlaceLink(placeDoc) {
 
     const { globalPlaceDoc } = await resolveGlobalPlace(placeDoc.id);
     let globalPlaceId = globalPlaceDoc ? globalPlaceDoc.id : null;
+    let canonicalCategory = null;
 
     if (!globalPlaceId) {
       const created = await createGlobalPlaceFromLegacy(placeDoc);
       globalPlaceId = created.resolvedId;
+      canonicalCategory = created.resolvedData && created.resolvedData.category;
     }
 
     // Stamp the link and drop the now-canonical venue fields in one write —
@@ -201,6 +231,11 @@ async function ensureGlobalPlaceLink(placeDoc) {
         updates[field] = admin.firestore.FieldValue.delete();
       }
     });
+    // Keep the save's cached `category` (used by geo/list queries) in sync when
+    // we derived a better one while creating the venue.
+    if (canonicalCategory && canonicalCategory !== placeDoc.data().category) {
+      updates.category = canonicalCategory;
+    }
     await placeDoc.ref.update(updates);
     return globalPlaceId;
   } catch (error) {
