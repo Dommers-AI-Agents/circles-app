@@ -2,6 +2,7 @@
 const admin = require('../config/firebase');
 const db = admin.firestore();
 const { v4: uuidv4 } = require('uuid');
+const { queryInChunks } = require('../utils/firestoreChunks');
 
 // Get all circle groups for the current user
 exports.getGroups = async (req, res) => {
@@ -125,13 +126,15 @@ exports.createGroup = async (req, res) => {
       });
     }
     
-    // Verify that all circles belong to the user
-    const circlesSnapshot = await db.collection('circles')
-      .where(admin.firestore.FieldPath.documentId(), 'in', circleIds)
-      .where('owner', '==', userId)
-      .get();
-    
-    if (circlesSnapshot.size !== circleIds.length) {
+    // Verify that all circles belong to the user (chunked — 'in' caps at 30)
+    const ownedCircleDocs = await queryInChunks(circleIds, chunk =>
+      db.collection('circles')
+        .where(admin.firestore.FieldPath.documentId(), 'in', chunk)
+        .where('owner', '==', userId)
+        .get()
+    );
+
+    if (ownedCircleDocs.length !== circleIds.length) {
       return res.status(403).json({
         success: false,
         message: 'One or more circles do not belong to you'

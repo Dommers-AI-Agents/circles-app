@@ -9,6 +9,7 @@ const {
   serializeQuerySnapshot 
 } = require('../models/FirestoreModels');
 const notificationService = require('../services/notificationService');
+const { queryInChunks } = require('../utils/firestoreChunks');
 
 const db = getFirestore();
 
@@ -30,6 +31,26 @@ const createNewSuggestion = async (req, res) => {
       });
     }
 
+    // Directed suggestion: recommend a place to ONE specific person. Resolve
+    // and validate the recipient up front.
+    let recipientName = null;
+    if (suggestionData.recipientId) {
+      if (suggestionData.recipientId === userId) {
+        return res.status(400).json({
+          success: false,
+          message: 'You cannot send a suggestion to yourself'
+        });
+      }
+      const recipientDoc = await db.collection(COLLECTIONS.USERS).doc(suggestionData.recipientId).get();
+      if (!recipientDoc.exists) {
+        return res.status(404).json({
+          success: false,
+          message: 'Recipient not found'
+        });
+      }
+      recipientName = recipientDoc.data().displayName || null;
+    }
+
     // If a placeId is provided, fetch place details
     let placeDetails = null;
     if (suggestionData.placeId) {
@@ -46,6 +67,7 @@ const createNewSuggestion = async (req, res) => {
     const newSuggestion = createSuggestion({
       ...suggestionData,
       placeDetails,
+      recipientName,
       mentionedPlaces: mentionedPlaces.map(p => ({
         placeId: p.id,
         name: p.name,
@@ -74,46 +96,43 @@ const createNewSuggestion = async (req, res) => {
       message: 'Suggestion created successfully'
     });
 
-    // Send notifications to network users
     try {
-      // Get user's connections
-      const connectionsQuery1 = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get();
-        
-      const connectionsQuery2 = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get();
-      
-      const notifyUserIds = new Set();
-      
-      // Add connections from both queries
-      connectionsQuery1.forEach(doc => {
-        const conn = doc.data();
-        notifyUserIds.add(conn.connectedUserId);
-      });
-      
-      connectionsQuery2.forEach(doc => {
-        const conn = doc.data();
-        notifyUserIds.add(conn.userId);
-      });
-      
-      // Also notify users who own places mentioned in the suggestion
-      if (mentionedPlaces && mentionedPlaces.length > 0) {
-        for (const place of mentionedPlaces) {
-          if (place.addedBy && place.addedBy !== userId) {
-            notifyUserIds.add(place.addedBy);
+      if (suggestionData.recipientId) {
+        // Directed: notify ONLY the recipient. Creates an in-app notification
+        // (so recipients with push off still see it) plus a push.
+        await notificationService.notifyDirectedSuggestion(suggestion, suggestionData.recipientId);
+      } else {
+        // Broadcast: fan out to the author's connections (legacy behavior)
+        const connectionsQuery1 = await db.collection(COLLECTIONS.CONNECTIONS)
+          .where('userId', '==', userId)
+          .where('status', '==', 'accepted')
+          .get();
+
+        const connectionsQuery2 = await db.collection(COLLECTIONS.CONNECTIONS)
+          .where('connectedUserId', '==', userId)
+          .where('status', '==', 'accepted')
+          .get();
+
+        const notifyUserIds = new Set();
+
+        connectionsQuery1.forEach(doc => notifyUserIds.add(doc.data().connectedUserId));
+        connectionsQuery2.forEach(doc => notifyUserIds.add(doc.data().userId));
+
+        // Also notify users who own places mentioned in the suggestion
+        if (mentionedPlaces && mentionedPlaces.length > 0) {
+          for (const place of mentionedPlaces) {
+            if (place.addedBy && place.addedBy !== userId) {
+              notifyUserIds.add(place.addedBy);
+            }
           }
         }
-      }
-      
-      if (notifyUserIds.size > 0) {
-        await notificationService.notifyNewSuggestion(
-          suggestion,
-          Array.from(notifyUserIds)
-        );
+
+        if (notifyUserIds.size > 0) {
+          await notificationService.notifyNewSuggestion(
+            suggestion,
+            Array.from(notifyUserIds)
+          );
+        }
       }
     } catch (notifError) {
       console.error('Error sending suggestion notifications:', notifError);
@@ -172,24 +191,37 @@ const getNetworkSuggestions = async (req, res) => {
       });
     }
 
-    // Get suggestions from connected users, sorted by most recent first
-    const suggestionsQuery = await db.collection(COLLECTIONS.SUGGESTIONS)
-      .where('userId', 'in', Array.from(connectedUserIds))
-      .orderBy('createdAt', 'desc')
-      .limit(100)  // Increased limit since suggestions don't expire
-      .get();
+    // Get suggestions from connected users, sorted by most recent first.
+    // Chunked: 'in' caps at 30 values and broke past 30 connections.
+    const suggestionDocs = await queryInChunks(connectedUserIds, chunk =>
+      db.collection(COLLECTIONS.SUGGESTIONS)
+        .where('userId', 'in', chunk)
+        .orderBy('createdAt', 'desc')
+        .limit(100)  // Increased limit since suggestions don't expire
+        .get()
+    );
+    // Re-sort across chunks (each chunk is sorted internally only)
+    suggestionDocs.sort((a, b) => String(b.data().createdAt).localeCompare(String(a.data().createdAt)));
 
     // Build response with user and place details
     const suggestions = [];
-    for (const doc of suggestionsQuery.docs) {
+    for (const doc of suggestionDocs.slice(0, 100)) {
       const suggestion = serializeDoc(doc);
-      
+
+      // Directed suggestions are private to their recipient (and author) —
+      // they must not surface in everyone else's broadcast network feed
+      if (suggestion.recipientId &&
+          suggestion.recipientId !== userId &&
+          suggestion.userId !== userId) {
+        continue;
+      }
+
       // Get user details
       const userDoc = await db.collection(COLLECTIONS.USERS).doc(suggestion.userId).get();
       if (userDoc.exists) {
         suggestion.userDetails = serializeDoc(userDoc);
       }
-      
+
       suggestions.push(suggestion);
     }
 
@@ -200,6 +232,48 @@ const getNetworkSuggestions = async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching network suggestions:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Suggestions sent directly to the current user (their inbox)
+// @route   GET /api/suggestions/received
+// @access  Private
+const getReceivedSuggestions = async (req, res) => {
+  try {
+    const userId = req.user.uid;
+
+    // Single equality filter (automatic index); newest-first in memory so no
+    // composite index is required.
+    const snapshot = await db.collection(COLLECTIONS.SUGGESTIONS)
+      .where('recipientId', '==', userId)
+      .get();
+
+    const docs = snapshot.docs.sort((a, b) =>
+      String(b.data().createdAt || '').localeCompare(String(a.data().createdAt || ''))
+    );
+
+    const suggestions = [];
+    for (const doc of docs) {
+      const suggestion = serializeDoc(doc);
+      const authorDoc = await db.collection(COLLECTIONS.USERS).doc(suggestion.userId).get();
+      if (authorDoc.exists) {
+        suggestion.userDetails = serializeDoc(authorDoc);
+      }
+      suggestions.push(suggestion);
+    }
+
+    res.status(200).json({
+      success: true,
+      data: suggestions,
+      count: suggestions.length
+    });
+  } catch (error) {
+    console.error('Error fetching received suggestions:', error);
     res.status(500).json({
       success: false,
       message: 'Server error',
@@ -426,16 +500,18 @@ const detectPlaceMentions = async (text, userId) => {
     });
     
     if (placeIds.size === 0) return [];
-    
-    // Get place details
-    const placesSnapshot = await db.collection(COLLECTIONS.PLACES)
-      .where(FieldPath.documentId(), 'in', Array.from(placeIds))
-      .get();
-    
+
+    // Get place details (chunked — a user can easily have >30 place ids)
+    const placeDocs = await queryInChunks(placeIds, chunk =>
+      db.collection(COLLECTIONS.PLACES)
+        .where(FieldPath.documentId(), 'in', chunk)
+        .get()
+    );
+
     const mentionedPlaces = [];
     const lowerText = text.toLowerCase();
-    
-    placesSnapshot.docs.forEach(doc => {
+
+    placeDocs.forEach(doc => {
       const place = doc.data();
       const placeName = place.name.toLowerCase();
       
@@ -636,6 +712,7 @@ const getSuggestionsByUser = async (req, res) => {
 module.exports = {
   createNewSuggestion,
   getNetworkSuggestions,
+  getReceivedSuggestions,
   getSuggestionsByUser,
   deleteSuggestion,
   cleanupExpiredSuggestions,

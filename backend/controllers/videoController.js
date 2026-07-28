@@ -10,6 +10,7 @@ const {
   serializeQuerySnapshot 
 } = require('../models/FirestoreModels');
 const { createActivity } = require('./activityController');
+const { queryInChunks } = require('../utils/firestoreChunks');
 const videoQuotaService = require('../services/videoQuotaService');
 const axios = require('axios');
 
@@ -700,18 +701,26 @@ exports.getVideoFeed = async (req, res) => {
     connections1.docs.forEach(doc => connectionIds.add(doc.data().connectedUserId));
     connections2.docs.forEach(doc => connectionIds.add(doc.data().userId));
     
-    // Get videos from connections
-    const videosQuery = await db.collection(COLLECTIONS.PLACE_VIDEOS)
-      .where('userId', 'in', Array.from(connectionIds))
-      .where('uploadStatus', '==', 'ready')
-      .where('deletedAt', '==', null)
-      .where('visibility', 'in', ['public', 'network'])
-      .orderBy('createdAt', 'desc')
-      .limit(parseInt(limit))
-      .offset(parseInt(offset))
-      .get();
-    
-    const videos = serializeQuerySnapshot(videosQuery);
+    // Get videos from connections. Chunked over the connection set — 'in'
+    // caps at 30 values and broke past 30 connections. Each chunk is fetched
+    // sorted; merge, re-sort, and window to keep limit/offset semantics.
+    const pageLimit = parseInt(limit);
+    const pageOffset = parseInt(offset);
+    const videoDocs = await queryInChunks(connectionIds, chunk =>
+      db.collection(COLLECTIONS.PLACE_VIDEOS)
+        .where('userId', 'in', chunk)
+        .where('uploadStatus', '==', 'ready')
+        .where('deletedAt', '==', null)
+        .where('visibility', 'in', ['public', 'network'])
+        .orderBy('createdAt', 'desc')
+        .limit(pageLimit + pageOffset)
+        .get()
+    );
+    videoDocs.sort((a, b) => String(b.data().createdAt).localeCompare(String(a.data().createdAt)));
+
+    const videos = videoDocs.slice(pageOffset, pageOffset + pageLimit)
+      .map(doc => serializeDoc(doc))
+      .filter(doc => doc !== null);
     
     // Populate user details
     const userIds = [...new Set(videos.map(v => v.userId))];
@@ -1478,25 +1487,30 @@ exports.getPlaceReels = async (req, res) => {
     // Get unique user IDs from videos
     const videoUserIds = [...new Set(allVideos.map(v => v.userId))];
     
-    // Check relationships with all video creators
-    const [connections1, connections2, currentUserDoc] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', currentUserId)
-        .where('connectedUserId', 'in', videoUserIds)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', 'in', videoUserIds)
-        .where('connectedUserId', '==', currentUserId)
-        .where('status', '==', 'accepted')
-        .get(),
+    // Check relationships with all video creators (chunked — a feed page can
+    // reference more than 30 distinct creators)
+    const [connection1Docs, connection2Docs, currentUserDoc] = await Promise.all([
+      queryInChunks(videoUserIds, chunk =>
+        db.collection(COLLECTIONS.CONNECTIONS)
+          .where('userId', '==', currentUserId)
+          .where('connectedUserId', 'in', chunk)
+          .where('status', '==', 'accepted')
+          .get()
+      ),
+      queryInChunks(videoUserIds, chunk =>
+        db.collection(COLLECTIONS.CONNECTIONS)
+          .where('userId', 'in', chunk)
+          .where('connectedUserId', '==', currentUserId)
+          .where('status', '==', 'accepted')
+          .get()
+      ),
       db.collection(COLLECTIONS.USERS).doc(currentUserId).get()
     ]);
-    
+
     // Build sets of connected and following users
     const connectedUserIds = new Set();
-    connections1.docs.forEach(doc => connectedUserIds.add(doc.data().connectedUserId));
-    connections2.docs.forEach(doc => connectedUserIds.add(doc.data().userId));
+    connection1Docs.forEach(doc => connectedUserIds.add(doc.data().connectedUserId));
+    connection2Docs.forEach(doc => connectedUserIds.add(doc.data().userId));
     
     const followingUserIds = new Set();
     if (currentUserDoc.exists) {
@@ -2174,13 +2188,15 @@ exports.getVideoLikes = async (req, res) => {
       });
     }
     
-    // Fetch user details
-    const usersQuery = await db.collection(COLLECTIONS.USERS)
-      .where(admin.firestore.FieldPath.documentId(), 'in', userIds)
-      .get();
-    
+    // Fetch user details (chunked — a popular video can pass 30 likers)
+    const userDocs = await queryInChunks(userIds, chunk =>
+      db.collection(COLLECTIONS.USERS)
+        .where(admin.firestore.FieldPath.documentId(), 'in', chunk)
+        .get()
+    );
+
     const usersMap = {};
-    usersQuery.docs.forEach(doc => {
+    userDocs.forEach(doc => {
       const user = serializeDoc(doc);
       usersMap[user.id] = user;
     });

@@ -456,24 +456,36 @@ const getCirclesSharedWithMe = async (req, res) => {
       });
     }
 
-    // Get circles from connected users where allowNetworkEdit is true
-    const circlesQuery = await db.collection(COLLECTIONS.CIRCLES)
-      .where('owner', 'in', Array.from(connectedUserIds))
-      .where('allowNetworkEdit', '==', true)
-      .get();
+    // Get circles from connected users where allowNetworkEdit is true.
+    // Firestore's 'in' operator caps at 30 values (and threw the moment a user
+    // passed 30 accepted connections), so chunk by 10 like the other
+    // connection-fanout queries.
+    const ownerIds = Array.from(connectedUserIds);
+    const ownerChunks = [];
+    for (let i = 0; i < ownerIds.length; i += 10) {
+      ownerChunks.push(ownerIds.slice(i, i + 10));
+    }
+    const circleSnaps = await Promise.all(ownerChunks.map(chunk =>
+      db.collection(COLLECTIONS.CIRCLES)
+        .where('owner', 'in', chunk)
+        .where('allowNetworkEdit', '==', true)
+        .get()
+    ));
 
     // Build response with circle data
     const circles = [];
-    for (const doc of circlesQuery.docs) {
-      const circle = serializeDoc(doc);
-      
-      // Get owner details
-      const ownerDoc = await db.collection(COLLECTIONS.USERS).doc(circle.owner).get();
-      if (ownerDoc.exists) {
-        circle.ownerDetails = serializeDoc(ownerDoc);
+    for (const snap of circleSnaps) {
+      for (const doc of snap.docs) {
+        const circle = serializeDoc(doc);
+
+        // Get owner details
+        const ownerDoc = await db.collection(COLLECTIONS.USERS).doc(circle.owner).get();
+        if (ownerDoc.exists) {
+          circle.ownerDetails = serializeDoc(ownerDoc);
+        }
+
+        circles.push(circle);
       }
-      
-      circles.push(circle);
     }
 
     res.status(200).json({
@@ -826,10 +838,24 @@ const getUserCircles = async (req, res) => {
       .where('privacy', 'in', allowedPrivacyLevels)
       .get();
     
-    // Sort in memory for now until Firestore index is created
+    // Preserve the profile OWNER's own arrangement (their circleOrder), so a
+    // visitor sees the circles in the same order the owner set them — not a
+    // recency re-sort. Mirrors the owner's own list in firebaseCircleController:
+    // circleOrder first, anything not yet in it by recency, "Places I Follow" last.
+    const ownerOrder = userData?.circleOrder || [];
+    const orderIndex = new Map(ownerOrder.map((id, i) => [id, i]));
     const sortedDocs = circlesQuery.docs.sort((a, b) => {
-      const aDate = a.data().updatedAt || a.data().createdAt;
-      const bDate = b.data().updatedAt || b.data().createdAt;
+      const aFollow = a.data().isFollowedPlacesCircle === true;
+      const bFollow = b.data().isFollowedPlacesCircle === true;
+      if (aFollow !== bFollow) return aFollow ? 1 : -1; // Places I Follow sinks to the end
+
+      const ai = orderIndex.has(a.id) ? orderIndex.get(a.id) : Infinity;
+      const bi = orderIndex.has(b.id) ? orderIndex.get(b.id) : Infinity;
+      if (ai !== bi) return ai - bi; // honor the owner's explicit order
+
+      // Neither is in the owner's saved order (e.g. brand-new circles) → newest first
+      const aDate = a.data().updatedAt || a.data().createdAt || '';
+      const bDate = b.data().updatedAt || b.data().createdAt || '';
       return bDate.localeCompare(aDate);
     });
 
@@ -866,6 +892,10 @@ const getUserCircles = async (req, res) => {
         unviewedPlacesByCircle.get(activity.circleId).push(activity);
       });
 
+    // Places marked Private are owner-only, even inside a visible circle —
+    // the person viewing this profile is never the owner of these places
+    const { isPlaceVisibleToViewer } = require('./firebasePlaceController');
+
     // Fetch places for each circle
     const circles = await Promise.all(sortedDocs.map(async doc => {
       const circle = serializeDoc(doc);
@@ -888,8 +918,11 @@ const getUserCircles = async (req, res) => {
             .get();
             
           // Trashed places are invisible to their owner — never show them to
-          // the owner's connections either
-          const activePlaceDocs = placesSnapshot.docs.filter(doc => !doc.data().deletedAt);
+          // the owner's connections either. Private places are owner-only too.
+          const activePlaceDocs = placesSnapshot.docs.filter(doc => {
+            const d = doc.data();
+            return !d.deletedAt && isPlaceVisibleToViewer(d, currentUserId);
+          });
 
           // Return both place IDs and full details in separate fields
           circle.places = activePlaceDocs.map(doc => doc.id);
@@ -908,7 +941,10 @@ const getUserCircles = async (req, res) => {
             .get();
             
           const sortedDocs = placesSnapshot.docs
-            .filter(doc => !doc.data().deletedAt)
+            .filter(doc => {
+              const d = doc.data();
+              return !d.deletedAt && isPlaceVisibleToViewer(d, currentUserId);
+            })
             .sort((a, b) => {
               const aDate = new Date(a.data().createdAt || 0);
               const bDate = new Date(b.data().createdAt || 0);
@@ -949,7 +985,10 @@ const getUserCircles = async (req, res) => {
     }
 
     // Clear activity notification after viewing
-    await activityService.clearActivityNotification(currentUserId, targetUserId);
+    // Opening the profile clears circle/suggestion activity, but NOT place
+    // activity — a place's "new" dot must survive until the viewer actually
+    // opens the circle containing it (cleared then by markCirclePlacesViewed).
+    await activityService.clearActivityNotification(currentUserId, targetUserId, { excludeTypes: ['place'] });
     
     res.status(200).json({
       success: true,

@@ -4,6 +4,7 @@ const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../models
 const backgroundAggregationService = require('../services/backgroundAggregationService');
 const cacheInvalidationService = require('../services/cacheInvalidationService');
 const { fetchActivitiesByActors } = require('../services/activityFeedService');
+const { queryInChunks } = require('../utils/firestoreChunks');
 const db = getFirestore();
 
 // Helper function to calculate map center from places
@@ -114,22 +115,25 @@ exports.getDashboard = async (req, res, next) => {
       followedUserIds.forEach(id => connectedUserIds.add(id));
     }
     
-    // Get network circles if there are connections
-    let networkCirclesSnapshot = null;
+    // Get network circles if there are connections (chunked — 'in' caps at 30
+    // values and broke past 30 connections/follows)
+    let networkCircleDocs = [];
     if (connectedUserIds.size > 0) {
-      networkCirclesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
-        .where('owner', 'in', Array.from(connectedUserIds))
-        .where('privacy', 'in', ['public', 'myNetwork'])
-        .get();
+      networkCircleDocs = await queryInChunks(connectedUserIds, chunk =>
+        db.collection(COLLECTIONS.CIRCLES)
+          .where('owner', 'in', chunk)
+          .where('privacy', 'in', ['public', 'myNetwork'])
+          .get()
+      );
     }
-    
+
     // Process my circles
     const myCircles = serializeQuerySnapshot(myCirclesSnapshot);
-    
+
     // Process network circles
-    const networkCircles = networkCirclesSnapshot 
-      ? serializeQuerySnapshot(networkCirclesSnapshot)
-      : [];
+    const networkCircles = networkCircleDocs
+      .map(doc => serializeDoc(doc))
+      .filter(doc => doc !== null);
     
     // Combine all circles for place fetching
     const allCircles = [...myCircles, ...networkCircles];
