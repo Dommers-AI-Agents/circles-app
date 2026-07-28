@@ -213,6 +213,13 @@ const createPlace = (placeData, circleId, addedBy) => {
     category: placeData.category, // restaurant, cafe, bar, hotel, retail, service, attraction, entertainment, healthcare, fitness, education, outdoor, transport, finance, other
     customCategoryId: placeData.customCategoryId || null, // Reference to user's custom category
     subcategory: placeData.subcategory || null,
+    // Raw category/location signals forwarded by the client so the backend can
+    // derive a good category + neighborhood (see placeCategoryDerivation /
+    // placeLocationDerivation). Copied onto the canonical venue at link time.
+    neighborhood: placeData.neighborhood || null,       // e.g. Apple placemark.subLocality
+    applePoiCategory: placeData.applePoiCategory || null, // MKPointOfInterestCategory rawValue
+    googleTypes: placeData.googleTypes || [],
+    googlePrimaryType: placeData.googlePrimaryType || null,
     rating: placeData.rating || null,
     userRatingsTotal: placeData.userRatingsTotal || null,
     notes: placeData.notes || null, // Legacy field - kept for backward compatibility

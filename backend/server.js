@@ -338,6 +338,7 @@ app.use('/api/places', globalPlaceRoutes); // Global places routes (must come fi
 app.use('/api/places', firebasePlaceRoutes);
 app.use('/api/upload', uploadLimiter, uploadRoutes);
 app.use('/api/import', require('./routes/importRoutes')); // Import places from other platforms (Mapstr, Google, Swarm)
+app.use('/api/browse', require('./routes/browseRoutes')); // Location/category browse lens over saved places
 app.use('/api/connections', connectionRoutes);
 app.use('/api/network', networkRoutes);
 app.use('/api/messages', messageLimiter, messagingRoutes);
