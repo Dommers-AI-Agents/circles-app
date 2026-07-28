@@ -20,6 +20,10 @@
 const admin = require('firebase-admin');
 const path = require('path');
 
+// Load backend/.env so ANTHROPIC_API_KEY (and other config) are available when
+// running the optional LLM tier locally.
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+
 if (!admin.apps.length) {
   const serviceAccountPath = path.join(__dirname, '../config/firebase-service-account.json');
   const serviceAccount = require(serviceAccountPath);
