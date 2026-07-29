@@ -719,64 +719,6 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "stateCode",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "places",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "addedBy",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "cityKey",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "places",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "addedBy",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "cityKey",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "category",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "places",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "addedBy",
-          "order": "ASCENDING"
-        },
-        {
           "fieldPath": "createdAt",
           "order": "ASCENDING"
         }
