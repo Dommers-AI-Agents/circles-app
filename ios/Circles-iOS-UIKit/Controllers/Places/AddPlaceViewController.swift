@@ -652,9 +652,14 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        
+
         // Dismiss any tutorial bubble when leaving
         OnboardingManager.shared.dismissCurrentBubble()
+
+        // The saving overlay lives on the WINDOW so it can block the nav bar —
+        // which means it would outlive this screen if we leave (e.g. the
+        // post-save navigation to the circle). Never let it strand the app.
+        savingOverlay.removeFromSuperview()
     }
     
     // MARK: - Setup Methods
@@ -1397,14 +1402,43 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     /// duplicate places while a create flow is in progress.
     var isSaving = false
 
+    /// Full-screen working overlay shown for the entire save flow. The staged
+    /// alerts ("Checking...", "Creating Place") block while presented, but the
+    /// transitions between them leave brief windows where taps land on the form
+    /// — this covers the whole window (nav bar included) from the instant Save
+    /// is tapped until the flow ends, with a spinner so it reads as "working".
+    private let savingSpinner = UIActivityIndicatorView(style: .large)
+    private lazy var savingOverlay: UIView = {
+        let overlay = UIView()
+        overlay.backgroundColor = UIColor.black.withAlphaComponent(0.35)
+        savingSpinner.color = .white
+        savingSpinner.translatesAutoresizingMaskIntoConstraints = false
+        overlay.addSubview(savingSpinner)
+        NSLayoutConstraint.activate([
+            savingSpinner.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
+            savingSpinner.centerYAnchor.constraint(equalTo: overlay.centerYAnchor)
+        ])
+        return overlay
+    }()
+
     func beginSaving() {
         isSaving = true
         addPlaceButton.isEnabled = false
+        // Cover the whole window so nothing — Save, fields, back — is tappable
+        // while the save is in flight. Added before any alert is presented, so
+        // presented alerts (duplicate prompt, errors) still land on top of it.
+        let host: UIView = view.window ?? view
+        savingOverlay.frame = host.bounds
+        savingOverlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        savingSpinner.startAnimating()
+        host.addSubview(savingOverlay)
     }
 
     func endSaving() {
         isSaving = false
         addPlaceButton.isEnabled = true
+        savingSpinner.stopAnimating()
+        savingOverlay.removeFromSuperview()
     }
 
     @objc func addPlaceButtonTapped() {
