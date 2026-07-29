@@ -5,6 +5,12 @@ extension Notification.Name {
     // Network notifications
     static let pendingConnectionsCountChanged = Notification.Name("PendingConnectionsCountChanged")
     static let connectionsLoaded = Notification.Name("ConnectionsLoaded")
+    /// Asks the Network tab to switch to its Discover segment. Posted by child
+    /// lists that want to hand off rather than push a duplicate screen.
+    static let showDiscoverSegment = Notification.Name("ShowDiscoverSegment")
+    /// Asks the Network tab to switch to its Requests segment (e.g. tapping a
+    /// connection-request notification).
+    static let showRequestsSegment = Notification.Name("ShowRequestsSegment")
     
     // Message notifications
     static let unreadMessagesCountChanged = Notification.Name("UnreadMessagesCountChanged")

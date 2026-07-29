@@ -415,8 +415,12 @@ class NotificationsViewController: BaseViewController {
         let fromUserId = notification.data?.fromUserId ?? ""
         switch notification.type {
         case "connection_request":
-            // Actioned via inline Accept/Decline; row body → My Network.
+            // Actioned via inline Accept/Decline; row body → the Requests
+            // segment of My Network, where the request actually lives.
             routeToMyNetwork()
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .showRequestsSegment, object: nil)
+            }
         case "connection_accepted":
             fromUserId.isEmpty ? routeToMyNetwork() : navigateToProfile(userId: fromUserId)
         case "new_follower":

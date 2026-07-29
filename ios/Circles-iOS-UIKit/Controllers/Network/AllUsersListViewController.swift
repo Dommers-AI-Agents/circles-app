@@ -66,6 +66,13 @@ class AllUsersListViewController: UIViewController {
     }()
     
     // MARK: - Properties
+
+    /// What this list shows. `.people` is the network you have (connections +
+    /// following); `.requests` is the in/out connection requests, which live on
+    /// their own tab so they don't crowd the people you're already close to.
+    enum ListMode { case people, requests }
+    var listMode: ListMode = .people
+
     private var allUsers: [User] = []
     private var connectedUsers: [User] = []
     private var pendingIncomingUsers: [User] = []
@@ -87,7 +94,9 @@ class AllUsersListViewController: UIViewController {
     // Incoming requests are no longer collapsible at all — the tab badge
     // announces them, so they have to be visible the moment you arrive.
     // Only "Sent" still collapses, since it is status rather than a task.
-    private var isPendingOutgoingExpanded = false
+    // Visible by default: a sent request is something you are waiting on, not
+    // something to hide. Still collapsible for people with long lists.
+    private var isPendingOutgoingExpanded = true
     private var isSearchActive: Bool { !searchQuery.isEmpty }
 
     private var isLoadingData = false
@@ -298,8 +307,12 @@ class AllUsersListViewController: UIViewController {
     func loadAllUsers() { loadPeople() }
 
     private var visibleSectionsAreEmpty: Bool {
-        connectedUsers.isEmpty && followingUsers.isEmpty
-            && pendingIncomingUsers.isEmpty && pendingOutgoingUsers.isEmpty
+        switch listMode {
+        case .requests:
+            return pendingIncomingUsers.isEmpty && pendingOutgoingUsers.isEmpty
+        case .people:
+            return connectedUsers.isEmpty && followingUsers.isEmpty
+        }
     }
 
     /// Searching reaches past your own network to everybody else — which is the
@@ -346,7 +359,14 @@ class AllUsersListViewController: UIViewController {
         let byName: (User, User) -> Bool = {
             $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
         }
-        connectedUsers.sort(by: byName)
+        // Connections: most places first — the size of someone's collection is
+        // what makes their profile worth opening. Names break ties.
+        connectedUsers.sort { lhs, rhs in
+            let lhsPlaces = lhs.placesCount ?? 0
+            let rhsPlaces = rhs.placesCount ?? 0
+            if lhsPlaces != rhsPlaces { return lhsPlaces > rhsPlaces }
+            return byName(lhs, rhs)
+        }
         pendingIncomingUsers.sort(by: byName)
         pendingOutgoingUsers.sort(by: byName)
 
@@ -416,9 +436,16 @@ class AllUsersListViewController: UIViewController {
 
         emptyStateView.isHidden = false
         tableView.isHidden = true
-        emptyImageView.image = UIImage(systemName: "person.2")
-        emptyTitleLabel.text = "Your network is empty"
-        emptySubtitleLabel.text = "Follow someone to see the places they save. They don't have to approve it."
+        switch listMode {
+        case .requests:
+            emptyImageView.image = UIImage(systemName: "envelope.open")
+            emptyTitleLabel.text = "No requests right now"
+            emptySubtitleLabel.text = "Connection requests you send or receive will show up here."
+        case .people:
+            emptyImageView.image = UIImage(systemName: "person.2")
+            emptyTitleLabel.text = "Your network is empty"
+            emptySubtitleLabel.text = "Follow someone to see the places they save. They don't have to approve it."
+        }
         emptySubtitleLabel.isHidden = false
         discoverUsersButton.setTitle("Find people", for: .normal)
         discoverUsersButton.isHidden = false
@@ -447,25 +474,31 @@ extension AllUsersListViewController: UITableViewDataSource {
     // MARK: Section Model
     //
     // Order encodes urgency. Incoming requests are a task someone else handed
-    // you, so they sit first and open. Sent requests are only status, so they
-    // sit last and closed. "Everyone else" is no longer a permanent section at
-    // all — strangers belong in Discover, and surface here only when you
-    // actually search for them.
+    // you, so they sit first and open. Sent requests sit right below them —
+    // they used to live last and collapsed, which buried them so thoroughly
+    // people thought their requests had vanished. "Everyone else" is no longer
+    // a permanent section at all — strangers belong in Discover, and surface
+    // here only when you actually search for them.
     private enum NetworkListSection {
         case requests
+        case sent
         case connections
         case following
-        case sent
         case searchResults
     }
 
     private var visibleSections: [NetworkListSection] {
         var sections: [NetworkListSection] = []
-        if !filteredPendingIncomingUsers.isEmpty { sections.append(.requests) }
-        if !filteredConnectedUsers.isEmpty { sections.append(.connections) }
-        if !filteredFollowingUsers.isEmpty { sections.append(.following) }
-        if !filteredPendingOutgoingUsers.isEmpty { sections.append(.sent) }
-        if isSearchActive && !filteredNonConnectedUsers.isEmpty { sections.append(.searchResults) }
+        switch listMode {
+        case .requests:
+            // The requests tab: just the in/out requests, nothing else.
+            if !filteredPendingIncomingUsers.isEmpty { sections.append(.requests) }
+            if !filteredPendingOutgoingUsers.isEmpty { sections.append(.sent) }
+        case .people:
+            if !filteredConnectedUsers.isEmpty { sections.append(.connections) }
+            if !filteredFollowingUsers.isEmpty { sections.append(.following) }
+            if isSearchActive && !filteredNonConnectedUsers.isEmpty { sections.append(.searchResults) }
+        }
         return sections
     }
 
@@ -616,6 +649,9 @@ extension AllUsersListViewController: UITableViewDataSource {
     /// Puts the first-run Follow/Connect card at the top of the list, where it
     /// scrolls away with the content instead of permanently occupying the tab.
     func installExplainerCardIfNeeded() {
+        // The Follow/Connect explainer belongs with the people list, not the
+        // requests tab.
+        guard listMode == .people else { return }
         guard let card = RelationshipExplainer.makeInlineCard(
             target: self,
             dismissAction: #selector(dismissExplainerCard),
@@ -700,7 +736,13 @@ extension AllUsersListViewController: UITableViewDataSource {
 // MARK: - UITableViewDelegate
 extension AllUsersListViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        return 72
+        // Self-sizing: the row now stacks a tier chip, stats, and a location
+        // line, so a fixed 72 would clip it.
+        return UITableView.automaticDimension
+    }
+
+    func tableView(_ tableView: UITableView, estimatedHeightForRowAt indexPath: IndexPath) -> CGFloat {
+        return 84
     }
     
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {

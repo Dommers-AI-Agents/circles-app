@@ -9,14 +9,21 @@ class MyNetworkViewController: BaseViewController {
     // Circles — four of which were the same endpoint sorted differently. The
     // shared-circles list was removed from here entirely: circle management
     // doesn't belong in a people space.)
+    // Discover leads: the app is young, so most people arrive with a thin
+    // network — the page's job is growing it, not admiring it. Popular is the
+    // scorecard (everyone ranked by collection size, including people you
+    // follow); it earns its own tab because a leaderboard is a different mood
+    // than a suggestion list.
     enum NetworkTab: String, CaseIterable {
-        case people = "People"
         case discover = "Discover"
+        case popular = "Popular"
+        case people = "My People"
+        case requests = "Requests"
     }
 
     // MARK: - SSE Integration
     private var sseConnected = false
-    private var selectedTab: NetworkTab = .people
+    private var selectedTab: NetworkTab = .discover
     
     // MARK: - UI Elements
     private let searchBar: UISearchBar = {
@@ -37,43 +44,6 @@ class MyNetworkViewController: BaseViewController {
     }()
 
     
-    private let findContactsBar: UIView = {
-        let view = UIView()
-        view.backgroundColor = Constants.Colors.background
-        view.layer.cornerRadius = 12
-        view.layer.borderWidth = 1
-        view.layer.borderColor = UIColor.systemGray5.cgColor
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
-    
-    private let findContactsLabel: UILabel = {
-        let label = UILabel()
-        label.text = "Find Contacts"
-        label.font = .systemFont(ofSize: 16, weight: .medium)
-        label.textColor = Constants.Colors.primary
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let findContactsIcon: UIImageView = {
-        let imageView = UIImageView()
-        imageView.image = UIImage(systemName: "person.badge.plus")
-        imageView.tintColor = Constants.Colors.primary
-        imageView.contentMode = .scaleAspectFit
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        return imageView
-    }()
-    
-    private let findContactsChevron: UIImageView = {
-        let imageView = UIImageView()
-        imageView.image = UIImage(systemName: "chevron.right")
-        imageView.tintColor = Constants.Colors.secondaryLabel
-        imageView.contentMode = .scaleAspectFit
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        return imageView
-    }()
-    
     private let containerView: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -83,7 +53,9 @@ class MyNetworkViewController: BaseViewController {
     
     // Child View Controllers
     private var allUsersListVC: AllUsersListViewController?
+    private var requestsListVC: AllUsersListViewController?
     private var discoveryListVC: DiscoveryListViewController?
+    private var popularListVC: DiscoveryListViewController?
     private var currentViewController: UIViewController?
     
     // Search properties
@@ -95,25 +67,25 @@ class MyNetworkViewController: BaseViewController {
         setupView()
         setupNavigationBar()
         setupChildViewControllers()
-        selectTab(.people)
+        selectTab(.discover)
         setupSSE()
         
         // Check if user needs notification prompt for connections
         NotificationPromptManager.shared.checkAndPromptIfNeeded(in: self, context: .connections)
-        
-        // Listen for contacts import notification
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleShowContactsImport),
-            name: NSNotification.Name("ShowContactsImport"),
-            object: nil
-        )
 
         // Child lists hand off to Discover rather than pushing their own copy.
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(showDiscoverSegment),
             name: .showDiscoverSegment,
+            object: nil
+        )
+
+        // Connection-request notifications land on the Requests segment.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(showRequestsSegment),
+            name: .showRequestsSegment,
             object: nil
         )
     }
@@ -134,8 +106,12 @@ class MyNetworkViewController: BaseViewController {
         switch selectedTab {
         case .people:
             allUsersListVC?.loadPeople()
+        case .requests:
+            requestsListVC?.loadPeople()
         case .discover:
             discoveryListVC?.loadData()
+        case .popular:
+            popularListVC?.loadData()
         }
         NetworkManager.shared.refreshBadgeCount()
         completion?()
@@ -190,74 +166,49 @@ class MyNetworkViewController: BaseViewController {
     private func setupView() {
         setupNavigationBar(title: "My Network", largeTitleMode: .never)
         
-        // Add connection button to navigation bar
+        // Invite button: straight to the share sheet. (The phone-contacts
+        // import flow is gone — nobody used it, and a share link does the job.)
         let addConnectionButton = UIBarButtonItem(
             image: UIImage(systemName: "person.badge.plus"),
             style: .plain,
             target: self,
-            action: #selector(showConnectionMenu)
+            action: #selector(shareInviteTapped)
         )
-        addConnectionButton.accessibilityLabel = "Add Connection"
+        addConnectionButton.accessibilityLabel = "Invite people"
         
         navigationItem.rightBarButtonItem = addConnectionButton
         
         view.addSubview(searchBar)
         view.addSubview(segmentedControl)
-        view.addSubview(findContactsBar)
         view.addSubview(containerView)
-        
-        // Add subviews to findContactsBar
-        findContactsBar.addSubview(findContactsIcon)
-        findContactsBar.addSubview(findContactsLabel)
-        findContactsBar.addSubview(findContactsChevron)
-        
+
         NSLayoutConstraint.activate([
             searchBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             searchBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             searchBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             searchBar.heightAnchor.constraint(equalToConstant: 44),
-            
+
             segmentedControl.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 12),
             segmentedControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             segmentedControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
 
-            findContactsBar.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 12),
-            findContactsBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            findContactsBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            findContactsBar.heightAnchor.constraint(equalToConstant: 56),
-            
-            // Find Contacts Bar internal layout
-            findContactsIcon.leadingAnchor.constraint(equalTo: findContactsBar.leadingAnchor, constant: 16),
-            findContactsIcon.centerYAnchor.constraint(equalTo: findContactsBar.centerYAnchor),
-            findContactsIcon.widthAnchor.constraint(equalToConstant: 24),
-            findContactsIcon.heightAnchor.constraint(equalToConstant: 24),
-            
-            findContactsLabel.leadingAnchor.constraint(equalTo: findContactsIcon.trailingAnchor, constant: 12),
-            findContactsLabel.centerYAnchor.constraint(equalTo: findContactsBar.centerYAnchor),
-            
-            findContactsChevron.trailingAnchor.constraint(equalTo: findContactsBar.trailingAnchor, constant: -16),
-            findContactsChevron.centerYAnchor.constraint(equalTo: findContactsBar.centerYAnchor),
-            findContactsChevron.widthAnchor.constraint(equalToConstant: 16),
-            findContactsChevron.heightAnchor.constraint(equalToConstant: 16),
-            
-            containerView.topAnchor.constraint(equalTo: findContactsBar.bottomAnchor, constant: 16),
+            containerView.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 16),
             containerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             containerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             containerView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
-        
+
         searchBar.delegate = self
-        
-        // Add tap gesture to Find Contacts bar
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(findContactsTapped))
-        findContactsBar.addGestureRecognizer(tapGesture)
-        findContactsBar.isUserInteractionEnabled = true
     }
     
     private func setupChildViewControllers() {
         // Create child view controllers
         allUsersListVC = AllUsersListViewController()
-        discoveryListVC = DiscoveryListViewController()
+        let requestsVC = AllUsersListViewController()
+        requestsVC.listMode = .requests
+        requestsListVC = requestsVC
+        discoveryListVC = DiscoveryListViewController(mode: .discover)
+        popularListVC = DiscoveryListViewController(mode: .popular)
     }
     
     // MARK: - Actions
@@ -276,89 +227,27 @@ class MyNetworkViewController: BaseViewController {
         switch tab {
         case .people:
             showConnectionsList()
+        case .requests:
+            showRequestsList()
         case .discover:
-            showDiscoveryList()
+            showChildList(discoveryListVC)
+        case .popular:
+            showChildList(popularListVC)
         }
-
-        // Finding people is a Discover activity, so the bar only earns its
-        // 56pt there. It used to sit on every tab, pushing your own
-        // connections further down the screen.
-        findContactsBar.isHidden = (tab != .discover)
 
         // Whatever is showing has to reflect the current query — the search
         // field is shared across segments.
         filterUsers(with: searchBar.text ?? "")
     }
 
-    /// The nav-bar button offers the two ways to bring someone in. It used to
-    /// be labelled "Add Connection" and open a share sheet immediately, which
-    /// is neither adding nor a connection.
-    @objc private func showConnectionMenu() {
-        AlertPresenter.showActionSheet(
-            title: "Add people",
-            actions: [
-                ("Find people you know", .default, { [weak self] in self?.findContactsTapped() }),
-                ("Share an invite link", .default, { [weak self] in self?.shareConnectionInvite() })
-            ],
-            from: self,
-            sourceView: view
-        )
-    }
-
     @objc private func showDiscoverSegment() {
         selectTab(.discover)
     }
 
-    
-    @objc private func findContactsTapped() {
-        // Check if contacts permission is already granted
-        let contactsStatus = ContactsService.shared.checkContactsPermission()
-        
-        if contactsStatus == .authorized {
-            // Permission already granted, show contacts list
-            showContactsList()
-        } else if contactsStatus == .notDetermined {
-            // Request permission first
-            ContactsService.shared.requestContactsPermission { [weak self] granted in
-                if granted {
-                    self?.showContactsList()
-                } else {
-                    self?.showContactsPermissionDenied()
-                }
-            }
-        } else {
-            // Permission denied or restricted
-            showContactsPermissionDenied()
-        }
+    @objc private func showRequestsSegment() {
+        selectTab(.requests)
     }
-    
-    private func showContactsList() {
-        let contactsVC = FindContactsViewController()
-        let navController = UINavigationController(rootViewController: contactsVC)
-        navController.modalPresentationStyle = .fullScreen
-        present(navController, animated: true)
-    }
-    
-    private func showContactsPermissionDenied() {
-        AlertPresenter.showConfirmation(
-            title: "Contacts access is off",
-            message: "Turn on contacts access in Settings to find people you already know.",
-            confirmTitle: "Open Settings",
-            from: self,
-            onConfirm: {
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(url)
-                }
-            }
-        )
-    }
-    
-    @objc private func handleShowContactsImport() {
-        // Trigger the find contacts flow when coming from suggested users overlay
-        findContactsTapped()
-    }
-    
-    
+
     private func performSearch(with query: String) {
         // Cancel previous timer
         searchTimer?.invalidate()
@@ -379,9 +268,17 @@ class MyNetworkViewController: BaseViewController {
         switch selectedTab {
         case .people:
             allUsersListVC?.updateSearchQuery(query)
+        case .requests:
+            requestsListVC?.updateSearchQuery(query)
         case .discover:
             discoveryListVC?.updateSearchQuery(query)
+        case .popular:
+            popularListVC?.updateSearchQuery(query)
         }
+    }
+
+    @objc private func shareInviteTapped() {
+        shareConnectionInvite()
     }
 
     private func shareConnectionInvite() {
@@ -401,49 +298,61 @@ class MyNetworkViewController: BaseViewController {
     
     // MARK: - Child View Controller Management
     private func showConnectionsList() {
-        guard let allUsersListVC = allUsersListVC else { return }
-        
+        showPeopleList(allUsersListVC)
+    }
+
+    private func showRequestsList() {
+        showPeopleList(requestsListVC)
+    }
+
+    /// Shared child-swap for the two AllUsersListViewController-backed tabs
+    /// (My People and Requests).
+    private func showPeopleList(_ listVC: AllUsersListViewController?) {
+        guard let listVC = listVC else { return }
+
         if currentViewController != nil {
             removeCurrentViewController()
         }
-        
-        addChild(allUsersListVC)
-        containerView.addSubview(allUsersListVC.view)
-        allUsersListVC.view.translatesAutoresizingMaskIntoConstraints = false
-        
+
+        addChild(listVC)
+        containerView.addSubview(listVC.view)
+        listVC.view.translatesAutoresizingMaskIntoConstraints = false
+
         NSLayoutConstraint.activate([
-            allUsersListVC.view.topAnchor.constraint(equalTo: containerView.topAnchor),
-            allUsersListVC.view.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            allUsersListVC.view.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            allUsersListVC.view.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
+            listVC.view.topAnchor.constraint(equalTo: containerView.topAnchor),
+            listVC.view.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            listVC.view.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            listVC.view.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
         ])
-        
-        allUsersListVC.didMove(toParent: self)
-        currentViewController = allUsersListVC
+
+        listVC.didMove(toParent: self)
+        currentViewController = listVC
     }
     
-    private func showDiscoveryList() {
-        guard let discoveryListVC = discoveryListVC else { return }
-        
+    /// Shared child-swap for the Discover and Popular lists (same VC type,
+    /// different mode).
+    private func showChildList(_ childVC: DiscoveryListViewController?) {
+        guard let childVC = childVC else { return }
+
         if currentViewController != nil {
             removeCurrentViewController()
         }
-        
-        discoveryListVC.loadData()
 
-        addChild(discoveryListVC)
-        containerView.addSubview(discoveryListVC.view)
-        discoveryListVC.view.translatesAutoresizingMaskIntoConstraints = false
-        
+        childVC.loadData()
+
+        addChild(childVC)
+        containerView.addSubview(childVC.view)
+        childVC.view.translatesAutoresizingMaskIntoConstraints = false
+
         NSLayoutConstraint.activate([
-            discoveryListVC.view.topAnchor.constraint(equalTo: containerView.topAnchor),
-            discoveryListVC.view.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            discoveryListVC.view.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            discoveryListVC.view.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
+            childVC.view.topAnchor.constraint(equalTo: containerView.topAnchor),
+            childVC.view.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            childVC.view.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            childVC.view.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
         ])
-        
-        discoveryListVC.didMove(toParent: self)
-        currentViewController = discoveryListVC
+
+        childVC.didMove(toParent: self)
+        currentViewController = childVC
     }
     
     
