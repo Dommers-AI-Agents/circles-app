@@ -35,14 +35,65 @@ const NAME_TO_CODE = Object.entries(US_STATES).reduce((acc, [code, name]) => {
   return acc;
 }, {});
 
+// Country display name by ISO2 code, plus the name variants that show up at
+// the tail of Apple/Google formatted addresses. Only countries actually seen
+// in addresses matter — unknown tails just leave country null.
+const COUNTRIES = {
+  US: 'United States', CA: 'Canada', MX: 'Mexico', GB: 'United Kingdom',
+  FR: 'France', IT: 'Italy', ES: 'Spain', PT: 'Portugal', DE: 'Germany',
+  NL: 'Netherlands', BE: 'Belgium', CH: 'Switzerland', AT: 'Austria',
+  IE: 'Ireland', IS: 'Iceland', DK: 'Denmark', NO: 'Norway', SE: 'Sweden',
+  FI: 'Finland', GR: 'Greece', HR: 'Croatia', CZ: 'Czechia', PL: 'Poland',
+  HU: 'Hungary', TR: 'Türkiye', JP: 'Japan', KR: 'South Korea', CN: 'China',
+  TW: 'Taiwan', HK: 'Hong Kong', SG: 'Singapore', TH: 'Thailand',
+  VN: 'Vietnam', ID: 'Indonesia', MY: 'Malaysia', PH: 'Philippines',
+  IN: 'India', AE: 'United Arab Emirates', IL: 'Israel', EG: 'Egypt',
+  ZA: 'South Africa', MA: 'Morocco', KE: 'Kenya', AU: 'Australia',
+  NZ: 'New Zealand', FJ: 'Fiji', BR: 'Brazil', AR: 'Argentina', CL: 'Chile',
+  PE: 'Peru', CO: 'Colombia', EC: 'Ecuador', CR: 'Costa Rica', PA: 'Panama',
+  GT: 'Guatemala', BZ: 'Belize', DO: 'Dominican Republic', JM: 'Jamaica',
+  BS: 'Bahamas', BB: 'Barbados', CU: 'Cuba', AW: 'Aruba', CW: 'Curaçao',
+  KY: 'Cayman Islands', TC: 'Turks and Caicos Islands', VG: 'British Virgin Islands',
+  LC: 'Saint Lucia', AG: 'Antigua and Barbuda', BM: 'Bermuda'
+};
+
+const COUNTRY_NAME_TO_CODE = Object.entries(COUNTRIES).reduce((acc, [code, name]) => {
+  acc[name.toLowerCase()] = code;
+  return acc;
+}, {
+  // Variants beyond the canonical display names
+  'usa': 'US', 'united states of america': 'US', 'u.s.': 'US', 'u.s.a.': 'US',
+  'uk': 'GB', 'england': 'GB', 'scotland': 'GB', 'wales': 'GB',
+  'northern ireland': 'GB', 'great britain': 'GB',
+  'turkey': 'TR', 'czech republic': 'CZ', 'south korea': 'KR',
+  'republic of korea': 'KR', 'viet nam': 'VN', 'the bahamas': 'BS',
+  'the netherlands': 'NL', 'holland': 'NL', 'uae': 'AE'
+});
+
+// The country named at the tail of the address, or null when unrecognized.
+function parseCountry(address) {
+  const stripped = stripLocationHint(address);
+  const parts = stripped.split(',').map(p => p.trim()).filter(Boolean);
+  if (!parts.length) return null;
+  const code = COUNTRY_NAME_TO_CODE[parts[parts.length - 1].toLowerCase()];
+  return code ? { country: COUNTRIES[code], countryCode: code } : null;
+}
+
 const UNPLACED = Object.freeze({
   state: null, stateCode: null, city: null, cityKey: null,
-  neighborhood: null, source: null, placed: false
+  neighborhood: null, source: null, placed: false,
+  country: null, countryCode: null
 });
+
+// Some clients append a "📍 6.1 mi from current location" hint line after the
+// address — drop it (and anything after it) before parsing.
+function stripLocationHint(address) {
+  return String(address || '').split('📍')[0].trim();
+}
 
 // Strip a trailing country and collapse whitespace.
 function cleanAddress(address) {
-  return String(address || '')
+  return stripLocationHint(address)
     .replace(/,?\s*(United States of America|United States|U\.?S\.?A\.?|U\.?S\.?)\s*$/i, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -95,9 +146,17 @@ function deriveLocation(signals = {}) {
   const { stateCode, city: rawCity } = parseStateAndCity(address);
 
   if (!stateCode) {
-    // Couldn't resolve a state from the address. Keep any forwarded
-    // neighborhood but mark as Unplaced so the lens still lists it.
-    return { ...UNPLACED, neighborhood: neighborhood || null };
+    // Couldn't resolve a US state. Still worth naming the country ("…, SK
+    // S7K 2C7, Canada") — the country lens groups these; marked Unplaced only
+    // for the US-state lens.
+    const abroad = parseCountry(address);
+    return {
+      ...UNPLACED,
+      neighborhood: neighborhood || null,
+      country: abroad ? abroad.country : null,
+      countryCode: abroad ? abroad.countryCode : null,
+      source: abroad ? 'address' : null
+    };
   }
 
   const city = titleCaseCity(rawCity);
@@ -110,8 +169,10 @@ function deriveLocation(signals = {}) {
     cityKey,
     neighborhood: neighborhood || null,
     source: 'address',
-    placed: true
+    placed: true,
+    country: COUNTRIES.US,
+    countryCode: 'US'
   };
 }
 
-module.exports = { deriveLocation, US_STATES, cleanAddress, parseStateAndCity };
+module.exports = { deriveLocation, US_STATES, COUNTRIES, cleanAddress, parseStateAndCity, parseCountry };

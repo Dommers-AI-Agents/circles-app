@@ -485,7 +485,12 @@ const trackConnectionView = async (viewerUserId, viewedUserId) => {
 };
 
 // Clear activity notification (when user views the connection)
-const clearActivityNotification = async (userId, connectedUserId) => {
+// Mark a connection's activities as viewed by `userId`.
+// `excludeTypes` leaves those activity types UNVIEWED — e.g. the connection
+// profile view passes ['place'] so per-place "new" dots survive until the
+// viewer actually opens the circle (see markCirclePlacesViewed). hasNewActivity
+// then reflects whether anything the viewer hasn't seen still remains.
+const clearActivityNotification = async (userId, connectedUserId, { excludeTypes = [] } = {}) => {
   try {
     // Check both directions since connections can be stored either way
     const [connectionSnapshot1, connectionSnapshot2] = await Promise.all([
@@ -506,10 +511,11 @@ const clearActivityNotification = async (userId, connectedUserId) => {
 
     if (!connectionSnapshot.empty) {
       const connectionRef = connectionSnapshot.docs[0].ref;
-      
-      // Mark all activities as viewed by this user
+
       const connectionData = connectionSnapshot.docs[0].data();
       const updatedActivities = (connectionData.recentActivity || []).map(activity => {
+        // Leave excluded types unviewed (their dots persist until seen in context)
+        if (excludeTypes.includes(activity.type)) return activity;
         // Add viewer to viewedBy array if not already present
         if (!activity.viewedBy || !activity.viewedBy.includes(userId)) {
           return {
@@ -519,17 +525,61 @@ const clearActivityNotification = async (userId, connectedUserId) => {
         }
         return activity;
       });
-      
+
+      // Banner stays lit only while something remains unseen for this viewer
+      const stillUnviewed = updatedActivities.some(a => !(a.viewedBy || []).includes(userId));
+
       await connectionRef.update({
-        hasNewActivity: false,
+        hasNewActivity: stillUnviewed,
         recentActivity: updatedActivities,
         updatedAt: new Date().toISOString()
       });
-      
+
       // Activity notification cleared
     }
   } catch (error) {
     console.error('Error clearing activity notification:', error);
+  }
+};
+
+// Mark a single circle's activities (its new places + the circle itself) as
+// viewed by `userId`, when they open that circle. This is what actually clears
+// the per-place red dots — entering the circle counts as seeing them, so the
+// viewer never has to tap each place. `ownerUserId` is the circle's owner.
+const markCirclePlacesViewed = async (userId, ownerUserId, circleId) => {
+  try {
+    const [s1, s2] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', userId).where('connectedUserId', '==', ownerUserId).limit(1).get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', ownerUserId).where('connectedUserId', '==', userId).limit(1).get()
+    ]);
+    const snap = !s1.empty ? s1 : s2;
+    if (snap.empty) return;
+
+    const ref = snap.docs[0].ref;
+    const data = snap.docs[0].data();
+    let changed = false;
+    const updated = (data.recentActivity || []).map(activity => {
+      const belongsToCircle =
+        activity.circleId === circleId ||
+        (activity.type === 'circle' && activity.entityId === circleId);
+      if (belongsToCircle && (!activity.viewedBy || !activity.viewedBy.includes(userId))) {
+        changed = true;
+        return { ...activity, viewedBy: [...(activity.viewedBy || []), userId] };
+      }
+      return activity;
+    });
+    if (!changed) return;
+
+    const stillUnviewed = updated.some(a => !(a.viewedBy || []).includes(userId));
+    await ref.update({
+      recentActivity: updated,
+      hasNewActivity: stillUnviewed,
+      updatedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error marking circle places viewed:', error.message);
   }
 };
 
@@ -2534,6 +2584,7 @@ module.exports = {
   trackProfileUpdated,
   trackUserActivity,
   clearActivityNotification,
+  markCirclePlacesViewed,
   getConnectionsWithStats,
   cleanupOldActivity,
   markCircleActivitiesAsViewed,

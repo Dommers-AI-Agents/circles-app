@@ -4,32 +4,20 @@ const dailySummaryService = require('../services/dailySummaryService');
 const scheduledNotifications = require('../services/scheduledNotifications');
 const engagementNotificationService = require('../services/engagementNotificationService');
 const milestoneService = require('../services/milestoneService');
+const suggestionEngine = require('../services/suggestionEngine');
+const { runCategorySweep } = require('../services/categorySweep');
+const { verifyScheduler } = require('../middleware/verifyScheduler');
 
 const router = express.Router();
 
-// Middleware to verify the request is from Cloud Scheduler
-const verifyCloudScheduler = (req, res, next) => {
-  // Cloud Scheduler adds these headers
-  const userAgent = req.get('User-Agent');
-  const cloudSchedulerToken = req.get('X-Cloudscheduler');
-  
-  // Also accept requests with a secret token for testing
-  const authHeader = req.get('Authorization');
-  const schedulerSecret = process.env.SCHEDULER_SECRET;
-  
-  if (
-    (userAgent && userAgent.includes('Google-Cloud-Scheduler')) ||
-    cloudSchedulerToken === 'true' ||
-    (schedulerSecret && authHeader === `Bearer ${schedulerSecret}`)
-  ) {
-    next();
-  } else {
-    res.status(403).json({ 
-      success: false, 
-      error: 'Forbidden - This endpoint is only accessible by Cloud Scheduler' 
-    });
-  }
-};
+// Authenticates every task endpoint below. See middleware/verifyScheduler.js —
+// it accepts a Google-signed OIDC token from Cloud Scheduler, or the
+// SCHEDULER_SECRET bearer token for manual runs, and nothing else.
+//
+// This replaced a check that trusted the `X-Cloudscheduler` header and the
+// User-Agent string. Both are set by the caller, so anyone could trigger a
+// push-notification blast to the whole user base with a single curl.
+const verifyCloudScheduler = verifyScheduler;
 
 // Daily summary endpoint
 router.post('/daily-summary', verifyCloudScheduler, async (req, res) => {
@@ -231,6 +219,77 @@ router.post('/network-growth', verifyCloudScheduler, async (req, res) => {
   }
 });
 
+// Suggestion rebuild (nightly). Recomputes who each user should be shown in
+// Discover, and repairs the denormalized user counters in the same pass.
+//
+// This is the expensive half of discovery deliberately moved off the request
+// path: serving suggestions afterwards is a single document read per user.
+// Pass ?dryRun=true to report what it would write without writing.
+router.post('/build-suggestions', verifyCloudScheduler, async (req, res) => {
+  try {
+    console.log('\u2728 Suggestion rebuild triggered via API');
+
+    const dryRun = req.query.dryRun === 'true';
+    const result = await suggestionEngine.buildAllSuggestions({ dryRun });
+
+    console.log('\u2705 Suggestion rebuild finished:', result);
+    res.json({
+      success: true,
+      message: dryRun ? 'Suggestion rebuild dry run completed' : 'Suggestions rebuilt successfully',
+      ...result,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('\u274c Error in build-suggestions endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to rebuild suggestions',
+      details: error.message
+    });
+  }
+});
+
+// Category sweep (nightly). Classifies the residual tail of venues that Google
+// types, Apple POI and text inference all failed on — they're flagged
+// `needsCategoryReview` at save time and batched to the LLM tier here.
+//
+// Cost is bounded by construction: once per venue ever, tail only, and a hard
+// per-run cap. No-ops entirely unless CATEGORY_LLM_ENABLED=true and
+// ANTHROPIC_API_KEY are set. Pass ?dryRun=true to see what it would send.
+router.post('/sweep-categories', verifyCloudScheduler, async (req, res) => {
+  try {
+    console.log('🧹 Category sweep triggered via API');
+
+    const dryRun = req.query.dryRun === 'true';
+    const maxPlaces = req.query.maxPlaces ? parseInt(req.query.maxPlaces, 10) : undefined;
+    const report = await runCategorySweep({ dryRun, maxPlaces });
+
+    if (!report.enabled && !dryRun) {
+      console.log('   ↳ LLM tier is off; nothing sent');
+    } else {
+      console.log(
+        `✅ Category sweep: sent ${report.sent}, resolved ${report.resolved}, ` +
+        `unresolved ${report.unresolved}, failed ${report.failed}, $${report.costUSD.toFixed(4)}` +
+        (report.capped ? ` (CAPPED — ${report.skippedByCap} deferred to next run)` : '')
+      );
+    }
+
+    res.json({
+      success: true,
+      message: dryRun ? 'Category sweep dry run completed' : 'Category sweep completed',
+      ...report,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error in sweep-categories endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to sweep categories',
+      details: error.message
+    });
+  }
+});
+
 // Top contributors endpoint (last day of month at 6 PM)
 router.post('/top-contributors', verifyCloudScheduler, async (req, res) => {
   try {
@@ -346,6 +405,7 @@ router.get('/health', (req, res) => {
       '/api/tasks/monthly-summary',
       '/api/tasks/network-growth',
       '/api/tasks/top-contributors',
+      '/api/tasks/build-suggestions',
       '/api/tasks/special-event/:eventType'
     ]
   });

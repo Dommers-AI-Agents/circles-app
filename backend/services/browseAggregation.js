@@ -13,15 +13,27 @@
 //    people who saved it) and rating.
 
 const UNPLACED_KEY = '__unplaced__';
+// Namespace prefix for country region keys ("country:CA"). Bare ISO2 would
+// collide with US state codes — Ontario, CA is both a California city and a
+// Canadian province — so countries never share the "city|ST" key format.
+const COUNTRY_KEY_PREFIX = 'country:';
 
 const venueKeyOf = (p) => p.globalPlaceId || p.id;
 
 // ---- Tree from per-circle summaries -------------------------------------
 
-// summaries: [{ cityCounts: {cityKey: n}, cityMeta: {cityKey:{city,stateCode,state}}, unplacedCount }]
-// Returns { states: [{stateCode, state, count, cities:[{city,cityKey,count}]}], unplaced? }
+// summaries: [{ cityCounts: {cityKey: n}, cityMeta: {cityKey:{city,stateCode,state}},
+//               countryCounts: {countryCode: n}, countryMeta: {countryCode:{country}},
+//               unplacedCount }]
+// Returns { states: [{stateCode, state, count, cities:[...], isCountry?}], unplaced? }
+//
+// Countries ride in the same `states` list as US states, flagged isCountry with
+// an empty `cities` array — a non-US place has a country but no parseable city
+// (parseStateAndCity only knows US states), so the client lists its venues
+// directly instead of drilling to a city level that would always be empty.
 function mergeSummaries(summaries) {
   const states = new Map();
+  const countries = new Map();
   let unplaced = 0;
 
   for (const s of summaries) {
@@ -45,6 +57,18 @@ function mergeSummaries(summaries) {
       if (meta.city) c.city = meta.city;
       c.count += count;
     }
+
+    const countryCounts = s.countryCounts || {};
+    const countryMeta = s.countryMeta || {};
+    for (const countryCode of Object.keys(countryCounts)) {
+      const count = countryCounts[countryCode];
+      if (!count) continue;
+      const meta = countryMeta[countryCode] || {};
+      let ct = countries.get(countryCode);
+      if (!ct) { ct = { countryCode, country: meta.country || countryCode, count: 0 }; countries.set(countryCode, ct); }
+      if (meta.country) ct.country = meta.country;
+      ct.count += count;
+    }
   }
 
   const stateList = [...states.values()]
@@ -53,10 +77,26 @@ function mergeSummaries(summaries) {
       state: st.state,
       count: st.count,
       cities: [...st.cities.values()].sort((a, b) => b.count - a.count || a.city.localeCompare(b.city))
-    }))
+    }));
+
+  const countryList = [...countries.values()].map(ct => ({
+    stateCode: ct.countryCode,
+    state: ct.country,
+    countryCode: ct.countryCode,
+    isCountry: true,
+    // The key to pass to the city-places endpoint. A state row has none — the
+    // client drills into cities[] for that — so a country carries its own.
+    cityKey: `${COUNTRY_KEY_PREFIX}${ct.countryCode}`,
+    count: ct.count,
+    cities: []
+  }));
+
+  // One list, sorted by size — a Canadian user sees Canada first rather than
+  // after every US state they've saved in.
+  const regions = [...stateList, ...countryList]
     .sort((a, b) => b.count - a.count || a.state.localeCompare(b.state));
 
-  const result = { states: stateList };
+  const result = { states: regions };
   if (unplaced > 0) result.unplaced = { cityKey: UNPLACED_KEY, count: unplaced };
   return result;
 }
@@ -67,14 +107,27 @@ function mergeSummaries(summaries) {
 function summarizeCirclePlaces(places) {
   const cityCounts = {};
   const cityMeta = {};
+  const countryCounts = {};
+  const countryMeta = {};
   let unplacedCount = 0;
   for (const p of places) {
     if (p.deletedAt) continue;
-    if (!p.stateCode || !p.cityKey) { unplacedCount++; continue; }
-    cityCounts[p.cityKey] = (cityCounts[p.cityKey] || 0) + 1;
-    cityMeta[p.cityKey] = { city: p.city || 'Unknown', stateCode: p.stateCode, state: p.state || p.stateCode };
+    if (p.stateCode && p.cityKey) {
+      cityCounts[p.cityKey] = (cityCounts[p.cityKey] || 0) + 1;
+      cityMeta[p.cityKey] = { city: p.city || 'Unknown', stateCode: p.stateCode, state: p.state || p.stateCode };
+      continue;
+    }
+    // No US state, but a recognized country — placed at the country level
+    // rather than dumped in Unplaced, which is what the map's region chips
+    // already do for these.
+    if (p.countryCode) {
+      countryCounts[p.countryCode] = (countryCounts[p.countryCode] || 0) + 1;
+      countryMeta[p.countryCode] = { country: p.country || p.countryCode };
+      continue;
+    }
+    unplacedCount++;
   }
-  return { cityCounts, cityMeta, unplacedCount };
+  return { cityCounts, cityMeta, countryCounts, countryMeta, unplacedCount };
 }
 
 // ---- City venues (bounded live query) -----------------------------------
@@ -147,5 +200,6 @@ module.exports = {
   buildCityVenues,
   densestNeighborhood,
   venueKeyOf,
-  UNPLACED_KEY
+  UNPLACED_KEY,
+  COUNTRY_KEY_PREFIX
 };

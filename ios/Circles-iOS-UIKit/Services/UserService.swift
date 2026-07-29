@@ -311,8 +311,59 @@ class UserService {
         }
     }
     
+    /// The people the signed-in user follows.
+    ///
+    /// Follow is the low-friction first step in the network, so this list is
+    /// usually much larger than the connection list and is what the People tab
+    /// leans on. The server stamps `followsYou` on each entry, which is how the
+    /// UI tells a one-way follow from a mutual one.
+    func getFollowing(completion: @escaping (Result<[User], Error>) -> Void) {
+        guard let userId = AuthService.shared.getUserId() else {
+            completion(.failure(APIError.unauthorized))
+            return
+        }
+
+        APIService.shared.request(
+            endpoint: "users/\(userId)/following",
+            method: .get,
+            requiresAuth: true
+        ) { [weak self] (result: Result<FollowingResponse, APIError>) in
+            guard let self = self else { return }
+            switch result {
+            case .success(let response):
+                completion(.success(response.following))
+            case .failure(let error):
+                completion(.failure(self.mapAPIErrorToUserError(error)))
+            }
+        }
+    }
+
+    /// The people who follow the signed-in user. Each entry carries
+    /// `isFollowing` (whether the caller follows them back), which is what the
+    /// People tab's "Follows you" / Follow Back section keys on.
+    func getFollowers(completion: @escaping (Result<[User], Error>) -> Void) {
+        guard let userId = AuthService.shared.getUserId() else {
+            completion(.failure(APIError.unauthorized))
+            return
+        }
+
+        APIService.shared.request(
+            endpoint: "users/\(userId)/followers",
+            method: .get,
+            requiresAuth: true
+        ) { [weak self] (result: Result<FollowersResponse, APIError>) in
+            guard let self = self else { return }
+            switch result {
+            case .success(let response):
+                completion(.success(response.followers))
+            case .failure(let error):
+                completion(.failure(self.mapAPIErrorToUserError(error)))
+            }
+        }
+    }
+
     // MARK: - Friend Management
-    
+
     func getFriends(completion: @escaping (Result<[User], Error>) -> Void) {
         APIService.shared.request(
             endpoint: "users/me/friends",

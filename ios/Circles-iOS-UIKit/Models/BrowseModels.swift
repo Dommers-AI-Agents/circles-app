@@ -9,11 +9,23 @@ struct LocationBrowseResponse: Decodable {
     let unplaced: BrowseUnplaced?
 }
 
+/// A top-level region row: a US state (which drills into cities) or a whole
+/// country. Non-US addresses can't be parsed to a city — the address parser only
+/// knows US states — so a country carries its own `cityKey` and an empty
+/// `cities`, and tapping it lists its venues directly.
 struct BrowseStateNode: Decodable {
     let stateCode: String
     let state: String
     let count: Int
     let cities: [BrowseCityNode]
+    let isCountry: Bool?
+    let cityKey: String?
+
+    /// True when this row has no city tier to drill into.
+    var listsVenuesDirectly: Bool { isCountry == true || cities.isEmpty }
+
+    /// The region key to pass to the city-places endpoint, when this row is a leaf.
+    var directRegionKey: String? { cityKey }
 }
 
 struct BrowseCityNode: Decodable {
@@ -30,7 +42,11 @@ struct BrowseUnplaced: Decodable {
 struct CityPlacesResponse: Decodable {
     let success: Bool
     let cityKey: String
+    /// The display title — a city name, a country name, or "Unplaced".
     let city: String?
+    let isCountry: Bool?
+    let country: String?
+    let countryCode: String?
     let state: String?
     let stateCode: String?
     let count: Int

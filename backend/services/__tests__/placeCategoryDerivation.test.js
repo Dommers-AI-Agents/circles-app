@@ -38,6 +38,25 @@ describe('deriveCategory cascade', () => {
     expect(deriveCategory({ name: '   ' }).category).toBe('other');
   });
 
+  // Check-in used to hand-roll its own Google-types mapping, which emitted
+  // 'shopping' — not a value in the category enum, so those places fell into
+  // the iOS "Other" bucket and never matched the Shopping chip. It now forwards
+  // raw types to this cascade instead.
+  test('check-in Google types map into the enum (store -> retail, never "shopping")', () => {
+    const store = deriveCategory({ googleTypes: ['store', 'point_of_interest'] });
+    expect(store.category).toBe('retail');
+    expect(store.source).toBe('google');
+
+    const mall = deriveCategory({ googleTypes: ['shopping_mall'] });
+    expect(mall.category).toBe('retail');
+
+    // The other four branches the old if-chain covered still resolve.
+    expect(deriveCategory({ googleTypes: ['restaurant'] }).category).toBe('restaurant');
+    expect(deriveCategory({ googleTypes: ['cafe'] }).category).toBe('cafe');
+    expect(deriveCategory({ googleTypes: ['night_club'] }).category).toBe('bar');
+    expect(deriveCategory({ googleTypes: ['museum'] }).category).toBe('attraction');
+  });
+
   test('deterministic tiers beat text (POI outranks a misleading name)', () => {
     // "Park Tavern" is a bar by POI even though the name contains "Park"
     const r = deriveCategory({ applePoiCategory: 'MKPOICategoryNightlife', name: 'Park Tavern' });

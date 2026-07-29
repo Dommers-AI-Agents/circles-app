@@ -166,6 +166,10 @@ async function createGlobalPlaceFromLegacy(legacyPlaceDoc) {
         categoryBefore: 'other',
         categoryClassifiedAt: new Date().toISOString()
       };
+    } else {
+      // Nothing could classify it. Flag it inline (no extra write) for the
+      // nightly LLM sweep — scripts/sweep-category-review.js.
+      categoryMeta.needsCategoryReview = true;
     }
   }
 
@@ -179,9 +183,15 @@ async function createGlobalPlaceFromLegacy(legacyPlaceDoc) {
     ? {
         state: loc.state, stateCode: loc.stateCode, city: loc.city,
         cityKey: loc.cityKey, neighborhood: loc.neighborhood,
+        country: loc.country, countryCode: loc.countryCode,
         locationSource: loc.source, locationDerivedAt: new Date().toISOString()
       }
-    : { neighborhood: loc.neighborhood || null };
+    : {
+        neighborhood: loc.neighborhood || null,
+        // Non-US places still carry their country ("…, Canada") for the
+        // country-level region chips
+        country: loc.country || null, countryCode: loc.countryCode || null
+      };
 
   const globalPlaceData = createGlobalPlace({
     ...legacyPlace,
@@ -223,7 +233,8 @@ const STRIPPED_VENUE_FIELDS = [
 // Denormalized query-cache fields mirrored from the canonical venue onto each
 // save doc (used by geo/list/category/location browse queries).
 const CACHED_VENUE_FIELDS = [
-  'category', 'state', 'stateCode', 'city', 'cityKey', 'neighborhood'
+  'category', 'state', 'stateCode', 'city', 'cityKey', 'neighborhood',
+  'country', 'countryCode'
 ];
 
 // Resolve-or-create the canonical globalPlaces doc for a legacy place doc and
@@ -237,7 +248,12 @@ async function ensureGlobalPlaceLink(placeDoc) {
 
     const { globalPlaceDoc } = await resolveGlobalPlace(placeDoc.id);
     let globalPlaceId = globalPlaceDoc ? globalPlaceDoc.id : null;
-    let resolvedData = null;
+    // The canonical venue's data, whether we just created it or matched an
+    // existing one. Both paths must stamp the save's query cache: a venue
+    // someone else already saved has a correct category and location, and
+    // dropping them here left the save invisible to every query that filters on
+    // the cached fields (city browse, circle summaries, the map's region chips).
+    let resolvedData = globalPlaceDoc ? globalPlaceDoc.data() : null;
 
     if (!globalPlaceId) {
       const created = await createGlobalPlaceFromLegacy(placeDoc);
@@ -254,7 +270,7 @@ async function ensureGlobalPlaceLink(placeDoc) {
       }
     });
     // Keep the save's denormalized query cache (category + the location lens) in
-    // sync with the venue we just derived, so geo/list/browse queries are correct.
+    // sync with the canonical venue, so geo/list/browse queries are correct.
     if (resolvedData) {
       CACHED_VENUE_FIELDS.forEach(field => {
         const value = resolvedData[field];
@@ -264,10 +280,36 @@ async function ensureGlobalPlaceLink(placeDoc) {
       });
     }
     await placeDoc.ref.update(updates);
+
+    // An EXISTING venue that nothing has managed to categorize yet: flag it for
+    // the nightly sweep rather than calling a model here — a save must never
+    // wait on (or fail because of) an API call. Newly created venues are
+    // flagged inline above, so this is a no-op for them, and it's a no-op again
+    // for every later saver once the flag is set.
+    await flagForCategoryReview(globalPlaceId, resolvedData);
+
     return globalPlaceId;
   } catch (error) {
     console.error(`⚠️ [GlobalPlace] Failed to link place ${placeDoc.id} to a global place:`, error.message);
     return null;
+  }
+}
+
+// Mark a venue as needing the LLM category tier. Best-effort and idempotent:
+// already-classified venues are never re-flagged (the sweep also re-checks), so
+// a venue costs at most one classification in its lifetime.
+async function flagForCategoryReview(globalPlaceId, venueData) {
+  if (!globalPlaceId || !venueData) return;
+  if ((venueData.category || 'other') !== 'other') return;
+  if (venueData.categoryClassifiedAt) return;
+  if (venueData.needsCategoryReview) return;
+
+  try {
+    await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(globalPlaceId).update({
+      needsCategoryReview: true
+    });
+  } catch (e) {
+    console.warn(`⚠️ [GlobalPlace] Could not flag ${globalPlaceId} for category review:`, e.message);
   }
 }
 

@@ -31,4 +31,10 @@ extension Notification.Name {
 
     // Rewards notifications
     static let rewardBalanceChanged = Notification.Name("RewardBalanceChanged")
+
+    /// Premium entitlement resolved or changed. Posted on the main thread by
+    /// SubscriptionService whenever `subscriptionStatus` actually changes —
+    /// status starts `.none` and resolves asynchronously, so any UI that gates
+    /// on premium must rebuild on this rather than reading the value once.
+    static let subscriptionStatusChanged = Notification.Name("SubscriptionStatusChanged")
 }

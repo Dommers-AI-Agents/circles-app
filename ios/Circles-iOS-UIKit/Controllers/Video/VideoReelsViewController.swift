@@ -162,22 +162,19 @@ class VideoReelsViewController: UIViewController {
             object: playerItem
         )
         
-        // Enable audio playback
-        do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch {
-            Logger.debug("❌ VideoReels: Failed to setup audio session: \(error)")
-        }
-        
+        // NOTE: the audio session is claimed in playCurrentVideo(), not here.
+        // loadVideo also runs for preloaded/adjacent reels, and taking the
+        // session then would silence the user's music before anything plays.
+
         players[index] = player
         Logger.debug("✅ VideoReels: Loaded video for index \(index)")
     }
     
     private func playCurrentVideo() {
-        // Pause all videos first
-        pauseAllVideos()
-        
+        // Pause all videos first — but keep the audio session, we're about to
+        // play the next reel and handing it back would let music blip in.
+        pauseAllPlayers()
+
         // Check if current item is a photo
         if currentIndex < reels.count && reels[currentIndex].contentType == "photo" {
             // Photos don't need to be played, just track the view
@@ -189,6 +186,7 @@ class VideoReelsViewController: UIViewController {
         if let player = players[currentIndex] {
             // Check if player is ready
             if player.currentItem?.status == .readyToPlay {
+                AudioSessionManager.shared.beginPlayback()
                 player.play()
                 Logger.debug("✅ VideoReels: Playing video at index \(currentIndex)")
             } else {
@@ -204,7 +202,16 @@ class VideoReelsViewController: UIViewController {
         trackVideoView(at: currentIndex)
     }
     
+    /// Pause every player and give the audio session back — use when leaving
+    /// the reels experience entirely.
     private func pauseAllVideos() {
+        pauseAllPlayers()
+        AudioSessionManager.shared.endPlayback()
+    }
+
+    /// Pause every player but hold the audio session, for swapping between
+    /// reels within the feed.
+    private func pauseAllPlayers() {
         for player in players.values {
             player.pause()
         }
@@ -259,6 +266,7 @@ class VideoReelsViewController: UIViewController {
                 // Find which player this item belongs to and play if it's current
                 for (index, player) in players where player.currentItem == playerItem {
                     if index == currentIndex {
+                        AudioSessionManager.shared.beginPlayback()
                         player.play()
                         Logger.debug("✅ VideoReels: Auto-playing video at index \(index) after ready")
                     }

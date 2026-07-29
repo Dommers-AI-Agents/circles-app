@@ -1,11 +1,26 @@
 import UIKit
 
 class SuggestionsViewController: BaseViewController {
-    
+
+    // MARK: - Feed selection
+    private enum Feed: Int {
+        case network = 0   // broadcast suggestions from my network
+        case received = 1  // suggestions sent directly to me
+    }
+    private var currentFeed: Feed = .network
+
     // MARK: - Properties
     private var suggestions: [Suggestion] = []
-    
+
     // MARK: - UI Elements
+    private lazy var feedSegmentedControl: UISegmentedControl = {
+        let control = UISegmentedControl(items: ["Network", "For You"])
+        control.selectedSegmentIndex = 0
+        control.translatesAutoresizingMaskIntoConstraints = false
+        control.addTarget(self, action: #selector(feedChanged), for: .valueChanged)
+        return control
+    }()
+
     private let tableView: UITableView = {
         let table = UITableView()
         table.translatesAutoresizingMaskIntoConstraints = false
@@ -24,7 +39,14 @@ class SuggestionsViewController: BaseViewController {
     
     // MARK: - BaseViewController Configuration
     override var enablesPullToRefresh: Bool { true }
-    override var emptyStateMessage: String? { "No Suggestions Yet\n\nShare your experiences with your network!" }
+    override var emptyStateMessage: String? {
+        switch currentFeed {
+        case .network:
+            return "No Suggestions Yet\n\nShare your experiences with your network!"
+        case .received:
+            return "No suggestions for you yet\n\nWhen someone suggests a place just for you, it shows up here."
+        }
+    }
     override var reloadsDataOnAppear: Bool { true }
     
     // MARK: - Lifecycle
@@ -45,11 +67,16 @@ class SuggestionsViewController: BaseViewController {
         setupNavigationBar(title: "Suggestions")
         addNavigationBarButton(image: "plus", position: .right, action: #selector(createSuggestionTapped))
         
+        view.addSubview(feedSegmentedControl)
         view.addSubview(tableView)
         view.addSubview(createButton)
-        
+
         NSLayoutConstraint.activate([
-            tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            feedSegmentedControl.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            feedSegmentedControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            feedSegmentedControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+
+            tableView.topAnchor.constraint(equalTo: feedSegmentedControl.bottomAnchor, constant: 8),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -135,8 +162,15 @@ class SuggestionsViewController: BaseViewController {
     }
     
     // MARK: - Data Loading (BaseViewController override)
+    @objc private func feedChanged() {
+        currentFeed = Feed(rawValue: feedSegmentedControl.selectedSegmentIndex) ?? .network
+        suggestions = []
+        tableView.reloadData()
+        loadData()
+    }
+
     override func loadData(completion: (() -> Void)? = nil) {
-        SuggestionService.shared.fetchNetworkSuggestions { [weak self] result in
+        let handler: (Result<[Suggestion], Error>) -> Void = { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let suggestions):
@@ -152,12 +186,21 @@ class SuggestionsViewController: BaseViewController {
                 completion?()
             }
         }
+
+        switch currentFeed {
+        case .network:
+            SuggestionService.shared.fetchNetworkSuggestions(completion: handler)
+        case .received:
+            SuggestionService.shared.fetchReceivedSuggestions(completion: handler)
+        }
     }
     
     private func updateEmptyState() {
         if suggestions.isEmpty {
-            showEmptyState()
-            createButton.isHidden = false
+            showEmptyState(message: emptyStateMessage)
+            // The create button broadcasts to the network — not relevant on the
+            // "For You" (received) tab
+            createButton.isHidden = (currentFeed == .received)
         } else {
             hideEmptyState()
             createButton.isHidden = true

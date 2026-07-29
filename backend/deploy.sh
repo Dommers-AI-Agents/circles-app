@@ -50,9 +50,31 @@ if [ ! -z "$SHARE_LINK_BASE_URL" ]; then
     ENV_VARS="$ENV_VARS,SHARE_LINK_BASE_URL=$SHARE_LINK_BASE_URL"
 fi
 
-# Sticker rewards admin API secret
+# Sticker rewards admin API secret. adminRoutes fails closed without this —
+# there is deliberately no default.
 if [ ! -z "$ADMIN_SECRET" ]; then
     ENV_VARS="$ENV_VARS,ADMIN_SECRET=$ADMIN_SECRET"
+else
+    echo -e "${RED}❌ ADMIN_SECRET is not set — /api/admin/* will reject every request${NC}"
+    exit 1
+fi
+
+# Scheduled task auth (/api/tasks/*). Cloud Scheduler authenticates with a
+# Google-signed OIDC token; SCHEDULER_SECRET is break-glass for manual runs.
+# Without at least one of these configured every task endpoint denies, so the
+# deploy stops rather than silently breaking the nightly jobs.
+if [ -z "$SCHEDULER_SECRET" ] && [ -z "$SCHEDULER_SERVICE_ACCOUNT" ]; then
+    echo -e "${RED}❌ Neither SCHEDULER_SECRET nor SCHEDULER_SERVICE_ACCOUNT is set — /api/tasks/* would reject Cloud Scheduler${NC}"
+    exit 1
+fi
+if [ ! -z "$SCHEDULER_SECRET" ]; then
+    ENV_VARS="$ENV_VARS,SCHEDULER_SECRET=$SCHEDULER_SECRET"
+fi
+if [ ! -z "$SCHEDULER_OIDC_AUDIENCE" ]; then
+    ENV_VARS="$ENV_VARS,SCHEDULER_OIDC_AUDIENCE=$SCHEDULER_OIDC_AUDIENCE"
+fi
+if [ ! -z "$SCHEDULER_SERVICE_ACCOUNT" ]; then
+    ENV_VARS="$ENV_VARS,SCHEDULER_SERVICE_ACCOUNT=$SCHEDULER_SERVICE_ACCOUNT"
 fi
 
 # SMTP email configuration (QR emails, venue reports, welcome emails)
@@ -77,6 +99,33 @@ if [ ! -z "$FOURSQUARE_CLIENT_ID" ]; then
     ENV_VARS="$ENV_VARS,FOURSQUARE_CLIENT_ID=$FOURSQUARE_CLIENT_ID"
     ENV_VARS="$ENV_VARS,FOURSQUARE_CLIENT_SECRET=$FOURSQUARE_CLIENT_SECRET"
     ENV_VARS="$ENV_VARS,FOURSQUARE_REDIRECT_URI=$FOURSQUARE_REDIRECT_URI"
+fi
+
+# Circle advisor (LLM). ANTHROPIC_API_KEY is also read by the category
+# backfill's optional LLM tier. Without both the key and the flag the advisor
+# endpoint reports enabled:false and never calls the model.
+if [ ! -z "$ANTHROPIC_API_KEY" ]; then
+    ENV_VARS="$ENV_VARS,ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY"
+fi
+if [ ! -z "$CIRCLE_ADVISOR_ENABLED" ]; then
+    ENV_VARS="$ENV_VARS,CIRCLE_ADVISOR_ENABLED=$CIRCLE_ADVISOR_ENABLED"
+fi
+if [ ! -z "$CIRCLE_ADVISOR_DAILY_RUNS_PER_USER" ]; then
+    ENV_VARS="$ENV_VARS,CIRCLE_ADVISOR_DAILY_RUNS_PER_USER=$CIRCLE_ADVISOR_DAILY_RUNS_PER_USER"
+fi
+if [ ! -z "$CIRCLE_ADVISOR_DAILY_RUNS_GLOBAL" ]; then
+    ENV_VARS="$ENV_VARS,CIRCLE_ADVISOR_DAILY_RUNS_GLOBAL=$CIRCLE_ADVISOR_DAILY_RUNS_GLOBAL"
+fi
+
+# Category tier 3 (LLM classifier for the residual 'other' tail). Read by the
+# nightly sweep at POST /api/tasks/sweep-categories — never by a request path.
+# Without the flag AND ANTHROPIC_API_KEY the sweep reports enabled:false and
+# never calls the model.
+if [ ! -z "$CATEGORY_LLM_ENABLED" ]; then
+    ENV_VARS="$ENV_VARS,CATEGORY_LLM_ENABLED=$CATEGORY_LLM_ENABLED"
+fi
+if [ ! -z "$MAX_LLM_PLACES" ]; then
+    ENV_VARS="$ENV_VARS,MAX_LLM_PLACES=$MAX_LLM_PLACES"
 fi
 
 # Deploy to Cloud Run

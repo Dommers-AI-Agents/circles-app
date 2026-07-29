@@ -17,21 +17,48 @@ class DiscoveryListViewController: BaseViewController {
         var users: [User]
     }
 
-    // Ordered by conversion, then aspiration. "Follows you" is first because
-    // the other person has already opted in — following back is one tap and
-    // can't be rejected. "Most active" is second: a big collection is the
-    // app's value made visible ("follow this person, inherit 200 places") and
-    // the strongest motivator to grow a network.
-    private static let sectionPlan: [(type: String, title: String, blurb: String?)] = [
-        ("followsYou", "Follows you", "Following back is instant — no approval needed."),
-        ("popular", "Most active", "The biggest collections on FavCircles — follow to see all their spots."),
-        // Backed by the suggestion engine, so these rows carry a real reason —
-        // a venue you both saved, a shared taste, or who already follows them.
-        // Each row states its own reason, so they belong in one section rather
-        // than split across tabs nobody would think to check.
-        ("friendsOfFriends", "Suggested for you", nil),
-        ("nearby", "Near you", nil)
-    ]
+    /// Which face of discovery this instance shows. `.discover` is the
+    /// suggestion surface (people you don't follow yet); `.popular` is the
+    /// scorecard — everyone ranked by collection size, including people you
+    /// already follow, because watching people you know climb is the fun.
+    enum Mode {
+        case discover
+        case popular
+    }
+
+    private let mode: Mode
+
+    init(mode: Mode = .discover) {
+        self.mode = mode
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    // The app is young, so the best first follows are people near you and
+    // power users — their collections are the product's value made visible.
+    // "Follows you" stays high because the other person already opted in;
+    // engine suggestions round it out. (Power users graduated to their own
+    // Popular tab — the leaderboard — so Discover stays pure suggestions.)
+    private var sectionPlan: [(type: String, title: String, blurb: String?)] {
+        switch mode {
+        case .discover:
+            return [
+                ("nearby", "📍 Near you", "People exploring your area — their saved spots are your next stop."),
+                ("followsYou", "👋 Follows you", "They're already following you — follow back with one tap."),
+                // Backed by the suggestion engine, so these rows carry a real
+                // reason — a venue you both saved, a shared taste, or who
+                // already follows them.
+                ("friendsOfFriends", "✨ Suggested for you", nil)
+            ]
+        case .popular:
+            return [
+                ("leaderboard", "🔥 Popular", "The biggest collections on FavCircles — everyone, ranked. Where do you land?")
+            ]
+        }
+    }
 
     private var sections: [SuggestionSection] = []
     private var searchQuery: String = ""
@@ -75,11 +102,72 @@ class DiscoveryListViewController: BaseViewController {
         return button
     }()
 
+    // Discover must never dead-end. When there's nobody left to suggest —
+    // the "I've added everyone" case — the page's job shifts from browsing
+    // people to bringing people, so the empty state becomes an invite CTA.
+    private lazy var inviteEmptyView: UIView = {
+        let container = UIView()
+        container.isHidden = true
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        let icon = UIImageView(image: UIImage(systemName: "person.2.wave.2"))
+        icon.tintColor = Constants.Colors.primary
+        icon.contentMode = .scaleAspectFit
+        icon.translatesAutoresizingMaskIntoConstraints = false
+
+        let title = UILabel()
+        title.text = "Every place has a story"
+        title.font = .systemFont(ofSize: 20, weight: .semibold)
+        title.textColor = .label
+        title.textAlignment = .center
+
+        let message = UILabel()
+        message.text = "You already know everyone here. Invite your friends to join Circles and share their favorite places."
+        message.font = .systemFont(ofSize: 15)
+        message.textColor = .secondaryLabel
+        message.textAlignment = .center
+        message.numberOfLines = 0
+
+        let stack = UIStackView(arrangedSubviews: [title, message, inviteButton])
+        stack.axis = .vertical
+        stack.spacing = 12
+        stack.alignment = .center
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        container.addSubview(icon)
+        container.addSubview(stack)
+        NSLayoutConstraint.activate([
+            icon.topAnchor.constraint(equalTo: container.topAnchor),
+            icon.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            icon.widthAnchor.constraint(equalToConstant: 56),
+            icon.heightAnchor.constraint(equalToConstant: 56),
+
+            stack.topAnchor.constraint(equalTo: icon.bottomAnchor, constant: 16),
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+
+            inviteButton.widthAnchor.constraint(equalToConstant: 180),
+            inviteButton.heightAnchor.constraint(equalToConstant: 44)
+        ])
+        return container
+    }()
+
+    private lazy var inviteButton: UIButton = {
+        let button = UIButton.primaryButton(title: "Invite Friends")
+        button.addTarget(self, action: #selector(inviteFriendsTapped), for: .touchUpInside)
+        return button
+    }()
+
     override var enablesPullToRefresh: Bool { true }
     override var emptyStateMessage: String? {
-        searchQuery.isEmpty
-            ? "No suggestions right now\n\nInvite a friend, or add your zipcode in your profile so we can find people near you."
-            : "Nobody matching \"\(searchQuery)\""
+        guard searchQuery.isEmpty else { return "Nobody matching \"\(searchQuery)\"" }
+        switch mode {
+        case .discover:
+            return "No suggestions right now\n\nInvite a friend, or add your zipcode in your profile so we can find people near you."
+        case .popular:
+            return "No rankings yet\n\nAdd places to claim the top spot!"
+        }
     }
 
     // MARK: - Lifecycle
@@ -88,9 +176,13 @@ class DiscoveryListViewController: BaseViewController {
         super.viewDidLoad()
         setupUI()
         setupTableView()
-        locationManager.delegate = self
-        locationManager.desiredAccuracy = kCLLocationAccuracyKilometer
-        checkLocationPermission()
+        // Location only powers the "Near you" section, which is a Discover
+        // concern — the Popular leaderboard needs no permission banner.
+        if mode == .discover {
+            locationManager.delegate = self
+            locationManager.desiredAccuracy = kCLLocationAccuracyKilometer
+            checkLocationPermission()
+        }
     }
 
     private func setupUI() {
@@ -100,11 +192,17 @@ class DiscoveryListViewController: BaseViewController {
         locationPermissionView.addSubview(locationPermissionLabel)
         locationPermissionView.addSubview(enableLocationButton)
 
+        view.addSubview(inviteEmptyView)
+
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: view.topAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
+            inviteEmptyView.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -40),
+            inviteEmptyView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
+            inviteEmptyView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
 
             locationPermissionView.topAnchor.constraint(equalTo: view.topAnchor, constant: 16),
             locationPermissionView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
@@ -136,7 +234,7 @@ class DiscoveryListViewController: BaseViewController {
         var loaded: [String: [User]] = [:]
         let lock = NSLock()
 
-        for plan in Self.sectionPlan {
+        for plan in sectionPlan {
             group.enter()
             var endpoint = "users/contacts/discover?type=\(plan.type)"
             if plan.type == "nearby", let location = currentLocation {
@@ -163,19 +261,40 @@ class DiscoveryListViewController: BaseViewController {
             // Someone should appear under their strongest reason only, so once
             // a person shows up in an earlier section later ones skip them.
             var alreadyShown = Set<String>()
-            self.sections = Self.sectionPlan.compactMap { plan in
+            self.sections = sectionPlan.compactMap { plan in
                 let users = (loaded[plan.type] ?? []).filter { alreadyShown.insert($0.id).inserted }
                 guard !users.isEmpty else { return nil }
                 return SuggestionSection(type: plan.type, title: plan.title, blurb: plan.blurb, users: users)
             }
 
             self.tableView.reloadData()
-            if self.visibleSections.isEmpty {
-                self.showEmptyState(message: self.emptyStateMessage)
-            } else {
-                self.hideEmptyState()
-            }
+            self.updateEmptyState()
         }
+    }
+
+    /// Empty Discover (nothing to suggest, no search running) becomes the
+    /// invite CTA — "you know everyone; bring your friends" — instead of a
+    /// dead-end message. Search misses and the Popular tab keep plain text.
+    private func updateEmptyState() {
+        let showInvite = visibleSections.isEmpty && searchQuery.isEmpty && mode == .discover
+        inviteEmptyView.isHidden = !showInvite
+        if showInvite {
+            hideEmptyState()
+        } else if visibleSections.isEmpty {
+            showEmptyState(message: emptyStateMessage)
+        } else {
+            hideEmptyState()
+        }
+    }
+
+    @objc private func inviteFriendsTapped() {
+        let shareItems = NetworkManager.shared.shareConnectionInvite()
+        let activityVC = UIActivityViewController(activityItems: shareItems, applicationActivities: nil)
+        if let popover = activityVC.popoverPresentationController {
+            popover.sourceView = inviteButton
+            popover.sourceRect = inviteButton.bounds
+        }
+        present(activityVC, animated: true)
     }
 
     /// Filters the loaded suggestions. These lists are small and already in
@@ -184,6 +303,7 @@ class DiscoveryListViewController: BaseViewController {
     func updateSearchQuery(_ query: String) {
         searchQuery = query
         tableView.reloadData()
+        updateEmptyState()
     }
 
     private var visibleSections: [SuggestionSection] {
@@ -235,6 +355,7 @@ class DiscoveryListViewController: BaseViewController {
     }
 
     private func follow(_ user: User) {
+        guard user.id != AuthService.shared.getUserId() else { return }
         setFollowing(true, forUserId: user.id)
 
         APIService.shared.request(
@@ -280,9 +401,7 @@ class DiscoveryListViewController: BaseViewController {
             body: ["userId": user.id]
         ) { (_: Result<SimpleAPIResponse, APIError>) in }
 
-        if visibleSections.isEmpty {
-            showEmptyState(message: emptyStateMessage)
-        }
+        updateEmptyState()
     }
 }
 
@@ -297,17 +416,50 @@ extension DiscoveryListViewController: UITableViewDataSource {
         visibleSections[section].users.count
     }
 
-    func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        visibleSections[section].title
+    // Custom headers: a bold title with the section's pitch right under it.
+    // The default grouped header (small gray caps, blurb exiled to a footer)
+    // read like a settings screen, not a place to meet people.
+    func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+        let sectionData = visibleSections[section]
+
+        let titleLabel = UILabel()
+        titleLabel.text = sectionData.title
+        titleLabel.font = .systemFont(ofSize: 20, weight: .bold)
+        titleLabel.textColor = Constants.Colors.label
+
+        let blurbLabel = UILabel()
+        blurbLabel.text = sectionData.blurb
+        blurbLabel.font = .systemFont(ofSize: 13)
+        blurbLabel.textColor = Constants.Colors.secondaryLabel
+        blurbLabel.numberOfLines = 0
+        blurbLabel.isHidden = (sectionData.blurb == nil)
+
+        let stack = UIStackView(arrangedSubviews: [titleLabel, blurbLabel])
+        stack.axis = .vertical
+        stack.spacing = 2
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        let header = UIView()
+        header.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 20),
+            stack.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -20),
+            stack.topAnchor.constraint(equalTo: header.topAnchor, constant: 14),
+            stack.bottomAnchor.constraint(equalTo: header.bottomAnchor, constant: -6)
+        ])
+        return header
     }
 
-    func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-        visibleSections[section].blurb
+    func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
+        UITableView.automaticDimension
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "DiscoverUserCell", for: indexPath) as! DiscoverUserCell
-        cell.configure(with: visibleSections[indexPath.section].users[indexPath.row])
+        cell.configure(
+            with: visibleSections[indexPath.section].users[indexPath.row],
+            rank: mode == .popular ? indexPath.row + 1 : nil
+        )
         cell.delegate = self
         cell.indexPath = indexPath
         return cell
@@ -323,7 +475,13 @@ extension DiscoveryListViewController: UITableViewDelegate {
         navigationController?.pushViewController(ProfileViewController(user: user), animated: true)
     }
 
-    func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat { 88 }
+    // Cells size themselves — the card now stacks a tier chip, stats,
+    // location, and a reason line, and clipping any of them defeats the point.
+    func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
+        UITableView.automaticDimension
+    }
+
+    func tableView(_ tableView: UITableView, estimatedHeightForRowAt indexPath: IndexPath) -> CGFloat { 104 }
 }
 
 // MARK: - CLLocationManagerDelegate
@@ -353,6 +511,19 @@ extension DiscoveryListViewController: DiscoverUserCellDelegate {
               indexPath.section < visibleSections.count,
               indexPath.row < visibleSections[indexPath.section].users.count else { return }
         follow(visibleSections[indexPath.section].users[indexPath.row])
+    }
+
+    func discoverUserCellDidTapShare(_ cell: DiscoverUserCell) {
+        // Same share sheet as the nav-bar invite: profile link + pitch. The
+        // self row in Most active is the moment someone feels good about their
+        // collection — that's exactly when they'll show it to somebody.
+        let shareItems = NetworkManager.shared.shareConnectionInvite()
+        let activityVC = UIActivityViewController(activityItems: shareItems, applicationActivities: nil)
+        if let popover = activityVC.popoverPresentationController {
+            popover.sourceView = cell
+            popover.sourceRect = cell.bounds
+        }
+        present(activityVC, animated: true)
     }
 
     func discoverUserCellDidTapDismiss(_ cell: DiscoverUserCell) {

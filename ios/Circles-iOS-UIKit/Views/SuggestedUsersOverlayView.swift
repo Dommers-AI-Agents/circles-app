@@ -113,10 +113,13 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
         return button
     }()
     
+    // Share-an-invite button. (This was "Import Contacts" — the phone-contacts
+    // flow is gone; a share link reaches the same people with none of the
+    // permission friction.)
     private lazy var importContactsButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "person.crop.circle.badge.plus"), for: .normal)
-        button.setTitle("Import Contacts", for: .normal)
+        button.setImage(UIImage(systemName: "square.and.arrow.up"), for: .normal)
+        button.setTitle("Share an Invite", for: .normal)
         button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
         button.backgroundColor = .secondarySystemBackground // Subtle background for dark mode
         button.tintColor = .systemBlue

@@ -5,7 +5,7 @@
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS, serializeDoc } = require('../models/FirestoreModels');
 const { getAllowedCircleIds } = require('../utils/networkAccess');
-const { normalizeUserId } = require('../services/idService');
+const { normalizeUserId, isSameUser } = require('../services/idService');
 const geofire = require('geofire-common');
 
 const db = getFirestore();
@@ -89,6 +89,8 @@ const getNetworkPlacesInViewport = async (req, res) => {
 
         const data = doc.data();
         if (data.deletedAt) continue;
+        // A place marked Private is owner-only, even inside a visible circle
+        if (data.privacy === 'private' && !isSameUser(data.addedBy, userId)) continue;
 
         const coords = data.location && data.location.coordinates;
         if (!Array.isArray(coords) || coords.length < 2) continue;

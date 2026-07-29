@@ -236,7 +236,8 @@ class MyNetworkViewController: BaseViewController {
         }
 
         // Whatever is showing has to reflect the current query — the search
-        // field is shared across segments.
+        // field is shared across segments. (With a live query this re-routes
+        // straight back to the global results list.)
         filterUsers(with: searchBar.text ?? "")
     }
 
@@ -258,22 +259,41 @@ class MyNetworkViewController: BaseViewController {
         }
     }
     
-    /// Routes the query to whichever segment is showing.
-    ///
-    /// The search field sits above both segments but used to filter only
-    /// the first — on the other chips typing did nothing at all, with no
-    /// indication why. A control that silently does nothing is worse than no
-    /// control.
+    /// A typed query searches EVERYONE; the segments only organize the
+    /// untyped view. Typing routes to the People list (which searches your
+    /// whole network plus a server-side "Not in your network" sweep) no matter
+    /// which segment is selected; clearing restores the selected segment.
+    private var isShowingGlobalSearchResults = false
+
     private func filterUsers(with query: String) {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+
+        if !trimmed.isEmpty {
+            if currentViewController !== allUsersListVC {
+                showPeopleList(allUsersListVC)
+                isShowingGlobalSearchResults = true
+            }
+            allUsersListVC?.updateSearchQuery(trimmed)
+            return
+        }
+
+        if isShowingGlobalSearchResults {
+            // Search borrowed the container from another segment — hand it back.
+            isShowingGlobalSearchResults = false
+            allUsersListVC?.updateSearchQuery("")
+            selectTab(selectedTab)
+            return
+        }
+
         switch selectedTab {
         case .people:
-            allUsersListVC?.updateSearchQuery(query)
+            allUsersListVC?.updateSearchQuery(trimmed)
         case .requests:
-            requestsListVC?.updateSearchQuery(query)
+            requestsListVC?.updateSearchQuery(trimmed)
         case .discover:
-            discoveryListVC?.updateSearchQuery(query)
+            discoveryListVC?.updateSearchQuery(trimmed)
         case .popular:
-            popularListVC?.updateSearchQuery(query)
+            popularListVC?.updateSearchQuery(trimmed)
         }
     }
 

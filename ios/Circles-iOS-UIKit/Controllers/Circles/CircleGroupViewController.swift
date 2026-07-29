@@ -274,8 +274,16 @@ class CircleGroupViewController: BaseViewController {
                 
                 switch result {
                 case .success:
-                    self?.showSuccess("Group deleted")
-                    self?.dismiss(animated: true)
+                    // Dismiss first, confirm from the screen underneath —
+                    // presenting the success alert here and then calling
+                    // dismiss() makes the dismiss swallow the alert and
+                    // leaves this screen stuck.
+                    let presenter = self?.presentingViewController
+                    self?.dismiss(animated: true) {
+                        if let presenter = presenter {
+                            AlertPresenter.showSuccess("Group deleted", from: presenter)
+                        }
+                    }
                 case .failure(let error):
                     self?.showError("Failed to delete group: \(error.localizedDescription)")
                 }

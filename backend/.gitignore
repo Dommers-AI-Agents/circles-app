@@ -63,3 +63,6 @@ reset-*.js
 send-*.js
 trigger-*.js
 verify-*.js
+
+# Timestamped .env backups (contain live secrets)
+.env.backup*

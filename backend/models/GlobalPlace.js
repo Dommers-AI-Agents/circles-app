@@ -47,6 +47,9 @@ const createGlobalPlace = (placeData) => {
     categoryConfidence: placeData.categoryConfidence != null ? placeData.categoryConfidence : null,
     categoryBefore: placeData.categoryBefore != null ? placeData.categoryBefore : null,
     categoryClassifiedAt: placeData.categoryClassifiedAt || null,
+    // Set when every free tier came up 'other' — the nightly LLM sweep
+    // (scripts/sweep-category-review.js) picks these up in batches.
+    needsCategoryReview: placeData.needsCategoryReview === true,
 
     // Derived location lens (from the address string; see
     // services/placeLocationDerivation.js). state/city null == Unplaced.
@@ -55,6 +58,8 @@ const createGlobalPlace = (placeData) => {
     city: placeData.city || null,
     cityKey: placeData.cityKey || null,          // "charlotte|NC" for grouping
     neighborhood: placeData.neighborhood || null, // optional; often null
+    country: placeData.country || null,           // "Canada" — country region chips
+    countryCode: placeData.countryCode || null,   // ISO2, "CA"
     locationSource: placeData.locationSource || null, // 'address' | 'geocode' | 'client'
     locationDerivedAt: placeData.locationDerivedAt || null,
     

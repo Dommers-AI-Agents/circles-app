@@ -31,8 +31,11 @@ extension User {
         followingCount: Int? = nil,
         connectionsCount: Int? = nil,
         placesCount: Int? = nil,
+        circlesCount: Int? = nil,
         pinnedPlaces: [String]? = nil,
         isFollowing: Bool? = nil,
+        followsYou: Bool? = nil,
+        isFakeProfile: Bool? = nil,
         notificationPreferences: NotificationPreferences? = nil,
         subscriptionStatus: String? = nil,
         subscriptionExpiryDate: Date? = nil,
@@ -48,7 +51,8 @@ extension User {
         distance: Double? = nil,
         mutualConnectionsCount: Int? = nil,
         mutualConnectionNames: [String]? = nil,
-        matchType: String? = nil
+        matchType: String? = nil,
+        suggestionReason: String? = nil
     ) -> User {
         return User(
             id: id ?? self.id,
@@ -75,8 +79,10 @@ extension User {
             followingCount: followingCount ?? self.followingCount,
             connectionsCount: connectionsCount ?? self.connectionsCount,
             placesCount: placesCount ?? self.placesCount,
+            circlesCount: circlesCount ?? self.circlesCount,
             pinnedPlaces: pinnedPlaces ?? self.pinnedPlaces,
             isFollowing: isFollowing ?? self.isFollowing,
+            isFakeProfile: isFakeProfile ?? self.isFakeProfile,
             notificationPreferences: notificationPreferences ?? self.notificationPreferences,
             subscriptionStatus: subscriptionStatus ?? self.subscriptionStatus,
             subscriptionExpiryDate: subscriptionExpiryDate ?? self.subscriptionExpiryDate,
@@ -92,7 +98,9 @@ extension User {
             distance: distance ?? self.distance,
             mutualConnectionsCount: mutualConnectionsCount ?? self.mutualConnectionsCount,
             mutualConnectionNames: mutualConnectionNames ?? self.mutualConnectionNames,
-            matchType: matchType ?? self.matchType
+            matchType: matchType ?? self.matchType,
+            followsYou: followsYou ?? self.followsYou,
+            suggestionReason: suggestionReason ?? self.suggestionReason
         )
     }
     

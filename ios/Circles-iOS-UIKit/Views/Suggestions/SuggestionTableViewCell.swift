@@ -206,17 +206,34 @@ class SuggestionTableViewCell: UITableViewCell {
             placeChevronImageView.widthAnchor.constraint(equalToConstant: 16),
             placeChevronImageView.heightAnchor.constraint(equalToConstant: 16),
             
-            suggestionImageView.topAnchor.constraint(equalTo: placeContainerView.bottomAnchor, constant: 8),
             suggestionImageView.leadingAnchor.constraint(equalTo: messageLabel.leadingAnchor),
             suggestionImageView.trailingAnchor.constraint(equalTo: messageLabel.trailingAnchor),
             suggestionImageView.heightAnchor.constraint(equalToConstant: 200),
             
             likeButton.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 12),
             likeButton.heightAnchor.constraint(equalToConstant: 30),
-            
+            likeButton.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -12),
+
             commentsButton.leadingAnchor.constraint(equalTo: likeButton.trailingAnchor, constant: 16),
-            commentsButton.heightAnchor.constraint(equalToConstant: 30)
+            commentsButton.heightAnchor.constraint(equalToConstant: 30),
+            commentsButton.centerYAnchor.constraint(equalTo: likeButton.centerYAnchor)
         ])
+
+        // The action row sits below whichever optional content is visible, and
+        // the optional views chain off each other. Prebuilt anchors that
+        // configure() switches — the old approach rebuilt constraints once in
+        // setup, when both optional views were still hidden, so a cell showing
+        // a place card left the buttons anchored to the message and the card
+        // drew on top of them.
+        buttonsTopToImage = likeButton.topAnchor.constraint(equalTo: suggestionImageView.bottomAnchor, constant: 12)
+        buttonsTopToPlace = likeButton.topAnchor.constraint(equalTo: placeContainerView.bottomAnchor, constant: 12)
+        buttonsTopToMessage = likeButton.topAnchor.constraint(equalTo: messageLabel.bottomAnchor, constant: 12)
+        buttonsTopToMessage.isActive = true
+
+        // The image, when shown, hangs off the place card if that's visible too.
+        imageTopToPlace = suggestionImageView.topAnchor.constraint(equalTo: placeContainerView.bottomAnchor, constant: 8)
+        imageTopToMessage = suggestionImageView.topAnchor.constraint(equalTo: messageLabel.bottomAnchor, constant: 8)
+        imageTopToMessage.isActive = true
         
         // Set up tap gesture for place container
         let placeTapGesture = UITapGestureRecognizer(target: self, action: #selector(placeTapped))
@@ -227,33 +244,36 @@ class SuggestionTableViewCell: UITableViewCell {
         likeButton.addTarget(self, action: #selector(likeTapped), for: .touchUpInside)
         commentsButton.addTarget(self, action: #selector(commentsTapped), for: .touchUpInside)
         
-        // Update bottom constraint based on content
-        updateBottomConstraint()
+        updateContentAnchors()
     }
-    
-    private func updateBottomConstraint() {
-        // Remove existing bottom constraint
-        containerView.constraints.forEach { constraint in
-            if constraint.firstAnchor == containerView.bottomAnchor {
-                containerView.removeConstraint(constraint)
-            }
-        }
-        
-        // Position buttons based on content
-        if !suggestionImageView.isHidden {
-            likeButton.topAnchor.constraint(equalTo: suggestionImageView.bottomAnchor, constant: 8).isActive = true
-            commentsButton.topAnchor.constraint(equalTo: suggestionImageView.bottomAnchor, constant: 8).isActive = true
-        } else if !placeContainerView.isHidden {
-            likeButton.topAnchor.constraint(equalTo: placeContainerView.bottomAnchor, constant: 8).isActive = true
-            commentsButton.topAnchor.constraint(equalTo: placeContainerView.bottomAnchor, constant: 8).isActive = true
+
+    private var buttonsTopToImage: NSLayoutConstraint!
+    private var buttonsTopToPlace: NSLayoutConstraint!
+    private var buttonsTopToMessage: NSLayoutConstraint!
+    private var imageTopToPlace: NSLayoutConstraint!
+    private var imageTopToMessage: NSLayoutConstraint!
+
+    /// Re-chains the optional views to whatever is actually visible for THIS
+    /// suggestion. Called from configure() on every cell, including reused ones.
+    private func updateContentAnchors() {
+        imageTopToPlace.isActive = false
+        imageTopToMessage.isActive = false
+        if !placeContainerView.isHidden {
+            imageTopToPlace.isActive = true
         } else {
-            likeButton.topAnchor.constraint(equalTo: messageLabel.bottomAnchor, constant: 8).isActive = true
-            commentsButton.topAnchor.constraint(equalTo: messageLabel.bottomAnchor, constant: 8).isActive = true
+            imageTopToMessage.isActive = true
         }
-        
-        // Buttons are always at the bottom
-        likeButton.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -12).isActive = true
-        commentsButton.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -12).isActive = true
+
+        buttonsTopToImage.isActive = false
+        buttonsTopToPlace.isActive = false
+        buttonsTopToMessage.isActive = false
+        if !suggestionImageView.isHidden {
+            buttonsTopToImage.isActive = true
+        } else if !placeContainerView.isHidden {
+            buttonsTopToPlace.isActive = true
+        } else {
+            buttonsTopToMessage.isActive = true
+        }
     }
     
     // MARK: - Configuration
@@ -273,14 +293,18 @@ class SuggestionTableViewCell: UITableViewCell {
             }
         }
         
-        // Message with place mentions
+        // Message with place mentions. A suggestion can be place-only (no
+        // words) — collapse the label to zero height then, so the place card
+        // doesn't sit under a phantom line of empty text.
+        let message = suggestion.message.trimmingCharacters(in: .whitespacesAndNewlines)
         if let mentions = suggestion.mentionedPlaces, !mentions.isEmpty {
             messageLabel.configure(text: suggestion.message, placeMentions: mentions)
             messageLabel.delegate = self
         } else {
-            messageLabel.text = suggestion.message
+            messageLabel.text = message
         }
-        
+        messageLabel.isHidden = message.isEmpty
+
         // Place info
         if let place = suggestion.placeDetails {
             placeContainerView.isHidden = false
@@ -289,9 +313,9 @@ class SuggestionTableViewCell: UITableViewCell {
         } else {
             placeContainerView.isHidden = true
         }
-        
+
         // Suggestion image
-        if let imageUrl = suggestion.imageUrl {
+        if let imageUrl = suggestion.imageUrl, !imageUrl.isEmpty {
             suggestionImageView.isHidden = false
             ImageService.shared.loadImage(from: imageUrl) { [weak self] image in
                 DispatchQueue.main.async {
@@ -300,8 +324,12 @@ class SuggestionTableViewCell: UITableViewCell {
             }
         } else {
             suggestionImageView.isHidden = true
+            suggestionImageView.image = nil
         }
-        
+
+        // Re-chain the layout for this cell's actual content mix.
+        updateContentAnchors()
+
         // Likes count and state
         let likeCount = suggestion.likesCountDisplay
         if likeCount > 0 {
@@ -326,8 +354,6 @@ class SuggestionTableViewCell: UITableViewCell {
         } else {
             commentsButton.setTitle(" Comment", for: .normal)
         }
-        
-        updateBottomConstraint()
     }
     
     // MARK: - Actions
@@ -365,6 +391,11 @@ class SuggestionTableViewCell: UITableViewCell {
         suggestionImageView.image = nil
         placeContainerView.isHidden = true
         suggestionImageView.isHidden = true
+        messageLabel.isHidden = false
+        messageLabel.text = nil
+        // Keep the constraint graph consistent with the visibility we just
+        // reset; configure() re-chains it for the incoming suggestion.
+        updateContentAnchors()
     }
 }
 

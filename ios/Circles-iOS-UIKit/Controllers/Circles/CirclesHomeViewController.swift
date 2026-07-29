@@ -4339,6 +4339,16 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             object: nil
         )
 
+        // Premium resolves after launch (StoreKit, then backend sync). Without
+        // this the nav bar keeps whatever it was built with, so a premium user
+        // saw the upgrade crown until a tab switch happened to rebuild it.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSubscriptionStatusChanged),
+            name: .subscriptionStatusChanged,
+            object: nil
+        )
+
         // Refresh when the quick-start flow adds places (it's modal, so the
         // usual pop-triggered viewWillAppear refresh doesn't fire)
         NotificationCenter.default.addObserver(
@@ -5986,6 +5996,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
     @objc func handleRewardBalanceChanged() {
         updateRewardsBadge()
+    }
+
+    @objc func handleSubscriptionStatusChanged() {
+        updateNavigationBarForSubscription()
     }
 
     func setupRewardsBadge() {

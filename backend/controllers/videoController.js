@@ -131,6 +131,10 @@ async function createPlaceInMyMoments(userId, circleId, placeData) {
     const { ensureGlobalPlaceLink } = require('../services/globalPlaceResolver');
     const globalPlaceId = await ensureGlobalPlaceLink(await placeRef.get());
 
+    // Keep the browse location tree fresh (best-effort)
+    const { indexSavedPlace } = require('../services/circleLocationSummary');
+    indexSavedPlace(circleId, placeDataForCreation);
+
     return { id: placeRef.id, ...newPlace, ...(globalPlaceId ? { globalPlaceId } : {}) };
   } catch (error) {
     console.error('Error creating place in My Moments:', error);

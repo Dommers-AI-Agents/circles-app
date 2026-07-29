@@ -107,8 +107,27 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         setupPromotedPurchaseNotifications()
         
         window?.makeKeyAndVisible()
+        prewarmKeyboard()
     }
-    
+
+    /// The FIRST keyboard presentation in an app's lifetime pays a cold-start
+    /// cost (keyboard extension process + input session setup, easily 1–2s on
+    /// older devices) — which users feel as "I tapped the search field and
+    /// nothing happened." Attaching and immediately resigning a hidden text
+    /// field right after the window is up moves that cost to launch, where it
+    /// runs concurrently with everything else and nobody is waiting on it.
+    private func prewarmKeyboard() {
+        DispatchQueue.main.async { [weak self] in
+            guard let window = self?.window else { return }
+            let field = UITextField(frame: .zero)
+            field.autocorrectionType = .no
+            window.addSubview(field)
+            field.becomeFirstResponder()
+            field.resignFirstResponder()
+            field.removeFromSuperview()
+        }
+    }
+
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
         Logger.debug("📱 SceneDelegate: openURLContexts called with \(URLContexts.count) contexts")
         
@@ -1159,16 +1178,32 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     
                 case .failure(let error):
                     Logger.debug("📱 SceneDelegate: Connection failed with error: \(error)")
-                    // Show error alert
+
+                    // Say what actually happened. Most of these aren't failures
+                    // at all — the invite was declined locally on purpose — so
+                    // only genuine errors get the "Connection Failed" title.
+                    let title: String
                     let errorMessage: String
-                    if error.localizedDescription.contains("Already connected") {
-                        errorMessage = "You are already connected to this user"
-                    } else {
-                        errorMessage = "Failed to send connection request"
+
+                    switch error as? ConnectionInviteError {
+                    case .ownInviteLink:
+                        title = "That's Your Invite Link"
+                        errorMessage = "Share it with someone else — they'll connect with you when they open it."
+                    case .alreadyConnected:
+                        title = "Already Connected"
+                        errorMessage = "You are already connected to this user."
+                    case .requestPending:
+                        title = "Request Pending"
+                        errorMessage = "You already have a connection request with this user."
+                    case nil:
+                        // Anything else is a real failure. Prefer the server's
+                        // own wording when it sent one.
+                        title = "Connection Failed"
+                        errorMessage = (error as? APIError)?.serverMessage ?? "Failed to send connection request"
                     }
-                    
+
                     let alert = UIAlertController(
-                        title: "Connection Failed",
+                        title: title,
                         message: errorMessage,
                         preferredStyle: .alert
                     )
@@ -1295,39 +1330,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
     }
     
-    private func showContactsOnboarding() {
-        guard let tabBarController = window?.rootViewController as? CirclesTabBarController else { return }
-        
-        // Mark that we're showing contacts permission
-        OnboardingManager.shared.markContactsPermissionShown()
-        
-        // Create contacts permission view controller
-        let contactsPermissionVC = ContactsPermissionViewController()
-        
-        // Configure callbacks — both paths continue the onboarding chain
-        // (notification prompt, then tutorial) on this same launch
-        contactsPermissionVC.configure(
-            onPermissionGranted: { [weak self] in
-                Logger.info("User completed contacts onboarding flow")
-                self?.continueOnboardingAfterContacts()
-            },
-            onSkip: { [weak self] in
-                Logger.info("User skipped contacts onboarding")
-                self?.continueOnboardingAfterContacts()
-            }
-        )
-        
-        // Present in navigation controller
-        let navController = UINavigationController(rootViewController: contactsPermissionVC)
-        navController.modalPresentationStyle = .fullScreen
-        
-        // Present from the tab bar controller
-        tabBarController.present(navController, animated: true)
-    }
-    
-    /// Continues the first-launch onboarding chain after the contacts modal:
+    // (showContactsOnboarding was deleted: the phone-contacts import is gone
+    // from the app entirely — invites go out via the share sheet instead.)
+
+    /// Continues the first-launch onboarding chain after the welcome carousel:
     /// notification prompt next (previously an else-if meant brand-new users
-    /// saw contacts OR notifications, never both), then the tutorial.
+    /// saw only one of the steps), then the tutorial.
     private func continueOnboardingAfterContacts() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
             guard let self = self else { return }

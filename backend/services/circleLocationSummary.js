@@ -22,12 +22,16 @@ const admin = require('firebase-admin');
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS, serializeDoc } = require('../models/FirestoreModels');
 const { summarizeCirclePlaces } = require('./browseAggregation');
+const { deriveLocation } = require('./placeLocationDerivation');
 
 const db = getFirestore();
 const COLLECTION = 'circleLocationSummaries';
 
 // Apply a +1 / -1 for one place's location to its circle's summary.
-// loc: { cityKey, city, stateCode, state } (cityKey null/absent => Unplaced).
+// loc: { cityKey, city, stateCode, state, country, countryCode }. A US place
+// counts against its city; a non-US one against its country; neither => Unplaced.
+// Mirrors summarizeCirclePlaces — the two must agree or the live delta and the
+// nightly rebuild drift apart.
 async function applyDelta(circleId, loc, delta) {
   if (!circleId) return;
   const ref = db.collection(COLLECTION).doc(circleId);
@@ -36,11 +40,11 @@ async function applyDelta(circleId, loc, delta) {
     const data = snap.exists ? snap.data() : {};
     const cityCounts = data.cityCounts || {};
     const cityMeta = data.cityMeta || {};
+    const countryCounts = data.countryCounts || {};
+    const countryMeta = data.countryMeta || {};
     let unplacedCount = data.unplacedCount || 0;
 
-    if (!loc || !loc.cityKey) {
-      unplacedCount = Math.max(0, unplacedCount + delta);
-    } else {
+    if (loc && loc.cityKey) {
       const next = (cityCounts[loc.cityKey] || 0) + delta;
       if (next <= 0) {
         delete cityCounts[loc.cityKey];
@@ -53,13 +57,31 @@ async function applyDelta(circleId, loc, delta) {
           state: loc.state || loc.stateCode || null
         };
       }
+    } else if (loc && loc.countryCode) {
+      const next = (countryCounts[loc.countryCode] || 0) + delta;
+      if (next <= 0) {
+        delete countryCounts[loc.countryCode];
+        delete countryMeta[loc.countryCode];
+      } else {
+        countryCounts[loc.countryCode] = next;
+        countryMeta[loc.countryCode] = { country: loc.country || loc.countryCode };
+      }
+    } else {
+      unplacedCount = Math.max(0, unplacedCount + delta);
     }
-    tx.set(ref, { cityCounts, cityMeta, unplacedCount, updatedAt: new Date().toISOString() });
+
+    tx.set(ref, {
+      cityCounts, cityMeta, countryCounts, countryMeta, unplacedCount,
+      updatedAt: new Date().toISOString()
+    });
   });
 }
 
 // Pull the location fields off a (serialized) place doc.
-const locOf = (p) => ({ cityKey: p.cityKey, city: p.city, stateCode: p.stateCode, state: p.state });
+const locOf = (p) => ({
+  cityKey: p.cityKey, city: p.city, stateCode: p.stateCode, state: p.state,
+  country: p.country, countryCode: p.countryCode
+});
 
 // Fire-and-forget wrappers used from the request path. They never throw into
 // the caller; drift is corrected by the rebuild job.
@@ -74,6 +96,22 @@ function indexPlaceRemoved(circleId, place) {
 function indexPlaceMoved(fromCircleId, toCircleId, place) {
   indexPlaceRemoved(fromCircleId, place);
   indexPlaceAdded(toCircleId, place);
+}
+
+// Index a place at save time, deriving its location from the address the same
+// way the venue record does. Every create path calls this — it used to be four
+// inline lines in createPlace only, so check-in and moment saves were missing
+// from the tree until the nightly rebuild caught them.
+function indexSavedPlace(circleId, placeData) {
+  try {
+    indexPlaceAdded(circleId, deriveLocation({
+      address: placeData.address,
+      location: placeData.location
+    }));
+  } catch (e) {
+    // Browse indexing must never block a save.
+    console.warn(`⚠️ [locSummary] indexSavedPlace ${circleId} failed: ${e.message}`);
+  }
 }
 
 // Recompute one circle's summary from scratch (rebuild/nightly). Returns the doc.
@@ -105,6 +143,7 @@ module.exports = {
   indexPlaceAdded,
   indexPlaceRemoved,
   indexPlaceMoved,
+  indexSavedPlace,
   rebuildCircleSummary,
   getSummaries
 };

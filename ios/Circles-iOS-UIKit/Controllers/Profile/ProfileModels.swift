@@ -25,6 +25,17 @@ struct FollowResponse: Codable {
 enum FollowListType {
     case followers
     case following
+    /// Accepted two-way connections. Only available for your own profile —
+    /// the API exposes connections for the authenticated user only.
+    case connections
+
+    var title: String {
+        switch self {
+        case .followers: return "Followers"
+        case .following: return "Following"
+        case .connections: return "Connections"
+        }
+    }
 }
 
 // MARK: - StatView

@@ -226,12 +226,18 @@ class NotificationService {
       'new_suggestion': 'newSuggestions',
       'new_place': 'newPlaces',
       'connection_request': 'connectionRequests',
+      'connection_accepted': 'connectionRequests',
       'circle_invite': 'circleInvites',
       'check_in': 'checkIns',
       'daily_summary': 'dailySummary',
       'discovery_prompt': 'discoveryPrompts',
       'weekend_recommendations': 'weekendRecommendations',
       'social_activity': 'socialActivity',
+      'social_notification': 'socialActivity',
+      'place_like': 'socialActivity',
+      'place_comment': 'socialActivity',
+      'new_follower': 'newFollowers',
+      'engagement_reminder': 'reengagement',
       'milestone': 'milestones'
     };
 
@@ -375,6 +381,55 @@ class NotificationService {
     });
   }
 
+  // Directed suggestion (recommend a place to one person). Persists an in-app
+  // notification — recipients with push off must still see "X suggested … for
+  // you" — then fires SSE and a best-effort push. Mirrors notifyConnectionRequest.
+  async notifyDirectedSuggestion(suggestionData, recipientId) {
+    const authorDoc = await db.collection(COLLECTIONS.USERS).doc(suggestionData.userId).get();
+    const authorName = authorDoc.exists ? authorDoc.data().displayName : 'Someone';
+    const authorPhoto = authorDoc.exists ? authorDoc.data().profilePicture : null;
+
+    const placeName = (suggestionData.placeDetails && suggestionData.placeDetails.name) || 'a place';
+    const body = `${authorName} suggested ${placeName} for you`;
+    const notifData = {
+      fromUserId: suggestionData.userId,
+      fromUserName: authorName,
+      fromUserPhoto: authorPhoto,
+      suggestionId: suggestionData.id || suggestionData._id || null,
+      placeId: suggestionData.placeId || null
+    };
+
+    // In-app notification doc (visible regardless of push settings)
+    const notificationData = createNotification({
+      userId: recipientId,
+      type: 'new_suggestion',
+      title: 'New Suggestion',
+      body,
+      data: notifData
+    });
+    const validationErrors = validateNotification(notificationData);
+    if (validationErrors.length === 0) {
+      const notificationRef = await this.db.collection(COLLECTIONS.NOTIFICATIONS).add(notificationData);
+      sseService.notifyUser(recipientId, 'new_notification', {
+        notificationId: notificationRef.id,
+        type: 'new_suggestion',
+        title: notificationData.title,
+        body,
+        data: notifData
+      });
+    } else {
+      console.error('❌ Validation errors for directed suggestion notification:', validationErrors);
+    }
+
+    // Best-effort push
+    await this.sendToUser(recipientId, {
+      type: 'new_suggestion',
+      title: 'New Suggestion',
+      body,
+      data: { type: 'new_suggestion', ...notifData }
+    });
+  }
+
   async notifyNewPlace(placeData, circleData, interestedUserIds) {
     const adderDoc = await db.collection(COLLECTIONS.USERS).doc(placeData.addedBy).get();
     const adderName = adderDoc.exists ? adderDoc.data().displayName : 'Someone';
@@ -450,6 +505,53 @@ class NotificationService {
         // Don't throw - email failure shouldn't break the notification
       }
     }
+  }
+
+  // Connection ACCEPTED: persist an in-app notification + SSE + push for the
+  // original requester. (This used to be a bare push from the controller, so
+  // the Notifications screen never showed "X accepted your request" — and when
+  // the push failed, the event vanished entirely.)
+  async notifyConnectionAccepted(acceptingUserId, requesterUserId, connectionId = null) {
+    const acceptingDoc = await db.collection(COLLECTIONS.USERS).doc(acceptingUserId).get();
+    const acceptingName = acceptingDoc.exists ? acceptingDoc.data().displayName : 'Someone';
+    const acceptingPhoto = acceptingDoc.exists ? acceptingDoc.data().profilePicture : null;
+
+    const notificationData = createNotification({
+      userId: requesterUserId,
+      type: 'connection_accepted',
+      title: 'Connection Accepted',
+      body: `${acceptingName} accepted your connection request`,
+      data: {
+        fromUserId: acceptingUserId,
+        fromUserName: acceptingName,
+        fromUserPhoto: acceptingPhoto,
+        connectionId: connectionId
+      }
+    });
+
+    const validationErrors = validateNotification(notificationData);
+    if (validationErrors.length === 0) {
+      const notificationRef = await this.db.collection(COLLECTIONS.NOTIFICATIONS).add(notificationData);
+      sseService.notifyUser(requesterUserId, 'new_notification', {
+        notificationId: notificationRef.id,
+        type: 'connection_accepted',
+        title: notificationData.title,
+        body: notificationData.body,
+        data: notificationData.data
+      });
+    } else {
+      console.error('❌ Validation errors for connection accepted notification:', validationErrors);
+    }
+
+    await this.sendToUser(requesterUserId, {
+      type: 'connection_accepted',
+      title: 'Connection Accepted',
+      body: `${acceptingName} accepted your connection request`,
+      data: {
+        type: 'connection_accepted',
+        acceptedByUserId: acceptingUserId
+      }
+    });
   }
 
   async notifyCircleInvite(inviterUserId, invitedUserId, circleData) {
@@ -534,6 +636,7 @@ class NotificationService {
       const fromUser = userDoc.data();
 
       const notification = {
+        type: 'place_comment',
         title: `${fromUser.displayName} commented on ${placeName}`,
         body: commentText.substring(0, 100) + (commentText.length > 100 ? '...' : ''),
         data: {
@@ -589,6 +692,7 @@ class NotificationService {
 
       // Also send push notification
       const pushNotification = {
+        type: 'place_like',
         title: notificationTitle,
         body: notificationBody,
         data: {
@@ -645,6 +749,7 @@ class NotificationService {
 
       // Also send push notification
       const pushNotification = {
+        type: 'place_comment',
         title: notificationTitle,
         body: notificationBody,
         data: {
@@ -701,6 +806,7 @@ class NotificationService {
 
       // Send push notification
       const pushNotification = {
+        type: 'new_follower',
         title: notificationTitle,
         body: notificationBody,
         data: {

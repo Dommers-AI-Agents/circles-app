@@ -25,11 +25,70 @@ extension CirclesHomeViewController: HorizontalUserListViewDelegate {
     }
 
     func didLongPressUser(_ user: User, connectionId: String) {
-        // Long-press opens the connection's profile directly - quicker than
-        // going through the map menu
+        // Long-press an avatar opens a quick-actions menu for that connection.
+        let displayName = user.displayName.isEmpty ? "this person" : user.displayName
+        AlertPresenter.showActionSheet(
+            title: displayName,
+            message: nil,
+            actions: [
+                (title: "View Profile", style: .default, handler: { [weak self] in
+                    self?.pushProfile(for: user)
+                }),
+                (title: "Message", style: .default, handler: { [weak self] in
+                    self?.openConversation(with: user)
+                }),
+                (title: "Suggest a Place", style: .default, handler: { [weak self] in
+                    self?.suggestPlace(to: user)
+                }),
+                (title: "Show Their Places on Map", style: .default, handler: { [weak self] in
+                    self?.showPlacesOnMap(for: user)
+                })
+            ],
+            from: self
+        )
+    }
+
+    private func suggestPlace(to user: User) {
+        // Opens the suggestion composer pre-targeted to this person — they get
+        // a directed suggestion (and a notification), not a network broadcast.
+        let createVC = CreateSuggestionViewController()
+        createVC.recipientUser = user
+        let nav = UINavigationController(rootViewController: createVC)
+        present(nav, animated: true)
+    }
+
+    private func pushProfile(for user: User) {
         let profileVC = ProfileViewController()
         profileVC.configureWith(user: user)
         navigationController?.pushViewController(profileVC, animated: true)
+    }
+
+    private func openConversation(with user: User) {
+        let loading = AlertPresenter.showLoading(message: "Opening chat...", from: self)
+        MessagingManager.shared.createOrGetDirectConversation(with: user.id) { [weak self] result in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: true) {
+                    guard let self = self else { return }
+                    switch result {
+                    case .success(let conversation):
+                        let chatVC = ChatViewController()
+                        chatVC.conversation = conversation
+                        self.navigationController?.pushViewController(chatVC, animated: true)
+                    case .failure(let error):
+                        self.showError(error)
+                    }
+                }
+            }
+        }
+    }
+
+    private func showPlacesOnMap(for user: User) {
+        // Same as tapping the avatar: filter the map to their places, switching
+        // back from list view if needed
+        if isShowingPlacesList {
+            listToggleTapped()
+        }
+        selectConnection(id: user.id, user: user)
     }
 }
 

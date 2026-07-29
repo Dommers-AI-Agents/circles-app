@@ -8,6 +8,7 @@ const {
   serializeQuerySnapshot 
 } = require('../models/FirestoreModels');
 const { normalizeUserId, isSameUser } = require('../services/idService');
+const { getPlaceCountMap } = require('../services/userStatsCache');
 
 const db = getFirestore();
 
@@ -680,7 +681,11 @@ exports.searchUsers = async (req, res, next) => {
       ]);
 
       const allUsers = [];
-      const following = (currentUserDoc.exists ? currentUserDoc.data() : {}).following || [];
+      const currentData = currentUserDoc.exists ? currentUserDoc.data() : {};
+      const following = currentData.following || [];
+      // Who follows the caller. Already in the doc above, so surfacing the
+      // mutual-follow state costs nothing.
+      const myFollowers = new Set(currentData.followers || []);
 
       for (const doc of usersSnapshot.docs) {
         const user = serializeDoc(doc);
@@ -707,10 +712,11 @@ exports.searchUsers = async (req, res, next) => {
           connectionStatus: connectionStatus,
           connectionDirection: connectionDirection,
           connectionId: connectionId,
-          isFollowing: isFollowing
+          isFollowing: isFollowing,
+          followsYou: myFollowers.has(targetUserId)
         });
       }
-      
+
       // Sort alphabetically by display name
       allUsers.sort((a, b) => {
         const nameA = a.displayName || '';
@@ -736,7 +742,9 @@ exports.searchUsers = async (req, res, next) => {
     ]);
 
     const simpleUserId = normalizeUserId(currentUserId);
-    const following = (currentUserDoc.exists ? currentUserDoc.data() : {}).following || [];
+    const currentData = currentUserDoc.exists ? currentUserDoc.data() : {};
+    const following = currentData.following || [];
+    const myFollowers = new Set(currentData.followers || []);
 
     const matchingUsers = [];
     for (const doc of usersSnapshot.docs) {
@@ -793,11 +801,13 @@ exports.searchUsers = async (req, res, next) => {
           connectionStatus: connectionStatus,
           connectionDirection: connectionDirection,
           connectionId: connectionId,
-          isFollowing: isFollowing
+          isFollowing: isFollowing,
+          followsYou: myFollowers.has(targetUserId)
         });
       }
     }
-    
+
+
     // Sort by relevance: exact name/email, then name-prefix, then a word in
     // the name starting with the query, then email-prefix, then everything
     // else (e.g. phone-only) — alphabetical within each tier.
@@ -1788,20 +1798,32 @@ exports.getUserFollowing = async (req, res, next) => {
     
     const user = serializeDoc(userDoc);
     const followingIds = user.following || [];
-    
-    // Get current user's following list to determine isFollowing status
+
+    // Get current user's following list to determine isFollowing status.
+    // We also need the caller's own followers (for followsYou), their
+    // connection map (so a row can show Connect / Requested / Message rather
+    // than assuming every followed person is a stranger), and place counts —
+    // without these the client can't tell a one-way follow from a mutual one.
     let currentUserFollowing = [];
+    let callerFollowers = new Set();
+    const [connectionMap, placeCounts] = await Promise.all([
+      buildConnectionMap(currentUserId),
+      getPlaceCountMap()
+    ]);
+
     if (currentUserId !== userId) {
       const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(currentUserId).get();
       if (currentUserDoc.exists) {
         const currentUserData = serializeDoc(currentUserDoc);
         currentUserFollowing = (currentUserData.following || []).map(id => normalizeUserId(id));
+        callerFollowers = new Set((currentUserData.followers || []).map(id => normalizeUserId(id)));
       }
     } else {
       // If viewing own following list, all users are followed by definition
       currentUserFollowing = followingIds.map(id => normalizeUserId(id));
+      callerFollowers = new Set((user.followers || []).map(id => normalizeUserId(id)));
     }
-    
+
     // Get following details with batch fetching for performance
     const following = [];
     
@@ -1824,18 +1846,37 @@ exports.getUserFollowing = async (req, res, next) => {
           const normalizedFollowingUserId = normalizeUserId(followingUser.id);
           const isFollowing = currentUserFollowing.includes(normalizedFollowingUserId);
           
+          const conn = connectionMap.get(normalizedFollowingUserId) || {};
+          const counts = placeCounts.get(normalizedFollowingUserId) || { placesCount: 0, circlesCount: 0 };
+
           following.push({
-            id: normalizeUserId(followingUser.id), // Always return normalized ID
+            id: normalizedFollowingUserId, // Always return normalized ID
             email: followingUser.email || '', // Include email field for iOS decoding
             displayName: followingUser.displayName,
             profilePicture: followingUser.profilePicture || null,
             bio: followingUser.bio || null,
+            location: followingUser.location || null,
             firstName: followingUser.firstName || null,
             lastName: followingUser.lastName || null,
-            isFollowing: isFollowing
+            isFollowing: isFollowing,
+            // Mutual-follow detection: without this the client shows every
+            // followed person as a one-way follow and never offers Connect.
+            followsYou: callerFollowers.has(normalizedFollowingUserId),
+            connectionStatus: conn.status || 'none',
+            connectionDirection: conn.direction || null,
+            connectionId: conn.connectionId || null,
+            placesCount: counts.placesCount,
+            circlesCount: counts.circlesCount,
+            // Carried so decorateUserCards can use the cached assumption
+            // without re-reading the user doc
+            assumedLocation: followingUser.assumedLocation || null
           });
         });
       }
+
+      // Fill a missing location with the city assumed from their places
+      const { decorateUserCards } = require('../services/userCardEnrichment');
+      await decorateUserCards(following, { activityReason: false });
       
       // Log any missing following users
       const foundIds = following.map(f => f.id);

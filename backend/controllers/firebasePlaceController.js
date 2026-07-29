@@ -12,12 +12,11 @@ const { Client } = require('@googlemaps/google-maps-services-js');
 const geofire = require('geofire-common');
 const { normalizeUserId, isSameUser } = require('../services/idService');
 const { ensureGlobalPlaceLink } = require('../services/globalPlaceResolver');
-const { indexPlaceAdded, indexPlaceRemoved, indexPlaceMoved } = require('../services/circleLocationSummary');
-const { deriveLocation } = require('../services/placeLocationDerivation');
+const { indexSavedPlace, indexPlaceRemoved, indexPlaceMoved } = require('../services/circleLocationSummary');
 const { GLOBAL_COLLECTIONS, buildSearchTokens } = require('../models/GlobalPlace');
 const { googleMapsApiKey } = require('../config/config');
 const notificationService = require('../services/notificationService');
-const { trackPlaceAdded, trackPlaceView, trackPlaceLiked } = require('../services/activityService');
+const { trackPlaceAdded, trackPlaceView, trackPlaceLiked, markCirclePlacesViewed } = require('../services/activityService');
 const placeCache = require('../services/placeCache');
 const requestDeduplicator = require('../services/requestDeduplicator');
 const subscriptionLimitService = require('../services/subscriptionLimitService');
@@ -295,6 +294,16 @@ const buildAddedByUserMap = async (places) => {
   return userMap;
 };
 
+// A place's OWN privacy can only further RESTRICT visibility beyond its
+// circle — callers apply this AFTER the circle-level access check. The only
+// per-place override the app sets is `private` = owner-only; every other value
+// (the `followCircle` default, and legacy `public`/`myNetwork`) inherits the
+// circle's visibility. Without this, a place marked Private inside a public or
+// myNetwork circle was still served to everyone who could see the circle.
+const isPlaceVisibleToViewer = (place, viewerId) =>
+  isSameUser(place.addedBy, viewerId) || place.privacy !== 'private';
+exports.isPlaceVisibleToViewer = isPlaceVisibleToViewer;
+
 // @desc    Get places by circle ID
 // @route   GET /api/circles/:circleId/places
 // @access  Private
@@ -394,10 +403,12 @@ exports.getPlacesByCircleId = async (req, res, next) => {
       .orderBy('createdAt', 'desc')
       .get();
       
-    // Filter out soft-deleted places (where deletedAt is not null/undefined)
+    // Filter out soft-deleted places, and places marked Private that the
+    // viewer doesn't own (private is owner-only even in a visible circle)
     const allPlaces = serializeQuerySnapshot(placesSnapshot);
     const places = allPlaces.filter(place =>
-      place.deletedAt === null || place.deletedAt === undefined
+      (place.deletedAt === null || place.deletedAt === undefined) &&
+      isPlaceVisibleToViewer(place, req.user.uid)
     );
 
     // Get unique user IDs who added places
@@ -601,6 +612,14 @@ exports.getPlacesByCircleId = async (req, res, next) => {
       count: orderedPlaces.length,
       places: orderedPlaces
     });
+
+    // Entering a connection's circle counts as seeing its new places — mark
+    // them viewed AFTER responding, so this visit still shows the red dots and
+    // the next one is clean. (Own circles have no connection record; skipped.)
+    if (circle.owner !== req.user.uid) {
+      markCirclePlacesViewed(req.user.uid, circle.owner, circleId)
+        .catch(err => console.error('markCirclePlacesViewed error:', err.message));
+    }
   } catch (error) {
     console.error('Error fetching places:', error);
     next(error);
@@ -660,13 +679,14 @@ exports.getPlacesByCircleIdPublic = async (req, res, next) => {
       size: placesSnapshot.size
     });
     
-    // Filter out soft-deleted places
+    // Filter out soft-deleted places, and any Private places — this is an
+    // unauthenticated public share, so there is no owner to exempt
     const allPlaces = serializeQuerySnapshot(placesSnapshot);
     const places = allPlaces.filter(place => {
       const isDeleted = place.deletedAt !== null && place.deletedAt !== undefined;
-      return !isDeleted;
+      return !isDeleted && place.privacy !== 'private';
     });
-    
+
     console.log(`🔍 Found ${places.length} active places for public circle`);
     
     // Get unique user IDs who added places
@@ -989,6 +1009,14 @@ exports.getPlace = async (req, res, next) => {
       console.log(`✅ Allowing access to floating place: ${place.name} (check-in place)`);
     }
 
+    // A place marked Private is owner-only, even inside a visible circle
+    if (!isPlaceVisibleToViewer(place, req.user.uid)) {
+      return res.status(403).json({
+        success: false,
+        message: 'This place is private'
+      });
+    }
+
     // Social and venue data come from the canonical venue record (one read,
     // shared by every saved copy of this place)
     const [social, addedByUserMap] = await Promise.all([
@@ -1251,11 +1279,8 @@ exports.createPlace = async (req, res, next) => {
 
     // Keep the browse location tree fresh: bump this circle's summary and drop
     // the adder's cached tree (best-effort; rebuild job corrects any drift).
-    try {
-      const loc = deriveLocation({ address: placeData.address, location: placeData.location });
-      indexPlaceAdded(circleId, loc);
-      placeCache.clear('browseTree', req.user.uid);
-    } catch (e) { /* never block a save on browse indexing */ }
+    indexSavedPlace(circleId, placeData);
+    placeCache.clear('browseTree', req.user.uid);
 
     // Update circle's places array and increment count (only add if place.id is defined)
     const currentPlaces = circle.places || [];
@@ -1291,8 +1316,11 @@ exports.createPlace = async (req, res, next) => {
       }
     });
 
-    // Track activity for network connections
-    await trackPlaceAdded(placeRef.id, circleId, place.name, circle.name, req.user.uid);
+    // Track activity for network connections — but a Private place is
+    // owner-only, so it must not broadcast a "added a place" activity
+    if (place.privacy !== 'private') {
+      await trackPlaceAdded(placeRef.id, circleId, place.name, circle.name, req.user.uid);
+    }
 
     // Sticker rewards: if this add came from a shared place link, credit the sharer
     if (req.body.refUserId) {
@@ -3109,11 +3137,11 @@ exports.addExistingPlaceToCircle = async (req, res, next) => {
       updatedAt: new Date().toISOString()
     });
     
-    // Track activity
-    if (trackPlaceAdded) {
+    // Track activity (skip for Private places — owner-only)
+    if (trackPlaceAdded && newPlace.privacy !== 'private') {
       await trackPlaceAdded(newPlaceId, circleId, newPlace.name, circle.name, userId);
     }
-    
+
     res.status(201).json({
       success: true,
       message: 'Place added to circle successfully',
@@ -3830,11 +3858,11 @@ exports.movePlace = async (req, res, next) => {
     indexPlaceMoved(place.circleId, targetCircleId, place);
     placeCache.clear('browseTree', userId);
 
-    // Track activity
-    if (trackPlaceAdded) {
+    // Track activity (skip for Private places — owner-only)
+    if (trackPlaceAdded && updatedPlace.privacy !== 'private') {
       await trackPlaceAdded(placeId, targetCircleId, updatedPlace.name, targetCircle.name, userId);
     }
-    
+
     res.status(200).json({
       success: true,
       message: 'Place moved successfully',

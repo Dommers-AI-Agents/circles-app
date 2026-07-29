@@ -73,6 +73,32 @@ class AllUsersListViewController: UIViewController {
     enum ListMode { case people, requests }
     var listMode: ListMode = .people
 
+    /// Sub-scope within `.people`: Connections | Following. Two different
+    /// relationships deserve two lists, not one long scroll — Following also
+    /// hosts the follow-back section, since those people are one tap away
+    /// from joining it.
+    private enum PeopleScope: Int { case connections = 0, following = 1 }
+    private var peopleScope: PeopleScope = .connections
+
+    private lazy var scopeControl: UISegmentedControl = {
+        let control = UISegmentedControl(items: ["Connections", "Following"])
+        control.selectedSegmentIndex = 0
+        control.addTarget(self, action: #selector(scopeChanged), for: .valueChanged)
+        control.translatesAutoresizingMaskIntoConstraints = false
+        control.isHidden = true // shown for .people mode in setupView
+        return control
+    }()
+
+    @objc private func scopeChanged() {
+        peopleScope = PeopleScope(rawValue: scopeControl.selectedSegmentIndex) ?? .connections
+        tableView.reloadData()
+        if visibleSectionsAreEmpty && !isSearchActive {
+            showNoConnectionsState()
+        } else {
+            hideEmptyState()
+        }
+    }
+
     private var allUsers: [User] = []
     private var connectedUsers: [User] = []
     private var pendingIncomingUsers: [User] = []
@@ -80,12 +106,16 @@ class AllUsersListViewController: UIViewController {
     /// People you follow who aren't connections yet — the middle of the ladder,
     /// and where most relationships will live once Follow is the primary action.
     private var followingUsers: [User] = []
+    /// People who follow you that you haven't followed back — the follow-back
+    /// list. The warmest leads on the page: they already opted in.
+    private var followsYouUsers: [User] = []
     /// Only populated while searching: people outside your network entirely.
     private var nonConnectedUsers: [User] = []
     private var filteredConnectedUsers: [User] = []
     private var filteredPendingIncomingUsers: [User] = []
     private var filteredPendingOutgoingUsers: [User] = []
     private var filteredFollowingUsers: [User] = []
+    private var filteredFollowsYouUsers: [User] = []
     private var filteredNonConnectedUsers: [User] = []
     
     private let cellIdentifier = "UserCell"
@@ -167,16 +197,32 @@ class AllUsersListViewController: UIViewController {
     private func setupView() {
         view.backgroundColor = .systemGroupedBackground
         
+        view.addSubview(scopeControl)
         view.addSubview(tableView)
         view.addSubview(emptyStateView)
         view.addSubview(loadingIndicator)
-        
+
+        // The Connections | Following sub-scope only exists on the People tab;
+        // the Requests tab keeps its single list.
+        let tableTop: NSLayoutConstraint
+        if listMode == .people {
+            scopeControl.isHidden = false
+            NSLayoutConstraint.activate([
+                scopeControl.topAnchor.constraint(equalTo: view.topAnchor, constant: 8),
+                scopeControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+                scopeControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16)
+            ])
+            tableTop = tableView.topAnchor.constraint(equalTo: scopeControl.bottomAnchor, constant: 8)
+        } else {
+            tableTop = tableView.topAnchor.constraint(equalTo: view.topAnchor)
+        }
+
         NSLayoutConstraint.activate([
-            tableView.topAnchor.constraint(equalTo: view.topAnchor),
+            tableTop,
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            
+
             emptyStateView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             emptyStateView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             emptyStateView.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 40),
@@ -241,8 +287,20 @@ class AllUsersListViewController: UIViewController {
     /// and buried your own connections in the middle of a directory of
     /// strangers. Now it reads two bounded lists: your connections and the
     /// people you follow. Strangers appear only when you search for them.
+    /// True only while a loadPeople request group is actually in flight.
+    /// Deliberately separate from isLoadingData, which loadView pre-sets as a
+    /// show-the-spinner flag before any request exists — guarding on that made
+    /// the first load return before it began.
+    private var isPeopleRequestInFlight = false
+
     func loadPeople() {
-        if !hasLoadedInitialData && !isLoadingData {
+        // Re-entrancy guard. The parent tab calls this directly on segment
+        // switches and tab re-taps, so two runs could overlap — and the second
+        // run's /following fetch would die in APIService's 0.5s duplicate
+        // window, then overwrite good data with an empty list at notify time.
+        guard !isPeopleRequestInFlight else { return }
+        isPeopleRequestInFlight = true
+        if !hasLoadedInitialData {
             showLoadingState()
         }
         isLoadingData = true
@@ -250,6 +308,7 @@ class AllUsersListViewController: UIViewController {
         let group = DispatchGroup()
         var connectionUsers: [User] = []
         var followingUsers: [User] = []
+        var followerUsers: [User] = []
         var loadError: Error?
 
         group.enter()
@@ -261,25 +320,42 @@ class AllUsersListViewController: UIViewController {
             group.leave()
         }
 
+        // On failure these fall back to what's already on screen — an error is
+        // not information about who you follow, and must never blank a list
+        // that loaded fine a moment ago.
         group.enter()
-        UserService.shared.getFollowing { result in
+        UserService.shared.getFollowing { [weak self] result in
             switch result {
-            case .success(let users): followingUsers = users
-            // A failure here shouldn't blank the whole tab — connections are
-            // the more important half and may well have loaded fine.
-            case .failure(let error): Logger.debug("Following list failed: \(error)")
+            case .success(let users):
+                followingUsers = users
+            case .failure(let error):
+                Logger.debug("Following list failed, keeping previous: \(error)")
+                followingUsers = self?.allUsers.filter { ($0.isFollowing ?? false) } ?? []
+            }
+            group.leave()
+        }
+
+        group.enter()
+        UserService.shared.getFollowers { [weak self] result in
+            switch result {
+            case .success(let users):
+                followerUsers = users
+            case .failure(let error):
+                Logger.debug("Followers list failed, keeping previous: \(error)")
+                followerUsers = self?.allUsers.filter { ($0.followsYou ?? false) } ?? []
             }
             group.leave()
         }
 
         group.notify(queue: .main) { [weak self] in
             guard let self = self else { return }
+            self.isPeopleRequestInFlight = false
             self.tableView.refreshControl?.endRefreshing()
             self.isLoadingData = false
             self.hasLoadedInitialData = true
             self.hideLoadingState()
 
-            if connectionUsers.isEmpty, followingUsers.isEmpty, let error = loadError {
+            if connectionUsers.isEmpty, followingUsers.isEmpty, followerUsers.isEmpty, let error = loadError {
                 Logger.debug("Failed to load network: \(error)")
                 self.showEmptyState()
                 return
@@ -287,8 +363,14 @@ class AllUsersListViewController: UIViewController {
 
             // Connections win on conflict: their payload carries connectionId
             // and status, which the following list doesn't always have.
+            // Followers merge lowest — by definition every one of them follows
+            // the caller, so stamp followsYou before richer payloads overwrite.
             var merged: [String: User] = [:]
-            for user in followingUsers { merged[user.id] = user }
+            for user in followerUsers { merged[user.id] = user.copy(followsYou: true) }
+            for user in followingUsers {
+                let followsYou = merged[user.id]?.followsYou ?? user.followsYou
+                merged[user.id] = user.copy(followsYou: followsYou)
+            }
             for user in connectionUsers { merged[user.id] = user }
 
             self.allUsers = Array(merged.values)
@@ -311,7 +393,10 @@ class AllUsersListViewController: UIViewController {
         case .requests:
             return pendingIncomingUsers.isEmpty && pendingOutgoingUsers.isEmpty
         case .people:
-            return connectedUsers.isEmpty && followingUsers.isEmpty
+            switch peopleScope {
+            case .connections: return connectedUsers.isEmpty
+            case .following: return followingUsers.isEmpty && followsYouUsers.isEmpty
+            }
         }
     }
 
@@ -346,6 +431,11 @@ class AllUsersListViewController: UIViewController {
             let tier = RelationshipTier(user: $0)
             return tier == .following || tier == .mutualFollow
         }
+        // The follow-back list: they follow you, you haven't followed back
+        followsYouUsers = allUsers.filter { RelationshipTier(user: $0) == .followsYou }
+        followsYouUsers.sort {
+            $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+        }
 
         // Mutual follows first inside Following — those are the rows offering
         // Connect, which is the action worth surfacing.
@@ -379,6 +469,7 @@ class AllUsersListViewController: UIViewController {
             filteredPendingIncomingUsers = pendingIncomingUsers
             filteredPendingOutgoingUsers = pendingOutgoingUsers
             filteredFollowingUsers = followingUsers
+            filteredFollowsYouUsers = followsYouUsers
             filteredNonConnectedUsers = []
             return
         }
@@ -394,6 +485,7 @@ class AllUsersListViewController: UIViewController {
         filteredPendingIncomingUsers = pendingIncomingUsers.filter(matches)
         filteredPendingOutgoingUsers = pendingOutgoingUsers.filter(matches)
         filteredFollowingUsers = followingUsers.filter(matches)
+        filteredFollowsYouUsers = followsYouUsers.filter(matches)
         filteredNonConnectedUsers = nonConnectedUsers.filter(matches)
     }
 
@@ -442,9 +534,16 @@ class AllUsersListViewController: UIViewController {
             emptyTitleLabel.text = "No requests right now"
             emptySubtitleLabel.text = "Connection requests you send or receive will show up here."
         case .people:
-            emptyImageView.image = UIImage(systemName: "person.2")
-            emptyTitleLabel.text = "Your network is empty"
-            emptySubtitleLabel.text = "Follow someone to see the places they save. They don't have to approve it."
+            switch peopleScope {
+            case .connections:
+                emptyImageView.image = UIImage(systemName: "person.2")
+                emptyTitleLabel.text = "No connections yet"
+                emptySubtitleLabel.text = "Connect with people you know to unlock messaging and their network-only circles."
+            case .following:
+                emptyImageView.image = UIImage(systemName: "person.badge.plus")
+                emptyTitleLabel.text = "Not following anyone yet"
+                emptySubtitleLabel.text = "Follow someone to see the places they save. They don't have to approve it."
+            }
         }
         emptySubtitleLabel.isHidden = false
         discoverUsersButton.setTitle("Find people", for: .normal)
@@ -484,6 +583,7 @@ extension AllUsersListViewController: UITableViewDataSource {
         case sent
         case connections
         case following
+        case followsYou
         case searchResults
     }
 
@@ -495,8 +595,13 @@ extension AllUsersListViewController: UITableViewDataSource {
             if !filteredPendingIncomingUsers.isEmpty { sections.append(.requests) }
             if !filteredPendingOutgoingUsers.isEmpty { sections.append(.sent) }
         case .people:
-            if !filteredConnectedUsers.isEmpty { sections.append(.connections) }
-            if !filteredFollowingUsers.isEmpty { sections.append(.following) }
+            switch peopleScope {
+            case .connections:
+                if !filteredConnectedUsers.isEmpty { sections.append(.connections) }
+            case .following:
+                if !filteredFollowingUsers.isEmpty { sections.append(.following) }
+                if !filteredFollowsYouUsers.isEmpty { sections.append(.followsYou) }
+            }
             if isSearchActive && !filteredNonConnectedUsers.isEmpty { sections.append(.searchResults) }
         }
         return sections
@@ -512,6 +617,8 @@ extension AllUsersListViewController: UITableViewDataSource {
             return filteredConnectedUsers
         case .following:
             return filteredFollowingUsers
+        case .followsYou:
+            return filteredFollowsYouUsers
         case .sent:
             return (isPendingOutgoingExpanded || isSearchActive) ? filteredPendingOutgoingUsers : []
         case .searchResults:
@@ -528,6 +635,8 @@ extension AllUsersListViewController: UITableViewDataSource {
             return "Your connections (\(filteredConnectedUsers.count))"
         case .following:
             return "Following (\(filteredFollowingUsers.count))"
+        case .followsYou:
+            return "Follows you (\(filteredFollowsYouUsers.count))"
         case .sent:
             return "Sent"
         case .searchResults:
@@ -572,8 +681,8 @@ extension AllUsersListViewController: UITableViewDataSource {
             return makeSectionHeader(title: title(for: listSection).uppercased(),
                                      color: Constants.Colors.brightOrange,
                                      showsInfo: false)
-        case .connections, .following:
-            // These two are exactly what the Follow/Connect explainer is about,
+        case .connections, .following, .followsYou:
+            // These are exactly what the Follow/Connect explainer is about,
             // so each carries the info affordance.
             return makeSectionHeader(title: title(for: listSection).uppercased(),
                                      color: .secondaryLabel,

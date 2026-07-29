@@ -50,3 +50,52 @@ describe('deriveLocation from address string', () => {
     expect(r.placed).toBe(false);
   });
 });
+
+describe('country derivation', () => {
+  const { deriveLocation, parseCountry } = require('../placeLocationDerivation');
+
+  test('US-placed address gets US country fields', () => {
+    const loc = deriveLocation({ address: '123 Main St, Charlotte, NC 28269, United States' });
+    expect(loc.placed).toBe(true);
+    expect(loc.countryCode).toBe('US');
+    expect(loc.country).toBe('United States');
+  });
+
+  test('Canadian address: no US state, but country resolved', () => {
+    const loc = deriveLocation({ address: '610 2nd Ave N, Saskatoon, SK S7K 2C7, Canada' });
+    expect(loc.placed).toBe(false);
+    expect(loc.stateCode).toBeNull();
+    expect(loc.countryCode).toBe('CA');
+    expect(loc.country).toBe('Canada');
+    expect(loc.source).toBe('address');
+  });
+
+  test('Mexican address with 📍 location-hint suffix', () => {
+    const loc = deriveLocation({ address: 'Carretera Transpeninsular Km 1, 23403, Mexico\n📍 6.1 mi from current location' });
+    expect(loc.placed).toBe(false);
+    expect(loc.countryCode).toBe('MX');
+  });
+
+  test('📍 suffix does not break US state parsing', () => {
+    const loc = deriveLocation({ address: '1 Ocean Dr, Miami, FL 33139, United States\n📍 2 mi from current location' });
+    expect(loc.placed).toBe(true);
+    expect(loc.stateCode).toBe('FL');
+    expect(loc.countryCode).toBe('US');
+  });
+
+  test('UK variants map to GB', () => {
+    expect(parseCountry('10 Downing St, London, England')).toEqual({ country: 'United Kingdom', countryCode: 'GB' });
+    expect(parseCountry('1 Princes St, Edinburgh, UK')).toEqual({ country: 'United Kingdom', countryCode: 'GB' });
+  });
+
+  test('unknown tail leaves country null', () => {
+    const loc = deriveLocation({ address: 'Some Pier, Atlantis' });
+    expect(loc.country).toBeNull();
+    expect(loc.countryCode).toBeNull();
+  });
+
+  test('Canadian province code SK never mistaken for a US state', () => {
+    const loc = deriveLocation({ address: '702 14 St E, Saskatoon, SK S7N 0P7, Canada' });
+    expect(loc.stateCode).toBeNull();
+  });
+});

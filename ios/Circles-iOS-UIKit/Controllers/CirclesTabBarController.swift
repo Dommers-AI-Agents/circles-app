@@ -16,9 +16,20 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         #endif
     }
     
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+
+        // Signing in with Google/Apple/Facebook skips the registration form,
+        // so those accounts never get asked for a zipcode — and location is the
+        // strongest suggestion signal available to someone who hasn't saved any
+        // places yet. This derives it silently where it can and only asks when
+        // it can't. No-ops entirely once a zipcode is known.
+        ZipcodeCaptureService.shared.captureIfNeeded(from: self)
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
-        
+
         // Use appropriate setup based on platform
         if isRunningOnMac {
             setupTabsForMac()

@@ -2621,6 +2621,35 @@ class PlaceTableViewCell: UITableViewCell {
         return label
     }()
     
+    // "🔒 Private" chip — shown only on the owner's private places, so they can
+    // see at a glance which saves are hidden from followers/connections.
+    private let privacyChip: UIView = {
+        let view = UIView()
+        view.backgroundColor = .secondarySystemFill // subtle gray pill, adapts to dark mode
+        view.layer.cornerRadius = 10
+        view.clipsToBounds = true
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isHidden = true
+        return view
+    }()
+
+    private let privacyChipIcon: UIImageView = {
+        let imageView = UIImageView(image: UIImage(systemName: "lock.fill"))
+        imageView.tintColor = Constants.Colors.secondaryLabel
+        imageView.contentMode = .scaleAspectFit
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        return imageView
+    }()
+
+    private let privacyChipLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Private"
+        label.font = UIFont.systemFont(ofSize: 10, weight: .semibold)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
     private let addressLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: 13)
@@ -2745,6 +2774,9 @@ class PlaceTableViewCell: UITableViewCell {
         containerView.addSubview(imageLoadingIndicator)
         containerView.addSubview(nameLabel)
         containerView.addSubview(categoryLabel)
+        containerView.addSubview(privacyChip)
+        privacyChip.addSubview(privacyChipIcon)
+        privacyChip.addSubview(privacyChipLabel)
         containerView.addSubview(addressLabel)
         containerView.addSubview(shareButton)
         containerView.addSubview(directionsButton)
@@ -2819,7 +2851,23 @@ class PlaceTableViewCell: UITableViewCell {
             categoryLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
             categoryLabel.leadingAnchor.constraint(equalTo: placeImageView.trailingAnchor, constant: Constants.Spacing.small),
             categoryLabel.heightAnchor.constraint(equalToConstant: 20),
-            
+
+            // Privacy chip — sits on the category line, just after the category pill
+            privacyChip.leadingAnchor.constraint(equalTo: categoryLabel.trailingAnchor, constant: 6),
+            privacyChip.centerYAnchor.constraint(equalTo: categoryLabel.centerYAnchor),
+            privacyChip.heightAnchor.constraint(equalToConstant: 20),
+            privacyChip.trailingAnchor.constraint(lessThanOrEqualTo: containerView.trailingAnchor, constant: -Constants.Spacing.small),
+
+            privacyChipIcon.leadingAnchor.constraint(equalTo: privacyChip.leadingAnchor, constant: 8),
+            privacyChipIcon.centerYAnchor.constraint(equalTo: privacyChip.centerYAnchor),
+            privacyChipIcon.widthAnchor.constraint(equalToConstant: 10),
+            privacyChipIcon.heightAnchor.constraint(equalToConstant: 10),
+
+            privacyChipLabel.leadingAnchor.constraint(equalTo: privacyChipIcon.trailingAnchor, constant: 3),
+            privacyChipLabel.trailingAnchor.constraint(equalTo: privacyChip.trailingAnchor, constant: -8),
+            privacyChipLabel.centerYAnchor.constraint(equalTo: privacyChip.centerYAnchor),
+
+
             // Address label
             addressLabel.topAnchor.constraint(equalTo: categoryLabel.bottomAnchor, constant: 4),
             addressLabel.leadingAnchor.constraint(equalTo: placeImageView.trailingAnchor, constant: Constants.Spacing.small),
@@ -2876,7 +2924,12 @@ class PlaceTableViewCell: UITableViewCell {
     func configure(with place: Place) {
         self.place = place
         nameLabel.text = place.name.isEmpty ? "Unnamed Place" : place.name
-        
+
+        // Flag private places so the owner can see which saves are hidden from
+        // their followers/connections (backend already omits these for others,
+        // so this chip is only ever seen by the owner).
+        privacyChip.isHidden = place.privacy != .private
+
         // Highlight new places
         if place.isNew == true {
             containerView.layer.borderColor = Constants.Colors.primary.cgColor

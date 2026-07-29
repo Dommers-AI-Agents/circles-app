@@ -1,5 +1,7 @@
 // backend/controllers/firebaseCircleController.js
 const { getFirestore } = require('../config/firebase');
+const circleAdvisor = require('../services/circleAdvisor');
+const circleAdvisorQuota = require('../services/circleAdvisorQuota');
 const { 
   COLLECTIONS, 
   createCircle, 
@@ -1729,6 +1731,250 @@ exports.copyCircle = async (req, res, next) => {
     
   } catch (error) {
     console.error('Error copying circle:', error);
+    next(error);
+  }
+};
+
+// @desc    Propose an organization for the caller's circles (AI advisor)
+// @route   GET /api/circles/advisor
+// @access  Private
+//
+// Returns proposals only — it labels each circle's organizing scheme and points
+// out circles that overlap enough to be worth merging. Nothing is applied here;
+// the client presents each proposal for approval.
+exports.getCircleAdvice = async (req, res, next) => {
+  try {
+    const userId = normalizeUserId(req.user.uid);
+
+    if (!circleAdvisor.isEnabled()) {
+      // Off is a normal state, not an error — the client hides the entry point.
+      return res.status(200).json({ success: true, enabled: false, schemes: [], merges: [] });
+    }
+
+    const circlesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
+      .where('owner', '==', userId)
+      .get();
+
+    if (circlesSnapshot.empty) {
+      return res.status(200).json({ success: true, enabled: true, schemes: [], merges: [] });
+    }
+
+    // Summarize each circle by what it actually contains: the model needs the
+    // categories and cities to tell "Belmar" (a place) from "Pizza Slices" (a
+    // type), and a name alone is often ambiguous.
+    const circleIds = new Set(circlesSnapshot.docs.map((d) => d.id));
+    const placesSnapshot = await db.collection(COLLECTIONS.PLACES)
+      .where('addedBy', '==', userId)
+      .get();
+
+    const byCircle = new Map();
+    placesSnapshot.docs.forEach((doc) => {
+      const place = doc.data();
+      if (place.deletedAt) return;
+      if (!circleIds.has(place.circleId)) return;
+      if (!byCircle.has(place.circleId)) byCircle.set(place.circleId, { categories: {}, cities: {} });
+      const bucket = byCircle.get(place.circleId);
+      const category = place.category || 'other';
+      bucket.categories[category] = (bucket.categories[category] || 0) + 1;
+      const city = extractCity(place.address);
+      if (city) bucket.cities[city] = (bucket.cities[city] || 0) + 1;
+    });
+
+    const top = (counts, n) => Object.entries(counts || {})
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, n)
+      .map(([key]) => key);
+
+    const circles = circlesSnapshot.docs.map((doc) => {
+      const circle = doc.data();
+      const bucket = byCircle.get(doc.id) || {};
+      return {
+        id: doc.id,
+        name: circle.name,
+        placesCount: circle.placesCount || 0,
+        topCategories: top(bucket.categories, 3),
+        topCities: top(bucket.cities, 3),
+        // App-created circles must never be folded into anything.
+        isSystem: !!circle.isCheckInCircle || circle.name === 'Places I Follow'
+      };
+    });
+
+    // Gate and spend controls, evaluated before any token is spent.
+    const gate = await circleAdvisorQuota.check(userId, circles);
+
+    if (!gate.allowed) {
+      if (gate.reason === 'premium_required') {
+        // 402 rather than 403: the client shows a paywall, not an error.
+        return res.status(402).json({
+          success: false,
+          requiresPremium: true,
+          message: 'Circle suggestions are part of Circles Premium.'
+        });
+      }
+
+      const isGlobal = gate.reason === 'global_daily_limit';
+      return res.status(429).json({
+        success: false,
+        reason: gate.reason,
+        limit: gate.limit,
+        message: isGlobal
+          ? 'Circle suggestions are at capacity for today. Try again tomorrow.'
+          : `You've used all ${gate.limit} circle suggestions for today. They reset tomorrow.`
+      });
+    }
+
+    // Unchanged circles are answered from cache — no model call, and it does
+    // not consume one of the day's runs.
+    if (gate.cached) {
+      return res.status(200).json({
+        success: true,
+        enabled: true,
+        cached: true,
+        schemes: gate.cached.schemes,
+        merges: gate.cached.merges
+      });
+    }
+
+    const advice = await circleAdvisor.advise(circles);
+    const payload = { schemes: advice.schemes, merges: advice.merges };
+
+    // Real spend per run, greppable in Cloud Run logs. Opus 5 pricing is
+    // $5/M input, $25/M output, so cost ≈ (in*5 + out*25) / 1e6.
+    if (advice.usage) {
+      const { input_tokens: inTok = 0, output_tokens: outTok = 0 } = advice.usage;
+      const cents = ((inTok * 5 + outTok * 25) / 1e6 * 100).toFixed(2);
+      console.log(`💸 circleAdvisor run: user=${userId} circles=${circles.length} in=${inTok} out=${outTok} ≈ ${cents}¢`);
+    }
+
+    // Recorded only after a real answer — a failed call shouldn't cost somebody
+    // one of their five.
+    await circleAdvisorQuota.record(userId, gate.cacheKey, payload);
+
+    res.status(200).json({
+      success: true,
+      enabled: true,
+      cached: false,
+      remaining: gate.remaining,
+      ...payload
+    });
+  } catch (error) {
+    console.error('Error building circle advice:', error);
+    next(error);
+  }
+};
+
+/** "123 Main St, Belmar, NJ 07719" -> "Belmar". Null when the shape doesn't match. */
+const extractCity = (address) => {
+  if (!address) return null;
+  const match = String(address).match(/,\s*([^,]+),\s*[A-Z]{2}/);
+  return match ? match[1].trim() : null;
+};
+
+// @desc    Combine circles the advisor proposed merging
+// @route   POST /api/circles/advisor/merge
+// @access  Private (Premium)
+//
+// Moves every live place out of the source circles into the keeper, then soft
+// deletes the emptied sources.
+//
+// Order matters and is not incidental: deleteCircle marks every live place in
+// a circle as deleted. Moving the places out first means the sources are empty
+// by the time they're deleted, so nothing is lost. Reversing these two steps
+// would soft-delete the very places we're trying to preserve.
+exports.mergeCircles = async (req, res, next) => {
+  try {
+    const userId = normalizeUserId(req.user.uid);
+    const { circleIds, keepCircleId, name } = req.body || {};
+
+    if (!Array.isArray(circleIds) || circleIds.length < 2) {
+      return res.status(400).json({ success: false, message: 'Give at least two circles to combine.' });
+    }
+    if (!keepCircleId || !circleIds.includes(keepCircleId)) {
+      return res.status(400).json({ success: false, message: 'The circle to keep must be one of the circles being combined.' });
+    }
+
+    // The advisor is Premium-only, and so is acting on its advice.
+    if (!(await circleAdvisorQuota.isPremium(userId))) {
+      return res.status(402).json({
+        success: false,
+        requiresPremium: true,
+        message: 'Combining circles is part of Circles Premium.'
+      });
+    }
+
+    // Every circle must exist and belong to the caller. Checked up front so a
+    // partial merge can't begin and then fail halfway.
+    const refs = circleIds.map((id) => db.collection(COLLECTIONS.CIRCLES).doc(id));
+    const docs = await db.getAll(...refs);
+
+    for (const doc of docs) {
+      if (!doc.exists) {
+        return res.status(404).json({ success: false, message: 'One of those circles no longer exists.' });
+      }
+      if (doc.data().owner !== userId) {
+        return res.status(403).json({ success: false, message: 'You can only combine circles you own.' });
+      }
+    }
+
+    const keeperRef = db.collection(COLLECTIONS.CIRCLES).doc(keepCircleId);
+    const sourceIds = circleIds.filter((id) => id !== keepCircleId);
+    const now = new Date().toISOString();
+
+    // --- 1. Move the places.
+    const keeperDoc = docs.find((d) => d.id === keepCircleId);
+    const keeperPlaces = [...(keeperDoc.data().places || [])];
+    let movedCount = 0;
+
+    for (const sourceId of sourceIds) {
+      const placesSnapshot = await db.collection(COLLECTIONS.PLACES)
+        .where('circleId', '==', sourceId)
+        .get();
+      const livePlaces = placesSnapshot.docs.filter((doc) => doc.data().deletedAt == null);
+
+      for (let i = 0; i < livePlaces.length; i += 400) {
+        const batch = db.batch();
+        livePlaces.slice(i, i + 400).forEach((doc) => {
+          batch.update(doc.ref, { circleId: keepCircleId, updatedAt: now });
+          if (!keeperPlaces.includes(doc.id)) keeperPlaces.push(doc.id);
+        });
+        await batch.commit();
+      }
+      movedCount += livePlaces.length;
+    }
+
+    await keeperRef.update({
+      places: keeperPlaces,
+      placesCount: keeperPlaces.length,
+      ...(name ? { name } : {}),
+      updatedAt: now
+    });
+
+    // --- 2. Retire the now-empty sources into the trash.
+    for (const sourceId of sourceIds) {
+      const sourceDoc = docs.find((d) => d.id === sourceId);
+      const batch = db.batch();
+      batch.set(db.collection('deletedCircles').doc(sourceId), {
+        ...sourceDoc.data(),
+        places: [],
+        placesCount: 0,
+        deletedAt: now,
+        deletedViaMerge: keepCircleId
+      });
+      batch.delete(db.collection(COLLECTIONS.CIRCLES).doc(sourceId));
+      await batch.commit();
+    }
+
+    // The circle set changed, so any cached advice is now stale.
+    await circleAdvisorQuota.invalidateCache(userId);
+
+    res.status(200).json({
+      success: true,
+      keepCircleId,
+      movedPlaces: movedCount,
+      retiredCircles: sourceIds
+    });
+  } catch (error) {
+    console.error('Error combining circles:', error);
     next(error);
   }
 };

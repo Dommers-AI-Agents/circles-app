@@ -2,7 +2,8 @@ import UIKit
 
 protocol HorizontalUserListViewDelegate: AnyObject {
     func didSelectUser(_ user: User, connectionId: String)
-    /// Long-press on an avatar - opens the connection's profile
+    /// Long-press on an avatar — the delegate decides the action (the home
+    /// screen shows a quick-actions menu; other screens may open the profile).
     func didLongPressUser(_ user: User, connectionId: String)
 }
 
@@ -511,10 +512,17 @@ class HorizontalUserListView: UIView {
     // MARK: - Sorting Logic
     static func sortConnections(_ connections: [Connection]) -> [Connection] {
         // Filter for accepted connections and following relationships
-        let validRelationships = connections.filter { 
-            $0.status == .accepted || $0.relationshipType == "following" 
+        return HorizontalUserListView.rankedConnections(connections)
+    }
+
+    /// The home page's connection ordering, exposed so other surfaces (the
+    /// map's Connection dropdown) list people in exactly the same order the
+    /// connections row does — one ranking, learned once.
+    static func rankedConnections(_ connections: [Connection]) -> [Connection] {
+        let validRelationships = connections.filter {
+            $0.status == .accepted || $0.relationshipType == "following"
         }
-        
+
         // Sort connections by weighted score if available
         let sortedConnections = validRelationships.sorted { (a, b) in
             let aScore = a.connectionScore

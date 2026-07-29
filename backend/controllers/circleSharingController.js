@@ -762,13 +762,11 @@ const getUserCircles = async (req, res) => {
 
     console.log(`🔍 Permission check - Connected: ${isConnected}, Following: ${isFollowing}`);
 
-    // Allow access if user is connected OR following
-    if (!isConnected && !isFollowing) {
-      return res.status(403).json({
-        success: false,
-        message: 'You are not connected to this user and not following them'
-      });
-    }
+    // Strangers are welcome — they just see the public tier only (handled by
+    // the privacy filter below). This used to 403 outright, which made every
+    // profile look empty until you followed the person: exactly backwards for
+    // a follow-first network, where seeing someone's public circles is how you
+    // decide they're worth following in the first place.
     
     // Get the connection document to check for recent activity (only exists for connections)
     const connectionDoc = !connection1.empty ? connection1.docs[0] : (!connection2.empty ? connection2.docs[0] : null);
@@ -823,14 +821,16 @@ const getUserCircles = async (req, res) => {
       userData.isFollowing = false;
     }
 
-    // Get circles based on relationship type
-    let allowedPrivacyLevels = [];
+    // Does this person follow the viewer? Read from the target's own following
+    // array — it powers the profile's "Follow Back" button.
+    userData.followsYou = (userData.following || []).includes(currentUserId);
+
+    // Get circles based on relationship type. Never empty — Firestore's `in`
+    // operator throws on an empty array, and everyone can see public circles.
+    let allowedPrivacyLevels = ['public'];
     if (isConnected) {
-      // Connected users can see both public and myNetwork circles
+      // Connected users can additionally see myNetwork circles
       allowedPrivacyLevels = ['public', 'myNetwork'];
-    } else if (isFollowing) {
-      // Followers can only see public circles
-      allowedPrivacyLevels = ['public'];
     }
 
     const circlesQuery = await db.collection(COLLECTIONS.CIRCLES)

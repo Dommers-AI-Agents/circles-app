@@ -255,6 +255,41 @@ exports.getSubscriptionStatus = async (req, res) => {
 // @desc    Update subscription status (webhook from App Store)
 // @route   POST /api/users/subscription/webhook
 // @access  Public (with verification)
+// Decode a JWS segment's payload without verification. Only used for the
+// INNER transaction/renewal JWS after the outer envelope's signature has been
+// verified — Apple signs the envelope over the inner tokens.
+function decodeJwsPayload(jws) {
+    if (!jws || typeof jws !== 'string') return null;
+    const parts = jws.split('.');
+    if (parts.length !== 3) return null;
+    try {
+        return JSON.parse(Buffer.from(parts[1], 'base64url').toString());
+    } catch (e) {
+        return null;
+    }
+}
+
+// Verify an App Store Server Notification V2 envelope: ES256 signature against
+// the x5c leaf certificate, each chain link signed by its parent, and an
+// Apple-issued root. (Pinning the exact Apple Root CA G3 fingerprint via
+// Apple's official app-store-server-library is the eventual upgrade.)
+function verifyAppleJws(signedPayload) {
+    const crypto = require('crypto');
+    const jwt = require('jsonwebtoken');
+    const header = JSON.parse(Buffer.from(signedPayload.split('.')[0], 'base64url').toString());
+    const x5c = header.x5c || [];
+    if (!x5c.length) throw new Error('no x5c certificate chain in header');
+    const toPem = (der) => `-----BEGIN CERTIFICATE-----\n${der.match(/.{1,64}/g).join('\n')}\n-----END CERTIFICATE-----`;
+    const certs = x5c.map((der) => new crypto.X509Certificate(toPem(der)));
+    for (let i = 0; i < certs.length - 1; i++) {
+        if (!certs[i].verify(certs[i + 1].publicKey)) throw new Error(`certificate chain broken at link ${i}`);
+    }
+    const root = certs[certs.length - 1];
+    if (!/Apple/.test(root.subject)) throw new Error('chain does not terminate at an Apple root');
+    const leafKey = certs[0].publicKey.export({ type: 'spki', format: 'pem' });
+    return jwt.verify(signedPayload, leafKey, { algorithms: ['ES256'] });
+}
+
 exports.handleSubscriptionWebhook = async (req, res) => {
     try {
         // Acknowledge receipt immediately (Apple requires 200 response)
@@ -267,38 +302,34 @@ exports.handleSubscriptionWebhook = async (req, res) => {
             return;
         }
 
-        // Decode the JWT payload
-        // In production, you should verify the JWT signature with Apple's public key
-        const parts = signedPayload.split('.');
-        if (parts.length !== 3) {
-            console.error('Invalid JWT format');
+        let payload;
+        try {
+            payload = verifyAppleJws(signedPayload);
+        } catch (e) {
+            console.error('🍎 Webhook rejected — signature verification failed:', e.message);
             return;
         }
 
-        // Decode payload (base64)
-        const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
-        
         const { notificationType, subtype, data } = payload;
-        const { transactionInfo, renewalInfo } = data;
-        
-        console.log(`Processing Apple webhook: ${notificationType} ${subtype || ''}`);
+        // V2 notifications carry signedTransactionInfo/signedRenewalInfo (each
+        // its own JWS); the old transactionInfo names never existed in V2, so
+        // the previous destructure dropped every real notification.
+        const transaction = decodeJwsPayload(data && (data.signedTransactionInfo || data.transactionInfo));
+        const renewal = decodeJwsPayload(data && (data.signedRenewalInfo || data.renewalInfo));
 
-        // Decode transaction info
-        const transaction = transactionInfo ? 
-            JSON.parse(Buffer.from(transactionInfo, 'base64').toString()) : null;
-        
         if (!transaction) {
-            console.error('No transaction info in webhook');
+            console.error(`🍎 Webhook ${notificationType}: no decodable transaction info`);
             return;
         }
 
         const { originalTransactionId, expiresDate, productId } = transaction;
+        console.log(`🍎 Webhook: ${notificationType} ${subtype || ''} | product=${productId} | origTx=${originalTransactionId} | expires=${expiresDate ? new Date(Number(expiresDate)).toISOString() : '-'}`);
 
         // Business (store-owner) notifications update owner* fields on the
         // user found by the owner transaction id — fully separate from the
         // consumer premium path below
         if (ownerSubscriptionService.isBusinessProduct(productId)) {
-            await handleBusinessWebhook({ notificationType, originalTransactionId, expiresDate, renewalInfo });
+            await handleBusinessWebhook({ notificationType, originalTransactionId, expiresDate, renewal });
             return;
         }
 
@@ -332,23 +363,20 @@ exports.handleSubscriptionWebhook = async (req, res) => {
             case 'DID_RENEW':
                 updateData = {
                     subscriptionStatus: 'active',
-                    subscriptionExpiryDate: new Date(expiresDate).toISOString(),
+                    subscriptionExpiryDate: new Date(Number(expiresDate)).toISOString(),
                     lastWebhookReceived: new Date().toISOString()
                 };
                 break;
                 
             case 'DID_FAIL_TO_RENEW':
                 // Check if in grace period
-                if (renewalInfo) {
-                    const renewal = JSON.parse(Buffer.from(renewalInfo, 'base64').toString());
-                    if (renewal.gracePeriodExpiresDate) {
-                        updateData = {
-                            subscriptionStatus: 'grace_period',
-                            gracePeriodExpiryDate: new Date(renewal.gracePeriodExpiresDate).toISOString(),
-                            lastWebhookReceived: new Date().toISOString()
-                        };
-                        break;
-                    }
+                if (renewal && renewal.gracePeriodExpiresDate) {
+                    updateData = {
+                        subscriptionStatus: 'grace_period',
+                        gracePeriodExpiryDate: new Date(Number(renewal.gracePeriodExpiresDate)).toISOString(),
+                        lastWebhookReceived: new Date().toISOString()
+                    };
+                    break;
                 }
                 updateData = {
                     subscriptionStatus: 'expired',
@@ -359,7 +387,7 @@ exports.handleSubscriptionWebhook = async (req, res) => {
             case 'EXPIRED':
                 updateData = {
                     subscriptionStatus: 'expired',
-                    subscriptionExpiryDate: new Date(expiresDate).toISOString(),
+                    subscriptionExpiryDate: new Date(Number(expiresDate)).toISOString(),
                     lastWebhookReceived: new Date().toISOString()
                 };
                 break;
@@ -397,7 +425,7 @@ exports.handleSubscriptionWebhook = async (req, res) => {
 
 // Business-subscription webhook handling: same notification types as consumer,
 // mapped onto the owner* fields.
-async function handleBusinessWebhook({ notificationType, originalTransactionId, expiresDate, renewalInfo }) {
+async function handleBusinessWebhook({ notificationType, originalTransactionId, expiresDate, renewal }) {
     const usersSnapshot = await admin.firestore()
         .collection('users')
         .where('ownerOriginalTransactionId', '==', originalTransactionId)
@@ -421,22 +449,16 @@ async function handleBusinessWebhook({ notificationType, originalTransactionId, 
         case 'DID_RENEW':
             updateData = {
                 ownerSubscriptionStatus: 'active',
-                ownerSubscriptionExpiryDate: new Date(expiresDate).toISOString()
+                ownerSubscriptionExpiryDate: new Date(Number(expiresDate)).toISOString()
             };
             break;
         case 'DID_FAIL_TO_RENEW': {
-            let inGrace = false;
-            if (renewalInfo) {
-                const renewal = JSON.parse(Buffer.from(renewalInfo, 'base64').toString());
-                if (renewal.gracePeriodExpiresDate) {
-                    inGrace = true;
-                    updateData = {
-                        ownerSubscriptionStatus: 'grace_period',
-                        ownerSubscriptionExpiryDate: new Date(renewal.gracePeriodExpiresDate).toISOString()
-                    };
-                }
-            }
-            if (!inGrace) {
+            if (renewal && renewal.gracePeriodExpiresDate) {
+                updateData = {
+                    ownerSubscriptionStatus: 'grace_period',
+                    ownerSubscriptionExpiryDate: new Date(Number(renewal.gracePeriodExpiresDate)).toISOString()
+                };
+            } else {
                 updateData = { ownerSubscriptionStatus: 'expired' };
             }
             break;
@@ -445,7 +467,7 @@ async function handleBusinessWebhook({ notificationType, originalTransactionId, 
         case 'GRACE_PERIOD_EXPIRED':
             updateData = {
                 ownerSubscriptionStatus: 'expired',
-                ownerSubscriptionExpiryDate: new Date(expiresDate).toISOString()
+                ownerSubscriptionExpiryDate: new Date(Number(expiresDate)).toISOString()
             };
             break;
         case 'REFUND':

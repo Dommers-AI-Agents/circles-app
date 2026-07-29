@@ -739,10 +739,14 @@ class VideoReelCell: UICollectionViewCell {
         
         if let player = playerLayer?.player {
             if player.rate == 0 {
+                // Tapping play is the point where we take over the audio
+                // session from whatever the user was listening to.
+                AudioSessionManager.shared.beginPlayback()
+
                 // Check if video has ended (at the end of playback)
                 let currentTime = player.currentTime()
                 let duration = player.currentItem?.duration ?? .zero
-                
+
                 if CMTimeCompare(currentTime, duration) >= 0 || currentTime.seconds > 0 {
                     // Video has ended or is paused mid-way, restart from beginning
                     player.seek(to: .zero) { _ in
@@ -755,6 +759,8 @@ class VideoReelCell: UICollectionViewCell {
                 playPauseButton.isHidden = true
             } else {
                 player.pause()
+                // Explicit pause — release the session so music resumes.
+                AudioSessionManager.shared.endPlayback()
                 playPauseButton.setImage(UIImage(systemName: "play.fill"), for: .normal)
                 playPauseButton.isHidden = false
             }

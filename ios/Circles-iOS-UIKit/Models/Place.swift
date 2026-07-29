@@ -122,6 +122,8 @@ struct Place: Codable, Identifiable {
     var state: String? = nil          // "North Carolina"
     var stateCode: String? = nil      // "NC"
     var neighborhood: String? = nil   // e.g. Apple subLocality, often nil
+    var country: String? = nil        // "Canada" — country-level region chips
+    var countryCode: String? = nil    // ISO2, "CA"
 
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -130,14 +132,28 @@ struct Place: Codable, Identifiable {
         case photos, videos, category, customCategoryId, subcategory, rating, userRatingsTotal, notes, privateNotes, publicNotes, tags, reviews, openingHours
         case priceLevel, likes, likesCount, commentsCount, circleId, addedBy, addedByUser, privacy, createdAt, updatedAt, isNew, circleName
         case followersCount, isFollowing
-        case city, state, stateCode, neighborhood
+        case city, state, stateCode, neighborhood, country, countryCode
     }
     
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         
-        // Decode all required fields
-        self.id = try container.decode(String.self, forKey: .id)
+        // Decode all required fields.
+        // The id normally arrives as "_id", but embedded places built outside
+        // serializeDoc (e.g. a suggestion's placeDetails) can carry only "id" —
+        // and one such item must not fail the whole enclosing list's decode.
+        if let primaryId = try container.decodeIfPresent(String.self, forKey: .id) {
+            self.id = primaryId
+        } else {
+            struct BareIdKeys: CodingKey {
+                var stringValue: String
+                var intValue: Int? { nil }
+                init?(stringValue: String) { self.stringValue = stringValue }
+                init?(intValue: Int) { return nil }
+            }
+            let bare = try decoder.container(keyedBy: BareIdKeys.self)
+            self.id = try bare.decode(String.self, forKey: BareIdKeys(stringValue: "id")!)
+        }
         self.globalPlaceId = try container.decodeIfPresent(String.self, forKey: .globalPlaceId)
         self.name = try container.decode(String.self, forKey: .name)
         self.description = try container.decodeIfPresent(String.self, forKey: .description)
@@ -222,6 +238,8 @@ struct Place: Codable, Identifiable {
         self.state = try container.decodeIfPresent(String.self, forKey: .state)
         self.stateCode = try container.decodeIfPresent(String.self, forKey: .stateCode)
         self.neighborhood = try container.decodeIfPresent(String.self, forKey: .neighborhood)
+        self.country = try container.decodeIfPresent(String.self, forKey: .country)
+        self.countryCode = try container.decodeIfPresent(String.self, forKey: .countryCode)
     }
     
     // Manual initializer for creating Place instances in code

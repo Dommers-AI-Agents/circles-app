@@ -1,21 +1,24 @@
 import UIKit
 
 // MARK: - AllUsersCell
+///
+/// The cell reports *intent* (`RelationshipTier.Action`) rather than naming a
+/// specific button, so adding a rung to the ladder doesn't ripple through every
+/// list controller that shows people.
 protocol AllUsersCellDelegate: AnyObject {
-    func allUsersCell(_ cell: AllUsersCell, didTapActionButton user: User)
-    func allUsersCell(_ cell: AllUsersCell, didTapFollowButton user: User)
-    func allUsersCell(_ cell: AllUsersCell, didTapRemoveButton user: User)
-    func allUsersCell(_ cell: AllUsersCell, didTapDeclineButton user: User)
+    func allUsersCell(_ cell: AllUsersCell, didTap action: RelationshipTier.Action, for user: User)
     func allUsersCell(_ cell: AllUsersCell, didTapProfileImage user: User)
 }
 
 class AllUsersCell: UITableViewCell {
     weak var delegate: AllUsersCellDelegate?
     private var user: User?
-    
+
+    /// What the two visible buttons currently mean, set on every configure().
+    private var primaryAction: RelationshipTier.Action = .follow
+    private var secondaryAction: RelationshipTier.Action?
+
     // Constraint outlets for dynamic layout
-    private var nameTrailingConstraint: NSLayoutConstraint?
-    private var emailTrailingConstraint: NSLayoutConstraint?
     private var actionButtonTrailingConstraint: NSLayoutConstraint?
     private var followButtonTrailingConstraint: NSLayoutConstraint?
     
@@ -51,13 +54,75 @@ class AllUsersCell: UITableViewCell {
 
     private let userInfoLabel: UILabel = {
         let label = UILabel()
-        label.font = .systemFont(ofSize: 14)
+        label.font = .systemFont(ofSize: 13)
         label.textColor = .secondaryLabel
         label.numberOfLines = 1
         label.lineBreakMode = .byTruncatingTail
-        label.translatesAutoresizingMaskIntoConstraints = false
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return label
+    }()
+
+    // "87 places · 12 circles" — the size of their collection is why this
+    // person is interesting, so it gets its own line in the brand color.
+    private let statsLabel: UILabel = {
+        let label = UILabel()
+        label.font = .systemFont(ofSize: 13)
+        label.numberOfLines = 1
+        label.lineBreakMode = .byTruncatingTail
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return label
+    }()
+
+    // Place-milestone tier chip — the same badge system as the profile page
+    // and Discover, so a power user reads the same everywhere.
+    private let tierChipIcon: UIImageView = {
+        let imageView = UIImageView()
+        imageView.tintColor = .white
+        imageView.contentMode = .scaleAspectFit
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        return imageView
+    }()
+
+    private let tierChipLabel: UILabel = {
+        let label = UILabel()
+        label.font = .systemFont(ofSize: 9, weight: .heavy)
+        label.textColor = .white
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    private lazy var tierChip: UIView = {
+        let view = UIView()
+        view.layer.cornerRadius = 9
+        view.isHidden = true
+        view.addSubview(tierChipIcon)
+        view.addSubview(tierChipLabel)
+        NSLayoutConstraint.activate([
+            tierChipIcon.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 5),
+            tierChipIcon.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            tierChipIcon.widthAnchor.constraint(equalToConstant: 10),
+            tierChipIcon.heightAnchor.constraint(equalToConstant: 10),
+            tierChipLabel.leadingAnchor.constraint(equalTo: tierChipIcon.trailingAnchor, constant: 3),
+            tierChipLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),
+            tierChipLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            view.heightAnchor.constraint(equalToConstant: 18)
+        ])
+        view.setContentCompressionResistancePriority(.required, for: .horizontal)
+        return view
+    }()
+
+    private lazy var textStack: UIStackView = {
+        let nameRow = UIStackView(arrangedSubviews: [nameLabel, tierChip, UIView()])
+        nameRow.axis = .horizontal
+        nameRow.spacing = 6
+        nameRow.alignment = .center
+
+        let stack = UIStackView(arrangedSubviews: [nameRow, statsLabel, userInfoLabel])
+        stack.axis = .vertical
+        stack.spacing = 2
+        stack.alignment = .leading
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        return stack
     }()
     
     private let actionButton: UIButton = {
@@ -83,30 +148,6 @@ class AllUsersCell: UITableViewCell {
         return button
     }()
     
-    private let removeButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Remove", for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
-        button.layer.cornerRadius = 6
-        button.backgroundColor = .systemRed.withAlphaComponent(0.1)
-        button.setTitleColor(.systemRed, for: .normal)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.isHidden = true
-        return button
-    }()
-    
-    private let declineButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Decline", for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
-        button.layer.cornerRadius = 6
-        button.backgroundColor = .systemRed.withAlphaComponent(0.1)
-        button.setTitleColor(.systemRed, for: .normal)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.isHidden = true
-        return button
-    }()
-    
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
         setupCell()
@@ -122,12 +163,9 @@ class AllUsersCell: UITableViewCell {
         
         contentView.addSubview(highlightView)
         contentView.addSubview(profileImageView)
-        contentView.addSubview(nameLabel)
-        contentView.addSubview(userInfoLabel)
+        contentView.addSubview(textStack)
         contentView.addSubview(actionButton)
         contentView.addSubview(followButton)
-        contentView.addSubview(removeButton)
-        contentView.addSubview(declineButton)
         
         // Make profile image tappable
         profileImageView.isUserInteractionEnabled = true
@@ -139,11 +177,10 @@ class AllUsersCell: UITableViewCell {
         longPressGesture.minimumPressDuration = 0.5
         profileImageView.addGestureRecognizer(longPressGesture)
         
-        // Create the trailing constraints for dynamic updates
-        nameTrailingConstraint = nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: followButton.leadingAnchor, constant: -8)
-        emailTrailingConstraint = userInfoLabel.trailingAnchor.constraint(lessThanOrEqualTo: followButton.leadingAnchor, constant: -8)
-        actionButtonTrailingConstraint = actionButton.trailingAnchor.constraint(equalTo: removeButton.leadingAnchor, constant: -6)
-        followButtonTrailingConstraint = followButton.trailingAnchor.constraint(equalTo: actionButton.leadingAnchor, constant: -6)
+        // Buttons read left-to-right as primary then secondary, so the
+        // secondary is the one pinned to the trailing edge.
+        actionButtonTrailingConstraint = actionButton.trailingAnchor.constraint(equalTo: followButton.leadingAnchor, constant: -6)
+        followButtonTrailingConstraint = followButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -12)
 
         NSLayoutConstraint.activate([
             highlightView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
@@ -153,26 +190,19 @@ class AllUsersCell: UITableViewCell {
             
             profileImageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
             profileImageView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            profileImageView.topAnchor.constraint(greaterThanOrEqualTo: contentView.topAnchor, constant: 10),
             profileImageView.widthAnchor.constraint(equalToConstant: 50),
             profileImageView.heightAnchor.constraint(equalToConstant: 50),
             
-            nameLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 14),
-            nameLabel.leadingAnchor.constraint(equalTo: profileImageView.trailingAnchor, constant: 12),
-            nameTrailingConstraint!,
+            // The text column drives the row height (self-sizing rows): its
+            // top/bottom pin to the cell, and hidden lines collapse out of
+            // the stack.
+            textStack.leadingAnchor.constraint(equalTo: profileImageView.trailingAnchor, constant: 12),
+            textStack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 10),
+            textStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -10),
+            textStack.trailingAnchor.constraint(lessThanOrEqualTo: actionButton.leadingAnchor, constant: -8),
             
-            userInfoLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
-            userInfoLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
-            emailTrailingConstraint!,
-            
-            removeButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            removeButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
-            removeButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 70),
-            removeButton.heightAnchor.constraint(equalToConstant: 32),
 
-            declineButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            declineButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
-            declineButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 70),
-            declineButton.heightAnchor.constraint(equalToConstant: 32),
 
             actionButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             actionButtonTrailingConstraint!,
@@ -181,88 +211,47 @@ class AllUsersCell: UITableViewCell {
 
             followButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             followButtonTrailingConstraint!,
-            followButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 68),
+            // 44pt floor keeps the glyph variants (⋯, ✕) at Apple's minimum tap
+            // target while titled variants like "Connect" size to their text.
+            followButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
             followButton.heightAnchor.constraint(equalToConstant: 32)
         ])
         
         actionButton.addTarget(self, action: #selector(actionButtonTapped), for: .touchUpInside)
         followButton.addTarget(self, action: #selector(followButtonTapped), for: .touchUpInside)
-        removeButton.addTarget(self, action: #selector(removeButtonTapped), for: .touchUpInside)
-        declineButton.addTarget(self, action: #selector(declineButtonTapped), for: .touchUpInside)
     }
     
+    /// Repositions the two buttons for the current tier. Only the secondary is
+    /// ever hidden, so this reduces to two cases rather than the four-button
+    /// permutation table this used to walk.
     private func updateTrailingConstraints() {
-        // Deactivate current constraints
-        nameTrailingConstraint?.isActive = false
-        emailTrailingConstraint?.isActive = false
         actionButtonTrailingConstraint?.isActive = false
         followButtonTrailingConstraint?.isActive = false
 
-        // Determine the rightmost visible button
-        let rightmostButton: UIView
-        if !removeButton.isHidden {
-            rightmostButton = removeButton
-        } else if !declineButton.isHidden {
-            rightmostButton = declineButton
+        if followButton.isHidden {
+            // Primary alone, pinned to the trailing edge.
+            actionButtonTrailingConstraint = actionButton.trailingAnchor.constraint(
+                equalTo: contentView.trailingAnchor, constant: -12)
         } else {
-            rightmostButton = contentView
+            actionButtonTrailingConstraint = actionButton.trailingAnchor.constraint(
+                equalTo: followButton.leadingAnchor, constant: -6)
+            followButtonTrailingConstraint = followButton.trailingAnchor.constraint(
+                equalTo: contentView.trailingAnchor, constant: -12)
+            followButtonTrailingConstraint?.isActive = true
         }
 
-        // Update action button position based on what's visible
-        if rightmostButton == contentView {
-            // No remove/decline button, action button goes to edge
-            actionButtonTrailingConstraint = actionButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4)
-        } else {
-            // Position action button before remove/decline button
-            actionButtonTrailingConstraint = actionButton.trailingAnchor.constraint(equalTo: rightmostButton.leadingAnchor, constant: -6)
-        }
-
-        // Update follow button position
-        followButtonTrailingConstraint = followButton.trailingAnchor.constraint(equalTo: actionButton.leadingAnchor, constant: -6)
-
-        // Determine the leftmost visible button to constrain text to
-        let constraintTarget: UIView
-        if !followButton.isHidden {
-            constraintTarget = followButton
-        } else if !actionButton.isHidden {
-            constraintTarget = actionButton
-        } else if !removeButton.isHidden {
-            constraintTarget = removeButton
-        } else if !declineButton.isHidden {
-            constraintTarget = declineButton
-        } else {
-            constraintTarget = contentView
-        }
-
-        // Create and activate new constraints for labels
-        if constraintTarget == contentView {
-            nameTrailingConstraint = nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -4)
-            emailTrailingConstraint = userInfoLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -4)
-        } else {
-            nameTrailingConstraint = nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: constraintTarget.leadingAnchor, constant: -8)
-            emailTrailingConstraint = userInfoLabel.trailingAnchor.constraint(lessThanOrEqualTo: constraintTarget.leadingAnchor, constant: -8)
-        }
-
-        // Activate all constraints
-        nameTrailingConstraint?.isActive = true
-        emailTrailingConstraint?.isActive = true
+        // The text column always stops short of the leftmost button, which is
+        // the primary — a single static constraint set up in setupCell().
         actionButtonTrailingConstraint?.isActive = true
-        followButtonTrailingConstraint?.isActive = true
     }
-    
+
     func configure(with user: User) {
         self.user = user
         nameLabel.text = user.displayName
-        // Display location first for consistency in My Network section
-        if let location = user.location, !location.isEmpty {
-            userInfoLabel.text = location
-        } else if let bio = user.bio, !bio.isEmpty {
-            // Fall back to bio if no location available
-            userInfoLabel.text = bio
-        } else {
-            userInfoLabel.text = "Circles member"
-        }
-        
+        // The subtitle is derived from the relationship tier further down — it
+        // leads with why this person matters (mutuals, places saved) and only
+        // falls back to location or bio when there's nothing better to say.
+
         // Check if this is a newly accepted connection
         let newlyAcceptedId = UserDefaults.standard.string(forKey: "newlyAcceptedConnectionId")
         let isNewlyAccepted = newlyAcceptedId == user.id
@@ -312,98 +301,124 @@ class AllUsersCell: UITableViewCell {
             profileImageView.contentMode = .scaleAspectFit
         }
         
-        // Configure buttons based on connection status
-        switch user.connectionStatus {
-        case "connected", "accepted":
-            // Connected users: Show View and Remove buttons only (no Follow button since they're already connected)
-            actionButton.setTitle("View", for: .normal)
-            actionButton.backgroundColor = Constants.Colors.primary
-            actionButton.setTitleColor(.white, for: .normal)
-            actionButton.isEnabled = true
-            
-            // Hide follow button for connected users (they're already connected)
-            followButton.isHidden = true
-            
-            removeButton.isHidden = false
-            declineButton.isHidden = true
-            contentView.backgroundColor = .systemBackground
-            
-        case "pending":
-            if user.connectionDirection == "incoming" {
-                // Incoming requests: Accept or Decline only — no Follow
-                // option here. Accepting auto-follows both ways; declining
-                // leaves following as a separate, deliberate action.
-                actionButton.setTitle("Accept", for: .normal)
-                actionButton.backgroundColor = .systemGreen
-                actionButton.setTitleColor(.white, for: .normal)
-                actionButton.isEnabled = true
+        // Configure buttons from the person's rung on the follow → connect
+        // ladder. One shared source of truth, so a person looks the same here,
+        // in Discover, and in search results.
+        let tier = RelationshipTier(user: user)
+        applyTier(tier)
 
-                followButton.isHidden = true
-
-                removeButton.isHidden = true
-                declineButton.isHidden = false
-                contentView.backgroundColor = Constants.Colors.brightOrange.withAlphaComponent(0.05)
-            } else {
-                // Outgoing requests: Show Cancel and Follow buttons
-                actionButton.setTitle("Request Sent", for: .normal)
-                actionButton.backgroundColor = Constants.Colors.brightOrange.withAlphaComponent(0.1)
-                actionButton.setTitleColor(Constants.Colors.brightOrange, for: .normal)
-                actionButton.isEnabled = true
-                
-                // Configure follow button
-                let isFollowing = user.isFollowing ?? false
-                followButton.setTitle(isFollowing ? "Following" : "Follow", for: .normal)
-                followButton.backgroundColor = isFollowing ? .systemGray5 : .systemBlue
-                followButton.setTitleColor(isFollowing ? .label : .white, for: .normal)
-                followButton.isHidden = false
-                
-                removeButton.isHidden = true
-                declineButton.isHidden = true
-                contentView.backgroundColor = Constants.Colors.brightOrange.withAlphaComponent(0.05)
-            }
-        default:
-            // Non-connected users: Show Connect and Follow buttons
-            actionButton.setTitle("Connect", for: .normal)
-            actionButton.backgroundColor = Constants.Colors.primary
-            actionButton.setTitleColor(.white, for: .normal)
-            actionButton.isEnabled = true
-            
-            // Configure follow button
-            let isFollowing = user.isFollowing ?? false
-            followButton.setTitle(isFollowing ? "Following" : "Follow", for: .normal)
-            followButton.backgroundColor = isFollowing ? .systemGray5 : .systemBlue
-            followButton.setTitleColor(isFollowing ? .label : .white, for: .normal)
-            followButton.isHidden = false
-            
-            removeButton.isHidden = true
-            declineButton.isHidden = true
-            contentView.backgroundColor = .systemBackground
+        // Place-milestone tier chip — the same badges as the profile page and
+        // Discover, so a power user reads the same everywhere.
+        let placesTotal = user.placesCount ?? 0
+        if let badge = PlaceMilestones.badge(for: placesTotal) {
+            tierChip.isHidden = false
+            tierChip.backgroundColor = badge.color
+            tierChipIcon.image = UIImage(systemName: badge.iconName)
+            tierChipLabel.text = badge.name.uppercased()
+        } else {
+            tierChip.isHidden = true
         }
-        
-        // Update trailing constraints after setting button visibility
+
+        // Stats line: "87 places · 12 circles", count in the brand color.
+        let circlesTotal = user.circlesCount ?? 0
+        if placesTotal > 0 || circlesTotal > 0 {
+            let stat = NSMutableAttributedString()
+            if placesTotal > 0 {
+                stat.append(NSAttributedString(
+                    string: "\(placesTotal) \(placesTotal == 1 ? "place" : "places")",
+                    attributes: [
+                        .font: UIFont.systemFont(ofSize: 13, weight: .semibold),
+                        .foregroundColor: Constants.Colors.primary
+                    ]))
+            }
+            if circlesTotal > 0 {
+                stat.append(NSAttributedString(
+                    string: placesTotal > 0 ? "  ·  \(circlesTotal) \(circlesTotal == 1 ? "circle" : "circles")" : "\(circlesTotal) \(circlesTotal == 1 ? "circle" : "circles")",
+                    attributes: [
+                        .font: UIFont.systemFont(ofSize: 13),
+                        .foregroundColor: Constants.Colors.secondaryLabel
+                    ]))
+            }
+            statsLabel.attributedText = stat
+            statsLabel.isHidden = false
+        } else {
+            statsLabel.attributedText = nil
+            statsLabel.isHidden = true
+        }
+
+        // Context line: where they are, plus the relationship signal.
+        var contextParts: [String] = []
+        if let location = user.location, !location.isEmpty {
+            contextParts.append("📍 \(location)")
+        }
+        if user.followsYou == true, tier != .connected {
+            contextParts.append("Follows you")
+        }
+        if contextParts.isEmpty {
+            // Nothing better to say — fall back to the tier subtitle (mutuals,
+            // bio, "Circles member").
+            let subtitle = tier.subtitle(for: user)
+            userInfoLabel.text = subtitle
+            userInfoLabel.isHidden = subtitle.isEmpty
+        } else {
+            userInfoLabel.text = contextParts.joined(separator: " · ")
+            userInfoLabel.isHidden = false
+        }
+    }
+
+    /// Lays out the row's one primary button and optional secondary from the
+    /// tier's spec. The old per-status `switch` set four buttons by hand and
+    /// had drifted out of sync with the Discover cell.
+    private func applyTier(_ tier: RelationshipTier) {
+        let primary = tier.primaryButton
+        primaryAction = primary.action
+        apply(spec: primary, to: actionButton)
+        actionButton.isHidden = false
+
+        if let secondary = tier.secondaryButton {
+            secondaryAction = secondary.action
+            apply(spec: secondary, to: followButton)
+            followButton.isHidden = false
+        } else {
+            secondaryAction = nil
+            followButton.isHidden = true
+        }
+
+        // Incoming requests are the only rows that need to pull the eye.
+        contentView.backgroundColor = tier == .requestReceived
+            ? Constants.Colors.brightOrange.withAlphaComponent(0.05)
+            : .systemBackground
+
         updateTrailingConstraints()
     }
-    
+
+    private func apply(spec: RelationshipTier.ButtonSpec, to button: UIButton) {
+        if spec.isGlyph {
+            button.setTitle(nil, for: .normal)
+            let config = UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
+            button.setImage(UIImage(systemName: spec.title, withConfiguration: config), for: .normal)
+            button.tintColor = .secondaryLabel
+            button.backgroundColor = .clear
+            button.layer.borderWidth = 0
+        } else {
+            button.setImage(nil, for: .normal)
+            button.setTitle(spec.title, for: .normal)
+            button.setStyle(spec.style)
+        }
+        button.isEnabled = true
+    }
+
     @objc private func actionButtonTapped() {
         guard let user = user else { return }
-        delegate?.allUsersCell(self, didTapActionButton: user)
+        delegate?.allUsersCell(self, didTap: primaryAction, for: user)
     }
-    
+
     @objc private func followButtonTapped() {
-        guard let user = user else { return }
-        delegate?.allUsersCell(self, didTapFollowButton: user)
+        guard let user = user, let action = secondaryAction else { return }
+        delegate?.allUsersCell(self, didTap: action, for: user)
     }
-    
-    @objc private func removeButtonTapped() {
-        guard let user = user else { return }
-        delegate?.allUsersCell(self, didTapRemoveButton: user)
-    }
-    
-    @objc private func declineButtonTapped() {
-        guard let user = user else { return }
-        delegate?.allUsersCell(self, didTapDeclineButton: user)
-    }
-    
+
+
     @objc private func profileImageTapped() {
         guard let user = user else { return }
         

@@ -5,7 +5,9 @@ import CoreLocation
 class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapViewControllerDelegate {
     
     // MARK: - Properties
-    var user: User?
+    var user: User? {
+        didSet { updateOrganizeButtonVisibility() }
+    }
     var circles: [Circle] = []
     var displayItems: [CircleDisplayItem] = []
     var circleGroups: [CircleGroup] = []
@@ -28,6 +30,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     // Region chips (see RegionGrouper): one per state, most places first.
     var placesRegionGroups: [RegionGroup] = []
     var selectedRegionGroupId: String?
+    /// Anchor for the lens's "Near me" chip. Resolved once, never prompts.
+    let lensLocationProvider = OneShotLocationProvider()
+    var lensOrigin: CLLocation?
     var selectedRegionGroup: RegionGroup? {
         selectedRegionGroupId.flatMap { id in placesRegionGroups.first { $0.id == id } }
     }
@@ -61,6 +66,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     // Request deduplication
     var isFetchingOtherUserCircles = false
+    /// One quiet retry when another user's profile fails to load. Reset on
+    /// each successful fetch so a later pull-to-refresh gets its own retry.
+    var hasRetriedOtherUserCircles = false
     
     // MARK: - BaseViewController Configuration
     override var showsLoadingIndicator: Bool { true }
@@ -931,7 +939,11 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        
+
+        // StoreKit may not have resolved the subscription when the view was
+        // built — re-check now that it's had time to.
+        updateOrganizeButtonVisibility()
+
         // Check if we should show the privacy settings tutorial step
         let isCurrentUser = user?.id == AuthService.shared.getUserId()
         if isCurrentUser && 
@@ -1863,6 +1875,34 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         syncStickyTabBar()
     }
 
+    /// Shows the wand only on your own Circles view, and only for Premium.
+    ///
+    /// The server enforces the Premium gate regardless (a free account that got
+    /// here would hit the paywall), but hiding the control is kinder than
+    /// offering something that can only end in an upsell.
+    ///
+    /// Called from three places because its three inputs resolve at different
+    /// times on a cold launch: the segment (setViewMode), the profile user
+    /// (didSet — loads async), and the StoreKit subscription (viewDidAppear —
+    /// resolves whenever StoreKit gets around to it). Checking only at
+    /// setViewMode meant the wand stayed hidden until the segments were
+    /// toggled after everything had loaded.
+    func updateOrganizeButtonVisibility() {
+        let isOwnProfile = user?.id == AuthService.shared.getUserId()
+        let isPremium = SubscriptionManager.shared.isSubscribed
+        organizeCirclesButton.isHidden = (viewMode != .circles) || !isOwnProfile || !isPremium
+    }
+
+    @objc func handleSubscriptionStatusChanged() {
+        Task { @MainActor in
+            updateOrganizeButtonVisibility()
+            if let user = user, user.id == AuthService.shared.getUserId() {
+                premiumBadgeView.isHidden = !SubscriptionManager.shared.isSubscribed
+                updateMilestoneBadge(placeCount: lastKnownPlaceCount)
+            }
+        }
+    }
+
     @objc func organizeCirclesTapped() {
         let organizeVC = OrganizeCirclesViewController(circles: circles)
         let nav = UINavigationController(rootViewController: organizeVC)
@@ -1885,16 +1925,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         }
 
         circlesCollectionView.isHidden = (mode != .circles)
-        // Only your own circles — the advisor has nothing to say about
-        // someone else's, and no right to propose changes to them.
-        //
-        // Also Premium-only. The server enforces that (and would paywall a free
-        // account that got here anyway), but hiding the control is kinder than
-        // offering something that can only end in a paywall. A wand icon that
-        // always leads to an upsell teaches people to ignore it.
-        let isOwnProfile = user?.id == AuthService.shared.getUserId()
-        let isPremium = SubscriptionManager.shared.isSubscribed
-        organizeCirclesButton.isHidden = (mode != .circles) || !isOwnProfile || !isPremium
+        updateOrganizeButtonVisibility()
         mapContainerView.isHidden = (mode != .map)
 
         logoutButtonTopToCollectionConstraint?.isActive = (mode == .circles)
@@ -2236,37 +2267,11 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         updateButtonVisibility()
         updateLocalFollowingCount(increment: action == "follow")
         
-        // Update the user object's isFollowing flag optimistically
-        if self.user?.isFollowing != nil {
-            if let currentUser = self.user {
-                self.user = User(
-                    id: currentUser.id,
-                    email: currentUser.email,
-                    displayName: currentUser.displayName,
-                    firstName: currentUser.firstName,
-                    lastName: currentUser.lastName,
-                    phoneNumber: currentUser.phoneNumber,
-                    profilePicture: currentUser.profilePicture,
-                    bio: currentUser.bio,
-                    location: currentUser.location,
-                    friends: currentUser.friends,
-                    friendRequests: currentUser.friendRequests,
-                    circleOrder: currentUser.circleOrder,
-                    preferences: currentUser.preferences,
-                    createdAt: currentUser.createdAt,
-                    connectionStatus: currentUser.connectionStatus,
-                    connectionDirection: currentUser.connectionDirection,
-                    connectionId: currentUser.connectionId,
-                    followers: currentUser.followers,
-                    following: currentUser.following,
-                    followersCount: currentUser.followersCount,
-                    followingCount: currentUser.followingCount,
-                    connectionsCount: currentUser.connectionsCount,
-                    pinnedPlaces: currentUser.pinnedPlaces,
-                    isFollowing: self.isFollowing
-                )
-            }
-        }
+        // Update the user object's isFollowing flag optimistically. The full
+        // copy() preserves followsYou and every other field — the hand-built
+        // User this replaces silently dropped them, so tapping Follow erased
+        // the very "follows you" state that justified the Follow Back label.
+        self.user = self.user?.copy(isFollowing: self.isFollowing)
         
         APIService.shared.request(
             endpoint: endpoint,
@@ -2622,14 +2627,21 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
     
     func updateLocalFollowingCount(increment: Bool) {
-        // Only update if we're viewing the current user's profile
         guard let currentUserId = AuthService.shared.getUserId(),
-              let user = self.user,
-              user.id == currentUserId else {
+              let user = self.user else { return }
+
+        // On someone else's profile, the stat that changes is THEIR followers —
+        // you just became (or stopped being) one. This used to bail out here,
+        // so their numbers sat frozen until a pull-to-refresh.
+        guard user.id == currentUserId else {
+            let currentCount = user.followersCount ?? 0
+            let newCount = increment ? currentCount + 1 : max(0, currentCount - 1)
+            followersStatView.configure(number: "\(newCount)", title: "Followers")
+            self.user = user.copy(followersCount: newCount)
             return
         }
-        
-        // Get current following count and update it
+
+        // Own profile: the Following stat moves.
         let currentCount = user.followingCount ?? 0
         let newCount = increment ? currentCount + 1 : max(0, currentCount - 1)
         
@@ -2725,10 +2737,17 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             followButtonLeadingToConnectConstraint?.isActive = true
         }
         
-        // Update follow button appearance based on follow status
-        followButton.setTitle(isFollowing ? "Following" : "Follow", for: .normal)
+        // Update follow button appearance based on follow status. When they
+        // already follow you, say so — "Follow Back" carries the fact that
+        // this person opted in first, which is the best reason to reciprocate.
+        let followsMe = user.followsYou ?? false
+        let followTitle = isFollowing ? "Following" : (followsMe ? "Follow Back" : "Follow")
+        followButton.setTitle(followTitle, for: .normal)
         if isFollowing {
             followButton.setStyle(.following)
+        } else if followsMe {
+            // Their move is already made — render ours as the primary action.
+            followButton.setStyle(.primary)
         } else {
             followButton.setStyle(.secondary)
         }
@@ -3424,8 +3443,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                 
                 switch result {
                 case .success(let response):
+                    self.hasRetriedOtherUserCircles = false
                     self.circles = response.data.circles
-                    
+
                     // Calculate total places
                     var totalPlaces = 0
                     for circle in response.data.circles {
@@ -3462,27 +3482,29 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                     
                 case .failure(let error):
                     Logger.debug("Failed to load other user circles: \(error)")
-                    
-                    // Handle rate limiting gracefully
-                    if case APIError.rateLimited(let retryAfter) = error {
-                        Logger.debug("🔍 Rate limited loading user circles, will retry in \(retryAfter ?? 0) seconds")
-                        // Don't show error to user for rate limiting - just use cached/default data
-                    } else {
-                        // Show error for other types of failures
-                        Logger.debug("❌ Non-rate-limit error loading user circles: \(error)")
+
+                    // A failed fetch is not information about the profile — it
+                    // must never overwrite data we're already showing. This
+                    // branch used to write zeros into every stat and clear the
+                    // grid, so one transient error made a real profile look
+                    // empty until a pull-to-refresh happened to succeed.
+                    if !self.circles.isEmpty { return }
+
+                    // Nothing shown yet: retry once, quietly. Covers cold
+                    // starts and rate-limit blips without anyone having to
+                    // know the swipe-down gesture exists.
+                    if !self.hasRetriedOtherUserCircles {
+                        self.hasRetriedOtherUserCircles = true
+                        let delay: TimeInterval
+                        if case APIError.rateLimited(let retryAfter) = error {
+                            delay = retryAfter ?? 3
+                        } else {
+                            delay = 2
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                            self?.fetchOtherUserCircles(userId: userId)
+                        }
                     }
-                    
-                    // Show default stats on error
-                    self.circlesStatView.configure(number: "0", title: "Circles")
-                    self.placesStatView.configure(number: "0", title: "Places")
-                    self.updateMilestoneBadge(placeCount: 0)
-                    self.connectionsStatView.configure(number: "0", title: "Connections")
-                    self.followersStatView.configure(number: "0", title: "Followers")
-                    self.followingStatView.configure(number: "0", title: "Following")
-                    
-                    self.circles = []
-                    self.circlesCollectionView.reloadData()
-                    self.updateCollectionViewHeight()
                 }
             }
         }
@@ -3522,6 +3544,16 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
     
     func setupNotificationObservers() {
+        // Premium resolves asynchronously after launch, so the badge and the
+        // AI-organize wand must both react to it rather than being computed at
+        // whatever moment their screen happened to build.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSubscriptionStatusChanged),
+            name: .subscriptionStatusChanged,
+            object: nil
+        )
+
         // Listen for circle deletion notifications
         NotificationCenter.default.addObserver(
             self,

@@ -330,6 +330,11 @@ app.use('/api/auth', authLimiter, linkedinAuthRoutes); // LinkedIn auth routes
 // Mount categories routes at a separate path to avoid conflicts with user /:id routes
 app.use('/api/categories', userCategoriesRoutes);
 // Mount contacts routes BEFORE generic user routes to avoid conflicts
+// Subscription routes MUST mount before the general /api/users routers: those
+// apply router-level auth, and an express app dispatches in mount order — the
+// Apple webhook (public by design) was being captured there and 401'd, so NO
+// App Store notification (renewal, cancellation, refund) was ever processed.
+app.use('/api/users/subscription', require('./routes/subscriptionRoutes'));
 app.use('/api/users/contacts', userContactsRoutes);
 app.use('/api/users', firebaseUserRoutes);
 app.use('/api/circles/groups', require('./routes/circleGroupsRoutes'));
@@ -359,7 +364,6 @@ app.use('/api/videos', videoRoutes);
 app.get('/share/video/:videoId', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'video-share.html'));
 });
-app.use('/api/users/subscription', require('./routes/subscriptionRoutes'));
 app.use('/api/users/referral', require('./routes/referralRoutes'));
 app.use('/api/rewards', require('./routes/rewardRoutes'));
 app.use('/api/home', require('./routes/dashboardRoutes'));

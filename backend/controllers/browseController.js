@@ -19,7 +19,8 @@ const {
   mergeSummaries,
   buildCityVenues,
   densestNeighborhood,
-  UNPLACED_KEY
+  UNPLACED_KEY,
+  COUNTRY_KEY_PREFIX
 } = require('../services/browseAggregation');
 
 const db = getFirestore();
@@ -49,14 +50,21 @@ async function getBrowseLocations(req, res) {
 
 // Batch-read helpers -------------------------------------------------------
 
-async function fetchCirclePlacesInCity(circleIds, cityKey) {
-  const isUnplaced = cityKey === UNPLACED_KEY;
+// A region key is one of: a city ("charlotte|NC"), a country ("country:CA"), or
+// the Unplaced sentinel.
+const countryCodeOf = (key) =>
+  key.startsWith(COUNTRY_KEY_PREFIX) ? key.slice(COUNTRY_KEY_PREFIX.length) : null;
+
+async function fetchCirclePlacesInCity(circleIds, regionKey) {
+  const isUnplaced = regionKey === UNPLACED_KEY;
+  const countryCode = countryCodeOf(regionKey);
   const chunks = [];
   for (let i = 0; i < circleIds.length; i += 10) chunks.push(circleIds.slice(i, i + 10));
 
   const snaps = await Promise.all(chunks.map(chunk => {
     let q = db.collection(COLLECTIONS.PLACES).where('circleId', 'in', chunk);
-    if (!isUnplaced) q = q.where('cityKey', '==', cityKey);
+    if (countryCode) q = q.where('countryCode', '==', countryCode);
+    else if (!isUnplaced) q = q.where('cityKey', '==', regionKey);
     return q.get();
   }));
 
@@ -68,7 +76,12 @@ async function fetchCirclePlacesInCity(circleIds, cityKey) {
       seen.add(doc.id);
       const p = serializeDoc(doc);
       if (p.deletedAt) continue;
-      if (isUnplaced && p.stateCode) continue; // in an unplaced-only chunk query, drop placed
+      // In an unplaced-only chunk query, drop anything that IS placed — by US
+      // state or by country. Must match summarizeCirclePlaces' precedence.
+      if (isUnplaced && (p.stateCode || p.countryCode)) continue;
+      // A US place carries countryCode 'US' but belongs to its city, not to a
+      // "United States" region row — the tree never emits one.
+      if (countryCode && p.stateCode) continue;
       places.push(p);
     }
   }
@@ -157,12 +170,20 @@ async function getBrowseCityPlaces(req, res) {
     venues.sort((a, b) => a.name.localeCompare(b.name));
 
     const first = capped[0] || {};
+    const countryCode = countryCodeOf(cityKey);
+    // A country row has no city; the client shows the country name as the title.
+    const title = cityKey === UNPLACED_KEY
+      ? 'Unplaced'
+      : (countryCode ? (first.country || countryCode) : (first.city || null));
     return res.status(200).json({
       success: true,
       cityKey,
-      city: cityKey === UNPLACED_KEY ? 'Unplaced' : (first.city || null),
-      state: first.state || null,
-      stateCode: first.stateCode || null,
+      city: title,
+      isCountry: !!countryCode,
+      country: first.country || null,
+      countryCode: countryCode || first.countryCode || null,
+      state: countryCode ? null : (first.state || null),
+      stateCode: countryCode ? null : (first.stateCode || null),
       count: venues.length,
       capped: allPlaces.length > CITY_VENUE_CAP,
       topNeighborhood: densestNeighborhood(venues),

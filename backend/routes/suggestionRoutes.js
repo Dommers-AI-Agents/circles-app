@@ -5,6 +5,7 @@ const { protect } = require('../middleware/firebaseAuth');
 const {
   createNewSuggestion,
   getNetworkSuggestions,
+  getReceivedSuggestions,
   getSuggestionsByUser,
   deleteSuggestion,
   cleanupExpiredSuggestions,
@@ -17,6 +18,7 @@ const {
 // Suggestion routes
 router.post('/', protect, createNewSuggestion);
 router.get('/network', protect, getNetworkSuggestions);
+router.get('/received', protect, getReceivedSuggestions); // directed suggestions inbox
 router.get('/user/:userId', protect, getSuggestionsByUser);
 router.delete('/:id', protect, deleteSuggestion);
 router.post('/cleanup', protect, cleanupExpiredSuggestions); // Should be restricted to admin/system

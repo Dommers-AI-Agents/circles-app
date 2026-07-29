@@ -869,6 +869,20 @@
           "order": "ASCENDING"
         },
         {
+          "fieldPath": "countryCode",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "places",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "circleId",
+          "order": "ASCENDING"
+        },
+        {
           "fieldPath": "cityKey",
           "order": "ASCENDING"
         },

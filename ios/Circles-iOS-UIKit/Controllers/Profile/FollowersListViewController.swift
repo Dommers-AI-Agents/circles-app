@@ -48,11 +48,14 @@ class FollowersListViewController: BaseViewController {
     // MARK: - BaseViewController Configuration
     override var showsLoadingIndicator: Bool { true }
     override var enablesPullToRefresh: Bool { true }
-    override var emptyStateMessage: String? { 
-        if listType == .followers {
+    override var emptyStateMessage: String? {
+        switch listType {
+        case .followers:
             return "No followers yet\n\nWhen people follow you, they'll appear here."
-        } else {
+        case .following:
             return "Not following anyone\n\nFind people to follow and they'll appear here."
+        case .connections:
+            return "No connections yet\n\nConnect with people and they'll appear here."
         }
     }
     
@@ -78,7 +81,7 @@ class FollowersListViewController: BaseViewController {
     
     // MARK: - Setup
     private func setupUI() {
-        setupNavigationBar(title: listType == .followers ? "Followers" : "Following")
+        setupNavigationBar(title: listType.title)
         
         view.addSubview(tableView)
         
@@ -108,11 +111,14 @@ class FollowersListViewController: BaseViewController {
     // MARK: - Data Loading
     private func loadUsers() {
         guard let userId = userId else { return }
-        
-        if listType == .followers {
+
+        switch listType {
+        case .followers:
             loadFollowers(userId: userId)
-        } else {
+        case .following:
             loadFollowing(userId: userId)
+        case .connections:
+            loadConnections()
         }
     }
     
@@ -162,6 +168,32 @@ class FollowersListViewController: BaseViewController {
         }
     }
     
+    /// Accepted connections for the signed-in user. Unlike followers/following
+    /// there's no `users/:id/connections` endpoint — `GET /connections` is
+    /// always scoped to the caller — so this list is owner-only, which
+    /// `showFollowersList` enforces before pushing.
+    private func loadConnections() {
+        NetworkManager.shared.fetchConnectionUsers { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+
+                switch result {
+                case .success(let users):
+                    // The Connections stat counts accepted connections only;
+                    // pending requests belong on the Network tab, not here.
+                    let accepted = users.filter { $0.connectionStatus == "accepted" }
+                    self.users = accepted
+                    self.filteredUsers = accepted
+                    self.tableView.reloadData()
+                    self.updateEmptyState()
+                case .failure(let error):
+                    self.showError("Failed to load connections: \(error.localizedDescription)")
+                    self.updateEmptyState()
+                }
+            }
+        }
+    }
+
     private func updateEmptyState() {
         let isEmpty = isSearching ? filteredUsers.isEmpty : users.isEmpty
         
@@ -252,6 +284,11 @@ extension FollowersListViewController: SSEServiceDelegate {
         case .followingAdded, .followingRemoved:
             if listType == .following {
                 // Reload the following list
+                loadUsers()
+            }
+        case .connectionAccepted, .connectionDeclined:
+            if listType == .connections {
+                // A connection was just accepted or removed elsewhere
                 loadUsers()
             }
         default:
@@ -481,6 +518,16 @@ class FollowerUserCell: UITableViewCell {
     }
     
     private func updateFollowButton(listType: FollowListType? = nil) {
+        if listType == .connections {
+            // Connections aren't a follow relationship — the row's action is
+            // simply opening the person's profile.
+            followButton.setTitle("View", for: .normal)
+            followButton.setStyle(.secondary)
+            followButton.removeTarget(self, action: #selector(followButtonTapped), for: .touchUpInside)
+            followButton.addTarget(self, action: #selector(viewButtonTapped), for: .touchUpInside)
+            return
+        }
+
         if isFollowing {
             if listType == .following {
                 // In following list, show "Following" button that can unfollow

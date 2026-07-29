@@ -354,9 +354,18 @@ class QuickAccessPlaceCell: UITableViewCell {
         ])
     }
     
-    func configure(with place: Place, isSelected: Bool, distanceText: String? = nil) {
+    func configure(with place: Place, isSelected: Bool, distanceText: String? = nil, savedBy: String? = nil) {
         nameLabel.text = place.name
-        addressLabel.text = place.address
+        // In the home nearby/list context we lead with who saved the place;
+        // the address rides along after it. Elsewhere (no savedBy) it's just
+        // the address.
+        if let savedBy = savedBy, !savedBy.isEmpty {
+            addressLabel.text = [savedBy, place.address]
+                .filter { !$0.isEmpty }
+                .joined(separator: " · ")
+        } else {
+            addressLabel.text = place.address
+        }
         checkmarkImageView.isHidden = !isSelected
         distanceLabel.text = distanceText
         distanceLabel.isHidden = (distanceText == nil)

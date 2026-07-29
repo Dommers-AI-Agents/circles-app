@@ -3,6 +3,9 @@ import UIKit
 protocol DiscoverUserCellDelegate: AnyObject {
     func discoverUserCellDidTapFollow(_ cell: DiscoverUserCell)
     func discoverUserCellDidTapDismiss(_ cell: DiscoverUserCell)
+    /// The row is the signed-in user's own — the action is sharing their
+    /// profile, not following themselves.
+    func discoverUserCellDidTapShare(_ cell: DiscoverUserCell)
 }
 
 class DiscoverUserCell: UITableViewCell {
@@ -19,6 +22,10 @@ class DiscoverUserCell: UITableViewCell {
     weak var delegate: DiscoverUserCellDelegate?
     var indexPath: IndexPath?
     private var user: User?
+    /// True when the row shows the signed-in user themself (Most active
+    /// includes them at their honest rank). Flips the action to Share and
+    /// removes dismiss — you can't be not-interested in yourself.
+    private var isSelfRow = false
     
     // MARK: - UI Elements
     private let containerView: UIView = {
@@ -83,6 +90,70 @@ class DiscoverUserCell: UITableViewCell {
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return label
     }()
+
+    // Where they are — profile city, or the city the backend inferred from
+    // the places they save. Distance rides along when the server knows it.
+    private let locationLabel: UILabel = {
+        let label = UILabel()
+        label.font = .systemFont(ofSize: 12)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.numberOfLines = 1
+        label.lineBreakMode = .byTruncatingTail
+        return label
+    }()
+
+    // Place-milestone tier chip (Explorer, Trailblazer, ...) — the same badge
+    // system as the profile page, so "power user" reads at a glance and the
+    // colors make the list feel alive.
+    private let tierChipIcon: UIImageView = {
+        let imageView = UIImageView()
+        imageView.tintColor = .white
+        imageView.contentMode = .scaleAspectFit
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        return imageView
+    }()
+
+    private let tierChipLabel: UILabel = {
+        let label = UILabel()
+        label.font = .systemFont(ofSize: 9, weight: .heavy)
+        label.textColor = .white
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    private lazy var tierChip: UIView = {
+        let view = UIView()
+        view.layer.cornerRadius = 9
+        view.isHidden = true
+        view.addSubview(tierChipIcon)
+        view.addSubview(tierChipLabel)
+        NSLayoutConstraint.activate([
+            tierChipIcon.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 5),
+            tierChipIcon.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            tierChipIcon.widthAnchor.constraint(equalToConstant: 10),
+            tierChipIcon.heightAnchor.constraint(equalToConstant: 10),
+            tierChipLabel.leadingAnchor.constraint(equalTo: tierChipIcon.trailingAnchor, constant: 3),
+            tierChipLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),
+            tierChipLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            view.heightAnchor.constraint(equalToConstant: 18)
+        ])
+        view.setContentCompressionResistancePriority(.required, for: .horizontal)
+        return view
+    }()
+
+    private lazy var textStack: UIStackView = {
+        let nameRow = UIStackView(arrangedSubviews: [nameLabel, tierChip, UIView()])
+        nameRow.axis = .horizontal
+        nameRow.spacing = 6
+        nameRow.alignment = .center
+
+        let stack = UIStackView(arrangedSubviews: [nameRow, detailLabel, locationLabel, discoveryReasonLabel])
+        stack.axis = .vertical
+        stack.spacing = 3
+        stack.alignment = .leading
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        return stack
+    }()
     
     /// "Not interested". Suggestions have to be able to run out, or the same
     /// faces reappear forever.
@@ -124,40 +195,35 @@ class DiscoverUserCell: UITableViewCell {
         contentView.addSubview(containerView)
         containerView.addSubview(profileImageView)
         containerView.addSubview(verifiedBadge)
-        containerView.addSubview(nameLabel)
-        containerView.addSubview(detailLabel)
-        containerView.addSubview(discoveryReasonLabel)
+        containerView.addSubview(textStack)
         containerView.addSubview(followButton)
         containerView.addSubview(dismissButton)
-        
+
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
             containerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
             containerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
             containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
-            
+
             profileImageView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 12),
             profileImageView.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
+            profileImageView.topAnchor.constraint(greaterThanOrEqualTo: containerView.topAnchor, constant: 12),
             profileImageView.widthAnchor.constraint(equalToConstant: 48),
             profileImageView.heightAnchor.constraint(equalToConstant: 48),
-            
+
             verifiedBadge.trailingAnchor.constraint(equalTo: profileImageView.trailingAnchor, constant: 2),
             verifiedBadge.bottomAnchor.constraint(equalTo: profileImageView.bottomAnchor, constant: 2),
             verifiedBadge.widthAnchor.constraint(equalToConstant: 16),
             verifiedBadge.heightAnchor.constraint(equalToConstant: 16),
-            
-            nameLabel.leadingAnchor.constraint(equalTo: profileImageView.trailingAnchor, constant: 12),
-            nameLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 12),
-            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: followButton.leadingAnchor, constant: -8),
-            
-            detailLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
-            detailLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 2),
-            detailLabel.trailingAnchor.constraint(lessThanOrEqualTo: followButton.leadingAnchor, constant: -8),
-            
-            discoveryReasonLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
-            discoveryReasonLabel.topAnchor.constraint(equalTo: detailLabel.bottomAnchor, constant: 2),
-            discoveryReasonLabel.trailingAnchor.constraint(lessThanOrEqualTo: followButton.leadingAnchor, constant: -8),
-            
+
+            // The text column drives the row height (self-sizing rows): its
+            // top/bottom pin to the card, and missing lines just collapse out
+            // of the stack.
+            textStack.leadingAnchor.constraint(equalTo: profileImageView.trailingAnchor, constant: 12),
+            textStack.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 12),
+            textStack.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -12),
+            textStack.trailingAnchor.constraint(lessThanOrEqualTo: followButton.leadingAnchor, constant: -8),
+
             dismissButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -10),
             dismissButton.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
             dismissButton.widthAnchor.constraint(equalToConstant: 28),
@@ -173,18 +239,57 @@ class DiscoverUserCell: UITableViewCell {
     // MARK: - Configuration
     /// The section header already states the reason these people are grouped
     /// together, so the cell no longer needs to be told which list it's in.
-    func configure(with user: User) {
+    /// `rank` turns the row into a leaderboard entry (Popular tab): medals for
+    /// the podium, #N for everyone else.
+    func configure(with user: User, rank: Int? = nil) {
         self.user = user
+        isSelfRow = user.id == AuthService.shared.getUserId()
+        dismissButton.isHidden = isSelfRow
 
-        // Name and verification
-        nameLabel.text = user.displayName
+        // Name and verification (with leaderboard rank when in scorecard mode)
+        if let rank = rank {
+            let medal: String
+            switch rank {
+            case 1: medal = "🥇"
+            case 2: medal = "🥈"
+            case 3: medal = "🥉"
+            default: medal = "#\(rank)"
+            }
+            nameLabel.text = "\(medal) \(user.displayName)"
+        } else {
+            nameLabel.text = user.displayName
+        }
         verifiedBadge.isHidden = !(user.isVerified ?? false)
+
+        // Place-milestone tier chip — same tiers as the profile badge, so a
+        // power user is recognizable before you ever open their profile.
+        let placesTotal = user.placesCount ?? 0
+        if let tier = PlaceMilestones.badge(for: placesTotal) {
+            tierChip.isHidden = false
+            tierChip.backgroundColor = tier.color
+            tierChipIcon.image = UIImage(systemName: tier.iconName)
+            tierChipLabel.text = tier.name.uppercased()
+        } else {
+            tierChip.isHidden = true
+        }
+
+        // Location: profile city, or the backend's best guess from where they
+        // save places. Distance rides along when the server measured one.
+        var locationParts: [String] = []
+        if let location = user.location, !location.isEmpty {
+            locationParts.append(location)
+        }
+        if let distance = user.distance {
+            locationParts.append(distance < 1 ? "under 1 km away" : "\(distance) km away")
+        }
+        locationLabel.text = locationParts.isEmpty ? nil : "📍 " + locationParts.joined(separator: " · ")
+        locationLabel.isHidden = locationParts.isEmpty
 
         // The stat line is the sell: following someone hands you their whole
         // collection, so the size of that collection is the headline —
         // "214 places · 18 circles", count in the primary color. Someone with
         // no places yet falls back to the standard relationship subtitle.
-        let placesCount = user.placesCount ?? 0
+        let placesCount = placesTotal
         if placesCount > 0 {
             let stat = NSMutableAttributedString(
                 string: "\(placesCount) \(placesCount == 1 ? "place" : "places")",
@@ -205,6 +310,9 @@ class DiscoverUserCell: UITableViewCell {
             detailLabel.attributedText = nil
             detailLabel.text = RelationshipTier(user: user).subtitle(for: user)
         }
+        // Empty lines collapse out of the stack instead of leaving gaps
+        detailLabel.isHidden = (detailLabel.text ?? detailLabel.attributedText?.string ?? "").isEmpty
+            && detailLabel.attributedText == nil
 
         // Per-person reason, where one exists beyond the section heading.
         configureDiscoveryReason(user: user, type: .all)
@@ -236,6 +344,13 @@ class DiscoverUserCell: UITableViewCell {
     }
     
     private func configureDiscoveryReason(user: User, type: DiscoveryType) {
+        // Your own row explains itself — and says what the button does.
+        if isSelfRow {
+            discoveryReasonLabel.text = "This is you — share your profile to grow your following"
+            discoveryReasonLabel.isHidden = false
+            return
+        }
+
         // The server now phrases the reason itself — "Also saved Café Mogador
         // + 5 more" is something only the backend can know, and it beats
         // anything the client can infer from a bare discovery type. Fall
@@ -266,9 +381,8 @@ class DiscoverUserCell: UITableViewCell {
                     }
                 }
             case "nearby":
-                if let distance = user.distance {
-                    reasonText = "📍 \(distance) km away"
-                }
+                // Distance already shows on the location line.
+                break
             case "popular":
                 // The stat line and the "Most active" section header already
                 // say it — a third "Popular user" badge is noise.
@@ -279,14 +393,12 @@ class DiscoverUserCell: UITableViewCell {
         }
 
         // Fallback to type-based reasons (the stat line covers place counts,
-        // so no "active contributor"-style duplication here)
+        // and the location line covers proximity)
         if reasonText.isEmpty {
             switch type {
-            case .nearby:
-                reasonText = "📍 Nearby"
             case .friendsOfFriends:
                 reasonText = "👥 Mutual connections"
-            case .popular, .all:
+            case .nearby, .popular, .all:
                 break
             }
         }
@@ -297,7 +409,18 @@ class DiscoverUserCell: UITableViewCell {
     
     private func updateFollowButton() {
         guard let user = user else { return }
-        
+
+        // Your own row: the ask is outward. Same styling weight as Follow —
+        // this is the row's primary action, not a passive state chip.
+        if isSelfRow {
+            followButton.setTitle("Share", for: .normal)
+            followButton.backgroundColor = Constants.Colors.primary
+            followButton.setTitleColor(.white, for: .normal)
+            followButton.layer.borderColor = Constants.Colors.primary.cgColor
+            followButton.isEnabled = true
+            return
+        }
+
         let isFollowing = user.isFollowing ?? false
         let connectionStatus = user.connectionStatus ?? "none"
         
@@ -330,7 +453,11 @@ class DiscoverUserCell: UITableViewCell {
     
     // MARK: - Actions
     @objc private func followButtonTapped() {
-        delegate?.discoverUserCellDidTapFollow(self)
+        if isSelfRow {
+            delegate?.discoverUserCellDidTapShare(self)
+        } else {
+            delegate?.discoverUserCellDidTapFollow(self)
+        }
     }
 
     @objc private func dismissButtonTapped() {
@@ -343,7 +470,11 @@ class DiscoverUserCell: UITableViewCell {
         profileImageView.image = nil
         verifiedBadge.isHidden = true
         discoveryReasonLabel.text = nil
-        discoveryReasonLabel.isHidden = false
+        discoveryReasonLabel.isHidden = true
+        locationLabel.text = nil
+        locationLabel.isHidden = true
+        tierChip.isHidden = true
+        detailLabel.isHidden = false
         user = nil
         indexPath = nil
     }

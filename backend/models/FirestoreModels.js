@@ -310,6 +310,11 @@ const createSuggestion = (suggestionData, userId) => {
     placeDetails: suggestionData.placeDetails || null,
     imageUrl: suggestionData.imageUrl || null,
     mentionedPlaces: suggestionData.mentionedPlaces || [],
+    // Directed suggestion: a recommendation sent to ONE specific person
+    // (e.g. long-press their avatar → "Suggest a place"). null = the legacy
+    // behavior, a broadcast to the author's whole network.
+    recipientId: suggestionData.recipientId || null,
+    recipientName: suggestionData.recipientName || null,
     likes: suggestionData.likes || [],
     likesCount: suggestionData.likesCount || 0,
     createdAt: now,
@@ -819,11 +824,12 @@ const validateNotification = (notificationData) => {
   }
   
   const validTypes = [
-    'place_like', 
-    'place_comment', 
+    'place_like',
+    'place_comment',
     'new_follower',
     'new_message',
     'connection_request',
+    'connection_accepted',
     'activity_reaction',
     'activity_comment',
     'check_in',

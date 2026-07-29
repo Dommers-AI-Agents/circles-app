@@ -58,7 +58,8 @@ final class LocationBrowseViewController: BaseTableViewController {
             let node = states[indexPath.row]
             cell.textLabel?.text = node.state
             cell.detailTextLabel?.text = "\(node.count)"
-            cell.imageView?.image = UIImage(systemName: "mappin.and.ellipse")
+            // A globe distinguishes a whole country from a state at a glance.
+            cell.imageView?.image = UIImage(systemName: node.isCountry == true ? "globe" : "mappin.and.ellipse")
         }
         cell.textLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
         cell.detailTextLabel?.textColor = Constants.Colors.secondaryLabel
@@ -78,7 +79,11 @@ final class LocationBrowseViewController: BaseTableViewController {
         }
 
         let node = states[indexPath.row]
-        if node.cities.count == 1, let only = node.cities.first {
+        if node.listsVenuesDirectly, let key = node.directRegionKey {
+            // A country has no city tier to drill into — list its venues.
+            let vc = CityPlacesViewController(cityKey: key, titleText: node.state)
+            navigationController?.pushViewController(vc, animated: true)
+        } else if node.cities.count == 1, let only = node.cities.first {
             // Only one city — skip the intermediate level (adaptive depth).
             let vc = CityPlacesViewController(cityKey: only.cityKey, titleText: only.city)
             navigationController?.pushViewController(vc, animated: true)

@@ -31,6 +31,21 @@ describe('mergeSummaries (network tree from per-circle summaries)', () => {
     expect(mergeSummaries([])).toEqual({ states: [] });
     expect(mergeSummaries([null, {}]).states).toEqual([]);
   });
+
+  test('countries ride the same list as states, sorted by size, with no cities', () => {
+    const tree = mergeSummaries([
+      { cityCounts: { 'charlotte|NC': 4 },
+        cityMeta: { 'charlotte|NC': { city: 'Charlotte', stateCode: 'NC', state: 'North Carolina' } },
+        countryCounts: { CA: 7 }, countryMeta: { CA: { country: 'Canada' } } },
+      { countryCounts: { CA: 2, FR: 1 },
+        countryMeta: { CA: { country: 'Canada' }, FR: { country: 'France' } } }
+    ]);
+    // Canada (9) outranks North Carolina (4), so it leads the row.
+    expect(tree.states[0]).toMatchObject({ stateCode: 'CA', state: 'Canada', count: 9, isCountry: true });
+    expect(tree.states[0].cities).toEqual([]);
+    expect(tree.states.find(s => s.stateCode === 'NC').isCountry).toBeUndefined();
+    expect(tree.states.find(s => s.stateCode === 'FR').count).toBe(1);
+  });
 });
 
 describe('summarizeCirclePlaces', () => {
@@ -44,6 +59,29 @@ describe('summarizeCirclePlaces', () => {
     expect(s.cityCounts['charlotte|NC']).toBe(2);
     expect(s.unplacedCount).toBe(1);
     expect(s.cityCounts['x|NC']).toBeUndefined();
+  });
+
+  test('non-US saves count against their country, not Unplaced', () => {
+    const s = summarizeCirclePlaces([
+      P({ country: 'Canada', countryCode: 'CA' }),
+      P({ country: 'Canada', countryCode: 'CA' }),
+      P({ country: 'France', countryCode: 'FR' }),
+      P({ /* no state, no country -> genuinely unplaced */ }),
+      P({ countryCode: 'CA', deletedAt: '2026-01-01' })      // deleted -> ignored
+    ]);
+    expect(s.countryCounts).toEqual({ CA: 2, FR: 1 });
+    expect(s.countryMeta.CA).toEqual({ country: 'Canada' });
+    expect(s.unplacedCount).toBe(1);
+  });
+
+  test('a US place is counted by city even when it also carries a country', () => {
+    const s = summarizeCirclePlaces([
+      P({ cityKey: 'charlotte|NC', city: 'Charlotte', stateCode: 'NC', state: 'North Carolina',
+          country: 'United States', countryCode: 'US' })
+    ]);
+    expect(s.cityCounts['charlotte|NC']).toBe(1);
+    expect(s.countryCounts).toEqual({});   // not double-counted
+    expect(s.unplacedCount).toBe(0);
   });
 });
 

@@ -7,7 +7,20 @@ class SubscriptionService: ObservableObject {
     
     @Published private(set) var products: [SubscriptionProduct] = []
     @Published private(set) var purchasedProductIDs = Set<String>()
-    @Published private(set) var subscriptionStatus: SubscriptionStatus = .none
+    /// Starts at `.none` and resolves asynchronously (StoreKit entitlements,
+    /// then a backend sync). UIKit screens that gate on it must listen for
+    /// `.subscriptionStatusChanged` rather than reading it once — a premium user
+    /// briefly looks unsubscribed at launch, which is what made the upgrade
+    /// crown flash on the home screen until a tab switch rebuilt the nav bar.
+    @Published private(set) var subscriptionStatus: SubscriptionStatus = .none {
+        didSet {
+            guard oldValue != subscriptionStatus else { return }
+            let post = {
+                NotificationCenter.default.post(name: .subscriptionStatusChanged, object: nil)
+            }
+            Thread.isMainThread ? post() : DispatchQueue.main.async(execute: post)
+        }
+    }
     @Published private(set) var subscriptionInfo: SubscriptionInfo?
     // FavCircles Business (store-owner) entitlement — tracked separately from
     // consumer premium; never merged into subscriptionStatus

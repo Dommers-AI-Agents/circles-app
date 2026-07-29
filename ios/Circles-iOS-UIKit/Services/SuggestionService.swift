@@ -11,16 +11,22 @@ class SuggestionService {
         message: String,
         placeId: String? = nil,
         imageUrl: String? = nil,
+        recipientId: String? = nil,
         completion: @escaping (Result<Suggestion, Error>) -> Void
     ) {
         var body: [String: Any] = ["message": message]
-        
+
         if let placeId = placeId {
             body["placeId"] = placeId
         }
-        
+
         if let imageUrl = imageUrl {
             body["imageUrl"] = imageUrl
+        }
+
+        // Directed suggestion: sent to one person instead of broadcast to the network
+        if let recipientId = recipientId {
+            body["recipientId"] = recipientId
         }
         
         apiService.request(
@@ -42,6 +48,22 @@ class SuggestionService {
     func fetchNetworkSuggestions(completion: @escaping (Result<[Suggestion], Error>) -> Void) {
         apiService.request(
             endpoint: "suggestions/network",
+            method: .get,
+            requiresAuth: true,
+            completion: { (result: Result<SuggestionsResponse, APIError>) in
+                switch result {
+                case .success(let response):
+                    completion(.success(response.data))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+            })
+    }
+
+    // MARK: - Get Received Suggestions (directed to me)
+    func fetchReceivedSuggestions(completion: @escaping (Result<[Suggestion], Error>) -> Void) {
+        apiService.request(
+            endpoint: "suggestions/received",
             method: .get,
             requiresAuth: true,
             completion: { (result: Result<SuggestionsResponse, APIError>) in

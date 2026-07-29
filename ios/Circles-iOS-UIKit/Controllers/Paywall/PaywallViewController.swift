@@ -659,8 +659,15 @@ class PaywallViewController: BaseViewController {
                     self?.restoreButton.isEnabled = true
                     
                     if SubscriptionManager.shared.isSubscribed {
-                        AlertPresenter.showSuccess("Subscription restored successfully!", from: self!)
-                        self?.dismiss(animated: true)
+                        // Dismiss first, confirm from the screen underneath —
+                        // an alert presented here would be swallowed by the
+                        // dismiss and leave the paywall stuck.
+                        let presenter = self?.presentingViewController
+                        self?.dismiss(animated: true) {
+                            if let presenter = presenter {
+                                AlertPresenter.showSuccess("Subscription restored successfully!", from: presenter)
+                            }
+                        }
                     } else {
                         self?.showError("No active subscription found")
                     }

@@ -22,7 +22,9 @@ const {
   deleteCircleComment,
   addCommentReply,
   getCommentReplies,
-  copyCircle
+  copyCircle,
+  getCircleAdvice,
+  mergeCircles
 } = require('../controllers/firebaseCircleController');
 const {
   shareCircle: newShareCircle,
@@ -48,6 +50,13 @@ router.use(protect);
 router.route('/')
   .get(getMyCircles)
   .post(createCircle);
+
+// Must precede /:id — otherwise "advisor" is parsed as a circle id.
+router.route('/advisor')
+  .get(getCircleAdvice);
+
+router.route('/advisor/merge')
+  .post(mergeCircles);
 
 router.route('/me')
   .get(getMyCircles);

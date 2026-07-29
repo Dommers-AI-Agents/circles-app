@@ -16,6 +16,7 @@ const notificationService = require('../services/notificationService');
 const sseService = require('../services/sseService');
 const { Client } = require('@googlemaps/google-maps-services-js');
 const { googleMapsApiKey } = require('../config/config');
+const { indexSavedPlace } = require('../services/circleLocationSummary');
 
 const db = getFirestore();
 const googleMapsClient = new Client({});
@@ -134,28 +135,18 @@ async function enrichPlaceWithGoogleData(placeName, location) {
       }
     }
     
-    // Determine category from types
-    let category = 'other';
-    if (placeDetails.types) {
-      if (placeDetails.types.includes('restaurant') || placeDetails.types.includes('food')) {
-        category = 'restaurant';
-      } else if (placeDetails.types.includes('cafe')) {
-        category = 'cafe';
-      } else if (placeDetails.types.includes('bar') || placeDetails.types.includes('night_club')) {
-        category = 'bar';
-      } else if (placeDetails.types.includes('shopping_mall') || placeDetails.types.includes('store')) {
-        category = 'shopping';
-      } else if (placeDetails.types.includes('museum') || placeDetails.types.includes('art_gallery')) {
-        category = 'entertainment';
-      }
-    }
-    
+    // Forward Google's raw types and let the shared cascade
+    // (services/placeCategoryDerivation) classify the venue. This replaced a
+    // hand-rolled if-chain here that covered five categories and emitted
+    // 'shopping' — not a value in the place-category enum ('retail' is), so
+    // check-ins at stores were filed under Other and never matched the
+    // Shopping filter chip.
     return {
       googlePlaceId: placeId,
       name: placeDetails.name || placeName,
       address: placeDetails.formatted_address || '',
       photos: photos,
-      category: category,
+      googleTypes: placeDetails.types || [],
       rating: placeDetails.rating || null,
       priceLevel: placeDetails.price_level || null,
       website: placeDetails.website || null,
@@ -368,7 +359,11 @@ exports.createCheckIn = async (req, res) => {
               location: checkIn.location ? {
                 coordinates: [checkIn.location.longitude, checkIn.location.latitude]
               } : null,
-              category: googleData.category || checkIn.placeCategory || 'other',
+              // Arrives as 'other' unless the client sent one; the cascade
+              // derives the real category from googleTypes when the venue
+              // record is created, and ensureGlobalPlaceLink stamps it back.
+              category: checkIn.placeCategory || 'other',
+              googleTypes: googleData.googleTypes || [],
               photos: googleData.photos || [],
               googlePlaceId: googleData.googlePlaceId || null,
               rating: googleData.rating || null,
@@ -387,7 +382,11 @@ exports.createCheckIn = async (req, res) => {
             // Link the save to its canonical venue record (best-effort)
             const { ensureGlobalPlaceLink } = require('../services/globalPlaceResolver');
             await ensureGlobalPlaceLink(await placeRef.get());
-            
+
+            // Keep the browse location tree fresh (best-effort)
+            indexSavedPlace(checkInCircle.id, placeData);
+
+
             // Update the circle's places array
             await db.collection(COLLECTIONS.CIRCLES).doc(checkInCircle.id).update({
               places: FieldValue.arrayUnion(finalPlaceId),

@@ -46,7 +46,8 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             guard indexPath.row < distanceSortedPlaces.count else { return cell }
             let entry = distanceSortedPlaces[indexPath.row]
             let distanceText = entry.distance.map { listDistanceFormatter.string(fromDistance: $0) }
-            cell.configure(with: entry.place, isSelected: false, distanceText: distanceText)
+            cell.configure(with: entry.place, isSelected: false, distanceText: distanceText,
+                           savedBy: savedByText(entry.savedBy))
             return cell
         } else if tableView == searchScopeTableView {
             let cell = tableView.dequeueReusableCell(withIdentifier: "SearchScopeCell") ?? UITableViewCell(style: .default, reuseIdentifier: "SearchScopeCell")

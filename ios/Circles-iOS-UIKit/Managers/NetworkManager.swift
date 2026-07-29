@@ -1,5 +1,25 @@
 import Foundation
 
+/// Why an invite link couldn't be acted on. Typed so callers can phrase the
+/// message themselves — the previous NSErrors forced `SceneDelegate` to
+/// pattern-match `localizedDescription`, which recognised exactly one case and
+/// reported every other one as "Failed to send connection request" even though
+/// nothing was ever sent.
+enum ConnectionInviteError: LocalizedError {
+    /// The link belongs to the signed-in user — they tapped their own invite.
+    case ownInviteLink
+    case alreadyConnected
+    case requestPending
+
+    var errorDescription: String? {
+        switch self {
+        case .ownInviteLink: return "Cannot connect to yourself"
+        case .alreadyConnected: return "Already connected to this user"
+        case .requestPending: return "Connection request already pending"
+        }
+    }
+}
+
 class NetworkManager {
     static let shared = NetworkManager()
     
@@ -60,6 +80,56 @@ class NetworkManager {
     
     // MARK: - Get Connections as Users
     
+    /// Every person you have a connection record with — accepted *and* pending,
+    /// in both directions — flattened into `User`s that carry their own
+    /// connection state.
+    ///
+    /// `getConnections` below returns accepted connections only and hands back
+    /// the bare nested user, losing `connectionId` and which way a pending
+    /// request points. Callers then had to go hunting for that id afterwards.
+    /// Stamping it here means a row can accept, decline or cancel immediately.
+    func fetchConnectionUsers(completion: @escaping (Result<[User], Error>) -> Void) {
+        let currentUserId = AuthService.shared.getUserId() ?? ""
+
+        apiService.request(
+            endpoint: "connections",
+            method: .get,
+            requiresAuth: true,
+            completion: createAPICompletion { [weak self] (result: Result<ConnectionsResponse, Error>) in
+                switch result {
+                case .success(let response):
+                    let users: [User] = response.connections.compactMap { connection in
+                        guard let user = connection.connectedUser else { return nil }
+                        // Skip self-connections, which legacy data still contains.
+                        guard user.id != currentUserId else { return nil }
+
+                        let status: String
+                        switch connection.status {
+                        case .accepted: status = "accepted"
+                        case .pending: status = "pending"
+                        default: return nil
+                        }
+
+                        // A pending request is incoming when someone else
+                        // initiated it — i.e. we are the connected-to party.
+                        let direction = connection.connectedUserId == currentUserId ? "incoming" : "outgoing"
+
+                        return user.copy(
+                            connectionStatus: status,
+                            connectionDirection: status == "pending" ? direction : nil,
+                            connectionId: connection.id
+                        )
+                    }
+
+                    self?.connections = response.connections.filter { $0.status == .accepted }
+                    completion(.success(users))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
+        )
+    }
+
     func getConnections(completion: @escaping (Result<[User], Error>) -> Void) {
         // If connections are already loaded, return them
         if !connections.isEmpty {
@@ -334,23 +404,23 @@ class NetworkManager {
         Logger.debug("🔗 NetworkManager: Cleaned userId: \(cleanUserId) from original: \(inviteUserId)")
         
         // Check if it's the current user
-        if cleanUserId == AuthService.shared.getUserId() {
+        if IDNormalizer.isSameUser(cleanUserId, AuthService.shared.getUserId()) {
             Logger.debug("🔗 NetworkManager: Cannot connect to yourself")
-            completion(.failure(NSError(domain: "NetworkManager", code: 0, userInfo: [NSLocalizedDescriptionKey: "Cannot connect to yourself"])))
+            completion(.failure(ConnectionInviteError.ownInviteLink))
             return
         }
-        
+
         // Check if already connected
         if connections.contains(where: { $0.connectedUserId == cleanUserId || $0.userId == cleanUserId }) {
             Logger.debug("🔗 NetworkManager: Already connected to user \(cleanUserId)")
-            completion(.failure(NSError(domain: "NetworkManager", code: 0, userInfo: [NSLocalizedDescriptionKey: "Already connected to this user"])))
+            completion(.failure(ConnectionInviteError.alreadyConnected))
             return
         }
-        
+
         // Check if there's already a pending request
         if pendingConnections.contains(where: { $0.connectedUserId == cleanUserId || $0.userId == cleanUserId }) {
             Logger.debug("🔗 NetworkManager: Connection request already pending for user \(cleanUserId)")
-            completion(.failure(NSError(domain: "NetworkManager", code: 0, userInfo: [NSLocalizedDescriptionKey: "Connection request already pending"])))
+            completion(.failure(ConnectionInviteError.requestPending))
             return
         }
         

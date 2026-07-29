@@ -10,7 +10,8 @@ const {
 const {
   getDiscoverUsers,
   searchUsersAdvanced,
-  updateUserLocation
+  updateUserLocation,
+  dismissSuggestion
 } = require('../controllers/userDiscoveryController');
 
 // Apply authentication middleware to all routes
@@ -29,5 +30,6 @@ router.post('/invite-contacts', inviteContacts);
 router.get('/discover', getDiscoverUsers);
 router.get('/search', searchUsersAdvanced);
 router.post('/update-location', updateUserLocation);
+router.post('/dismiss-suggestion', dismissSuggestion);
 
 module.exports = router;

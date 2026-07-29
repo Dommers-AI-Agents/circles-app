@@ -396,20 +396,7 @@ extension DiscoverUsersViewController: UITableViewDataSource {
         let cell = tableView.dequeueReusableCell(withIdentifier: "DiscoverUserCell", for: indexPath) as! DiscoverUserCell
         let user = isSearching ? searchResults[indexPath.row] : discoveryUsers[indexPath.row]
         
-        // Map DiscoverUsersViewController.DiscoveryType to DiscoverUserCell.DiscoveryType
-        let cellDiscoveryType: DiscoverUserCell.DiscoveryType
-        switch selectedDiscoveryType {
-        case .all:
-            cellDiscoveryType = .all
-        case .popular:
-            cellDiscoveryType = .popular
-        case .nearby:
-            cellDiscoveryType = .nearby
-        case .friendsOfFriends:
-            cellDiscoveryType = .friendsOfFriends
-        }
-        
-        cell.configure(with: user, discoveryType: cellDiscoveryType)
+        cell.configure(with: user)
         cell.delegate = self
         cell.indexPath = indexPath
         return cell
@@ -429,7 +416,13 @@ extension DiscoverUsersViewController: UITableViewDelegate {
     }
     
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        return 88
+        // Self-sizing: DiscoverUserCell stacks a tier chip, stats, location,
+        // and reason lines, so a fixed 88 would clip it.
+        return UITableView.automaticDimension
+    }
+
+    func tableView(_ tableView: UITableView, estimatedHeightForRowAt indexPath: IndexPath) -> CGFloat {
+        return 104
     }
 }
 
@@ -486,6 +479,32 @@ extension DiscoverUsersViewController: DiscoverUserCellDelegate {
         guard let indexPath = cell.indexPath else { return }
         let user = isSearching ? searchResults[indexPath.row] : discoveryUsers[indexPath.row]
         followUser(user, at: indexPath)
+    }
+
+    func discoverUserCellDidTapShare(_ cell: DiscoverUserCell) {
+        let shareItems = NetworkManager.shared.shareConnectionInvite()
+        let activityVC = UIActivityViewController(activityItems: shareItems, applicationActivities: nil)
+        if let popover = activityVC.popoverPresentationController {
+            popover.sourceView = cell
+            popover.sourceRect = cell.bounds
+        }
+        present(activityVC, animated: true)
+    }
+
+    func discoverUserCellDidTapDismiss(_ cell: DiscoverUserCell) {
+        guard let indexPath = cell.indexPath else { return }
+        let user = isSearching ? searchResults[indexPath.row] : discoveryUsers[indexPath.row]
+
+        APIService.shared.request(
+            endpoint: "users/contacts/dismiss-suggestion",
+            method: .post,
+            body: ["userId": user.id]
+        ) { (_: Result<SimpleAPIResponse, APIError>) in }
+
+        if !isSearching {
+            discoveryUsers.removeAll { $0.id == user.id }
+            tableView.reloadData()
+        }
     }
 }
 

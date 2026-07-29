@@ -13,6 +13,8 @@ const notificationService = require('../services/notificationService');
 const sseService = require('../services/sseService');
 const scoringService = require('../services/scoringService');
 const { normalizeUserId, isSameUser } = require('../services/idService');
+const { decorateUserCards } = require('../services/userCardEnrichment');
+const { getPlaceCountMap } = require('../services/userStatsCache');
 
 const db = getFirestore();
 
@@ -110,9 +112,16 @@ const getConnections = async (req, res) => {
 
     // Combine results and remove duplicates
     const allConnections = [...snapshot1.docs, ...snapshot2.docs];
-    const uniqueConnections = allConnections.filter((doc, index, self) => 
+    const uniqueConnections = allConnections.filter((doc, index, self) =>
       index === self.findIndex(d => d.id === doc.id)
     );
+
+    // The caller's own followers array tells us, for free, which of these
+    // people follow the caller back. That distinction ("I follow them" vs "we
+    // follow each other") is what gates the Connect step in the client, and it
+    // costs one doc read we were going to make anyway.
+    const callerDoc = await db.collection(COLLECTIONS.USERS).doc(normalizeUserId(userId)).get();
+    const callerFollowers = new Set((callerDoc.exists ? callerDoc.data().followers : null) || []);
 
     // Serialize and populate user data with activity stats
     const connections = await Promise.all(
@@ -132,19 +141,29 @@ const getConnections = async (req, res) => {
             connection.connectedUser = serializeDoc(userDoc);
             // DO NOT overwrite connectedUserId - it should remain as stored in database
             console.log(`✅ Found connected user: ${connection.connectedUser.displayName}`);
-            
-            // Always add activity stats to properly sort connections
-            // Get total places count for connected user
-            const userCirclesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
-              .where('owner', '==', otherUserId)
-              .get();
-            
+
+            // Does this person follow the caller back? Drives the client's
+            // "Follows you" label and whether Connect is offered.
+            connection.connectedUser.followsYou = callerFollowers.has(otherUserId);
+
+            // Place count via an aggregation query rather than reading every
+            // circle this user owns. Firestore bills a count() at roughly one
+            // read regardless of how many docs match, so this replaces an
+            // unbounded per-connection fan-out with a fixed cost.
             let totalPlaces = 0;
-            for (const circleDoc of userCirclesSnapshot.docs) {
-              const circleData = circleDoc.data();
-              totalPlaces += (circleData.places || []).length;
+            try {
+              const countSnap = await db.collection(COLLECTIONS.PLACES)
+                .where('addedBy', '==', otherUserId)
+                .where('deletedAt', '==', null)
+                .count()
+                .get();
+              totalPlaces = countSnap.data().count;
+            } catch (countError) {
+              // An aggregation needs the composite index to exist; if it is
+              // still building, fall back to zero rather than failing the list.
+              console.warn(`⚠️ Place count unavailable for ${otherUserId}:`, countError.message);
             }
-            
+
             // Check for unviewed activities (Instagram-style)
             const recentActivity = connection.recentActivity || [];
             const hasUnviewedActivity = recentActivity.some(activity => {
@@ -176,6 +195,9 @@ const getConnections = async (req, res) => {
             
             // Add stats to connection - ALWAYS override with calculated value
             connection.totalPlaces = totalPlaces;
+            // Also expose it on the nested user, which is what the client
+            // decodes into User.placesCount for the row subtitle.
+            connection.connectedUser.placesCount = totalPlaces;
             connection.hasRecentPlace = calculatedHasRecentPlace; // Now means hasUnviewedActivity
             connection.hasUnviewedActivity = hasUnviewedActivity;
             connection.unviewedCounts = unviewedCounts;
@@ -204,9 +226,26 @@ const getConnections = async (req, res) => {
       })
     );
 
+    // Card enrichment: circle counts (the per-connection place count() above
+    // stays authoritative for places) and an assumed city for anyone whose
+    // profile has no location — the My People rows show both.
+    const validConnections = connections.filter(conn => conn.connectedUser);
+    try {
+      const countsMap = await getPlaceCountMap();
+      validConnections.forEach((conn) => {
+        const counts = countsMap.get(normalizeUserId(conn.connectedUser.id)) || {};
+        if (conn.connectedUser.circlesCount === undefined) {
+          conn.connectedUser.circlesCount = counts.circlesCount || 0;
+        }
+      });
+      await decorateUserCards(validConnections.map((c) => c.connectedUser), { activityReason: false });
+    } catch (enrichError) {
+      console.warn('⚠️ Connection card enrichment failed:', enrichError.message);
+    }
+
     res.status(200).json({
       success: true,
-      connections: connections.filter(conn => conn.connectedUser) // Only return connections with valid user data
+      connections: validConnections
     });
   } catch (error) {
     console.error('Error fetching connections:', error);
@@ -649,18 +688,12 @@ const acceptConnection = async (req, res) => {
     try {
       const acceptingUserDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
       const acceptingUserName = acceptingUserDoc.exists ? acceptingUserDoc.data().displayName : 'Someone';
-      
-      // Send push notification
-      await notificationService.sendToUser(connection.userId, {
-        type: 'connection_accepted',
-        title: 'Connection Accepted',
-        body: `${acceptingUserName} accepted your connection request`,
-        data: {
-          type: 'connection_accepted',
-          acceptedByUserId: userId
-        }
-      });
-      
+
+      // In-app notification doc + SSE + push in one place. (The old bare
+      // sendToUser meant the Notifications screen never listed acceptances,
+      // and a failed push erased the event entirely.)
+      await notificationService.notifyConnectionAccepted(userId, connection.userId, connectionId);
+
       // Send real-time SSE notification
       sseService.notifyUser(connection.userId, 'connection_accepted', {
         connectionId: connectionId,

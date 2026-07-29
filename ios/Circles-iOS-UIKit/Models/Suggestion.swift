@@ -12,14 +12,17 @@ struct Suggestion: Codable, Identifiable {
     let commentsCount: Int?
     let likes: [String]?
     let likesCount: Int?
+    // Directed suggestion: sent to one specific person (null = broadcast to network)
+    let recipientId: String?
+    let recipientName: String?
     let createdAt: Date
     let updatedAt: Date
-    let expiresAt: Date
-    
+    let expiresAt: Date?  // Suggestions no longer expire — backend omits this
+
     enum CodingKeys: String, CodingKey {
         case id = "_id"
         case userId, userDetails, message, placeId, placeDetails, imageUrl, mentionedPlaces, commentsCount
-        case likes, likesCount
+        case likes, likesCount, recipientId, recipientName
         case createdAt, updatedAt, expiresAt
     }
     
@@ -38,11 +41,13 @@ struct Suggestion: Codable, Identifiable {
         commentsCount = try container.decodeIfPresent(Int.self, forKey: .commentsCount)
         likes = try container.decodeIfPresent([String].self, forKey: .likes)
         likesCount = try container.decodeIfPresent(Int.self, forKey: .likesCount)
-        
+        recipientId = try container.decodeIfPresent(String.self, forKey: .recipientId)
+        recipientName = try container.decodeIfPresent(String.self, forKey: .recipientName)
+
         // Decode dates
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        
+
         let createdAtString = try container.decode(String.self, forKey: .createdAt)
         if let date = formatter.date(from: createdAtString) {
             createdAt = date
@@ -50,7 +55,7 @@ struct Suggestion: Codable, Identifiable {
             formatter.formatOptions = [.withInternetDateTime]
             createdAt = formatter.date(from: createdAtString) ?? Date()
         }
-        
+
         let updatedAtString = try container.decode(String.self, forKey: .updatedAt)
         if let date = formatter.date(from: updatedAtString) {
             updatedAt = date
@@ -58,13 +63,14 @@ struct Suggestion: Codable, Identifiable {
             formatter.formatOptions = [.withInternetDateTime]
             updatedAt = formatter.date(from: updatedAtString) ?? Date()
         }
-        
-        let expiresAtString = try container.decode(String.self, forKey: .expiresAt)
-        if let date = formatter.date(from: expiresAtString) {
-            expiresAt = date
+
+        // Optional — suggestions no longer expire, so the backend omits it
+        if let expiresAtString = try container.decodeIfPresent(String.self, forKey: .expiresAt) {
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            expiresAt = formatter.date(from: expiresAtString)
+                ?? { formatter.formatOptions = [.withInternetDateTime]; return formatter.date(from: expiresAtString) }()
         } else {
-            formatter.formatOptions = [.withInternetDateTime]
-            expiresAt = formatter.date(from: expiresAtString) ?? Date()
+            expiresAt = nil
         }
     }
     
@@ -76,6 +82,7 @@ struct Suggestion: Codable, Identifiable {
     }
     
     var isExpired: Bool {
+        guard let expiresAt = expiresAt else { return false } // no expiry set
         return expiresAt < Date()
     }
     
@@ -115,14 +122,16 @@ struct Suggestion: Codable, Identifiable {
             commentsCount: self.commentsCount,
             likes: likes,
             likesCount: likesCount,
+            recipientId: self.recipientId,
+            recipientName: self.recipientName,
             createdAt: self.createdAt,
             updatedAt: self.updatedAt,
             expiresAt: self.expiresAt
         )
     }
-    
+
     // Manual initializer
-    init(id: String, userId: String, userDetails: User?, message: String, placeId: String?, placeDetails: Place?, imageUrl: String?, mentionedPlaces: [PlaceMention]?, commentsCount: Int?, likes: [String]?, likesCount: Int?, createdAt: Date, updatedAt: Date, expiresAt: Date) {
+    init(id: String, userId: String, userDetails: User?, message: String, placeId: String?, placeDetails: Place?, imageUrl: String?, mentionedPlaces: [PlaceMention]?, commentsCount: Int?, likes: [String]?, likesCount: Int?, recipientId: String? = nil, recipientName: String? = nil, createdAt: Date, updatedAt: Date, expiresAt: Date?) {
         self.id = id
         self.userId = userId
         self.userDetails = userDetails
@@ -134,6 +143,8 @@ struct Suggestion: Codable, Identifiable {
         self.commentsCount = commentsCount
         self.likes = likes
         self.likesCount = likesCount
+        self.recipientId = recipientId
+        self.recipientName = recipientName
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.expiresAt = expiresAt

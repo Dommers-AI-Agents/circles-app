@@ -55,6 +55,7 @@ class SharedCirclesListViewController: BaseViewController {
     
     // MARK: - Properties
     private var editableCircles: [Circle] = []
+    private var searchQuery: String = ""
     private let cellIdentifier = "SharedCircleCell"
     
     // MARK: - Lifecycle
@@ -142,6 +143,23 @@ class SharedCirclesListViewController: BaseViewController {
     private func loadSharedCircles() {
         loadData()
     }
+
+    /// Filters by circle name or owner. The search field sits above this
+    /// segment too, so it has to actually do something here.
+    func updateSearchQuery(_ query: String) {
+        searchQuery = query
+        tableView.reloadData()
+    }
+
+    /// The circles matching the current query — all of them when not searching.
+    private var visibleCircles: [Circle] {
+        guard !searchQuery.isEmpty else { return editableCircles }
+        let query = searchQuery.lowercased()
+        return editableCircles.filter { circle in
+            circle.name.lowercased().contains(query)
+                || (circle.ownerDetails?.displayName.lowercased().contains(query) ?? false)
+        }
+    }
     
     @objc private func refreshSharedCircles() {
         loadSharedCircles()
@@ -168,12 +186,12 @@ class SharedCirclesListViewController: BaseViewController {
 // MARK: - UITableViewDataSource
 extension SharedCirclesListViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return editableCircles.count
+        return visibleCircles.count
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: cellIdentifier, for: indexPath)
-        let circle = editableCircles[indexPath.row]
+        let circle = visibleCircles[indexPath.row]
         
         // Configure cell
         var configuration = cell.defaultContentConfiguration()
@@ -211,7 +229,7 @@ extension SharedCirclesListViewController: UITableViewDataSource {
 extension SharedCirclesListViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        let circle = editableCircles[indexPath.row]
+        let circle = visibleCircles[indexPath.row]
         showCircleDetail(circle)
     }
     

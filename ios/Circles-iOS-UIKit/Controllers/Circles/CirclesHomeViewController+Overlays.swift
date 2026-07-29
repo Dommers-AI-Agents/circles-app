@@ -256,15 +256,15 @@ extension CirclesHomeViewController: SuggestedUsersOverlayViewDelegate {
     }
     
     func didTapImportContacts() {
-        // Navigate to My Network tab with contacts import
-        if let tabBarController = self.tabBarController as? CirclesTabBarController {
-            tabBarController.selectedIndex = 1 // My Network tab
-            
-            // Trigger contacts import in the My Network tab
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                NotificationCenter.default.post(name: NSNotification.Name("ShowContactsImport"), object: nil)
-            }
+        // "Share an Invite": straight to the share sheet. (The phone-contacts
+        // import this used to trigger is gone.)
+        let shareItems = NetworkManager.shared.shareConnectionInvite()
+        let activityVC = UIActivityViewController(activityItems: shareItems, applicationActivities: nil)
+        if let popover = activityVC.popoverPresentationController {
+            popover.sourceView = view
+            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
         }
+        present(activityVC, animated: true)
     }
     
     func didDismissOverlay() {

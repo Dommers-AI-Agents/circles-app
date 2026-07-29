@@ -8,6 +8,9 @@ class CreateSuggestionViewController: BaseViewController {
     
     weak var delegate: CreateSuggestionViewControllerDelegate?
     private var selectedPlace: Place?
+    /// When set, the suggestion is sent directly to this person instead of
+    /// being broadcast to the whole network (set from the long-press menu).
+    var recipientUser: User?
     
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
@@ -137,7 +140,12 @@ class CreateSuggestionViewController: BaseViewController {
     }
     
     private func setupNavigationBar() {
-        title = "Share Suggestion"
+        if let name = recipientUser?.displayName, !name.isEmpty {
+            title = "Suggest to \(name)"
+            placeholderLabel.text = "Tell \(name) why they'd love this place..."
+        } else {
+            title = "Share Suggestion"
+        }
         
         navigationItem.leftBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .cancel,
@@ -168,13 +176,25 @@ class CreateSuggestionViewController: BaseViewController {
         
         SuggestionService.shared.createSuggestion(
             message: message,
-            placeId: selectedPlace?.id
+            placeId: selectedPlace?.id,
+            recipientId: recipientUser?.id
         ) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let suggestion):
-                    self?.delegate?.didCreateSuggestion(suggestion)
-                    self?.dismiss(animated: true)
+                    guard let self = self else { return }
+                    self.delegate?.didCreateSuggestion(suggestion)
+                    // Dismiss FIRST, confirm from the screen underneath.
+                    // Showing the success alert on this composer and then
+                    // calling dismiss() made the dismiss swallow the alert
+                    // instead of the composer — which stayed stuck on screen.
+                    let recipientName = self.recipientUser?.displayName
+                    let presenter = self.presentingViewController
+                    self.dismiss(animated: true) {
+                        if let name = recipientName, !name.isEmpty, let presenter = presenter {
+                            AlertPresenter.showSuccess("Suggestion sent to \(name)", from: presenter)
+                        }
+                    }
                 case .failure(let error):
                     self?.navigationItem.rightBarButtonItem?.isEnabled = true
                     self?.showError(error.localizedDescription)

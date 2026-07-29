@@ -150,14 +150,11 @@ extension CirclesHomeViewController {
         let player = AVPlayer(url: url)
         player.actionAtItemEnd = .none // Loop video
         
-        // Enable audio playback
-        do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch {
-            Logger.debug("❌ CirclesHome: Failed to setup audio session: \(error)")
-        }
-        
+        // NOTE: the audio session is deliberately NOT activated here. Creating a
+        // player happens on launch/preload even when the user is on the Activity
+        // tab; taking the session there would kill their background music before
+        // anything plays. It's claimed in playVideo(at:) instead.
+
         reelPlayers[index] = player
         reelVideoStates[index] = .ready
         Logger.debug("✅ CirclesHome: Loaded video for index \(index), URL: \(url)")
@@ -197,7 +194,15 @@ extension CirclesHomeViewController {
     
     func playVideo(at index: Int) {
         guard index >= 0 && index < reels.count else { return }
-        
+
+        // Never start a moment unless the Moments segment is actually on screen.
+        // Feed loads happen in the background on other tabs; playing from there
+        // would start audio (and count a view) behind the user's back.
+        guard contentSegmentedControl.selectedSegmentIndex == 1 else {
+            Logger.debug("⏭ CirclesHome: Skipping playback at \(index) — Moments tab not selected")
+            return
+        }
+
         // Track view for both photos and videos
         trackReelView(at: index)
         
@@ -208,6 +213,10 @@ extension CirclesHomeViewController {
         
         // Play video if available
         if let player = reelPlayers[index] {
+            // Take over the audio session only now that a moment is actually
+            // playing, so background music survives until this point.
+            AudioSessionManager.shared.beginPlayback()
+
             // Restart from beginning when returning to video
             player.seek(to: .zero) { _ in
                 player.play()
@@ -231,6 +240,10 @@ extension CirclesHomeViewController {
         for player in reelPlayers.values {
             player.pause()
         }
+
+        // Nothing is playing any more — hand the audio session back so the
+        // user's music/podcast picks up where it left off.
+        AudioSessionManager.shared.endPlayback()
     }
 
     /// Switch the home content to the Moments tab and land on a specific moment.

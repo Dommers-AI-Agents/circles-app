@@ -3,19 +3,30 @@ const express = require('express');
 const router = express.Router();
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
+const { safeEqual } = require('../middleware/verifyScheduler');
 
 const db = getFirestore();
 
-// Simple admin auth middleware - checks for admin secret
+// Admin auth. Fails closed: an unset ADMIN_SECRET denies every request rather
+// than falling back to a hardcoded default. The previous default
+// ('admin-secret-2025') would have opened these endpoints to anyone who guessed
+// it the moment the env var went missing.
 const adminAuth = (req, res, next) => {
-  const adminSecret = process.env.ADMIN_SECRET || 'admin-secret-2025';
-  const authHeader = req.get('Authorization');
-  
-  if (authHeader === `Bearer ${adminSecret}`) {
-    next();
-  } else {
-    res.status(403).json({ success: false, error: 'Unauthorized' });
+  const adminSecret = process.env.ADMIN_SECRET;
+  const authHeader = req.get('Authorization') || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+
+  if (!adminSecret) {
+    console.error('🚫 [admin] ADMIN_SECRET is not configured — denying admin request');
+    return res.status(403).json({ success: false, error: 'Unauthorized' });
   }
+
+  if (token && safeEqual(token, adminSecret)) {
+    return next();
+  }
+
+  console.warn(`🚫 [admin] Unauthorized admin request to ${req.originalUrl} from ${req.ip}`);
+  return res.status(403).json({ success: false, error: 'Unauthorized' });
 };
 
 // Reset daily summary timestamps

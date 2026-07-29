@@ -8,12 +8,20 @@ const PlaceDiscoveryService = require('./placeDiscoveryService');
 
 const db = getFirestore();
 
-// Every new user automatically follows these accounts (the most content-rich
+// Every new user automatically FOLLOWS these accounts (the most content-rich
 // ones), so their network isn't empty on day one. Combined with all-public
 // default circles, following is enough to see these users' places.
 const DEFAULT_FOLLOW_EMAILS = [
   'sgroiwes@gmail.com',      // Wes
   'brittanyvans@gmail.com'   // Brittany
+];
+
+// New users also receive a pending CONNECTION request from these accounts
+// (a two-way relationship they can accept). Following is passive/one-way and
+// needs no acceptance; a connection request is the active social nudge, so we
+// keep it to just Wes to avoid greeting a brand-new user with a pile of them.
+const DEFAULT_CONNECT_EMAILS = [
+  'sgroiwes@gmail.com'       // Wes only
 ];
 
 class OnboardingService {
@@ -155,6 +163,10 @@ class OnboardingService {
       // account (best-effort as well)
       await OnboardingService.sendDefaultConnectionRequests(userId, userData);
 
+      // Personal touch: Wes sends one favorite place as a directed suggestion,
+      // so their "For You" inbox has a real, human first item (best-effort)
+      await OnboardingService.sendWelcomeSuggestion(userId, userData);
+
       // Send SSE notification about onboarding completion
       const sseService = require('./sseService');
       sseService.notifyUser(userId, 'onboarding_completed', {
@@ -233,10 +245,11 @@ class OnboardingService {
   }
 
   /**
-   * Send the new user a pending connection request from each default account
-   * (Wes, Brittany). Accepting is what puts those accounts' places on the new
-   * user's map, so the request lands immediately at signup. Idempotent: a
-   * connection existing in either direction (any status) is left alone.
+   * Send the new user a pending connection request from each DEFAULT_CONNECT
+   * account (Wes only). They already auto-follow Wes + Brittany, so their feed
+   * isn't empty; this adds one active two-way relationship to accept. The
+   * request lands immediately at signup. Idempotent: a connection existing in
+   * either direction (any status) is left alone.
    */
   static async sendDefaultConnectionRequests(userId, userData = {}) {
     try {
@@ -245,7 +258,7 @@ class OnboardingService {
       const sseService = require('./sseService');
 
       const snap = await db.collection(COLLECTIONS.USERS)
-        .where('email', 'in', DEFAULT_FOLLOW_EMAILS)
+        .where('email', 'in', DEFAULT_CONNECT_EMAILS)
         .get();
       const senders = snap.docs.filter(doc =>
         doc.id !== userId && doc.data().email !== userData.email
@@ -285,6 +298,65 @@ class OnboardingService {
     } catch (error) {
       // Best-effort: log and continue — onboarding already succeeded
       console.error(`⚠️ Welcome connection requests failed for ${userId}:`, error.message);
+    }
+  }
+
+  /**
+   * Wes sends the new user ONE directed suggestion (a real favorite place), so
+   * their "For You" inbox has a personal first item at signup instead of being
+   * empty. Reuses the directed-suggestion model + notification. Best-effort.
+   */
+  static async sendWelcomeSuggestion(userId, userData = {}) {
+    try {
+      const { createSuggestion } = require('../models/FirestoreModels');
+      const notificationService = require('./notificationService');
+      const WELCOME_SENDER_EMAIL = 'sgroiwes@gmail.com'; // Wes
+
+      // Resolve the sender (Wes); never suggest to himself
+      const wesSnap = await db.collection(COLLECTIONS.USERS)
+        .where('email', '==', WELCOME_SENDER_EMAIL).limit(1).get();
+      if (wesSnap.empty) return;
+      const wesId = wesSnap.docs[0].id;
+      if (wesId === userId || wesSnap.docs[0].data().email === userData.email) return;
+
+      // Pick one of Wes's saved places to recommend. Filter deletedAt/private in
+      // memory (no composite index needed), then prefer a place with a photo and
+      // the most likes so the first impression is a strong one.
+      const placesSnap = await db.collection(COLLECTIONS.PLACES)
+        .where('addedBy', '==', wesId).get();
+      const candidates = placesSnap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(p => !p.deletedAt && p.privacy !== 'private' && p.name);
+      if (candidates.length === 0) return;
+
+      candidates.sort((a, b) => {
+        const score = p => ((p.photos && p.photos.length) ? 100 : 0) + (p.likesCount || 0);
+        return score(b) - score(a);
+      });
+      const place = candidates[0];
+
+      // Build the directed suggestion (author = Wes, recipient = the new user)
+      const suggestionData = createSuggestion({
+        message: `Welcome to Circles! Here's one of my favorites to get you started — ${place.name}. ` +
+                 `Tap to check it out, then save your own favorite places so your friends can find them too.`,
+        placeId: place.id,
+        // _id mirrored alongside id — the iOS Place decoder keys on _id, and a
+        // missing one fails the WHOLE suggestions list decode client-side
+        placeDetails: { _id: place.id, ...place },
+        recipientId: userId,
+        recipientName: userData.displayName || null
+      }, wesId);
+
+      const ref = await db.collection(COLLECTIONS.SUGGESTIONS).add(suggestionData);
+      const suggestion = { _id: ref.id, id: ref.id, ...suggestionData };
+
+      await notificationService.notifyDirectedSuggestion(suggestion, userId)
+        .catch(err => console.error('🎁 Welcome suggestion notification failed:', err.message));
+
+      console.log(`🎁 Welcome suggestion sent to ${userId} from Wes: "${place.name}"`);
+    } catch (error) {
+      // Best-effort: log and continue — onboarding already succeeded
+      console.error(`⚠️ Welcome suggestion failed for ${userId}:`, error.message);
     }
   }
 

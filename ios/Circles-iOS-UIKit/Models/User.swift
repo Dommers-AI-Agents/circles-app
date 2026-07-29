@@ -116,7 +116,12 @@ struct User: Codable, Identifiable {
     
     // Whether the current user is following this user (for other user profiles)
     let isFollowing: Bool?
-    
+
+    // Whether this user follows the current user. Combined with isFollowing
+    // this gives the relationship tier: neither = stranger, isFollowing only =
+    // one-way, both = mutual (which is when we offer Connect).
+    let followsYou: Bool?
+
     // Flag to identify fake profiles for onboarding
     let isFakeProfile: Bool?
     
@@ -143,6 +148,10 @@ struct User: Codable, Identifiable {
     let mutualConnectionsCount: Int?
     let mutualConnectionNames: [String]?
     let matchType: String? // "name", "email", "username" for search results
+    /// Why the server is suggesting this person, already phrased for display
+    /// (e.g. "Also saved Café Mogador + 5 more"). Built by suggestionEngine, so
+    /// the client never has to guess a reason from a bare discovery type.
+    let suggestionReason: String?
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -150,10 +159,11 @@ struct User: Codable, Identifiable {
         case subscriptionStatus, subscriptionExpiryDate, trialStartDate, trialEndDate
         case referralCode, referredBy, referralCount, referralRewards
         case isVerified, username, discoveryType, distance, mutualConnectionsCount, mutualConnectionNames, matchType
+        case followsYou, suggestionReason
     }
     
     // Convenience initializer for creating User objects directly
-    public init(id: String, email: String? = nil, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, zipcode: String? = nil, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil, connectionDirection: String? = nil, connectionId: String? = nil, followers: [String]? = nil, following: [String]? = nil, followersCount: Int? = nil, followingCount: Int? = nil, connectionsCount: Int? = nil, placesCount: Int? = nil, circlesCount: Int? = nil, pinnedPlaces: [String]? = nil, isFollowing: Bool? = nil, isFakeProfile: Bool? = nil, notificationPreferences: NotificationPreferences? = nil, subscriptionStatus: String? = nil, subscriptionExpiryDate: Date? = nil, trialStartDate: Date? = nil, trialEndDate: Date? = nil, referralCode: String? = nil, referredBy: String? = nil, referralCount: Int = 0, referralRewards: [ReferralReward]? = nil, isVerified: Bool? = nil, username: String? = nil, discoveryType: String? = nil, distance: Double? = nil, mutualConnectionsCount: Int? = nil, mutualConnectionNames: [String]? = nil, matchType: String? = nil) {
+    public init(id: String, email: String? = nil, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, zipcode: String? = nil, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil, connectionDirection: String? = nil, connectionId: String? = nil, followers: [String]? = nil, following: [String]? = nil, followersCount: Int? = nil, followingCount: Int? = nil, connectionsCount: Int? = nil, placesCount: Int? = nil, circlesCount: Int? = nil, pinnedPlaces: [String]? = nil, isFollowing: Bool? = nil, isFakeProfile: Bool? = nil, notificationPreferences: NotificationPreferences? = nil, subscriptionStatus: String? = nil, subscriptionExpiryDate: Date? = nil, trialStartDate: Date? = nil, trialEndDate: Date? = nil, referralCode: String? = nil, referredBy: String? = nil, referralCount: Int = 0, referralRewards: [ReferralReward]? = nil, isVerified: Bool? = nil, username: String? = nil, discoveryType: String? = nil, distance: Double? = nil, mutualConnectionsCount: Int? = nil, mutualConnectionNames: [String]? = nil, matchType: String? = nil, followsYou: Bool? = nil, suggestionReason: String? = nil) {
         self.id = id
         self.email = email
         self.displayName = displayName
@@ -198,6 +208,8 @@ struct User: Codable, Identifiable {
         self.mutualConnectionsCount = mutualConnectionsCount
         self.mutualConnectionNames = mutualConnectionNames
         self.matchType = matchType
+        self.followsYou = followsYou
+        self.suggestionReason = suggestionReason
     }
     
     // Custom decoder for JSON decoding
@@ -269,6 +281,8 @@ struct User: Codable, Identifiable {
         
         // Follow status (for other user profiles)
         isFollowing = try container.decodeIfPresent(Bool.self, forKey: .isFollowing)
+        followsYou = try container.decodeIfPresent(Bool.self, forKey: .followsYou)
+        suggestionReason = try container.decodeIfPresent(String.self, forKey: .suggestionReason)
         
         // Fake profile flag
         isFakeProfile = try container.decodeIfPresent(Bool.self, forKey: .isFakeProfile)
@@ -334,43 +348,11 @@ struct User: Codable, Identifiable {
         }
     }
     
-    // Helper method to create a copy of the user with updated isFollowing status
-    func copy(isFollowing: Bool) -> User {
-        return User(
-            id: self.id,
-            email: self.email,
-            displayName: self.displayName,
-            firstName: self.firstName,
-            lastName: self.lastName,
-            phoneNumber: self.phoneNumber,
-            profilePicture: self.profilePicture,
-            bio: self.bio,
-            location: self.location,
-            zipcode: self.zipcode,
-            friends: self.friends,
-            friendRequests: self.friendRequests,
-            circleOrder: self.circleOrder,
-            preferences: self.preferences,
-            createdAt: self.createdAt,
-            connectionStatus: self.connectionStatus,
-            connectionDirection: self.connectionDirection,
-            connectionId: self.connectionId,
-            followers: self.followers,
-            following: self.following,
-            followersCount: self.followersCount,
-            followingCount: self.followingCount,
-            connectionsCount: self.connectionsCount,
-            placesCount: self.placesCount,
-            circlesCount: self.circlesCount,
-            pinnedPlaces: self.pinnedPlaces,
-            isFollowing: isFollowing, // Updated value
-            isFakeProfile: self.isFakeProfile,
-            notificationPreferences: self.notificationPreferences,
-            subscriptionStatus: self.subscriptionStatus,
-            subscriptionExpiryDate: self.subscriptionExpiryDate,
-            trialStartDate: self.trialStartDate,
-            trialEndDate: self.trialEndDate
-        )
-    }
-    
+    // NOTE: the lossy `copy(isFollowing: Bool)` that used to live here has been
+    // removed. It rebuilt the User by hand and silently dropped every field it
+    // forgot to list — including `distance` and `mutualConnectionsCount`, so
+    // tapping Follow in Discover erased the row's own reason line. Swift
+    // preferred it over the complete `copy(...)` in User+Copy.swift because the
+    // non-optional Bool was the better overload match. All callers now resolve
+    // to that one, which passes every property through.
 }
