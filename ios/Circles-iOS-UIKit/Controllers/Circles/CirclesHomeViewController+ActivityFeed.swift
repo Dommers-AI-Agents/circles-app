@@ -302,9 +302,16 @@ extension CirclesHomeViewController {
     /// to map (not list) view.
     func resetMapToDefault() {
         resetPlacesListToMap()
-        if selectedConnectionId != nil || selectedCategory != nil {
+
+        // Chip filters (category group + region) live inside the embedded map.
+        mapViewController?.resetChipFilters()
+
+        // Original load state is "Me" (my_places_only), not All Connections —
+        // the map header opens as Me · All Categories · All Places.
+        let defaultConnectionId = "my_places_only"
+        if selectedConnectionId != defaultConnectionId || selectedCategory != nil {
             selectedCategory = nil
-            selectConnection(id: nil, user: nil)
+            selectConnection(id: defaultConnectionId, user: nil)
         } else {
             // Nothing filtered - just re-frame the default region (the user
             // may have panned or zoomed away)

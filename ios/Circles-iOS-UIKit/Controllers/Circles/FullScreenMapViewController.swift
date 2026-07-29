@@ -68,6 +68,18 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     var currentChipGroup: PlaceCategoryGroup { selectedChipGroup }
     var currentChipRegionId: String? { selectedChipRegionId }
 
+    /// Returns the chip filters to their load state (All Categories · All
+    /// Places) — the Home tab's reset uses this so a re-tap really does put
+    /// the whole map header back to "Me · All Categories · All Places".
+    func resetChipFilters() {
+        guard showsFilterChips else { return }
+        guard selectedChipGroup != .all || selectedChipRegionId != nil else { return }
+        selectedChipGroup = .all
+        selectedChipRegionId = nil
+        refreshFilterChips()
+        applyFilter(adjustRegion: false)
+    }
+
     /// The place set scoped to the current connection filter — the shared base
     /// for applyFilter AND the facet counts in the dropdown menus. Only the
     /// MODAL scopes for itself; the embedded child receives places already
