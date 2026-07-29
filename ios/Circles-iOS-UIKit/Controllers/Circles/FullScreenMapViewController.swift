@@ -199,16 +199,33 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     /// the same ranking, so the list reads identically everywhere. Each person
     /// shows their avatar, so the list scans by face rather than by name.
     private func connectionMenuElements() -> [UIMenuElement] {
+        // "My Places" wears YOUR face — same circular treatment as everyone
+        // below it, so the row reads as you rather than a generic glyph.
+        let myAvatar: UIImage?
+        if let me = AuthService.shared.currentUser {
+            myAvatar = menuAvatar(for: me)
+        } else {
+            myAvatar = UIImage(systemName: "person.crop.circle.fill")?
+                .withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal)
+        }
+
+        // "All Connections" gets a two-tone palette symbol — one figure in the
+        // brand color, one in a warm accent — so it reads as "everyone", not
+        // another flat glyph.
+        let allConnectionsIcon = UIImage(systemName: "person.2.fill")?
+            .applyingSymbolConfiguration(UIImage.SymbolConfiguration(
+                paletteColors: [Constants.Colors.primary, .systemOrange]
+            ))?
+            .withRenderingMode(.alwaysOriginal)
+
         var actions: [UIAction] = [
             UIAction(title: "My Places",
-                     image: UIImage(systemName: "person.crop.circle.fill")?
-                        .withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal),
+                     image: myAvatar,
                      state: selectedConnectionId == "my_places_only" ? .on : .off) { [weak self] _ in
                 self?.selectConnectionFromHeader(id: "my_places_only", user: nil)
             },
             UIAction(title: "All Connections",
-                     image: UIImage(systemName: "person.2.fill")?
-                        .withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal),
+                     image: allConnectionsIcon,
                      state: selectedConnectionId == nil ? .on : .off) { [weak self] _ in
                 self?.selectConnectionFromHeader(id: nil, user: nil)
             }
