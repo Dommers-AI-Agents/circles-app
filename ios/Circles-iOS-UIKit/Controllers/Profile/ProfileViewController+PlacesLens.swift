@@ -121,8 +121,15 @@ extension ProfileViewController {
     /// alongside the shared ones, refreshes the pins with a zoom-to-fit, and
     /// keeps the distance-sorted list in sync when it's showing. The chips are
     /// re-faceted too, so each bar's counts track the other bar's selection.
+    ///
+    /// The re-facet is DEFERRED one runloop tick: onSelect fires from inside
+    /// the tapped chip's touch action, and rebuilding the bars synchronously
+    /// tears the sender button out from under UIKit's touch machinery mid-
+    /// action — an intermittent crash when switching filters quickly.
     func applyPlacesLensFilters() {
-        refreshPlacesLensChips()
         filterPlaces()
+        DispatchQueue.main.async { [weak self] in
+            self?.refreshPlacesLensChips()
+        }
     }
 }
