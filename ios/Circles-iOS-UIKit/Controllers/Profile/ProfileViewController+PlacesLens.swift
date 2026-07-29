@@ -56,16 +56,60 @@ extension ProfileViewController {
     ///
     /// Region chips are one per STATE (see RegionGrouper), most places first.
     func refreshPlacesLensChips() {
-        let groups = PlaceCategoryGroup.present(in: allPlaces.map { $0.category.rawValue })
+        // Faceted, like the home map's dropdowns: each bar's options come from
+        // the set filtered by the OTHER bar, so picking Hotels re-counts the
+        // state chips down to just the hotels ("Rhode Island (2)"), and picking
+        // a state narrows the category chips to what's actually there.
+        var categoryBase = allPlaces
+        if let region = selectedRegionGroup {
+            categoryBase = categoryBase.filter { region.contains($0) }
+        }
+        var groups = PlaceCategoryGroup.present(in: categoryBase.map { $0.category.rawValue })
+        // Never hide the active selection — you need its chip to un-pick it.
+        if selectedPlacesGroup != .all && !groups.contains(selectedPlacesGroup) {
+            groups.append(selectedPlacesGroup)
+        }
         placesCategoryChipBar.setGroups(groups, selected: selectedPlacesGroup)
 
-        placesRegionGroups = RegionGrouper.groups(for: allPlaces, origin: nil)
+        // Full groups keep filter membership stable; the visible chips below
+        // are rebuilt from the category-filtered subset.
+        placesRegionGroups = RegionGrouper.groups(for: allPlaces, origin: lensOrigin)
+
+        // First pass has no fix yet: resolve one quietly, and when it lands
+        // rebuild so "Near me" takes its place at the front. No permission or
+        // no fix is normal — the row simply starts at the states.
+        if lensOrigin == nil {
+            lensLocationProvider.requestLocation { [weak self] location in
+                DispatchQueue.main.async {
+                    guard let self = self, let location = location, self.lensOrigin == nil else { return }
+                    self.lensOrigin = location
+                    self.refreshPlacesLensChips()
+                }
+            }
+        }
         // A stale selection (places changed underneath it) resets to All.
         if selectedRegionGroupId != nil && selectedRegionGroup == nil {
             selectedRegionGroupId = nil
         }
+
+        // Visible region chips: recomputed from the category-filtered subset,
+        // so their counts always describe what selecting them would show.
+        var regionBase = allPlaces
+        if selectedPlacesGroup != .all {
+            regionBase = regionBase.filter { selectedPlacesGroup.matches($0.category.rawValue) }
+        }
+        var facetGroups = RegionGrouper.groups(for: regionBase, origin: lensOrigin)
+        if let selectedId = selectedRegionGroupId,
+           !facetGroups.contains(where: { $0.id == selectedId }),
+           let full = placesRegionGroups.first(where: { $0.id == selectedId }) {
+            facetGroups.append(RegionGroup(
+                id: full.id, title: full.title, count: 0,
+                placeIds: [], centroid: full.centroid
+            ))
+        }
+
         var items: [BrowseChipBar.Item] = [BrowseChipBar.Item(id: "__all", title: "All places")]
-        items.append(contentsOf: placesRegionGroups.map {
+        items.append(contentsOf: facetGroups.map {
             BrowseChipBar.Item(id: $0.id, title: "\($0.title) (\($0.count))")
         })
         placesCityChipBar.setItems(items, selectedId: selectedRegionGroupId ?? "__all")
@@ -75,8 +119,10 @@ extension ProfileViewController {
 
     /// filterPlaces() applies the chip filters (region group + category group)
     /// alongside the shared ones, refreshes the pins with a zoom-to-fit, and
-    /// keeps the distance-sorted list in sync when it's showing.
+    /// keeps the distance-sorted list in sync when it's showing. The chips are
+    /// re-faceted too, so each bar's counts track the other bar's selection.
     func applyPlacesLensFilters() {
+        refreshPlacesLensChips()
         filterPlaces()
     }
 }
