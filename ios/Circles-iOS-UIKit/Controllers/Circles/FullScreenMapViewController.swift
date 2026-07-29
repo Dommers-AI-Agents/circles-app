@@ -60,31 +60,23 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     var initialChipGroup: PlaceCategoryGroup = .all
     var initialChipRegionId: String?
 
+    /// Read access for the presenter, so expansion can copy the live state.
+    var currentChipGroup: PlaceCategoryGroup { selectedChipGroup }
+    var currentChipRegionId: String? { selectedChipRegionId }
+
+    /// Anchor for the "Near me" chip. Resolved once, quietly; nil (no
+    /// permission, no fix yet) just means the chip doesn't appear.
+    private let chipLocationProvider = OneShotLocationProvider()
+    private var chipOrigin: CLLocation?
+
+    /// When embedded (home page map), the chip bars pin this far below the
+    /// map's top so the parent's own overlay row (avatar / ☰ / Me / list)
+    /// keeps its space. Parents with taller overlays raise it.
+    var embeddedChipsTopInset: CGFloat = 8
+
     private var selectedChipGroup: PlaceCategoryGroup = .all
     private var chipRegionGroups: [RegionGroup] = []
     private var selectedChipRegionId: String?
-
-    private lazy var filterCategoryChipBar: CategoryChipBar = {
-        let bar = CategoryChipBar()
-        bar.translatesAutoresizingMaskIntoConstraints = false
-        bar.onSelect = { [weak self] group in
-            self?.selectedChipGroup = group
-            self?.applyFilter(adjustRegion: false)
-            self?.zoomToFilteredPlaces()
-        }
-        return bar
-    }()
-
-    private lazy var filterRegionChipBar: BrowseChipBar = {
-        let bar = BrowseChipBar()
-        bar.translatesAutoresizingMaskIntoConstraints = false
-        bar.onSelect = { [weak self] id in
-            self?.selectedChipRegionId = (id == "__all") ? nil : id
-            self?.applyFilter(adjustRegion: false)
-            self?.zoomToFilteredPlaces()
-        }
-        return bar
-    }()
 
     /// Zooms to enclose exactly the filtered places (tap NJ → the camera frames
     /// New Jersey). Computed from the places themselves rather than the
@@ -110,26 +102,281 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     }
 
     /// Translucent backing so the chips read over any map content.
+    // One row, three dropdowns: Connection | Category | Place. Each always
+    // shows its active selection ("Me", "All Categories", "Arizona"), so the
+    // header doubles as a sentence describing exactly what the map is showing.
+    // Replaced two rows of scrolling chips — same power, half the chrome.
+    private lazy var connectionFilterButton = makeFilterDropdown()
+    private lazy var categoryFilterButton = makeFilterDropdown()
+    private lazy var placeFilterButton = makeFilterDropdown()
+
     private lazy var filterChipsContainer: UIView = {
+        // Transparent container; each dropdown is its own frosted pill so the
+        // map shows through between them — a solid full-width bar read as a
+        // black slab over the map.
         let container = UIView()
-        container.backgroundColor = Constants.Colors.background.withAlphaComponent(0.92)
-        container.layer.cornerRadius = 12
+        container.backgroundColor = .clear
         container.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(filterCategoryChipBar)
-        container.addSubview(filterRegionChipBar)
+
+        let row = UIStackView(arrangedSubviews: [connectionFilterButton, categoryFilterButton, placeFilterButton])
+        row.axis = .horizontal
+        row.distribution = .fillEqually
+        row.spacing = 8
+        row.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(row)
+
+        // Profile-originated maps have one person by definition.
+        connectionFilterButton.isHidden = !(viewMode == .allPlaces && showsConnectionFilter)
+
+        connectionFilterButton.menu = UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] done in
+            done(self?.connectionMenuElements() ?? [])
+        }])
+        categoryFilterButton.menu = UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] done in
+            done(self?.categoryMenuElements() ?? [])
+        }])
+        placeFilterButton.menu = UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] done in
+            done(self?.placeMenuElements() ?? [])
+        }])
+
         NSLayoutConstraint.activate([
-            filterCategoryChipBar.topAnchor.constraint(equalTo: container.topAnchor, constant: 6),
-            filterCategoryChipBar.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            filterCategoryChipBar.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            filterCategoryChipBar.heightAnchor.constraint(equalToConstant: 36),
-            filterRegionChipBar.topAnchor.constraint(equalTo: filterCategoryChipBar.bottomAnchor, constant: 4),
-            filterRegionChipBar.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            filterRegionChipBar.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            filterRegionChipBar.heightAnchor.constraint(equalToConstant: 36),
-            filterRegionChipBar.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -6)
+            row.topAnchor.constraint(equalTo: container.topAnchor),
+            row.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            row.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            row.heightAnchor.constraint(equalToConstant: 32)
         ])
         return container
     }()
+
+    private func makeFilterDropdown() -> UIButton {
+        var config = UIButton.Configuration.plain()
+        config.image = UIImage(systemName: "chevron.down",
+                               withConfiguration: UIImage.SymbolConfiguration(pointSize: 9, weight: .semibold))
+        config.imagePlacement = .trailing
+        config.imagePadding = 3
+        config.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 6, bottom: 4, trailing: 6)
+        config.baseForegroundColor = .white
+        let button = UIButton(configuration: config)
+        button.showsMenuAsPrimaryAction = true
+        button.titleLabel?.adjustsFontSizeToFitWidth = true
+        button.titleLabel?.minimumScaleFactor = 0.7
+
+        // Brand-blue capsule, white text — matches the app's primary buttons
+        // and reads as a control, not a bar. Soft shadow lifts it off the map.
+        button.backgroundColor = Constants.Colors.primary
+        button.layer.cornerRadius = 16
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOpacity = 0.18
+        button.layer.shadowRadius = 4
+        button.layer.shadowOffset = CGSize(width: 0, height: 2)
+        return button
+    }
+
+    private func setDropdownTitle(_ button: UIButton, _ title: String) {
+        var attributed = AttributedString(title)
+        attributed.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
+        button.configuration?.attributedTitle = attributed
+    }
+
+    /// The three labels always narrate the current view: "Me · Coffee · Arizona".
+    private func updateFilterHeaderTitles() {
+        let connectionTitle: String
+        switch selectedConnectionId {
+        case nil: connectionTitle = "All Connections"
+        case "my_places_only": connectionTitle = "My Places"
+        default: connectionTitle = selectedConnectionUser?.displayName ?? "Connection"
+        }
+        setDropdownTitle(connectionFilterButton, connectionTitle)
+        setDropdownTitle(categoryFilterButton, selectedChipGroup == .all ? "All Categories" : selectedChipGroup.title)
+        let regionTitle = selectedChipRegionId
+            .flatMap { id in chipRegionGroups.first { $0.id == id }?.title } ?? "All Places"
+        setDropdownTitle(placeFilterButton, regionTitle)
+    }
+
+    // MARK: Dropdown menus
+
+    /// Me / All Connections / everyone, in the home connections row's order —
+    /// the same ranking, so the list reads identically everywhere. Each person
+    /// shows their avatar, so the list scans by face rather than by name.
+    private func connectionMenuElements() -> [UIMenuElement] {
+        var actions: [UIAction] = [
+            UIAction(title: "My Places",
+                     image: UIImage(systemName: "person.crop.circle.fill")?
+                        .withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal),
+                     state: selectedConnectionId == "my_places_only" ? .on : .off) { [weak self] _ in
+                self?.selectConnectionFromHeader(id: "my_places_only", user: nil)
+            },
+            UIAction(title: "All Connections",
+                     image: UIImage(systemName: "person.2.fill")?
+                        .withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal),
+                     state: selectedConnectionId == nil ? .on : .off) { [weak self] _ in
+                self?.selectConnectionFromHeader(id: nil, user: nil)
+            }
+        ]
+        let currentUserId = AuthService.shared.getUserId() ?? ""
+        for connection in HorizontalUserListView.rankedConnections(connections) {
+            guard let user = connection.connectedUser else { continue }
+            let otherId = connection.otherUserId(currentUserId: currentUserId)
+            actions.append(UIAction(title: user.displayName,
+                                    image: menuAvatar(for: user),
+                                    state: selectedConnectionId == otherId ? .on : .off) { [weak self] _ in
+                self?.selectConnectionFromHeader(id: otherId, user: user)
+            })
+        }
+        return actions
+    }
+
+    /// Circular avatar for a menu row, from the image cache. On a cache miss,
+    /// returns a placeholder and prefetches so the NEXT open of this menu (it's
+    /// rebuilt fresh every time via UIDeferredMenuElement) shows the photo.
+    private func menuAvatar(for user: User) -> UIImage? {
+        let placeholder = UIImage(systemName: "person.crop.circle")?
+            .withTintColor(Constants.Colors.secondaryLabel, renderingMode: .alwaysOriginal)
+        guard let urlString = user.profilePicture, !urlString.isEmpty else { return placeholder }
+
+        let cacheKey = "profile_\(user.id)_\(urlString.hashValue)"
+        if let cached = ImageService.shared.cachedImage(forKey: cacheKey) {
+            return Self.circularMenuImage(cached)
+        }
+        // Warm the cache for the next open; menus can't be mutated in place.
+        ImageService.shared.loadProfileImage(for: user.id, from: urlString) { _ in }
+        return placeholder
+    }
+
+    /// Aspect-fill crops an image into a small circle for use as a menu icon.
+    static func circularMenuImage(_ image: UIImage, diameter: CGFloat = 26) -> UIImage {
+        let size = CGSize(width: diameter, height: diameter)
+        return UIGraphicsImageRenderer(size: size).image { _ in
+            UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).addClip()
+            let scale = max(diameter / max(image.size.width, 1), diameter / max(image.size.height, 1))
+            let width = image.size.width * scale
+            let height = image.size.height * scale
+            image.draw(in: CGRect(x: (diameter - width) / 2, y: (diameter - height) / 2, width: width, height: height))
+        }.withRenderingMode(.alwaysOriginal)
+    }
+
+    private func categoryMenuElements() -> [UIMenuElement] {
+        PlaceCategoryGroup.present(in: places.map { $0.category.rawValue }).map { group in
+            UIAction(title: group == .all ? "All Categories" : group.title,
+                     image: categoryMenuIcon(for: group),
+                     state: selectedChipGroup == group ? .on : .off) { [weak self] _ in
+                self?.selectedChipGroup = group
+                self?.updateFilterHeaderTitles()
+                self?.applyFilter(adjustRegion: false)
+                self?.zoomToFilteredPlaces()
+            }
+        }
+    }
+
+    /// Menu icon matching the map pins' color coding: each group shows its
+    /// category's glyph in its pin color, so the dropdown reads like a legend.
+    private func categoryMenuIcon(for group: PlaceCategoryGroup) -> UIImage? {
+        if group == .all {
+            return UIImage(systemName: "square.grid.2x2")?
+                .withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal)
+        }
+        let raw = group.categories.contains("other")
+            ? "other"
+            : (group.categories.sorted().first ?? "other")
+        let category = PlaceCategory(rawValue: raw) ?? .other
+        return UIImage(systemName: category.systemIconName)?
+            .withTintColor(category.color, renderingMode: .alwaysOriginal)
+    }
+
+    /// All Places, Near me (when a fix landed), then states most-places-first.
+    private func placeMenuElements() -> [UIMenuElement] {
+        var actions: [UIAction] = [
+            UIAction(title: "All Places",
+                     image: UIImage(systemName: "globe.americas.fill")?
+                        .withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal),
+                     state: selectedChipRegionId == nil ? .on : .off) { [weak self] _ in
+                self?.selectedChipRegionId = nil
+                self?.updateFilterHeaderTitles()
+                self?.applyFilter(adjustRegion: false)
+                self?.zoomToFilteredPlaces()
+            }
+        ]
+        for group in chipRegionGroups {
+            actions.append(UIAction(title: "\(group.title) (\(group.count))",
+                                    image: regionMenuImage(for: group),
+                                    state: selectedChipRegionId == group.id ? .on : .off) { [weak self] _ in
+                self?.selectedChipRegionId = group.id
+                self?.updateFilterHeaderTitles()
+                self?.applyFilter(adjustRegion: false)
+                self?.zoomToFilteredPlaces()
+            })
+        }
+        return actions
+    }
+
+    /// Row image for a region: the bundled state flag for US states, the emoji
+    /// flag for countries, a location glyph for "Near me". States without a
+    /// flag asset (e.g. DC) simply show no image.
+    private func regionMenuImage(for group: RegionGroup) -> UIImage? {
+        if group.id == "near-me" {
+            return UIImage(systemName: "location.fill")?
+                .withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal)
+        }
+        if group.id == "other-countries" {
+            return UIImage(systemName: "globe")?
+                .withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal)
+        }
+        if group.id.hasPrefix("state:") {
+            let code = String(group.id.dropFirst("state:".count)).lowercased()
+            return UIImage(named: "flag-us-\(code)")?.withRenderingMode(.alwaysOriginal)
+        }
+        if group.id.hasPrefix("country:") {
+            let code = String(group.id.dropFirst("country:".count))
+            return Self.emojiFlagImage(countryCode: code)
+        }
+        return nil
+    }
+
+    /// Renders a country's emoji flag (🇨🇦) into a menu-sized image.
+    static func emojiFlagImage(countryCode: String) -> UIImage? {
+        let base: UInt32 = 127397
+        var flag = ""
+        for scalar in countryCode.uppercased().unicodeScalars {
+            guard let indicator = UnicodeScalar(base + scalar.value) else { return nil }
+            flag.append(String(indicator))
+        }
+        let attributed = NSAttributedString(string: flag, attributes: [.font: UIFont.systemFont(ofSize: 20)])
+        let size = attributed.size()
+        guard size.width > 0 else { return nil }
+        return UIGraphicsImageRenderer(size: size).image { _ in
+            attributed.draw(at: .zero)
+        }.withRenderingMode(.alwaysOriginal)
+    }
+
+    private func selectConnectionFromHeader(id: String?, user: User?) {
+        selectedConnectionUser = user
+        if isPresentedModally {
+            // The modal filters for itself — through the one path every other
+            // connection control (Me chip, hamburger) already uses, so chip
+            // appearance, header label, zoom and delegate mirroring all happen
+            // identically no matter which control made the change.
+            selectConnection(id)
+        } else {
+            // Embedded: the home controller owns connection scope (it feeds
+            // this map AND the rest of the page). Round-trips back through
+            // setConnectionSelection, which keeps the two in lockstep.
+            delegate?.mapViewController(self, didChangeConnectionFilter: id)
+        }
+    }
+
+    /// Parent-driven label sync — no delegate fire, so no loops.
+    func setConnectionSelection(id: String?, user: User?) {
+        selectedConnectionId = id
+        selectedConnectionUser = user
+        updateFilterHeaderTitles()
+    }
+
+    /// Supplies the Connection dropdown's roster when embedded (the modal path
+    /// already receives connections with its places).
+    func setAvailableConnections(_ list: [Connection]) {
+        connections = list
+        updateFilterHeaderTitles()
+    }
     // IDs of the current user's own places. When set, the default map region
     // centers on the user's favorites instead of just their raw location.
     var ownPlaceIds: Set<String> = []
@@ -396,10 +643,6 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     }
 
     func showPlaceCount() {
-        // Embedded mode: the home screen shows its own (filter-accurate) count
-        // pill in the same corner — showing this one too stacked a second,
-        // stale pill on top of it (the "always 257" bug)
-        guard isPresentedModally else { return }
         placesCountLabel.isHidden = false
     }
     
@@ -420,10 +663,9 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         }
         
         self.places = allPlaces
-        // Sort connections alphabetically by display name for consistent ordering
-        self.connections = connections.sorted { 
-            ($0.connectedUser?.displayName ?? "").localizedCaseInsensitiveCompare($1.connectedUser?.displayName ?? "") == .orderedAscending
-        }
+        // Same ranking as the home connections row, so the dropdown lists
+        // people in the order muscle memory expects.
+        self.connections = HorizontalUserListView.rankedConnections(connections)
         self.connectionPlaces = connectionPlaces
         
         // Note: we intentionally do NOT reset hasInitiallyZoomed here anymore.
@@ -454,25 +696,32 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         updateAvailableCategories()
         refreshFilterChips()
         applyFilter()
+
+        // Kick off the Near me anchor. When the fix lands the chip row gains
+        // its leading chip; selection and state order are untouched, so the
+        // rebuild is invisible unless the new chip is the thing you wanted.
+        if showsFilterChips && chipOrigin == nil {
+            chipLocationProvider.requestLocation { [weak self] location in
+                DispatchQueue.main.async {
+                    guard let self = self, let location = location else { return }
+                    self.chipOrigin = location
+                    self.refreshFilterChips()
+                }
+            }
+        }
     }
 
     /// Rebuilds both chip bars from the full place set (chip-bar mode only), so
     /// the expanded view can broaden a filter as well as narrow it.
     private func refreshFilterChips() {
         guard showsFilterChips else { return }
-        filterCategoryChipBar.setGroups(
-            PlaceCategoryGroup.present(in: places.map { $0.category.rawValue }),
-            selected: selectedChipGroup
-        )
-        chipRegionGroups = RegionGrouper.groups(for: places, origin: nil)
+        chipRegionGroups = RegionGrouper.groups(for: places, origin: chipOrigin)
         if selectedChipRegionId != nil && !chipRegionGroups.contains(where: { $0.id == selectedChipRegionId }) {
             selectedChipRegionId = nil
         }
-        var items: [BrowseChipBar.Item] = [BrowseChipBar.Item(id: "__all", title: "All places")]
-        items.append(contentsOf: chipRegionGroups.map {
-            BrowseChipBar.Item(id: $0.id, title: "\($0.title) (\($0.count))")
-        })
-        filterRegionChipBar.setItems(items, selectedId: selectedChipRegionId ?? "__all")
+        // Menus are deferred and rebuilt on every open — only the visible
+        // titles need refreshing here.
+        updateFilterHeaderTitles()
     }
     
     override var preferredStatusBarStyle: UIStatusBarStyle {
@@ -499,33 +748,38 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         
         // Add overlay control chips only if presented modally and filters are enabled
         if isPresentedModally && showFilters {
-            // Avatar first so "who is being mapped" reads before the controls
-            // (omitted on profile maps — there's only one person)
-            if showsConnectionFilter {
-                overlayChipStack.addArrangedSubview(connectionAvatarChip)
-            }
-            // Chip-bar mode replaces the hamburger entirely — category (and
-            // region) filtering happens in the always-visible bars instead.
+            // Dropdown-header mode: the three filter dropdowns replace the
+            // avatar chip, the hamburger, the Me chip AND the avatar row — one
+            // header instead of four controls. The list toggle survives, moved
+            // to the right edge under the close button.
             if !showsFilterChips {
+                if showsConnectionFilter {
+                    overlayChipStack.addArrangedSubview(connectionAvatarChip)
+                }
                 overlayChipStack.addArrangedSubview(menuChipButton)
+                if viewMode == .allPlaces && showsConnectionFilter {
+                    overlayChipStack.addArrangedSubview(myPlacesChipButton)
+                }
+                overlayChipStack.addArrangedSubview(listChipButton)
+                updateConnectionAvatarChip()
             }
-            if viewMode == .allPlaces && showsConnectionFilter {
-                overlayChipStack.addArrangedSubview(myPlacesChipButton)
-            }
-            overlayChipStack.addArrangedSubview(listChipButton)
-            updateConnectionAvatarChip()
+            // Header mode adds no ☰/Me row — the dropdowns cover both, so the
+            // second row holds only close and the list toggle on the right.
 
             // List added before the chips so the chips stay tappable above it
             view.addSubview(placesListTableView)
-            view.addSubview(overlayChipStack)
+            if !showsFilterChips {
+                view.addSubview(overlayChipStack)
+            }
             if showsFilterChips {
                 view.addSubview(filterChipsContainer)
+                view.addSubview(listChipButton)
+                listChipButton.translatesAutoresizingMaskIntoConstraints = false
             }
 
-            // Connection avatar row: same tap-to-filter row as the home screen,
-            // overlaid below the chips so connections are switchable in full
-            // view. Skipped on profile maps (one person → nothing to switch).
-            if viewMode == .allPlaces && showsConnectionFilter {
+            // Legacy avatar row only in hamburger mode — the Connection
+            // dropdown covers switching in header mode.
+            if !showsFilterChips && viewMode == .allPlaces && showsConnectionFilter {
                 let row = HorizontalUserListView(frame: .zero, initialConnections: connections)
                 row.translatesAutoresizingMaskIntoConstraints = false
                 row.backgroundColor = .clear
@@ -538,6 +792,19 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             }
         }
         
+        // Embedded chip bars (home page map): the modal overlay block above is
+        // skipped for child-VC embeds, but the filter rows are exactly why the
+        // embed exists — so they get their own mount, pinned below whatever
+        // overlay row the parent draws over the map.
+        if !isPresentedModally && showsFilterChips {
+            view.addSubview(filterChipsContainer)
+            NSLayoutConstraint.activate([
+                filterChipsContainer.topAnchor.constraint(equalTo: view.topAnchor, constant: embeddedChipsTopInset),
+                filterChipsContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+                filterChipsContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12)
+            ])
+        }
+
         // Setup base constraints
         var constraints: [NSLayoutConstraint] = [
             // Map view - full screen
@@ -553,10 +820,16 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             placesCountLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 40)
         ]
         
-        // Add close button constraints only if presented modally
+        // Add close button constraints only if presented modally. In header
+        // mode the dropdown row owns the top edge, so close moves to the
+        // second row (mirroring the embedded map's expand button).
         if isPresentedModally {
+            if showsFilterChips && showFilters {
+                constraints.append(closeButton.topAnchor.constraint(equalTo: filterChipsContainer.bottomAnchor, constant: 8))
+            } else {
+                constraints.append(closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16))
+            }
             constraints.append(contentsOf: [
-                closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
                 closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
                 closeButton.widthAnchor.constraint(equalToConstant: 44),
                 closeButton.heightAnchor.constraint(equalToConstant: 44)
@@ -568,17 +841,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // Overlay chip + list constraints, only if presented modally with filters
         if isPresentedModally && showFilters {
             NSLayoutConstraint.activate([
-                overlayChipStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-                overlayChipStack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
-                overlayChipStack.heightAnchor.constraint(equalToConstant: 36),
-                menuChipButton.widthAnchor.constraint(equalToConstant: 36),
-                listChipButton.widthAnchor.constraint(equalToConstant: 36),
-                connectionAvatarChip.widthAnchor.constraint(equalToConstant: 36),
-                connectionAvatarChip.heightAnchor.constraint(equalToConstant: 36),
-
-                // Places list fills the map area below the chips (and below the
-                // chip bars when they're shown, so filtering stays reachable
-                // while the list is up)
+                // Places list fills the map area below whichever header is up
                 placesListTableView.topAnchor.constraint(
                     equalTo: showsFilterChips ? filterChipsContainer.bottomAnchor : view.safeAreaLayoutGuide.topAnchor,
                     constant: showsFilterChips ? 8 : 60
@@ -589,10 +852,28 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             ])
 
             if showsFilterChips {
+                // Header mode: the dropdown row owns the full top edge.
+                // Second row below it — ☰/Me left, close then list stacked on
+                // the right. Same shape as the embedded home map.
                 NSLayoutConstraint.activate([
-                    filterChipsContainer.topAnchor.constraint(equalTo: overlayChipStack.bottomAnchor, constant: 8),
+                    filterChipsContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
                     filterChipsContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-                    filterChipsContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12)
+                    filterChipsContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+
+                    listChipButton.topAnchor.constraint(equalTo: closeButton.bottomAnchor, constant: 8),
+                    listChipButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+                    listChipButton.widthAnchor.constraint(equalToConstant: 36),
+                    listChipButton.heightAnchor.constraint(equalToConstant: 36)
+                ])
+            } else {
+                NSLayoutConstraint.activate([
+                    overlayChipStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+                    overlayChipStack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+                    overlayChipStack.heightAnchor.constraint(equalToConstant: 36),
+                    menuChipButton.widthAnchor.constraint(equalToConstant: 36),
+                    listChipButton.widthAnchor.constraint(equalToConstant: 36),
+                    connectionAvatarChip.widthAnchor.constraint(equalToConstant: 36),
+                    connectionAvatarChip.heightAnchor.constraint(equalToConstant: 36)
                 ])
             }
 
@@ -921,6 +1202,10 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             guard let self = self else { return }
             self.delegate?.mapViewController(self, regionDidChangeTo: self.mapView.region)
         }
+
+        // The badge tracks the viewport, so every settle re-counts. Cheap: one
+        // pass over the already-filtered array, only at gesture end.
+        updatePlacesCount()
     }
 
     func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
@@ -1441,6 +1726,10 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         }
         updateConnectionAvatarChip()
         updateMyPlacesChipAppearance()
+        // The dropdown header narrates this selection too — every path that
+        // changes the connection (Me chip, hamburger, dropdown) lands here,
+        // so this one call keeps the label honest for all of them.
+        updateFilterHeaderTitles()
         // Keep the avatar row's highlight ring in sync (also covers changes
         // made through the hamburger menu)
         userListView?.selectedUserId = (connectionId == nil || connectionId == "my_places_only") ? nil : connectionId
@@ -1531,23 +1820,29 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     }
     
     private func updatePlacesCount() {
-        let totalPlaces = filteredPlaces.count
-        let placesWithLocation = filteredPlaces.filter { $0.location?.clLocation != nil }.count
-        let placesWithoutLocation = totalPlaces - placesWithLocation
-        
         // Don't show "0 places" during initial loading
-        if totalPlaces == 0 && placesCountLabel.text == "Loading..." {
+        if filteredPlaces.isEmpty && placesCountLabel.text == "Loading..." {
             // Keep showing Loading...
             return
         }
-        
-        // Just show the count number in the circular badge
-        placesCountLabel.text = "\(totalPlaces)"
 
-        // This method owns the pill's visibility: shown only on the modal map
-        // (embedded mode leaves counting to the home screen's own pill), and
-        // hidden while the list overlay is up or there's nothing to count
-        placesCountLabel.isHidden = !isPresentedModally || isShowingPlacesList || totalPlaces == 0
+        // The badge answers "how many pins am I looking at" — places inside
+        // the CURRENT viewport, after every filter. It used to show the whole
+        // filtered set, which never moved as you panned or zoomed, so 343 sat
+        // in the corner regardless of what the screen actually showed.
+        let visibleRect = mapView.visibleMapRect
+        let visibleCount = filteredPlaces.filter { place in
+            guard let coordinate = place.location?.clLocation?.coordinate else { return false }
+            return visibleRect.contains(MKMapPoint(coordinate))
+        }.count
+
+        placesCountLabel.text = "\(visibleCount)"
+
+        // This method owns the pill's visibility. The map's own pill now shows
+        // on every surface — the home screen's duplicate is retired, since two
+        // stacked pills with different numbers was the original "always 257"
+        // bug in a new outfit.
+        placesCountLabel.isHidden = isShowingPlacesList || visibleCount == 0
     }
 }
 
