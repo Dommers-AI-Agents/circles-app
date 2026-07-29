@@ -86,6 +86,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     let useViewportNetworkLoading = true
     var fetchedViewportCircles: [(center: CLLocationCoordinate2D, radiusM: Double)] = []
     var isFetchingViewport = false
+    // Connections whose FULL place set has been loaded (not viewport-bounded),
+    // so the All Connections prefetch doesn't refetch on every selection
+    var prefetchedConnectionIds = Set<String>()
     
     // Suggested users overlay
     var suggestedUsersOverlay: SuggestedUsersOverlayView?
@@ -383,7 +386,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }()
 
     var isShowingPlacesList = false
-    var distanceSortedPlaces: [(place: Place, distance: CLLocationDistance?)] = []
+    // One entry per real-world venue (deduped across savers). `savedBy` holds
+    // the saver display names ("You" first) for the "Saved by …" subtitle.
+    var distanceSortedPlaces: [(place: Place, distance: CLLocationDistance?, savedBy: [String])] = []
     let listDistanceFormatter = MKDistanceFormatter()
 
     lazy var myPlacesToggleButton: UIButton = {
@@ -408,7 +413,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return button
     }()
 
-    var selectedConnectionId: String? = nil // Default to All Connections
+    // Default "Me": the map header opens as Me · All Categories · All Places,
+    // and because the connection filter is shared with the rest of the home
+    // page, every section starts scoped to your own places. (nil = All
+    // Connections remains one tap away in the map's Connection dropdown.)
+    var selectedConnectionId: String? = "my_places_only"
     var selectedConnectionUser: User? = nil // Set only when a specific connection is filtered
 
     /// Whose places are on the map: the selected connection's avatar shown as
@@ -1945,10 +1954,18 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         mapContainerView.addSubview(mapLoadingIndicator)
         contentView.addSubview(locationStatusLabel)
         // Avatar first so "who is being mapped" reads before the controls
+        // The hamburger and Me chips are gone for good — the dropdown header
+        // covers everything they did (connection switching, category
+        // filtering, Me scoping). Only the selected-connection avatar remains
+        // in this row, and only while a specific connection is chosen.
         filterStackView.addArrangedSubview(selectedConnectionAvatarButton)
-        filterStackView.addArrangedSubview(mapMenuButton)
-        filterStackView.addArrangedSubview(myPlacesToggleButton)
-        filterStackView.addArrangedSubview(listToggleButton)
+        contentView.addSubview(listToggleButton)
+        listToggleButton.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            listToggleButton.topAnchor.constraint(equalTo: mapExpandButton.bottomAnchor, constant: 8),
+            listToggleButton.trailingAnchor.constraint(equalTo: mapExpandButton.trailingAnchor),
+            listToggleButton.heightAnchor.constraint(equalToConstant: 36)
+        ])
         contentView.addSubview(emptyStateView)
         
         // Add activity feed section
@@ -2039,7 +2056,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             userListView.heightAnchor.constraint(equalToConstant: 118),
             
             // Filter container - positioned to overlay the map
-            filterContainer.topAnchor.constraint(equalTo: mapContainerView.topAnchor, constant: Constants.Spacing.small),
+            // Below the dropdown header row (8 + 40 + 8)
+            filterContainer.topAnchor.constraint(equalTo: mapContainerView.topAnchor, constant: 56),
             filterContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
             filterContainer.trailingAnchor.constraint(lessThanOrEqualTo: mapExpandButton.leadingAnchor, constant: -Constants.Spacing.small),
             filterContainer.heightAnchor.constraint(equalToConstant: 36),
@@ -2079,7 +2097,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             mapLoadingProgressView.heightAnchor.constraint(equalToConstant: 4),
             
             // Map expand button
-            mapExpandButton.topAnchor.constraint(equalTo: mapContainerView.topAnchor, constant: Constants.Spacing.small),
+            // Same row as the ☰/Me chips, below the dropdown header
+            mapExpandButton.topAnchor.constraint(equalTo: mapContainerView.topAnchor, constant: 56),
             mapExpandButton.trailingAnchor.constraint(equalTo: mapContainerView.trailingAnchor, constant: -Constants.Spacing.small),
             mapExpandButton.widthAnchor.constraint(equalToConstant: 36),
             mapExpandButton.heightAnchor.constraint(equalToConstant: 36),
@@ -2256,6 +2275,21 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         mapVC.viewMode = .allPlaces
         mapVC.delegate = self
         mapVC.ownPlaceIds = Set(userOwnPlaces.map { $0.id })
+        // Same category + state chips as the profile map, so the two maps
+        // filter identically. The hamburger's Category submenu is gone — the
+        // chips are its replacement, always visible instead of two taps deep.
+        mapVC.showsFilterChips = true
+        // The dropdown header is the only control at the map's top now — the
+        // old overlay row is retired, so no clearance needed.
+        mapVC.embeddedChipsTopInset = 8
+        // Seed the Connection dropdown's roster and its current selection.
+        mapVC.setAvailableConnections(NetworkManager.shared.connections)
+        mapVC.setConnectionSelection(id: selectedConnectionId, user: selectedConnectionUser)
+        NotificationCenter.default.addObserver(
+            forName: .connectionsLoaded, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.mapViewController?.setAvailableConnections(NetworkManager.shared.connections)
+        }
         
         addChild(mapVC)
         mapContainerView.addSubview(mapVC.view)
@@ -2270,9 +2304,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         mapViewController = mapVC
         
-        // Ensure filter container, expand button, and place count stay above the map
+        // Ensure the overlay controls stay above the map child
         contentView.bringSubviewToFront(filterContainer)
         contentView.bringSubviewToFront(mapExpandButton)
+        contentView.bringSubviewToFront(listToggleButton)
         contentView.bringSubviewToFront(mapPlaceCountLabel)
     }
     
@@ -2412,9 +2447,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             self.filterContainer.isHidden = false
             self.mapExpandButton.isHidden = false
             
-            // Set default filter (All Connections)
-            self.selectedConnectionId = nil
+            // Default filter: My Places — matches the property default and the
+            // dropdown header; the expanded map inherits whatever is set here,
+            // so home and modal always open on the same scope.
+            self.selectedConnectionId = "my_places_only"
             self.selectedConnectionUser = nil
+            self.mapViewController?.setConnectionSelection(id: "my_places_only", user: nil)
 
             // Don't mark as ready - we need to fetch places
             self.isMapDataReady = false
@@ -3008,6 +3046,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             for player in reelPlayers.values {
                 player.pause()
             }
+            AudioSessionManager.shared.endPlayback()
             reelPlayers.removeAll()
             reelVideoStates.removeAll()
         }
@@ -3135,16 +3174,14 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         if !reels.isEmpty {
             let firstIndexPath = IndexPath(item: 0, section: 0)
             reelsCollectionView.scrollToItem(at: firstIndexPath, at: .top, animated: false)
-            
-            // Start playing the first video after a short delay to ensure layout is complete
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                self?.playVideo(at: 0)
-            }
         }
-        
+
         view.layoutIfNeeded()
-        
-        // Start playing the first video if this is the visible tab
+
+        // Start playing the first video ONLY if Moments is the visible tab.
+        // The feed is also fetched on launch while Activity is showing; playing
+        // here unconditionally started audio the user never asked for and cut
+        // off whatever they were listening to.
         if contentSegmentedControl.selectedSegmentIndex == 1 && !reels.isEmpty {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
                 self?.playVideo(at: 0)
@@ -4170,15 +4207,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     func updatePlaceCountLabel(count: Int) {
+        // Retired. The embedded map now draws its own pill, counting pins in
+        // the CURRENT viewport after every filter — including the chip filters
+        // this label never knew about. Two stacked pills with different
+        // numbers was the original "always 257" bug; this one bows out.
         DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            
-            if count > 0 {
-                self.mapPlaceCountLabel.setTitle("\(count)", for: .normal)
-                self.mapPlaceCountLabel.isHidden = false
-            } else {
-                self.mapPlaceCountLabel.isHidden = true
-            }
+            self?.mapPlaceCountLabel.isHidden = true
         }
     }
     
@@ -4200,17 +4234,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         )
         inviteButton.accessibilityLabel = "Invite Connections"
 
-        // Browse the user's places by location (State › City), independent of
-        // how their circles are organized.
-        let browseButton = UIBarButtonItem(
-            image: UIImage(systemName: "map"),
-            style: .plain,
-            target: self,
-            action: #selector(browseByLocationTapped)
-        )
-        browseButton.accessibilityLabel = "Browse by Location"
-
-        navigationItem.leftBarButtonItems = [helpButton, inviteButton, browseButton]
+        // NOTE: the "Browse by Location" nav button was removed — the map's own
+        // filter header (Me · Category · Place, with states/countries) covers
+        // that need in-place. LocationBrowseViewController and the /api/browse
+        // endpoints remain available (browseByLocationTapped still works) if a
+        // surface wants them again.
+        navigationItem.leftBarButtonItems = [helpButton, inviteButton]
         
         Task { @MainActor in
             navigationItem.rightBarButtonItems = makeRightBarButtons()
@@ -4496,6 +4525,14 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         fullScreenMap.isPresentedModally = true
         fullScreenMap.selectedConnectionUser = selectedConnectionUser
         fullScreenMap.delegate = self  // Set delegate to handle place selection
+
+        // Same dropdown filter header as the embedded map — expansion is the
+        // same map, larger, so it carries the exact filters you were viewing.
+        // (Without this flag the modal fell back to the legacy hamburger UI:
+        // the expand path builds a NEW instance, it doesn't reuse the embed.)
+        fullScreenMap.showsFilterChips = true
+        fullScreenMap.initialChipGroup = mapViewController?.currentChipGroup ?? .all
+        fullScreenMap.initialChipRegionId = mapViewController?.currentChipRegionId
         
         // Separate user places from connection places
         let buckets = buildConnectionPlaceBuckets()
@@ -4512,9 +4549,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     @objc func emptyStateFindFriendsTapped() {
-        // Jump to My Network and open the contacts import flow
+        // Jump to My Network — it opens on Discover, which is exactly the
+        // "find friends" surface. (The phone-contacts import flow is gone.)
         tabBarController?.selectedIndex = 1
-        NotificationCenter.default.post(name: Notification.Name("ShowContactsImport"), object: nil)
     }
 
     @objc func handleQuickStartPlaceAdded() {
@@ -5204,6 +5241,65 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
 
+    /// Loads EVERY connection's full place set in the background. Viewport
+    /// loading only fetches places near where the map is looking, so "All
+    /// Connections / All Places" was silently missing anything far away (e.g.
+    /// a connection's Hawaii trip) — and those regions never even appeared in
+    /// the Place dropdown. Quiet merge: no zoom, no selection side effects.
+    func prefetchAllConnectionPlaces() {
+        let currentUserId = AuthService.shared.getUserId() ?? ""
+        let pending = NetworkManager.shared.connections
+            .map { $0.otherUserId(currentUserId: currentUserId) }
+            .filter { !$0.isEmpty && !prefetchedConnectionIds.contains($0) }
+        guard !pending.isEmpty else { return }
+        Logger.debug("📍 [Prefetch] Loading full place sets for \(pending.count) connections")
+
+        var mergedPlaces: [Place] = []
+        var mergedCircles: [Circle] = []
+        var succeededIds: [String] = []
+        let lock = NSLock()
+        let group = DispatchGroup()
+
+        for connectionId in pending {
+            group.enter()
+            APIService.shared.request(
+                endpoint: "network/user-circles/\(connectionId)",
+                method: .get,
+                requiresAuth: true
+            ) { (result: Result<UserCirclesResponse, APIError>) in
+                if case .success(let response) = result {
+                    let circles = response.data.circles
+                    let places = circles.flatMap { $0.placesWithDetails ?? [] }
+                    lock.lock()
+                    mergedCircles.append(contentsOf: circles)
+                    mergedPlaces.append(contentsOf: places)
+                    // Only mark done when the payload embedded the places —
+                    // otherwise leave it for the per-connection path to finish
+                    let missing = circles.contains { $0.placesWithDetails == nil && ($0.placesCount ?? $0.places?.count ?? 0) > 0 }
+                    if !missing { succeededIds.append(connectionId) }
+                    lock.unlock()
+                }
+                group.leave()
+            }
+        }
+
+        group.notify(queue: .main) { [weak self] in
+            guard let self = self else { return }
+            self.prefetchedConnectionIds.formUnion(succeededIds)
+            let knownIds = Set(self.networkCircles.map { $0.id })
+            self.networkCircles.append(contentsOf: mergedCircles.filter { !knownIds.contains($0.id) })
+            guard !mergedPlaces.isEmpty else { return }
+            let countBefore = self.allPlaces.count
+            self.allPlaces = self.removeDuplicatePlaces(self.allPlaces + mergedPlaces)
+            Logger.debug("📍 [Prefetch] Merged \(self.allPlaces.count - countBefore) new places (total \(self.allPlaces.count))")
+            guard self.allPlaces.count > countBefore else { return }
+            self.cachedPlaces = self.allPlaces
+            self.updateAvailableCategories()
+            // No zoom — the user is browsing; new pins just appear
+            self.refreshMapDisplay(adjustRegion: false)
+        }
+    }
+
     func fetchPlacesForConnectionCircles(_ connectionCircles: [Circle]) {
         guard !connectionCircles.isEmpty else {
             refreshMapDisplay()
@@ -5271,32 +5367,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             children: connectionActions
         ))
 
-        // Recompute categories so the menu always reflects the current connection filter
-        updateAvailableCategories()
-
-        if availableCategories.isEmpty {
-            let noCategories = UIAction(title: "No Categories", attributes: .disabled) { _ in }
-            elements.append(UIMenu(title: "Category", image: UIImage(systemName: "square.grid.2x2"), children: [noCategories]))
-        } else {
-            var categoryActions: [UIAction] = [
-                UIAction(title: "All Categories", state: selectedCategory == nil ? .on : .off) { [weak self] _ in
-                    self?.selectCategory(nil)
-                }
-            ]
-            for category in availableCategories {
-                categoryActions.append(
-                    UIAction(title: category.displayName, state: selectedCategory == category ? .on : .off) { [weak self] _ in
-                        self?.selectCategory(category)
-                    }
-                )
-            }
-            elements.append(UIMenu(
-                title: "Category",
-                subtitle: selectedCategory?.displayName ?? "All Categories",
-                image: UIImage(systemName: "square.grid.2x2"),
-                children: categoryActions
-            ))
-        }
+        // No Category submenu here anymore — category filtering moved into the
+        // always-visible chip bars on the map itself, matching the profile map.
 
         // View Profile: the filtered connection's profile, or the user's own when none is selected
         let profileTitle: String
@@ -5453,16 +5525,58 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         let filtered = applyFiltersToPlaces(allPlaces)
         let referenceLocation = mapViewController?.currentUserLocation
             ?? mapViewController.map { CLLocation(latitude: $0.currentRegion.center.latitude, longitude: $0.currentRegion.center.longitude) }
+        let currentUserId = AuthService.shared.getUserId() ?? ""
 
-        distanceSortedPlaces = filtered.map { place in
+        // The map/list is fed by every save doc, so a venue saved by several
+        // people appeared multiple times. Group by the real-world venue and
+        // show it once. Key priority: globalPlaceId → googlePlaceId →
+        // name+rounded-coords.
+        func venueKey(_ p: Place) -> String {
+            if let g = p.globalPlaceId, !g.isEmpty { return "g:\(g)" }
+            if let gp = p.googlePlaceId, !gp.isEmpty { return "gp:\(gp)" }
+            let coords = p.location?.coordinates
+            let lng = coords?.first ?? 0
+            let lat = coords?.count == 2 ? coords![1] : 0
+            return "n:\(p.name.lowercased())|\(String(format: "%.4f,%.4f", lat, lng))"
+        }
+
+        var order: [String] = []
+        var groups: [String: [Place]] = [:]
+        for place in filtered {
+            let key = venueKey(place)
+            if groups[key] == nil { order.append(key) }
+            groups[key, default: []].append(place)
+        }
+
+        let deduped: [(place: Place, distance: CLLocationDistance?, savedBy: [String])] = order.map { key in
+            let group = groups[key] ?? []
+            let hasPhotos: (Place) -> Bool = { !($0.photos?.isEmpty ?? true) }
+            // Representative selection, in priority order: the user's own copy
+            // WITH photos → any copy with photos (fixes "no picture on tap" when
+            // a photo-less duplicate was picked) → the user's own copy → first.
+            let representative = group.first(where: { $0.addedBy == currentUserId && hasPhotos($0) })
+                ?? group.first(where: hasPhotos)
+                ?? group.first(where: { $0.addedBy == currentUserId })
+                ?? group[0]
+
+            // Saver names, "You" first, de-duplicated.
+            var names: [String] = []
+            if group.contains(where: { $0.addedBy == currentUserId }) { names.append("You") }
+            for place in group where place.addedBy != currentUserId {
+                let name = place.addedByUser?.displayName ?? place.addedByDisplayName
+                if !name.isEmpty, name != "Unknown", !names.contains(name) { names.append(name) }
+            }
+
             let distance: CLLocationDistance?
-            if let reference = referenceLocation, let placeLocation = place.location?.clLocation {
+            if let reference = referenceLocation, let placeLocation = representative.location?.clLocation {
                 distance = reference.distance(from: placeLocation)
             } else {
                 distance = nil
             }
-            return (place: place, distance: distance)
-        }.sorted { lhs, rhs in
+            return (place: representative, distance: distance, savedBy: names)
+        }
+
+        distanceSortedPlaces = deduped.sorted { lhs, rhs in
             switch (lhs.distance, rhs.distance) {
             case let (l?, r?): return l < r
             case (_?, nil): return true
@@ -5484,6 +5598,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
 
+    /// "Saved by You, Jane +3" style subtitle for a deduped venue row.
+    func savedByText(_ names: [String]) -> String? {
+        guard !names.isEmpty else { return nil }
+        if names.count <= 2 { return "Saved by " + names.joined(separator: ", ") }
+        return "Saved by \(names[0]), \(names[1]) +\(names.count - 2)"
+    }
+
     /// Resolves the circle a place belongs to: circleId back-reference first
     /// (always present, even when a circle's places array is stale), then
     /// places-array membership. Shared by map pin callouts and the places list.
@@ -5494,13 +5615,15 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             ?? networkCircles.first(where: { $0.places?.contains(place.id) == true })
     }
 
-    /// Pushes the detail screen for a place (used by the places list).
+    /// Pushes the detail screen for a place (used by the places list). Falls
+    /// back to a nil circle (rather than doing nothing) when the place's circle
+    /// isn't loaded — e.g. the deduped representative is a connection's copy —
+    /// so a tap always opens the place.
     func presentDetailForPlace(_ place: Place) {
-        guard let circle = resolveCircle(for: place) else {
-            Logger.debug("⚠️ Place not found in any circle (circleId: \(place.circleId ?? "nil"))")
-            return
+        let circle = resolveCircle(for: place)
+        if circle == nil {
+            Logger.debug("⚠️ Place not found in any circle (circleId: \(place.circleId ?? "nil")); opening without circle")
         }
-
         let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
         navigationController?.pushViewController(placeDetailVC, animated: true)
     }
@@ -5541,6 +5664,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
         // Tell the embedded map so it zooms to the selected connection's places
         mapViewController?.setConnectionFilterContext(selectedConnectionId)
+        // ...and keep its dropdown header narrating the same selection.
+        mapViewController?.setConnectionSelection(id: id, user: user)
 
         // Update available categories based on new connection filter
         updateAvailableCategories()
@@ -5573,6 +5698,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         } else {
             // All Connections / My Places Only: refresh with what's loaded
             refreshMapDisplay()
+            // "All Connections" must mean ALL places, not just the viewport-
+            // loaded subset — pull every connection's full set in the background
+            if id == nil && useViewportNetworkLoading {
+                prefetchAllConnectionPlaces()
+            }
         }
     }
     
