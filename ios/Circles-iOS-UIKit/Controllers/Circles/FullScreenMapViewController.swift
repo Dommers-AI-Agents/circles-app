@@ -68,6 +68,32 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     var currentChipGroup: PlaceCategoryGroup { selectedChipGroup }
     var currentChipRegionId: String? { selectedChipRegionId }
 
+    /// The place set scoped to the current connection filter — the shared base
+    /// for applyFilter AND the facet counts in the dropdown menus. Only the
+    /// MODAL scopes for itself; the embedded child receives places already
+    /// filtered by the home controller, and re-filtering them by addedBy drops
+    /// places saved under a connection's legacy account id (circle owner and
+    /// place adder can be different ids for the same person).
+    private func connectionScopedPlaces() -> [Place] {
+        guard viewMode == .allPlaces, isPresentedModally,
+              let connectionId = selectedConnectionId else { return places }
+
+        if connectionId == "my_places_only" {
+            let currentUserId = AuthService.shared.getUserId() ?? ""
+            return places.filter { IDNormalizer.isSameUser($0.addedBy, currentUserId) }
+        }
+        // Union of the pre-bucketed list (covers circle-owner semantics) and an
+        // added-by match over the CURRENT places (covers viewport-fetched
+        // places that were never bucketed, and missing buckets). Never fall
+        // through to showing everyone's places.
+        var connectionScoped = connectionPlaces[connectionId] ?? []
+        let bucketedIds = Set(connectionScoped.map { $0.id })
+        connectionScoped += places.filter {
+            !bucketedIds.contains($0.id) && IDNormalizer.isSameUser($0.addedBy, connectionId)
+        }
+        return connectionScoped
+    }
+
     /// Applies the current chip selections (category group + region) to any
     /// place list. Public so the embedding home page can run its OWN list
     /// through the exact same filter the pins use — the chips live in this
@@ -332,7 +358,21 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     }
 
     private func categoryMenuElements() -> [UIMenuElement] {
-        PlaceCategoryGroup.present(in: places.map { $0.category.rawValue }).map { group in
+        // Faceted: the options come from the set filtered by the OTHER active
+        // filters (connection + region), so "Dan · Rhode Island" offers only
+        // the categories Dan actually has in Rhode Island.
+        var facetBase = connectionScopedPlaces()
+        if let regionId = selectedChipRegionId,
+           let region = chipRegionGroups.first(where: { $0.id == regionId }) {
+            facetBase = facetBase.filter { region.contains($0) }
+        }
+        var groups = PlaceCategoryGroup.present(in: facetBase.map { $0.category.rawValue })
+        // Never hide the active selection, even at zero — you need the row to
+        // un-pick it.
+        if selectedChipGroup != .all && !groups.contains(selectedChipGroup) {
+            groups.append(selectedChipGroup)
+        }
+        return groups.map { group in
             UIAction(title: group == .all ? "All Categories" : group.title,
                      image: categoryMenuIcon(for: group),
                      state: selectedChipGroup == group ? .on : .off) { [weak self] _ in
@@ -368,6 +408,27 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
 
     /// All Places, Near me (when a fix landed), then states most-places-first.
     private func placeMenuElements() -> [UIMenuElement] {
+        // Faceted: regions and their counts come from the set filtered by the
+        // OTHER active filters (connection + category), so "Dan · Hotels"
+        // shows "Rhode Island (2)" and no Arizona row at all. Selecting a
+        // region still stores the id, which applyFilter resolves against the
+        // full chipRegionGroups (same ids — same grouper).
+        var facetBase = connectionScopedPlaces()
+        if selectedChipGroup != .all {
+            facetBase = facetBase.filter { selectedChipGroup.matches($0.category.rawValue) }
+        }
+        var facetGroups = RegionGrouper.groups(for: facetBase, origin: chipOrigin)
+        // Never hide the active selection, even at zero — you need the row to
+        // un-pick it.
+        if let selectedId = selectedChipRegionId,
+           !facetGroups.contains(where: { $0.id == selectedId }),
+           let full = chipRegionGroups.first(where: { $0.id == selectedId }) {
+            facetGroups.append(RegionGroup(
+                id: full.id, title: full.title, count: 0,
+                placeIds: [], centroid: full.centroid
+            ))
+        }
+
         var actions: [UIAction] = [
             UIAction(title: "All Places",
                      image: Self.emojiImage("🌎"),
@@ -376,7 +437,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                 self?.chipFiltersChanged()
             }
         ]
-        for group in chipRegionGroups {
+        for group in facetGroups {
             actions.append(UIAction(title: "\(group.title) (\(group.count))",
                                     image: regionMenuImage(for: group),
                                     state: selectedChipRegionId == group.id ? .on : .off) { [weak self] _ in
@@ -1866,37 +1927,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         Logger.debug("  Total places: \(places.count)")
         
         // Start with all places or connection-specific places
-        var placesToFilter = places
-        
-        // Apply connection filter for allPlaces mode. Only the MODAL filters
-        // for itself — the embedded child receives places already filtered by
-        // the home controller, and re-filtering them by addedBy drops places
-        // saved under a connection's legacy account id (circle owner and
-        // place adder can be different ids for the same person).
-        if viewMode == .allPlaces && isPresentedModally {
-            if let connectionId = selectedConnectionId {
-                if connectionId == "my_places_only" {
-                    // Filter to show only user's places
-                    placesToFilter = places.filter { IDNormalizer.isSameUser($0.addedBy, currentUserId) }
-                    Logger.debug("  Filtered to user's places: \(placesToFilter.count)")
-                } else {
-                    // Union of the pre-bucketed list (covers circle-owner
-                    // semantics) and an added-by match over the CURRENT places
-                    // (covers viewport-fetched places that were never bucketed,
-                    // and missing buckets). Never fall through to showing
-                    // everyone's places.
-                    var connectionScoped = connectionPlaces[connectionId] ?? []
-                    let bucketedIds = Set(connectionScoped.map { $0.id })
-                    connectionScoped += places.filter {
-                        !bucketedIds.contains($0.id) && IDNormalizer.isSameUser($0.addedBy, connectionId)
-                    }
-                    placesToFilter = connectionScoped
-                    Logger.debug("  Filtered to connection \(connectionId): \(placesToFilter.count) places (\(bucketedIds.count) bucketed)")
-                }
-                // If nil (All Connections), use all places
-            }
-        }
-        
+        let placesToFilter = connectionScopedPlaces()
+
         // Update available categories based on connection-filtered places
         updateAvailableCategories(from: placesToFilter)
 
