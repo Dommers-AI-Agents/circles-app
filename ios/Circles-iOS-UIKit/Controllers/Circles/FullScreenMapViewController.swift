@@ -323,9 +323,19 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         }
         if group.id.hasPrefix("state:") {
             let code = String(group.id.dropFirst("state:".count)).lowercased()
-            return UIImage(named: "flag-us-\(code)")?.withRenderingMode(.alwaysOriginal)
+            // Every code RegionGrouper can emit has a bundled flag (50 states +
+            // DC/PR/VI/GU), so states appearing for the first time — a user's
+            // first Montana place — get their flag with no code change. The US
+            // flag is the safety net if an asset is ever missing, so a state
+            // row never shows imageless next to flagged siblings.
+            if let flag = UIImage(named: "flag-us-\(code)") {
+                return flag.withRenderingMode(.alwaysOriginal)
+            }
+            return Self.emojiFlagImage(countryCode: "US")
         }
         if group.id.hasPrefix("country:") {
+            // Rendered from the ISO2 code at runtime — any country that ever
+            // appears gets its emoji flag with no bundled asset.
             let code = String(group.id.dropFirst("country:".count))
             return Self.emojiFlagImage(countryCode: code)
         }
