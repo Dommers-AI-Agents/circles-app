@@ -808,6 +808,13 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                     guard let self = self, let location = location else { return }
                     self.chipOrigin = location
                     self.refreshFilterChips()
+                    // A region selection may have been waiting on this fix
+                    // (seeded "Near me" from the small map) — apply it now that
+                    // the group finally exists, and frame the result.
+                    if self.selectedChipRegionId != nil {
+                        self.applyFilter(adjustRegion: false)
+                        self.zoomToFilteredPlaces()
+                    }
                 }
             }
         }
@@ -819,7 +826,15 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         guard showsFilterChips else { return }
         chipRegionGroups = RegionGrouper.groups(for: places, origin: chipOrigin)
         if selectedChipRegionId != nil && !chipRegionGroups.contains(where: { $0.id == selectedChipRegionId }) {
-            selectedChipRegionId = nil
+            // "Near me" only exists once a location fix lands. A seeded Near me
+            // (expanding from the small map) must SURVIVE the fix-less opening
+            // moments — resetting it here silently unfiltered the modal: pins
+            // showed everything while the carried-over camera made the map
+            // LOOK filtered, and the list exposed the mismatch. Keep the
+            // selection; the fix below re-validates once the origin arrives.
+            if selectedChipRegionId != "near-me" || chipOrigin != nil {
+                selectedChipRegionId = nil
+            }
         }
         // Menus are deferred and rebuilt on every open — only the visible
         // titles need refreshing here.
