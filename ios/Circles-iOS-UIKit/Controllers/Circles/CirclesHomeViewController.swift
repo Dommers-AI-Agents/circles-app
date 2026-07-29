@@ -439,27 +439,45 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }()
 
     func updateSelectedConnectionAvatar() {
-        guard let user = selectedConnectionUser,
-              let id = selectedConnectionId, id != "my_places_only" else {
+        // "My Places" is a filter like any other person, so it wears YOUR face
+        // in the same chip — the map always names whose places are on it.
+        let user: User?
+        if selectedConnectionId == "my_places_only" {
+            user = AuthService.shared.currentUser
+        } else if selectedConnectionId != nil {
+            user = selectedConnectionUser
+        } else {
+            user = nil // All Connections: nobody in particular to show
+        }
+
+        guard let user = user else {
             selectedConnectionAvatarButton.isHidden = true
             return
         }
         selectedConnectionAvatarButton.isHidden = false
         selectedConnectionAvatarButton.setImage(UIImage(systemName: "person.crop.circle.fill"), for: .normal)
+        selectedConnectionAvatarButton.accessibilityLabel =
+            selectedConnectionId == "my_places_only" ? "Your places" : "Selected connection"
         if let profilePicture = user.profilePicture, !profilePicture.isEmpty {
             let expectedUserId = user.id
             ImageService.shared.loadImageWithKey(from: profilePicture, cacheKey: "profile_\(user.id)_\(profilePicture)") { [weak self] image in
                 DispatchQueue.main.async {
                     guard let self = self, let image = image,
-                          self.selectedConnectionUser?.id == expectedUserId else { return }
+                          self.avatarChipUser?.id == expectedUserId else { return }
                     self.selectedConnectionAvatarButton.setImage(image.withRenderingMode(.alwaysOriginal), for: .normal)
                 }
             }
         }
     }
 
+    /// Whoever the avatar chip currently represents — the selected connection,
+    /// or you when the map is scoped to your own places.
+    private var avatarChipUser: User? {
+        selectedConnectionId == "my_places_only" ? AuthService.shared.currentUser : selectedConnectionUser
+    }
+
     @objc func selectedConnectionAvatarTapped() {
-        guard let user = selectedConnectionUser else { return }
+        guard let user = avatarChipUser else { return }
         let profileVC = ProfileViewController()
         profileVC.configureWith(user: user)
         navigationController?.pushViewController(profileVC, animated: true)
@@ -1476,6 +1494,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         Logger.debug("   allPlaces.count: \(allPlaces.count)")
         Logger.debug("   preloadedData: \(preloadedData != nil)")
         
+        // The avatar chip may have been built before your profile finished
+        // loading (nil photo → generic glyph); this picks up the real one.
+        updateSelectedConnectionAvatar()
+
         // Step 1: Safe cache optimization - check if we have cached data to speed up loading
         tryLoadFromCache()
         
@@ -2309,6 +2331,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         contentView.bringSubviewToFront(mapExpandButton)
         contentView.bringSubviewToFront(listToggleButton)
         contentView.bringSubviewToFront(mapPlaceCountLabel)
+
+        // Show the chip for the launch selection (My Places = your own face).
+        // Previously only selectConnection() refreshed it, so the default scope
+        // showed no avatar at all until you picked someone from the dropdown.
+        // viewWillAppear re-runs this once your profile has actually loaded.
+        updateSelectedConnectionAvatar()
     }
     
     func setupDropdownViews() {
@@ -5522,7 +5550,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// Rebuilds the distance-sorted data source for the places list from the
     /// currently filtered places. Places without a location sort last.
     func rebuildDistanceSortedPlaces() {
-        let filtered = applyFiltersToPlaces(allPlaces)
+        // Run through the embedded map's chip filters too (category group +
+        // region) — the list sits beside the pins and must show the same set.
+        var filtered = applyFiltersToPlaces(allPlaces)
+        if let mapVC = mapViewController {
+            filtered = mapVC.applyChipFilters(filtered)
+        }
         let referenceLocation = mapViewController?.currentUserLocation
             ?? mapViewController.map { CLLocation(latitude: $0.currentRegion.center.latitude, longitude: $0.currentRegion.center.longitude) }
         let currentUserId = AuthService.shared.getUserId() ?? ""

@@ -60,9 +60,11 @@ extension CirclesHomeViewController: FullScreenMapViewControllerDelegate {
     }
 
     func mapViewController(_ controller: FullScreenMapViewController, didChangeConnectionFilter connectionId: String?) {
-        // Only mirror the full-screen (modal) map — the embedded child's filter
-        // is driven BY this controller, not the other way around
-        guard controller.isPresentedModally else { return }
+        // Fires from BOTH maps now: the modal mirrors back on dismissal, and
+        // the embedded map's Connection dropdown drives this controller
+        // directly — that's what keeps the map and the rest of the home page
+        // on one shared connection scope. Loop-safe: the reply channel
+        // (setConnectionSelection) updates the label without re-firing this.
 
         let user: User? = {
             guard let id = connectionId, id != "my_places_only" else { return nil }
@@ -74,6 +76,16 @@ extension CirclesHomeViewController: FullScreenMapViewControllerDelegate {
 
         Logger.debug("🗺️ Mirroring full-screen map connection filter: \(connectionId ?? "All Connections")")
         selectConnection(id: connectionId, user: user)
+    }
+
+    func mapViewControllerDidChangeChipFilters(_ controller: FullScreenMapViewController) {
+        // Only the EMBEDDED map's chips drive the home list — the modal's chips
+        // are its own view state and shouldn't reshuffle the page behind it.
+        guard controller === mapViewController else { return }
+        if isShowingPlacesList {
+            rebuildDistanceSortedPlaces()
+            placesListTableView.reloadData()
+        }
     }
 
     func mapViewController(_ controller: FullScreenMapViewController, didSelectPlace place: Place) {

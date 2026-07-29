@@ -8,12 +8,16 @@ protocol FullScreenMapViewControllerDelegate: AnyObject {
     /// Fired when the connection filter changes inside the full-screen map, so
     /// the presenter can keep its own selection in sync across dismissal.
     func mapViewController(_ controller: FullScreenMapViewController, didChangeConnectionFilter connectionId: String?)
+    /// Fired when the category/region chip filters change, so an embedding
+    /// parent (the home page) can re-filter its own list to match the pins.
+    func mapViewControllerDidChangeChipFilters(_ controller: FullScreenMapViewController)
 }
 
 // Default no-ops so existing conformers don't need to handle every event
 extension FullScreenMapViewControllerDelegate {
     func mapViewController(_ controller: FullScreenMapViewController, regionDidChangeTo region: MKCoordinateRegion) {}
     func mapViewController(_ controller: FullScreenMapViewController, didChangeConnectionFilter connectionId: String?) {}
+    func mapViewControllerDidChangeChipFilters(_ controller: FullScreenMapViewController) {}
 }
 
 enum MapViewMode {
@@ -63,6 +67,22 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     /// Read access for the presenter, so expansion can copy the live state.
     var currentChipGroup: PlaceCategoryGroup { selectedChipGroup }
     var currentChipRegionId: String? { selectedChipRegionId }
+
+    /// Applies the current chip selections (category group + region) to any
+    /// place list. Public so the embedding home page can run its OWN list
+    /// through the exact same filter the pins use — the chips live in this
+    /// controller, and a list that ignores them contradicts the map beside it.
+    func applyChipFilters(_ list: [Place]) -> [Place] {
+        var result = list
+        if selectedChipGroup != .all {
+            result = result.filter { selectedChipGroup.matches($0.category.rawValue) }
+        }
+        if let regionId = selectedChipRegionId,
+           let region = chipRegionGroups.first(where: { $0.id == regionId }) {
+            result = result.filter { region.contains($0) }
+        }
+        return result
+    }
 
     /// Anchor for the "Near me" chip. Resolved once, quietly; nil (no
     /// permission, no fix yet) just means the chip doesn't appear.
@@ -317,11 +337,18 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                      image: categoryMenuIcon(for: group),
                      state: selectedChipGroup == group ? .on : .off) { [weak self] _ in
                 self?.selectedChipGroup = group
-                self?.updateFilterHeaderTitles()
-                self?.applyFilter(adjustRegion: false)
-                self?.zoomToFilteredPlaces()
+                self?.chipFiltersChanged()
             }
         }
+    }
+
+    /// One path for every chip change: refresh the header, re-filter, re-zoom,
+    /// and tell the delegate — the home page keeps its own list in lockstep.
+    private func chipFiltersChanged() {
+        updateFilterHeaderTitles()
+        applyFilter(adjustRegion: false)
+        zoomToFilteredPlaces()
+        delegate?.mapViewControllerDidChangeChipFilters(self)
     }
 
     /// Menu icon matching the map pins' color coding: each group shows its
@@ -346,9 +373,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                      image: Self.emojiImage("🌎"),
                      state: selectedChipRegionId == nil ? .on : .off) { [weak self] _ in
                 self?.selectedChipRegionId = nil
-                self?.updateFilterHeaderTitles()
-                self?.applyFilter(adjustRegion: false)
-                self?.zoomToFilteredPlaces()
+                self?.chipFiltersChanged()
             }
         ]
         for group in chipRegionGroups {
@@ -356,9 +381,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                                     image: regionMenuImage(for: group),
                                     state: selectedChipRegionId == group.id ? .on : .off) { [weak self] _ in
                 self?.selectedChipRegionId = group.id
-                self?.updateFilterHeaderTitles()
-                self?.applyFilter(adjustRegion: false)
-                self?.zoomToFilteredPlaces()
+                self?.chipFiltersChanged()
             })
         }
         return actions
@@ -1868,13 +1891,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // Chip-bar mode: the always-visible category-group + state chips
         // (replacing the hamburger's Category menu)
         if showsFilterChips {
-            if selectedChipGroup != .all {
-                filteredPlaces = filteredPlaces.filter { selectedChipGroup.matches($0.category.rawValue) }
-            }
-            if let regionId = selectedChipRegionId,
-               let region = chipRegionGroups.first(where: { $0.id == regionId }) {
-                filteredPlaces = filteredPlaces.filter { region.contains($0) }
-            }
+            filteredPlaces = applyChipFilters(filteredPlaces)
         }
         Logger.debug("  Final filtered places: \(filteredPlaces.count)")
         
