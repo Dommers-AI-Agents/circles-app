@@ -69,7 +69,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         bar.translatesAutoresizingMaskIntoConstraints = false
         bar.onSelect = { [weak self] group in
             self?.selectedChipGroup = group
-            self?.applyFilter()
+            self?.applyFilter(adjustRegion: false)
+            self?.zoomToFilteredPlaces()
         }
         return bar
     }()
@@ -79,10 +80,34 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         bar.translatesAutoresizingMaskIntoConstraints = false
         bar.onSelect = { [weak self] id in
             self?.selectedChipRegionId = (id == "__all") ? nil : id
-            self?.applyFilter()
+            self?.applyFilter(adjustRegion: false)
+            self?.zoomToFilteredPlaces()
         }
         return bar
     }()
+
+    /// Zooms to enclose exactly the filtered places (tap NJ → the camera frames
+    /// New Jersey). Computed from the places themselves rather than the
+    /// annotations, so it doesn't race the batched pin updates. Extra top
+    /// padding keeps pins clear of the overlaid chip bars.
+    private func zoomToFilteredPlaces(animated: Bool = true) {
+        let coordinates = filteredPlaces.compactMap { $0.location?.clLocation?.coordinate }
+        guard !coordinates.isEmpty else { return }
+
+        if coordinates.count == 1, let only = coordinates.first {
+            mapView.setRegion(MKCoordinateRegion(
+                center: only, latitudinalMeters: 2_000, longitudinalMeters: 2_000
+            ), animated: animated)
+            return
+        }
+
+        var union = MKMapRect.null
+        for coordinate in coordinates {
+            union = union.union(MKMapRect(origin: MKMapPoint(coordinate), size: MKMapSize(width: 0, height: 0)))
+        }
+        let padding = UIEdgeInsets(top: 170, left: 44, bottom: 70, right: 44)
+        mapView.setVisibleMapRect(union, edgePadding: padding, animated: animated)
+    }
 
     /// Translucent backing so the chips read over any map content.
     private lazy var filterChipsContainer: UIView = {
