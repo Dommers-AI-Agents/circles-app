@@ -211,12 +211,19 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
 
         // "All Connections" gets a two-tone palette symbol — one figure in the
         // brand color, one in a warm accent — so it reads as "everyone", not
-        // another flat glyph.
-        let allConnectionsIcon = UIImage(systemName: "person.2.fill")?
-            .applyingSymbolConfiguration(UIImage.SymbolConfiguration(
-                paletteColors: [Constants.Colors.primary, .systemOrange]
-            ))?
-            .withRenderingMode(.alwaysOriginal)
+        // another flat glyph. Rasterized to pixels: withRenderingMode after
+        // applyingSymbolConfiguration silently DROPS the palette, and menus
+        // re-tint template images — baking the bitmap sidesteps both.
+        let allConnectionsIcon: UIImage? = {
+            guard let symbol = UIImage(
+                systemName: "person.2.fill",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .medium)
+                    .applying(UIImage.SymbolConfiguration(paletteColors: [Constants.Colors.primary, .systemOrange]))
+            ) else { return nil }
+            return UIGraphicsImageRenderer(size: symbol.size).image { _ in
+                symbol.draw(at: .zero)
+            }.withRenderingMode(.alwaysOriginal)
+        }()
 
         var actions: [UIAction] = [
             UIAction(title: "My Places",
