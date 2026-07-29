@@ -129,7 +129,13 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         connectionFilterButton.isHidden = !(viewMode == .allPlaces && showsConnectionFilter)
 
         connectionFilterButton.menu = UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] done in
-            done(self?.connectionMenuElements() ?? [])
+            guard let self = self else { done([]); return }
+            // Menus can't be mutated once shown, so fetch any uncached avatars
+            // BEFORE building — the deferred element's own loading state covers
+            // the (capped) wait, and the first open gets faces, not placeholders.
+            self.withConnectionAvatarsWarmed {
+                done(self.connectionMenuElements())
+            }
         }])
         categoryFilterButton.menu = UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] done in
             done(self?.categoryMenuElements() ?? [])
@@ -253,6 +259,32 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     /// Circular avatar for a menu row, from the image cache. On a cache miss,
     /// returns a placeholder and prefetches so the NEXT open of this menu (it's
     /// rebuilt fresh every time via UIDeferredMenuElement) shows the photo.
+    /// Downloads every menu avatar that isn't already cached, then calls
+    /// `completion` (on main). Capped so a dead network can't hold the menu
+    /// hostage — anything still missing falls back to the placeholder.
+    private func withConnectionAvatarsWarmed(timeout: TimeInterval = 0.6, _ completion: @escaping () -> Void) {
+        var users = connections.compactMap { $0.connectedUser }
+        if let me = AuthService.shared.currentUser { users.append(me) }
+
+        let pending: [(id: String, url: String)] = users.compactMap { user in
+            guard let url = user.profilePicture, !url.isEmpty,
+                  ImageService.shared.cachedImage(forKey: "profile_\(user.id)_\(url.hashValue)") == nil
+            else { return nil }
+            return (user.id, url)
+        }
+        guard !pending.isEmpty else { completion(); return }
+
+        let group = DispatchGroup()
+        pending.forEach { item in
+            group.enter()
+            ImageService.shared.loadProfileImage(for: item.id, from: item.url) { _ in group.leave() }
+        }
+        var finished = false
+        let finish = { if !finished { finished = true; completion() } }
+        group.notify(queue: .main) { finish() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { finish() }
+    }
+
     private func menuAvatar(for user: User) -> UIImage? {
         let placeholder = UIImage(systemName: "person.crop.circle")?
             .withTintColor(Constants.Colors.secondaryLabel, renderingMode: .alwaysOriginal)
@@ -311,8 +343,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     private func placeMenuElements() -> [UIMenuElement] {
         var actions: [UIAction] = [
             UIAction(title: "All Places",
-                     image: UIImage(systemName: "globe.americas.fill")?
-                        .withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal),
+                     image: Self.emojiImage("🌎"),
                      state: selectedChipRegionId == nil ? .on : .off) { [weak self] _ in
                 self?.selectedChipRegionId = nil
                 self?.updateFilterHeaderTitles()
@@ -374,7 +405,13 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             guard let indicator = UnicodeScalar(base + scalar.value) else { return nil }
             flag.append(String(indicator))
         }
-        let attributed = NSAttributedString(string: flag, attributes: [.font: UIFont.systemFont(ofSize: 20)])
+        return emojiImage(flag)
+    }
+
+    /// Renders any emoji (🌎, 🇨🇦) into a menu-sized image — full color, unlike
+    /// tinted SF Symbols.
+    static func emojiImage(_ emoji: String, fontSize: CGFloat = 20) -> UIImage? {
+        let attributed = NSAttributedString(string: emoji, attributes: [.font: UIFont.systemFont(ofSize: fontSize)])
         let size = attributed.size()
         guard size.width > 0 else { return nil }
         return UIGraphicsImageRenderer(size: size).image { _ in
@@ -410,6 +447,9 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     func setAvailableConnections(_ list: [Connection]) {
         connections = list
         updateFilterHeaderTitles()
+        // Start avatar downloads now, long before the dropdown can be opened —
+        // by first tap the cache is warm and the menu shows faces immediately.
+        withConnectionAvatarsWarmed {}
     }
     // IDs of the current user's own places. When set, the default map region
     // centers on the user's favorites instead of just their raw location.
@@ -676,8 +716,12 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         placesCountLabel.isHidden = true
     }
 
+    /// Route through the counter rather than blindly unhiding: revealing the
+    /// pill without setting its text is how the empty blue circle happened —
+    /// visible from load until the first filter change or pan finally wrote a
+    /// number into it. updatePlacesCount owns both the text and visibility.
     func showPlaceCount() {
-        placesCountLabel.isHidden = false
+        updatePlacesCount()
     }
     
     func updatePlacesWithConnections(_ userPlaces: [Place], connections: [Connection], connectionPlaces: [String: [Place]]) {
@@ -701,6 +745,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // people in the order muscle memory expects.
         self.connections = HorizontalUserListView.rankedConnections(connections)
         self.connectionPlaces = connectionPlaces
+        withConnectionAvatarsWarmed {}
         
         // Note: we intentionally do NOT reset hasInitiallyZoomed here anymore.
         // adjustMapRegion() keeps the current camera when the selected
