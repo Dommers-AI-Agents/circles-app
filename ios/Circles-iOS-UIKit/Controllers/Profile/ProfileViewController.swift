@@ -959,6 +959,16 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                     arrowDirection: .top
                 )
             }
+            return // one prompt at a time — the tutorial owns this appearance
+        }
+
+        // Occasional nudge to add a real photo (at most weekly; the reminder
+        // owns its own gating). Only on your own profile, and never while the
+        // onboarding tutorial is still running.
+        if isCurrentUser && !OnboardingManager.shared.shouldShowTutorial {
+            ProfilePhotoReminder.presentIfDue(from: self, user: user) { [weak self] in
+                self?.editProfileButtonTapped()
+            }
         }
     }
     
@@ -1686,8 +1696,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
 
     @objc func rewardsButtonTapped() {
-        let rewardsVC = RewardsViewController()
-        navigationController?.pushViewController(rewardsVC, animated: true)
+        // The '$' hub: store-loyalty Rewards + the FavCoin piggy bank.
+        let hubVC = RewardsHubViewController()
+        navigationController?.pushViewController(hubVC, animated: true)
     }
 
     var storefrontOpensVenueAdmin = false
@@ -3138,14 +3149,16 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             ImageService.shared.loadImage(from: profileImageUrl) { [weak self] image in
                 DispatchQueue.main.async {
                     guard let self = self else { return }
-                    self.profileImageView.image = image ?? UIImage(systemName: "person.circle.fill")
+                    // Keep the initials avatar when the photo fails rather
+                    // than falling back to an anonymous silhouette
+                    if let image = image { self.profileImageView.image = image }
                     if image == nil {
                         self.profileImageView.tintColor = Constants.Colors.primary
                     }
                 }
             }
         } else {
-            profileImageView.image = UIImage(systemName: "person.circle.fill")
+            profileImageView.image = AvatarPlaceholder.image(name: user.displayName, seed: user.id, diameter: 100)
             profileImageView.tintColor = Constants.Colors.primary
         }
         

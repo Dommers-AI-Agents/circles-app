@@ -154,7 +154,8 @@ gcloud scheduler jobs create http piggy-bank-clearing \
   --schedule="0 * * * *" \
   --uri="${SERVICE_URL}/api/tasks/piggy-bank-clearing" \
   --http-method=POST \
-  --oidc-service-account-email=$SERVICE_ACCOUNT \
+  --oidc-service-account-email=circles-scheduler@circles-app-83b67.iam.gserviceaccount.com \
+  --oidc-token-audience="${SERVICE_URL}" \
   --time-zone=$TIME_ZONE \
   --description="Promote pending FavCoin earns past the clearing window to confirmed (or reverse invalid ones)" \
   --headers="Content-Type=application/json,X-Cloudscheduler=true" \

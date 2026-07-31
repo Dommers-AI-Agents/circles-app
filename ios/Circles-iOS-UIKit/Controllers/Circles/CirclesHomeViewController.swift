@@ -5990,8 +5990,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     @objc func rewardsButtonTapped() {
-        let rewardsVC = RewardsViewController()
-        navigationController?.pushViewController(rewardsVC, animated: true)
+        // The '$' hub: store-loyalty Rewards + the FavCoin piggy bank.
+        let hubVC = RewardsHubViewController()
+        navigationController?.pushViewController(hubVC, animated: true)
     }
 
     @objc func handleRewardBalanceChanged() {

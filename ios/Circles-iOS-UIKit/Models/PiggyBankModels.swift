@@ -1,0 +1,86 @@
+import Foundation
+
+// FavCoin piggy bank models (/api/piggy-bank). Separate from the store-loyalty
+// rewards system — parallel tabs in the '$' section.
+
+/// Materialized balance for the current user.
+struct PiggyBank: Decodable {
+    let pendingCoins: Int
+    let confirmedCoins: Int
+    let lifetimeCoins: Int
+    let settledOnChain: Int
+}
+
+/// One append-only ledger row.
+struct PiggyLedgerEvent: Decodable {
+    let id: String
+    let eventType: String
+    let coins: Int
+    let status: String        // pending | confirmed | reversed | held
+    let createdAt: String
+    let clearAt: String?
+
+    var isPending: Bool { status == "pending" }
+    var isReversed: Bool { status == "reversed" }
+
+    /// "Added a place", "Friend saved your place", ...
+    var displayTitle: String {
+        switch eventType {
+        case "add_place": return "Added a place"
+        case "create_circle": return "Created a circle"
+        case "share_circle": return "Shared a circle"
+        case "connection_accepted": return "New connection"
+        case "referral_signup": return "Referred a friend"
+        case "place_adopted": return "Friend saved your place"
+        case "suggestion_posted": return "Posted a suggestion"
+        default: return eventType.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+
+    var createdDate: Date? {
+        ISO8601DateFormatter.piggyFlexible.dateFlexible(from: createdAt)
+    }
+}
+
+/// Display config the backend ships so the client never hardcodes the economy.
+struct PiggyBankConfigPayload: Decodable {
+    let coinValues: [String: Int]
+    let clearingWindowHours: Int?
+    let minConfirmedToClaim: Int?
+}
+
+struct PiggyBankResponse: Decodable {
+    let success: Bool
+    let bank: PiggyBank
+    let events: [PiggyLedgerEvent]
+    let config: PiggyBankConfigPayload
+}
+
+struct PiggyBankHistoryResponse: Decodable {
+    let success: Bool
+    let events: [PiggyLedgerEvent]
+}
+
+/// The credit stub riding on the create-place response — drives the deposit
+/// animation. Optional everywhere: an old server or a failed credit must
+/// never break place creation.
+struct PiggyBankCredit: Decodable {
+    let credited: Bool
+    let coins: Int?
+}
+
+extension ISO8601DateFormatter {
+    static let piggyFlexible: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    /// Backend ISO strings vary in fractional seconds — try both.
+    func dateFlexible(from string: String) -> Date? {
+        if let d = date(from: string) { return d }
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        return plain.date(from: string)
+    }
+}

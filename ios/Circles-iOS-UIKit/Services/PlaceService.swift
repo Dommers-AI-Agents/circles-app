@@ -384,6 +384,7 @@ class PlaceService {
                 if case .success(let response) = result {
                     DispatchQueue.main.async {
                         PlaceMilestones.celebrateIfNeeded(totalPlaces: response.totalPlaces)
+                        PiggyBankDepositView.play(credit: response.piggyBank)
                     }
                     completion(.success(response.place))
                 } else if case .failure(let error) = result {
@@ -393,7 +394,7 @@ class PlaceService {
         )
     }
     
-    func createPlace(name: String, description: String?, address: String, category: PlaceCategory, customCategory: String? = nil, subcategory: String? = nil, circleId: String, privacy: PlacePrivacy = .followCirclePrivacy, website: String? = nil, phone: String? = nil, tags: [String]? = nil, photos: [Data]? = nil, photoUrls: [String]? = nil, location: CLLocationCoordinate2D? = nil, googlePlaceId: String? = nil, privateNotes: String? = nil, publicNotes: String? = nil, neighborhood: String? = nil, applePoiCategory: String? = nil, force: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
+    func createPlace(name: String, description: String?, address: String, category: PlaceCategory, customCategory: String? = nil, subcategory: String? = nil, circleId: String, privacy: PlacePrivacy = .followCirclePrivacy, website: String? = nil, phone: String? = nil, tags: [String]? = nil, photos: [Data]? = nil, photoUrls: [String]? = nil, location: CLLocationCoordinate2D? = nil, googlePlaceId: String? = nil, privateNotes: String? = nil, neighborhood: String? = nil, applePoiCategory: String? = nil, force: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
         
         // Use provided location or geocode the address
         if let providedLocation = location {
@@ -411,7 +412,6 @@ class PlaceService {
                     description: description,
                     circleId: circleId,
                     notes: privateNotes,
-                    publicNotes: publicNotes,
                     googlePlaceId: googlePlaceId,
                     preUploadedPhotoUrls: photoUrls,
                     force: force,
@@ -437,7 +437,6 @@ class PlaceService {
                 photos: photos,
                 photoUrls: photoUrls,
                 privateNotes: privateNotes,
-                publicNotes: publicNotes,
                 neighborhood: neighborhood,
                 applePoiCategory: applePoiCategory,
                 force: force,
@@ -464,7 +463,6 @@ class PlaceService {
                         photos: photos,
                         photoUrls: photoUrls,
                         privateNotes: privateNotes,
-                        publicNotes: publicNotes,
                         neighborhood: neighborhood,
                         applePoiCategory: applePoiCategory,
                         force: force,
@@ -477,7 +475,7 @@ class PlaceService {
         }
     }
     
-    private func continueCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photos: [Data]?, photoUrls: [String]?, privateNotes: String?, publicNotes: String?, neighborhood: String? = nil, applePoiCategory: String? = nil, force: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
+    private func continueCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photos: [Data]?, photoUrls: [String]?, privateNotes: String?, neighborhood: String? = nil, applePoiCategory: String? = nil, force: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
         // If we already have photo URLs, use them directly
         if let urls = photoUrls, !urls.isEmpty {
             Logger.debug("Using \(urls.count) pre-uploaded photo URLs")
@@ -496,7 +494,6 @@ class PlaceService {
                 tags: tags,
                 photoUrls: urls,
                 privateNotes: privateNotes,
-                publicNotes: publicNotes,
                 neighborhood: neighborhood,
                 applePoiCategory: applePoiCategory,
                 force: force,
@@ -525,7 +522,6 @@ class PlaceService {
                         tags: tags,
                         photoUrls: photoUrls,
                         privateNotes: privateNotes,
-                        publicNotes: publicNotes,
                         neighborhood: neighborhood,
                         applePoiCategory: applePoiCategory,
                         force: force,
@@ -550,7 +546,6 @@ class PlaceService {
                         tags: tags,
                         photoUrls: nil,
                         privateNotes: privateNotes,
-                        publicNotes: publicNotes,
                         neighborhood: neighborhood,
                         applePoiCategory: applePoiCategory,
                         force: force,
@@ -576,7 +571,6 @@ class PlaceService {
                 tags: tags,
                 photoUrls: nil,
                 privateNotes: privateNotes,
-                publicNotes: publicNotes,
                 neighborhood: neighborhood,
                 applePoiCategory: applePoiCategory,
                 force: force,
@@ -585,7 +579,7 @@ class PlaceService {
         }
     }
     
-    private func performCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photoUrls: [String]?, privateNotes: String?, publicNotes: String?, neighborhood: String? = nil, applePoiCategory: String? = nil, force: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
+    private func performCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photoUrls: [String]?, privateNotes: String?, neighborhood: String? = nil, applePoiCategory: String? = nil, force: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
         
         // Validate coordinates before sending to backend
         guard location.latitude >= -90 && location.latitude <= 90 &&
@@ -664,9 +658,6 @@ class PlaceService {
             body["privateNotes"] = privateNotes
         }
         
-        if let publicNotes = publicNotes {
-            body["publicNotes"] = publicNotes
-        }
         
         // Add force flag if provided (for "Add Anyway" functionality)
         if force {
@@ -695,10 +686,9 @@ class PlaceService {
         )
     }
     
-    func updatePlace(id: String, privateNotes: String? = nil, publicNotes: String? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
+    func updatePlace(id: String, privateNotes: String? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
         var body: [String: Any] = [:]
         if let privateNotes = privateNotes { body["privateNotes"] = privateNotes }
-        if let publicNotes = publicNotes { body["publicNotes"] = publicNotes }
         
         APIService.shared.request(
             endpoint: "places/\(id)",
@@ -717,7 +707,7 @@ class PlaceService {
     
     // MARK: - Add Place from POI
     
-    func addPlaceFromPOI(name: String, address: String, location: GeoLocation?, category: PlaceCategory, website: String? = nil, phone: String? = nil, description: String? = nil, circleId: String, notes: String?, publicNotes: String? = nil, googlePlaceId: String? = nil, preUploadedPhotoUrls: [String]? = nil, rating: Double? = nil, userRatingsTotal: Int? = nil, force: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
+    func addPlaceFromPOI(name: String, address: String, location: GeoLocation?, category: PlaceCategory, website: String? = nil, phone: String? = nil, description: String? = nil, circleId: String, notes: String?, googlePlaceId: String? = nil, preUploadedPhotoUrls: [String]? = nil, rating: Double? = nil, userRatingsTotal: Int? = nil, force: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
         Logger.debug("PlaceService.addPlaceFromPOI called with name: \(name), googlePlaceId: \(googlePlaceId ?? "nil"), photos: \(preUploadedPhotoUrls?.count ?? 0)")
         
         var body: [String: Any] = [
@@ -752,9 +742,6 @@ class PlaceService {
             body["privateNotes"] = notes
         }
         
-        if let publicNotes = publicNotes {
-            body["publicNotes"] = publicNotes
-        }
         
         if let website = website {
             body["website"] = website
@@ -976,6 +963,7 @@ class PlaceService {
                     Logger.debug("✅ PlaceService: Place created successfully")
                     DispatchQueue.main.async {
                         PlaceMilestones.celebrateIfNeeded(totalPlaces: response.totalPlaces)
+                        PiggyBankDepositView.play(credit: response.piggyBank)
                     }
                     if let photos = response.place.photos {
                         Logger.debug("  Photos in response: \(photos.count)")
@@ -993,7 +981,7 @@ class PlaceService {
         )
     }
     
-    func updatePlace(id: String, name: String? = nil, description: String? = nil, address: String? = nil, category: PlaceCategory? = nil, customCategory: String? = nil, privacy: PlacePrivacy? = nil, website: String? = nil, phone: String? = nil, tags: [String]? = nil, publicNotes: String? = nil, addPhotos: [Data]? = nil, removePhotoUrls: [String]? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
+    func updatePlace(id: String, name: String? = nil, description: String? = nil, address: String? = nil, category: PlaceCategory? = nil, customCategory: String? = nil, privacy: PlacePrivacy? = nil, website: String? = nil, phone: String? = nil, tags: [String]? = nil, privateNotes: String? = nil, addPhotos: [Data]? = nil, removePhotoUrls: [String]? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
         
         var locationCoordinate: CLLocationCoordinate2D?
         var photosUrls: [String]?
@@ -1054,9 +1042,9 @@ class PlaceService {
                 body["description"] = description
             }
 
-            // Empty string is meaningful here: it clears the notes
-            if let publicNotes = publicNotes {
-                body["publicNotes"] = publicNotes
+            // Empty string is meaningful here: it clears the note
+            if let privateNotes = privateNotes {
+                body["privateNotes"] = privateNotes
             }
 
             if let newAddress = address {
@@ -1724,7 +1712,18 @@ class PlaceService {
 
 struct PlacesResponse: Decodable {
     let success: Bool
+    /// Lossy on purpose: a single place the client can't decode (a new server
+    /// field shape, a half-written doc) used to fail the WHOLE response, so one
+    /// bad row blanked an entire circle. Drop the bad element, keep the rest.
     let places: [Place]
+
+    private enum CodingKeys: String, CodingKey { case success, places }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        success = (try? container.decode(Bool.self, forKey: .success)) ?? true
+        places = (try? container.decode(LossyDecodableArray<Place>.self, forKey: .places))?.elements ?? []
+    }
 }
 
 struct PlaceResponse: Decodable {
@@ -1732,6 +1731,9 @@ struct PlaceResponse: Decodable {
     let place: Place
     // User's live place count after this add (drives milestone celebrations)
     let totalPlaces: Int?
+    // FavCoin credit for this add (drives the piggy-bank deposit animation).
+    // Optional: absent on old servers or when the credit didn't apply.
+    let piggyBank: PiggyBankCredit?
 }
 
 struct FlagPlaceResponse: Decodable {
