@@ -21,6 +21,7 @@ const placeCache = require('../services/placeCache');
 const requestDeduplicator = require('../services/requestDeduplicator');
 const subscriptionLimitService = require('../services/subscriptionLimitService');
 const rewardService = require('../services/rewardService');
+const piggyBankService = require('../services/piggyBankService');
 
 const db = getFirestore();
 const googleMapsClient = new Client({});
@@ -37,6 +38,29 @@ const normalizePhotosArray = (place) => {
       return photo; // Keep as-is for any other format
     });
   }
+  return place;
+};
+
+// Photos belong to the VENUE, not to any one person's save of it: a photo you
+// add is shared with everyone who saved that place (attributed to you, and
+// deletable only by you). Reads therefore serve the venue's pool, falling back
+// to the save's own array only when the place isn't linked to a venue yet.
+const overlayVenuePhotos = (place, venueData) => {
+  const venuePhotos = (venueData && venueData.photos) || [];
+  if (venuePhotos.length === 0) return place;
+
+  // Union, venue order first, de-duped by URL — a save may still hold a photo
+  // the pooling backfill hasn't reached.
+  const urlOf = (p) => (typeof p === 'string' ? p : p && p.url) || null;
+  const seen = new Set();
+  const merged = [];
+  [...venuePhotos, ...(place.photos || [])].forEach((photo) => {
+    const url = urlOf(photo);
+    if (!url || seen.has(url)) return;
+    seen.add(url);
+    merged.push(photo);
+  });
+  place.photos = merged;
   return place;
 };
 
@@ -554,7 +578,7 @@ exports.getPlacesByCircleId = async (req, res, next) => {
       // Only include privateNotes if the current user added this place
       const social = socialByGlobalId.get(place.globalPlaceId);
       const placeData = {
-        ...(social ? overlayVenueFields(place, social.venueData) : place),
+        ...(social ? overlayVenuePhotos(overlayVenueFields(place, social.venueData), social.venueData) : place),
         ...(social ? { likes: social.likes, likesCount: social.likes.length } : {}),
         addedByUser: userMap.get(place.addedBy) || null,
         commentsCount: social ? social.commentsCount : 0,
@@ -1036,7 +1060,7 @@ exports.getPlace = async (req, res, next) => {
       isFollowing: ((social.venueData && social.venueData.followers) || []).includes(req.user.uid)
     };
     if (social.venueData) {
-      placeData = overlayVenueFields(placeData, social.venueData);
+      placeData = overlayVenuePhotos(overlayVenueFields(placeData, social.venueData), social.venueData);
     }
     
     // Normalize photos array format for iOS compatibility
@@ -1306,10 +1330,21 @@ exports.createPlace = async (req, res, next) => {
       console.error('⚠️ Milestone place count failed (non-fatal):', countError.message);
     }
 
+    // Piggy bank: FavCoins for the add. AWAITED (uniquely among the hooks —
+    // one count query + one transaction, cheap) so the deposit animation can
+    // ride the create response. credit() never throws; a credit failure just
+    // yields { credited: false } and the add still succeeds.
+    const piggyBank = await piggyBankService.credit({
+      userId: req.user.uid,
+      eventType: 'add_place',
+      sourceRef: { placeId: placeRef.id, globalPlaceId: globalPlaceId || null, circleId }
+    });
+
     // Add commentsCount to the response (new places have 0 comments)
     res.status(201).json({
       success: true,
       totalPlaces,
+      piggyBank,
       place: {
         ...place,
         commentsCount: 0
@@ -1325,6 +1360,19 @@ exports.createPlace = async (req, res, next) => {
     // Sticker rewards: if this add came from a shared place link, credit the sharer
     if (req.body.refUserId) {
       rewardService.awardShareConversion(req.body.refUserId, req.user.uid, place.googlePlaceId);
+
+      // Piggy bank: place_adopted — the quality-aligned flagship earn. The
+      // SHARER gets the coins; fire-and-forget alongside the sticker credit.
+      piggyBankService.credit({
+        userId: req.body.refUserId,
+        eventType: 'place_adopted',
+        sourceRef: {
+          globalPlaceId: place.globalPlaceId || null,
+          googlePlaceId: place.googlePlaceId || null,
+          adderUserId: req.user.uid,
+          adderPlaceId: placeRef.id
+        }
+      }).catch(() => {});
     }
 
     // Send notifications to interested users
@@ -1445,6 +1493,14 @@ exports.updatePlace = async (req, res, next) => {
     // strip them for everyone else, so don't let other editors overwrite them
     if ('privateNotes' in updateData && !isPlaceAdder) {
       delete updateData.privateNotes;
+    }
+
+    // publicNotes is retired: a note meant for others is a comment on the
+    // venue. Older app builds still send the field, so drop it rather than
+    // erroring — and never resurrect a note field on the save doc.
+    if ('publicNotes' in updateData || 'notes' in updateData) {
+      delete updateData.publicNotes;
+      delete updateData.notes;
     }
     
     // Validate location coordinates if provided
@@ -3096,9 +3152,9 @@ exports.addExistingPlaceToCircle = async (req, res, next) => {
       ...placeDataWithoutIds,
       circleId: circleId,
       addedBy: userId,
-      notes: notes || originalPlace.notes || null,
-      publicNotes: notes || originalPlace.publicNotes || null,
-      privateNotes: null, // Reset private notes for the new copy
+      // A note supplied while copying is the copier's own annotation — keep it
+      // private to them. Shared opinions go to comments on the venue.
+      privateNotes: notes || null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       likes: [], // Reset likes for the new copy
@@ -4003,14 +4059,18 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
     const placesWithSocial = allPlaces.map(place => {
       const social = socialByGlobalId.get(place.globalPlaceId);
       const addedByUser = addedByUserMap.get(place.addedBy) || null;
-      if (!social) return { ...place, addedByUser };
-      return {
-        ...overlayVenueFields(place, social.venueData),
+      if (!social) return normalizePhotosArray({ ...place, addedByUser });
+      // normalizePhotosArray is REQUIRED after pooling venue photos: the venue
+      // stores photo objects ({id,url,uploadedBy,...}) while the client decodes
+      // photos as [String]. Without it the whole response fails to decode and
+      // the screen renders empty.
+      return normalizePhotosArray({
+        ...overlayVenuePhotos(overlayVenueFields(place, social.venueData), social.venueData),
         addedByUser,
         likes: social.likes,
         likesCount: social.likes.length,
         commentsCount: social.commentsCount
-      };
+      });
     });
 
     res.status(200).json({

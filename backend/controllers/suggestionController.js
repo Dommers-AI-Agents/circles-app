@@ -96,6 +96,13 @@ const createNewSuggestion = async (req, res) => {
       message: 'Suggestion created successfully'
     });
 
+    // Piggy bank: FavCoins for posting a suggestion (fire-and-forget)
+    require('../services/piggyBankService').credit({
+      userId,
+      eventType: 'suggestion_posted',
+      sourceRef: { suggestionId: suggestionRef.id }
+    }).catch(() => {});
+
     try {
       if (suggestionData.recipientId) {
         // Directed: notify ONLY the recipient. Creates an in-app notification

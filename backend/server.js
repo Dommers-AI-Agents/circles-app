@@ -366,6 +366,7 @@ app.get('/share/video/:videoId', (req, res) => {
 });
 app.use('/api/users/referral', require('./routes/referralRoutes'));
 app.use('/api/rewards', require('./routes/rewardRoutes'));
+app.use('/api/piggy-bank', require('./routes/piggyBankRoutes')); // FavCoin piggy bank (separate from store-loyalty rewards)
 app.use('/api/home', require('./routes/dashboardRoutes'));
 
 // Notification test routes (development only)

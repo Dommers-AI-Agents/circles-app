@@ -390,14 +390,33 @@ router.post('/send-venue-reports', verifyCloudScheduler, async (req, res) => {
   }
 });
 
+// Piggy bank clearing: promote pending FavCoin earns past their 48h window to
+// confirmed (re-validating the underlying fact) or reverse the invalid ones.
+// Cloud Scheduler hits this hourly.
+router.post('/piggy-bank-clearing', verifyCloudScheduler, async (req, res) => {
+  try {
+    console.log('🐷 Piggy bank clearing triggered via API');
+    const piggyBankService = require('../services/piggyBankService');
+    const summary = await piggyBankService.runClearing();
+    res.json({ success: true, ...summary, timestamp: new Date().toISOString() });
+  } catch (error) {
+    console.error('❌ Error in piggy bank clearing:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to run piggy bank clearing',
+      details: error.message
+    });
+  }
+});
+
 // Health check endpoint for scheduled tasks
 router.get('/health', (req, res) => {
-  res.json({ 
-    success: true, 
+  res.json({
+    success: true,
     message: 'Task routes are healthy',
     endpoints: [
       '/api/tasks/daily-summary',
-      '/api/tasks/morning-discovery', 
+      '/api/tasks/morning-discovery',
       '/api/tasks/lunch-discovery',
       '/api/tasks/weekend-recommendations',
       '/api/tasks/engagement-reminders',
@@ -406,7 +425,8 @@ router.get('/health', (req, res) => {
       '/api/tasks/network-growth',
       '/api/tasks/top-contributors',
       '/api/tasks/build-suggestions',
-      '/api/tasks/special-event/:eventType'
+      '/api/tasks/special-event/:eventType',
+      '/api/tasks/piggy-bank-clearing'
     ]
   });
 });

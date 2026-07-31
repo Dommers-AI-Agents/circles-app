@@ -502,6 +502,23 @@ const sendConnectionRequest = async (req, res) => {
 
     // If auto-accepted, update user arrays immediately
     if (autoAccept) {
+      // Piggy bank: the auto-accept path IS an acceptance — both users earn.
+      // Same pair-key as the manual accept path, so a pair can only ever pay
+      // once no matter which route created the connection.
+      {
+        const piggyBankService = require('../services/piggyBankService');
+        piggyBankService.credit({
+          userId,
+          eventType: 'connection_accepted',
+          sourceRef: { otherUserId: targetUserDocId, connectionId: connection.id }
+        }).catch(() => {});
+        piggyBankService.credit({
+          userId: targetUserDocId,
+          eventType: 'connection_accepted',
+          sourceRef: { otherUserId: userId, connectionId: connection.id }
+        }).catch(() => {});
+      }
+
       try {
         console.log('🔄 Auto-accept flow: Updating user arrays for both users');
 
@@ -648,6 +665,23 @@ const acceptConnection = async (req, res) => {
       success: true,
       data: updatedConnection
     });
+
+    // Piggy bank: FavCoins for the new connection — BOTH users earn (one
+    // ledger row each; the pair-half of the key is order-independent so a
+    // future request/accept cycle for the same pair can never pay again).
+    {
+      const piggyBankService = require('../services/piggyBankService');
+      piggyBankService.credit({
+        userId,
+        eventType: 'connection_accepted',
+        sourceRef: { otherUserId: connection.userId, connectionId }
+      }).catch(() => {});
+      piggyBankService.credit({
+        userId: connection.userId,
+        eventType: 'connection_accepted',
+        sourceRef: { otherUserId: userId, connectionId }
+      }).catch(() => {});
+    }
 
     // Auto-follow: When connection is accepted, both users automatically follow each other.
     // Idempotent — the requester usually already follows (connect implies

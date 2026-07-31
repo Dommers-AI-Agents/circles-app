@@ -198,7 +198,17 @@ exports.applyReferralCode = async (req, res) => {
         
         // Commit the batch
         await batch.commit();
-        
+
+        // Piggy bank: FavCoins to the REFERRER for bringing a new person in.
+        // Keyed on the invitee — one payout per new human, ever. Clearing later
+        // requires the invitee to have actually activated (a place or a
+        // connection), so drive-by signups reverse instead of paying.
+        require('../services/piggyBankService').credit({
+            userId: referrerId,
+            eventType: 'referral_signup',
+            sourceRef: { inviteeId: userId }
+        }).catch(() => {});
+
         res.json({
             success: true,
             message: 'Referral code applied successfully! You get 1 month free.',

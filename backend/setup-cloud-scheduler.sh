@@ -147,6 +147,19 @@ gcloud scheduler jobs create http reengagement \
   --headers="Content-Type=application/json,X-Cloudscheduler=true" \
   --attempt-deadline=180s
 
+echo -e "${GREEN}Creating piggy-bank-clearing job...${NC}"
+gcloud scheduler jobs delete piggy-bank-clearing --location=$REGION --quiet 2>/dev/null || true
+gcloud scheduler jobs create http piggy-bank-clearing \
+  --location=$REGION \
+  --schedule="0 * * * *" \
+  --uri="${SERVICE_URL}/api/tasks/piggy-bank-clearing" \
+  --http-method=POST \
+  --oidc-service-account-email=$SERVICE_ACCOUNT \
+  --time-zone=$TIME_ZONE \
+  --description="Promote pending FavCoin earns past the clearing window to confirmed (or reverse invalid ones)" \
+  --headers="Content-Type=application/json,X-Cloudscheduler=true" \
+  --attempt-deadline=180s
+
 echo -e "${GREEN}✅ All scheduler jobs created successfully!${NC}"
 echo ""
 echo "View all jobs:"

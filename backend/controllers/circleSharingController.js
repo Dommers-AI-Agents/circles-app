@@ -133,6 +133,17 @@ const shareCircle = async (req, res) => {
     // Create the share
     const circleShareData = createCircleShare(shareData);
     const docRef = await db.collection(COLLECTIONS.CIRCLE_SHARES).add(circleShareData);
+
+    // Piggy bank: FavCoins for sharing a circle with a specific person.
+    // Only registered_user shares have a target — the dedup key requires one,
+    // so email/link shares simply don't earn (no farmable anonymous shares).
+    if (shareType === 'registered_user' && targetUserId) {
+      require('../services/piggyBankService').credit({
+        userId,
+        eventType: 'share_circle',
+        sourceRef: { circleId, targetUserId }
+      }).catch(() => {});
+    }
     const newDoc = await docRef.get();
     const share = serializeDoc(newDoc);
 
@@ -574,7 +585,7 @@ const getMyNetworkCircles = async (req, res) => {
     );
     
     // Combine all circle results
-    const circles = [];
+    let circles = [];
     circleResults.forEach(snapshot => {
       snapshot.docs.forEach(doc => {
         circles.push(serializeDoc(doc));
@@ -611,10 +622,18 @@ const getMyNetworkCircles = async (req, res) => {
       });
     });
     
-    // Enrich circles with owner details from map
+    // Enrich circles with owner details from map. A circle whose owner no
+    // longer exists is orphaned (deleted account) — flag it and drop it from
+    // this list rather than shipping "Shared by Unknown" to the client.
     circles.forEach(circle => {
       circle.ownerDetails = ownersMap.get(circle.owner) || null;
+      if (!circle.ownerDetails) circle.ownerMissing = true;
     });
+    const orphanCount = circles.filter(c => c.ownerMissing).length;
+    if (orphanCount > 0) {
+      console.log(`🧹 Hiding ${orphanCount} circle(s) whose owner no longer exists`);
+      circles = circles.filter(c => !c.ownerMissing);
+    }
 
     console.log('✅ Returning', circles.length, 'circles with batch-loaded owner details');
 

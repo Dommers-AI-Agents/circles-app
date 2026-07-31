@@ -14,6 +14,7 @@ const {
 const { trackCircleCreated, trackCircleView, trackCircleLiked, trackCircleCommented } = require('../services/activityService');
 const { normalizeUserId } = require('../services/idService');
 const subscriptionLimitService = require('../services/subscriptionLimitService');
+const { attachOwnerDetails } = require('../services/ownerResolver');
 
 const db = getFirestore();
 
@@ -352,6 +353,12 @@ exports.getCircle = async (req, res, next) => {
       }
     }
 
+    // Attach the owner so the client can say whose circle this is. Without it
+    // the header falls back to "Shared by Unknown" — `owner` is only a user id,
+    // and every other circle endpoint already sends ownerDetails. The resolver
+    // also handles alternate id formats and flags orphaned circles.
+    await attachOwnerDetails(circle, { isOwner });
+
     res.status(200).json({
       success: true,
       circle: circle
@@ -462,6 +469,14 @@ exports.createCircle = async (req, res, next) => {
 
     // Track activity for network connections
     await trackCircleCreated(circleRef.id, req.user.uid);
+
+    // Piggy bank: FavCoins for the new circle (fire-and-forget; the clearing
+    // worker later requires it to hold >= CREATE_CIRCLE_MIN_PLACES places)
+    require('../services/piggyBankService').credit({
+      userId: req.user.uid,
+      eventType: 'create_circle',
+      sourceRef: { circleId: circleRef.id }
+    }).catch(() => {});
 
     res.status(201).json({
       success: true,
