@@ -44,7 +44,12 @@ function derivePiggyDedupKey(eventType, parts = {}) {
   const s = sanitizeKeyPart;
   switch (eventType) {
     case 'add_place': {
-      const venue = parts.globalPlaceId || parts.placeId;
+      // Venue identity must be DETERMINISTIC across linking outcomes, or an
+      // add that linked and a re-add that didn't would mint different keys
+      // and pay twice. venueKey (google:<id> / manual:<name>:<address>) is
+      // computable from the place itself on every add, so it leads; the
+      // canonical global id and raw doc id are fallbacks for degenerate docs.
+      const venue = parts.venueKey || parts.globalPlaceId || parts.placeId;
       if (!parts.userId || !venue) return null;
       return `add_place:${s(parts.userId)}:${s(venue)}`;
     }

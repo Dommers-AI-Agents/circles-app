@@ -127,12 +127,26 @@ const backdateAll = () => {
 beforeEach(() => { Object.keys(stores).forEach(k => stores[k].clear()); });
 
 describe('derivePiggyDedupKey', () => {
-  test('add_place prefers globalPlaceId, falls back to placeId', () => {
+  test('add_place venue identity: venueKey leads, then globalPlaceId, then placeId', () => {
+    expect(derivePiggyDedupKey('add_place', { userId: 'u1', venueKey: 'google:x', globalPlaceId: 'g1', placeId: 'p1' }))
+      .toBe('add_place:u1:google:x');
     expect(derivePiggyDedupKey('add_place', { userId: 'u1', globalPlaceId: 'g1', placeId: 'p1' }))
       .toBe('add_place:u1:g1');
     expect(derivePiggyDedupKey('add_place', { userId: 'u1', placeId: 'p1' }))
       .toBe('add_place:u1:p1');
     expect(derivePiggyDedupKey('add_place', { userId: 'u1' })).toBeNull();
+  });
+
+  test('add_place key is identical whether or not venue linking succeeded', () => {
+    // Add #1: linking worked. Add #2 (delete -> re-add): linking failed, new
+    // doc id. Same venueKey -> same key -> second add can never pay.
+    const linked = derivePiggyDedupKey('add_place', {
+      userId: 'u1', venueKey: 'google:abc', globalPlaceId: 'gDoc1', placeId: 'save1'
+    });
+    const unlinked = derivePiggyDedupKey('add_place', {
+      userId: 'u1', venueKey: 'google:abc', globalPlaceId: null, placeId: 'save2'
+    });
+    expect(linked).toBe(unlinked);
   });
 
   test('connection key is order-independent per pair, distinct per beneficiary', () => {
@@ -174,6 +188,41 @@ describe('credit', () => {
     expect(second.duplicate).toBe(true);
     expect(ledgerRows()).toHaveLength(1);
     expect(bankOf('u1').pendingCoins).toBe(config.COINS.ADD_PLACE);
+  });
+
+  test('delete -> re-add of the same venue never pays twice (new doc id, no link)', async () => {
+    const first = await piggyBank.credit({
+      userId: 'u1', eventType: 'add_place',
+      sourceRef: { placeId: 'doc1', globalPlaceId: 'g1', venueKey: 'manual:salty donut:belmar' }
+    });
+    // Re-added later: brand-new save doc, linking failed this time
+    const readd = await piggyBank.credit({
+      userId: 'u1', eventType: 'add_place',
+      sourceRef: { placeId: 'doc2', globalPlaceId: null, venueKey: 'manual:salty donut:belmar' }
+    });
+    expect(first.credited).toBe(true);
+    expect(readd.credited).toBe(false);
+    expect(readd.duplicate).toBe(true);
+    expect(ledgerRows()).toHaveLength(1);
+    expect(bankOf('u1').pendingCoins).toBe(config.COINS.ADD_PLACE);
+  });
+
+  test('a REVERSED row still blocks re-earning the same venue (append-only)', async () => {
+    store('places').set('doc1', { deletedAt: '2026-07-31T00:00:00Z' }); // deleted during window
+    await piggyBank.credit({
+      userId: 'u1', eventType: 'add_place',
+      sourceRef: { placeId: 'doc1', venueKey: 'google:abc' }
+    });
+    backdateAll();
+    await piggyBank.runClearing(); // -> reversed, pending back to 0
+
+    const again = await piggyBank.credit({
+      userId: 'u1', eventType: 'add_place',
+      sourceRef: { placeId: 'doc2', venueKey: 'google:abc' }
+    });
+    expect(again.duplicate).toBe(true);
+    expect(ledgerRows()).toHaveLength(1);
+    expect(bankOf('u1').pendingCoins).toBe(0);
   });
 
   test('daily cap: at the cap the action pays zero', async () => {

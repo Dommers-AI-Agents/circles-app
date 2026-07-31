@@ -1334,10 +1334,24 @@ exports.createPlace = async (req, res, next) => {
     // one count query + one transaction, cheap) so the deposit animation can
     // ride the create response. credit() never throws; a credit failure just
     // yields { credited: false } and the add still succeeds.
+    //
+    // venueKey backs up globalPlaceId in the dedup key: if venue linking
+    // failed, the canonical google:/manual: identity still blocks re-adding
+    // the same venue from ever paying twice.
+    let piggyVenueKey = null;
+    try {
+      const { generatePlaceKey } = require('../models/GlobalPlace');
+      piggyVenueKey = generatePlaceKey(place);
+    } catch (keyError) { /* malformed name/address — placeId last resort */ }
     const piggyBank = await piggyBankService.credit({
       userId: req.user.uid,
       eventType: 'add_place',
-      sourceRef: { placeId: placeRef.id, globalPlaceId: globalPlaceId || null, circleId }
+      sourceRef: {
+        placeId: placeRef.id,
+        globalPlaceId: globalPlaceId || null,
+        venueKey: piggyVenueKey,
+        circleId
+      }
     });
 
     // Add commentsCount to the response (new places have 0 comments)
