@@ -808,6 +808,16 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         showPlaceCount()
     }
     
+    /// The embedded map's frame settles AFTER the first data pass — a count
+    /// computed against the pre-layout visibleMapRect can be wrong in either
+    /// direction (empty rect → hidden pill, or world-rect → inflated count).
+    /// Recount whenever geometry settles; it's one cheap pass over
+    /// filteredPlaces and idempotent.
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        updatePlacesCount()
+    }
+
     func hidePlaceCount() {
         placesCountLabel.isHidden = true
     }

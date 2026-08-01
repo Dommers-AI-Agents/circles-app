@@ -9,11 +9,19 @@ final class PiggyBankDepositView: UIView {
 
     private static var activeView: PiggyBankDepositView?
 
+    /// How long the celebration owns the screen. Anything else that wants to
+    /// pop (milestone celebrations) should wait this long when play() returns
+    /// true — the two firing together buried the coin drop.
+    static let totalDuration: TimeInterval = 3.4
+
     /// Plays the deposit animation for a successful credit. Safe to call with
-    /// anything — plays only when coins were actually credited.
-    static func play(credit: PiggyBankCredit?) {
-        guard let credit = credit, credit.credited, let coins = credit.coins, coins > 0 else { return }
+    /// anything — plays only when coins were actually credited. Returns
+    /// whether an animation will play, so callers can sequence after it.
+    @discardableResult
+    static func play(credit: PiggyBankCredit?) -> Bool {
+        guard let credit = credit, credit.credited, let coins = credit.coins, coins > 0 else { return false }
         DispatchQueue.main.async { show(coins: coins) }
+        return true
     }
 
     private static func show(coins: Int) {

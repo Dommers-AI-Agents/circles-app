@@ -383,8 +383,14 @@ class PlaceService {
             completion: createAPICompletion { (result: Result<PlaceResponse, Error>) in
                 if case .success(let response) = result {
                     DispatchQueue.main.async {
-                        PlaceMilestones.celebrateIfNeeded(totalPlaces: response.totalPlaces)
-                        PiggyBankDepositView.play(credit: response.piggyBank)
+                        // Coin drop first; the milestone celebration (if any)
+                        // waits for it — firing together buried the piggy
+                        // under the milestone popup.
+                        let coinPlayed = PiggyBankDepositView.play(credit: response.piggyBank)
+                        let celebrationDelay = coinPlayed ? PiggyBankDepositView.totalDuration : 0
+                        DispatchQueue.main.asyncAfter(deadline: .now() + celebrationDelay) {
+                            PlaceMilestones.celebrateIfNeeded(totalPlaces: response.totalPlaces)
+                        }
                     }
                     completion(.success(response.place))
                 } else if case .failure(let error) = result {
@@ -962,8 +968,14 @@ class PlaceService {
                 case .success(let response):
                     Logger.debug("✅ PlaceService: Place created successfully")
                     DispatchQueue.main.async {
-                        PlaceMilestones.celebrateIfNeeded(totalPlaces: response.totalPlaces)
-                        PiggyBankDepositView.play(credit: response.piggyBank)
+                        // Coin drop first; the milestone celebration (if any)
+                        // waits for it — firing together buried the piggy
+                        // under the milestone popup.
+                        let coinPlayed = PiggyBankDepositView.play(credit: response.piggyBank)
+                        let celebrationDelay = coinPlayed ? PiggyBankDepositView.totalDuration : 0
+                        DispatchQueue.main.asyncAfter(deadline: .now() + celebrationDelay) {
+                            PlaceMilestones.celebrateIfNeeded(totalPlaces: response.totalPlaces)
+                        }
                     }
                     if let photos = response.place.photos {
                         Logger.debug("  Photos in response: \(photos.count)")
