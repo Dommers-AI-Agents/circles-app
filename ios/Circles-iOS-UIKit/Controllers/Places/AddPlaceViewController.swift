@@ -324,7 +324,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     
     let privateNotesLabel: UILabel = {
         let label = UILabel()
-        label.text = "Private Notes (only visible to you)"
+        label.text = "Private note (only you can see this)"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
         label.textColor = .darkGray
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -344,28 +344,10 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return textView
     }()
     
-    let publicNotesLabel: UILabel = {
-        let label = UILabel()
-        label.text = "Public Notes (visible to others)"
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
-        label.textColor = .darkGray
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    let publicNotesTextView: UITextView = {
-        let textView = UITextView()
-        textView.font = UIFont.systemFont(ofSize: 16)
-        textView.backgroundColor = .white
-        textView.textColor = .darkGray
-        textView.layer.cornerRadius = 8
-        textView.layer.borderWidth = 1
-        textView.layer.borderColor = UIColor.systemBlue.withAlphaComponent(0.3).cgColor
-        textView.textContainerInset = UIEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
-        textView.translatesAutoresizingMaskIntoConstraints = false
-        return textView
-    }()
-    
+    // Public notes are gone: anything you want others to read about a venue is
+    // a comment on the venue itself (visible to everyone who opens it, not just
+    // people browsing your circle). Only the private note lives on your save.
+
     let addressLabel: UILabel = {
         let label = UILabel()
         label.text = "Address"
@@ -710,8 +692,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         formContainer.addSubview(descriptionTextView)
         formContainer.addSubview(privateNotesLabel)
         formContainer.addSubview(privateNotesTextView)
-        formContainer.addSubview(publicNotesLabel)
-        formContainer.addSubview(publicNotesTextView)
         formContainer.addSubview(addressLabel)
         formContainer.addSubview(addressTextView)
         formContainer.addSubview(privacyLabel)
@@ -851,15 +831,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             privateNotesTextView.trailingAnchor.constraint(equalTo: formContainer.trailingAnchor, constant: -Constants.Spacing.large),
             privateNotesTextView.heightAnchor.constraint(equalToConstant: 60),
             
-            publicNotesLabel.topAnchor.constraint(equalTo: privateNotesTextView.bottomAnchor, constant: Constants.Spacing.medium),
-            publicNotesLabel.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
-            
-            publicNotesTextView.topAnchor.constraint(equalTo: publicNotesLabel.bottomAnchor, constant: Constants.Spacing.small),
-            publicNotesTextView.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
-            publicNotesTextView.trailingAnchor.constraint(equalTo: formContainer.trailingAnchor, constant: -Constants.Spacing.large),
-            publicNotesTextView.heightAnchor.constraint(equalToConstant: 60),
-            
-            addressLabel.topAnchor.constraint(equalTo: publicNotesTextView.bottomAnchor, constant: Constants.Spacing.medium),
+            addressLabel.topAnchor.constraint(equalTo: privateNotesTextView.bottomAnchor, constant: Constants.Spacing.medium),
             addressLabel.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
             
             addressTextView.topAnchor.constraint(equalTo: addressLabel.bottomAnchor, constant: Constants.Spacing.small),
@@ -900,7 +872,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         nameTextField.alpha = 1.0
         descriptionTextView.alpha = 1.0
         privateNotesTextView.alpha = 1.0
-        publicNotesTextView.alpha = 1.0
         addressTextView.alpha = 1.0
         categoryButton.alpha = 1.0
         
@@ -1105,7 +1076,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                 self.nameTextField.text = ""
                 self.descriptionTextView.text = ""
                 self.privateNotesTextView.text = ""
-                self.publicNotesTextView.text = ""
                 
                 // Clear any Google Place details since this is manual
                 self.selectedGooglePlaceDetails = nil
@@ -1200,7 +1170,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                             !addressTextView.text.isEmpty ||
                             !descriptionTextView.text.isEmpty ||
                             !privateNotesTextView.text.isEmpty ||
-                            !publicNotesTextView.text.isEmpty ||
                             selectedImage != nil ||
                             selectedLocation != nil
 
@@ -1480,7 +1449,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         
         let description = descriptionTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
         let privateNotes = privateNotesTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let publicNotes = publicNotesTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
         
         // Get privacy setting from segmented control
         let privacy: PlacePrivacy = privacySegmentedControl.selectedSegmentIndex == 0 ? .followCirclePrivacy : .private
@@ -1521,7 +1489,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                                 subcategory: subcategory,
                                 privacy: privacy,
                                 privateNotes: privateNotes.isEmpty ? nil : privateNotes,
-                                publicNotes: publicNotes.isEmpty ? nil : publicNotes,
                                 force: true  // User explicitly chose to add despite duplicate
                             )
                         })
@@ -1542,7 +1509,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                             subcategory: subcategory,
                             privacy: privacy,
                             privateNotes: privateNotes.isEmpty ? nil : privateNotes,
-                            publicNotes: publicNotes.isEmpty ? nil : publicNotes
                         )
                     }
                 }
@@ -1702,7 +1668,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     func proceedWithPlaceCreation(name: String, address: String, description: String, 
                                         category: PlaceCategory, customCategory: String?, 
                                         subcategory: String?, privacy: PlacePrivacy,
-                                        privateNotes: String?, publicNotes: String?,
+                                        privateNotes: String?,
                                         force: Bool = false) {
         // Create place
         let loadingAlert = UIAlertController(title: "Creating Place", message: "Please wait...", preferredStyle: .alert)
@@ -1783,7 +1749,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                                                     category: category,
                                                     description: description,
                                                     privateNotes: privateNotes,
-                                                    publicNotes: publicNotes,
                                                     loadingAlert: loadingAlert,
                                                     force: force)
                 }
@@ -1803,7 +1768,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                                        category: category,
                                        description: description,
                                        privateNotes: privateNotes,
-                                       publicNotes: publicNotes,
                                        loadingAlert: loadingAlert,
                                        force: force)
         } else if let poiData = currentPOIData {
@@ -1827,7 +1791,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                 description: description.isEmpty ? nil : description,
                 circleId: selectedCircleId,
                 notes: privateNotes,
-                publicNotes: publicNotes,
                 googlePlaceId: nil,
                 preUploadedPhotoUrls: self.uploadedPhotoUrls.isEmpty ? nil : self.uploadedPhotoUrls,
                 force: force
@@ -1936,7 +1899,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                                        loadingAlert: UIAlertController, force: Bool = false) {
         // Get notes from text views
         let privateNotes = privateNotesTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let publicNotes = publicNotesTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
         // Location is now mandatory - ensure it's valid
         guard location.latitude >= -90 && location.latitude <= 90 &&
               location.longitude >= -180 && location.longitude <= 180 &&
@@ -1967,7 +1929,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             location: location,
             googlePlaceId: nil,
             privateNotes: privateNotes.isEmpty ? nil : privateNotes,
-            publicNotes: publicNotes.isEmpty ? nil : publicNotes,
             neighborhood: selectedNeighborhood,
             applePoiCategory: selectedApplePoiCategory,
             force: force
@@ -2016,7 +1977,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                                             category: PlaceCategory,
                                             description: String,
                                             privateNotes: String?,
-                                            publicNotes: String?,
                                             loadingAlert: UIAlertController,
                                             force: Bool = false) {
         Logger.debug("📸 Using pre-uploaded photos: \(self.uploadedPhotoUrls)")
@@ -2036,7 +1996,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             description: description.isEmpty ? nil : description,
             circleId: selectedCircleId,
             notes: privateNotes,
-            publicNotes: publicNotes,
             googlePlaceId: googleDetails.placeID.isEmpty ? nil : googleDetails.placeID,
             preUploadedPhotoUrls: self.uploadedPhotoUrls.isEmpty ? nil : self.uploadedPhotoUrls,
             rating: googleDetails.rating,
@@ -2118,13 +2077,17 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     }
 
     func setVenueFieldsLocked(_ locked: Bool) {
-        let venueControls: [UIView] = [nameTextField, categoryButton]
+        // Description is venue metadata too — prefilled from the place source
+        // (Apple POI / Google details), editable only by the venue's verified
+        // owner or a super-user, same policy as name and category.
+        let venueControls: [UIView] = [nameTextField, categoryButton, descriptionTextView]
         venueControls.forEach {
             $0.isUserInteractionEnabled = !locked
             $0.alpha = locked ? 0.55 : 1.0
         }
         nameLabel.text = locked ? "Place Name (from Google Places)" : "Place Name"
         categoryLabel.text = locked ? "Category (from Google Places)" : "Category"
+        descriptionLabel.text = locked ? "Description (from the venue)" : "Description"
     }
 
     func resolveVenueLockExemption(for googlePlaceId: String) {
@@ -2510,7 +2473,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             
             // Clear notes fields for new place
             self.privateNotesTextView.text = ""
-            self.publicNotesTextView.text = ""
             
             // Set category
             self.selectedSubcategory = nil
@@ -3108,7 +3070,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             
             // Clear notes fields for new place
             self.privateNotesTextView.text = ""
-            self.publicNotesTextView.text = ""
             
             // Set category based on types
             if !placeDetails.types.isEmpty {
