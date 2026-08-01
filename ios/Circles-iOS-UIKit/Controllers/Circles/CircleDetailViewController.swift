@@ -107,6 +107,10 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         label.textAlignment = .center
         label.layer.cornerRadius = 8
         label.clipsToBounds = true
+        // The badge keeps its intrinsic width; the name label is the one that
+        // wraps/truncates when space runs out.
+        label.setContentHuggingPriority(.required, for: .horizontal)
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -394,7 +398,10 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             // Name label
             nameLabel.topAnchor.constraint(equalTo: circleInfoView.topAnchor, constant: Constants.Spacing.large),
             nameLabel.leadingAnchor.constraint(equalTo: circleInfoView.leadingAnchor, constant: Constants.Spacing.large),
-            nameLabel.trailingAnchor.constraint(equalTo: circleInfoView.trailingAnchor, constant: -Constants.Spacing.large),
+            // Stop BEFORE the category badge — a full-width name ran underneath
+            // it ("Favorite Saskatoon Food Sp[Food & Dining]"). Long names wrap
+            // to a second line in the freed column instead of colliding.
+            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: categoryLabel.leadingAnchor, constant: -Constants.Spacing.small),
             
             // Category label
             categoryLabel.topAnchor.constraint(equalTo: nameLabel.topAnchor),
