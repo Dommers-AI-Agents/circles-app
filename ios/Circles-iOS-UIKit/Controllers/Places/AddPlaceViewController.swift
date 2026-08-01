@@ -1825,9 +1825,9 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                                 userInfo: ["circleId": self?.selectedCircleId ?? "", "place": place]
                             )
                             
-                            self?.presentAlert(title: "Success", message: "Place added successfully") { _ in
-                                self?.navigateToCircleDetail()
-                            }
+                            // No success popup — the piggy-bank coin drop IS
+                            // the success feedback; an alert here covered it up
+                            self?.navigateToCircleDetail()
                         case .failure(let error):
                             Logger.debug("❌ Failed to create place from POI: \(error)")
                             self?.endSaving()
@@ -1963,9 +1963,9 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                             userInfo: ["circleId": self?.selectedCircleId ?? "", "place": place]
                         )
                         
-                        self?.presentAlert(title: "Success", message: "Place added successfully") { _ in
-                            self?.navigateToCircleDetail()
-                        }
+                        // No success popup — the piggy-bank coin drop IS the
+                        // success feedback; an alert here covered it up
+                        self?.navigateToCircleDetail()
                     case .failure(let error):
                         Logger.debug("❌ Failed to create place: \(error)")
                         self?.endSaving()
@@ -2034,9 +2034,9 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                             userInfo: ["circleId": self?.selectedCircleId ?? "", "place": place]
                         )
                         
-                        self?.presentAlert(title: "Success", message: "Place added successfully") { _ in
-                            self?.navigateToCircleDetail()
-                        }
+                        // No success popup — the piggy-bank coin drop IS the
+                        // success feedback; an alert here covered it up
+                        self?.navigateToCircleDetail()
                     case .failure(let error):
                         Logger.debug("❌ Failed to create place: \(error)")
                         self?.endSaving()
@@ -3539,17 +3539,9 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                         Logger.debug("✅ Photos: \(newPlace.photos ?? [])")
                         Logger.debug("✅ Description: \(newPlace.description ?? "nil")")
                         
-                        // Show success message
-                        let successAlert = UIAlertController(
-                            title: "Success",
-                            message: "\(newPlace.name) has been added to the circle",
-                            preferredStyle: .alert
-                        )
-                        successAlert.addAction(UIAlertAction(title: "OK", style: .default) { _ in
-                            // Navigate to circle detail
-                            self.navigateToCircleDetail()
-                        })
-                        self.present(successAlert, animated: true)
+                        // No success popup — the piggy-bank coin drop IS the
+                        // success feedback; an alert here covered it up
+                        self.navigateToCircleDetail()
                         
                     case .failure(let error):
                         Logger.debug("❌ Failed to create place: \(error)")

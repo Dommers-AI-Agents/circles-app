@@ -3247,15 +3247,9 @@ extension CircleDetailViewController: PlaceSearchDelegate {
                         self.updateTableViewHeight()
                         self.addAnnotationsToMap()
                         
-                        // Show success message
-                        let successAlert = UIAlertController(
-                            title: "Success",
-                            message: "\(name) has been added to \(self.circle.name)",
-                            preferredStyle: .alert
-                        )
-                        successAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self.present(successAlert, animated: true)
-                        
+                        // No success popup — the coin drop + the place
+                        // appearing in the list are the feedback
+
                     case .failure(let error):
                         let errorAlert = UIAlertController(
                             title: "Error",
@@ -3451,15 +3445,9 @@ extension CircleDetailViewController {
                         self?.updateTableViewHeight()
                         self?.addAnnotationsToMap()
                         
-                        // Show success message
-                        let successAlert = UIAlertController(
-                            title: "Success",
-                            message: "\(newPlace.name) has been added to the circle",
-                            preferredStyle: .alert
-                        )
-                        successAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self?.present(successAlert, animated: true)
-                        
+                        // No success popup — the coin drop + the place
+                        // appearing in the list are the feedback
+
                     case .failure(let error):
                         Logger.debug("❌ Failed to create place: \(error)")
                         let errorAlert = UIAlertController(
@@ -3520,15 +3508,9 @@ extension CircleDetailViewController {
                             self.updateTableViewHeight()
                             self.addAnnotationsToMap()
                             
-                            // Show success message
-                            let successAlert = UIAlertController(
-                                title: "Success",
-                                message: "\(newPlace.name) has been added to the circle",
-                                preferredStyle: .alert
-                            )
-                            successAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                            self.present(successAlert, animated: true)
-                            
+                            // No success popup — the coin drop + the place
+                            // appearing in the list are the feedback
+
                         case .failure(let error):
                             let errorAlert = UIAlertController(
                                 title: "Error",
