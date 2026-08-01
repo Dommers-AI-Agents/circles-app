@@ -66,7 +66,7 @@ const overlayVenuePhotos = (place, venueData) => {
 
 // Venue data owned by the canonical globalPlaces record. Top-level fields map
 // 1:1; rating/hours/contact fields live nested under googleData on the record.
-const VENUE_TOP_FIELDS = ['name', 'address', 'location', 'category', 'subcategory'];
+const VENUE_TOP_FIELDS = ['name', 'address', 'location', 'category', 'subcategory', 'description'];
 const VENUE_GOOGLE_FIELDS = ['rating', 'userRatingsTotal', 'priceLevel', 'openingHours', 'website', 'phone'];
 
 // Merge canonical venue fields over a save doc's (possibly stale) copies.

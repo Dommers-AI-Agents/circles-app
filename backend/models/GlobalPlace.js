@@ -34,6 +34,10 @@ const createGlobalPlace = (placeData) => {
     location: placeData.location, // GeoPoint { type: 'Point', coordinates: [lng, lat] }
     category: placeData.category,
     subcategory: placeData.subcategory || null,
+    // Venue description — Google's editorial summary when the client had one,
+    // else the client-synthesized text. Was silently dropped before 2026-07,
+    // which is why older records are empty (backfill: scripts/backfill-editorial-summaries.js).
+    description: placeData.description || null,
 
     // Raw category signals kept so the category can be re-derived later without
     // re-fetching from Google/Apple. Populated when the client/import forwards
