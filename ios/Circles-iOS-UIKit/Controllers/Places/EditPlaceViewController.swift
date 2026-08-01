@@ -236,7 +236,7 @@ class EditPlaceViewController: BaseViewController {
     
     private let notesLabel: UILabel = {
         let label = UILabel()
-        label.text = "Notes (optional)"
+        label.text = "Private note (only you can see this)"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .bold)
         label.textColor = Constants.Colors.darkGray
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -767,8 +767,8 @@ class EditPlaceViewController: BaseViewController {
             privacySegmentedControl.selectedSegmentIndex = index
         }
         
-        // Same precedence as the place detail screen: publicNotes with legacy fallback
-        notesTextView.text = place.publicNotes ?? place.notes
+        // The only note on a save is the private one; shared thoughts are comments
+        notesTextView.text = place.privateNotes
         
         // Tags
         if let tags = place.tags {
@@ -1010,9 +1010,9 @@ class EditPlaceViewController: BaseViewController {
             category: place.category,
             rating: place.rating,
             userRatingsTotal: place.userRatingsTotal,
-            notes: notesTextView.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : notesTextView.text,
-            privateNotes: place.privateNotes,
-            publicNotes: place.publicNotes,
+            notes: nil,
+            privateNotes: notesTextView.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : notesTextView.text,
+            publicNotes: nil,
             tags: place.tags,
             reviews: place.reviews,
             openingHours: place.openingHours,
@@ -1113,7 +1113,7 @@ class EditPlaceViewController: BaseViewController {
             website: website,
             phone: phone,
             tags: tags,
-            publicNotes: notes,
+            privateNotes: notes,
             addPhotos: photosData.isEmpty ? nil : photosData,
             removePhotoUrls: deletedPhotoURLs.isEmpty ? nil : deletedPhotoURLs
         ) { [weak self] result in

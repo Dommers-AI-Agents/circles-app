@@ -43,6 +43,22 @@ class MyNetworkViewController: BaseViewController {
         return control
     }()
 
+    // Red count bubble for pending requests, floated over the Requests segment
+    // (UISegmentedControl has no native badge support). Mirrors the tab bar
+    // badge so the user can see where to tap once they arrive on this screen.
+    private let requestsBadgeLabel: UILabel = {
+        let label = UILabel()
+        label.font = .systemFont(ofSize: 12, weight: .bold)
+        label.textColor = .white
+        label.backgroundColor = .systemRed
+        label.textAlignment = .center
+        label.layer.cornerRadius = 9
+        label.clipsToBounds = true
+        label.isHidden = true
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
     
     private let containerView: UIView = {
         let view = UIView()
@@ -88,12 +104,24 @@ class MyNetworkViewController: BaseViewController {
             name: .showRequestsSegment,
             object: nil
         )
+
+        // Same signal the tab bar badge listens to — fires whenever
+        // NetworkManager reloads or mutates the pending-connections list.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(pendingRequestsCountChanged),
+            name: .pendingConnectionsCountChanged,
+            object: nil
+        )
     }
-    
+
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         // Force refresh connections to ensure badge is accurate
         NetworkManager.shared.refreshBadgeCount()
+        // Show the cached count immediately; the refresh above re-posts
+        // .pendingConnectionsCountChanged once fresh data lands.
+        updateRequestsBadge()
     }
 
     /// Refreshes whichever segment is visible.
@@ -181,6 +209,7 @@ class MyNetworkViewController: BaseViewController {
         view.addSubview(searchBar)
         view.addSubview(segmentedControl)
         view.addSubview(containerView)
+        view.addSubview(requestsBadgeLabel)
 
         NSLayoutConstraint.activate([
             searchBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
@@ -191,6 +220,12 @@ class MyNetworkViewController: BaseViewController {
             segmentedControl.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 12),
             segmentedControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             segmentedControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+
+            // Straddles the top-right corner of the last segment (Requests).
+            requestsBadgeLabel.centerYAnchor.constraint(equalTo: segmentedControl.topAnchor),
+            requestsBadgeLabel.centerXAnchor.constraint(equalTo: segmentedControl.trailingAnchor, constant: -10),
+            requestsBadgeLabel.heightAnchor.constraint(equalToConstant: 18),
+            requestsBadgeLabel.widthAnchor.constraint(greaterThanOrEqualTo: requestsBadgeLabel.heightAnchor),
 
             containerView.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 16),
             containerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -247,6 +282,23 @@ class MyNetworkViewController: BaseViewController {
 
     @objc private func showRequestsSegment() {
         selectTab(.requests)
+    }
+
+    // MARK: - Requests badge
+
+    @objc private func pendingRequestsCountChanged() {
+        updateRequestsBadge()
+    }
+
+    private func updateRequestsBadge() {
+        NetworkManager.shared.getPendingConnectionsCount { [weak self] count in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.requestsBadgeLabel.isHidden = count == 0
+                self.requestsBadgeLabel.text = count > 9 ? "9+" : "\(count)"
+                self.requestsBadgeLabel.accessibilityLabel = "\(count) pending connection requests"
+            }
+        }
     }
 
     private func performSearch(with query: String) {

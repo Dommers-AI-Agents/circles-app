@@ -97,7 +97,10 @@ struct Place: Codable, Identifiable {
     let userRatingsTotal: Int?
     let notes: String? // Legacy field, will be migrated to publicNotes
     let privateNotes: String? // Only visible to the user who added them
-    let publicNotes: String? // Visible to all users who can see the place
+    /// LEGACY (retired 2026-07-30). Public notes became comments on the venue
+    /// — see scripts/migrate-public-notes-to-comments.js. Still decoded because
+    /// old/deleted docs carry it; nothing should render or send it.
+    let publicNotes: String?
     let tags: [String]?
     let reviews: [PlaceReview]?
     let openingHours: [OpeningHour]?

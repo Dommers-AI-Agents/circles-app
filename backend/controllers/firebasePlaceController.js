@@ -1460,12 +1460,19 @@ exports.updatePlace = async (req, res, next) => {
     const isCircleOwner = circle.owner === req.user.uid;
     const isSharedWith = circle.sharedWith && circle.sharedWith.includes(req.user.uid);
     const isPlaceAdder = place.addedBy === req.user.uid;
-    
+
+    // A verified venue owner may correct their venue's data from any save of
+    // it — they usually didn't add the save they're looking at. Their edit is
+    // restricted to venue fields below; per-user fields stay untouchable.
+    let isVenueOwnerEdit = false;
     if (!isCircleOwner && !isSharedWith && !isPlaceAdder) {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to update this place'
-      });
+      isVenueOwnerEdit = await isVerifiedVenueOwner(req.user.uid, req.params.id, place.googlePlaceId);
+      if (!isVenueOwnerEdit) {
+        return res.status(403).json({
+          success: false,
+          message: 'Not authorized to update this place'
+        });
+      }
     }
 
     // Validate updates
@@ -1501,6 +1508,19 @@ exports.updatePlace = async (req, res, next) => {
         touched.forEach((field) => delete updateData[field]);
         console.log(`🔒 Venue fields stripped from update of Google-backed place ${req.params.id}: ${touched.join(', ')}`);
       }
+    }
+
+    // Venue owners editing a save that isn't theirs may only touch venue
+    // fields — tags, privacy, photos, notes belong to whoever saved it.
+    if (isVenueOwnerEdit) {
+      const VENUE_FIELDS = [
+        'name', 'address', 'location', 'geohash', 'category', 'subcategory',
+        'website', 'phone', 'rating', 'userRatingsTotal', 'priceLevel',
+        'openingHours', 'updatedAt'
+      ];
+      Object.keys(updateData).forEach((field) => {
+        if (!VENUE_FIELDS.includes(field)) delete updateData[field];
+      });
     }
 
     // privateNotes belong to the person who added the place — reads already

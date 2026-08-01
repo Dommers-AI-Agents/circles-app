@@ -359,7 +359,9 @@ async function executeImport(userId, payload) {
         address: place.address,
         location: { type: 'Point', coordinates: [place.lng, place.lat] },
         category: place.category || 'other',
-        publicNotes: place.notes || null,
+        // Imported captions belong to the importer alone; publishing another
+        // platform's private notes as venue comments would be a leak.
+        privateNotes: place.notes || null,
         tags: place.tags || [],
         website: place.sourceUrl || null,
         googlePlaceId: place.googlePlaceId || null,

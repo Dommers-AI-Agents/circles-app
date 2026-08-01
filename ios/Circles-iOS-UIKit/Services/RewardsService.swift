@@ -931,6 +931,9 @@ struct AdminVenue: Codable {
     // Place identity, for jumping from the manage hub to the public place page
     let googlePlaceId: String?
     let globalPlaceId: String?
+    // Whether the Business subscription covers THIS venue (subscriptions are
+    // per-store). Present in /my-venues; optional so older shapes decode.
+    let ownerPremium: Bool?
 }
 
 struct AdminVenueStats: Codable {

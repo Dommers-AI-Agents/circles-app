@@ -223,7 +223,11 @@ const createPlace = (placeData, circleId, addedBy) => {
     rating: placeData.rating || null,
     userRatingsTotal: placeData.userRatingsTotal || null,
     notes: placeData.notes || null, // Legacy field - kept for backward compatibility
-    publicNotes: placeData.publicNotes || null, // Notes visible to all users who can see the place
+    // publicNotes REMOVED (2026-07-30): a shared opinion about a venue is a
+    // comment (placeComments, keyed by globalPlaceId, visible to anyone who
+    // opens the venue). Existing notes were migrated by
+    // scripts/migrate-public-notes-to-comments.js. privateNotes stay per-save
+    // and are stripped from every read for anyone but the saver.
     privateNotes: placeData.privateNotes || null, // Notes only visible to the user who added them
     tags: placeData.tags || [],
     reviews: placeData.reviews || [],
@@ -834,7 +838,9 @@ const validateNotification = (notificationData) => {
     'activity_comment',
     'check_in',
     'new_suggestion',
-    'circle_invite'
+    'circle_invite',
+    'store_claim',
+    'store_claim_approved'
   ];
   
   if (!notificationData.type || !validTypes.includes(notificationData.type)) {
@@ -1021,7 +1027,7 @@ const validateActivityReaction = (reactionData) => {
   }
   
   // Validate emoji is one of the allowed ones (LinkedIn-style reactions)
-  const allowedEmojis = ['👍', '❤️', '🎉', '💪', '💡', '😆'];
+  const allowedEmojis = ['👍', '❤️', '🎉', '💪', '💡', '😆', '😋'];
   if (!allowedEmojis.includes(reactionData.emoji)) {
     errors.push('Invalid reaction emoji');
   }

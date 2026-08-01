@@ -513,8 +513,10 @@ class EditProfileViewController: BaseViewController {
         if let image = selectedImage {
             profileImageData = image.jpegData(compressionQuality: 0.8)
         } else if let avatarName = selectedAvatarName {
-            // Use special URL format for avatar
-            profileImageUrl = "sf-symbol:\(avatarName)"
+            // Stock avatars already carry their scheme; legacy picks don't
+            profileImageUrl = avatarName.hasPrefix(StockAvatar.scheme)
+                ? avatarName
+                : "sf-symbol:\(avatarName)"
         }
         
         UserService.shared.updateUserProfile(
@@ -525,7 +527,8 @@ class EditProfileViewController: BaseViewController {
             bio: bio,
             location: location,
             zipcode: zipcode,
-            profilePicture: profileImageData
+            profilePicture: profileImageData,
+            profilePictureUrl: profileImageUrl
         ) { [weak self] result in
             DispatchQueue.main.async {
                 self?.isLoading = false
@@ -543,6 +546,12 @@ class EditProfileViewController: BaseViewController {
                     
                     // Update the cached user
                     AuthService.shared.updateCurrentUser(updatedUser)
+
+                    // A real photo landed — clear the nudge schedule so a
+                    // later removal starts fresh instead of inheriting declines
+                    if updatedUser.hasRealProfilePhoto {
+                        ProfilePhotoReminder.reset()
+                    }
                     
                     self?.presentAlert(title: "Success", message: "Profile updated successfully") {
                         self?.navigationController?.popViewController(animated: true)
@@ -589,6 +598,19 @@ class EditProfileViewController: BaseViewController {
     }
     
     private func showAvatarPicker() {
+        // Stock avatars: a grid of symbol/colour combinations rendered on
+        // device. Replaces the old grey SF-symbol list, where everyone who
+        // picked "Classic" ended up with the identical silhouette.
+        let picker = StockAvatarPickerViewController()
+        picker.onSelect = { [weak self] value in
+            self?.selectedAvatarName = value
+            self?.selectedImage = nil // Clear any selected photo
+            self?.updateProfileImage()
+        }
+        present(UINavigationController(rootViewController: picker), animated: true)
+    }
+
+    private func showLegacyAvatarPicker() {
         let avatarView = DefaultImageSelectionView(type: .avatar)
         avatarView.onImageSelected = { [weak self] symbolName in
             self?.selectedAvatarName = symbolName
@@ -626,8 +648,13 @@ class EditProfileViewController: BaseViewController {
             profileImageView.backgroundColor = Constants.Colors.lightGray
             profileImageView.tintColor = nil
         } else if let avatarName = selectedAvatarName {
-            // Show the selected avatar
-            if let avatarCase = DefaultImages.AvatarDefault.allCases.first(where: { $0.rawValue == avatarName }) {
+            if let stock = StockAvatar.image(from: avatarName, diameter: 100) {
+                profileImageView.image = stock
+                profileImageView.backgroundColor = .clear
+                profileImageView.tintColor = nil
+                profileImageView.contentMode = .scaleAspectFill
+            } else if let avatarCase = DefaultImages.AvatarDefault.allCases.first(where: { $0.rawValue == avatarName }) {
+                // Legacy SF-symbol avatar picked before the stock set existed
                 profileImageView.image = avatarCase.image(size: 80)
                 profileImageView.backgroundColor = avatarCase.backgroundColor
                 profileImageView.tintColor = .white

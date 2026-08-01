@@ -18,10 +18,11 @@ class VenueManageViewController: BaseViewController {
     private var contactEmail: String?
     private let windowCode: String
     private let windowStickerUrl: String?
-    // Business-tier gate (offers/announcements/earn rate/register QR). Starts
-    // optimistic to avoid flashing locks for subscribed owners; the server
-    // enforces regardless.
-    private var ownerPremium = true
+    // Business-tier gate (offers/announcements/earn rate/register QR) —
+    // per-venue: the subscription only covers the store it was bought for.
+    // Seeded from the venue payload when present, otherwise optimistic to
+    // avoid flashing locks; the server enforces regardless.
+    private var ownerPremium: Bool
 
     private enum Section: Int, CaseIterable {
         case dashboard
@@ -60,6 +61,7 @@ class VenueManageViewController: BaseViewController {
         self.windowCode = venue.windowCode
         self.windowStickerUrl = venue.windowStickerUrl
         self.venuePlaceId = venue.globalPlaceId ?? venue.googlePlaceId
+        self.ownerPremium = venue.ownerPremium ?? true
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -108,24 +110,129 @@ class VenueManageViewController: BaseViewController {
 
     private func refreshOwnerPremium() {
         RewardsService.shared.getRewardsProfile { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self, case .success(let profile) = result else { return }
-                let premium = profile.isSuperUser || (profile.ownerPremium ?? false)
-                if premium != self.ownerPremium {
-                    self.ownerPremium = premium
-                    self.tableView.reloadData()
+            guard let self = self, case .success(let profile) = result else { return }
+            if profile.isSuperUser {
+                DispatchQueue.main.async { self.applyOwnerPremium(true) }
+                return
+            }
+            // Per-venue: the subscription covers only the store it was bought
+            // for, so ask for this venue's own flag rather than the account.
+            RewardsService.shared.getMyVenues { [weak self] venuesResult in
+                DispatchQueue.main.async {
+                    guard let self = self, case .success(let venues) = venuesResult else { return }
+                    let mine = venues.first { $0.venueId == self.venueId }
+                    self.applyOwnerPremium(mine?.ownerPremium ?? false)
                 }
             }
         }
     }
 
+    private func applyOwnerPremium(_ premium: Bool) {
+        if premium != ownerPremium {
+            ownerPremium = premium
+            tableView.reloadData()
+        }
+        // Header only on server confirmation — ownerPremium may start
+        // optimistic, and neither state should flash before it's known.
+        updateBusinessHeader(premium: premium)
+    }
+
     private func presentOwnerPaywall() {
         let paywallVC = OwnerPaywallViewController()
+        paywallVC.venueId = venueId
         paywallVC.onSubscribed = { [weak self] in
             self?.ownerPremium = true
             self?.tableView.reloadData()
+            self?.updateBusinessHeader(premium: true)
         }
         navigationController?.pushViewController(paywallVC, animated: true)
+    }
+
+    // MARK: - Business status header
+
+    /// nil until the server has confirmed the venue's premium state
+    private var businessHeaderState: Bool?
+
+    /// Top-of-screen subscription feedback, server-confirmed only. Subscribed:
+    /// a green "Business active" banner — otherwise the only signal owners get
+    /// is the *absence* of locks, which is easy to miss. Not subscribed: the
+    /// bold Business upsell; tapping it opens the paywall for this venue.
+    private func updateBusinessHeader(premium: Bool) {
+        guard businessHeaderState != premium else { return }
+        businessHeaderState = premium
+
+        let content: UIView
+        if premium {
+            content = makeBusinessActiveBanner()
+        } else {
+            let promo = BusinessUpsellBanner()
+            promo.onTap = { [weak self] in self?.presentOwnerPaywall() }
+            content = promo
+        }
+
+        let container = UIView()
+        container.addSubview(content)
+        NSLayoutConstraint.activate([
+            content.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
+            content.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            content.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
+            content.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+        ])
+
+        // tableHeaderView needs an explicit frame; size it for the current width
+        let width = tableView.bounds.width
+        let height = container.systemLayoutSizeFitting(
+            CGSize(width: width, height: UIView.layoutFittingCompressedSize.height),
+            withHorizontalFittingPriority: .required,
+            verticalFittingPriority: .fittingSizeLevel
+        ).height
+        container.frame = CGRect(x: 0, y: 0, width: width, height: height)
+        tableView.tableHeaderView = container
+    }
+
+    private func makeBusinessActiveBanner() -> UIView {
+        let banner = UIView()
+        banner.backgroundColor = UIColor.systemGreen.withAlphaComponent(0.12)
+        banner.layer.cornerRadius = 10
+        banner.translatesAutoresizingMaskIntoConstraints = false
+
+        let icon = UIImageView(image: UIImage(systemName: "checkmark.seal.fill"))
+        icon.tintColor = .systemGreen
+        icon.contentMode = .scaleAspectFit
+        icon.translatesAutoresizingMaskIntoConstraints = false
+
+        let titleLabel = UILabel()
+        titleLabel.text = "FavCircles Business active"
+        titleLabel.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
+        titleLabel.textColor = Constants.Colors.label
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let subtitleLabel = UILabel()
+        subtitleLabel.text = "This store's offers, announcements, loyalty, and full stats are unlocked."
+        subtitleLabel.font = UIFont.systemFont(ofSize: 13)
+        subtitleLabel.textColor = .secondaryLabel
+        subtitleLabel.numberOfLines = 0
+        subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        banner.addSubview(icon)
+        banner.addSubview(titleLabel)
+        banner.addSubview(subtitleLabel)
+        NSLayoutConstraint.activate([
+            icon.leadingAnchor.constraint(equalTo: banner.leadingAnchor, constant: 12),
+            icon.centerYAnchor.constraint(equalTo: banner.centerYAnchor),
+            icon.widthAnchor.constraint(equalToConstant: 26),
+            icon.heightAnchor.constraint(equalToConstant: 26),
+
+            titleLabel.topAnchor.constraint(equalTo: banner.topAnchor, constant: 10),
+            titleLabel.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 10),
+            titleLabel.trailingAnchor.constraint(equalTo: banner.trailingAnchor, constant: -12),
+
+            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
+            subtitleLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+            subtitleLabel.trailingAnchor.constraint(equalTo: titleLabel.trailingAnchor),
+            subtitleLabel.bottomAnchor.constraint(equalTo: banner.bottomAnchor, constant: -10)
+        ])
+        return banner
     }
 
     // MARK: - Public page
@@ -606,16 +713,71 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
         return Section.allCases.count
     }
 
-    func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        switch Section(rawValue: section)! {
-        case .dashboard: return nil
-        case .businessInfo: return "Business info"
-        case .windowQR: return "Scan-to-save QR"
-        case .earnRate: return "Points per purchase"
-        case .offers: return "Offers"
-        case .announcements: return "Announcements"
-        case .registerCode: return "Register QR card"
+    /// Header title + the plain-language explanation behind its ⓘ button.
+    /// Every tool here gets one — store owners shouldn't have to guess what
+    /// anything is for.
+    private func headerInfo(for section: Section) -> (title: String, explanation: String) {
+        switch section {
+        case .dashboard:
+            return ("Dashboard",
+                    "Your store's numbers: how many people saved your place, follow it, and scan your QR codes. Headline stats are free; detailed monthly trends come with FavCircles Business.")
+        case .businessInfo:
+            return ("Business info",
+                    "How FavCircles reaches you about this venue, plus a link to your public place page. Monthly reports and printable QR codes go to the contact email.")
+        case .windowQR:
+            return ("Scan-to-save QR",
+                    "Print this code and put it in your window. Customers scan it to save your place in FavCircles and start earning points. Free for every venue.")
+        case .earnRate:
+            return ("Points per purchase",
+                    "How many points a customer earns each time they scan your register card after buying something (limited to once per day per customer).")
+        case .offers:
+            return ("Offers for points",
+                    "Rewards customers can redeem with the points they earn at your store — for example \"Free coffee — 100 points\". The customer taps Redeem at your counter and shows you the confirmation screen; you hand over the reward.")
+        case .announcements:
+            return ("Announcements",
+                    "Short updates shown on your place's page and in your followers' feeds — deals, happy hours, events. Expired announcements hide automatically.")
+        case .registerCode:
+            return ("Register QR card",
+                    "The QR card you keep at the register. Customers scan it after a purchase to collect their points. Rotating it invalidates the old printed card — do this if a code leaks or is being abused.")
         }
+    }
+
+    func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+        let info = headerInfo(for: Section(rawValue: section)!)
+
+        let header = UIView()
+
+        let label = UILabel()
+        label.text = info.title.uppercased()
+        label.font = UIFont.systemFont(ofSize: 13)
+        label.textColor = .secondaryLabel
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        let infoButton = UIButton(type: .detailDisclosure)
+        infoButton.tintColor = Constants.Colors.primary
+        infoButton.tag = section
+        infoButton.addTarget(self, action: #selector(sectionInfoTapped(_:)), for: .touchUpInside)
+        infoButton.accessibilityLabel = "About \(info.title)"
+        infoButton.translatesAutoresizingMaskIntoConstraints = false
+
+        header.addSubview(label)
+        header.addSubview(infoButton)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 16),
+            label.bottomAnchor.constraint(equalTo: header.bottomAnchor, constant: -6),
+            label.topAnchor.constraint(greaterThanOrEqualTo: header.topAnchor, constant: 6),
+
+            infoButton.centerYAnchor.constraint(equalTo: label.centerYAnchor),
+            infoButton.leadingAnchor.constraint(equalTo: label.trailingAnchor, constant: 2),
+            infoButton.trailingAnchor.constraint(lessThanOrEqualTo: header.trailingAnchor, constant: -16)
+        ])
+        return header
+    }
+
+    @objc private func sectionInfoTapped(_ sender: UIButton) {
+        guard let section = Section(rawValue: sender.tag) else { return }
+        let info = headerInfo(for: section)
+        AlertPresenter.showInfo(title: info.title, message: info.explanation, from: self)
     }
 
     func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {

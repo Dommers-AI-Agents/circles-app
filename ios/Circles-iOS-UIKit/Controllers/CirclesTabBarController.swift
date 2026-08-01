@@ -49,6 +49,7 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         // Update badges on load
         updateMessagesBadge()
         updateNetworkBadge()
+        updateMeBadge()
         
         // Set initial messages tab state (default is Circles tab which is index 0)
         MessagingManager.shared.setMessagesTabActive(selectedIndex == 2)
@@ -199,6 +200,27 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
             self?.updateNetworkBadge()
         }
         badgeObservers.append(networkObserver)
+
+        // Listen for ownership-claim reviews (approve/deny clears the Me badge)
+        let claimsObserver = NotificationCenter.default.addObserver(
+            forName: .storeClaimsChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.updateMeBadge()
+        }
+        badgeObservers.append(claimsObserver)
+
+        // New claims usually land via push while backgrounded — re-check the
+        // pending count whenever the app comes back to the foreground
+        let foregroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.updateMeBadge()
+        }
+        badgeObservers.append(foregroundObserver)
     }
     
     private func setupNotificationObservers() {
@@ -263,6 +285,25 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         }
     }
     
+    /// Pending store-ownership claims mirror the storefront dot on the profile
+    /// page: badge the Me tab so the reviewer knows to head there. Super-user
+    /// only — regular users and store owners never see it.
+    private func updateMeBadge() {
+        RewardsService.shared.getRewardsProfile { [weak self] result in
+            guard case .success(let profile) = result, profile.isSuperUser else {
+                DispatchQueue.main.async { self?.viewControllers?[3].tabBarItem.badgeValue = nil }
+                return
+            }
+            RewardsService.shared.listClaims(status: "pending") { [weak self] claimsResult in
+                DispatchQueue.main.async {
+                    guard case .success(let claims) = claimsResult else { return }
+                    self?.viewControllers?[3].tabBarItem.badgeValue =
+                        claims.isEmpty ? nil : "\(claims.count)"
+                }
+            }
+        }
+    }
+
     private func updateApplicationBadge() {
         // Calculate total badge count
         var totalCount = 0

@@ -19,12 +19,10 @@ const ACTIVE_STATUSES = ['active', 'trial', 'grace_period'];
 const isBusinessProduct = (productId) =>
   BUSINESS_PRODUCT_IDS.includes(productId);
 
-// Synchronous check over an already-loaded user object (req.user carries the
-// full user doc). Super users and manually-flagged owners always pass.
-const isOwnerPremiumUser = (user) => {
+// Paid subscription active on the account (ignores super/manual bypasses and
+// says nothing about WHICH venue it covers).
+const hasActiveOwnerSubscription = (user) => {
   if (!user) return false;
-  if (user.isSuperUser === true) return true;
-  if (user.ownerManuallyVerified === true) return true;
   if (!ACTIVE_STATUSES.includes(user.ownerSubscriptionStatus)) return false;
   const expiry = user.ownerSubscriptionExpiryDate
     ? new Date(user.ownerSubscriptionExpiryDate)
@@ -32,31 +30,54 @@ const isOwnerPremiumUser = (user) => {
   return !expiry || expiry > new Date();
 };
 
+// Account-level "has any business entitlement" (profile/UI summary only —
+// venue gating must use isOwnerPremiumForVenue). Super users and
+// manually-flagged owners always pass.
+const isOwnerPremiumUser = (user) => {
+  if (!user) return false;
+  if (user.isSuperUser === true) return true;
+  if (user.ownerManuallyVerified === true) return true;
+  return hasActiveOwnerSubscription(user);
+};
+
+// The Business subscription covers exactly ONE venue (ownerSubscriptionVenueId,
+// stamped at purchase) — an owner with several stores subscribes per store.
+// Super users and manually-verified owners keep account-wide access; those are
+// admin grants, not App Store purchases.
+const isOwnerPremiumForVenue = (user, venueId) => {
+  if (!user || !venueId) return false;
+  if (user.isSuperUser === true) return true;
+  if (user.ownerManuallyVerified === true) return true;
+  if (!hasActiveOwnerSubscription(user)) return false;
+  return user.ownerSubscriptionVenueId === venueId;
+};
+
 // Per-instance cache of the last KNOWN owner-premium result (true OR false),
 // so a transient Firestore error at the register falls back to the last known
-// answer for that owner rather than blanket-approving every venue. Refreshed
-// on every successful lookup; only consulted on error.
-const premiumCache = new Map(); // userId -> { value: boolean, at: epochMs }
+// answer for that owner+venue rather than blanket-approving every venue.
+// Refreshed on every successful lookup; only consulted on error.
+const premiumCache = new Map(); // `${userId}:${venueId}` -> { value, at: epochMs }
 
-// Async variant for callers that only hold a user id (e.g. checking a venue
-// owner's status during a customer's register scan). Fails to last-known on a
-// Firestore error (defaulting to false when the owner has never been seen) —
+// Async variant for callers that only hold ids (e.g. checking a venue owner's
+// status during a customer's register scan). Fails to last-known on a
+// Firestore error (defaulting to false when the pair has never been seen) —
 // never blanket-true, which used to leak the paid program to lapsed venues.
-const isOwnerPremiumById = async (userId) => {
-  if (!userId) return false;
+const isOwnerPremiumById = async (userId, venueId) => {
+  if (!userId || !venueId) return false;
+  const cacheKey = `${userId}:${venueId}`;
   try {
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
-    const value = userDoc.exists && isOwnerPremiumUser(userDoc.data());
-    premiumCache.set(userId, { value, at: Date.now() });
+    const value = userDoc.exists && isOwnerPremiumForVenue(userDoc.data(), venueId);
+    premiumCache.set(cacheKey, { value, at: Date.now() });
     return value;
   } catch (error) {
-    const cached = premiumCache.get(userId);
+    const cached = premiumCache.get(cacheKey);
     if (cached) {
       const ageSec = Math.round((Date.now() - cached.at) / 1000);
-      console.warn(`[loyalty-integrity] owner-premium lookup failed for ${userId}; using last-known=${cached.value} (age ${ageSec}s): ${error.message}`);
+      console.warn(`[loyalty-integrity] owner-premium lookup failed for ${cacheKey}; using last-known=${cached.value} (age ${ageSec}s): ${error.message}`);
       return cached.value;
     }
-    console.warn(`[loyalty-integrity] owner-premium lookup failed for ${userId}; no cached value, denying: ${error.message}`);
+    console.warn(`[loyalty-integrity] owner-premium lookup failed for ${cacheKey}; no cached value, denying: ${error.message}`);
     return false;
   }
 };
@@ -77,7 +98,7 @@ const venueLoyaltyStatus = async (venue) => {
   if (!venue) return { active: false, reason: 'none' };
   if (isCompActive(venue)) return { active: true, reason: 'comp' };
   if (!venue.ownerUserId) return { active: false, reason: 'no_owner' };
-  const premium = await isOwnerPremiumById(venue.ownerUserId);
+  const premium = await isOwnerPremiumById(venue.ownerUserId, venue.venueId || venue.id);
   return { active: premium, reason: premium ? 'owner_premium' : 'lapsed' };
 };
 
@@ -87,6 +108,7 @@ module.exports = {
   BUSINESS_PRODUCT_IDS,
   isBusinessProduct,
   isOwnerPremiumUser,
+  isOwnerPremiumForVenue,
   isOwnerPremiumById,
   isCompActive,
   venueLoyaltyStatus,

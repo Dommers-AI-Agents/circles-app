@@ -43,11 +43,21 @@ class ImageService {
 
     // Alias for loadImage to maintain compatibility
     func loadImage(from urlString: String, completion: @escaping (UIImage?) -> Void) {
+        // Stock avatars are drawn on device, not fetched — handled here so
+        // every avatar surface in the app renders them without its own branch.
+        if let stock = StockAvatar.image(from: urlString, diameter: 200) {
+            completion(stock)
+            return
+        }
         downloadImage(from: urlString, completion: completion)
     }
     
     // Load image with custom cache key for better uniqueness
     func loadImageWithKey(from urlString: String, cacheKey: String, completion: @escaping (UIImage?) -> Void) {
+        if let stock = StockAvatar.image(from: urlString, diameter: 200) {
+            completion(stock)
+            return
+        }
         let key = NSString(string: cacheKey)
         
         // Check if image is in memory cache with custom key

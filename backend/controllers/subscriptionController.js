@@ -110,11 +110,33 @@ exports.verifySubscription = async (req, res) => {
         // and vice versa
         if (ownerSubscriptionService.isBusinessProduct(latestReceiptInfo.product_id)) {
             const ownerRef = admin.firestore().collection('users').doc(userId);
+
+            // The subscription covers exactly ONE venue. Bind the venue the
+            // client purchased for, but only when it's this user's venue and
+            // either no binding exists yet or this is a brand-new subscription
+            // (new original transaction) — a routine re-verify from another
+            // store's paywall must never silently move premium between stores.
+            const existing = (await ownerRef.get()).data() || {};
+            let venueBinding = existing.ownerSubscriptionVenueId || null;
+            const requestedVenueId = req.body.venueId || null;
+            const isNewSubscription =
+                existing.ownerOriginalTransactionId !== latestReceiptInfo.original_transaction_id;
+            if (requestedVenueId && (!venueBinding || isNewSubscription)) {
+                const venueDoc = await admin.firestore()
+                    .collection('stickerVenues').doc(requestedVenueId).get();
+                if (venueDoc.exists && venueDoc.data().ownerUserId === userId) {
+                    venueBinding = requestedVenueId;
+                } else {
+                    console.warn(`🏪 Business verify: ignoring venueId ${requestedVenueId} — not owned by ${userId}`);
+                }
+            }
+
             await ownerRef.update({
                 ownerSubscriptionStatus: subscriptionStatus,
                 ownerSubscriptionExpiryDate: new Date(expiresDateMs).toISOString(),
                 ownerSubscriptionProductId: latestReceiptInfo.product_id,
                 ownerOriginalTransactionId: latestReceiptInfo.original_transaction_id,
+                ownerSubscriptionVenueId: venueBinding,
                 lastOwnerReceiptVerification: new Date().toISOString()
             });
             return res.json({
@@ -124,7 +146,8 @@ exports.verifySubscription = async (req, res) => {
                     status: subscriptionStatus,
                     expiryDate: new Date(expiresDateMs).toISOString(),
                     autoRenewEnabled: latestReceiptInfo.auto_renew_status === '1',
-                    productId: latestReceiptInfo.product_id
+                    productId: latestReceiptInfo.product_id,
+                    venueId: venueBinding
                 }
             });
         }

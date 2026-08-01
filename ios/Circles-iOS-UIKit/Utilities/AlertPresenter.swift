@@ -50,6 +50,20 @@ class AlertPresenter {
         showSuccess(title: "Success", message: message, from: viewController, completion: completion)
     }
     
+    // MARK: - Info Alerts
+
+    /// Shows a neutral informational alert with an OK button (for ⓘ-style
+    /// explanations — not an error, not a success)
+    static func showInfo(
+        title: String,
+        message: String,
+        from viewController: UIViewController
+    ) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        viewController.present(alert, animated: true)
+    }
+
     // MARK: - Confirmation Alerts
     
     /// Shows a confirmation alert with Yes/No or custom buttons

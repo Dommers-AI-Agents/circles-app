@@ -113,6 +113,7 @@ class VenueClaimsViewController: BaseViewController {
                                 : "\(business) is enrolled and \(claimant) now owns it. QR codes are on the way to your email."
                             self.showSuccess(successMessage)
                             self.loadData()
+                            NotificationCenter.default.post(name: .storeClaimsChanged, object: nil)
                         case .failure(let error):
                             self.showError(error)
                             self.loadData() // claim may have been auto-denied (venue already owned)
@@ -141,6 +142,7 @@ class VenueClaimsViewController: BaseViewController {
                         switch result {
                         case .success:
                             self.loadData()
+                            NotificationCenter.default.post(name: .storeClaimsChanged, object: nil)
                         case .failure(let error):
                             self.showError(error)
                         }

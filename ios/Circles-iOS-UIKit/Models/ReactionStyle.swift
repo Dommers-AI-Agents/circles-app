@@ -8,6 +8,7 @@ enum ReactionStyle: String, CaseIterable {
     case support = "💪"
     case insightful = "💡"
     case funny = "😆"
+    case yummy = "😋"
     
     // Display title for each reaction
     var title: String {
@@ -18,6 +19,7 @@ enum ReactionStyle: String, CaseIterable {
         case .support: return "Support"
         case .insightful: return "Insightful"
         case .funny: return "Funny"
+        case .yummy: return "Yummy"
         }
     }
     
@@ -36,6 +38,8 @@ enum ReactionStyle: String, CaseIterable {
             return UIColor(red: 1.0, green: 0.757, blue: 0.027, alpha: 1.0) // Yellow/Orange
         case .funny:
             return UIColor(red: 1.0, green: 0.596, blue: 0.0, alpha: 1.0) // Orange
+        case .yummy:
+            return UIColor(red: 0.0, green: 0.702, blue: 0.702, alpha: 1.0) // Teal
         }
     }
     

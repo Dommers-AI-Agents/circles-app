@@ -430,6 +430,117 @@ class NotificationService {
     });
   }
 
+  // A store-ownership claim needs admin review. Notifies the admin account
+  // (ADMIN_NOTIFY_EMAIL) in-app + SSE + push so the claim isn't buried in
+  // email. Mirrors notifyDirectedSuggestion.
+  async notifyStoreClaimSubmitted(claim, claimId) {
+    const adminEmail = process.env.ADMIN_NOTIFY_EMAIL || 'sgroiwes@gmail.com';
+    const adminSnap = await db.collection(COLLECTIONS.USERS)
+      .where('email', '==', adminEmail).limit(1).get();
+    if (adminSnap.empty) {
+      console.error(`❌ store_claim notification: no user found for admin email ${adminEmail}`);
+      return;
+    }
+    const adminUserId = adminSnap.docs[0].id;
+
+    const businessName = claim.venueName || claim.placeName || 'a business';
+    const claimerName = claim.userDisplayName || claim.contactName || 'Someone';
+    const body = `${claimerName} claimed ${businessName} — tap to review`;
+    const notifData = {
+      claimId,
+      fromUserId: claim.userId || null,
+      fromUserName: claimerName,
+      placeId: claim.placeId || claim.globalPlaceId || null,
+      placeName: businessName
+    };
+
+    // In-app notification doc (visible regardless of push settings)
+    const notificationData = createNotification({
+      userId: adminUserId,
+      type: 'store_claim',
+      title: 'Store Claim to Review',
+      body,
+      data: notifData
+    });
+    const validationErrors = validateNotification(notificationData);
+    if (validationErrors.length === 0) {
+      const notificationRef = await this.db.collection(COLLECTIONS.NOTIFICATIONS).add(notificationData);
+      sseService.notifyUser(adminUserId, 'new_notification', {
+        notificationId: notificationRef.id,
+        type: 'store_claim',
+        title: notificationData.title,
+        body,
+        data: notifData
+      });
+    } else {
+      console.error('❌ Validation errors for store claim notification:', validationErrors);
+    }
+
+    // Best-effort push (FCM data values must be strings; skip nulls)
+    const pushData = { type: 'store_claim', claimId };
+    for (const [k, v] of Object.entries(notifData)) {
+      if (typeof v === 'string' && v) pushData[k] = v;
+    }
+    await this.sendToUser(adminUserId, {
+      type: 'store_claim',
+      title: 'Store Claim to Review',
+      body,
+      data: pushData
+    });
+  }
+
+  // The claimant becomes a store owner the moment an admin approves — tell
+  // them, or they only find out by stumbling into owner mode on their place.
+  async notifyStoreClaimApproved(claim, claimId, venueId) {
+    if (!claim.userId) {
+      console.error(`❌ store_claim_approved: claim ${claimId} has no userId`);
+      return;
+    }
+
+    const businessName = claim.venueName || claim.placeName || 'your store';
+    const body = `You now manage ${businessName} on FavCircles — tap to set up your store`;
+    const notifData = {
+      claimId,
+      venueId: venueId || null,
+      placeId: claim.placeId || claim.globalPlaceId || null,
+      placeName: businessName
+    };
+
+    // In-app notification doc (visible regardless of push settings)
+    const notificationData = createNotification({
+      userId: claim.userId,
+      type: 'store_claim_approved',
+      title: 'Store claim approved! 🎉',
+      body,
+      data: notifData
+    });
+    const validationErrors = validateNotification(notificationData);
+    if (validationErrors.length === 0) {
+      const notificationRef = await this.db.collection(COLLECTIONS.NOTIFICATIONS).add(notificationData);
+      sseService.notifyUser(claim.userId, 'new_notification', {
+        notificationId: notificationRef.id,
+        type: 'store_claim_approved',
+        title: notificationData.title,
+        body,
+        data: notifData
+      });
+    } else {
+      console.error('❌ Validation errors for claim-approved notification:', validationErrors);
+    }
+
+    // Best-effort push (FCM data values must be strings; skip nulls)
+    const pushData = { type: 'store_claim_approved', claimId };
+    for (const [k, v] of Object.entries(notifData)) {
+      if (typeof v === 'string' && v) pushData[k] = v;
+    }
+    await this.sendToUser(claim.userId, {
+      type: 'store_claim_approved',
+      title: 'Store claim approved! 🎉',
+      body,
+      data: pushData
+    });
+  }
+
   async notifyNewPlace(placeData, circleData, interestedUserIds) {
     const adderDoc = await db.collection(COLLECTIONS.USERS).doc(placeData.addedBy).get();
     const adderName = adderDoc.exists ? adderDoc.data().displayName : 'Someone';

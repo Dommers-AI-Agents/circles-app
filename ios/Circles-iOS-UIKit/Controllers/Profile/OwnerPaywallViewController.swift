@@ -12,6 +12,10 @@ class OwnerPaywallViewController: BaseViewController {
 
     private var businessProducts: [SubscriptionProduct] = []
 
+    /// The venue this subscription is being purchased for. Each store
+    /// subscribes separately — the backend binds the entitlement to this venue.
+    var venueId: String?
+
     /// Called after a successful purchase so the presenting screen can unlock
     var onSubscribed: (() -> Void)?
 
@@ -177,8 +181,29 @@ class OwnerPaywallViewController: BaseViewController {
         }
 
         for product in businessProducts {
-            let title = "\(product.tierName) — \(product.subscriptionDescription)"
-            let button = UIButton.primaryButton(title: title)
+            let button = UIButton.primaryButton(title: product.tierName)
+            // Two lines — plan name over price/trial. The single-line form
+            // truncated the price out of the middle ("$…fter 3 months free trial").
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = .center
+            let title = NSMutableAttributedString(
+                string: product.tierName,
+                attributes: [
+                    .font: UIFont.systemFont(ofSize: 16, weight: .semibold),
+                    .foregroundColor: UIColor.white,
+                    .paragraphStyle: paragraph
+                ]
+            )
+            title.append(NSAttributedString(
+                string: "\n" + product.subscriptionDescription,
+                attributes: [
+                    .font: UIFont.systemFont(ofSize: 13),
+                    .foregroundColor: UIColor.white.withAlphaComponent(0.9),
+                    .paragraphStyle: paragraph
+                ]
+            ))
+            button.setAttributedTitle(title, for: .normal)
+            button.titleLabel?.numberOfLines = 2
             button.addAction(UIAction { [weak self] _ in
                 self?.purchase(product)
             }, for: .touchUpInside)
@@ -192,7 +217,7 @@ class OwnerPaywallViewController: BaseViewController {
         let loading = AlertPresenter.showLoading(message: "Processing...", from: self)
         Task { @MainActor in
             do {
-                let transaction = try await SubscriptionService.shared.purchase(product)
+                let transaction = try await SubscriptionService.shared.purchase(product, venueId: venueId)
                 loading.dismiss(animated: true) {
                     guard transaction != nil else { return } // cancelled/pending
                     AlertPresenter.showSuccess(

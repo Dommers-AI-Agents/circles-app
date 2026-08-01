@@ -425,6 +425,13 @@ class NotificationsViewController: BaseViewController {
             fromUserId.isEmpty ? routeToMyNetwork() : navigateToProfile(userId: fromUserId)
         case "new_follower":
             fromUserId.isEmpty ? routeToMyNetwork() : navigateToProfile(userId: fromUserId)
+        case "store_claim":
+            // Admin-only: a store-ownership claim awaits review in the claims tray.
+            navigationController?.pushViewController(VenueClaimsViewController(), animated: true)
+        case "store_claim_approved":
+            // The claimant is now an owner — land them on their stores list,
+            // which auto-pushes into the manage hub when there's just one.
+            navigationController?.pushViewController(OwnerVenuesViewController(), animated: true)
         default:
             // Place-centric (like/comment/new place/suggestion) → the place;
             // otherwise the person who triggered it; otherwise nothing to open.
@@ -817,6 +824,12 @@ class NotificationCell: UITableViewCell {
         case "new_follower":
             iconView.image = UIImage(systemName: "person.fill.checkmark")
             iconBackgroundView.backgroundColor = Constants.Colors.primary
+        case "store_claim":
+            iconView.image = UIImage(systemName: "storefront.fill")
+            iconBackgroundView.backgroundColor = .systemOrange
+        case "store_claim_approved":
+            iconView.image = UIImage(systemName: "storefront.fill")
+            iconBackgroundView.backgroundColor = .systemGreen
         default:
             iconView.image = UIImage(systemName: "bell.fill")
             iconBackgroundView.backgroundColor = .systemGray

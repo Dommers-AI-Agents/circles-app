@@ -319,23 +319,20 @@ class DiscoverUserCell: UITableViewCell {
         
         // Profile image - use profile-specific loading to prevent cache collisions
         if let profilePicture = user.profilePicture, !profilePicture.isEmpty {
-            // Show a placeholder while loading so a reused cell never keeps
-            // the previous user's photo
-            profileImageView.image = UIImage(systemName: "person.circle.fill")
-            profileImageView.tintColor = Constants.Colors.secondaryLabel
+            // Initials placeholder while loading, so a reused cell never keeps
+            // the previous user's photo — and a failed load leaves something
+            // identifiable rather than an anonymous silhouette.
+            profileImageView.image = AvatarPlaceholder.image(for: user, diameter: 50)
             ImageService.shared.loadProfileImage(for: user.id, from: profilePicture) { [weak self] image in
                 DispatchQueue.main.async {
                     // The cell may have been reused for a different user while
                     // the image loaded — only apply if it's still the same user
-                    guard let self = self, self.user?.id == user.id else { return }
-                    self.profileImageView.image = image ?? UIImage(systemName: "person.circle.fill")
-                    if image == nil {
-                        self.profileImageView.tintColor = Constants.Colors.secondaryLabel
-                    }
+                    guard let self = self, self.user?.id == user.id, let image = image else { return }
+                    self.profileImageView.image = image
                 }
             }
         } else {
-            profileImageView.image = UIImage(systemName: "person.circle.fill")
+            profileImageView.image = AvatarPlaceholder.image(for: user, diameter: 50)
             profileImageView.tintColor = Constants.Colors.secondaryLabel
         }
         

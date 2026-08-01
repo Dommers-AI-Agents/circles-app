@@ -1702,6 +1702,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
 
     var storefrontOpensVenueAdmin = false
+    private weak var storefrontClaimsDot: UIView?
 
     /// Store owners (and super-users) get a storefront button on their own
     /// profile — the entry point to venue management. Normal users never see
@@ -1717,16 +1718,46 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                 self.storefrontOpensVenueAdmin = isSuper
 
                 let existing = self.navigationItem.rightBarButtonItems ?? []
-                guard !existing.contains(where: { $0.accessibilityLabel == "My Storefront" }) else { return }
+                if !existing.contains(where: { $0.accessibilityLabel == "My Storefront" }) {
+                    // Custom view so a pending-claims dot can sit on the icon
+                    let button = UIButton.iconButton(systemName: "storefront", pointSize: 19)
+                    button.tintColor = Constants.Colors.primary
+                    button.addTarget(self, action: #selector(self.storefrontButtonTapped), for: .touchUpInside)
 
-                let storefrontButton = UIBarButtonItem(
-                    image: UIImage(systemName: "storefront"),
-                    style: .plain,
-                    target: self,
-                    action: #selector(self.storefrontButtonTapped)
-                )
-                storefrontButton.accessibilityLabel = "My Storefront"
-                self.navigationItem.rightBarButtonItems = existing + [storefrontButton]
+                    let dot = UIView()
+                    dot.backgroundColor = .systemRed
+                    dot.layer.cornerRadius = 4.5
+                    dot.isHidden = true
+                    dot.isUserInteractionEnabled = false
+                    dot.translatesAutoresizingMaskIntoConstraints = false
+                    button.addSubview(dot)
+                    NSLayoutConstraint.activate([
+                        button.widthAnchor.constraint(equalToConstant: 30),
+                        button.heightAnchor.constraint(equalToConstant: 30),
+                        dot.widthAnchor.constraint(equalToConstant: 9),
+                        dot.heightAnchor.constraint(equalToConstant: 9),
+                        dot.topAnchor.constraint(equalTo: button.topAnchor, constant: 2),
+                        dot.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -1)
+                    ])
+                    self.storefrontClaimsDot = dot
+
+                    let storefrontButton = UIBarButtonItem(customView: button)
+                    storefrontButton.accessibilityLabel = "My Storefront"
+                    self.navigationItem.rightBarButtonItems = existing + [storefrontButton]
+                }
+                self.refreshStorefrontClaimsDot()
+            }
+        }
+    }
+
+    /// Red dot on the storefront icon while ownership claims await review —
+    /// super-users only; it mirrors the claims tray in venue admin.
+    private func refreshStorefrontClaimsDot() {
+        guard storefrontOpensVenueAdmin else { return }
+        RewardsService.shared.listClaims(status: "pending") { [weak self] result in
+            DispatchQueue.main.async {
+                guard case .success(let claims) = result else { return }
+                self?.storefrontClaimsDot?.isHidden = claims.isEmpty
             }
         }
     }

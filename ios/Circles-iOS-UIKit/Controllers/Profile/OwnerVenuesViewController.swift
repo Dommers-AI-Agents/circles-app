@@ -99,7 +99,9 @@ extension OwnerVenuesViewController: UITableViewDataSource, UITableViewDelegate 
         config.text = venue.venueName
 
         let stats = venue.stats
-        config.secondaryText = "Visits \(stats?.visits ?? 0) · Redeemed \(stats?.redemptions ?? 0) · Saves \(stats?.saves ?? 0) · Followers \(stats?.followers ?? 0)"
+        // Subscriptions are per-store — say which tier each venue is on
+        let tier = (venue.ownerPremium == true) ? "Business ✓" : "Free plan"
+        config.secondaryText = "\(tier) · Visits \(stats?.visits ?? 0) · Redeemed \(stats?.redemptions ?? 0) · Saves \(stats?.saves ?? 0) · Followers \(stats?.followers ?? 0)"
         config.secondaryTextProperties.color = .secondaryLabel
         config.secondaryTextProperties.font = UIFont.systemFont(ofSize: 12)
         config.image = UIImage(systemName: "storefront")

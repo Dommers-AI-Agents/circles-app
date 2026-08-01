@@ -285,10 +285,15 @@ class SuggestionTableViewCell: UITableViewCell {
         timeLabel.text = suggestion.timeAgo
         
         // Load profile image
-        if let urlString = suggestion.userDetails?.profilePicture {
+        let author = suggestion.userDetails
+        profileImageView.image = AvatarPlaceholder.image(
+            name: author?.displayName, seed: author?.id ?? suggestion.userId, diameter: 40
+        )
+        if let urlString = author?.profilePicture, !urlString.isEmpty {
             ImageService.shared.loadImage(from: urlString) { [weak self] image in
                 DispatchQueue.main.async {
-                    self?.profileImageView.image = image ?? UIImage(systemName: "person.circle.fill")
+                    guard let image = image else { return } // keep the initials
+                    self?.profileImageView.image = image
                 }
             }
         }

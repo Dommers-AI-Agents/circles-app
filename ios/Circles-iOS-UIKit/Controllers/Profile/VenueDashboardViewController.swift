@@ -11,6 +11,7 @@ class VenueDashboardViewController: BaseViewController {
     private let venueId: String
     private let venueName: String
     private var dashboard: VenueDashboardData?
+    private var upsellBanner: BusinessUpsellBanner?
 
     override var enablesPullToRefresh: Bool { true }
 
@@ -121,6 +122,17 @@ class VenueDashboardViewController: BaseViewController {
     private func render(_ dashboard: VenueDashboardData) {
         statsGrid.arrangedSubviews.forEach { $0.removeFromSuperview() }
         detailSection.arrangedSubviews.forEach { $0.removeFromSuperview() }
+
+        // Free-tier owners get the Business upsell front and center, above the
+        // stats — the locked card further down is easy to scroll past.
+        upsellBanner?.removeFromSuperview()
+        upsellBanner = nil
+        if !dashboard.premium.active {
+            let banner = BusinessUpsellBanner()
+            banner.onTap = { [weak self] in self?.upgradeTapped() }
+            contentStack.insertArrangedSubview(banner, at: 0)
+            upsellBanner = banner
+        }
 
         let headline = dashboard.headline
         let stats: [(String, Int)] = [
@@ -278,6 +290,7 @@ class VenueDashboardViewController: BaseViewController {
 
     @objc private func upgradeTapped() {
         let paywallVC = OwnerPaywallViewController()
+        paywallVC.venueId = venueId
         paywallVC.onSubscribed = { [weak self] in
             self?.loadData()
         }

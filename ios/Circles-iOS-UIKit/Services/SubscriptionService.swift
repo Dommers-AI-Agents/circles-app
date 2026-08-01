@@ -123,22 +123,25 @@ class SubscriptionService: ObservableObject {
     
     // MARK: - Purchase Subscription
     
-    func purchase(_ product: SubscriptionProduct) async throws -> Transaction? {
+    /// `venueId`: for Business products, the venue this subscription is being
+    /// purchased for — each store subscribes separately, and the backend binds
+    /// the entitlement to this one venue.
+    func purchase(_ product: SubscriptionProduct, venueId: String? = nil) async throws -> Transaction? {
         do {
             let result = try await product.product.purchase()
-            
+
             switch result {
             case .success(let verification):
                 let transaction = try checkVerified(verification)
-                
+
                 // Update subscription status
                 await updateSubscriptionStatus()
-                
+
                 // Finish the transaction
                 await transaction.finish()
-                
+
                 // Sync with backend
-                await syncSubscriptionWithBackend(transaction: transaction)
+                await syncSubscriptionWithBackend(transaction: transaction, venueId: venueId)
                 
                 return transaction
                 
@@ -294,7 +297,7 @@ class SubscriptionService: ObservableObject {
     
     // MARK: - Backend Sync
     
-    private func syncSubscriptionWithBackend(transaction: Transaction) async {
+    private func syncSubscriptionWithBackend(transaction: Transaction, venueId: String? = nil) async {
         // Get receipt data
         guard let appStoreReceiptURL = Bundle.main.appStoreReceiptURL,
               FileManager.default.fileExists(atPath: appStoreReceiptURL.path) else {
@@ -306,7 +309,7 @@ class SubscriptionService: ObservableObject {
             let receiptData = try Data(contentsOf: appStoreReceiptURL)
             let receiptString = receiptData.base64EncodedString()
 
-            let body: [String: Any] = [
+            var body: [String: Any] = [
                 "receipt": receiptString,
                 "transactionId": transaction.id,
                 "productId": transaction.productID,
@@ -314,6 +317,10 @@ class SubscriptionService: ObservableObject {
                 "purchaseDate": ISO8601DateFormatter().string(from: transaction.purchaseDate),
                 "expirationDate": transaction.expirationDate.map { ISO8601DateFormatter().string(from: $0) } ?? nil
             ]
+            // Business purchases bind to the venue they were bought for
+            if let venueId = venueId {
+                body["venueId"] = venueId
+            }
 
             let isBusinessReceipt = SubscriptionProduct.isBusinessProductId(transaction.productID)
             APIService.shared.request(

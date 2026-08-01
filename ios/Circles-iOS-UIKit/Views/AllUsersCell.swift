@@ -275,29 +275,23 @@ class AllUsersCell: UITableViewCell {
                     profileImageView.contentMode = .scaleAspectFit
                 }
             } else {
-                // Regular image URL - show a placeholder while loading and clear
-                // any styling left over from a previous user's default avatar
-                profileImageView.image = UIImage(systemName: "person.circle.fill")
-                profileImageView.tintColor = .systemGray3
-                profileImageView.backgroundColor = .systemGray5
-                profileImageView.contentMode = .scaleAspectFit
+                // Initials placeholder while loading; clears any styling left
+                // over from a previous user's avatar
+                profileImageView.image = AvatarPlaceholder.image(for: user, diameter: 40)
+                profileImageView.backgroundColor = .clear
+                profileImageView.contentMode = .scaleAspectFill
                 ImageService.shared.loadProfileImage(for: user.id, from: profilePicture) { [weak self] image in
                     DispatchQueue.main.async {
                         // The cell may have been reused for a different user while
                         // the image loaded — only apply if it's still the same user
-                        guard let self = self, self.user?.id == user.id else { return }
-                        self.profileImageView.image = image ?? UIImage(systemName: "person.circle.fill")
-                        self.profileImageView.contentMode = image != nil ? .scaleAspectFill : .scaleAspectFit
-                        if image == nil {
-                            self.profileImageView.tintColor = .systemGray3
-                        }
+                        guard let self = self, self.user?.id == user.id, let image = image else { return }
+                        self.profileImageView.image = image
                     }
                 }
             }
         } else {
-            profileImageView.image = UIImage(systemName: "person.circle.fill")
-            profileImageView.tintColor = .systemGray3
-            profileImageView.backgroundColor = .systemGray5
+            profileImageView.image = AvatarPlaceholder.image(for: user, diameter: 40)
+            profileImageView.backgroundColor = .clear
             profileImageView.contentMode = .scaleAspectFit
         }
         

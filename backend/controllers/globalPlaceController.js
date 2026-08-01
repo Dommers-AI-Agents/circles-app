@@ -45,8 +45,27 @@ async function mirrorMediaToLegacyPlaces(legacyIds, field, mediaUrl) {
 
 // Remove a photo URL from the legacy places docs (arrayRemove can't match object
 // entries, so filter manually). Never throws.
-async function removePhotoFromLegacyPlaces(legacyIds, photoUrl) {
-  for (const id of legacyIds) {
+// Scrub a deleted photo from every save doc that mirrors it.
+//
+// `legacyPlaceIds` alone is NOT sufficient: it only lists saves that were
+// merged into the venue at creation (or resolved via the dedupe/googlePlaceId
+// tiers). A save linked directly by globalPlaceId never lands there, so those
+// copies kept serving a photo its owner had deleted — a delete that doesn't
+// delete. Query by globalPlaceId as well, and union the two sets.
+async function removePhotoFromLegacyPlaces(legacyIds, photoUrl, globalPlaceId) {
+  const ids = new Set(legacyIds);
+  if (globalPlaceId) {
+    try {
+      const linked = await db.collection('places')
+        .where('globalPlaceId', '==', globalPlaceId)
+        .get();
+      linked.docs.forEach(doc => ids.add(doc.id));
+    } catch (e) {
+      console.error('⚠️ [GlobalPlace] Could not list linked saves:', e.message);
+    }
+  }
+
+  for (const id of ids) {
     try {
       const doc = await db.collection('places').doc(id).get();
       if (!doc.exists) continue;
@@ -54,10 +73,10 @@ async function removePhotoFromLegacyPlaces(legacyIds, photoUrl) {
       const filtered = photos.filter(p => (typeof p === 'string' ? p : p?.url) !== photoUrl);
       if (filtered.length !== photos.length) {
         await doc.ref.update({ photos: filtered, updatedAt: new Date().toISOString() });
-        console.log(`🔁 [GlobalPlace] Removed photo from legacy places/${id}`);
+        console.log(`🔁 [GlobalPlace] Removed photo from places/${id}`);
       }
     } catch (e) {
-      console.error(`⚠️ [GlobalPlace] Legacy photo removal failed for places/${id}:`, e.message);
+      console.error(`⚠️ [GlobalPlace] Photo removal failed for places/${id}:`, e.message);
     }
   }
 }
@@ -914,7 +933,7 @@ exports.deleteUserPhoto = async (req, res, next) => {
     // carousel would resurrect the deleted photo from place.photos
     const legacyRemoveIds = new Set(placeData.legacyPlaceIds || []);
     if (legacyPlaceDoc && legacyPlaceDoc.exists) legacyRemoveIds.add(legacyPlaceDoc.id);
-    await removePhotoFromLegacyPlaces([...legacyRemoveIds], photoToDelete.url);
+    await removePhotoFromLegacyPlaces([...legacyRemoveIds], photoToDelete.url, resolvedId);
 
     // Update place statistics
     await updateGlobalPlaceStats(resolvedId);

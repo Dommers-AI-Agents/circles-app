@@ -871,7 +871,16 @@ class CircleService {
 
 struct CirclesResponse: Decodable {
     let success: Bool
+    /// Lossy: one undecodable circle must not empty a profile.
     let circles: [Circle]
+
+    private enum CodingKeys: String, CodingKey { case success, circles }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        success = (try? container.decode(Bool.self, forKey: .success)) ?? true
+        circles = (try? container.decode(LossyDecodableArray<Circle>.self, forKey: .circles))?.elements ?? []
+    }
 }
 
 struct CircleResponse: Decodable {

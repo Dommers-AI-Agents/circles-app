@@ -95,8 +95,18 @@ class UserService {
         }
     }
     
-    func updateUserProfile(displayName: String? = nil, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, bio: String? = nil, location: String? = nil, zipcode: String? = nil, profilePicture: Data? = nil, completion: @escaping (Result<User, Error>) -> Void) {
-        
+    /// `profilePictureUrl` covers avatars that need no upload (stock avatars are
+    /// drawn on device and stored as a scheme string). Before it existed, the
+    /// edit screen computed an avatar URL and then never sent it — picking an
+    /// avatar silently did nothing.
+    func updateUserProfile(displayName: String? = nil, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, bio: String? = nil, location: String? = nil, zipcode: String? = nil, profilePicture: Data? = nil, profilePictureUrl: String? = nil, completion: @escaping (Result<User, Error>) -> Void) {
+
+        // An uploaded photo wins over a picked avatar when both are present
+        if profilePicture == nil, let url = profilePictureUrl {
+            performUpdateProfile(displayName: displayName, firstName: firstName, lastName: lastName, phoneNumber: phoneNumber, bio: bio, location: location, zipcode: zipcode, profilePictureUrl: url, completion: completion)
+            return
+        }
+
         // First check if we need to upload an image
         if let imageData = profilePicture {
             uploadProfileImage(imageData) { [weak self] result in
@@ -663,7 +673,16 @@ class UserService {
 
 struct UsersResponse: Decodable {
     let success: Bool
+    /// Lossy: one undecodable person must not empty the whole list.
     let users: [User]
+
+    private enum CodingKeys: String, CodingKey { case success, users }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        success = (try? container.decode(Bool.self, forKey: .success)) ?? true
+        users = (try? container.decode(LossyDecodableArray<User>.self, forKey: .users))?.elements ?? []
+    }
 }
 
 struct FriendRequest: Codable, Identifiable {

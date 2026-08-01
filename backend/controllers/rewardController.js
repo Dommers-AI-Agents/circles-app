@@ -20,7 +20,7 @@ const rewardConfig = require('../config/rewardConfig');
 const emailService = require('../services/emailService');
 const { resolveGlobalPlace } = require('../services/globalPlaceResolver');
 const { GLOBAL_COLLECTIONS } = require('../models/GlobalPlace');
-const { isOwnerPremiumUser, isVenueLoyaltyActive, isCompActive, venueLoyaltyStatus } = require('../services/ownerSubscriptionService');
+const { isOwnerPremiumUser, isOwnerPremiumForVenue, isVenueLoyaltyActive, isCompActive, venueLoyaltyStatus } = require('../services/ownerSubscriptionService');
 const { createActivity } = require('./activityController');
 const sseService = require('../services/sseService');
 
@@ -289,17 +289,19 @@ exports.getOffers = async (req, res) => {
     // (announcements stay up until natural expiry). Unowned venues stay live.
     const allVenues = snapshot.docs.map((doc) => ({ venueId: doc.id, ...doc.data() }));
     const ownerIds = [...new Set(allVenues.map((v) => v.ownerUserId).filter(Boolean))];
-    const ownerPremium = new Map();
+    const ownerUsers = new Map();
     if (ownerIds.length > 0) {
       const ownerDocs = await db.getAll(
         ...ownerIds.map((id) => db.collection(COLLECTIONS.USERS).doc(id))
       );
-      ownerDocs.forEach((doc) => ownerPremium.set(doc.id, doc.exists && isOwnerPremiumUser(doc.data())));
+      ownerDocs.forEach((doc) => { if (doc.exists) ownerUsers.set(doc.id, doc.data()); });
     }
     // Loyalty is live via an explicit comp OR a premium owner — no longer the
     // implicit "unowned => always live" pass (that ran the paid program free
-    // and invisibly). Comp keeps hands-on pilot venues working.
-    const loyaltyLive = (venue) => isCompActive(venue) || ownerPremium.get(venue.ownerUserId) === true;
+    // and invisibly). Comp keeps hands-on pilot venues working. The owner's
+    // subscription only covers the venue it was purchased for.
+    const loyaltyLive = (venue) =>
+      isCompActive(venue) || isOwnerPremiumForVenue(ownerUsers.get(venue.ownerUserId), venue.venueId);
 
     // A venue belongs in the browse list only while its loyalty is live and it
     // has something to show — a redeemable offer or an announcement. A lapsed
@@ -447,7 +449,7 @@ exports.getVenueByPlace = async (req, res) => {
         isOwner,
         // For the owner viewing their own place: drives the in-place
         // "Upgrade to Business" teaser when they can't post announcements yet
-        ownerPremium: isOwner ? isOwnerPremiumUser(req.user) : undefined,
+        ownerPremium: isOwner ? isOwnerPremiumForVenue(req.user, venue.venueId) : undefined,
         claim
       }
     });
@@ -487,7 +489,10 @@ exports.getMe = async (req, res) => {
     data: {
       isSuperUser: req.user.isSuperUser === true,
       ownsVenues,
+      // Account-level "any business entitlement" (summary only) — per-venue
+      // gating comes from each venue's own ownerPremium flag
       ownerPremium: isOwnerPremiumUser(req.user),
+      ownerPremiumVenueId: req.user.ownerSubscriptionVenueId || null,
       email: req.user.email || null
     }
   });
@@ -692,8 +697,12 @@ exports.getMyVenues = async (req, res) => {
       venues = claimable.map((doc) => ({ venueId: doc.id, ...doc.data(), ownerUserId: uid }));
     }
 
-    // Follower counts ride along so venue list rows can show them
+    // Follower counts ride along so venue list rows can show them; the
+    // subscription only covers one venue, so premium is stamped per venue.
     const venueInfos = venues.map(ownerVenueInfo);
+    venueInfos.forEach((info, i) => {
+      info.ownerPremium = isOwnerPremiumForVenue(req.user, venues[i].venueId);
+    });
     await Promise.all(venueInfos.map(async (info, i) => {
       const globalPlaceId = await venueGlobalPlaceId(venues[i]);
       if (!globalPlaceId) return;
@@ -710,6 +719,8 @@ exports.getMyVenues = async (req, res) => {
       data: {
         venues: venueInfos,
         count: venues.length,
+        // Legacy account-level flag (older builds gate on this; the server
+        // enforces per venue regardless)
         ownerPremium: isOwnerPremiumUser(req.user)
       }
     });
@@ -778,7 +789,7 @@ const emitVenueActivity = (venue, type, message) => {
 exports.getVenueDashboard = async (req, res) => {
   try {
     const venue = req.venue;
-    const premiumActive = isOwnerPremiumUser(req.user);
+    const premiumActive = isOwnerPremiumForVenue(req.user, venue.venueId);
     const globalPlaceId = await venueGlobalPlaceId(venue);
 
     // Followers live on the canonical globalPlaces record
@@ -1230,6 +1241,14 @@ const submitClaim = async (res, claimRef, claimFields) => {
   await claimRef.set(claim);
   await sendClaimAdminEmail(claim, claimRef.id);
 
+  // Alert the admin in-app + push too — email alone is easy to miss.
+  try {
+    const notificationService = require('../services/notificationService');
+    await notificationService.notifyStoreClaimSubmitted(claim, claimRef.id);
+  } catch (notifyError) {
+    console.error('⚠️ Claim admin notification failed:', notifyError.message);
+  }
+
   res.status(existing.exists ? 200 : 201).json({
     success: true,
     data: { claim: { claimId: claimRef.id, ...claim } }
@@ -1481,6 +1500,14 @@ exports.approveClaim = async (req, res) => {
         updatedAt: now
       });
 
+      // Tell the new owner (in-app + push) — approval otherwise happens silently.
+      try {
+        const notificationService = require('../services/notificationService');
+        await notificationService.notifyStoreClaimApproved(claim, claimRef.id, venue.venueId);
+      } catch (notifyError) {
+        console.error('⚠️ Claim-approved notification failed:', notifyError.message);
+      }
+
       // Best-effort: close out competing pending claims for the same place
       try {
         const placeKey = claim.globalPlaceId || claim.googlePlaceId;
@@ -1540,6 +1567,14 @@ exports.approveClaim = async (req, res) => {
       ownerEmail: claim.userEmail || venueDoc.data().ownerEmail
     });
     await claimRef.update({ status: 'approved', resolvedBy: req.user.uid, resolvedAt: now, updatedAt: now });
+
+    // Tell the new owner (in-app + push) — approval otherwise happens silently.
+    try {
+      const notificationService = require('../services/notificationService');
+      await notificationService.notifyStoreClaimApproved(claim, claimRef.id, claim.venueId);
+    } catch (notifyError) {
+      console.error('⚠️ Claim-approved notification failed:', notifyError.message);
+    }
 
     // Best-effort: close out competing pending claims for the same venue
     try {

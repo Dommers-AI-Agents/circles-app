@@ -1,4 +1,5 @@
 import UIKit
+import CoreLocation
 
 protocol PlacePickerViewControllerDelegate: AnyObject {
     func placePickerViewController(_ controller: PlacePickerViewController, didSelectPlace place: Place)
@@ -9,6 +10,12 @@ class PlacePickerViewController: BaseViewController {
     weak var delegate: PlacePickerViewControllerDelegate?
     private var places: [Place] = []
     private var isLoading = false
+
+    /// Anchor for "closest first". Resolved quietly — the picker never prompts
+    /// for location (see OneShotLocationProvider); with no fix we fall back to
+    /// alphabetical rather than showing an arbitrary order.
+    private let locationProvider = OneShotLocationProvider()
+    private var origin: CLLocation?
     
     // MARK: - Configuration
     override var loadsDataOnViewDidLoad: Bool { false }
@@ -144,9 +151,22 @@ class PlacePickerViewController: BaseViewController {
                     
                     // Remove duplicates based on place ID
                     let uniquePlaces = Array(Set(allFetchedPlaces))
-                    self.places = uniquePlaces.sorted { $0.name < $1.name }
+                    self.places = self.sortedByDistance(uniquePlaces)
                     self.tableView.reloadData()
                     self.updateEmptyState()
+
+                    // If the location fix lands after the list is drawn,
+                    // re-sort in place rather than leaving it alphabetical.
+                    if self.origin == nil {
+                        self.locationProvider.requestLocation { [weak self] location in
+                            DispatchQueue.main.async {
+                                guard let self = self, let location = location else { return }
+                                self.origin = location
+                                self.places = self.sortedByDistance(self.places)
+                                self.tableView.reloadData()
+                            }
+                        }
+                    }
                 }
                 
             case .failure(let error):
@@ -161,6 +181,29 @@ class PlacePickerViewController: BaseViewController {
         }
     }
     
+    /// Closest first when we know where you are; alphabetical otherwise.
+    /// Places with no coordinates sink to the bottom instead of sorting as if
+    /// they were at (0, 0) — the Gulf of Guinea is not "nearby".
+    private func sortedByDistance(_ input: [Place]) -> [Place] {
+        guard let origin = origin else {
+            return input.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        }
+        return input.sorted { lhs, rhs in
+            let lhsDistance = lhs.location?.clLocation.map { origin.distance(from: $0) }
+            let rhsDistance = rhs.location?.clLocation.map { origin.distance(from: $0) }
+            switch (lhsDistance, rhsDistance) {
+            case let (l?, r?):
+                return l == r
+                    ? lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                    : l < r
+            case (nil, _?): return false
+            case (_?, nil): return true
+            case (nil, nil):
+                return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+        }
+    }
+
     // MARK: - Actions
     @objc private func cancelTapped() {
         dismiss(animated: true)

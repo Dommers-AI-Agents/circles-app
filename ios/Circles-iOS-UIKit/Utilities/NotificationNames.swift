@@ -14,6 +14,11 @@ extension Notification.Name {
     
     // Message notifications
     static let unreadMessagesCountChanged = Notification.Name("UnreadMessagesCountChanged")
+
+    // Store-owner notifications
+    /// Pending ownership claims were reviewed (approved/denied) — refresh the
+    /// Me-tab badge and any storefront claim dots.
+    static let storeClaimsChanged = Notification.Name("StoreClaimsChanged")
     
     // Navigation notifications
     static let navigateToMessages = Notification.Name("NavigateToMessages")

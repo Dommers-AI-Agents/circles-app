@@ -286,6 +286,12 @@ class PlaceDetailViewController: BaseViewController {
     private let venueRewardsView = PlaceVenueRewardsView()
     private var venueRewardsHeightConstraint: NSLayoutConstraint?
     private var venueRewardsTopConstraint: NSLayoutConstraint?
+
+    // Verified owner of this venue (from getVenueByPlace). Owners can edit
+    // venue fields from any save of their place — the backend restricts
+    // their update to venue fields, and EditPlaceViewController unlocks the
+    // otherwise-dimmed venue controls for them.
+    private var isVenueOwner = false
     private var placeVenueData: PlaceVenueData?
 
     // Practical actions row: Directions / Website / Call / Edit
@@ -1503,23 +1509,12 @@ class PlaceDetailViewController: BaseViewController {
         // Address
         addressLabel.text = place.address
         
-        // Notes - combine all available notes
+        // The only note a place carries is the saver's private one. Anything
+        // written for other people is a comment on the venue (see the comments
+        // section below), so nothing here is ever shown to another user.
         var notesText = ""
-        
-        // Add public notes first
-        if let publicNotes = place.publicNotes, !publicNotes.isEmpty {
-            notesText = publicNotes
-        } else if let notes = place.notes, !notes.isEmpty {
-            // Fall back to legacy notes field
-            notesText = notes
-        }
-        
-        // Add private notes if the current user added this place
         if place.isAddedByCurrentUser, let privateNotes = place.privateNotes, !privateNotes.isEmpty {
-            if !notesText.isEmpty {
-                notesText += "\n\nPrivate Notes:\n"
-            }
-            notesText += privateNotes
+            notesText = privateNotes
         }
         
         if !notesText.isEmpty {
@@ -1964,8 +1959,10 @@ class PlaceDetailViewController: BaseViewController {
 
                     // Owners get a storefront button in the nav bar - the same
                     // icon as the profile entry, one consistent visual language
+                    self.isVenueOwner = data.isOwner == true
                     if hasVenue && data.isOwner == true {
                         self.addStorefrontNavButtonIfNeeded()
+                        self.addOwnerEditNavButtonIfNeeded()
                     }
                 case .failure:
                     // Additive section — a failed lookup just leaves it collapsed
@@ -2238,6 +2235,12 @@ class PlaceDetailViewController: BaseViewController {
                     self?.updateAddressButtonTapped()
                 }))
             }
+        } else if isVenueOwner {
+            // Verified owner viewing a save they didn't create: the venue's
+            // details are theirs to correct directly — no flag flow needed.
+            actions.append((title: "Edit Store Details", style: .default, handler: { [weak self] in
+                self?.editButtonTapped()
+            }))
         } else {
             actions.append((title: "Flag Incorrect Info", style: .default, handler: { [weak self] in
                 self?.flagPlaceInfoTapped()
@@ -2698,28 +2701,26 @@ class PlaceDetailViewController: BaseViewController {
     
     private func showNotesEditor() {
         let notesEditorVC = NotesEditorViewController(
-            publicNotes: place.publicNotes ?? place.notes ?? "",
             privateNotes: place.privateNotes ?? "",
             isPrivateNotesEnabled: place.isAddedByCurrentUser
         )
-        
-        notesEditorVC.onSave = { [weak self] publicNotes, privateNotes in
-            self?.updatePlaceNotes(publicNotes: publicNotes, privateNotes: privateNotes)
+
+        notesEditorVC.onSave = { [weak self] privateNotes in
+            self?.updatePlaceNotes(privateNotes: privateNotes)
         }
-        
+
         let navController = UINavigationController(rootViewController: notesEditorVC)
         present(navController, animated: true)
     }
     
-    private func updatePlaceNotes(publicNotes: String, privateNotes: String) {
+    private func updatePlaceNotes(privateNotes: String) {
         // Show loading indicator
         let loadingAlert = AlertPresenter.showLoading(message: "Saving Notes...", from: self)
         
         // Call PlaceService to update notes on Firebase
         PlaceService.shared.updatePlace(
             id: place.id,
-            privateNotes: place.isAddedByCurrentUser ? privateNotes : nil,
-            publicNotes: publicNotes
+            privateNotes: place.isAddedByCurrentUser ? privateNotes : nil
         ) { [weak self] result in
             guard let self = self else { return }
             
@@ -2733,20 +2734,9 @@ class PlaceDetailViewController: BaseViewController {
                         // (and then re-save) the old text
                         self.place = updatedPlace
 
-                        // Update the UI with the new notes
-                        var notesText = ""
+                        // Only the saver has a note, and only they ever see it
+                        let notesText = self.place.isAddedByCurrentUser ? privateNotes : ""
 
-                        if !publicNotes.isEmpty {
-                            notesText = publicNotes
-                        }
-                        
-                        if self.place.isAddedByCurrentUser && !privateNotes.isEmpty {
-                            if !notesText.isEmpty {
-                                notesText += "\n\nPrivate Notes:\n"
-                            }
-                            notesText += privateNotes
-                        }
-                        
                         if !notesText.isEmpty {
                             self.notesLabel.text = notesText
                             self.notesLabel.textColor = Constants.Colors.gray
@@ -3889,6 +3879,7 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
 
     func placeVenueViewDidTapUpgrade(_ view: PlaceVenueRewardsView) {
         let paywallVC = OwnerPaywallViewController()
+        paywallVC.venueId = placeVenueData?.venue?.venueId
         paywallVC.onSubscribed = { [weak self] in
             // Reload so the teaser disappears and the store card reflects
             // the unlocked state
@@ -3918,6 +3909,25 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
         )
         storefrontButton.accessibilityLabel = "Manage Store"
         navigationItem.rightBarButtonItems = (navigationItem.rightBarButtonItems ?? []) + [storefrontButton]
+    }
+
+    /// Owners asked "where do I fix my store's details?" — a visible pencil
+    /// answers it. Opens the same edit screen, which unlocks venue fields
+    /// for verified owners.
+    private func addOwnerEditNavButtonIfNeeded() {
+        let alreadyAdded = navigationItem.rightBarButtonItems?.contains {
+            $0.accessibilityLabel == "Edit Store Details"
+        } ?? false
+        guard !alreadyAdded else { return }
+
+        let editButton = UIBarButtonItem(
+            image: UIImage(systemName: "square.and.pencil"),
+            style: .plain,
+            target: self,
+            action: #selector(editButtonTapped)
+        )
+        editButton.accessibilityLabel = "Edit Store Details"
+        navigationItem.rightBarButtonItems = (navigationItem.rightBarButtonItems ?? []) + [editButton]
     }
 
     private func openVenueManagement(_ venue: PlaceVenue) {
