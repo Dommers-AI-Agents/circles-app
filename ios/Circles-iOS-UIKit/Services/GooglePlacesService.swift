@@ -100,8 +100,10 @@ class GooglePlacesService {
     func fetchPlaceDetails(placeID: String, completion: @escaping (Result<GMSPlace, Error>) -> Void) {
         Logger.debug("⚠️ DEPRECATED: fetchPlaceDetails called. Only fetching photos for backward compatibility.")
         
-        // Fetch photos, coordinate, and rating fields
-        let fields: GMSPlaceField = [.photos, .placeID, .coordinate, .rating, .userRatingsTotal]
+        // Fetch photos, coordinate, rating — plus the editorial summary, the
+        // only real venue description Google offers (rating already bills the
+        // Atmosphere SKU, so the summary adds no incremental API cost)
+        let fields: GMSPlaceField = [.photos, .placeID, .coordinate, .rating, .userRatingsTotal, .editorialSummary]
         
         placesClient.fetchPlace(
             fromPlaceID: placeID,
@@ -126,8 +128,10 @@ class GooglePlacesService {
     func fetchPlaceDetailsWithReviews(placeID: String, completion: @escaping (Result<GMSPlace, Error>) -> Void) {
         Logger.debug("⚠️ DEPRECATED: fetchPlaceDetailsWithReviews called. Only fetching photos for backward compatibility.")
         
-        // Fetch photos, coordinate, and rating fields
-        let fields: GMSPlaceField = [.photos, .placeID, .coordinate, .rating, .userRatingsTotal]
+        // Fetch photos, coordinate, rating — plus the editorial summary, the
+        // only real venue description Google offers (rating already bills the
+        // Atmosphere SKU, so the summary adds no incremental API cost)
+        let fields: GMSPlaceField = [.photos, .placeID, .coordinate, .rating, .userRatingsTotal, .editorialSummary]
         
         placesClient.fetchPlace(
             fromPlaceID: placeID,

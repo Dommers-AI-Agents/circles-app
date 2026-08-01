@@ -257,6 +257,7 @@ struct KnownPlaceMatch: Codable {
     let name: String
     let address: String?
     let category: String?
+    let description: String?
     let photos: [String]
 }
 

@@ -132,6 +132,7 @@ exports.matchGlobalPlace = async (req, res) => {
           name: match.name,
           address: match.address || null,
           category: match.category || null,
+          description: match.description || null,
           // Firebase Storage URLs — safe for the new save doc to reference
           photos: (match.photos || []).map((p) => (typeof p === 'string' ? p : p?.url)).filter(Boolean)
         }

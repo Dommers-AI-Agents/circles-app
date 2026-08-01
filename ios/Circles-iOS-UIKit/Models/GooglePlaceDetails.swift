@@ -16,7 +16,10 @@ struct GooglePlaceDetails {
     let photos: [GMSPlacePhotoMetadata]
     let openingHours: GMSOpeningHours?
     let isOpen: Bool?
-    
+    /// Google's editorial summary — a real human-readable sentence about the
+    /// venue ("Cozy spot for wood-fired pizza…"). Only some venues have one.
+    let editorialSummary: String?
+
     init(from gmsPlace: GMSPlace) {
         self.placeID = gmsPlace.placeID ?? ""
         self.name = gmsPlace.name ?? "Unknown Place"
@@ -55,6 +58,7 @@ struct GooglePlaceDetails {
         // isOpen returns GMSPlaceOpenStatus enum
         let openStatus = gmsPlace.isOpen()
         self.isOpen = openStatus == .open ? true : (openStatus == .closed ? false : nil)
+        self.editorialSummary = gmsPlace.editorialSummary
     }
     
     // Custom initializer for manually created places (e.g., from address geocoding)
@@ -70,7 +74,8 @@ struct GooglePlaceDetails {
          types: [String] = [],
          photos: [GMSPlacePhotoMetadata] = [],
          openingHours: GMSOpeningHours? = nil,
-         isOpen: Bool? = nil) {
+         isOpen: Bool? = nil,
+         editorialSummary: String? = nil) {
         self.placeID = placeID
         self.name = name
         self.address = address
@@ -84,6 +89,7 @@ struct GooglePlaceDetails {
         self.photos = photos
         self.openingHours = openingHours
         self.isOpen = isOpen
+        self.editorialSummary = editorialSummary
     }
     
     // Convert to our Place model format
