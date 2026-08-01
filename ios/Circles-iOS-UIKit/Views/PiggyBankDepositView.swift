@@ -1,9 +1,10 @@
 import UIKit
 
-/// The coin-into-the-piggy-bank deposit moment. A small window-level toast
-/// (~1.7s, non-blocking, survives navigation): a FavCoin drops into the piggy
-/// bank while "+N FavCoins" fades in. Deliberately playful and deliberately
-/// value-free — coins, not currency.
+/// The coin-into-the-piggy-bank deposit moment. A window-level celebration
+/// card, centered on screen (~3s, non-blocking, survives navigation): a
+/// FavCoin drops into the piggy bank, the piggy bounces, and "+N FavCoins"
+/// pops in. Deliberately playful and deliberately value-free — coins, not
+/// currency.
 final class PiggyBankDepositView: UIView {
 
     private static var activeView: PiggyBankDepositView?
@@ -26,8 +27,9 @@ final class PiggyBankDepositView: UIView {
         activeView = view
         window.addSubview(view)
         NSLayoutConstraint.activate([
-            view.topAnchor.constraint(equalTo: window.safeAreaLayoutGuide.topAnchor, constant: 8),
-            view.centerXAnchor.constraint(equalTo: window.centerXAnchor)
+            view.centerXAnchor.constraint(equalTo: window.centerXAnchor),
+            view.centerYAnchor.constraint(equalTo: window.centerYAnchor),
+            view.widthAnchor.constraint(equalToConstant: 240)
         ])
         view.animateIn()
     }
@@ -35,7 +37,8 @@ final class PiggyBankDepositView: UIView {
     private let piggyLabel: UILabel = {
         let label = UILabel()
         label.text = "🐷"
-        label.font = .systemFont(ofSize: 34)
+        label.font = .systemFont(ofSize: 88)
+        label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -43,15 +46,17 @@ final class PiggyBankDepositView: UIView {
     private let coinLabel: UILabel = {
         let label = UILabel()
         label.text = "🪙"
-        label.font = .systemFont(ofSize: 20)
+        label.font = .systemFont(ofSize: 44)
+        label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
 
     private let amountLabel: UILabel = {
         let label = UILabel()
-        label.font = .systemFont(ofSize: 16, weight: .bold)
+        label.font = .systemFont(ofSize: 26, weight: .heavy)
         label.textColor = Constants.Colors.primary
+        label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -60,11 +65,13 @@ final class PiggyBankDepositView: UIView {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         backgroundColor = Constants.Colors.background
-        layer.cornerRadius = 22
+        layer.cornerRadius = 28
         layer.shadowColor = UIColor.black.cgColor
-        layer.shadowOpacity = 0.18
-        layer.shadowRadius = 10
-        layer.shadowOffset = CGSize(width: 0, height: 4)
+        layer.shadowOpacity = 0.25
+        layer.shadowRadius = 18
+        layer.shadowOffset = CGSize(width: 0, height: 8)
+        // Never blocks a tap — the celebration floats over whatever the user
+        // is doing next.
         isUserInteractionEnabled = false
 
         amountLabel.text = "+\(coins) FavCoins"
@@ -73,15 +80,18 @@ final class PiggyBankDepositView: UIView {
         addSubview(coinLabel)
 
         NSLayoutConstraint.activate([
-            piggyLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
-            piggyLabel.topAnchor.constraint(equalTo: topAnchor, constant: 6),
-            piggyLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
-            amountLabel.leadingAnchor.constraint(equalTo: piggyLabel.trailingAnchor, constant: 10),
-            amountLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
-            amountLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            // Coin starts above the piggy, drops "into" it
+            // Room above the piggy for the coin's drop arc
+            piggyLabel.topAnchor.constraint(equalTo: topAnchor, constant: 56),
+            piggyLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
+
+            amountLabel.topAnchor.constraint(equalTo: piggyLabel.bottomAnchor, constant: 10),
+            amountLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            amountLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            amountLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -22),
+
+            // Coin starts high above the piggy, falls "into" it
             coinLabel.centerXAnchor.constraint(equalTo: piggyLabel.centerXAnchor),
-            coinLabel.centerYAnchor.constraint(equalTo: piggyLabel.topAnchor, constant: -6)
+            coinLabel.centerYAnchor.constraint(equalTo: piggyLabel.topAnchor, constant: -18)
         ])
     }
 
@@ -89,40 +99,51 @@ final class PiggyBankDepositView: UIView {
 
     private func animateIn() {
         alpha = 0
-        transform = CGAffineTransform(translationX: 0, y: -16)
+        transform = CGAffineTransform(scaleX: 0.7, y: 0.7)
         coinLabel.alpha = 0
+        amountLabel.alpha = 0
+        amountLabel.transform = CGAffineTransform(scaleX: 0.6, y: 0.6)
 
-        UIView.animate(withDuration: 0.25, delay: 0, options: [.curveEaseOut], animations: {
+        // Card pops in
+        UIView.animate(withDuration: 0.35, delay: 0, usingSpringWithDamping: 0.7,
+                       initialSpringVelocity: 0.5, options: [], animations: {
             self.alpha = 1
             self.transform = .identity
         })
 
-        // Coin drop: appear above the piggy, fall in, vanish behind it.
-        UIView.animateKeyframes(withDuration: 0.7, delay: 0.15, options: []) {
+        // Coin drop: appear high, fall into the piggy, vanish behind it
+        UIView.animateKeyframes(withDuration: 1.1, delay: 0.3, options: []) {
             UIView.addKeyframe(withRelativeStartTime: 0, relativeDuration: 0.25) {
                 self.coinLabel.alpha = 1
             }
-            UIView.addKeyframe(withRelativeStartTime: 0.25, relativeDuration: 0.55) {
-                self.coinLabel.transform = CGAffineTransform(translationX: 0, y: 22)
-                    .scaledBy(x: 0.5, y: 0.5)
+            UIView.addKeyframe(withRelativeStartTime: 0.3, relativeDuration: 0.7) {
+                self.coinLabel.transform = CGAffineTransform(translationX: 0, y: 64)
+                    .scaledBy(x: 0.45, y: 0.45)
                 self.coinLabel.alpha = 0
             }
         }
 
-        // Piggy wiggle on receipt
-        UIView.animateKeyframes(withDuration: 0.3, delay: 0.75, options: []) {
-            UIView.addKeyframe(withRelativeStartTime: 0, relativeDuration: 0.5) {
-                self.piggyLabel.transform = CGAffineTransform(scaleX: 1.15, y: 1.15)
+        // Piggy bounces on receipt
+        UIView.animateKeyframes(withDuration: 0.5, delay: 1.25, options: []) {
+            UIView.addKeyframe(withRelativeStartTime: 0, relativeDuration: 0.4) {
+                self.piggyLabel.transform = CGAffineTransform(scaleX: 1.22, y: 1.22)
             }
-            UIView.addKeyframe(withRelativeStartTime: 0.5, relativeDuration: 0.5) {
+            UIView.addKeyframe(withRelativeStartTime: 0.4, relativeDuration: 0.6) {
                 self.piggyLabel.transform = .identity
             }
         }
 
-        // Gone by ~1.7s, no interaction required.
-        UIView.animate(withDuration: 0.3, delay: 1.4, options: [.curveEaseIn], animations: {
+        // "+N FavCoins" pops as the piggy bounces
+        UIView.animate(withDuration: 0.4, delay: 1.3, usingSpringWithDamping: 0.6,
+                       initialSpringVelocity: 0.6, options: [], animations: {
+            self.amountLabel.alpha = 1
+            self.amountLabel.transform = .identity
+        })
+
+        // Linger, then float away (~3.2s total on screen)
+        UIView.animate(withDuration: 0.45, delay: 2.75, options: [.curveEaseIn], animations: {
             self.alpha = 0
-            self.transform = CGAffineTransform(translationX: 0, y: -12)
+            self.transform = CGAffineTransform(translationX: 0, y: -24).scaledBy(x: 0.9, y: 0.9)
         }, completion: { _ in
             self.removeFromSuperview()
             if PiggyBankDepositView.activeView === self { PiggyBankDepositView.activeView = nil }

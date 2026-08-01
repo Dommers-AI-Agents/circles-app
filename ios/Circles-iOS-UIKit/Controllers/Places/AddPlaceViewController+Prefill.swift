@@ -257,32 +257,34 @@ extension AddPlaceViewController {
                 )
             }
         } else {
-            // If pushed onto navigation stack, fetch the circle and navigate
+            // Swap AddPlace for CircleDetail in the nav stack
+            let pushDetail: (Circle) -> Void = { [weak self] circle in
+                guard let self = self, let navigationController = self.navigationController else { return }
+                let circleDetailVC = CircleDetailViewController(circle: circle)
+                var viewControllers = navigationController.viewControllers
+                if viewControllers.last is AddPlaceViewController {
+                    viewControllers.removeLast()
+                }
+                viewControllers.append(circleDetailVC)
+                navigationController.setViewControllers(viewControllers, animated: true)
+            }
+
+            // The circle the user picked is already in hand — navigating
+            // through a fetch round-trip here was half the "why is it slow
+            // after saving" delay (the other half is CircleDetail's own place
+            // fetch). Only fall back to the network when we somehow don't
+            // hold the object (e.g. quick-add preselected by id only).
+            if let circle = selectedCircle, circle.id == selectedCircleId {
+                pushDetail(circle)
+                return
+            }
+
             CircleService.shared.fetchCircleById(id: selectedCircleId) { [weak self] result in
                 DispatchQueue.main.async {
                     guard let self = self else { return }
-                    
                     switch result {
                     case .success(let circle):
-                        // Create CircleDetailViewController
-                        let circleDetailVC = CircleDetailViewController(circle: circle)
-                        
-                        // Get the navigation stack
-                        if let navigationController = self.navigationController {
-                            var viewControllers = navigationController.viewControllers
-                            
-                            // Remove the AddPlaceViewController (current view)
-                            if viewControllers.last is AddPlaceViewController {
-                                viewControllers.removeLast()
-                            }
-                            
-                            // Add CircleDetailViewController
-                            viewControllers.append(circleDetailVC)
-                            
-                            // Set the new navigation stack
-                            navigationController.setViewControllers(viewControllers, animated: true)
-                        }
-                        
+                        pushDetail(circle)
                     case .failure(let error):
                         Logger.debug("❌ Failed to fetch circle for navigation: \(error)")
                         // Fallback: leave the screen (handles modal too)
@@ -311,8 +313,9 @@ extension AddPlaceViewController {
         
         // Pre-fill notes if available
         if let notes = place.notes, !notes.isEmpty {
-            publicNotesTextView.text = notes
-            publicNotesTextView.textColor = .label
+            // A prefilled caption is the saver's own annotation now
+            privateNotesTextView.text = notes
+            privateNotesTextView.textColor = .label
         }
         
         // Set category
