@@ -65,8 +65,10 @@ final class PiggyBankViewController: BaseViewController {
 
     private let pendingLabel: UILabel = {
         let label = UILabel()
-        label.font = .systemFont(ofSize: 13, weight: .medium)
-        label.textColor = UIColor.white.withAlphaComponent(0.9)
+        // Prominent: with a 48h clearing window, pending is most of what a new
+        // earner has — a small mute line here read as "my bank is empty".
+        label.font = .systemFont(ofSize: 17, weight: .bold)
+        label.textColor = .white
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -210,8 +212,13 @@ final class PiggyBankViewController: BaseViewController {
     private func render() {
         guard let bank = bank else { return }
         confirmedLabel.text = "\(bank.confirmedCoins)"
+        // The caption explains what the big number is, so a fresh earner with
+        // 0 confirmed + N clearing doesn't read the screen as "empty".
+        confirmedCaptionLabel.text = bank.confirmedCoins == 0 && bank.pendingCoins > 0
+            ? "FavCoins — yours are on the way!"
+            : "FavCoins"
         pendingLabel.text = bank.pendingCoins > 0
-            ? "🕐 \(bank.pendingCoins) pending — clears within \(payloadConfig?.clearingWindowHours ?? 48)h"
+            ? "🕐 \(bank.pendingCoins) clearing — confirmed within \(payloadConfig?.clearingWindowHours ?? 48)h"
             : "Nothing pending"
         lifetimeLabel.text = "Lifetime earned: \(bank.lifetimeCoins)"
 
