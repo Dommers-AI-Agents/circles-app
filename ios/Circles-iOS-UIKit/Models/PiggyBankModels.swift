@@ -9,6 +9,20 @@ struct PiggyBank: Decodable {
     let confirmedCoins: Int
     let lifetimeCoins: Int
     let settledOnChain: Int
+    let walletAddress: String?   // linked self-custody Cactus address (Phase 4)
+}
+
+/// An in-flight claim (confirmed coins on their way to the user's wallet).
+struct PiggyActiveClaim: Decodable {
+    let id: String
+    let status: String       // claim_pending | claim_sending | claim_sent | settled | claim_failed
+    let coins: Int
+    let feeCoins: Int?
+    let netCoins: Int?
+    let catAmount: Int?
+    let address: String
+    let txId: String?
+    let createdAt: String
 }
 
 /// One append-only ledger row.
@@ -16,12 +30,20 @@ struct PiggyLedgerEvent: Decodable {
     let id: String
     let eventType: String
     let coins: Int
-    let status: String        // pending | confirmed | reversed | held
+    let status: String        // earn: pending|confirmed|reversed|held · claim: claim_*|settled
     let createdAt: String
     let clearAt: String?
+    let txId: String?         // claim rows: on-chain transaction id once sent
 
     var isPending: Bool { status == "pending" }
     var isReversed: Bool { status == "reversed" }
+
+    var isClaim: Bool { eventType == "claim" }
+    var isClaimInFlight: Bool {
+        ["claim_pending", "claim_sending", "claim_sent"].contains(status)
+    }
+    var isSettled: Bool { status == "settled" }
+    var isClaimFailed: Bool { status == "claim_failed" }
 
     /// "Added a place", "Friend saved your place", ...
     var displayTitle: String {
@@ -33,6 +55,7 @@ struct PiggyLedgerEvent: Decodable {
         case "referral_signup": return "Referred a friend"
         case "place_adopted": return "Friend saved your place"
         case "suggestion_posted": return "Posted a suggestion"
+        case "claim": return "Claimed to Cactus Wallet"
         default: return eventType.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }
@@ -47,13 +70,27 @@ struct PiggyBankConfigPayload: Decodable {
     let coinValues: [String: Int]
     let clearingWindowHours: Int?
     let minConfirmedToClaim: Int?
+    let claimFeeCoins: Int?
+    let claimsEnabled: Bool?     // false/absent → claim UI stays "coming soon"
+    let explorerBaseUrl: String?
 }
 
 struct PiggyBankResponse: Decodable {
     let success: Bool
     let bank: PiggyBank
+    let activeClaim: PiggyActiveClaim?
     let events: [PiggyLedgerEvent]
     let config: PiggyBankConfigPayload
+}
+
+struct PiggyLinkWalletResponse: Decodable {
+    let success: Bool
+    let walletAddress: String
+}
+
+struct PiggyClaimResponse: Decodable {
+    let success: Bool
+    let claim: PiggyActiveClaim
 }
 
 struct PiggyBankHistoryResponse: Decodable {

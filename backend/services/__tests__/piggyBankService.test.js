@@ -25,6 +25,9 @@ function makeDocRef(col, id) {
     }),
     set: async (value, opts) => {
       store(col).set(id, opts && opts.merge ? applyMerge(store(col).get(id), value) : value);
+    },
+    update: async (value) => {
+      store(col).set(id, applyMerge(store(col).get(id), value));
     }
   };
 }
@@ -100,8 +103,9 @@ const mockDb = {
         ));
       }
     };
-    await fn(tx);
+    const result = await fn(tx);
     ops.forEach(op => op());
+    return result;
   }
 };
 
@@ -112,8 +116,23 @@ jest.mock('../../config/firebase', () => ({
   }
 }));
 
+// Controllable stand-in for the cactus wallet RPC client. Settlement tests
+// script its outcomes; claim-only tests disable it so the inline settlement
+// kick returns immediately and can't race the assertions.
+const mockCactusWallet = {
+  enabled: false,
+  sendResult: { outcome: 'sent', txId: 'tx_test_1' },
+  confirmedTxs: new Set(),
+  isEnabled: jest.fn(() => mockCactusWallet.enabled),
+  explorerBaseUrl: jest.fn(() => 'https://explorer.cactus-network.net/#/'),
+  sendCat: jest.fn(async () => mockCactusWallet.sendResult),
+  getTransactionConfirmed: jest.fn(async (txId) => mockCactusWallet.confirmedTxs.has(txId)),
+  getWallets: jest.fn(async () => [])
+};
+jest.mock('../cactusWalletService', () => mockCactusWallet);
+
 const piggyBank = require('../piggyBankService');
-const { derivePiggyDedupKey } = require('../../models/PiggyBankModels');
+const { derivePiggyDedupKey, createPiggyClaimEntry } = require('../../models/PiggyBankModels');
 const config = require('../../config/piggyBankConfig');
 
 const bankOf = (uid) => stores.piggyBanks?.get(uid) || {};
@@ -124,7 +143,14 @@ const backdateAll = () => {
   }
 };
 
-beforeEach(() => { Object.keys(stores).forEach(k => stores[k].clear()); });
+beforeEach(() => {
+  Object.keys(stores).forEach(k => stores[k].clear());
+  mockCactusWallet.enabled = false;
+  mockCactusWallet.sendResult = { outcome: 'sent', txId: 'tx_test_1' };
+  mockCactusWallet.confirmedTxs.clear();
+  mockCactusWallet.sendCat.mockClear();
+  mockCactusWallet.getTransactionConfirmed.mockClear();
+});
 
 describe('derivePiggyDedupKey', () => {
   test('add_place venue identity: venueKey leads, then globalPlaceId, then placeId', () => {
@@ -345,5 +371,249 @@ describe('runClearing', () => {
     const summary = await piggyBank.runClearing();
     expect(summary.scanned).toBe(0);
     expect(ledgerRows()[0].status).toBe('pending');
+  });
+});
+
+// ---- Claims (Phase 4: on-chain settlement) ---------------------------------
+
+const seedBank = (uid, fields) => store('piggyBanks').set(uid, fields);
+const claimRowOf = (uid, seq = 1) => stores.piggyLedger.get(`claim:${uid}:${seq}`);
+
+describe('claim (T1)', () => {
+  test('dedup key shape', () => {
+    expect(derivePiggyDedupKey('claim', { userId: 'u1', seq: 3 })).toBe('claim:u1:3');
+    expect(derivePiggyDedupKey('claim', { userId: 'u1' })).toBeNull();
+  });
+
+  test('no wallet linked → no_wallet', async () => {
+    seedBank('u1', { confirmedCoins: 600 });
+    expect((await piggyBank.claim('u1')).code).toBe('no_wallet');
+  });
+
+  test('below minimum → below_minimum with amounts', async () => {
+    seedBank('u1', { confirmedCoins: 499, walletAddress: 'cac1qtest' });
+    const res = await piggyBank.claim('u1');
+    expect(res.code).toBe('below_minimum');
+    expect(res.minimum).toBe(config.CLAIM.MIN_CONFIRMED_TO_CLAIM);
+    expect(res.confirmed).toBe(499);
+  });
+
+  test('happy path snapshots the full balance and locks the bank', async () => {
+    seedBank('u1', { confirmedCoins: 600, lifetimeCoins: 600, walletAddress: 'cac1qtest' });
+    const res = await piggyBank.claim('u1');
+    expect(res.ok).toBe(true);
+    expect(res.claim.coins).toBe(600);
+    expect(res.claim.mojos).toBe(600 * config.CLAIM.MOJOS_PER_CAT);
+    const bank = bankOf('u1');
+    expect(bank.confirmedCoins).toBe(0);
+    expect(bank.activeClaimId).toBe('claim:u1:1');
+    expect(bank.claimCount).toBe(1);
+    const row = claimRowOf('u1');
+    expect(row.status).toBe('claim_pending');
+    expect(row.address).toBe('cac1qtest');
+  });
+
+  test('second claim while one is in flight → claim_in_flight', async () => {
+    seedBank('u1', { confirmedCoins: 1200, walletAddress: 'cac1qtest' });
+    await piggyBank.claim('u1');
+    seedBank('u1', { ...bankOf('u1'), confirmedCoins: 800 }); // earns arrived later
+    expect((await piggyBank.claim('u1')).code).toBe('claim_in_flight');
+  });
+
+  test('dedup-key collision (activeClaimId race) → claim_in_flight, bank untouched', async () => {
+    // Simulates the loser of a concurrent double-tap: activeClaimId not yet
+    // visible, but the claim:u1:1 row already exists.
+    seedBank('u1', { confirmedCoins: 600, claimCount: 0, walletAddress: 'cac1qtest' });
+    stores.piggyLedger.set('claim:u1:1', { userId: 'u1', eventType: 'claim', status: 'claim_pending', coins: 600 });
+    const res = await piggyBank.claim('u1');
+    expect(res.code).toBe('claim_in_flight');
+    expect(bankOf('u1').confirmedCoins).toBe(600);
+  });
+
+  test('fee math freezes onto the row', () => {
+    const origFee = config.CLAIM.CLAIM_FEE_COINS;
+    config.CLAIM.CLAIM_FEE_COINS = 10;
+    try {
+      const entry = createPiggyClaimEntry({ userId: 'u1', confirmedCoins: 600, address: 'cac1q' });
+      expect(entry.coins).toBe(600);
+      expect(entry.feeCoins).toBe(10);
+      expect(entry.netCoins).toBe(590);
+      expect(entry.catAmount).toBe(590);
+      expect(entry.mojos).toBe(590000);
+    } finally {
+      config.CLAIM.CLAIM_FEE_COINS = origFee;
+    }
+  });
+});
+
+describe('runSettlement (T2–T7)', () => {
+  const setupClaim = async (uid = 'u1', coins = 600) => {
+    seedBank(uid, { confirmedCoins: coins, walletAddress: 'cac1qtest' });
+    await piggyBank.claim(uid); // wallet disabled in beforeEach → no inline send
+  };
+
+  test('disabled wallet → inert summary', async () => {
+    await setupClaim();
+    const summary = await piggyBank.runSettlement();
+    expect(summary.disabled).toBe(true);
+    expect(claimRowOf('u1').status).toBe('claim_pending');
+  });
+
+  test('happy path: pending → sent → settled with bank math', async () => {
+    await setupClaim();
+    mockCactusWallet.enabled = true;
+
+    let summary = await piggyBank.runSettlement();
+    expect(summary.sent).toBe(1);
+    let row = claimRowOf('u1');
+    expect(row.status).toBe('claim_sent');
+    expect(row.txId).toBe('tx_test_1');
+    expect(mockCactusWallet.sendCat).toHaveBeenCalledTimes(1);
+    expect(mockCactusWallet.sendCat.mock.calls[0][0].mojos).toBe(600000);
+
+    // Not confirmed yet → stays sent
+    summary = await piggyBank.runSettlement();
+    expect(summary.settled).toBe(0);
+    expect(mockCactusWallet.sendCat).toHaveBeenCalledTimes(1); // never re-sent
+
+    mockCactusWallet.confirmedTxs.add('tx_test_1');
+    summary = await piggyBank.runSettlement();
+    expect(summary.settled).toBe(1);
+    row = claimRowOf('u1');
+    expect(row.status).toBe('settled');
+    const bank = bankOf('u1');
+    expect(bank.settledOnChain).toBe(600);
+    expect(bank.activeClaimId).toBeNull();
+  });
+
+  test('rejected send → refund and terminal claim_failed', async () => {
+    await setupClaim();
+    mockCactusWallet.enabled = true;
+    mockCactusWallet.sendResult = { outcome: 'rejected', reason: 'insufficient_funds' };
+
+    const summary = await piggyBank.runSettlement();
+    expect(summary.refunded).toBe(1);
+    const row = claimRowOf('u1');
+    expect(row.status).toBe('claim_failed');
+    expect(row.failReason).toBe('insufficient_funds');
+    const bank = bankOf('u1');
+    expect(bank.confirmedCoins).toBe(600);
+    expect(bank.activeClaimId).toBeNull();
+  });
+
+  test('unknown outcome → quarantined in claim_sending, never re-sent', async () => {
+    await setupClaim();
+    mockCactusWallet.enabled = true;
+    mockCactusWallet.sendResult = { outcome: 'unknown', reason: 'RPC timeout' };
+
+    let summary = await piggyBank.runSettlement();
+    expect(summary.flagged).toBe(1);
+    const row = claimRowOf('u1');
+    expect(row.status).toBe('claim_sending');
+    expect(row.needsReview).toBe(true);
+    // Coins stay debited — refunding an ambiguous send could double-pay.
+    expect(bankOf('u1').confirmedCoins).toBe(0);
+
+    // Later passes must not touch it again.
+    mockCactusWallet.sendResult = { outcome: 'sent', txId: 'tx_test_2' };
+    summary = await piggyBank.runSettlement();
+    expect(mockCactusWallet.sendCat).toHaveBeenCalledTimes(1);
+    expect(claimRowOf('u1').status).toBe('claim_sending');
+  });
+
+  test('stale claim_sending (crash artifact) gets flagged, not retried', async () => {
+    await setupClaim();
+    mockCactusWallet.enabled = true;
+    const row = claimRowOf('u1');
+    stores.piggyLedger.set('claim:u1:1', {
+      ...row, status: 'claim_sending', sendingAt: '2000-01-01T00:00:00.000Z'
+    });
+    const summary = await piggyBank.runSettlement();
+    expect(summary.flagged).toBe(1);
+    expect(claimRowOf('u1').needsReview).toBe(true);
+    expect(mockCactusWallet.sendCat).not.toHaveBeenCalled();
+  });
+
+  test('sent but unconfirmed past timeout → flagged, kept polling, no refund', async () => {
+    await setupClaim();
+    mockCactusWallet.enabled = true;
+    await piggyBank.runSettlement(); // → claim_sent
+    stores.piggyLedger.set('claim:u1:1', {
+      ...claimRowOf('u1'), sentAt: '2000-01-01T00:00:00.000Z'
+    });
+    const summary = await piggyBank.runSettlement();
+    expect(summary.flagged).toBe(1);
+    const row = claimRowOf('u1');
+    expect(row.status).toBe('claim_sent');
+    expect(row.needsReview).toBe(true);
+    expect(bankOf('u1').confirmedCoins).toBe(0); // no refund
+  });
+});
+
+describe('resolveClaim (T8)', () => {
+  const quarantine = async () => {
+    seedBank('u1', { confirmedCoins: 600, walletAddress: 'cac1qtest' });
+    await piggyBank.claim('u1');
+    stores.piggyLedger.set('claim:u1:1', {
+      ...claimRowOf('u1'), status: 'claim_sending', needsReview: true
+    });
+  };
+
+  test('resolution failed → refund', async () => {
+    await quarantine();
+    const res = await piggyBank.resolveClaim({ claimId: 'claim:u1:1', resolution: 'failed' });
+    expect(res.ok).toBe(true);
+    expect(claimRowOf('u1').status).toBe('claim_failed');
+    expect(bankOf('u1').confirmedCoins).toBe(600);
+    expect(bankOf('u1').activeClaimId).toBeNull();
+  });
+
+  test('resolution sent requires txId, then settles via polling', async () => {
+    await quarantine();
+    expect((await piggyBank.resolveClaim({ claimId: 'claim:u1:1', resolution: 'sent' })).code)
+      .toBe('tx_id_required');
+    const res = await piggyBank.resolveClaim({
+      claimId: 'claim:u1:1', resolution: 'sent', txId: 'tx_manual'
+    });
+    expect(res.ok).toBe(true);
+    expect(claimRowOf('u1').status).toBe('claim_sent');
+
+    mockCactusWallet.enabled = true;
+    mockCactusWallet.confirmedTxs.add('tx_manual');
+    await piggyBank.runSettlement();
+    expect(claimRowOf('u1').status).toBe('settled');
+    expect(bankOf('u1').settledOnChain).toBe(600);
+  });
+
+  test('settled claims are not resolvable', async () => {
+    stores.piggyLedger.set('claim:u1:1', {
+      userId: 'u1', eventType: 'claim', status: 'settled', coins: 500
+    });
+    const res = await piggyBank.resolveClaim({ claimId: 'claim:u1:1', resolution: 'failed' });
+    expect(res.code).toBe('not_resolvable_from_settled');
+  });
+});
+
+describe('reconcile with claim rows', () => {
+  test('claims subtract from confirmed; settled adds to on-chain', async () => {
+    stores.piggyLedger.set('e1', { userId: 'u1', eventType: 'add_place', coins: 400, status: 'confirmed' });
+    stores.piggyLedger.set('e2', { userId: 'u1', eventType: 'add_place', coins: 200, status: 'confirmed' });
+    stores.piggyLedger.set('claim:u1:1', { userId: 'u1', eventType: 'claim', coins: 500, status: 'settled' });
+    stores.piggyLedger.set('claim:u1:2', { userId: 'u1', eventType: 'claim', coins: 90, status: 'claim_failed' });
+    seedBank('u1', { pendingCoins: 0, confirmedCoins: 100, lifetimeCoins: 600, settledOnChain: 500 });
+
+    const { drift, computed } = await piggyBank.reconcile('u1');
+    expect(drift).toBe(false);
+    expect(computed).toEqual({
+      pendingCoins: 0, confirmedCoins: 100, lifetimeCoins: 600, settledOnChain: 500
+    });
+  });
+
+  test('in-flight claim holds coins out of confirmed', async () => {
+    stores.piggyLedger.set('e1', { userId: 'u1', eventType: 'add_place', coins: 600, status: 'confirmed' });
+    stores.piggyLedger.set('claim:u1:1', { userId: 'u1', eventType: 'claim', coins: 600, status: 'claim_sent' });
+    const { computed } = await piggyBank.reconcile('u1');
+    expect(computed.confirmedCoins).toBe(0);
+    expect(computed.settledOnChain).toBe(0);
   });
 });

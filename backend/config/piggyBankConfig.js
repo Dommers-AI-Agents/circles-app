@@ -27,7 +27,15 @@ module.exports = {
     SUGGESTION_POSTED: 10
   },
   CREATE_CIRCLE_MIN_PLACES: 3,   // enforced at CLEARING time, not earn time
-  CLAIM: { MIN_CONFIRMED_TO_CLAIM: 500, COINS_PER_CAT: 1 },  // Phase 4 placeholders
+  CLAIM: {
+    MIN_CONFIRMED_TO_CLAIM: 500,   // a claim moves ALL confirmed coins, min this
+    COINS_PER_CAT: 1,              // supply-stretch lever (PIGGY_BANK_PLAN §8.4)
+    CLAIM_FEE_COINS: 0,            // withheld from the claim; user bears fees (§8.4)
+    MOJOS_PER_CAT: 1000,           // CAT2: 1 CAT = 1000 mojos on-chain
+    SENT_TIMEOUT_HOURS: 24,        // unconfirmed past this → flag for review
+    SENDING_GRACE_MINUTES: 10,     // claim_sending younger than this may be mid-RPC
+    SETTLEMENT_BATCH_SIZE: 25
+  },
   CLEARING_BATCH_SIZE: 200,
   HISTORY_PAGE_SIZE: 25
 };

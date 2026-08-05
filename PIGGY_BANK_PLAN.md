@@ -243,7 +243,7 @@ New earn types / spend programs are off-chain config+code changes (same pattern 
 
 ### 8.4 Claims & wallets
 
-- **Custodial by default (recommended):** HD-derived keys — ONE master seed (encrypted; §8.2 discipline applies) deterministically derives a child keypair per user by index. The only stored mapping is `firebaseUid → derivationIndex(+address)` (no per-user secrets in the DB; keys re-derived in memory at spend time). Keyed to the immutable Firebase UID, never email/username (those mutate — see account-fragmentation history). Users do nothing; per-user UTXO consolidation to avoid dust.
+- ~~Custodial by default (recommended)~~ **SUPERSEDED 2026-08-05 (Wesley): self-custody only.** Claims send to the user's own linked Cactus wallet address (`cac1…`, bech32m-validated, stored on the bank doc, snapshotted per claim). FavCircles never custodies on-chain coins — least liability, and "it's really mine" is the whole point of claiming. Users without a wallet keep earning in-app until they link one. (The HD-derivation design below is retained for reference if custodial ever returns: ONE master seed deriving per-user child keys by index, mapping keyed to immutable Firebase UID.)
 - **Self-custody as opt-in withdraw:** user installs a Cactus wallet, adds the FavCoins asset ID, pastes their `cac…` receive address into a "my wallet address" field in myPiggyBank. App validates address format; UI must warn that self-custody transfers are irreversible and mnemonic loss is unrecoverable. Custodial remains the default so non-crypto users are never forced through wallet setup.
 - Claims are **user-triggered**, min **500 confirmed**, conversion **1:1 default** via `COINS_PER_CAT` (§1, unchanged). `COINS_PER_CAT` is the supply-stretch lever if the reserve runs down.
 - **Transaction fees: paid by the user — DECIDED (Wesley, 2026-08-03).** Mechanics: cactus fees are denominated in CAC (native coin), which users won't hold, so the fee is charged as a FavCoin surcharge **withheld from the claim** (config: `CLAIM_FEE_COINS`, versioned like everything else; e.g. claim 500 → receive 500 − fee). The hot wallet fronts the CAC at broadcast and is made whole by the withheld coins — no net fee liability for FavCircles. Cactus fees are near-zero today, so the surcharge may start at 0; the policy that users bear it is what's locked.
@@ -255,6 +255,10 @@ Once claimed on-chain, CATs are inherently transferable — accepted consequence
 ### 8.6 Post-settlement integrity
 
 Clearing (48h re-validation) remains the fraud gate and runs **before** anything settles. Settled coins are bearer assets: no clawback, no burn-on-ban. If abuse is discovered after settlement, the account is banned but the coins stand — the cost of this policy is bounded by the claim threshold and clearing window. (A voluntary burn address may exist later for prize redemptions; not designed yet.)
+
+### 8.8 Phase 4 build status (2026-08-05)
+
+Claim machinery BUILT and deployed inert behind `PIGGY_CLAIMS_ENABLED`: ledger claim rows (`claim_pending→claim_sending→claim_sent→settled/claim_failed`, quarantine-not-retry on ambiguity), `cactusWalletService` (mTLS RPC client, sent/rejected/unknown contract), `POST /piggy-bank/wallet` + `/claim`, settlement + resolve-claim task routes, iOS claim UI (link wallet, claim, combined ⛓ balance, explorer links). Claim = ALL confirmed coins, min 500. Waiting on the node-side bundle (see CACTUS_NODE_HANDOFF.md): RPC URL, certs, asset ID, CAT wallet id, 50k hot-wallet funding. Then: 1-coin smoke test → Cloud Scheduler `piggy-bank-settlement` (every 5 min, base-URL OIDC audience!) → flip flag → staged E2E.
 
 ### 8.7 Build order when Phase 4 is greenlit
 

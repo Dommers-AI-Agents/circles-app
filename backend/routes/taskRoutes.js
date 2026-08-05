@@ -409,6 +409,44 @@ router.post('/piggy-bank-clearing', verifyCloudScheduler, async (req, res) => {
   }
 });
 
+// Settle FavCoin claims on-chain: send claim_pending rows via the cactus
+// wallet RPC, poll claim_sent for confirmation, quarantine anything ambiguous.
+// Cloud Scheduler hits this every 5 minutes; POST /claim also kicks it inline.
+router.post('/piggy-bank-settlement', verifyCloudScheduler, async (req, res) => {
+  try {
+    console.log('🐷 Piggy bank settlement triggered via API');
+    const piggyBankService = require('../services/piggyBankService');
+    const summary = await piggyBankService.runSettlement();
+    res.json({ success: true, ...summary, timestamp: new Date().toISOString() });
+  } catch (error) {
+    console.error('❌ Error in piggy bank settlement:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to run piggy bank settlement',
+      details: error.message
+    });
+  }
+});
+
+// Manual resolution for quarantined claims (needsReview rows). Body:
+// { claimId, resolution: 'sent'|'failed', txId? }. 'sent' records the verified
+// txId and lets polling settle it; 'failed' refunds. Reached with the
+// SCHEDULER_SECRET bearer — this is the admin escape hatch, not a user path.
+router.post('/piggy-bank-resolve-claim', verifyCloudScheduler, async (req, res) => {
+  try {
+    const { claimId, resolution, txId } = req.body || {};
+    if (!claimId || !resolution) {
+      return res.status(400).json({ success: false, error: 'claimId and resolution are required' });
+    }
+    const piggyBankService = require('../services/piggyBankService');
+    const result = await piggyBankService.resolveClaim({ claimId, resolution, txId });
+    res.status(result.ok ? 200 : 400).json({ success: result.ok, ...result });
+  } catch (error) {
+    console.error('❌ Error resolving claim:', error);
+    res.status(500).json({ success: false, error: 'Failed to resolve claim', details: error.message });
+  }
+});
+
 // Health check endpoint for scheduled tasks
 router.get('/health', (req, res) => {
   res.json({
@@ -426,7 +464,8 @@ router.get('/health', (req, res) => {
       '/api/tasks/top-contributors',
       '/api/tasks/build-suggestions',
       '/api/tasks/special-event/:eventType',
-      '/api/tasks/piggy-bank-clearing'
+      '/api/tasks/piggy-bank-clearing',
+      '/api/tasks/piggy-bank-settlement'
     ]
   });
 });

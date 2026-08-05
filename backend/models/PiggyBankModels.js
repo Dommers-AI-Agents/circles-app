@@ -21,7 +21,14 @@ const PIGGY_EVENT_TYPES = [
   'suggestion_posted'
 ];
 
-const PIGGY_STATUSES = ['pending', 'confirmed', 'reversed', 'held'];
+// Earn statuses and claim statuses are disjoint vocabularies on the same
+// ledger: clearing queries (status=='pending') can never see claim rows, and
+// settlement queries (claim_*) can never see earns. Claim rows also carry no
+// clearAt, keeping them out of the (status, clearAt) index entirely.
+const PIGGY_STATUSES = [
+  'pending', 'confirmed', 'reversed', 'held',                       // earns
+  'claim_pending', 'claim_sending', 'claim_sent', 'settled', 'claim_failed' // claims
+];
 
 // Doc IDs cannot contain '/', and '.' segments are reserved (same rule as
 // StickerModels.sanitizeKeyPart — duplicated here so the two systems never
@@ -77,6 +84,12 @@ function derivePiggyDedupKey(eventType, parts = {}) {
     case 'suggestion_posted':
       if (!parts.userId || !parts.suggestionId) return null;
       return `suggestion:${s(parts.userId)}:${s(parts.suggestionId)}`;
+    case 'claim':
+      // seq comes from bank.claimCount + 1, read inside the claim transaction:
+      // two concurrent claims compute the same seq and the loser's create()
+      // throws ALREADY_EXISTS — the second guard behind activeClaimId.
+      if (!parts.userId || !parts.seq) return null;
+      return `claim:${s(parts.userId)}:${parts.seq}`;
     default:
       return null;
   }
@@ -101,11 +114,46 @@ function createPiggyLedgerEntry({ userId, eventType, coins, sourceRef }) {
   };
 }
 
+// Claim row factory. `coins` is the GROSS confirmed balance snapshotted at
+// claim time (ledger never sign-flips); fee/net/cat math is frozen onto the
+// row so a later config change can't reinterpret history. If COINS_PER_CAT
+// ever exceeds 1, the indivisible remainder stays in confirmedCoins (the
+// gross actually claimed is feeCoins + catAmount * COINS_PER_CAT).
+function createPiggyClaimEntry({ userId, confirmedCoins, address }) {
+  const claimCfg = piggyBankConfig.CLAIM;
+  const feeCoins = claimCfg.CLAIM_FEE_COINS || 0;
+  const catAmount = Math.floor((confirmedCoins - feeCoins) / claimCfg.COINS_PER_CAT);
+  const coins = feeCoins + catAmount * claimCfg.COINS_PER_CAT;
+  return {
+    userId,
+    eventType: 'claim',
+    coins,
+    feeCoins,
+    netCoins: coins - feeCoins,
+    catAmount,
+    mojos: catAmount * claimCfg.MOJOS_PER_CAT,
+    address,
+    status: 'claim_pending',
+    txId: null,
+    attempts: 0,
+    needsReview: false,
+    failReason: null,
+    ruleVersion: piggyBankConfig.RULE_VERSION,
+    createdAt: new Date().toISOString(),
+    sendingAt: null,
+    sentAt: null,
+    settledAt: null,
+    failedAt: null,
+    sourceRef: {}
+  };
+}
+
 module.exports = {
   PIGGY_COLLECTIONS,
   PIGGY_EVENT_TYPES,
   PIGGY_STATUSES,
   sanitizeKeyPart,
   derivePiggyDedupKey,
-  createPiggyLedgerEntry
+  createPiggyLedgerEntry,
+  createPiggyClaimEntry
 };

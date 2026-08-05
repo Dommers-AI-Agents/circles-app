@@ -13,8 +13,11 @@ final class PiggyBankViewController: BaseViewController {
     override var enablesPullToRefresh: Bool { true }
 
     private var bank: PiggyBank?
+    private var activeClaim: PiggyActiveClaim?
     private var events: [PiggyLedgerEvent] = []
     private var payloadConfig: PiggyBankConfigPayload?
+
+    private var claimsEnabled: Bool { payloadConfig?.claimsEnabled == true }
 
     // MARK: - UI
 
@@ -75,12 +78,33 @@ final class PiggyBankViewController: BaseViewController {
         return label
     }()
 
+    // Coins already claimed to the user's own Cactus wallet — the other half
+    // of the combined balance once claiming is live.
+    private let onChainLabel: UILabel = {
+        let label = UILabel()
+        label.font = .systemFont(ofSize: 14, weight: .semibold)
+        label.textColor = .white
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
     private let lifetimeLabel: UILabel = {
         let label = UILabel()
         label.font = .systemFont(ofSize: 13)
         label.textColor = UIColor.white.withAlphaComponent(0.75)
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
+    }()
+
+    // Linked-wallet row under the claim button: shows the truncated address,
+    // taps into the link/change flow.
+    private lazy var walletButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.titleLabel?.font = .systemFont(ofSize: 12)
+        button.setTitleColor(UIColor.white.withAlphaComponent(0.8), for: .normal)
+        button.addTarget(self, action: #selector(walletButtonTapped), for: .touchUpInside)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
     }()
 
     // "What do these numbers mean?" — clearing vs. confirmed confuses every
@@ -98,6 +122,7 @@ final class PiggyBankViewController: BaseViewController {
         let button = UIButton.secondaryButton(title: "Claim to Cactus Wallet — coming soon")
         button.isEnabled = false
         button.alpha = 0.6
+        button.addTarget(self, action: #selector(claimTapped), for: .touchUpInside)
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
@@ -147,7 +172,7 @@ final class PiggyBankViewController: BaseViewController {
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
         [headerView, activityTitleLabel, activityStack, earnTitleLabel, earnStack].forEach { contentView.addSubview($0) }
-        [piggyArtLabel, confirmedLabel, confirmedCaptionLabel, pendingLabel, lifetimeLabel, claimButton, infoButton].forEach { headerView.addSubview($0) }
+        [piggyArtLabel, confirmedLabel, confirmedCaptionLabel, pendingLabel, onChainLabel, lifetimeLabel, claimButton, walletButton, infoButton].forEach { headerView.addSubview($0) }
 
         scrollView.refreshControl = refreshControl
 
@@ -180,13 +205,19 @@ final class PiggyBankViewController: BaseViewController {
 
             pendingLabel.topAnchor.constraint(equalTo: confirmedCaptionLabel.bottomAnchor, constant: 12),
             pendingLabel.centerXAnchor.constraint(equalTo: headerView.centerXAnchor),
-            lifetimeLabel.topAnchor.constraint(equalTo: pendingLabel.bottomAnchor, constant: 2),
+            onChainLabel.topAnchor.constraint(equalTo: pendingLabel.bottomAnchor, constant: 4),
+            onChainLabel.centerXAnchor.constraint(equalTo: headerView.centerXAnchor),
+
+            lifetimeLabel.topAnchor.constraint(equalTo: onChainLabel.bottomAnchor, constant: 4),
             lifetimeLabel.centerXAnchor.constraint(equalTo: headerView.centerXAnchor),
 
             claimButton.topAnchor.constraint(equalTo: lifetimeLabel.bottomAnchor, constant: 14),
             claimButton.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 20),
             claimButton.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -20),
-            claimButton.bottomAnchor.constraint(equalTo: headerView.bottomAnchor, constant: -18),
+
+            walletButton.topAnchor.constraint(equalTo: claimButton.bottomAnchor, constant: 4),
+            walletButton.centerXAnchor.constraint(equalTo: headerView.centerXAnchor),
+            walletButton.bottomAnchor.constraint(equalTo: headerView.bottomAnchor, constant: -12),
 
             activityTitleLabel.topAnchor.constraint(equalTo: headerView.bottomAnchor, constant: 24),
             activityTitleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
@@ -216,7 +247,9 @@ final class PiggyBankViewController: BaseViewController {
 
             If something is undone before it clears (like deleting a place right after adding it), those coins quietly vanish.
 
-            🪙 FavCoin is a crypto coin on the Cactus Blockchain — claiming them to your Cactus Wallet is coming soon. Their value is whatever people choose to give them: store owners may offer prizes for them, and what you do with yours is up to you.
+            🪙 FavCoin is a crypto coin on the Cactus Blockchain — \(claimsEnabled
+                ? "once you have \(payloadConfig?.minConfirmedToClaim ?? 500) confirmed, tap Claim to send them to your own Cactus Wallet. From there they're yours alone."
+                : "claiming them to your Cactus Wallet is coming soon.") Their value is whatever people choose to give them: store owners may offer prizes for them, and what you do with yours is up to you.
 
             Check "How to earn" below for what each action pays.
             """,
@@ -235,6 +268,7 @@ final class PiggyBankViewController: BaseViewController {
                 switch result {
                 case .success(let response):
                     self.bank = response.bank
+                    self.activeClaim = response.activeClaim
                     self.events = response.events
                     self.payloadConfig = response.config
                     self.render()
@@ -260,21 +294,136 @@ final class PiggyBankViewController: BaseViewController {
         pendingLabel.text = bank.pendingCoins > 0
             ? "🕐 \(bank.pendingCoins) clearing — confirmed within \(payloadConfig?.clearingWindowHours ?? 48)h"
             : "Nothing pending"
-        lifetimeLabel.text = "Lifetime earned: \(bank.lifetimeCoins)"
 
-        // Inert claim affordance: legible destination, no network call. Only
-        // "unlocks" visually at the threshold, and still does nothing (Phase 4).
-        let threshold = payloadConfig?.minConfirmedToClaim ?? 500
-        if bank.confirmedCoins >= threshold {
-            claimButton.setTitle("Claim to Cactus Wallet — coming soon", for: .normal)
-            claimButton.alpha = 0.8
-        } else {
-            claimButton.setTitle("Claim unlocks at \(threshold) \(PiggyBankFormatting.coinUnit(threshold))", for: .normal)
-            claimButton.alpha = 0.6
-        }
+        // Combined picture: coins here + coins already in their own wallet.
+        let onChain = bank.settledOnChain
+        onChainLabel.isHidden = onChain <= 0
+        onChainLabel.text = onChain > 0 ? "⛓ \(onChain) in your Cactus Wallet" : nil
+        let total = bank.confirmedCoins + bank.pendingCoins + onChain
+        lifetimeLabel.text = onChain > 0
+            ? "Total \(PiggyBankFormatting.coins(total)) · Lifetime earned: \(bank.lifetimeCoins)"
+            : "Lifetime earned: \(bank.lifetimeCoins)"
 
+        renderClaimControls(bank: bank)
         renderActivity()
         renderEarnGuide()
+    }
+
+    private func renderClaimControls(bank: PiggyBank) {
+        let threshold = payloadConfig?.minConfirmedToClaim ?? 500
+
+        guard claimsEnabled else {
+            // Phase 4 not switched on server-side: keep the inert affordance.
+            walletButton.isHidden = true
+            claimButton.isEnabled = false
+            if bank.confirmedCoins >= threshold {
+                claimButton.setTitle("Claim to Cactus Wallet — coming soon", for: .normal)
+                claimButton.alpha = 0.8
+            } else {
+                claimButton.setTitle("Claim unlocks at \(threshold) \(PiggyBankFormatting.coinUnit(threshold))", for: .normal)
+                claimButton.alpha = 0.6
+            }
+            return
+        }
+
+        walletButton.isHidden = false
+        if let address = bank.walletAddress {
+            walletButton.setTitle("🔗 \(Self.truncateAddress(address)) · change", for: .normal)
+        } else {
+            walletButton.setTitle("🔗 Link your Cactus Wallet", for: .normal)
+        }
+
+        if let claim = activeClaim {
+            let phase = claim.status == "claim_sent" ? "confirming on-chain" : "on the way"
+            claimButton.setTitle("🚀 \(PiggyBankFormatting.coins(claim.coins)) — \(phase)", for: .normal)
+            claimButton.isEnabled = false
+            claimButton.alpha = 0.8
+        } else if bank.confirmedCoins >= threshold {
+            claimButton.setTitle("Claim \(PiggyBankFormatting.coins(bank.confirmedCoins)) to Cactus Wallet", for: .normal)
+            claimButton.isEnabled = true
+            claimButton.alpha = 1.0
+        } else {
+            claimButton.setTitle("Claim unlocks at \(threshold) \(PiggyBankFormatting.coinUnit(threshold))", for: .normal)
+            claimButton.isEnabled = false
+            claimButton.alpha = 0.6
+        }
+    }
+
+    /// cac1abcdefgh…wxyz — enough to recognize, short enough for one line
+    private static func truncateAddress(_ address: String) -> String {
+        guard address.count > 16 else { return address }
+        return "\(address.prefix(8))…\(address.suffix(4))"
+    }
+
+    // MARK: - Claim flow
+
+    @objc private func walletButtonTapped() {
+        promptLinkWallet()
+    }
+
+    private func promptLinkWallet(thenClaim: Bool = false) {
+        AlertPresenter.showTextInput(
+            title: "Link your Cactus Wallet",
+            message: "Paste your wallet's receive address (starts with cac1). Coins claimed there belong to you alone — FavCircles can't move or recover them.",
+            placeholder: "cac1…",
+            from: self
+        ) { [weak self] input in
+            guard let self = self,
+                  let address = input?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !address.isEmpty else { return }
+            PiggyBankAPIService.shared.linkWallet(address: address) { result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success:
+                        if thenClaim {
+                            self.loadData { self.confirmAndClaim() }
+                        } else {
+                            self.showSuccess("Wallet linked")
+                            self.loadData()
+                        }
+                    case .failure(let error):
+                        self.showError(error)
+                    }
+                }
+            }
+        }
+    }
+
+    @objc private func claimTapped() {
+        guard claimsEnabled, activeClaim == nil, let bank = bank else { return }
+        guard bank.walletAddress != nil else {
+            promptLinkWallet(thenClaim: true)
+            return
+        }
+        confirmAndClaim()
+    }
+
+    private func confirmAndClaim() {
+        guard let bank = bank, let address = bank.walletAddress else { return }
+        let fee = payloadConfig?.claimFeeCoins ?? 0
+        var message = "Send \(PiggyBankFormatting.coins(bank.confirmedCoins)) to your Cactus Wallet:\n\(Self.truncateAddress(address))"
+        if fee > 0 { message += "\n\nNetwork fee: \(PiggyBankFormatting.coins(fee)) (deducted from the claim)" }
+        message += "\n\nOn-chain transfers can't be reversed."
+        AlertPresenter.showConfirmation(
+            title: "Claim your FavCoins?",
+            message: message,
+            confirmTitle: "Claim",
+            from: self,
+            onConfirm: { [weak self] in
+            guard let self = self else { return }
+            PiggyBankAPIService.shared.claim { result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success:
+                        self.showSuccess("🚀 Your FavCoins are on the way!")
+                        self.loadData()
+                    case .failure(let error):
+                        self.showError(error)
+                        self.loadData()  // 409 etc. → re-sync the button state
+                    }
+                }
+            }
+        })
     }
 
     private func renderActivity() {
@@ -287,9 +436,28 @@ final class PiggyBankViewController: BaseViewController {
             activityStack.addArrangedSubview(empty)
             return
         }
-        for event in events {
-            activityStack.addArrangedSubview(makeActivityRow(event))
+        for (index, event) in events.enumerated() {
+            let row = makeActivityRow(event)
+            // Settled claims open their on-chain proof.
+            if event.isClaim && event.isSettled {
+                row.tag = index
+                row.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(claimRowTapped(_:))))
+            }
+            activityStack.addArrangedSubview(row)
         }
+    }
+
+    @objc private func claimRowTapped(_ gesture: UITapGestureRecognizer) {
+        guard let index = gesture.view?.tag, index < events.count else { return }
+        let event = events[index]
+        let explorer = payloadConfig?.explorerBaseUrl ?? "https://explorer.cactus-network.net/#/"
+        AlertPresenter.showInfo(
+            title: "On-chain transfer",
+            message: "\(PiggyBankFormatting.coins(event.coins)) were sent to your Cactus Wallet.\(event.txId != nil ? "\n\nTransaction: \(event.txId!)" : "")",
+            from: self,
+            linkTitle: "View on Cactus explorer",
+            linkURL: URL(string: explorer)
+        )
     }
 
     private func makeActivityRow(_ event: PiggyLedgerEvent) -> UIView {
@@ -312,17 +480,29 @@ final class PiggyBankViewController: BaseViewController {
         }
         if event.isPending { parts.append("clearing") }
         if event.isReversed { parts.append("reversed") }
+        if event.isClaim {
+            if event.isClaimInFlight { parts.append("on the way to your wallet") }
+            if event.isSettled { parts.append("on-chain ⛓ · tap for details") }
+            if event.isClaimFailed { parts.append("failed — coins returned") }
+        }
         subtitle.text = parts.joined(separator: " · ")
         subtitle.font = .systemFont(ofSize: 12)
         subtitle.textColor = Constants.Colors.secondaryLabel
         subtitle.translatesAutoresizingMaskIntoConstraints = false
 
         let coins = UILabel()
-        coins.text = event.isReversed ? "—" : "+\(event.coins)"
-        coins.font = .systemFont(ofSize: 15, weight: .bold)
-        coins.textColor = event.isPending
-            ? Constants.Colors.secondaryLabel     // muted while clearing
-            : (event.isReversed ? Constants.Colors.secondaryLabel : Constants.Colors.primary)
+        if event.isClaim {
+            // Coins leaving the in-app balance for the user's own wallet.
+            coins.text = event.isClaimFailed ? "—" : "→⛓ \(event.coins)"
+            coins.font = .systemFont(ofSize: 15, weight: .bold)
+            coins.textColor = event.isSettled ? Constants.Colors.primary : Constants.Colors.secondaryLabel
+        } else {
+            coins.text = event.isReversed ? "—" : "+\(event.coins)"
+            coins.font = .systemFont(ofSize: 15, weight: .bold)
+            coins.textColor = event.isPending
+                ? Constants.Colors.secondaryLabel     // muted while clearing
+                : (event.isReversed ? Constants.Colors.secondaryLabel : Constants.Colors.primary)
+        }
         coins.translatesAutoresizingMaskIntoConstraints = false
         coins.setContentHuggingPriority(.required, for: .horizontal)
 

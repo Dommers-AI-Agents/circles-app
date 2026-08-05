@@ -77,6 +77,16 @@ if [ ! -z "$SCHEDULER_SERVICE_ACCOUNT" ]; then
     ENV_VARS="$ENV_VARS,SCHEDULER_SERVICE_ACCOUNT=$SCHEDULER_SERVICE_ACCOUNT"
 fi
 
+# FavCoin on-chain claims (Phase 4). All optional: without them claiming
+# stays disabled (cactusWalletService.isEnabled() is false) and the piggy
+# bank behaves exactly as before. Certs travel as base64 (comma-safe).
+for var in PIGGY_CLAIMS_ENABLED CACTUS_WALLET_RPC_URL CACTUS_ASSET_ID CACTUS_CAT_WALLET_ID CACTUS_RPC_CERT_B64 CACTUS_RPC_KEY_B64 CACTUS_EXPLORER_BASE_URL; do
+    value="${!var}"
+    if [ ! -z "$value" ]; then
+        ENV_VARS="$ENV_VARS,$var=$value"
+    fi
+done
+
 # SMTP email configuration (QR emails, venue reports, welcome emails)
 if [ ! -z "$SMTP_HOST" ]; then
     ENV_VARS="$ENV_VARS,EMAIL_SERVICE=${EMAIL_SERVICE:-custom}"

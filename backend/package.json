@@ -20,6 +20,7 @@
     "abort-controller": "^3.0.0",
     "axios": "^1.11.0",
     "bcryptjs": "^2.4.3",
+    "bech32": "^2.0.0",
     "cors": "^2.8.5",
     "dompurify": "^3.2.6",
     "dotenv": "^16.5.0",
