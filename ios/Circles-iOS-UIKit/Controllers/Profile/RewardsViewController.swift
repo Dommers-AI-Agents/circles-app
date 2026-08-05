@@ -65,6 +65,17 @@ class RewardsViewController: BaseViewController {
         return label
     }()
 
+    // "What are these points?" — same affordance as the Piggy Bank tab's ⓘ,
+    // one tap away on the balance card itself.
+    private lazy var infoButton: UIButton = {
+        let button = UIButton(type: .detailDisclosure)
+        button.tintColor = .white
+        button.addTarget(self, action: #selector(rewardsInfoTapped), for: .touchUpInside)
+        button.accessibilityLabel = "About reward points"
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+
     // Tappable banner for a voucher that's still counting down — lets users
     // leave the voucher screen and get back to it
     private let activeVoucherBanner: UIControl = {
@@ -258,6 +269,7 @@ class RewardsViewController: BaseViewController {
         headerView.addSubview(starImageView)
         headerView.addSubview(balanceLabel)
         headerView.addSubview(balanceCaptionLabel)
+        headerView.addSubview(infoButton)
 
         contentView.addSubview(activeVoucherBanner)
         activeVoucherBanner.addSubview(voucherBannerTitleLabel)
@@ -294,6 +306,9 @@ class RewardsViewController: BaseViewController {
             starImageView.topAnchor.constraint(equalTo: headerView.topAnchor, constant: 20),
             starImageView.widthAnchor.constraint(equalToConstant: 48),
             starImageView.heightAnchor.constraint(equalToConstant: 48),
+
+            infoButton.topAnchor.constraint(equalTo: headerView.topAnchor, constant: 10),
+            infoButton.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -10),
 
             balanceLabel.topAnchor.constraint(equalTo: starImageView.bottomAnchor, constant: 6),
             balanceLabel.centerXAnchor.constraint(equalTo: headerView.centerXAnchor),
@@ -380,6 +395,22 @@ class RewardsViewController: BaseViewController {
         }
         let remaining = max(0, Int(expiry.timeIntervalSinceNow))
         voucherBannerTimeLabel.text = String(format: "%d:%02d ▸", remaining / 60, remaining % 60)
+    }
+
+    @objc private func rewardsInfoTapped() {
+        AlertPresenter.showInfo(
+            title: "How reward points work",
+            message: """
+            Reward points are store loyalty points you earn at participating shops — the ones with a FavCircles sticker in the window.
+
+            ⭐ Earn them by scanning a window sticker and saving the place (+50), scanning the register card when you buy something (each shop sets its own points per purchase), and sharing places friends go on to add (+50).
+
+            🎁 Spend them on the offers shops post here — redeeming creates a short-lived voucher you show at the counter. Your points work at any participating shop, not just where you earned them.
+
+            Reward points are separate from the FavCoin in your Piggy Bank: points are for spending at stores, FavCoin is crypto you earn for building FavCircles.
+            """,
+            from: self
+        )
     }
 
     @objc private func activeVoucherBannerTapped() {

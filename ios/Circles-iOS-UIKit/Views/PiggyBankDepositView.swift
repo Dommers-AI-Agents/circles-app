@@ -82,7 +82,7 @@ final class PiggyBankDepositView: UIView {
         // is doing next.
         isUserInteractionEnabled = false
 
-        amountLabel.text = "+\(coins) FavCoins"
+        amountLabel.text = "+\(coins) \(PiggyBankFormatting.coinUnit(coins))"
         addSubview(piggyLabel)
         addSubview(amountLabel)
         addSubview(coinLabel)

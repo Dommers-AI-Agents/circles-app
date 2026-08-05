@@ -2930,10 +2930,29 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         let isOwnProfile = self.user == nil || IDNormalizer.isSameUser(self.user!.id, currentUserId)
 
         if let user = self.user, !isOwnProfile {
-            // Another user's profile — use the provided snapshot
+            // Another user's profile — render the provided snapshot instantly,
+            // then refetch so relationship state is CURRENT. The snapshot's
+            // isFollowing/connectionStatus are frozen at list-fetch time, which
+            // is how a profile kept showing "Follow" after Connect (connect
+            // auto-follows server-side, but the stale snapshot didn't know).
             Logger.debug("✅ ProfileViewController: Using existing user: \(user.id)")
             displayUser(user)
             fetchUserStats(userId: user.id)
+            UserService.shared.fetchUserProfile(userId: user.id) { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self = self, case .success(let fresh) = result,
+                          self.user?.id == fresh.id else { return }
+                    // Merge fresh relationship flags over the snapshot
+                    self.user = fresh
+                    if let freshFollowing = fresh.isFollowing {
+                        self.isFollowing = freshFollowing
+                    }
+                    if let freshStatus = ConnectionStatus(rawValue: fresh.connectionStatus ?? "") {
+                        self.connectionStatus = freshStatus
+                    }
+                    self.updateButtonVisibility()
+                }
+            }
             completion?()
         } else {
             // Own profile — always get fresh data

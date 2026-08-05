@@ -413,13 +413,18 @@ extension DiscoveryListViewController: UITableViewDataSource {
     }
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        visibleSections[section].users.count
+        // Bounds-guarded: visibleSections is recomputed per call and the
+        // backing data mutates asynchronously (loads, dismissals, follows) —
+        // a stale section index from UIKit must degrade to 0, not crash.
+        guard section < visibleSections.count else { return 0 }
+        return visibleSections[section].users.count
     }
 
     // Custom headers: a bold title with the section's pitch right under it.
     // The default grouped header (small gray caps, blurb exiled to a footer)
     // read like a settings screen, not a place to meet people.
     func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+        guard section < visibleSections.count else { return nil }
         let sectionData = visibleSections[section]
 
         let titleLabel = UILabel()
@@ -456,6 +461,8 @@ extension DiscoveryListViewController: UITableViewDataSource {
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "DiscoverUserCell", for: indexPath) as! DiscoverUserCell
+        guard indexPath.section < visibleSections.count,
+              indexPath.row < visibleSections[indexPath.section].users.count else { return cell }
         cell.configure(
             with: visibleSections[indexPath.section].users[indexPath.row],
             rank: mode == .popular ? indexPath.row + 1 : nil
@@ -471,6 +478,8 @@ extension DiscoveryListViewController: UITableViewDataSource {
 extension DiscoveryListViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
+        guard indexPath.section < visibleSections.count,
+              indexPath.row < visibleSections[indexPath.section].users.count else { return }
         let user = visibleSections[indexPath.section].users[indexPath.row]
         navigationController?.pushViewController(ProfileViewController(user: user), animated: true)
     }

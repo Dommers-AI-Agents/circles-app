@@ -53,13 +53,22 @@ class AlertPresenter {
     // MARK: - Info Alerts
 
     /// Shows a neutral informational alert with an OK button (for ⓘ-style
-    /// explanations — not an error, not a success)
+    /// explanations — not an error, not a success). Optionally adds a
+    /// "Learn more"-style action that opens a URL — alert message text
+    /// isn't tappable, so links need their own button.
     static func showInfo(
         title: String,
         message: String,
-        from viewController: UIViewController
+        from viewController: UIViewController,
+        linkTitle: String? = nil,
+        linkURL: URL? = nil
     ) {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        if let linkTitle = linkTitle, let linkURL = linkURL {
+            alert.addAction(UIAlertAction(title: linkTitle, style: .default) { _ in
+                UIApplication.shared.open(linkURL)
+            })
+        }
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         viewController.present(alert, animated: true)
     }

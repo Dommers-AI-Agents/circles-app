@@ -16,7 +16,7 @@ Decisions locked during the design session:
 - **Include `place_adopted`** (someone else saves a place you shared) — the quality-aligned flagship earn.
 - **Claim threshold** (Phase 4): min 500 confirmed coins to claim; conversion coins→CAT default 1:1 (tunable).
 - **Config-driven economy:** point values, caps, windows all live in a versioned config file, not scattered in code. Every ledger row records the rule version that priced it.
-- Coins are deliberately **valueless** (no purchase, no trade, walled-garden chain later). This is a legal posture — don't add anything implying monetary value.
+- ~~Coins are deliberately **valueless** (no purchase, no trade, walled-garden chain later). This is a legal posture — don't add anything implying monetary value.~~ **SUPERSEDED 2026-08-03 by Wesley — see §8.1.** FavCoins are now presented as crypto coins on the Cactus blockchain whose value is whatever users assign them.
 - UI: the existing **'$' section gets a second tab "myPiggyBank"** next to the existing store-loyalty Rewards. The add-place background-progress feedback gets replaced/augmented with a piggy-bank coin-deposit animation.
 
 **Keep the piggy bank system SEPARATE from the existing sticker rewards system** (`rewardService.js` / `rewardPoints` on users / `rewardEvents` collection). That's the store-loyalty program — different product, stays as-is. Parallel systems, two tabs in the same '$' section.
@@ -209,3 +209,58 @@ When the piggy bank is proven: issue the 10B single-issuance CAT on cactus-netwo
 8. E2E smoke: add place → 201 includes `piggyBank.credited` → `GET /api/piggy-bank` shows pending → run clearing manually (`POST /api/tasks/piggy-bank-clearing` with `SCHEDULER_SECRET`, after temporarily shrinking `CLEARING_WINDOW_HOURS` in a dev env or backdating `clearAt` on a test row) → confirmed moves → visible in tab.
 
 **Definition of done (Phases 1–3):** all jest suites green; iOS builds; a real add-place on a dev build animates a coin into the piggy bank, the balance appears under myPiggyBank as pending, and flips to confirmed after clearing runs.
+
+---
+
+## 8. Phase 4 decisions addendum (2026-08-03)
+
+Drafted with Wesley 2026-08-03. Items marked **DECIDED** are settled; items marked **(recommended)** are Claude's proposals baked in as defaults — they govern implementation unless Wesley overrides them before Phase 4 build starts.
+
+### 8.1 Positioning — DECIDED (supersedes §1's "valueless" bullet)
+
+FavCoins are crypto coins on the cactus-network blockchain. Their value is whatever users assign them; store owners may choose to offer prizes for them. In-app copy (PiggyBankViewController ⓘ explainer) already says this and links to cactus-blockchain.net. On-chain claiming remains "coming soon" until Phase 4 ships — copy must never claim coins are on-chain before the mint actually happens. Note for release planning: earnable-crypto positioning invites Apple review scrutiny (guideline 3.1.1 area) — re-read the current crypto rules before the App Store submission that ships claiming.
+
+### 8.2 Supply & custody
+
+- **10B single-issuance CAT2, TAIL-enforced fixed supply — DECIDED** (unchanged from §1/§6).
+- The full 10B mints into the **issuer wallet Wesley controls**. Immediately split (recommended):
+  - **Cold treasury** — bulk of supply. Mnemonic generated and stored offline (never touches a server; hardware or paper, with a second copy in a separate physical location).
+  - **Hot settlement wallet** — backend-controlled, topped up manually from treasury. A server compromise then risks the float, not the supply.
+  - **Hot-wallet sizing rule (2026-08-05):** fund with `max(2× total outstanding coins, ~6 months projected earning)`; top up when it falls below 1.2× outstanding. Initial funding at Phase 4 launch: **50,000 coins** (sized against 2026-08-05 reality: 8 users / 310 outstanding / ~80 coins/day — recompute from `piggyBanks` at mint time if that's grown).
+- Publish the CAT **asset ID (TAIL hash)** on cactus-blockchain.net and in-app once minted, so third-party wallets can display FavCoins.
+
+### 8.3 Allocation earmarks (recommended)
+
+Bookkeeping earmarks, not on-chain constraints — movable by Wesley at will, but every distribution program must name which bucket it draws from so the fixed supply can't be over-promised:
+
+| Bucket | Amount | Purpose |
+|---|---|---|
+| Earn settlement reserve | 8.0B | Backing every FavCoin earned in-app (the only bucket users draw from) |
+| Partnerships & events | 1.5B | Sponsorships, event drops, marketing programs |
+| Store-owner prizes & promos | 0.5B | Prize pools, owner-side reward experiments |
+
+New earn types / spend programs are off-chain config+code changes (same pattern as the seven existing hooks) — the chain never constrains *how* coins are distributed, only *how many exist*.
+
+### 8.4 Claims & wallets
+
+- **Custodial by default (recommended):** HD-derived keys — ONE master seed (encrypted; §8.2 discipline applies) deterministically derives a child keypair per user by index. The only stored mapping is `firebaseUid → derivationIndex(+address)` (no per-user secrets in the DB; keys re-derived in memory at spend time). Keyed to the immutable Firebase UID, never email/username (those mutate — see account-fragmentation history). Users do nothing; per-user UTXO consolidation to avoid dust.
+- **Self-custody as opt-in withdraw:** user installs a Cactus wallet, adds the FavCoins asset ID, pastes their `cac…` receive address into a "my wallet address" field in myPiggyBank. App validates address format; UI must warn that self-custody transfers are irreversible and mnemonic loss is unrecoverable. Custodial remains the default so non-crypto users are never forced through wallet setup.
+- Claims are **user-triggered**, min **500 confirmed**, conversion **1:1 default** via `COINS_PER_CAT` (§1, unchanged). `COINS_PER_CAT` is the supply-stretch lever if the reserve runs down.
+- **Transaction fees: paid by the user — DECIDED (Wesley, 2026-08-03).** Mechanics: cactus fees are denominated in CAC (native coin), which users won't hold, so the fee is charged as a FavCoin surcharge **withheld from the claim** (config: `CLAIM_FEE_COINS`, versioned like everything else; e.g. claim 500 → receive 500 − fee). The hot wallet fronts the CAC at broadcast and is made whole by the withheld coins — no net fee liability for FavCircles. Cactus fees are near-zero today, so the surcharge may start at 0; the policy that users bear it is what's locked.
+
+### 8.5 Transferability
+
+Once claimed on-chain, CATs are inherently transferable — accepted consequence of the 8.1 positioning (this replaces §1's "non-transferable" as far as *claimed* coins go). Unclaimed in-app balances remain non-transferable (no gifting) as before.
+
+### 8.6 Post-settlement integrity
+
+Clearing (48h re-validation) remains the fraud gate and runs **before** anything settles. Settled coins are bearer assets: no clawback, no burn-on-ban. If abuse is discovered after settlement, the account is banned but the coins stand — the cost of this policy is bounded by the claim threshold and clearing window. (A voluntary burn address may exist later for prize redemptions; not designed yet.)
+
+### 8.7 Build order when Phase 4 is greenlit
+
+1. Mint ceremony: TAIL + 10B issuance on cactus-network; treasury/hot split; publish asset ID.
+2. Cactus full node + wallet service alongside the backend; hot-wallet ops runbook.
+3. Settlement worker: `confirmed` → batched CAT transfers, `settledOnChain` stamping, `claimed`/`settled` ledger statuses (§6).
+4. `POST /api/piggy-bank/claim` goes 501 → live; myPiggyBank claim button activates; explorer link on settled rows.
+5. Self-custody address field + withdraw path.
+6. App Store review prep per 8.1.

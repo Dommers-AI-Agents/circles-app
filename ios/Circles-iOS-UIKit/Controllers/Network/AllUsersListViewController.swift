@@ -89,6 +89,34 @@ class AllUsersListViewController: UIViewController {
         return control
     }()
 
+    /// ⓘ beside the Connections | Following tabs — the two relationships are
+    /// different in a way the labels alone don't explain.
+    private lazy var scopeInfoButton: UIButton = {
+        let button = UIButton.iconButton(systemName: "info.circle", pointSize: 16)
+        button.tintColor = .secondaryLabel
+        button.accessibilityLabel = "What are Connections and Following?"
+        button.addTarget(self, action: #selector(scopeInfoTapped), for: .touchUpInside)
+        button.isHidden = true // shown alongside scopeControl in setupView
+        return button
+    }()
+
+    @objc private func scopeInfoTapped() {
+        AlertPresenter.showInfo(
+            title: "Connections vs Following",
+            message: """
+            Following — you see their public places and activity in your feed. \
+            One-way and instant; they don't need to approve.
+
+            Connections — you both agreed to connect. Unlocks their \
+            network-only circles, messaging, and place suggestions.
+
+            You can follow someone and also be connected — those people \
+            appear in both lists.
+            """,
+            from: self
+        )
+    }
+
     @objc private func scopeChanged() {
         peopleScope = PeopleScope(rawValue: scopeControl.selectedSegmentIndex) ?? .connections
         tableView.reloadData()
@@ -103,8 +131,8 @@ class AllUsersListViewController: UIViewController {
     private var connectedUsers: [User] = []
     private var pendingIncomingUsers: [User] = []
     private var pendingOutgoingUsers: [User] = []
-    /// People you follow who aren't connections yet — the middle of the ladder,
-    /// and where most relationships will live once Follow is the primary action.
+    /// Everyone you follow — connections included; a person can sit in both
+    /// tabs, because Follow and Connect are independent relationships.
     private var followingUsers: [User] = []
     /// People who follow you that you haven't followed back — the follow-back
     /// list. The warmest leads on the page: they already opted in.
@@ -198,6 +226,7 @@ class AllUsersListViewController: UIViewController {
         view.backgroundColor = .systemGroupedBackground
         
         view.addSubview(scopeControl)
+        view.addSubview(scopeInfoButton)
         view.addSubview(tableView)
         view.addSubview(emptyStateView)
         view.addSubview(loadingIndicator)
@@ -207,10 +236,16 @@ class AllUsersListViewController: UIViewController {
         let tableTop: NSLayoutConstraint
         if listMode == .people {
             scopeControl.isHidden = false
+            scopeInfoButton.isHidden = false
             NSLayoutConstraint.activate([
                 scopeControl.topAnchor.constraint(equalTo: view.topAnchor, constant: 8),
                 scopeControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-                scopeControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16)
+                scopeControl.trailingAnchor.constraint(equalTo: scopeInfoButton.leadingAnchor, constant: -8),
+
+                scopeInfoButton.centerYAnchor.constraint(equalTo: scopeControl.centerYAnchor),
+                scopeInfoButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+                scopeInfoButton.widthAnchor.constraint(equalToConstant: 28),
+                scopeInfoButton.heightAnchor.constraint(equalToConstant: 28)
             ])
             tableTop = tableView.topAnchor.constraint(equalTo: scopeControl.bottomAnchor, constant: 8)
         } else {
@@ -365,13 +400,21 @@ class AllUsersListViewController: UIViewController {
             // and status, which the following list doesn't always have.
             // Followers merge lowest — by definition every one of them follows
             // the caller, so stamp followsYou before richer payloads overwrite.
+            // Follow flags must survive the connection overwrite: a connection
+            // you follow still belongs in the Following tab.
             var merged: [String: User] = [:]
             for user in followerUsers { merged[user.id] = user.copy(followsYou: true) }
             for user in followingUsers {
                 let followsYou = merged[user.id]?.followsYou ?? user.followsYou
-                merged[user.id] = user.copy(followsYou: followsYou)
+                merged[user.id] = user.copy(isFollowing: true, followsYou: followsYou)
             }
-            for user in connectionUsers { merged[user.id] = user }
+            for user in connectionUsers {
+                let prior = merged[user.id]
+                merged[user.id] = user.copy(
+                    isFollowing: (user.isFollowing ?? false) || (prior?.isFollowing ?? false),
+                    followsYou: (user.followsYou ?? false) || (prior?.followsYou ?? false)
+                )
+            }
 
             self.allUsers = Array(merged.values)
             self.sortAndFilterUsers()
@@ -427,10 +470,11 @@ class AllUsersListViewController: UIViewController {
         connectedUsers = allUsers.filter { RelationshipTier(user: $0) == .connected }
         pendingIncomingUsers = allUsers.filter { RelationshipTier(user: $0) == .requestReceived }
         pendingOutgoingUsers = allUsers.filter { RelationshipTier(user: $0) == .requestSent }
-        followingUsers = allUsers.filter {
-            let tier = RelationshipTier(user: $0)
-            return tier == .following || tier == .mutualFollow
-        }
+        // Everyone the caller follows — INCLUDING connections and pending
+        // requests. Filtering by tier here hid every followed person who had
+        // also connected, which read as "Not following anyone yet" for users
+        // whose follows are mostly connections.
+        followingUsers = allUsers.filter { $0.isFollowing ?? false }
         // The follow-back list: they follow you, you haven't followed back
         followsYouUsers = allUsers.filter { RelationshipTier(user: $0) == .followsYou }
         followsYouUsers.sort {

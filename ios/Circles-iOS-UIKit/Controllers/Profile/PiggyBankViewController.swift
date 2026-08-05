@@ -3,9 +3,11 @@ import UIKit
 /// myPiggyBank: the FavCoin balance and history. Lives beside the store-loyalty
 /// Rewards tab in the '$' section — a parallel system, not an extension of it.
 ///
-/// Coins are deliberately valueless: the copy talks about coins and clearing,
-/// never money. Claiming (to a Cactus wallet) is a future phase — the button
-/// exists as an inert affordance so the destination is legible.
+/// Positioning (owner decision, 2026-08-03): FavCoin is presented as a crypto
+/// coin on the Cactus Blockchain whose value is whatever users assign them —
+/// the earlier "valueless collectible" framing is retired. On-chain claiming
+/// is still a future phase; the copy says "coming soon" and the claim button
+/// stays inert until Phase 4 ships.
 final class PiggyBankViewController: BaseViewController {
 
     override var enablesPullToRefresh: Bool { true }
@@ -81,6 +83,17 @@ final class PiggyBankViewController: BaseViewController {
         return label
     }()
 
+    // "What do these numbers mean?" — clearing vs. confirmed confuses every
+    // first-time earner, so the answer is one tap away on the card itself.
+    private lazy var infoButton: UIButton = {
+        let button = UIButton(type: .detailDisclosure)
+        button.tintColor = .white
+        button.addTarget(self, action: #selector(piggyInfoTapped), for: .touchUpInside)
+        button.accessibilityLabel = "About your Piggy Bank"
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+
     private lazy var claimButton: UIButton = {
         let button = UIButton.secondaryButton(title: "Claim to Cactus Wallet — coming soon")
         button.isEnabled = false
@@ -134,7 +147,7 @@ final class PiggyBankViewController: BaseViewController {
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
         [headerView, activityTitleLabel, activityStack, earnTitleLabel, earnStack].forEach { contentView.addSubview($0) }
-        [piggyArtLabel, confirmedLabel, confirmedCaptionLabel, pendingLabel, lifetimeLabel, claimButton].forEach { headerView.addSubview($0) }
+        [piggyArtLabel, confirmedLabel, confirmedCaptionLabel, pendingLabel, lifetimeLabel, claimButton, infoButton].forEach { headerView.addSubview($0) }
 
         scrollView.refreshControl = refreshControl
 
@@ -156,6 +169,9 @@ final class PiggyBankViewController: BaseViewController {
 
             piggyArtLabel.topAnchor.constraint(equalTo: headerView.topAnchor, constant: 18),
             piggyArtLabel.centerXAnchor.constraint(equalTo: headerView.centerXAnchor),
+
+            infoButton.topAnchor.constraint(equalTo: headerView.topAnchor, constant: 10),
+            infoButton.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -10),
 
             confirmedLabel.topAnchor.constraint(equalTo: piggyArtLabel.bottomAnchor, constant: 4),
             confirmedLabel.centerXAnchor.constraint(equalTo: headerView.centerXAnchor),
@@ -189,6 +205,27 @@ final class PiggyBankViewController: BaseViewController {
         ])
     }
 
+    @objc private func piggyInfoTapped() {
+        let hours = payloadConfig?.clearingWindowHours ?? 48
+        AlertPresenter.showInfo(
+            title: "How your Piggy Bank works",
+            message: """
+            You earn FavCoins for building FavCircles — adding places, creating circles, connecting with friends.
+
+            🕐 New coins start as "clearing." Each deposit waits \(hours) hours while we make sure the action sticks (for example, the place you added is still there). Then it moves into your FavCoin balance automatically — you don't have to do anything.
+
+            If something is undone before it clears (like deleting a place right after adding it), those coins quietly vanish.
+
+            🪙 FavCoin is a crypto coin on the Cactus Blockchain — claiming them to your Cactus Wallet is coming soon. Their value is whatever people choose to give them: store owners may offer prizes for them, and what you do with yours is up to you.
+
+            Check "How to earn" below for what each action pays.
+            """,
+            from: self,
+            linkTitle: "Learn more at cactus-network.net",
+            linkURL: URL(string: "https://cactus-network.net")
+        )
+    }
+
     // MARK: - Data
 
     override func loadData(completion: (() -> Void)? = nil) {
@@ -214,9 +251,12 @@ final class PiggyBankViewController: BaseViewController {
         confirmedLabel.text = "\(bank.confirmedCoins)"
         // The caption explains what the big number is, so a fresh earner with
         // 0 confirmed + N clearing doesn't read the screen as "empty".
+        // FavCoin follows the Bitcoin convention: the currency's name is
+        // singular, a count of units takes the plural.
+        let unit = PiggyBankFormatting.coinUnit(bank.confirmedCoins)
         confirmedCaptionLabel.text = bank.confirmedCoins == 0 && bank.pendingCoins > 0
-            ? "FavCoins — yours are on the way!"
-            : "FavCoins"
+            ? "\(unit) — yours are on the way!"
+            : unit
         pendingLabel.text = bank.pendingCoins > 0
             ? "🕐 \(bank.pendingCoins) clearing — confirmed within \(payloadConfig?.clearingWindowHours ?? 48)h"
             : "Nothing pending"
@@ -229,7 +269,7 @@ final class PiggyBankViewController: BaseViewController {
             claimButton.setTitle("Claim to Cactus Wallet — coming soon", for: .normal)
             claimButton.alpha = 0.8
         } else {
-            claimButton.setTitle("Claim unlocks at \(threshold) FavCoins", for: .normal)
+            claimButton.setTitle("Claim unlocks at \(threshold) \(PiggyBankFormatting.coinUnit(threshold))", for: .normal)
             claimButton.alpha = 0.6
         }
 

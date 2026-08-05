@@ -84,3 +84,17 @@ extension ISO8601DateFormatter {
         return plain.date(from: string)
     }
 }
+
+/// FavCoin follows the Bitcoin convention: the currency's name is singular
+/// ("FavCoin is a crypto coin"), while a count of units takes the plural
+/// ("+5 FavCoins"). One place decides, so "1 FavCoins" can't slip into the UI.
+enum PiggyBankFormatting {
+    static func coinUnit(_ count: Int) -> String {
+        count == 1 ? "FavCoin" : "FavCoins"
+    }
+
+    /// "1 FavCoin" / "12 FavCoins"
+    static func coins(_ count: Int) -> String {
+        "\(count) \(coinUnit(count))"
+    }
+}
