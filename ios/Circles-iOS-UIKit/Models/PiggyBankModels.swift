@@ -63,7 +63,7 @@ struct PiggyLedgerEvent: Decodable {
         case "place_liked": return "Liked a place"
         case "place_comment": return "Commented on a place"
         case "user_followed": return "Followed someone"
-        case "claim": return "Claimed to Cactus Wallet"
+        case "claim": return "Sent to your wallet"
         default: return eventType.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }
