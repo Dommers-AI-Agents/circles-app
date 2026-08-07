@@ -120,6 +120,10 @@ final class PiggyBankViewController: BaseViewController {
 
     private lazy var claimButton: UIButton = {
         let button = UIButton.secondaryButton(title: "Claim to Cactus Wallet — coming soon")
+        // The header card is Colors.primary — the factory's primary-on-primary
+        // styling vanishes against it, so this button goes white-on-blue.
+        button.setTitleColor(.white, for: .normal)
+        button.layer.borderColor = UIColor.white.cgColor
         button.isEnabled = false
         button.alpha = 0.6
         button.addTarget(self, action: #selector(claimTapped), for: .touchUpInside)
@@ -261,6 +265,21 @@ final class PiggyBankViewController: BaseViewController {
 
     // MARK: - Data
 
+    /// While a claim is in flight the server settles it within minutes; poll
+    /// so the screen flips to "settled" without a manual refresh. One shot
+    /// per render — each refresh re-arms only if the claim is still moving.
+    private var inFlightRefreshArmed = false
+    private func scheduleInFlightRefresh() {
+        guard activeClaim != nil, !inFlightRefreshArmed else { return }
+        inFlightRefreshArmed = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
+            guard let self = self else { return }
+            self.inFlightRefreshArmed = false
+            guard self.view.window != nil, self.activeClaim != nil else { return }
+            self.loadData()
+        }
+    }
+
     override func loadData(completion: (() -> Void)? = nil) {
         PiggyBankAPIService.shared.getPiggyBank { [weak self] result in
             DispatchQueue.main.async {
@@ -306,6 +325,7 @@ final class PiggyBankViewController: BaseViewController {
 
         renderClaimControls(bank: bank)
         renderActivity()
+        scheduleInFlightRefresh()
         renderEarnGuide()
     }
 
@@ -450,13 +470,17 @@ final class PiggyBankViewController: BaseViewController {
     @objc private func claimRowTapped(_ gesture: UITapGestureRecognizer) {
         guard let index = gesture.view?.tag, index < events.count else { return }
         let event = events[index]
-        let explorer = payloadConfig?.explorerBaseUrl ?? "https://explorer.cactus-network.net/#/"
+        // The settled row carries a deep link to the created coin — the only
+        // page on the Cactus explorer that can prove a CAT transfer (there is
+        // no /tx/ route, and CAT wrapping hides coins from address pages).
+        let link = event.explorerUrl ?? payloadConfig?.explorerBaseUrl
+            ?? "https://explorer.cactus-network.net/#/"
         AlertPresenter.showInfo(
             title: "On-chain transfer",
             message: "\(PiggyBankFormatting.coins(event.coins)) were sent to your Cactus Wallet.\(event.txId != nil ? "\n\nTransaction: \(event.txId!)" : "")",
             from: self,
-            linkTitle: "View on Cactus explorer",
-            linkURL: URL(string: explorer)
+            linkTitle: event.explorerUrl != nil ? "View coin on Cactus explorer" : "Open Cactus explorer",
+            linkURL: URL(string: link)
         )
     }
 
@@ -538,13 +562,20 @@ final class PiggyBankViewController: BaseViewController {
 
         // Config-key → friendly copy, in a deliberate order.
         let guide: [(key: String, text: String)] = [
-            ("ADD_PLACE", "Add a place"),
-            ("PLACE_ADOPTED", "A friend saves a place you shared"),
+            ("REFERRAL_SIGNUP", "Refer a friend who joins"),
             ("CREATE_CIRCLE", "Create a circle (3+ places)"),
+            ("PLACE_ADOPTED", "A friend saves a place you shared"),
+            ("PROFILE_COMPLETED", "Complete your profile (photo + bio)"),
+            ("ADD_PLACE", "Add a place"),
             ("SHARE_CIRCLE", "Share a circle with a friend"),
             ("CONNECTION_ACCEPTED", "Make a new connection"),
-            ("SUGGESTION_POSTED", "Post a suggestion"),
-            ("REFERRAL_SIGNUP", "Refer a friend who joins")
+            ("MOMENT_POSTED", "Post a Moment"),
+            ("CHECK_IN", "Check in at a place"),
+            ("PLACE_PHOTO", "Add your first photo of a place"),
+            ("PLACE_LIKED", "Like a place (first time)"),
+            ("PLACE_COMMENT", "Comment on a place (first time)"),
+            ("USER_FOLLOWED", "Follow someone new"),
+            ("SUGGESTION_POSTED", "Post a suggestion")
         ]
         for item in guide {
             guard let coins = values[item.key], coins > 0 else { continue }

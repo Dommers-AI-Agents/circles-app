@@ -34,6 +34,7 @@ struct PiggyLedgerEvent: Decodable {
     let createdAt: String
     let clearAt: String?
     let txId: String?         // claim rows: on-chain transaction id once sent
+    let explorerUrl: String?  // settled claims: deep link to the created coin
 
     var isPending: Bool { status == "pending" }
     var isReversed: Bool { status == "reversed" }
@@ -55,6 +56,13 @@ struct PiggyLedgerEvent: Decodable {
         case "referral_signup": return "Referred a friend"
         case "place_adopted": return "Friend saved your place"
         case "suggestion_posted": return "Posted a suggestion"
+        case "check_in": return "Checked in"
+        case "place_photo": return "Added a place photo"
+        case "moment_posted": return "Posted a Moment"
+        case "profile_completed": return "Completed your profile"
+        case "place_liked": return "Liked a place"
+        case "place_comment": return "Commented on a place"
+        case "user_followed": return "Followed someone"
         case "claim": return "Claimed to Cactus Wallet"
         default: return eventType.replacingOccurrences(of: "_", with: " ").capitalized
         }

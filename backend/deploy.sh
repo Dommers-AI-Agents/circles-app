@@ -77,10 +77,12 @@ if [ ! -z "$SCHEDULER_SERVICE_ACCOUNT" ]; then
     ENV_VARS="$ENV_VARS,SCHEDULER_SERVICE_ACCOUNT=$SCHEDULER_SERVICE_ACCOUNT"
 fi
 
-# FavCoin on-chain claims (Phase 4). All optional: without them claiming
-# stays disabled (cactusWalletService.isEnabled() is false) and the piggy
-# bank behaves exactly as before. Certs travel as base64 (comma-safe).
-for var in PIGGY_CLAIMS_ENABLED CACTUS_WALLET_RPC_URL CACTUS_ASSET_ID CACTUS_CAT_WALLET_ID CACTUS_RPC_CERT_B64 CACTUS_RPC_KEY_B64 CACTUS_EXPLORER_BASE_URL; do
+# FavCoin on-chain claims (Phase 4, settled via the broker at
+# node.cactus-network.net:12444). All optional: without them claiming stays
+# disabled (cactusWalletService.isEnabled() is false) and the piggy bank
+# behaves exactly as before. Certs/CA travel as base64 (comma-safe); the
+# bearer token is required by the broker on every request.
+for var in PIGGY_CLAIMS_ENABLED CACTUS_BROKER_URL CACTUS_BROKER_TOKEN CACTUS_BROKER_CA_B64 CACTUS_ASSET_ID CACTUS_RPC_CERT_B64 CACTUS_RPC_KEY_B64 CACTUS_EXPLORER_BASE_URL; do
     value="${!var}"
     if [ ! -z "$value" ]; then
         ENV_VARS="$ENV_VARS,$var=$value"

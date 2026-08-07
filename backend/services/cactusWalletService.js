@@ -1,128 +1,225 @@
 // backend/services/cactusWalletService.js
 //
-// Client for the cactus-network wallet RPC (Chia-fork) that settles FavCoin
-// claims on-chain. Talks to Wesley's node over HTTPS with mutual TLS — the
-// node's wallet RPC refuses connections without a client cert signed by its
-// private CA, which is the entire access control.
+// Client for the FavCoin settlement broker (node.cactus-network.net:12444),
+// which fronts the Cactus wallet RPC and settles FavCoin claims on-chain.
+// Transport is mTLS (client cert signed by the broker's private CA, server
+// cert verified against that same CA) plus a bearer token on every request.
 //
-// THE CONTRACT THAT PREVENTS DOUBLE-SENDS: sendCat() classifies every attempt
-// as exactly one of three outcomes, and the caller treats them differently:
+// THE CONTRACT THAT PREVENTS DOUBLE-SENDS: the broker keys every spend by
+// `claim_id` — an idempotency key minted once per claim and reused verbatim
+// on every retry. A repeated claim_id can never produce a second spend; the
+// broker replays the original transaction_id instead. Retrying an ambiguous
+// failure with a FRESH claim_id is the only way to double-pay through this
+// system, so callers must always pass the claim row's own id.
 //
-//   {outcome:'sent', txId}      RPC responded success — coins are in flight
-//   {outcome:'rejected', reason} RPC responded with an in-protocol error —
-//                                a response arrived, so nothing was broadcast;
-//                                safe to refund
-//   {outcome:'unknown', reason}  transport failure (timeout, reset, 5xx) —
-//                                the spend MAY have broadcast. Never retried
-//                                automatically; the claim is quarantined for
-//                                human review. Ambiguity always parks.
+// sendCat() classifies every attempt as exactly one of four outcomes:
 //
-// Chia-family RPC has no idempotency keys — a repeated cat_spend is a second
-// real payment. This classification is what stands in for one.
+//   {outcome:'sent', txId, replayed}  broker broadcast the spend (or replayed
+//                                     a previous success) — coins in flight
+//   {outcome:'rejected', reason}      broker refused and NOTHING was broadcast
+//                                     (400 bad request, 502 broadcast:false) —
+//                                     safe to fail the claim and refund
+//   {outcome:'retriable', reason}     broker is temporarily unable (401 config,
+//                                     429 daily cap, 503 wallet not ready) —
+//                                     nothing was sent; retry the SAME claim_id
+//                                     on a later pass
+//   {outcome:'unknown', reason}       the spend MAY have gone out (504, 409
+//                                     claim held as sending/failed, transport
+//                                     failure) — never retried automatically;
+//                                     quarantine for human review
 
 const https = require('https');
+const { createHash } = require('crypto');
 
 const env = () => ({
   enabled: process.env.PIGGY_CLAIMS_ENABLED === 'true',
-  rpcUrl: process.env.CACTUS_WALLET_RPC_URL || '',
+  baseUrl: process.env.CACTUS_BROKER_URL || process.env.CACTUS_WALLET_RPC_URL || '',
   certB64: process.env.CACTUS_RPC_CERT_B64 || '',
   keyB64: process.env.CACTUS_RPC_KEY_B64 || '',
+  caB64: process.env.CACTUS_BROKER_CA_B64 || '',
+  token: process.env.CACTUS_BROKER_TOKEN || '',
   assetId: process.env.CACTUS_ASSET_ID || '',
-  catWalletId: parseInt(process.env.CACTUS_CAT_WALLET_ID || '0', 10),
   explorerBaseUrl: process.env.CACTUS_EXPLORER_BASE_URL || 'https://explorer.cactus-network.net/#/'
 });
 
 const isEnabled = () => {
   const e = env();
-  return e.enabled && !!e.rpcUrl && !!e.certB64 && !!e.keyB64 && !!e.assetId && e.catWalletId > 0;
+  return e.enabled && !!e.baseUrl && !!e.certB64 && !!e.keyB64 && !!e.caB64 && !!e.token;
 };
 
 const explorerBaseUrl = () => env().explorerBaseUrl;
 
-// Raw RPC call. Throws on transport problems; resolves with the parsed JSON
-// body (which itself carries success:true/false) when a response arrived.
-function rpc(path, body) {
+// The explorer has no /tx/ route, and CAT puzzle-hash wrapping means the coin
+// never shows on the recipient's address page — the only stable link is the
+// created coin itself.
+const explorerCoinUrl = (coinId) => coinId ? `${env().explorerBaseUrl}coin/${coinId}` : null;
+
+// coin_id = sha256(parent_coin_info + puzzle_hash + int_to_bytes(amount)),
+// amount serialized as Chia's minimal big-endian SIGNED int (empty for 0).
+function computeCoinId(parentCoinInfo, puzzleHash, amount) {
+  const hex = (h) => Buffer.from(String(h).replace(/^0x/, ''), 'hex');
+  let amountBytes = Buffer.alloc(0);
+  if (amount) {
+    amountBytes = Buffer.alloc(Math.floor((BigInt(amount).toString(2).length + 8) / 8));
+    let v = BigInt(amount);
+    for (let i = amountBytes.length - 1; i >= 0; i--) {
+      amountBytes[i] = Number(v & 0xffn);
+      v >>= 8n;
+    }
+  }
+  return createHash('sha256')
+    .update(Buffer.concat([hex(parentCoinInfo), hex(puzzleHash), amountBytes]))
+    .digest('hex');
+}
+
+// Raw broker call. Throws on transport problems (timeout, reset, TLS);
+// resolves with { status, body } when any HTTP response arrived — status-code
+// semantics are load-bearing and classified by the caller.
+function brokerRequest(path, body) {
   const e = env();
-  const url = new URL(path, e.rpcUrl);
-  const payload = JSON.stringify(body || {});
+  const url = new URL(path, e.baseUrl);
+  const payload = body === undefined ? null : JSON.stringify(body);
   const options = {
-    method: 'POST',
-    hostname: url.hostname,
+    method: payload === null ? 'GET' : 'POST',
+    // CACTUS_BROKER_CONNECT_HOST dials an alternate address (e.g. the node's
+    // LAN IP when the router won't hairpin the public one) while `servername`
+    // keeps TLS verifying against the real hostname. Local testing only —
+    // deploy.sh does not forward it.
+    hostname: process.env.CACTUS_BROKER_CONNECT_HOST || url.hostname,
+    servername: url.hostname,
     port: url.port || 443,
     path: url.pathname,
-    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+    headers: {
+      Host: url.host,
+      Authorization: `Bearer ${e.token}`,
+      ...(payload !== null && {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload)
+      })
+    },
     cert: Buffer.from(e.certB64, 'base64'),
     key: Buffer.from(e.keyB64, 'base64'),
-    // The node's RPC cert is signed by its own private CA, not a public one.
-    // The mTLS client cert is the authentication; we accept the server cert.
-    rejectUnauthorized: false,
-    timeout: 30000
+    // The broker's server cert is issued by its private CA, not a public one —
+    // pin that CA explicitly and verify.
+    ca: Buffer.from(e.caB64, 'base64'),
+    rejectUnauthorized: true,
+    // Overridable for ambiguity drills (Phase 5): a tiny timeout cuts the
+    // connection mid-request to exercise the unknown/quarantine path.
+    timeout: parseInt(process.env.CACTUS_BROKER_TIMEOUT_MS || '30000', 10)
   };
   return new Promise((resolve, reject) => {
     const req = https.request(options, (res) => {
       let data = '';
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
-        if (res.statusCode !== 200) {
-          return reject(new Error(`RPC HTTP ${res.statusCode}: ${data.slice(0, 200)}`));
-        }
-        try { resolve(JSON.parse(data)); } catch (parseError) {
-          reject(new Error(`RPC unparseable response: ${data.slice(0, 200)}`));
-        }
+        let parsed = null;
+        try { parsed = JSON.parse(data); } catch (_) { /* body may be empty/plain */ }
+        resolve({ status: res.statusCode, body: parsed, raw: data.slice(0, 200) });
       });
     });
-    req.on('timeout', () => { req.destroy(new Error('RPC timeout')); });
+    req.on('timeout', () => { req.destroy(new Error('broker timeout')); });
     req.on('error', reject);
-    req.write(payload);
+    if (payload !== null) req.write(payload);
     req.end();
   });
 }
 
-// Send `mojos` of the FavCoins CAT to `address`. See classification contract
-// at the top of this file. `memo` ties the on-chain tx back to the claim row.
-async function sendCat({ address, mojos, memo }) {
+// Send `mojos` of FavCoin to `address`, idempotent on `claimId` (8–128 chars,
+// [A-Za-z0-9_-] only — callers sanitize). See classification contract above.
+async function sendCat({ claimId, address, mojos, memo }) {
   if (!isEnabled()) return { outcome: 'rejected', reason: 'claims_disabled' };
-  let response;
+  let res;
   try {
-    response = await rpc('/cat_spend', {
-      wallet_id: env().catWalletId,
-      inner_address: address,
-      amount: mojos,
-      fee: 0,
-      memos: memo ? [memo] : []
+    res = await brokerRequest('/cat_spend', {
+      claim_id: claimId,
+      address,
+      amount_mojos: mojos,
+      memo: memo || undefined
     });
   } catch (transportError) {
-    // The request may or may not have reached the wallet — quarantine.
+    // The request may or may not have reached the broker — quarantine.
     return { outcome: 'unknown', reason: transportError.message };
   }
-  if (response.success === true) {
-    const txId = response.transaction_id
-      || (response.transaction && response.transaction.name)
-      || null;
-    if (!txId) return { outcome: 'unknown', reason: 'success_without_tx_id' };
-    return { outcome: 'sent', txId };
+  const { status, body } = res;
+  if (status === 200 && body && body.success === true) {
+    if (!body.transaction_id) return { outcome: 'unknown', reason: 'success_without_tx_id' };
+    return { outcome: 'sent', txId: body.transaction_id, replayed: body.replayed === true };
   }
-  // A well-formed error response means the wallet refused — nothing broadcast.
-  return { outcome: 'rejected', reason: response.error || 'rpc_rejected' };
+  const reason = (body && (body.error || body.message)) || `broker HTTP ${status}`;
+  switch (status) {
+    case 400: // bad address / over per-send cap / malformed claim_id — nothing sent
+    case 422: // same class — the broker emits 422 for validation errors in practice
+      return { outcome: 'rejected', reason };
+    case 401: // bad bearer token — config problem, nothing sent
+      return { outcome: 'retriable', reason: `auth: ${reason}` };
+    case 409: // claim_id already used and held as sending/failed — money may have moved
+      return { outcome: 'unknown', reason: `claim_id conflict: ${reason}` };
+    case 429: // rolling 24h cap — back-pressure, nothing sent
+      return { outcome: 'retriable', reason: 'daily_cap_reached' };
+    case 502: // wallet rejected before broadcast
+      if (body && body.broadcast === false) return { outcome: 'rejected', reason };
+      return { outcome: 'unknown', reason };
+    case 503: // wallet on wrong key / not synced — transient, nothing sent
+      return { outcome: 'retriable', reason };
+    case 504: // timed out mid-request — the spend may have gone out
+    default:
+      return { outcome: 'unknown', reason };
+  }
 }
 
-// True once the transaction is confirmed in a block; false while in flight.
-// Throws on transport failure (caller just tries again next pass).
+// Poll a broadcast transaction. Returns { confirmed, confirmedAtHeight,
+// additions } — additions carry {amount, parent_coin_info, puzzle_hash} for
+// explorer coin links. Throws on transport failure or unknown tx (caller
+// just tries again next pass).
+async function getTransaction(txId) {
+  const { status, body, raw } = await brokerRequest('/get_transaction', { transaction_id: txId });
+  if (status !== 200 || !body || body.success !== true) {
+    throw new Error(`get_transaction HTTP ${status}: ${(body && body.error) || raw}`);
+  }
+  return {
+    confirmed: body.confirmed === true,
+    confirmedAtHeight: body.confirmed_at_height || null,
+    additions: body.additions || []
+  };
+}
+
+// Back-compat shim for callers that only need the boolean.
 async function getTransactionConfirmed(txId) {
-  const response = await rpc('/get_transaction', { transaction_id: txId });
-  if (response.success !== true) {
-    throw new Error(`get_transaction failed: ${response.error || 'unknown'}`);
-  }
-  return response.transaction && response.transaction.confirmed === true;
+  return (await getTransaction(txId)).confirmed;
 }
 
-// Startup/smoke sanity: confirm the CAT wallet exists on the hot key.
+// Startup/smoke sanity: the broker reports whether its CAT wallet matches the
+// FavCoin asset id. Throws if unreachable or mismatched.
 async function getWallets() {
-  const response = await rpc('/get_wallets', {});
-  if (response.success !== true) {
-    throw new Error(`get_wallets failed: ${response.error || 'unknown'}`);
+  const { status, body, raw } = await brokerRequest('/get_wallets', {});
+  if (status !== 200 || !body || body.success !== true) {
+    throw new Error(`get_wallets HTTP ${status}: ${(body && body.error) || raw}`);
   }
-  return response.wallets || [];
+  if (body.asset_id_matches === false) {
+    throw new Error('get_wallets: broker CAT wallet asset id does NOT match FavCoin');
+  }
+  return body.wallets || [];
 }
 
-module.exports = { isEnabled, explorerBaseUrl, sendCat, getTransactionConfirmed, getWallets };
+// Broker readiness — gate send passes on ok:true. Returns null when the
+// broker can't be reached (callers treat that as not-ok).
+async function healthz() {
+  try {
+    const { status, body } = await brokerRequest('/healthz');
+    return status === 200 && body ? body : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+module.exports = {
+  isEnabled,
+  explorerBaseUrl,
+  explorerCoinUrl,
+  computeCoinId,
+  sendCat,
+  getTransaction,
+  getTransactionConfirmed,
+  getWallets,
+  healthz
+};

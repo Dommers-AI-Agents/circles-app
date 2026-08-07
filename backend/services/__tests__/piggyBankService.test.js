@@ -116,18 +116,28 @@ jest.mock('../../config/firebase', () => ({
   }
 }));
 
-// Controllable stand-in for the cactus wallet RPC client. Settlement tests
-// script its outcomes; claim-only tests disable it so the inline settlement
-// kick returns immediately and can't race the assertions.
+// Controllable stand-in for the broker client. Settlement tests script its
+// outcomes; claim-only tests disable it so the inline settlement kick returns
+// immediately and can't race the assertions.
 const mockCactusWallet = {
   enabled: false,
   sendResult: { outcome: 'sent', txId: 'tx_test_1' },
   confirmedTxs: new Set(),
+  health: { ok: true },
   isEnabled: jest.fn(() => mockCactusWallet.enabled),
   explorerBaseUrl: jest.fn(() => 'https://explorer.cactus-network.net/#/'),
+  explorerCoinUrl: jest.fn((coinId) => coinId
+    ? `https://explorer.cactus-network.net/#/coin/${coinId}` : null),
+  computeCoinId: jest.fn(() => 'coin_test_1'),
   sendCat: jest.fn(async () => mockCactusWallet.sendResult),
+  getTransaction: jest.fn(async (txId) => ({
+    confirmed: mockCactusWallet.confirmedTxs.has(txId),
+    confirmedAtHeight: mockCactusWallet.confirmedTxs.has(txId) ? 123456 : null,
+    additions: []
+  })),
   getTransactionConfirmed: jest.fn(async (txId) => mockCactusWallet.confirmedTxs.has(txId)),
-  getWallets: jest.fn(async () => [])
+  getWallets: jest.fn(async () => []),
+  healthz: jest.fn(async () => mockCactusWallet.health)
 };
 jest.mock('../cactusWalletService', () => mockCactusWallet);
 
@@ -148,8 +158,11 @@ beforeEach(() => {
   mockCactusWallet.enabled = false;
   mockCactusWallet.sendResult = { outcome: 'sent', txId: 'tx_test_1' };
   mockCactusWallet.confirmedTxs.clear();
+  mockCactusWallet.health = { ok: true };
   mockCactusWallet.sendCat.mockClear();
+  mockCactusWallet.getTransaction.mockClear();
   mockCactusWallet.getTransactionConfirmed.mockClear();
+  mockCactusWallet.healthz.mockClear();
 });
 
 describe('derivePiggyDedupKey', () => {
@@ -391,11 +404,13 @@ describe('claim (T1)', () => {
   });
 
   test('below minimum → below_minimum with amounts', async () => {
-    seedBank('u1', { confirmedCoins: 499, walletAddress: 'cac1qtest' });
+    // Derived from config so a re-priced minimum can't silently invert this
+    const justBelow = config.CLAIM.MIN_CONFIRMED_TO_CLAIM - 1;
+    seedBank('u1', { confirmedCoins: justBelow, walletAddress: 'cac1qtest' });
     const res = await piggyBank.claim('u1');
     expect(res.code).toBe('below_minimum');
     expect(res.minimum).toBe(config.CLAIM.MIN_CONFIRMED_TO_CLAIM);
-    expect(res.confirmed).toBe(499);
+    expect(res.confirmed).toBe(justBelow);
   });
 
   test('happy path snapshots the full balance and locks the bank', async () => {
@@ -519,6 +534,70 @@ describe('runSettlement (T2–T7)', () => {
     summary = await piggyBank.runSettlement();
     expect(mockCactusWallet.sendCat).toHaveBeenCalledTimes(1);
     expect(claimRowOf('u1').status).toBe('claim_sending');
+  });
+
+  test('retriable outcome → back to pending, retried later with SAME broker claim_id', async () => {
+    await setupClaim();
+    mockCactusWallet.enabled = true;
+    mockCactusWallet.sendResult = { outcome: 'retriable', reason: 'daily_cap_reached' };
+
+    let summary = await piggyBank.runSettlement();
+    expect(summary.deferred).toBe(1);
+    const row = claimRowOf('u1');
+    expect(row.status).toBe('claim_pending');
+    // Coins stay debited — nothing was sent, but the claim is still live.
+    expect(bankOf('u1').confirmedCoins).toBe(0);
+
+    mockCactusWallet.sendResult = { outcome: 'sent', txId: 'tx_test_2' };
+    summary = await piggyBank.runSettlement();
+    expect(summary.sent).toBe(1);
+    expect(mockCactusWallet.sendCat).toHaveBeenCalledTimes(2);
+    // Idempotency: both attempts carried the identical claim_id.
+    expect(mockCactusWallet.sendCat.mock.calls[0][0].claimId)
+      .toBe(mockCactusWallet.sendCat.mock.calls[1][0].claimId);
+  });
+
+  test('broker claim_id is the ledger id sanitized to the broker charset', async () => {
+    await setupClaim();
+    mockCactusWallet.enabled = true;
+    await piggyBank.runSettlement();
+    const sent = mockCactusWallet.sendCat.mock.calls[0][0];
+    expect(sent.claimId).toBe('claim_u1_1'); // from ledger doc 'claim:u1:1'
+    expect(sent.claimId).toMatch(/^[A-Za-z0-9_-]{8,128}$/);
+    expect(claimRowOf('u1').brokerClaimId).toBe('claim_u1_1');
+  });
+
+  test('broker not ready → send pass deferred, nothing sent', async () => {
+    await setupClaim();
+    mockCactusWallet.enabled = true;
+    mockCactusWallet.health = { ok: false };
+
+    const summary = await piggyBank.runSettlement();
+    expect(summary.deferred).toBe(1);
+    expect(mockCactusWallet.sendCat).not.toHaveBeenCalled();
+    expect(claimRowOf('u1').status).toBe('claim_pending');
+  });
+
+  test('settle stamps explorer coin link from the amount-matching addition', async () => {
+    await setupClaim();
+    mockCactusWallet.enabled = true;
+    await piggyBank.runSettlement(); // → claim_sent
+    mockCactusWallet.confirmedTxs.add('tx_test_1');
+    mockCactusWallet.getTransaction.mockImplementationOnce(async () => ({
+      confirmed: true,
+      confirmedAtHeight: 123456,
+      additions: [
+        { amount: 600000, parent_coin_info: '0xaa', puzzle_hash: '0xbb' },
+        { amount: 999, parent_coin_info: '0xcc', puzzle_hash: '0xdd' } // change
+      ]
+    }));
+
+    await piggyBank.runSettlement();
+    const row = claimRowOf('u1');
+    expect(row.status).toBe('settled');
+    expect(row.coinId).toBe('coin_test_1');
+    expect(row.explorerUrl).toBe('https://explorer.cactus-network.net/#/coin/coin_test_1');
+    expect(mockCactusWallet.computeCoinId).toHaveBeenCalledWith('0xaa', '0xbb', 600000);
   });
 
   test('stale claim_sending (crash artifact) gets flagged, not retried', async () => {

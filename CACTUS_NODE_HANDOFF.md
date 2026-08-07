@@ -51,17 +51,25 @@ node's private CA, so exposure is cert-gated, not open.
 Fill this in and return it to Wesley (values only he should carry between
 machines — treat the cert/key as secrets):
 
+> **Superseded (Aug 2026):** the backend no longer talks to the wallet RPC
+> directly — a settlement broker fronts it (see
+> `FAVCIRCLES_E2E_TESTING.md` for the API contract). The bundle is now:
+
 ```
-CACTUS_WALLET_RPC_URL=https://<host-or-ddns>:<port>
-CACTUS_ASSET_ID=<FavCoins CAT asset id / TAIL hash, hex>
-CACTUS_CAT_WALLET_ID=<wallet_id of the FavCoins CAT wallet from get_wallets>
-CACTUS_FINGERPRINT=<hot wallet key fingerprint>
-CACTUS_RPC_CERT_B64=<base64 -i ~/.cactus/mainnet/config/ssl/wallet/private_wallet.crt>
-CACTUS_RPC_KEY_B64=<base64 -i ~/.cactus/mainnet/config/ssl/wallet/private_wallet.key>
+CACTUS_BROKER_URL=https://node.cactus-network.net:12444
+CACTUS_BROKER_TOKEN=<bearer token from the broker's env — single shared secret>
+CACTUS_BROKER_CA_B64=<base64 broker_ca.crt — private CA, pinned by the backend>
+CACTUS_RPC_CERT_B64=<base64 client.crt — client cert issued by that CA>
+CACTUS_RPC_KEY_B64=<base64 client.key>
+CACTUS_ASSET_ID=3c33e7f3fe78576292b3afe0a4aa1a426219077c4bc11e5e9f0ffe326316131c
+CACTUS_FINGERPRINT=1244870717  (hot wallet key; healthz asserts it)
 HOT_WALLET_ADDRESS=<cac1… receive address, for our records>
 HOT_WALLET_FUNDED=<yes — 50,000 FavCoins + CAC for fees>
-EXPLORER_TX_URL_PATTERN=<e.g. https://explorer.cactus-network.net/#/tx/{txId} — confirm the real deep-link shape>
 ```
+
+(`CACTUS_CAT_WALLET_ID` is no longer needed — the broker owns wallet
+selection. Explorer deep links go to `#/coin/{coin_id}`, not `/tx/…`; the
+backend computes the coin id at confirmation.)
 
 Notes:
 - Base64 the PEMs as single lines (`base64 -w0` on Linux, `base64 -i file` on

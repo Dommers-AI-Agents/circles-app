@@ -236,6 +236,65 @@ class PiggyBankService {
           const doc = await this.db.collection(COLLECTIONS.SUGGESTIONS).doc(ref.suggestionId).get();
           return doc.exists ? { valid: true } : { valid: false, reason: 'suggestion_deleted' };
         }
+        case 'check_in': {
+          if (!ref.checkInId) return { valid: false, reason: 'missing_checkin_ref' };
+          const doc = await this.db.collection(COLLECTIONS.CHECK_INS).doc(ref.checkInId).get();
+          return doc.exists ? { valid: true } : { valid: false, reason: 'checkin_deleted' };
+        }
+        case 'place_photo': {
+          // The photo must still be on the save doc — deleting the photo (or
+          // the place) inside the window reverses the earn.
+          if (!ref.placeId) return { valid: false, reason: 'missing_place_ref' };
+          const doc = await this.db.collection(COLLECTIONS.PLACES).doc(ref.placeId).get();
+          if (!doc.exists || doc.data().deletedAt) return { valid: false, reason: 'place_deleted' };
+          const photos = doc.data().photos || [];
+          if (ref.photoUrl && !photos.includes(ref.photoUrl)) {
+            return { valid: false, reason: 'photo_removed' };
+          }
+          return photos.length > 0 ? { valid: true } : { valid: false, reason: 'photo_removed' };
+        }
+        case 'moment_posted': {
+          if (!ref.videoId) return { valid: false, reason: 'missing_video_ref' };
+          const doc = await this.db.collection(COLLECTIONS.PLACE_VIDEOS).doc(ref.videoId).get();
+          if (!doc.exists || doc.data().deletedAt || doc.data().status === 'deleted') {
+            return { valid: false, reason: 'moment_deleted' };
+          }
+          return { valid: true };
+        }
+        case 'profile_completed': {
+          const doc = await this.db.collection(COLLECTIONS.USERS).doc(entry.userId).get();
+          if (!doc.exists) return { valid: false, reason: 'user_missing' };
+          const u = doc.data();
+          return (u.profilePicture && u.bio)
+            ? { valid: true }
+            : { valid: false, reason: 'profile_incomplete' };
+        }
+        case 'place_liked': {
+          // Like lives on the canonical globalPlaces record (one transaction);
+          // an unlike inside the window reverses the earn.
+          if (!ref.globalPlaceId) return { valid: false, reason: 'missing_global_ref' };
+          const doc = await this.db.collection('globalPlaces').doc(ref.globalPlaceId).get();
+          if (!doc.exists) return { valid: false, reason: 'place_deleted' };
+          const likes = doc.data().likes || [];
+          return likes.includes(entry.userId)
+            ? { valid: true }
+            : { valid: false, reason: 'like_removed' };
+        }
+        case 'place_comment': {
+          if (!ref.commentId) return { valid: false, reason: 'missing_comment_ref' };
+          const doc = await this.db.collection(COLLECTIONS.PLACE_COMMENTS).doc(ref.commentId).get();
+          if (!doc.exists || doc.data().deletedAt) return { valid: false, reason: 'comment_deleted' };
+          return { valid: true };
+        }
+        case 'user_followed': {
+          if (!ref.followedUserId) return { valid: false, reason: 'missing_followed_ref' };
+          const doc = await this.db.collection(COLLECTIONS.USERS).doc(entry.userId).get();
+          if (!doc.exists) return { valid: false, reason: 'user_missing' };
+          const following = doc.data().following || [];
+          return following.includes(ref.followedUserId)
+            ? { valid: true }
+            : { valid: false, reason: 'unfollowed' };
+        }
         default:
           return { valid: false, reason: 'unknown_event_type' };
       }
@@ -425,11 +484,22 @@ class PiggyBankService {
     for (const doc of sentSnap.docs) {
       const row = doc.data();
       try {
-        const confirmed = await cactusWallet.getTransactionConfirmed(row.txId);
-        if (confirmed) {
+        const tx = await cactusWallet.getTransaction(row.txId);
+        if (tx.confirmed) {
+          // Explorer has no /tx/ route and CAT wrapping hides the coin from
+          // the recipient's address page — link the created coin. The payment
+          // addition is the one matching the claim amount (change rarely does).
+          const paid = tx.additions.find((a) => a.amount === row.mojos);
+          const coinId = paid
+            ? cactusWallet.computeCoinId(paid.parent_coin_info, paid.puzzle_hash, paid.amount)
+            : null;
           const stamp = new Date().toISOString();
           const did = await this.transitionClaim(doc.ref, 'claim_sent',
-            { status: 'settled', settledAt: stamp },
+            {
+              status: 'settled', settledAt: stamp,
+              confirmedAtHeight: tx.confirmedAtHeight,
+              coinId, explorerUrl: cactusWallet.explorerCoinUrl(coinId)
+            },
             {
               settledOnChain: FieldValue.increment(row.coins),
               activeClaimId: null,
@@ -472,20 +542,42 @@ class PiggyBankService {
     // 3. Send new claims (T2 → RPC → T3/T4/T5).
     const pendingSnap = await ledger.where('status', '==', 'claim_pending')
       .limit(C.SETTLEMENT_BATCH_SIZE).get();
+
+    // Preflight: don't start sends the broker will refuse anyway (wrong key,
+    // not synced, unreachable). Pending rows just wait for the next pass.
+    if (pendingSnap.size > 0) {
+      const health = await cactusWallet.healthz();
+      if (!health || health.ok !== true) {
+        summary.deferred = pendingSnap.size;
+        console.error('🐷 [claims] broker not ready — deferring send pass');
+        return summary;
+      }
+    }
+
     for (const doc of pendingSnap.docs) {
       const row = doc.data();
+
+      // The broker's idempotency key: minted from the ledger doc id (stable
+      // across every retry of this claim), transformed only because the
+      // broker's charset excludes the ':' in our key scheme. Deterministic —
+      // NEVER derived from anything that changes between attempts.
+      const brokerClaimId = doc.id.replace(/[^A-Za-z0-9_-]/g, '_');
 
       // T2: the marker MUST commit before the RPC. Only the pass that wins
       // this transition may call cat_spend for this row.
       const took = await this.transitionClaim(doc.ref, 'claim_pending', {
         status: 'claim_sending',
         sendingAt: new Date().toISOString(),
+        brokerClaimId,
         attempts: (row.attempts || 0) + 1
       });
       if (!took) { summary.skipped++; continue; }
 
       const outcome = await cactusWallet.sendCat({
-        address: row.address, mojos: row.mojos, memo: doc.id
+        claimId: brokerClaimId,
+        address: row.address,
+        mojos: row.mojos,
+        memo: `FavCircles ${doc.id}`
       });
 
       if (outcome.outcome === 'sent') {
@@ -493,6 +585,15 @@ class PiggyBankService {
           status: 'claim_sent', txId: outcome.txId, sentAt: new Date().toISOString()
         });
         summary.sent++;
+      } else if (outcome.outcome === 'retriable') {
+        // Broker back-pressure (daily cap, wallet not ready, auth config):
+        // nothing was sent. Return the row to pending; a later pass retries
+        // with the SAME brokerClaimId, which the broker dedupes.
+        await this.transitionClaim(doc.ref, 'claim_sending', {
+          status: 'claim_pending', failReason: outcome.reason
+        });
+        console.error(`🐷 [claims] ${doc.id} deferred by broker (${outcome.reason}) — will retry`);
+        summary.deferred = (summary.deferred || 0) + 1;
       } else if (outcome.outcome === 'rejected') {
         // A response arrived, so nothing broadcast — refund the gross coins.
         const stamp = new Date().toISOString();
