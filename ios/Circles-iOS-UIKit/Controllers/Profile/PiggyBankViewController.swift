@@ -163,29 +163,10 @@ final class PiggyBankViewController: BaseViewController {
         title = "My Piggy Bank"
         view.backgroundColor = Constants.Colors.background
         setupLayout()
-        #if DEBUG
-        // Acceptance-test hook: long-press ⓘ to mint a throwaway wallet
-        // (address + phrase, not linked, not stored) — used to prove the
-        // on-device derivation with a real 1-FAV send before release.
-        infoButton.addGestureRecognizer(
-            UILongPressGestureRecognizer(target: self, action: #selector(debugMintTestWallet(_:))))
-        #endif
+        // (The DEBUG long-press acceptance-test hook that lived here was
+        // removed 2026-08-07 after the 1-FAV on-chain proof passed: a
+        // device-generated wallet received and spent real FAV.)
     }
-
-    #if DEBUG
-    @objc private func debugMintTestWallet(_ gesture: UILongPressGestureRecognizer) {
-        guard gesture.state == .began, let wallet = CactusWalletFactory.generate() else { return }
-        AlertPresenter.showConfirmation(
-            title: "DEBUG: test wallet",
-            message: "address:\n\(wallet.address)\n\nphrase:\n\(wallet.mnemonic)",
-            confirmTitle: "Copy address",
-            cancelTitle: "Copy phrase",
-            from: self,
-            onConfirm: { UIPasteboard.general.string = wallet.address },
-            onCancel: { UIPasteboard.general.string = wallet.mnemonic }
-        )
-    }
-    #endif
 
     private func setupLayout() {
         view.addSubview(scrollView)
