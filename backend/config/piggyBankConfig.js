@@ -10,7 +10,7 @@ module.exports = {
   // so 100 FavCoins feels like $100. Old rows keep their 2026.07-a pricing;
   // existing balances deliberately untouched (founding-user head start).
   RULE_VERSION: '2026.08-a',
-  CLEARING_WINDOW_HOURS: 48,
+  CLEARING_WINDOW_HOURS: 24,
   COINS: {
     ADD_PLACE: 3,
     CREATE_CIRCLE: 5,
@@ -46,8 +46,11 @@ module.exports = {
   },
   CREATE_CIRCLE_MIN_PLACES: 3,   // enforced at CLEARING time, not earn time
   CLAIM: {
-    MIN_CONFIRMED_TO_CLAIM: 50,    // a claim moves ALL confirmed coins, min this
-                                   // (500→50 with the 2026.08-a rescale)
+    MIN_CONFIRMED_TO_CLAIM: 10,    // a claim moves ALL confirmed coins, min this
+    FIRST_CLAIM_MIN: 1,            // a user's FIRST claim goes through at any
+                                   // amount — the sooner someone sees real
+                                   // coins land in their own wallet, the
+                                   // sooner they believe the whole system
     COINS_PER_CAT: 1,              // supply-stretch lever (PIGGY_BANK_PLAN §8.4)
     CLAIM_FEE_COINS: 0,            // withheld from the claim; user bears fees (§8.4)
     MOJOS_PER_CAT: 1000,           // CAT2: 1 CAT = 1000 mojos on-chain

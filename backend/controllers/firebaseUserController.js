@@ -294,6 +294,18 @@ exports.updateUser = async (req, res, next) => {
     const updatedUserDoc = await userRef.get();
     const user = serializeDoc(updatedUserDoc);
 
+    // Piggy bank: first time the profile is complete (photo + bio). This is
+    // the endpoint iOS actually saves profiles through — the same hook in
+    // firebaseAuthController.updateProfile covers the legacy auth/me path;
+    // the one-time dedup key makes double-crediting impossible.
+    if (user.profilePicture && user.bio) {
+      require('../services/piggyBankService').credit({
+        userId: userDoc.id,
+        eventType: 'profile_completed',
+        sourceRef: {}
+      }).catch(() => {});
+    }
+
     res.status(200).json({
       success: true,
       user: {

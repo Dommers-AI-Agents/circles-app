@@ -147,7 +147,11 @@ class PiggyBankService {
       config: {
         coinValues: config.COINS,
         clearingWindowHours: config.CLEARING_WINDOW_HOURS,
-        minConfirmedToClaim: config.CLAIM.MIN_CONFIRMED_TO_CLAIM,
+        // Per-user effective minimum: the first claim goes through at any
+        // amount, so the app's "unlocks at N" copy stays truthful.
+        minConfirmedToClaim: (bank.claimCount || 0) === 0
+          ? (config.CLAIM.FIRST_CLAIM_MIN || 1)
+          : config.CLAIM.MIN_CONFIRMED_TO_CLAIM,
         claimFeeCoins: config.CLAIM.CLAIM_FEE_COINS,
         coinsPerCat: config.CLAIM.COINS_PER_CAT,
         claimsEnabled: cactusWallet.isEnabled(),
@@ -411,11 +415,13 @@ class PiggyBankService {
           return { ok: false, code: 'claim_in_flight', activeClaimId: bank.activeClaimId };
         }
         const confirmed = bank.confirmedCoins || 0;
-        if (confirmed < config.CLAIM.MIN_CONFIRMED_TO_CLAIM) {
-          return {
-            ok: false, code: 'below_minimum',
-            minimum: config.CLAIM.MIN_CONFIRMED_TO_CLAIM, confirmed
-          };
+        // A user's FIRST claim clears at any amount — seeing real coins land
+        // in their own wallet is the moment the system becomes believable.
+        const minimum = (bank.claimCount || 0) === 0
+          ? (config.CLAIM.FIRST_CLAIM_MIN || 1)
+          : config.CLAIM.MIN_CONFIRMED_TO_CLAIM;
+        if (confirmed < minimum) {
+          return { ok: false, code: 'below_minimum', minimum, confirmed };
         }
         const entry = createPiggyClaimEntry({
           userId, confirmedCoins: confirmed, address: bank.walletAddress

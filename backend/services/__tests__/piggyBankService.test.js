@@ -403,10 +403,20 @@ describe('claim (T1)', () => {
     expect((await piggyBank.claim('u1')).code).toBe('no_wallet');
   });
 
-  test('below minimum → below_minimum with amounts', async () => {
+  test('first claim clears at any amount (FIRST_CLAIM_MIN)', async () => {
+    // No claimCount on the bank → first-timer; even 1 coin goes through.
+    seedBank('u1', { confirmedCoins: 1, walletAddress: 'cac1qtest' });
+    const res = await piggyBank.claim('u1');
+    expect(res.ok).toBe(true);
+    expect(res.claim.coins).toBe(1);
+  });
+
+  test('below minimum → below_minimum with amounts (after first claim)', async () => {
     // Derived from config so a re-priced minimum can't silently invert this
     const justBelow = config.CLAIM.MIN_CONFIRMED_TO_CLAIM - 1;
-    seedBank('u1', { confirmedCoins: justBelow, walletAddress: 'cac1qtest' });
+    seedBank('u1', {
+      confirmedCoins: justBelow, walletAddress: 'cac1qtest', claimCount: 1
+    });
     const res = await piggyBank.claim('u1');
     expect(res.code).toBe('below_minimum');
     expect(res.minimum).toBe(config.CLAIM.MIN_CONFIRMED_TO_CLAIM);
