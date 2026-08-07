@@ -323,7 +323,14 @@ class NetworkManager {
 
         // Branded domain (Cloud Run domain mapping to the same backend) - reads
         // far better in messages than the raw run.app URL
-        return "https://api.favcircles.com/connect/\(simpleUserId)"
+        var link = "https://api.favcircles.com/connect/\(simpleUserId)"
+        // Carry the sharer's referral code so a recipient who installs the app
+        // gets it prefilled on the Register screen (SceneDelegate stashes it as
+        // the pending referral code when the link opens the app)
+        if let code = ReferralService.shared.myReferralCode {
+            link += "?code=\(code)"
+        }
+        return link
     }
 
     func shareConnectionInvite() -> [Any] {
@@ -333,11 +340,20 @@ class NetworkManager {
             return ["Join me on Circles!"]
         }
 
+        // If the code isn't cached yet, fetch it now so the next share has it
+        ReferralService.shared.prefetchMyReferralCode()
+
         // Share the URL as its own item (not embedded in the text) so Messages
         // renders a tappable rich-link preview instead of plain text. One link
         // does everything: opens the app and auto-connects when installed,
         // otherwise redirects to the App Store.
-        let shareText = "\(currentUser.displayName) wants to connect with you on Circles! Tap the link to connect and share favorite places."
+        var shareText = "\(currentUser.displayName) wants to connect with you on Circles! Tap the link to connect and share favorite places."
+        // Spell the referral code out in the text too: link attribution doesn't
+        // survive the App Store install round-trip, but a code the recipient can
+        // read and type into the Register screen does.
+        if let code = ReferralService.shared.myReferralCode {
+            shareText += " New to Circles? Sign up with referral code \(code) to get 1 month free."
+        }
 
         return [shareText, inviteURL]
     }

@@ -101,6 +101,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         AuthService.shared.addAuthStateListener(id: authListenerId) { [weak self] isLoggedIn in
             Logger.debug("SceneDelegate auth state listener called with isLoggedIn: \(isLoggedIn)")
             self?.updateRootViewController(isLoggedIn: isLoggedIn)
+            if isLoggedIn {
+                // Warm the local referral-code cache so connect invites carry it
+                ReferralService.shared.prefetchMyReferralCode()
+            }
         }
         
         // Setup promoted purchase notifications
@@ -533,6 +537,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             case "connect":
                 if pathComponents.count >= 3 {
                     let userId = pathComponents[2]
+                    stashInviteReferralCode(from: url)
                     handleConnectionInvite(from: userId)
                 }
             default:
@@ -563,7 +568,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             let userId = pathComponents[1]
             navigateToUserProfile(userId: userId)
         } else if pathComponents.first == "connect" && pathComponents.count >= 2 {
+            // Shared connect links (https://<backend>/connect/<id>?code=<referral>)
             let userId = pathComponents[1]
+            stashInviteReferralCode(from: url)
             handleConnectionInvite(from: userId)
         } else if pathComponents.first == "s" && pathComponents.count >= 2 {
             // Physical sticker QR code: https://<backend>/s/<code>
@@ -630,6 +637,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 Logger.debug("📱 SceneDelegate: Extracted userId from path: \(userId)")
                 if !userId.isEmpty {
                     Logger.debug("📱 SceneDelegate: Calling handleConnectionInvite with userId: \(userId)")
+                    self.stashInviteReferralCode(from: url)
                     self.handleConnectionInvite(from: userId)
                     return
                 }
@@ -743,6 +751,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     // Example: circles:///connect/user_123 (with triple slash)
                     let userId = components[2]
                     Logger.debug("📱 SceneDelegate: Handling connection invite from user: \(userId)")
+                    self.stashInviteReferralCode(from: url)
                     self.handleConnectionInvite(from: userId)
                 }
             }
@@ -1433,6 +1442,20 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     
     // MARK: - Referral Code Handling
     
+    /// Connect invite links can carry the sharer's referral code (?code=XXXXXX).
+    /// For a recipient who isn't signed in yet, stash it as the pending referral
+    /// code so the Register screen prefills it and applies it after signup.
+    /// Logged-in users just get the normal auto-connect — no referral involved.
+    private func stashInviteReferralCode(from url: URL) {
+        guard !AuthService.shared.isLoggedIn,
+              !ReferralService.shared.hasUsedReferralCode(),
+              let code = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                  .queryItems?.first(where: { $0.name == "code" })?.value,
+              !code.isEmpty else { return }
+        Logger.debug("📱 SceneDelegate: Stashing referral code from connect invite: \(code)")
+        ReferralService.shared.savePendingReferralCode(code.uppercased())
+    }
+
     private func handleReferralCode(_ code: String) {
         Logger.debug("📱 SceneDelegate: handleReferralCode called with code: \(code)")
         

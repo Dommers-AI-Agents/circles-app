@@ -10,8 +10,35 @@ class ReferralService {
     // Keys for storing referral data
     private let kPendingReferralCode = "pending_referral_code"
     private let kHasUsedReferralCode = "has_used_referral_code"
-    
+    private let kMyReferralCode = "my_referral_code"
+    private let kMyReferralCodeUserId = "my_referral_code_user_id"
+
     private init() {}
+
+    // MARK: - My Referral Code (local cache)
+
+    /// The current user's own referral code, cached locally so share flows can
+    /// build invite links synchronously. Scoped to the logged-in user id so a
+    /// device that switches accounts never shares the previous account's code.
+    var myReferralCode: String? {
+        guard let userId = AuthService.shared.getUserId(),
+              userDefaults.string(forKey: kMyReferralCodeUserId) == userId else { return nil }
+        return userDefaults.string(forKey: kMyReferralCode)
+    }
+
+    private func cacheMyReferralCode(_ code: String) {
+        guard let userId = AuthService.shared.getUserId() else { return }
+        userDefaults.set(code, forKey: kMyReferralCode)
+        userDefaults.set(userId, forKey: kMyReferralCodeUserId)
+    }
+
+    /// Fetch (creating if needed) the user's referral code so it's ready by the
+    /// time they share a connect invite. The backend returns the existing code
+    /// when one is already assigned, so this is safe to call repeatedly.
+    func prefetchMyReferralCode() {
+        guard AuthService.shared.isLoggedIn, myReferralCode == nil else { return }
+        generateReferralCode { _ in }
+    }
     
     // MARK: - Generate Referral Code
     
@@ -24,6 +51,7 @@ class ReferralService {
         ) { (result: Result<ReferralResponse, APIError>) in
             switch result {
             case .success(let response):
+                self.cacheMyReferralCode(response.referralCode)
                 completion(.success(response.referralCode))
             case .failure(let error):
                 completion(.failure(error))
@@ -63,6 +91,9 @@ class ReferralService {
         ) { (result: Result<ReferralStatus, APIError>) in
             switch result {
             case .success(let response):
+                if let code = response.referralCode {
+                    self.cacheMyReferralCode(code)
+                }
                 completion(.success(response))
             case .failure(let error):
                 completion(.failure(error))
