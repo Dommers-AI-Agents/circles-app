@@ -411,14 +411,14 @@ exports.firebaseAuth = async (req, res, next) => {
       email = email.toLowerCase().trim();
       console.log(`📧 Social auth with normalized email: ${email}, provider: ${provider}`);
       
-      // Block private relay emails - users must use real email
+      // Private relay emails are ALLOWED (policy reversed 2026-08-06):
+      // favcircles.com is registered in the Apple Developer portal for
+      // Sign in with Apple Email Communication (SPF verified), so mail from
+      // our domain forwards through Apple's relay. Blocking Hide-My-Email
+      // sign-ins was also an App Review risk. Duplicate-account risk is
+      // handled by provider-uid matching + the account-merge tooling.
       if (email.includes('@privaterelay.appleid.com')) {
-        console.log(`❌ Blocking private relay email: ${email}`);
-        return res.status(400).json({
-          success: false,
-          message: 'Private relay emails are not allowed. Please sign in with Apple again and choose to share your real email address.',
-          code: 'PRIVATE_RELAY_NOT_ALLOWED'
-        });
+        console.log(`📧 Private relay sign-in: ${email}`);
       }
     }
 
@@ -1355,6 +1355,16 @@ exports.updateProfile = async (req, res, next) => {
     // Get updated user
     const updatedUserDoc = await userRef.get();
     const user = serializeDoc(updatedUserDoc);
+
+    // Piggy bank: 5 FavCoins the first time the profile is complete (photo +
+    // bio). One-time dedup key — later edits just come back duplicate.
+    if (user.profilePicture && user.bio) {
+      require('../services/piggyBankService').credit({
+        userId: req.user.uid,
+        eventType: 'profile_completed',
+        sourceRef: {}
+      }).catch(() => {});
+    }
 
     const normalizedId = normalizeUserId(user.id);
     

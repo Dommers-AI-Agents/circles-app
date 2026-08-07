@@ -89,6 +89,18 @@ class OwnerPaywallViewController: BaseViewController {
         contentStack.addArrangedSubview(productsStack)
         contentStack.addArrangedSubview(restoreButton)
 
+        // Functional Terms/Privacy links are REQUIRED on subscription screens
+        // (App Review 3.1.2(c)); this screen had none.
+        let legalTextView = LegalLinks.makeLegalTextView()
+        legalTextView.attributedText = LegalLinks.agreementText(
+            "Subscriptions renew automatically until canceled in Settings. By subscribing, you agree to our Terms of Use (EULA) and Privacy Policy.",
+            termsPhrase: "Terms of Use (EULA)",
+            fontSize: 12,
+            color: .secondaryLabel
+        )
+        legalTextView.textAlignment = .center
+        contentStack.addArrangedSubview(legalTextView)
+
         BusinessFeatures.features.forEach { featuresStack.addArrangedSubview(makeFeatureRow($0)) }
         restoreButton.addTarget(self, action: #selector(restoreTapped), for: .touchUpInside)
 

@@ -1,5 +1,16 @@
 # Private Relay Account Migration Guide
 
+> **POLICY REVERSED 2026-08-06** — Sign in with Apple using Hide My Email is
+> **allowed again**. `favcircles.com` is registered in the Apple Developer
+> portal under *Sign in with Apple for Email Communication* (SPF verified),
+> so email from our domain is forwarded by Apple's relay — the original
+> contactability reason for the block no longer applies, and rejecting
+> Hide-My-Email sign-ins was an App Review risk. The `socialAuth` block was
+> removed; the email/password `register` endpoint still rejects relay
+> addresses (a manually-typed relay address carries no Apple identity and is
+> pure duplicate surface). Returning Apple users match by provider uid;
+> cross-provider duplicates are handled by the account-merge tooling below.
+
 This guide explains how to handle the migration of existing private relay users and the prevention of new private relay accounts.
 
 ## Overview

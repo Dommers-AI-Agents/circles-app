@@ -157,15 +157,17 @@ class LoginViewController: BaseViewController {
 
     private lazy var appleSignInButton = UIButton.appleSignInButton()
 
-    private let privacyLabel: UILabel = {
-        let label = UILabel()
-        label.text = "By using Circles, you agree to the Terms, Cookie Policy, and Privacy Policy"
-        label.font = UIFont.systemFont(ofSize: 12)
-        label.textColor = .white.withAlphaComponent(0.8)
-        label.textAlignment = .center
-        label.numberOfLines = 0
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
+    // A text view, not a label: the Terms and Privacy mentions must be REAL
+    // tappable links (App Review 2.1(a) — "no working links" rejection).
+    private let privacyLabel: UITextView = {
+        let textView = LegalLinks.makeLegalTextView(linkColor: .white)
+        textView.attributedText = LegalLinks.agreementText(
+            "By using Circles, you agree to the Terms of Use and Privacy Policy",
+            fontSize: 12,
+            color: .white.withAlphaComponent(0.8)
+        )
+        textView.textAlignment = .center
+        return textView
     }()
 
     // MARK: - Properties
@@ -512,44 +514,9 @@ class LoginViewController: BaseViewController {
         )
     }
 
-    // MARK: - Private Relay Guidance
-    private func showPrivateRelayGuidance() {
-        let alert = UIAlertController(
-            title: "Email Not Accepted",
-            message: "You selected 'Hide My Email' which is not supported.\n\nHow to fix this:\n1. Tap 'Try Again' below\n2. When Apple Sign-In appears, tap your name/email at the top\n3. Choose 'Share My Email' instead of 'Hide My Email'\n4. Continue with sign in\n\nWhy we need your real email:\n• Send daily activity summaries\n• Important account notifications\n• Password reset emails",
-            preferredStyle: .alert
-        )
-
-        alert.addAction(UIAlertAction(title: "Try Again", style: .default) { [weak self] _ in
-            self?.proceedWithAppleSignIn()
-        })
-
-        alert.addAction(UIAlertAction(title: "Use Email Instead", style: .default) { [weak self] _ in
-            // Navigate to email login/registration
-            let registerVC = RegisterViewController()
-            self?.navigationController?.pushViewController(registerVC, animated: true)
-        })
-
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-
-        present(alert, animated: true)
-    }
-
-    private func showAppleSignInGuidance() {
-        let alert = UIAlertController(
-            title: "Share Your Real Email",
-            message: "To use Circles, please sign in with Apple again and choose 'Share My Email' instead of 'Hide My Email'. This ensures you can access your account from all devices.",
-            preferredStyle: .alert
-        )
-
-        alert.addAction(UIAlertAction(title: "Try Again", style: .default) { [weak self] _ in
-            self?.proceedWithAppleSignIn()
-        })
-
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-
-        present(alert, animated: true)
-    }
+    // Note: Hide My Email (private relay) sign-ins are supported as of
+    // 2026-08-06 — favcircles.com is registered with Apple for relay email
+    // forwarding, and the backend no longer rejects relay addresses.
 }
 
 // MARK: - UITextFieldDelegate

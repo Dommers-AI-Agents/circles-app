@@ -670,28 +670,10 @@ class RegisterViewController: BaseViewController {
         return responders.first { $0.isFirstResponder }
     }
     
-    // MARK: - Private Relay Guidance
-    private func showPrivateRelayGuidance() {
-        let alert = UIAlertController(
-            title: "Email Not Accepted",
-            message: "You selected 'Hide My Email' which is not supported.\n\nHow to fix this:\n1. Tap 'Try Again' below\n2. When Apple Sign-In appears, tap your name/email at the top\n3. Choose 'Share My Email' instead of 'Hide My Email'\n4. Continue with sign in\n\nWhy we need your real email:\n• Send daily activity summaries\n• Important account notifications\n• Password reset emails",
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "Try Again", style: .default) { [weak self] _ in
-            self?.proceedWithAppleSignIn()
-        })
-        
-        alert.addAction(UIAlertAction(title: "Use Email Instead", style: .default) { [weak self] _ in
-            // Focus on email field for manual registration
-            self?.emailTextField.becomeFirstResponder()
-        })
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        
-        present(alert, animated: true)
-    }
-    
+    // Note: Hide My Email (private relay) sign-ins are supported as of
+    // 2026-08-06 — favcircles.com is registered with Apple for relay email
+    // forwarding, and the backend no longer rejects relay addresses.
+
     // MARK: - Keyboard Handling
     @objc private func keyboardWillShow(notification: NSNotification) {
         guard let keyboardSize = (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue else { return }

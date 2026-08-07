@@ -83,22 +83,18 @@ class PaywallViewController: BaseViewController {
     private lazy var purchaseButton = UIButton.primaryButton(title: "Start Free Trial")
     private lazy var restoreButton = UIButton.secondaryButton(title: "Restore Purchases")
     
+    // Functional Terms/Privacy links are REQUIRED on subscription screens
+    // (App Review 3.1.2(c)) — the previous version mentioned them without
+    // linking, which is a rejection.
     private let termsLabel: UITextView = {
-        let textView = UITextView()
-        textView.isEditable = false
-        textView.isScrollEnabled = false
-        textView.backgroundColor = .clear
-        textView.textContainerInset = UIEdgeInsets(top: 8, left: 0, bottom: 8, right: 0)
-        textView.translatesAutoresizingMaskIntoConstraints = false
-        
-        let text = "By subscribing, you agree to our Terms of Service and Privacy Policy. Cancel anytime in Settings."
-        let attributedString = NSMutableAttributedString(string: text)
-        attributedString.addAttribute(.font, value: UIFont.systemFont(ofSize: 12), range: NSRange(location: 0, length: text.count))
-        attributedString.addAttribute(.foregroundColor, value: UIColor.secondaryLabel, range: NSRange(location: 0, length: text.count))
-        
-        textView.attributedText = attributedString
+        let textView = LegalLinks.makeLegalTextView()
+        textView.attributedText = LegalLinks.agreementText(
+            "By subscribing, you agree to our Terms of Use (EULA) and Privacy Policy. Cancel anytime in Settings.",
+            termsPhrase: "Terms of Use (EULA)",
+            fontSize: 12,
+            color: .secondaryLabel
+        )
         textView.textAlignment = .center
-        
         return textView
     }()
     
@@ -596,12 +592,21 @@ class PaywallViewController: BaseViewController {
                     
                     if transaction != nil {
                         Logger.debug("✅ Subscription purchase successful!")
-                        AlertPresenter.showSuccess(
-                            title: "Welcome to Circles Premium! 🎉",
-                            message: "Enjoy unlimited access to all features.",
-                            from: self!
-                        )
-                        self?.dismiss(animated: true)
+                        // Dismiss FIRST, then congratulate from the screen
+                        // underneath. Presenting the alert here and then
+                        // calling dismiss() made the dismiss swallow the
+                        // alert (it flashed and vanished) while the paywall
+                        // stayed stuck on screen.
+                        let presenter = self?.presentingViewController
+                        self?.dismiss(animated: true) {
+                            if let presenter = presenter {
+                                AlertPresenter.showSuccess(
+                                    title: "Welcome to Circles Premium! 🎉",
+                                    message: "Enjoy unlimited access to all features.",
+                                    from: presenter
+                                )
+                            }
+                        }
                     } else {
                         // User cancelled
                         Logger.debug("ℹ️ User cancelled subscription purchase")
