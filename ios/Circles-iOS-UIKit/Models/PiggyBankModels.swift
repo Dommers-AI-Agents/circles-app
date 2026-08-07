@@ -35,6 +35,7 @@ struct PiggyLedgerEvent: Decodable {
     let clearAt: String?
     let txId: String?         // claim rows: on-chain transaction id once sent
     let explorerUrl: String?  // settled claims: deep link to the created coin
+    let address: String?      // claim rows: the wallet the claim was sent to
 
     var isPending: Bool { status == "pending" }
     var isReversed: Bool { status == "reversed" }

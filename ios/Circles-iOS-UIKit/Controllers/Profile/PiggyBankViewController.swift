@@ -465,7 +465,10 @@ final class PiggyBankViewController: BaseViewController {
     /// transfer, each linking to its coin on the Cactus explorer.
     @objc private func onChainRowTapped() {
         let settled = events.filter { $0.isClaim && $0.isSettled }
-        let sheet = OnChainCoinsViewController(claims: settled, totalCoins: bank?.settledOnChain ?? 0)
+        let sheet = OnChainCoinsViewController(
+            claims: settled,
+            totalCoins: bank?.settledOnChain ?? 0,
+            explorerBaseUrl: payloadConfig?.explorerBaseUrl ?? "https://explorer.cactus-network.net/#/")
         if let presentation = sheet.sheetPresentationController {
             presentation.detents = [.medium(), .large()]
             presentation.prefersGrabberVisible = true
@@ -476,16 +479,18 @@ final class PiggyBankViewController: BaseViewController {
     @objc private func claimRowTapped(_ gesture: UITapGestureRecognizer) {
         guard let index = gesture.view?.tag, index < events.count else { return }
         let event = events[index]
-        // The settled row carries a deep link to the created coin — the only
-        // page on the Cactus explorer that can prove a CAT transfer (there is
-        // no /tx/ route, and CAT wrapping hides coins from address pages).
-        let link = event.explorerUrl ?? payloadConfig?.explorerBaseUrl
-            ?? "https://explorer.cactus-network.net/#/"
+        // The explorer's address page shows the FavCoin token record (name,
+        // FAV balance, every coin) — the friendly proof. Older rows without a
+        // snapshotted address fall back to the raw coin page.
+        let base = payloadConfig?.explorerBaseUrl ?? "https://explorer.cactus-network.net/#/"
+        let link = event.address.map { "\(base)address/\($0)" }
+            ?? event.explorerUrl
+            ?? base
         AlertPresenter.showInfo(
             title: "On-chain transfer",
             message: "\(PiggyBankFormatting.coins(event.coins)) were sent to your Cactus Wallet.\(event.txId != nil ? "\n\nTransaction: \(event.txId!)" : "")",
             from: self,
-            linkTitle: event.explorerUrl != nil ? "View coin on Cactus explorer" : "Open Cactus explorer",
+            linkTitle: "See your FavCoins on the explorer",
             linkURL: URL(string: link)
         )
     }
@@ -604,20 +609,21 @@ final class PiggyBankViewController: BaseViewController {
 // MARK: - On-chain proof sheet
 
 /// "Your coins on the Cactus blockchain" — one row per completed transfer,
-/// each opening its coin on the Cactus explorer. CAT wrapping keeps these
-/// coins off the explorer's address pages, so per-transfer coin links are the
-/// only on-chain proof surface; the live balance lives in the user's own
-/// Cactus Wallet app.
+/// each opening the claim address's FavCoin token record on the explorer
+/// (the explorer unwraps CAT puzzle hashes per address as of Aug 2026, so
+/// the address page shows name/FAV balance/every coin — the friendly proof).
 final class OnChainCoinsViewController: BaseViewController, UITableViewDataSource, UITableViewDelegate {
 
     override var loadsDataOnViewDidLoad: Bool { false }
 
     private let claims: [PiggyLedgerEvent]
     private let totalCoins: Int
+    private let explorerBaseUrl: String
 
-    init(claims: [PiggyLedgerEvent], totalCoins: Int) {
+    init(claims: [PiggyLedgerEvent], totalCoins: Int, explorerBaseUrl: String) {
         self.claims = claims
         self.totalCoins = totalCoins
+        self.explorerBaseUrl = explorerBaseUrl
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -678,24 +684,34 @@ final class OnChainCoinsViewController: BaseViewController, UITableViewDataSourc
         }
         cell.textLabel?.text = "\(PiggyBankFormatting.coins(claim.coins)) · \(dateText)"
         cell.textLabel?.font = .systemFont(ofSize: 15, weight: .medium)
-        cell.detailTextLabel?.text = claim.explorerUrl != nil
-            ? "✓ confirmed · view the coin on the explorer"
+        let linkable = proofUrl(for: claim) != nil
+        cell.detailTextLabel?.text = linkable
+            ? "✓ confirmed · see your FavCoins on the explorer"
             : "✓ confirmed"
         cell.detailTextLabel?.textColor = Constants.Colors.secondaryLabel
-        cell.accessoryType = claim.explorerUrl != nil ? .disclosureIndicator : .none
-        cell.selectionStyle = claim.explorerUrl != nil ? .default : .none
+        cell.accessoryType = linkable ? .disclosureIndicator : .none
+        cell.selectionStyle = linkable ? .default : .none
         return cell
+    }
+
+    /// The explorer's address page shows the FavCoin token record — name,
+    /// FAV balance, every coin — so it's the layman-friendly destination.
+    /// Each claim links its own snapshotted address (wallets can change
+    /// between claims); the raw coin page is the fallback for old rows.
+    private func proofUrl(for claim: PiggyLedgerEvent) -> URL? {
+        if let address = claim.address {
+            return URL(string: "\(explorerBaseUrl)address/\(address)")
+        }
+        return claim.explorerUrl.flatMap(URL.init(string:))
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        guard !claims.isEmpty,
-              let urlString = claims[indexPath.row].explorerUrl,
-              let url = URL(string: urlString) else { return }
+        guard !claims.isEmpty, let url = proofUrl(for: claims[indexPath.row]) else { return }
         UIApplication.shared.open(url)
     }
 
     func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-        "These coins live in your own Cactus Wallet — FavCircles can't move or take them. Your wallet app shows the full balance; each transfer above links to its coin on the public explorer."
+        "These coins live in your own Cactus Wallet — FavCircles can't move or take them. Tap a transfer to see your FavCoins at your address on the public explorer."
     }
 }
