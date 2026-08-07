@@ -163,7 +163,29 @@ final class PiggyBankViewController: BaseViewController {
         title = "My Piggy Bank"
         view.backgroundColor = Constants.Colors.background
         setupLayout()
+        #if DEBUG
+        // Acceptance-test hook: long-press ⓘ to mint a throwaway wallet
+        // (address + phrase, not linked, not stored) — used to prove the
+        // on-device derivation with a real 1-FAV send before release.
+        infoButton.addGestureRecognizer(
+            UILongPressGestureRecognizer(target: self, action: #selector(debugMintTestWallet(_:))))
+        #endif
     }
+
+    #if DEBUG
+    @objc private func debugMintTestWallet(_ gesture: UILongPressGestureRecognizer) {
+        guard gesture.state == .began, let wallet = CactusWalletFactory.generate() else { return }
+        AlertPresenter.showConfirmation(
+            title: "DEBUG: test wallet",
+            message: "address:\n\(wallet.address)\n\nphrase:\n\(wallet.mnemonic)",
+            confirmTitle: "Copy address",
+            cancelTitle: "Copy phrase",
+            from: self,
+            onConfirm: { UIPasteboard.general.string = wallet.address },
+            onCancel: { UIPasteboard.general.string = wallet.mnemonic }
+        )
+    }
+    #endif
 
     private func setupLayout() {
         view.addSubview(scrollView)
@@ -372,30 +394,92 @@ final class PiggyBankViewController: BaseViewController {
     // MARK: - Claim flow
 
     @objc private func walletButtonTapped() {
-        if bank?.walletAddress == nil {
+        guard bank?.walletAddress != nil else {
             offerWalletSetup(thenClaim: false)
-        } else {
-            promptLinkWallet()
+            return
         }
+        var actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = []
+        if let userId = AuthService.shared.getUserId(),
+           let phrase = WalletPhraseStore.load(account: userId) {
+            actions.append((title: "View my secret phrase", style: .default, handler: { [weak self] in
+                self?.showSecretPhrase(phrase, intro: false)
+            }))
+        }
+        actions.append((title: "Change address", style: .default, handler: { [weak self] in
+            self?.promptLinkWallet()
+        }))
+        AlertPresenter.showActionSheet(title: "Your Cactus Wallet", actions: actions, from: self)
     }
 
-    /// No wallet linked yet: the two real paths — link an existing address,
-    /// or get walked through creating a wallet first. In-app wallet creation
-    /// is deliberately off the table (self-custody only; FavCircles never
-    /// holds user keys).
+    /// No wallet linked yet: three paths, easiest first — one-tap on-device
+    /// creation (keys generated locally, phrase in the user's iCloud
+    /// Keychain, never on FavCircles' servers), linking an existing address,
+    /// or the manual how-to.
     private func offerWalletSetup(thenClaim: Bool) {
         AlertPresenter.showActionSheet(
             title: "Your coins need a Cactus Wallet",
-            message: "FavCoins are sent to a wallet only you control. It's free — and if you don't have one yet, we'll show you how.",
+            message: "FavCoins are sent to a wallet only you control. We can create one for you right now — the secret phrase is made on this phone and stored in your iCloud Keychain, never on our servers.",
             actions: [
+                (title: "Create a wallet for me", style: .default, handler: { [weak self] in
+                    self?.createWalletOnDevice(thenClaim: thenClaim)
+                }),
                 (title: "I have a wallet — link my address", style: .default, handler: { [weak self] in
                     self?.promptLinkWallet(thenClaim: thenClaim)
                 }),
-                (title: "Show me how to get a wallet", style: .default, handler: { [weak self] in
+                (title: "Show me how to set one up myself", style: .default, handler: { [weak self] in
                     self?.showWalletHowTo()
                 })
             ],
             from: self
+        )
+    }
+
+    /// One-tap wallet creation. Order matters: the phrase MUST be safely in
+    /// the keychain before the address is linked — never link an address
+    /// whose keys could be lost.
+    private func createWalletOnDevice(thenClaim: Bool) {
+        guard let userId = AuthService.shared.getUserId() else { return }
+        guard let wallet = CactusWalletFactory.generate(),
+              WalletPhraseStore.save(mnemonic: wallet.mnemonic, account: userId) else {
+            showError("Couldn't create a wallet on this device. You can link an existing wallet instead.")
+            return
+        }
+        PiggyBankAPIService.shared.linkWallet(address: wallet.address) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success:
+                    self.loadData()
+                    self.showSecretPhrase(wallet.mnemonic, intro: true) {
+                        if thenClaim { self.loadData { self.confirmAndClaim() } }
+                    }
+                case .failure(let error):
+                    self.showError(error)
+                }
+            }
+        }
+    }
+
+    /// The phrase moment — shown right after creation (intro: true) and any
+    /// time later from the wallet row.
+    private func showSecretPhrase(_ mnemonic: String, intro: Bool, completion: (() -> Void)? = nil) {
+        let title = intro ? "Your wallet is ready 🎉" : "Your secret phrase"
+        let message = (intro
+            ? "Your new Cactus Wallet is linked. Its secret phrase is saved in your iCloud Keychain — and it's worth writing down on paper too:\n\n"
+            : "Saved in your iCloud Keychain. Anyone with these words controls the wallet — never share them:\n\n")
+            + mnemonic
+            + "\n\nAnyone with these 24 words controls the coins. FavCircles never sees them."
+        AlertPresenter.showConfirmation(
+            title: title,
+            message: message,
+            confirmTitle: "Copy phrase",
+            cancelTitle: "Done",
+            from: self,
+            onConfirm: {
+                UIPasteboard.general.string = mnemonic
+                completion?()
+            },
+            onCancel: { completion?() }
         )
     }
 
