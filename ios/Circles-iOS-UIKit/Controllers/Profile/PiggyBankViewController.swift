@@ -301,10 +301,13 @@ final class PiggyBankViewController: BaseViewController {
         // singular, a count of units takes the plural.
         confirmedCaptionLabel.text = "your \(PiggyBankFormatting.coinUnit(total))"
 
-        // The story, one plain line each; zero-lines vanish.
+        // The story, one plain line each; zero-lines vanish — including the
+        // piggy line ("290 … 0 in your piggy bank" read as a contradiction).
         breakdownStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        breakdownStack.addArrangedSubview(
-            makeBreakdownRow("🐷 \(bank.confirmedCoins) in your piggy bank", emphasized: true))
+        if bank.confirmedCoins > 0 {
+            breakdownStack.addArrangedSubview(
+                makeBreakdownRow("🐷 \(bank.confirmedCoins) in your piggy bank", emphasized: true))
+        }
         if bank.settledOnChain > 0 {
             let row = makeBreakdownRow("🔒 \(bank.settledOnChain) safe on the blockchain", tappable: true)
             row.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(onChainRowTapped)))
