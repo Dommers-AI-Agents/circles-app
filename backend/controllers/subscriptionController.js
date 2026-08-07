@@ -82,33 +82,48 @@ exports.verifySubscription = async (req, res) => {
             });
         }
 
-        // Extract latest receipt info
-        const latestReceiptInfo = verificationData.latest_receipt_info?.[0] || verificationData.receipt?.in_app?.[0];
-        
-        if (!latestReceiptInfo) {
+        // Extract receipt entries.
+        //
+        // Apple's latest_receipt_info carries the account's FULL transaction
+        // history, oldest first, potentially spanning BOTH subscription
+        // families (consumer premium and FavCircles Business). The old code
+        // took [0] — the oldest entry — which marked fresh resubscriptions as
+        // 'expired'; and processing only one entry meant whichever family it
+        // belonged to starved the other of updates. Process the NEWEST entry
+        // of EACH family independently.
+        const receiptEntries = verificationData.latest_receipt_info
+            || verificationData.receipt?.in_app
+            || [];
+        if (receiptEntries.length === 0) {
             return res.status(400).json({
                 success: false,
                 error: 'No valid subscription found in receipt'
             });
         }
 
-        // Determine subscription status
         const now = Date.now();
-        const expiresDateMs = parseInt(latestReceiptInfo.expires_date_ms);
-        const isActive = expiresDateMs > now;
-        const isTrialPeriod = latestReceiptInfo.is_trial_period === 'true';
-        
-        let subscriptionStatus = 'none';
-        if (isActive) {
-            subscriptionStatus = isTrialPeriod ? 'trial' : 'active';
-        } else {
-            subscriptionStatus = 'expired';
-        }
+        const entryStatus = (entry) => {
+            const expiresDateMs = parseInt(entry.expires_date_ms);
+            const isTrialPeriod = entry.is_trial_period === 'true';
+            const status = expiresDateMs > now
+                ? (isTrialPeriod ? 'trial' : 'active')
+                : 'expired';
+            return { expiresDateMs, isTrialPeriod, status };
+        };
 
-        // Business (store-owner) receipts update the owner* fields ONLY —
-        // buying the business tier must never touch consumer premium state,
-        // and vice versa
-        if (ownerSubscriptionService.isBusinessProduct(latestReceiptInfo.product_id)) {
+        const sorted = [...receiptEntries].sort(
+            (a, b) => parseInt(b.expires_date_ms || 0) - parseInt(a.expires_date_ms || 0)
+        );
+        const businessEntry = sorted.find(e => ownerSubscriptionService.isBusinessProduct(e.product_id)) || null;
+        const consumerEntry = sorted.find(e => !ownerSubscriptionService.isBusinessProduct(e.product_id)) || null;
+        // The newest transaction overall is the purchase that triggered this
+        // sync — its family decides the response shape.
+        const newestOverall = sorted[0];
+
+        // ---- Business (store-owner) family: owner* fields ONLY ----
+        let businessResponse = null;
+        if (businessEntry) {
+            const b = entryStatus(businessEntry);
             const ownerRef = admin.firestore().collection('users').doc(userId);
 
             // The subscription covers exactly ONE venue. Bind the venue the
@@ -120,7 +135,7 @@ exports.verifySubscription = async (req, res) => {
             let venueBinding = existing.ownerSubscriptionVenueId || null;
             const requestedVenueId = req.body.venueId || null;
             const isNewSubscription =
-                existing.ownerOriginalTransactionId !== latestReceiptInfo.original_transaction_id;
+                existing.ownerOriginalTransactionId !== businessEntry.original_transaction_id;
             if (requestedVenueId && (!venueBinding || isNewSubscription)) {
                 const venueDoc = await admin.firestore()
                     .collection('stickerVenues').doc(requestedVenueId).get();
@@ -132,74 +147,97 @@ exports.verifySubscription = async (req, res) => {
             }
 
             await ownerRef.update({
-                ownerSubscriptionStatus: subscriptionStatus,
-                ownerSubscriptionExpiryDate: new Date(expiresDateMs).toISOString(),
-                ownerSubscriptionProductId: latestReceiptInfo.product_id,
-                ownerOriginalTransactionId: latestReceiptInfo.original_transaction_id,
+                ownerSubscriptionStatus: b.status,
+                ownerSubscriptionExpiryDate: new Date(b.expiresDateMs).toISOString(),
+                ownerSubscriptionProductId: businessEntry.product_id,
+                ownerOriginalTransactionId: businessEntry.original_transaction_id,
                 ownerSubscriptionVenueId: venueBinding,
                 lastOwnerReceiptVerification: new Date().toISOString()
             });
-            return res.json({
-                success: true,
-                subscription: {
-                    scope: 'business',
-                    status: subscriptionStatus,
-                    expiryDate: new Date(expiresDateMs).toISOString(),
-                    autoRenewEnabled: latestReceiptInfo.auto_renew_status === '1',
-                    productId: latestReceiptInfo.product_id,
-                    venueId: venueBinding
-                }
-            });
+            businessResponse = {
+                scope: 'business',
+                status: b.status,
+                expiryDate: new Date(b.expiresDateMs).toISOString(),
+                autoRenewEnabled: businessEntry.auto_renew_status === '1',
+                productId: businessEntry.product_id,
+                venueId: venueBinding
+            };
         }
 
-        // Update user's subscription info in Firestore
-        const userRef = admin.firestore().collection('users').doc(userId);
-        const updateData = {
-            subscriptionStatus,
-            subscriptionExpiryDate: new Date(expiresDateMs).toISOString(),
-            lastReceiptVerification: new Date().toISOString(),
-            appleOriginalTransactionId: latestReceiptInfo.original_transaction_id
-        };
+        // ---- Consumer premium family ----
+        let consumerResponse = null;
+        if (consumerEntry) {
+            const c = entryStatus(consumerEntry);
+            const userRef = admin.firestore().collection('users').doc(userId);
+            const environment = verificationData.environment || 'Production';
+            const updateData = {
+                subscriptionStatus: c.status,
+                subscriptionExpiryDate: new Date(c.expiresDateMs).toISOString(),
+                lastReceiptVerification: new Date().toISOString(),
+                appleOriginalTransactionId: consumerEntry.original_transaction_id,
+                subscriptionEnvironment: environment
+            };
 
-        // Never let a stale/expired device receipt downgrade a manually verified
-        // premium user — keep their existing status and expiry
-        const existingDoc = await userRef.get();
-        const existingData = existingDoc.data() || {};
-        const existingExpiry = existingData.subscriptionExpiryDate ? new Date(existingData.subscriptionExpiryDate) : null;
-        const hasManualPremium = (existingData.manuallyVerified === true || existingData.isPremium === true) &&
-            (!existingExpiry || existingExpiry > new Date());
+            const existingDoc = await userRef.get();
+            const existingData = existingDoc.data() || {};
+            const existingExpiry = existingData.subscriptionExpiryDate ? new Date(existingData.subscriptionExpiryDate) : null;
+            const hasManualPremium = (existingData.manuallyVerified === true || existingData.isPremium === true) &&
+                (!existingExpiry || existingExpiry > new Date());
 
-        if (hasManualPremium && subscriptionStatus !== 'active' && subscriptionStatus !== 'trial') {
-            delete updateData.subscriptionStatus;
-            delete updateData.subscriptionExpiryDate;
-        }
-
-        // If it's a trial, record trial dates
-        if (isTrialPeriod && subscriptionStatus === 'trial') {
-            const userData = await userRef.get();
-            if (!userData.data()?.trialStartDate) {
-                updateData.trialStartDate = new Date(parseInt(latestReceiptInfo.purchase_date_ms)).toISOString();
-                updateData.trialEndDate = new Date(expiresDateMs).toISOString();
+            // A device signed into a SANDBOX App Store account must never
+            // touch a real, paid entitlement. Sandbox subscriptions live for
+            // minutes, so letting one through overwrites the production
+            // transaction id and expiry, and the sandbox EXPIRED webhook then
+            // marks a paying customer expired. (This happened to the owner
+            // account on 2026-08-07 from a dev build signed into a tester
+            // Apple ID.)
+            const isSandbox = environment === 'Sandbox';
+            const wasProduction = (existingData.subscriptionEnvironment || 'Production') === 'Production';
+            const hadRealEntitlement = !!existingData.appleOriginalTransactionId || hasManualPremium;
+            if (isSandbox && wasProduction && hadRealEntitlement) {
+                console.warn(`🧪 Ignoring SANDBOX receipt for ${userId}: production entitlement already on file`);
+                return res.status(200).json({
+                    success: true,
+                    ignored: 'sandbox_receipt_for_production_account',
+                    subscription: {
+                        status: existingData.subscriptionStatus,
+                        expiryDate: existingData.subscriptionExpiryDate
+                    }
+                });
             }
-        }
 
-        await userRef.update(updateData);
+            // Never let a stale/expired device receipt downgrade a manually
+            // verified premium user — keep their existing status and expiry
+            if (hasManualPremium && c.status !== 'active' && c.status !== 'trial') {
+                delete updateData.subscriptionStatus;
+                delete updateData.subscriptionExpiryDate;
+            }
 
-        // Fetch updated user data
-        const updatedUser = await userRef.get();
-        const userData = updatedUser.data();
+            // If it's a trial, record trial dates
+            if (c.isTrialPeriod && c.status === 'trial' && !existingData.trialStartDate) {
+                updateData.trialStartDate = new Date(parseInt(consumerEntry.purchase_date_ms)).toISOString();
+                updateData.trialEndDate = new Date(c.expiresDateMs).toISOString();
+            }
 
-        res.json({
-            success: true,
-            subscription: {
+            await userRef.update(updateData);
+
+            const userData = (await userRef.get()).data();
+            consumerResponse = {
                 status: userData.subscriptionStatus,
                 expiryDate: userData.subscriptionExpiryDate,
                 trialStartDate: userData.trialStartDate,
                 trialEndDate: userData.trialEndDate,
-                autoRenewEnabled: latestReceiptInfo.auto_renew_status === '1',
-                productId: latestReceiptInfo.product_id
-            }
-        });
+                autoRenewEnabled: consumerEntry.auto_renew_status === '1',
+                productId: consumerEntry.product_id
+            };
+        }
+
+        // Respond with the family the user just acted on; both families'
+        // Firestore state is already up to date regardless.
+        const primary = ownerSubscriptionService.isBusinessProduct(newestOverall.product_id)
+            ? (businessResponse || consumerResponse)
+            : (consumerResponse || businessResponse);
+        res.json({ success: true, subscription: primary });
 
     } catch (error) {
         console.error('Subscription verification error:', error);
@@ -377,7 +415,21 @@ exports.handleSubscriptionWebhook = async (req, res) => {
 
         const userDoc = usersSnapshot.docs[0];
         const userId = userDoc.id;
-        
+        const userData = userDoc.data() || {};
+
+        // Sandbox notifications must not touch a production entitlement. A dev
+        // build signed into a tester Apple ID generates real Apple webhooks —
+        // and sandbox subscriptions expire in minutes, so an EXPIRED for a test
+        // purchase would mark a paying customer expired.
+        const notificationEnvironment = (data && data.environment)
+            || (transaction && transaction.environment)
+            || 'Production';
+        const storedEnvironment = userData.subscriptionEnvironment || 'Production';
+        if (notificationEnvironment === 'Sandbox' && storedEnvironment === 'Production') {
+            console.warn(`🧪 Ignoring SANDBOX ${notificationType} for ${userId} — account holds a production entitlement`);
+            return;
+        }
+
         // Process based on notification type
         let updateData = {};
         
@@ -436,8 +488,20 @@ exports.handleSubscriptionWebhook = async (req, res) => {
         }
         
         if (Object.keys(updateData).length > 0) {
-            await admin.firestore().collection('users').doc(userId).update(updateData);
-            console.log(`Updated user ${userId} subscription status via webhook`);
+            // A manual premium grant outranks Apple's view of the world — it's
+            // set by hand precisely for accounts whose receipts don't tell the
+            // truth (comped, staff, migrated). Let the webhook record dates and
+            // metadata, but never demote the status.
+            const hasManualPremium = userData.manuallyVerified === true || userData.isPremium === true;
+            const downgrades = ['expired', 'cancelled', 'grace_period'];
+            if (hasManualPremium && downgrades.includes(updateData.subscriptionStatus)) {
+                console.log(`🛡️ Webhook ${notificationType} would downgrade manually-verified ${userId} — keeping status`);
+                delete updateData.subscriptionStatus;
+            }
+            if (Object.keys(updateData).length > 0) {
+                await admin.firestore().collection('users').doc(userId).update(updateData);
+                console.log(`Updated user ${userId} subscription status via webhook (${notificationType})`);
+            }
         }
         
     } catch (error) {
