@@ -119,6 +119,13 @@ function brokerRequest(path, body) {
     });
     req.on('timeout', () => { req.destroy(new Error('broker timeout')); });
     req.on('error', reject);
+    // Ambiguity drill (Phase 5): kill the connection right after the request
+    // has fully flushed — the broker receives and processes the spend, but the
+    // response is lost. Deterministic "money may have moved". Drill-only.
+    if (process.env.CACTUS_BROKER_CUT_AFTER_SEND === 'true' && path === '/cat_spend') {
+      req.on('finish', () => setTimeout(
+        () => req.destroy(new Error('drill: connection cut after send')), 10));
+    }
     if (payload !== null) req.write(payload);
     req.end();
   });
