@@ -519,6 +519,16 @@ exports.completeVideoUpload = async (req, res) => {
       updatedAt: new Date().toISOString(),
       processingCompleted: isVideoReady ? new Date().toISOString() : null
     });
+
+    // Piggy bank: 2 FavCoins per Moment that finishes uploading (per-video
+    // dedup; deleting it inside the clearing window reverses the earn).
+    if (isVideoReady) {
+      require('../services/piggyBankService').credit({
+        userId,
+        eventType: 'moment_posted',
+        sourceRef: { videoId }
+      }).catch(() => {});
+    }
     
     // Update user quota
     const quotaRef = db.collection(COLLECTIONS.USER_VIDEO_QUOTAS).doc(userId);

@@ -18,7 +18,15 @@ const PIGGY_EVENT_TYPES = [
   'connection_accepted',
   'referral_signup',
   'place_adopted',
-  'suggestion_posted'
+  'suggestion_posted',
+  // 2026.08-a additions
+  'check_in',
+  'place_photo',
+  'moment_posted',
+  'profile_completed',
+  'place_liked',
+  'place_comment',
+  'user_followed'
 ];
 
 // Earn statuses and claim statuses are disjoint vocabularies on the same
@@ -84,6 +92,43 @@ function derivePiggyDedupKey(eventType, parts = {}) {
     case 'suggestion_posted':
       if (!parts.userId || !parts.suggestionId) return null;
       return `suggestion:${s(parts.userId)}:${s(parts.suggestionId)}`;
+    case 'check_in': {
+      // Once per venue per UTC day — the day segment IS the repeat rule.
+      const venue = parts.globalPlaceId || parts.placeId;
+      if (!parts.userId || !venue) return null;
+      const day = new Date().toISOString().slice(0, 10);
+      return `check_in:${s(parts.userId)}:${s(venue)}:${day}`;
+    }
+    case 'place_photo': {
+      // First photo you contribute to a venue, ever — more photos of the
+      // same place add little, so they pay nothing.
+      const venue = parts.globalPlaceId || parts.placeId;
+      if (!parts.userId || !venue) return null;
+      return `place_photo:${s(parts.userId)}:${s(venue)}`;
+    }
+    case 'moment_posted':
+      if (!parts.userId || !parts.videoId) return null;
+      return `moment:${s(parts.userId)}:${s(parts.videoId)}`;
+    case 'profile_completed':
+      // Once per account, ever.
+      if (!parts.userId) return null;
+      return `profile_completed:${s(parts.userId)}`;
+    case 'place_liked': {
+      // One per venue ever — an unlike/relike cycle can't re-mint.
+      const venue = parts.globalPlaceId || parts.placeId;
+      if (!parts.userId || !venue) return null;
+      return `place_liked:${s(parts.userId)}:${s(venue)}`;
+    }
+    case 'place_comment': {
+      // First comment per venue — thread-padding pays nothing.
+      const venue = parts.globalPlaceId || parts.placeId;
+      if (!parts.userId || !venue) return null;
+      return `place_comment:${s(parts.userId)}:${s(venue)}`;
+    }
+    case 'user_followed':
+      // First follow of that person ever — unfollow/refollow can't re-mint.
+      if (!parts.userId || !parts.followedUserId) return null;
+      return `user_followed:${s(parts.userId)}:${s(parts.followedUserId)}`;
     case 'claim':
       // seq comes from bank.claimCount + 1, read inside the claim transaction:
       // two concurrent claims compute the same seq and the loser's create()

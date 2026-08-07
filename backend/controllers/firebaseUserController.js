@@ -1217,6 +1217,15 @@ exports.followUser = async (req, res, next) => {
     try {
       await batch.commit();
       console.log('✅ Follow batch committed successfully');
+
+      // Piggy bank: 1 FavCoin for your first follow of this person, ever —
+      // the already-following guard above plus the per-pair dedup key means
+      // unfollow/refollow churn can't re-mint.
+      require('../services/piggyBankService').credit({
+        userId: currentUserId,
+        eventType: 'user_followed',
+        sourceRef: { followedUserId: targetUserId }
+      }).catch(() => {});
     } catch (batchError) {
       console.error('❌ Follow batch failed, attempting rollback:', batchError);
       

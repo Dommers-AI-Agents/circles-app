@@ -268,3 +268,36 @@ Claim machinery BUILT and deployed inert behind `PIGGY_CLAIMS_ENABLED`: ledger c
 4. `POST /api/piggy-bank/claim` goes 501 → live; myPiggyBank claim button activates; explorer link on settled rows.
 5. Self-custody address field + withdraw path.
 6. App Store review prep per 8.1.
+
+### 9. 2026.08-a re-pricing: dollar denominations + engagement earns (2026-08-07)
+
+Wesley's direction: coin values should read like dollars ($1/$2/$5) so amounts
+are mentally measurable and 100 FavCoins feels like $100. RULE_VERSION bumped
+to `2026.08-a`; old ledger rows keep their 2026.07-a pricing (append-only,
+versioned). Existing balances deliberately untouched (Option A — founding-user
+head start); `MIN_CONFIRMED_TO_CLAIM` 500 → 100 to match the new scale.
+
+Re-priced: add_place 10→3, create_circle 25→5, share_circle 15→2,
+connection_accepted 20→2, referral_signup 200→20, place_adopted 30→5,
+suggestion_posted 5→1.
+
+New earn types (each with dedup key + 48h clearing re-validation):
+- `check_in` 1 — per venue per UTC day (key embeds the date); validates the
+  check-in doc still exists. Cap 5/day.
+- `place_photo` 1 — first photo per user+venue ever; validates photo still on
+  the save doc. Cap 5/day. Hook: updatePlace addPhotos path.
+- `moment_posted` 2 — per video, credited when upload completes; validates the
+  video wasn't deleted. Cap 3/day.
+- `profile_completed` 5 — once per account (photo + bio); validates both still
+  set at clearing.
+- `place_liked` 1 / `place_comment` 1 / `user_followed` 1 — the engagement
+  earns Wesley wanted; deliberately first-time-per-target dedup (relike /
+  re-comment / refollow can never re-mint) + the tightest caps (3/3/5 per day)
+  because they're the cheapest actions. Likes validate against
+  globalPlaces.likes, comments against the placeComments doc, follows against
+  the follower's `following` array. Self-likes/comments on your own places
+  pay nothing.
+
+Deferred: `suggestion_adopted` (pay the suggester when the recipient adds the
+place) — no adoption signal exists end-to-end today; needs iOS to carry a
+sourceSuggestionId through the add-place flow first.

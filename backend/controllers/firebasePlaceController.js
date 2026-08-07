@@ -1577,6 +1577,7 @@ exports.updatePlace = async (req, res, next) => {
     }
 
     // Handle photo operations
+    let addedPhotoUrl = null;
     if (updateData.addPhotos || updateData.removePhotos) {
       console.log('📷 Processing photo operations:', {
         placeId: req.params.id,
@@ -1586,10 +1587,11 @@ exports.updatePlace = async (req, res, next) => {
       });
 
       let currentPhotos = place.photos || [];
-      
+
       // Add new photos to the array
       if (updateData.addPhotos && Array.isArray(updateData.addPhotos)) {
         console.log('📷 Adding photos:', updateData.addPhotos);
+        addedPhotoUrl = updateData.addPhotos[0] || null; // piggy-bank earn ref
         currentPhotos = [...currentPhotos, ...updateData.addPhotos];
       }
       
@@ -1614,6 +1616,20 @@ exports.updatePlace = async (req, res, next) => {
     }
 
     await placeRef.update(updateData);
+
+    // Piggy bank: 1 FavCoin for your first photo on this venue (dedup key is
+    // per user+venue, so later photos and photo swaps pay nothing).
+    if (addedPhotoUrl) {
+      piggyBankService.credit({
+        userId: req.user.uid,
+        eventType: 'place_photo',
+        sourceRef: {
+          placeId: req.params.id,
+          globalPlaceId: place.globalPlaceId || null,
+          photoUrl: addedPhotoUrl
+        }
+      }).catch(() => {});
+    }
 
     // Venue-level edits update the canonical record once, for every saver
     await propagateVenueUpdates(req.params.id, place.globalPlaceId, updateData);
@@ -2487,6 +2503,16 @@ exports.likePlace = async (req, res, next) => {
         place.name
       );
     }
+
+    // Piggy bank: 1 FavCoin for your first like on this venue (not unlikes,
+    // not your own places; per-venue dedup means a relike can't re-mint).
+    if (!alreadyLiked && place.addedBy !== userId) {
+      piggyBankService.credit({
+        userId,
+        eventType: 'place_liked',
+        sourceRef: { globalPlaceId }
+      }).catch(() => {});
+    }
     
     res.status(200).json({
       success: true,
@@ -2974,6 +3000,20 @@ exports.addPlaceComment = async (req, res, next) => {
     const commentDoc = await commentRef.get();
     const comment = serializeDoc(commentDoc);
     console.log('✅ Comment saved successfully with ID:', comment.id);
+
+    // Piggy bank: 1 FavCoin for your first comment on this venue (not your
+    // own places; thread-padding pays nothing — per-venue dedup).
+    if (place.addedBy !== userId) {
+      piggyBankService.credit({
+        userId,
+        eventType: 'place_comment',
+        sourceRef: {
+          commentId: commentRef.id,
+          globalPlaceId: commentGlobalPlaceId || null,
+          placeId
+        }
+      }).catch(() => {});
+    }
     
     // Get user details
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
