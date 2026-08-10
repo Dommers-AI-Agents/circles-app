@@ -3,7 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Circles - Connect with Your Community</title>
+    <title>FavCircles — Your Favorite Places, Shared with Your People</title>
+    <meta name="description" content="FavCircles is a trust-based recommendation app. Save your favorite places into circles, share them with people you know, post Moments, and earn FavCoins — real crypto rewards for being part of the community.">
+    <link rel="canonical" href="https://favcircles.com/">
+    <link rel="icon" href="/favicon.ico">
+    <meta name="apple-itunes-app" content="app-id=6746807095">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="FavCircles">
+    <meta property="og:title" content="FavCircles — Your Favorite Places, Shared with Your People">
+    <meta property="og:description" content="Save your favorite places into circles, share them with people you trust, post Moments, and earn FavCoins — real crypto rewards on the Cactus blockchain.">
+    <meta property="og:url" content="https://favcircles.com/">
+    <meta property="og:image" content="https://favcircles.com/app-icon.png">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="FavCircles — Your Favorite Places, Shared with Your People">
+    <meta name="twitter:description" content="Trust-based place recommendations from people you actually know. Free on the App Store.">
+    <meta name="twitter:image" content="https://favcircles.com/app-icon.png">
     <style>
         * {
             margin: 0;
@@ -20,7 +34,7 @@
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 1100px;
             margin: 0 auto;
             padding: 0 20px;
         }
@@ -51,7 +65,7 @@
         .nav-links {
             display: flex;
             list-style: none;
-            gap: 2rem;
+            gap: 1.6rem;
         }
 
         .nav-links a {
@@ -71,75 +85,214 @@
 
         .hero {
             text-align: center;
-            padding: 4rem 0;
+            padding: 4.5rem 0 3rem 0;
             color: white;
         }
 
+        .hero-icon {
+            width: 96px;
+            height: 96px;
+            border-radius: 22px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+            margin-bottom: 1.5rem;
+        }
+
         .hero h1 {
-            font-size: 3.5rem;
+            font-size: 3.2rem;
             margin-bottom: 1rem;
             font-weight: 700;
+            line-height: 1.15;
         }
 
         .hero p {
             font-size: 1.3rem;
-            margin-bottom: 2rem;
-            opacity: 0.9;
+            margin: 0 auto 2.2rem auto;
+            opacity: 0.92;
+            max-width: 680px;
         }
 
-        .cta-button {
-            display: inline-block;
-            background: white;
-            color: #667eea;
-            padding: 1rem 2rem;
+        .store-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.9rem;
+            background: #000;
+            color: white;
             text-decoration: none;
-            border-radius: 50px;
-            font-weight: 600;
+            padding: 0.9rem 1.6rem;
+            border-radius: 14px;
             transition: transform 0.3s, box-shadow 0.3s;
         }
 
-        .cta-button:hover {
+        .store-badge:hover {
             transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
         }
 
-        .content-section {
-            background: white;
-            margin: 2rem 0;
-            padding: 3rem;
-            border-radius: 20px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        .store-badge .icon { font-size: 1.9rem; }
+        .store-badge .label { font-size: 0.75rem; opacity: 0.8; text-align: left; line-height: 1.2; }
+        .store-badge .store { font-size: 1.15rem; font-weight: 600; text-align: left; line-height: 1.2; }
+
+        .hero-sub {
+            margin-top: 1.2rem;
+            font-size: 0.95rem;
+            opacity: 0.85;
         }
 
-        .hidden {
-            display: none;
-        }
+        .hero-sub a { color: white; }
 
         .features {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 2rem;
-            margin: 3rem 0;
+            gap: 1.5rem;
+            margin: 2rem 0 3rem 0;
         }
 
         .feature {
             text-align: center;
-            padding: 2rem;
-            background: rgba(255, 255, 255, 0.1);
+            padding: 2rem 1.5rem;
+            background: rgba(255, 255, 255, 0.12);
             border-radius: 15px;
             backdrop-filter: blur(10px);
             color: white;
         }
 
         .feature-icon {
-            font-size: 3rem;
-            margin-bottom: 1rem;
+            font-size: 2.6rem;
+            margin-bottom: 0.8rem;
         }
 
         .feature h3 {
-            margin-bottom: 1rem;
-            font-size: 1.5rem;
+            margin-bottom: 0.6rem;
+            font-size: 1.3rem;
         }
+
+        .feature p {
+            font-size: 0.98rem;
+            opacity: 0.92;
+        }
+
+        .band {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            padding: 2.6rem;
+            margin: 2rem 0;
+        }
+
+        .band h2 {
+            color: #667eea;
+            font-size: 1.8rem;
+            margin-bottom: 0.8rem;
+        }
+
+        .band p {
+            margin-bottom: 1rem;
+            color: #444;
+        }
+
+        .band ul {
+            margin: 0 0 1rem 1.4rem;
+            color: #444;
+        }
+
+        .band li { margin-bottom: 0.5rem; }
+
+        .band .cta {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 0.8rem 1.6rem;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: 600;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .band .cta:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .step h3 {
+            color: #764ba2;
+            font-size: 1.05rem;
+            margin-bottom: 0.4rem;
+        }
+
+        .step p { font-size: 0.95rem; }
+
+        .step .num {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 2rem;
+            height: 2rem;
+            border-radius: 50%;
+            background: #667eea;
+            color: white;
+            font-weight: 700;
+            margin-bottom: 0.6rem;
+        }
+
+        .shots {
+            display: flex;
+            gap: 1.5rem;
+            overflow-x: auto;
+            padding: 0.5rem 0.2rem 1rem 0.2rem;
+            -webkit-overflow-scrolling: touch;
+            scroll-snap-type: x mandatory;
+        }
+
+        .shot {
+            flex: 0 0 auto;
+            width: 230px;
+            text-align: center;
+            scroll-snap-align: center;
+        }
+
+        .shot img {
+            width: 100%;
+            border-radius: 24px;
+            border: 4px solid rgba(255, 255, 255, 0.35);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+            display: block;
+        }
+
+        .shot p {
+            color: white;
+            font-size: 0.92rem;
+            margin-top: 0.7rem;
+            opacity: 0.92;
+        }
+
+        .shots-title {
+            text-align: center;
+            color: white;
+            font-size: 1.8rem;
+            margin: 2.5rem 0 1.2rem 0;
+        }
+
+        @media (min-width: 1020px) {
+            .shots { justify-content: center; }
+        }
+
+        .safety {
+            text-align: center;
+            color: white;
+            opacity: 0.9;
+            font-size: 0.95rem;
+            margin: 2.5rem auto;
+            max-width: 720px;
+        }
+
+        .safety a { color: white; }
 
         footer {
             background: rgba(0, 0, 0, 0.2);
@@ -149,263 +302,163 @@
             margin-top: 4rem;
         }
 
-        .policy-content h2 {
-            color: #667eea;
-            margin-bottom: 1rem;
-            margin-top: 2rem;
-        }
-
-        .policy-content h3 {
-            color: #764ba2;
-            margin-bottom: 0.5rem;
-            margin-top: 1.5rem;
-        }
-
-        .policy-content p, .policy-content li {
-            margin-bottom: 1rem;
-        }
-
-        .policy-content ul {
-            margin-left: 2rem;
-            margin-bottom: 1rem;
-        }
-
-        .contact-info {
-            background: #f8f9fa;
-            padding: 1.5rem;
-            border-radius: 10px;
-            margin: 1.5rem 0;
-            border-left: 4px solid #667eea;
-        }
-
-        .download-button {
-            display: flex;
-            align-items: center;
-            background: #000;
+        footer a {
             color: white;
-            text-decoration: none;
-            padding: 1rem 1.5rem;
-            border-radius: 12px;
-            transition: transform 0.3s, box-shadow 0.3s;
-            min-width: 200px;
-            gap: 1rem;
-        }
-
-        .download-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
-        }
-
-        .download-icon {
-            font-size: 2rem;
-        }
-
-        .download-text {
-            text-align: left;
-        }
-
-        .download-label {
-            font-size: 0.8rem;
-            opacity: 0.8;
-        }
-
-        .download-store {
-            font-size: 1.2rem;
-            font-weight: 600;
-        }
-
-        .ios-button {
-            background: linear-gradient(135deg, #000 0%, #333 100%);
-        }
-
-        .android-button {
-            background: linear-gradient(135deg, #01875f 0%, #4285f4 100%);
+            text-decoration: underline;
         }
 
         @media (max-width: 768px) {
-            header {
-                padding: 0.5rem 0;
-            }
-            
-            nav {
-                flex-direction: column;
-                gap: 1rem;
-            }
-            
-            .logo {
-                font-size: 1.5rem;
-            }
-            
-            .nav-links {
-                flex-direction: row;
-                gap: 1rem;
-                font-size: 0.9rem;
-            }
-            
-            main {
-                margin-top: 120px;
-            }
-            
-            .hero {
-                padding: 6rem 0 2rem 0;
-            }
-            
-            .hero h1 {
-                font-size: 2.5rem;
-            }
-            
-            .hero p {
-                font-size: 1.1rem;
-            }
-            
-            .features {
-                grid-template-columns: 1fr;
-            }
-            
-            .content-section {
-                padding: 2rem 1rem;
-                margin: 1rem 0;
-            }
+            header { padding: 0.5rem 0; }
+            nav { flex-direction: column; gap: 0.8rem; }
+            .logo { font-size: 1.5rem; }
+            .nav-links { flex-wrap: wrap; justify-content: center; gap: 0.9rem; font-size: 0.9rem; }
+            main { margin-top: 130px; }
+            .hero { padding: 2.5rem 0 2rem 0; }
+            .hero h1 { font-size: 2.2rem; }
+            .hero p { font-size: 1.1rem; }
+            .band { padding: 1.8rem 1.3rem; }
         }
     </style>
 </head>
 <body>
     <header>
         <nav class="container">
-            <a href="/" class="logo">Circles</a>
+            <a href="/" class="logo">FavCircles</a>
             <ul class="nav-links">
                 <li><a href="/">Home</a></li>
-                <li><a href="/privacy.html">Privacy Policy</a></li>
-                <li><a href="/terms.html">Terms of Service</a></li>
-                <li><a href="/delete-data.html">Delete Data</a></li>
+                <li><a href="/connect-claude.html">AI&nbsp;Connect</a></li>
+                <li><a href="/support.html">Support</a></li>
+                <li><a href="/privacy.html">Privacy</a></li>
+                <li><a href="/terms.html">Terms</a></li>
             </ul>
         </nav>
     </header>
 
     <main class="container">
-        <!-- Home Page -->
-        <div id="home-page">
-            <section class="hero">
-                <h1>Welcome to Circles</h1>
-                <p>Connect, share, and grow with your community in meaningful ways</p>
-                <a href="#" class="cta-button" onclick="showDownload()">Join the Circle</a>
-            </section>
+        <section class="hero">
+            <img src="/app-icon.png" alt="FavCircles app icon" class="hero-icon">
+            <h1>Your favorite places.<br>Shared with your people.</h1>
+            <p>FavCircles is a trust-based recommendation network. Skip the anonymous internet reviews — build circles of the places you love and discover new ones through people you actually know.</p>
+            <a href="https://apps.apple.com/us/app/favcircles/id6746807095" target="_blank" rel="noopener" class="store-badge">
+                <span class="icon">&#63743;</span>
+                <span><span class="label">Download free on the</span><br><span class="store">App Store</span></span>
+            </a>
+            <p class="hero-sub">Android coming soon — <a href="mailto:wesley@favcircles.com?subject=Notify%20me%20about%20FavCircles%20for%20Android">get notified</a>.</p>
+        </section>
 
-            <div class="features">
-                <div class="feature">
-                    <div class="feature-icon">🌐</div>
-                    <h3>Connect</h3>
-                    <p>Build meaningful connections with people who share your interests and values.</p>
+        <div class="features">
+            <div class="feature">
+                <div class="feature-icon">📍</div>
+                <h3>Circles of Favorites</h3>
+                <p>Save places into curated circles — Date Night, Coffee, Weekend Trips — and choose who sees each one: public, your network, or just you.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">🎬</div>
+                <h3>Moments</h3>
+                <p>Share 15-second videos and photos from the places you visit, and see what your network is experiencing right now.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">🌵</div>
+                <h3>Earn FavCoins</h3>
+                <p>Every like, comment, and share earns FavCoins — a real crypto coin you can send to your own wallet on the Cactus blockchain.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">🤝</div>
+                <h3>A Network You Trust</h3>
+                <p>Connect with friends, follow tastemakers, get place suggestions made just for you, and see which spots you and your friends both love.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">🏪</div>
+                <h3>For Local Businesses</h3>
+                <p>Claim your venue, post specials and announcements, and reward the customers who put you in their circles.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">🤖</div>
+                <h3>Works with AI</h3>
+                <p>Connect your account to Claude and ask for your friends' restaurant picks, build circles, and plan nights out — in conversation.</p>
+            </div>
+        </div>
+
+        <div class="band">
+            <h2>How it works</h2>
+            <div class="steps">
+                <div class="step">
+                    <span class="num">1</span>
+                    <h3>Save your favorites</h3>
+                    <p>Add the restaurants, shops, and spots you love into circles that fit your life.</p>
                 </div>
-                <div class="feature">
-                    <div class="feature-icon">💬</div>
-                    <h3>Share</h3>
-                    <p>Share your thoughts, experiences, and moments with your trusted circles.</p>
+                <div class="step">
+                    <span class="num">2</span>
+                    <h3>Connect with your people</h3>
+                    <p>Find friends and local tastemakers. Their shared circles become your recommendation engine.</p>
                 </div>
-                <div class="feature">
-                    <div class="feature-icon">🌱</div>
-                    <h3>Grow</h3>
-                    <p>Discover new perspectives and grow together as a community.</p>
+                <div class="step">
+                    <span class="num">3</span>
+                    <h3>Discover &amp; earn</h3>
+                    <p>Get suggestions from people you trust, share Moments, and watch your piggy bank fill with FavCoins.</p>
                 </div>
             </div>
         </div>
 
-        <!-- Download Page -->
-        <div id="download-page" class="content-section hidden">
-            <div class="policy-content">
-                <h1>Download Circles</h1>
-                <p style="font-size: 1.2rem; text-align: center; margin-bottom: 3rem;">Get the Circles app and start connecting with your community today!</p>
-
-                <div style="text-align: center; margin: 3rem 0;">
-                    <h2 style="color: #667eea; margin-bottom: 2rem;">Now Available on iOS</h2>
-
-                    <div style="display: flex; justify-content: center; gap: 2rem; flex-wrap: wrap; margin-bottom: 3rem;">
-                        <a href="https://apps.apple.com/us/app/favcircles/id6746807095" target="_blank" rel="noopener" class="download-button ios-button">
-                            <div class="download-icon">📱</div>
-                            <div class="download-text">
-                                <div class="download-label">Download on the</div>
-                                <div class="download-store">App Store</div>
-                            </div>
-                        </a>
-
-                        <a href="#" class="download-button android-button" onclick="alert('Android download coming soon!'); return false;">
-                            <div class="download-icon">🤖</div>
-                            <div class="download-text">
-                                <div class="download-label">Coming soon to</div>
-                                <div class="download-store">Google Play</div>
-                            </div>
-                        </a>
-                    </div>
-                </div>
-
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center; margin: 2rem 0;">
-                    <h3 style="margin-bottom: 1rem; color: white;">🎉 Now Available!</h3>
-                    <p style="margin-bottom: 0;">The Circles app is live on the App Store — download it today and start sharing your favorite places. Android users: sign up below to be notified when it's your turn!</p>
-                </div>
-
-                <div style="background: #f8f9fa; padding: 2rem; border-radius: 15px; margin: 2rem 0;">
-                    <h3 style="color: #667eea; text-align: center; margin-bottom: 1.5rem;">Stay Updated</h3>
-                    <form style="max-width: 400px; margin: 0 auto;">
-                        <div style="margin-bottom: 1rem;">
-                            <input type="email" placeholder="Enter your email address" style="width: 100%; padding: 1rem; border: 2px solid #ddd; border-radius: 10px; font-size: 1rem; box-sizing: border-box;">
-                        </div>
-                        <button type="submit" style="width: 100%; background: #667eea; color: white; padding: 1rem; border: none; border-radius: 10px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background 0.3s;" onmouseover="this.style.background='#5a67d8'" onmouseout="this.style.background='#667eea'">
-                            Notify Me When Available
-                        </button>
-                    </form>
-                </div>
-
-                <div style="text-align: center; margin: 3rem 0;">
-                    <h3 style="color: #764ba2; margin-bottom: 1.5rem;">What to Expect</h3>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem;">
-                        <div style="text-align: center;">
-                            <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🔒</div>
-                            <h4 style="margin-bottom: 0.5rem;">Private & Secure</h4>
-                            <p style="font-size: 0.9rem; color: #666;">Your conversations and data are protected with end-to-end encryption.</p>
-                        </div>
-                        <div style="text-align: center;">
-                            <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">⚡</div>
-                            <h4 style="margin-bottom: 0.5rem;">Lightning Fast</h4>
-                            <p style="font-size: 0.9rem; color: #666;">Instant messaging and real-time updates keep you connected.</p>
-                        </div>
-                        <div style="text-align: center;">
-                            <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🎨</div>
-                            <h4 style="margin-bottom: 0.5rem;">Beautiful Design</h4>
-                            <p style="font-size: 0.9rem; color: #666;">Clean, intuitive interface designed for seamless social connection.</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div style="text-align: center; margin-top: 3rem;">
-                    <p style="color: #666; margin-bottom: 1rem;">Have questions about the app?</p>
-                    <a href="#" onclick="showHome()" style="color: #667eea; text-decoration: none; font-weight: 600;">← Back to Home</a> | 
-                    <a href="mailto:wesley@favcircles.com" style="color: #667eea; text-decoration: none; font-weight: 600;">Contact Support</a>
-                </div>
+        <h2 class="shots-title">See it in action</h2>
+        <div class="shots">
+            <div class="shot">
+                <img src="/img/screen-home.jpg" alt="FavCircles home screen: a map of your saved places with your connections above it" loading="lazy">
+                <p>All your favorites on one map</p>
+            </div>
+            <div class="shot">
+                <img src="/img/screen-profile.jpg" alt="A FavCircles profile showing circles like Coffee Spots and Jersey Shore" loading="lazy">
+                <p>Circles that fit your life</p>
+            </div>
+            <div class="shot">
+                <img src="/img/screen-place.jpg" alt="A place page with photo, rating, and Add to My Circle button" loading="lazy">
+                <p>Every place, with your people's take</p>
+            </div>
+            <div class="shot">
+                <img src="/img/screen-discover.jpg" alt="A map full of places recommended by your network" loading="lazy">
+                <p>Discover through your network</p>
             </div>
         </div>
+
+        <div class="band">
+            <h2>🌵 FavCoins: rewards that are actually real</h2>
+            <p>Most apps hand out points that die inside the app. FavCoins are different — they're a real cryptocurrency on the Cactus blockchain. Being an active part of the community fills your in-app piggy bank, and when you're ready you can send your coins to your own wallet on-chain.</p>
+            <ul>
+                <li>Earn for saving places, likes, comments, follows, and sharing FavCircles</li>
+                <li>Earn per-store reward points at participating local businesses</li>
+                <li>Claim your balance to a real blockchain wallet whenever you want</li>
+            </ul>
+        </div>
+
+        <div class="band">
+            <h2>Own a local business?</h2>
+            <p>Your best customers are already telling their friends about you — FavCircles gives you a direct line to them.</p>
+            <ul>
+                <li><strong>Claim your venue</strong> and manage how it appears</li>
+                <li><strong>Post specials and announcements</strong> that reach followers and nearby users</li>
+                <li><strong>Reward loyalty</strong> with redemption codes, points, and FavCoins</li>
+            </ul>
+            <a class="cta" href="https://apps.apple.com/us/app/favcircles/id6746807095" target="_blank" rel="noopener">Get the app &amp; claim your business</a>
+        </div>
+
+        <div class="band">
+            <h2>Ask Claude about your circles</h2>
+            <p>FavCircles connects to Claude, so you can use your circles anywhere you're chatting: <em>"What restaurants do my friends recommend near Brooklyn?"</em> — <em>"Create a circle called Weekend Trip and add that bakery."</em></p>
+            <a class="cta" href="/connect-claude.html">Set up the Claude connector →</a>
+        </div>
+
+        <p class="safety">FavCircles is a community built on trust. Every post can be reported, any user can be blocked, and we have <a href="/terms.html">zero tolerance for objectionable content</a>. Questions? Visit <a href="/support.html">Support</a>.</p>
     </main>
 
     <footer>
         <div class="container">
-            <p>&copy; 2025 FavCircles. All rights reserved.</p>
-            <p><a href="/privacy.html" style="color: white; text-decoration: underline;">Privacy Policy</a> |
-               <a href="/terms.html" style="color: white; text-decoration: underline;">Terms of Service</a> |
-               <a href="/delete-data.html" style="color: white; text-decoration: underline;">Delete Your Data</a></p>
+            <p>&copy; 2026 FavCircles. All rights reserved.</p>
+            <p><a href="/support.html">Support</a> |
+               <a href="/privacy.html">Privacy Policy</a> |
+               <a href="/terms.html">Terms of Service</a> |
+               <a href="/delete-data.html">Delete Your Data</a> |
+               <a href="/connect-claude.html">Connect to Claude</a></p>
         </div>
     </footer>
-
-    <script>
-        function showDownload() {
-            document.getElementById('home-page').classList.add('hidden');
-            document.getElementById('download-page').classList.remove('hidden');
-            document.title = 'Download Circles App';
-        }
-
-        function showHome() {
-            document.getElementById('home-page').classList.remove('hidden');
-            document.getElementById('download-page').classList.add('hidden');
-            document.title = 'Circles - Connect with Your Community';
-        }
-    </script>
 </body>
 </html>

@@ -3,14 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Privacy Policy - Circles</title>
+    <title>Privacy Policy - FavCircles</title>
+    <meta name="description" content="How FavCircles collects, uses, and protects your information.">
+    <link rel="canonical" href="https://favcircles.com/privacy.html">
+    <link rel="icon" href="/favicon.ico">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             line-height: 1.6;
@@ -18,13 +16,7 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
         }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 20px;
-        }
-
+        .container { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
         header {
             background: rgba(255, 255, 255, 0.1);
             backdrop-filter: blur(10px);
@@ -34,47 +26,12 @@
             top: 0;
             z-index: 1000;
         }
-
-        nav {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .logo {
-            font-size: 1.8rem;
-            font-weight: bold;
-            color: white;
-            text-decoration: none;
-        }
-
-        .nav-links {
-            display: flex;
-            list-style: none;
-            gap: 2rem;
-        }
-
-        .nav-links a {
-            color: white;
-            text-decoration: none;
-            font-weight: 500;
-            transition: opacity 0.3s;
-        }
-
-        .nav-links a:hover {
-            opacity: 0.8;
-        }
-
-        .nav-links a.active {
-            opacity: 1;
-            font-weight: 600;
-            text-decoration: underline;
-        }
-
-        main {
-            margin-top: 80px;
-        }
-
+        nav { display: flex; justify-content: space-between; align-items: center; }
+        .logo { font-size: 1.8rem; font-weight: bold; color: white; text-decoration: none; }
+        .nav-links { display: flex; list-style: none; gap: 1.6rem; }
+        .nav-links a { color: white; text-decoration: none; font-weight: 500; transition: opacity 0.3s; }
+        .nav-links a:hover { opacity: 0.8; }
+        main { margin-top: 80px; }
         .content-section {
             background: white;
             margin: 2rem 0;
@@ -82,41 +39,11 @@
             border-radius: 20px;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
         }
-
-        footer {
-            background: rgba(0, 0, 0, 0.2);
-            color: white;
-            text-align: center;
-            padding: 2rem 0;
-            margin-top: 4rem;
-        }
-
-        .policy-content h1 {
-            color: #667eea;
-            margin-bottom: 1rem;
-        }
-
-        .policy-content h2 {
-            color: #667eea;
-            margin-bottom: 1rem;
-            margin-top: 2rem;
-        }
-
-        .policy-content h3 {
-            color: #764ba2;
-            margin-bottom: 0.5rem;
-            margin-top: 1.5rem;
-        }
-
-        .policy-content p, .policy-content li {
-            margin-bottom: 1rem;
-        }
-
-        .policy-content ul {
-            margin-left: 2rem;
-            margin-bottom: 1rem;
-        }
-
+        .policy-content h1 { color: #667eea; margin-bottom: 1rem; }
+        .policy-content h2 { color: #667eea; margin-bottom: 1rem; margin-top: 2rem; }
+        .policy-content h3 { color: #764ba2; margin-bottom: 0.5rem; margin-top: 1.5rem; }
+        .policy-content p, .policy-content li { margin-bottom: 1rem; }
+        .policy-content ul { margin-left: 2rem; margin-bottom: 1rem; }
         .contact-info {
             background: #f8f9fa;
             padding: 1.5rem;
@@ -124,47 +51,33 @@
             margin: 1.5rem 0;
             border-left: 4px solid #667eea;
         }
-
+        footer {
+            background: rgba(0, 0, 0, 0.2);
+            color: white;
+            text-align: center;
+            padding: 2rem 0;
+            margin-top: 4rem;
+        }
+        footer a { color: white; text-decoration: underline; }
         @media (max-width: 768px) {
-            header {
-                padding: 0.5rem 0;
-            }
-            
-            nav {
-                flex-direction: column;
-                gap: 1rem;
-            }
-            
-            .logo {
-                font-size: 1.5rem;
-            }
-            
-            .nav-links {
-                flex-direction: row;
-                gap: 1rem;
-                font-size: 0.9rem;
-            }
-            
-            main {
-                margin-top: 120px;
-            }
-            
-            .content-section {
-                padding: 2rem 1rem;
-                margin: 1rem 0;
-            }
+            header { padding: 0.5rem 0; }
+            nav { flex-direction: column; gap: 0.8rem; }
+            .nav-links { flex-wrap: wrap; justify-content: center; gap: 0.9rem; font-size: 0.9rem; }
+            main { margin-top: 130px; }
+            .content-section { padding: 2rem 1rem; margin: 1rem 0; }
         }
     </style>
 </head>
 <body>
     <header>
         <nav class="container">
-            <a href="/" class="logo">Circles</a>
+            <a href="/" class="logo">FavCircles</a>
             <ul class="nav-links">
                 <li><a href="/">Home</a></li>
-                <li><a href="/privacy.html" class="active">Privacy Policy</a></li>
-                <li><a href="/terms.html">Terms of Service</a></li>
-                <li><a href="/delete-data.html">Delete Data</a></li>
+                <li><a href="/connect-claude.html">AI&nbsp;Connect</a></li>
+                <li><a href="/support.html">Support</a></li>
+                <li><a href="/privacy.html">Privacy</a></li>
+                <li><a href="/terms.html">Terms</a></li>
             </ul>
         </nav>
     </header>
@@ -173,76 +86,95 @@
         <div class="content-section">
             <div class="policy-content">
                 <h1>Privacy Policy</h1>
-                <p><strong>Last updated:</strong> June 4, 2025</p>
+                <p><strong>Last updated:</strong> August 10, 2026</p>
 
                 <h2>Introduction</h2>
-                <p>Welcome to Circles ("we," "our," or "us"). We are committed to protecting your privacy and ensuring you have a positive experience on our platform. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our application and related services.</p>
+                <p>Welcome to FavCircles ("we," "our," or "us"). We are committed to protecting your privacy and ensuring you have a positive experience on our platform. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use the FavCircles app and related services, including our website and AI-assistant connectors.</p>
 
                 <h2>Information We Collect</h2>
-                
-                <h3>Personal Information</h3>
-                <p>We may collect personal information that you voluntarily provide to us when you:</p>
+
+                <h3>Account and Profile Information</h3>
                 <ul>
-                    <li>Register for an account</li>
-                    <li>Create your profile</li>
-                    <li>Post content or interact with other users</li>
-                    <li>Contact us for support</li>
+                    <li>Name, username, and email address</li>
+                    <li>Profile photo, bio, and general location (city or ZIP code) if you provide them</li>
+                    <li>Sign-in information from Apple, Google, or Facebook if you use social sign-in</li>
                 </ul>
 
-                <p>This information may include:</p>
+                <h3>Content You Create</h3>
                 <ul>
-                    <li>Name and username</li>
-                    <li>Email address</li>
-                    <li>Profile information and photos</li>
-                    <li>Content you create and share</li>
-                    <li>Communication preferences</li>
+                    <li>Circles, saved places, notes, tags, and personal ratings</li>
+                    <li>Photos and short videos you post ("Moments"), including any place they're associated with</li>
+                    <li>Comments, likes, reactions, suggestions, and messages to other users</li>
+                    <li>The privacy level you assign to each circle, place, and Moment (public, my network, or private)</li>
                 </ul>
+
+                <h3>Location Information</h3>
+                <ul>
+                    <li><strong>Precise location</strong> — only if you grant the app location permission; used for the map, nearby recommendations, check-ins, and associating Moments with places</li>
+                    <li><strong>Approximate location</strong> — we may estimate a general area (city level) from the places you save, used to power features like "Near You" discovery; this estimate is never more precise than a city</li>
+                </ul>
+
+                <h3>FavCoins and Rewards Information</h3>
+                <ul>
+                    <li>Your in-app rewards balance and the activity that earned it</li>
+                    <li>If you claim FavCoins to a blockchain wallet: the wallet address you provide and the transaction details of the transfer</li>
+                    <li>Reward points and redemption codes used at participating businesses</li>
+                </ul>
+
+                <h3>Business Account Information</h3>
+                <p>If you claim a venue or open a business account, we collect the contact and verification information you submit with the claim, and details about your venue's offers and announcements.</p>
 
                 <h3>Automatically Collected Information</h3>
-                <p>When you use our app, we may automatically collect certain information, including:</p>
                 <ul>
-                    <li>Device information (device type, operating system, unique device identifiers)</li>
-                    <li>Usage data (features used, time spent, interaction patterns)</li>
-                    <li>Log information (IP address, access times, pages viewed)</li>
-                    <li>Location information (if you grant permission)</li>
+                    <li>Device information (device type, operating system, app version, push notification token)</li>
+                    <li>Usage data (features used, interaction patterns)</li>
+                    <li>Log information (IP address, access times)</li>
+                    <li>Purchase status for subscriptions (handled by Apple — we never see your payment card details)</li>
                 </ul>
 
                 <h2>How We Use Your Information</h2>
-                <p>We use the information we collect to:</p>
                 <ul>
                     <li>Provide, maintain, and improve our services</li>
                     <li>Create and manage your account</li>
-                    <li>Facilitate connections and communications between users</li>
-                    <li>Send you updates, notifications, and promotional materials</li>
-                    <li>Provide customer support</li>
-                    <li>Ensure the safety and security of our platform</li>
-                    <li>Comply with legal obligations</li>
+                    <li>Show your content to others according to the privacy level you chose</li>
+                    <li>Facilitate connections, follows, messages, and suggestions between users</li>
+                    <li>Power discovery features such as nearby places and people</li>
+                    <li>Calculate and deliver FavCoins and other rewards, including transfers you request to the blockchain</li>
+                    <li>Send push notifications you've opted into (connection requests, likes, comments, offers, and similar)</li>
+                    <li>Review reports of inappropriate content and keep the platform safe</li>
+                    <li>Provide customer support and comply with legal obligations</li>
                 </ul>
 
                 <h2>Information Sharing</h2>
-                <p>We do not sell, trade, or rent your personal information to third parties. We may share your information in the following circumstances:</p>
+                <p>We do not sell, trade, or rent your personal information to third parties. We share information only in these circumstances:</p>
                 <ul>
-                    <li><strong>With other users:</strong> Content you choose to share publicly or with specific circles</li>
-                    <li><strong>Service providers:</strong> Third-party companies that help us operate our services</li>
-                    <li><strong>Legal requirements:</strong> When required by law or to protect our rights</li>
-                    <li><strong>Business transfers:</strong> In connection with a merger, acquisition, or sale of assets</li>
+                    <li><strong>With other users:</strong> content you choose to share, according to its privacy level. Public content is visible to anyone on FavCircles; "My Network" content only to your connections; private content only to you.</li>
+                    <li><strong>Service providers:</strong> infrastructure partners that help us operate — including Google Firebase and Google Cloud (data storage and hosting), Apple Maps and Google Places (place details and photos), and our email delivery provider. These providers process data only on our behalf.</li>
+                    <li><strong>The blockchain:</strong> if you claim FavCoins to a wallet, that transaction is recorded on the public Cactus blockchain. Blockchain records are public and permanent by design; they contain wallet addresses and amounts, not your name or FavCircles profile.</li>
+                    <li><strong>AI assistants you connect:</strong> if you link your account to an AI assistant (such as Claude or ChatGPT), that assistant can access your FavCircles data on your behalf, subject to the same privacy rules as the app. We receive only the requests the assistant makes for you; we do not receive or store your conversations with the assistant. You can revoke this access at any time from the assistant's settings.</li>
+                    <li><strong>Legal requirements:</strong> when required by law or to protect our rights and users' safety.</li>
+                    <li><strong>Business transfers:</strong> in connection with a merger, acquisition, or sale of assets.</li>
                 </ul>
 
+                <h2>Push Notifications</h2>
+                <p>With your permission, we send push notifications for activity relevant to you. You can choose which types you receive in the app's notification settings, or turn them off entirely in your device settings.</p>
+
                 <h2>Data Security</h2>
-                <p>We implement appropriate technical and organizational measures to protect your personal information against unauthorized access, alteration, disclosure, or destruction. However, no method of transmission over the internet is 100% secure.</p>
+                <p>We protect your information with industry-standard measures: data is encrypted in transit, stored with access controls on Google Cloud infrastructure, and authentication uses secure, revocable tokens. No method of transmission or storage is 100% secure, but we work to protect your information against unauthorized access, alteration, disclosure, or destruction.</p>
 
                 <h2>Your Rights and Choices</h2>
-                <p>You have the right to:</p>
                 <ul>
                     <li>Access, update, or delete your personal information</li>
-                    <li>Control your privacy settings and communication preferences</li>
+                    <li>Set the privacy level of every circle, place, and Moment you create</li>
+                    <li>Control which push notifications you receive</li>
+                    <li>Block other users and report content — see our <a href="/support.html">Support page</a></li>
+                    <li>Disconnect any linked AI assistant at any time</li>
                     <li>Request a copy of your data</li>
-                    <li>Withdraw consent for data processing</li>
-                    <li>Delete your account entirely</li>
+                    <li>Delete your account entirely — in the app under Settings, or via our <a href="/delete-data.html">data deletion page</a></li>
                 </ul>
 
                 <h2>Data Retention</h2>
-                <p>We retain your personal information for as long as necessary to provide our services and fulfill the purposes outlined in this policy. When you delete your account, we will delete or anonymize your personal information, though some information may be retained for legal or safety purposes.</p>
+                <p>We retain your personal information for as long as necessary to provide our services. When you delete your account, we delete or anonymize your personal information, though some records may be retained where required for legal or safety purposes. Note that FavCoins transactions already recorded on the public blockchain cannot be deleted — the blockchain is permanent by design.</p>
 
                 <h2>Children's Privacy</h2>
                 <p>Our services are not intended for children under 13 years of age. We do not knowingly collect personal information from children under 13. If we become aware that we have collected such information, we will take steps to delete it promptly.</p>
@@ -262,10 +194,12 @@
 
     <footer>
         <div class="container">
-            <p>&copy; 2025 FavCircles. All rights reserved.</p>
-            <p><a href="/privacy.html" style="color: white; text-decoration: underline;">Privacy Policy</a> |
-               <a href="/terms.html" style="color: white; text-decoration: underline;">Terms of Service</a> |
-               <a href="/delete-data.html" style="color: white; text-decoration: underline;">Delete Your Data</a></p>
+            <p>&copy; 2026 FavCircles. All rights reserved.</p>
+            <p><a href="/support.html">Support</a> |
+               <a href="/privacy.html">Privacy Policy</a> |
+               <a href="/terms.html">Terms of Service</a> |
+               <a href="/delete-data.html">Delete Your Data</a> |
+               <a href="/connect-claude.html">Connect to Claude</a></p>
         </div>
     </footer>
 </body>
