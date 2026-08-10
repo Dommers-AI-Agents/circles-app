@@ -9,9 +9,11 @@ import UIKit
 /// is still a future phase; the copy says "coming soon" and the claim button
 /// stays inert until Phase 4 ships.
 ///
-/// Branding (owner decision, 2026-08-10): 🌵 is THE icon for the Cactus
-/// blockchain. Pair it with "blockchain"/"wallet" wherever they appear in
-/// user-facing copy, app-wide — it replaces 🔒/🔗/⛓ on chain-related rows.
+/// Branding (owner decision, 2026-08-10, refined same day): 🌵 appears ONLY
+/// immediately before the words "blockchain" / "wallet" / "Cactus …" in
+/// user-facing copy. Standalone icon slots that *represent* the chain
+/// (amount rows, on-chain headers, address rows) use ⛓ — a bare 🌵 next to
+/// a number reads as decoration, not meaning.
 final class PiggyBankViewController: BaseViewController {
 
     override var enablesPullToRefresh: Bool { true }
@@ -120,6 +122,10 @@ final class PiggyBankViewController: BaseViewController {
         // The header card is Colors.primary — the factory's primary-on-primary
         // styling vanishes against it, so this button goes white-on-blue.
         button.setTitleColor(.white, for: .normal)
+        // Titles carry amounts and can run long — shrink, never clip mid-word
+        button.titleLabel?.adjustsFontSizeToFitWidth = true
+        button.titleLabel?.minimumScaleFactor = 0.6
+        button.titleLabel?.baselineAdjustment = .alignCenters
         button.layer.borderColor = UIColor.white.cgColor
         button.isEnabled = false
         button.alpha = 0.6
@@ -127,6 +133,30 @@ final class PiggyBankViewController: BaseViewController {
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
+
+    // Why the send button is greyed out — shown only in the locked state;
+    // a disabled button can't explain itself, this ⓘ can
+    private var claimLockedExplanation: String?
+    private lazy var claimInfoButton: UIButton = {
+        let button = UIButton(type: .system)
+        let config = UIImage.SymbolConfiguration(pointSize: 15, weight: .medium)
+        button.setImage(UIImage(systemName: "info.circle", withConfiguration: config), for: .normal)
+        button.tintColor = UIColor.white.withAlphaComponent(0.9)
+        button.addTarget(self, action: #selector(claimLockedInfoTapped), for: .touchUpInside)
+        button.accessibilityLabel = "Why can't I send yet?"
+        button.isHidden = true
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+
+    @objc private func claimLockedInfoTapped() {
+        guard let explanation = claimLockedExplanation else { return }
+        AlertPresenter.showInfo(
+            title: "Why can't I send yet?",
+            message: explanation,
+            from: self
+        )
+    }
 
     private let activityTitleLabel: UILabel = {
         let label = UILabel()
@@ -176,7 +206,7 @@ final class PiggyBankViewController: BaseViewController {
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
         [headerView, activityTitleLabel, activityStack, earnTitleLabel, earnStack].forEach { contentView.addSubview($0) }
-        [piggyArtLabel, confirmedLabel, confirmedCaptionLabel, breakdownStack, claimButton, walletButton, infoButton].forEach { headerView.addSubview($0) }
+        [piggyArtLabel, confirmedLabel, confirmedCaptionLabel, breakdownStack, claimButton, walletButton, infoButton, claimInfoButton].forEach { headerView.addSubview($0) }
 
         scrollView.refreshControl = refreshControl
 
@@ -215,6 +245,11 @@ final class PiggyBankViewController: BaseViewController {
             claimButton.topAnchor.constraint(equalTo: breakdownStack.bottomAnchor, constant: 14),
             claimButton.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 20),
             claimButton.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -20),
+
+            claimInfoButton.centerYAnchor.constraint(equalTo: claimButton.centerYAnchor),
+            claimInfoButton.trailingAnchor.constraint(equalTo: claimButton.trailingAnchor, constant: -12),
+            claimInfoButton.widthAnchor.constraint(equalToConstant: 30),
+            claimInfoButton.heightAnchor.constraint(equalToConstant: 30),
 
             walletButton.topAnchor.constraint(equalTo: claimButton.bottomAnchor, constant: 4),
             walletButton.centerXAnchor.constraint(equalTo: headerView.centerXAnchor),
@@ -321,7 +356,7 @@ final class PiggyBankViewController: BaseViewController {
                 makeBreakdownRow("🐷 \(PiggyBankFormatting.amount(bank.confirmedCoins)) in your piggy bank", emphasized: true))
         }
         if bank.settledOnChain > 0 {
-            let row = makeBreakdownRow("🌵 \(PiggyBankFormatting.amount(bank.settledOnChain)) safe on the blockchain", tappable: true)
+            let row = makeBreakdownRow("⛓ \(PiggyBankFormatting.amount(bank.settledOnChain)) safe on the blockchain", tappable: true)
             row.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(onChainRowTapped)))
             breakdownStack.addArrangedSubview(row)
         }
@@ -339,6 +374,10 @@ final class PiggyBankViewController: BaseViewController {
     private func renderClaimControls(bank: PiggyBank) {
         let threshold = Double(payloadConfig?.minConfirmedToClaim ?? 500)
 
+        let thresholdText = "\(PiggyBankFormatting.amount(threshold)) \(PiggyBankFormatting.coinUnit(threshold))"
+        claimInfoButton.isHidden = true
+        claimLockedExplanation = nil
+
         guard claimsEnabled else {
             // Phase 4 not switched on server-side: keep the inert affordance.
             walletButton.isHidden = true
@@ -347,17 +386,19 @@ final class PiggyBankViewController: BaseViewController {
                 claimButton.setTitle("Send to the 🌵 blockchain — coming soon", for: .normal)
                 claimButton.alpha = 0.8
             } else {
-                claimButton.setTitle("Send to 🌵 blockchain unlocks at \(PiggyBankFormatting.amount(threshold)) \(PiggyBankFormatting.coinUnit(threshold))", for: .normal)
+                claimButton.setTitle("Send to 🌵 ⛓", for: .normal)
                 claimButton.alpha = 0.6
+                claimLockedExplanation = "Sending your coins to the 🌵 blockchain unlocks at \(thresholdText) — and the feature itself is coming soon. Keep earning!"
+                claimInfoButton.isHidden = false
             }
             return
         }
 
         walletButton.isHidden = false
         if let address = bank.walletAddress {
-            walletButton.setTitle("🌵 \(Self.truncateAddress(address)) · change", for: .normal)
+            walletButton.setTitle("⛓ \(Self.truncateAddress(address)) · change", for: .normal)
         } else {
-            walletButton.setTitle("🌵 Link your Cactus Wallet", for: .normal)
+            walletButton.setTitle("Link your 🌵 Cactus Wallet", for: .normal)
         }
 
         if let claim = activeClaim {
@@ -365,13 +406,15 @@ final class PiggyBankViewController: BaseViewController {
             claimButton.isEnabled = false
             claimButton.alpha = 0.8
         } else if bank.confirmedCoins >= threshold {
-            claimButton.setTitle("Send \(PiggyBankFormatting.coins(bank.confirmedCoins)) to the 🌵 blockchain", for: .normal)
+            claimButton.setTitle("Send \(PiggyBankFormatting.amount(bank.confirmedCoins)) to the 🌵 blockchain", for: .normal)
             claimButton.isEnabled = true
             claimButton.alpha = 1.0
         } else {
-            claimButton.setTitle("Send to 🌵 blockchain unlocks at \(PiggyBankFormatting.amount(threshold)) \(PiggyBankFormatting.coinUnit(threshold))", for: .normal)
+            claimButton.setTitle("Send to 🌵 ⛓", for: .normal)
             claimButton.isEnabled = false
             claimButton.alpha = 0.6
+            claimLockedExplanation = "Sending to the 🌵 blockchain unlocks at \(thresholdText). You have \(PiggyBankFormatting.coins(bank.confirmedCoins)) ready to send — coins still clearing count as soon as they land in your piggy bank."
+            claimInfoButton.isHidden = false
         }
     }
 
@@ -406,12 +449,24 @@ final class PiggyBankViewController: BaseViewController {
                   let url = URL(string: "\(self.explorerBase)address/\(address)") else { return }
             UIApplication.shared.open(url)
         }))
-        if let userId = AuthService.shared.getUserId(),
-           let phrase = WalletPhraseStore.load(account: userId) {
-            actions.append((title: "View my secret phrase", style: .default, handler: { [weak self] in
-                self?.showSecretPhrase(phrase, intro: false)
-            }))
-        }
+        // Always offered: a pasted-in address has no phrase on this phone,
+        // and silently hiding the row just looks broken
+        let storedPhrase = AuthService.shared.getUserId().flatMap { WalletPhraseStore.load(account: $0) }
+        actions.append((title: "View my secret phrase", style: .default, handler: { [weak self] in
+            guard let self = self else { return }
+            if let phrase = storedPhrase {
+                self.showSecretPhrase(phrase, intro: false)
+            } else {
+                AlertPresenter.showInfo(
+                    title: "No phrase on this phone",
+                    message: "This address was linked by pasting it in, so its secret phrase lives in the wallet app where it was created. FavCircles only holds phrases (in your iCloud Keychain) for wallets created on this phone.",
+                    from: self
+                )
+            }
+        }))
+        actions.append((title: "Create new wallet", style: .default, handler: { [weak self] in
+            self?.confirmCreateNewWallet(hasStoredPhrase: storedPhrase != nil)
+        }))
         actions.append((title: "Change address", style: .default, handler: { [weak self] in
             self?.promptLinkWallet()
         }))
@@ -420,6 +475,27 @@ final class PiggyBankViewController: BaseViewController {
             message: "Linked receive address:\n\(address)",
             actions: actions,
             from: self
+        )
+    }
+
+    /// Creating a new wallet REPLACES the phrase stored on this phone
+    /// (WalletPhraseStore.save deletes the old item) — when one exists, the
+    /// old wallet's coins are only reachable through a written-down copy.
+    /// Branch the warning on that so a pasted-address user isn't scared off.
+    private func confirmCreateNewWallet(hasStoredPhrase: Bool) {
+        let message = hasStoredPhrase
+            ? "This creates a brand-new 🌵 wallet and replaces the secret phrase stored on this phone. Coins at your current address stay there — but you'll only reach them if that phrase is written down somewhere safe. Write it down BEFORE continuing (tap \"View my secret phrase\")."
+            : "This creates a brand-new 🌵 wallet on this phone and links it for future claims. Your current address — and any coins already sent to it — are untouched and stay yours."
+        AlertPresenter.showConfirmation(
+            title: "Create a new 🌵 wallet?",
+            message: message,
+            confirmTitle: "Create new wallet",
+            cancelTitle: "Cancel",
+            isDestructive: hasStoredPhrase,
+            from: self,
+            onConfirm: { [weak self] in
+                self?.createWalletOnDevice(thenClaim: false)
+            }
         )
     }
 
@@ -506,7 +582,7 @@ final class PiggyBankViewController: BaseViewController {
 
             3. Choose Receive to see your address — it starts with cac1.
 
-            4. Come back here, tap the 🌵 link and paste that address. From then on your FavCoins can be sent to it.
+            4. Come back here, tap the wallet row and paste that address. From then on your FavCoins can be sent to it.
             """,
             from: self,
             linkTitle: "Download at cactus-network.net",
@@ -626,7 +702,7 @@ final class PiggyBankViewController: BaseViewController {
             ?? event.explorerUrl
             ?? base
         AlertPresenter.showInfo(
-            title: "🌵 On-chain transfer",
+            title: "⛓ On-chain transfer",
             message: "\(PiggyBankFormatting.coins(event.coins)) were sent to your 🌵 Cactus Wallet.\(event.txId != nil ? "\n\nTransaction: \(event.txId!)" : "")",
             from: self,
             linkTitle: "See your FavCoins on the explorer",
@@ -667,7 +743,7 @@ final class PiggyBankViewController: BaseViewController {
         let coins = UILabel()
         if event.isClaim {
             // Coins leaving the in-app balance for the user's own wallet.
-            coins.text = event.isClaimFailed ? "—" : "→🌵 \(PiggyBankFormatting.amount(event.coins))"
+            coins.text = event.isClaimFailed ? "—" : "→⛓ \(PiggyBankFormatting.amount(event.coins))"
             coins.font = .systemFont(ofSize: 15, weight: .bold)
             coins.textColor = event.isSettled ? Constants.Colors.primary : Constants.Colors.secondaryLabel
         } else {
@@ -781,7 +857,7 @@ final class OnChainCoinsViewController: BaseViewController, UITableViewDataSourc
         view.backgroundColor = Constants.Colors.background
 
         let header = UILabel()
-        header.text = "🌵 \(PiggyBankFormatting.amount(totalCoins)) FavCoins on the Cactus blockchain"
+        header.text = "⛓ \(PiggyBankFormatting.amount(totalCoins)) FavCoins on the 🌵 Cactus blockchain"
         header.font = .systemFont(ofSize: 17, weight: .bold)
         header.textAlignment = .center
         header.numberOfLines = 0

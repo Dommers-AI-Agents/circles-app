@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Store Rewards - FavCircles</title>
+    <meta name="description" content="Earn real rewards at the local shops you love: store points, redemption codes, exclusive specials, and FavCoins — just for being a great regular.">
+    <link rel="canonical" href="https://favcircles.com/rewards.html">
+    <link rel="icon" href="/favicon.ico">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="FavCircles">
+    <meta property="og:title" content="FavCircles Store Rewards — Get Rewarded for Being a Regular">
+    <meta property="og:description" content="Earn store points, unlock specials, and collect FavCoins at the local shops you already love.">
+    <meta property="og:url" content="https://favcircles.com/rewards.html">
+    <meta property="og:image" content="https://favcircles.com/app-icon.png">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+        header {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 1rem 0;
+            position: fixed;
+            width: 100%;
+            top: 0;
+            z-index: 1000;
+        }
+        nav { display: flex; justify-content: space-between; align-items: center; }
+        .logo { font-size: 1.8rem; font-weight: bold; color: white; text-decoration: none; }
+        .nav-links { display: flex; list-style: none; gap: 1.6rem; }
+        .nav-links a { color: white; text-decoration: none; font-weight: 500; transition: opacity 0.3s; }
+        .nav-links a:hover { opacity: 0.8; }
+        main { margin-top: 80px; }
+        .page-hero {
+            display: flex;
+            align-items: center;
+            gap: 3rem;
+            padding: 3rem 0 2rem 0;
+            color: white;
+        }
+        .page-hero .copy { flex: 1 1 340px; }
+        .page-hero h1 { font-size: 2.7rem; line-height: 1.15; margin-bottom: 1rem; }
+        .page-hero p.lead { font-size: 1.2rem; opacity: 0.93; margin-bottom: 1.6rem; }
+        .page-hero .phone { flex: 0 0 270px; max-width: 270px; }
+        .page-hero .phone img {
+            width: 100%;
+            border-radius: 26px;
+            border: 4px solid rgba(255, 255, 255, 0.35);
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+            display: block;
+        }
+        .cta {
+            display: inline-block;
+            background: white;
+            color: #667eea;
+            padding: 0.9rem 1.8rem;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: 700;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .cta:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25); }
+        .band {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            padding: 2.6rem;
+            margin: 2rem 0;
+        }
+        .band h2 { color: #667eea; font-size: 1.7rem; margin-bottom: 0.8rem; }
+        .band p { margin-bottom: 1rem; color: #444; }
+        .band ul { margin: 0 0 1rem 1.4rem; color: #444; }
+        .band li { margin-bottom: 0.6rem; }
+        .steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.5rem;
+            margin-top: 1.5rem;
+        }
+        .step .num {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 2rem; height: 2rem;
+            border-radius: 50%;
+            background: #667eea;
+            color: white;
+            font-weight: 700;
+            margin-bottom: 0.6rem;
+        }
+        .step h3 { color: #764ba2; font-size: 1.05rem; margin-bottom: 0.4rem; }
+        .step p { font-size: 0.95rem; }
+        .band .cta2 {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 0.8rem 1.6rem;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: 600;
+        }
+        footer {
+            background: rgba(0, 0, 0, 0.2);
+            color: white;
+            text-align: center;
+            padding: 2rem 0;
+            margin-top: 4rem;
+        }
+        footer a { color: white; text-decoration: underline; }
+        @media (max-width: 820px) {
+            header { position: static; padding: 0.7rem 0; }
+            nav { flex-direction: column; gap: 0.7rem; }
+            .nav-links { flex-wrap: wrap; justify-content: center; gap: 0.7rem 0.95rem; font-size: 0.9rem; }
+            main { margin-top: 0; }
+            .page-hero { flex-direction: column; text-align: center; padding-top: 1.6rem; gap: 2rem; }
+            .page-hero h1 { font-size: 2.1rem; }
+            .band { padding: 1.8rem 1.3rem; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <nav class="container">
+            <a href="/" class="logo">FavCircles</a>
+            <ul class="nav-links">
+                <li><a href="/">Home</a></li>
+                <li><a href="/store-owners.html">Store&nbsp;Owners</a></li>
+                <li><a href="/rewards.html">Store&nbsp;Rewards</a></li>
+                <li><a href="/cactus.html">Cactus&nbsp;Blockchain</a></li>
+                <li><a href="/support.html">Support</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main class="container">
+        <section class="page-hero">
+            <div class="copy">
+                <h1>Get rewarded for being a regular.</h1>
+                <p class="lead">You already have favorite spots. FavCircles makes them pay you back — store points you spend at the register, exclusive specials, and FavCoins that pile up just for showing your love.</p>
+                <a class="cta" href="https://apps.apple.com/us/app/favcircles/id6746807095" target="_blank" rel="noopener">Start earning — it's free</a>
+            </div>
+            <div class="phone">
+                <img src="/img/screen-store-points.jpg" alt="The Store Points screen: 325 points, points by store, and nearby offers like a free coffee and half-price smoothie with Redeem buttons">
+            </div>
+        </section>
+
+        <div class="band">
+            <h2>How store rewards work</h2>
+            <div class="steps">
+                <div class="step">
+                    <span class="num">1</span>
+                    <h3>Save &amp; follow your favorites</h3>
+                    <p>Add the shops you love to your circles and follow the ones that run rewards.</p>
+                </div>
+                <div class="step">
+                    <span class="num">2</span>
+                    <h3>Earn points per shop</h3>
+                    <p>Each participating store keeps its own points bucket for you — visiting, sharing, and bringing friends all count.</p>
+                </div>
+                <div class="step">
+                    <span class="num">3</span>
+                    <h3>Redeem at the register</h3>
+                    <p>Enter a redemption code at the shop or show your reward — real perks at real places, not coupons for stuff you don't want.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="band">
+            <h2>The Specials feed</h2>
+            <p>The home screen's <strong>Specials</strong> tab shows live offers and announcements from shops near you and shops you follow. Store owners post them; you claim them. It's that direct.</p>
+            <ul>
+                <li>Limited-time offers from your favorite local spots</li>
+                <li>Announcements when something new is happening</li>
+                <li>Rewards for sharing — when a friend saves a place you shared, you both win</li>
+            </ul>
+        </div>
+
+        <div class="band">
+            <h2>And then there's the crypto 🌵</h2>
+            <p>Store points are per-shop. <strong>FavCoins</strong> are yours everywhere — a real cryptocurrency you earn across the whole app and can claim to your own wallet on the Cactus blockchain.</p>
+            <a class="cta2" href="/cactus.html">How FavCoins work →</a>
+        </div>
+
+        <div class="band">
+            <h2>Own a shop?</h2>
+            <p>Everything above is powered by owners like you. Claim your venue and put your rewards in front of the people who already saved you.</p>
+            <a class="cta2" href="/store-owners.html">FavCircles for Store Owners →</a>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 FavCircles. All rights reserved.</p>
+            <p><a href="/store-owners.html">Store Owners</a> |
+               <a href="/rewards.html">Store Rewards</a> |
+               <a href="/cactus.html">Cactus Blockchain</a> |
+               <a href="/connect-claude.html">Connect to Claude</a></p>
+            <p><a href="/support.html">Support</a> |
+               <a href="/privacy.html">Privacy Policy</a> |
+               <a href="/terms.html">Terms of Service</a> |
+               <a href="/delete-data.html">Delete Your Data</a></p>
+        </div>
+    </footer>
+</body>
+</html>

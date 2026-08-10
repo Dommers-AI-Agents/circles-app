@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cactus Blockchain &amp; FavCoins - FavCircles</title>
+    <meta name="description" content="FavCoins are real cryptocurrency on the Cactus blockchain. Earn them by using FavCircles, watch your piggy bank fill up, and claim them to your own wallet.">
+    <link rel="canonical" href="https://favcircles.com/cactus.html">
+    <link rel="icon" href="/favicon.ico">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="FavCircles">
+    <meta property="og:title" content="FavCoins on the Cactus Blockchain — Rewards That Are Actually Real">
+    <meta property="og:description" content="Most apps hand out points that die in the app. FavCoins are real crypto you can claim to your own wallet.">
+    <meta property="og:url" content="https://favcircles.com/cactus.html">
+    <meta property="og:image" content="https://favcircles.com/app-icon.png">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+        header {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 1rem 0;
+            position: fixed;
+            width: 100%;
+            top: 0;
+            z-index: 1000;
+        }
+        nav { display: flex; justify-content: space-between; align-items: center; }
+        .logo { font-size: 1.8rem; font-weight: bold; color: white; text-decoration: none; }
+        .nav-links { display: flex; list-style: none; gap: 1.6rem; }
+        .nav-links a { color: white; text-decoration: none; font-weight: 500; transition: opacity 0.3s; }
+        .nav-links a:hover { opacity: 0.8; }
+        main { margin-top: 80px; }
+        .page-hero {
+            display: flex;
+            align-items: center;
+            gap: 3rem;
+            padding: 3rem 0 2rem 0;
+            color: white;
+        }
+        .page-hero .copy { flex: 1 1 340px; }
+        .page-hero h1 { font-size: 2.7rem; line-height: 1.15; margin-bottom: 1rem; }
+        .page-hero p.lead { font-size: 1.2rem; opacity: 0.93; margin-bottom: 1.6rem; }
+        .cta {
+            display: inline-block;
+            background: white;
+            color: #667eea;
+            padding: 0.9rem 1.8rem;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: 700;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .cta:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25); }
+        .phone { flex: 0 0 270px; max-width: 270px; }
+        .phone img {
+            width: 100%;
+            border-radius: 26px;
+            border: 4px solid rgba(255, 255, 255, 0.35);
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+            display: block;
+        }
+        .band {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            padding: 2.6rem;
+            margin: 2rem 0;
+        }
+        .band h2 { color: #667eea; font-size: 1.7rem; margin-bottom: 0.8rem; }
+        .band p { margin-bottom: 1rem; color: #444; }
+        .band ul { margin: 0 0 1rem 1.4rem; color: #444; }
+        .band li { margin-bottom: 0.6rem; }
+        .grid3 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+        .card {
+            text-align: center;
+            padding: 2rem 1.4rem;
+            background: rgba(255, 255, 255, 0.12);
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            color: white;
+        }
+        .card .icon { font-size: 2.5rem; margin-bottom: 0.7rem; }
+        .card h3 { margin-bottom: 0.5rem; font-size: 1.25rem; }
+        .card p { font-size: 0.97rem; opacity: 0.93; }
+        .band .cta2 {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 0.8rem 1.6rem;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: 600;
+        }
+        footer {
+            background: rgba(0, 0, 0, 0.2);
+            color: white;
+            text-align: center;
+            padding: 2rem 0;
+            margin-top: 4rem;
+        }
+        footer a { color: white; text-decoration: underline; }
+        @media (max-width: 820px) {
+            header { position: static; padding: 0.7rem 0; }
+            nav { flex-direction: column; gap: 0.7rem; }
+            .nav-links { flex-wrap: wrap; justify-content: center; gap: 0.7rem 0.95rem; font-size: 0.9rem; }
+            main { margin-top: 0; }
+            .page-hero { flex-direction: column-reverse; text-align: center; padding-top: 1.6rem; gap: 2rem; }
+            .page-hero h1 { font-size: 2.1rem; }
+            .band { padding: 1.8rem 1.3rem; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <nav class="container">
+            <a href="/" class="logo">FavCircles</a>
+            <ul class="nav-links">
+                <li><a href="/">Home</a></li>
+                <li><a href="/store-owners.html">Store&nbsp;Owners</a></li>
+                <li><a href="/rewards.html">Store&nbsp;Rewards</a></li>
+                <li><a href="/cactus.html">Cactus&nbsp;Blockchain</a></li>
+                <li><a href="/support.html">Support</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main class="container">
+        <section class="page-hero">
+            <div class="copy">
+                <h1>Rewards that are actually real.</h1>
+                <p class="lead">Most apps hand out points that die inside the app. FavCoins are a real cryptocurrency on the 🌵 Cactus blockchain — you earn them by living your life, and when you're ready, they leave the app with you.</p>
+                <a class="cta" href="https://apps.apple.com/us/app/favcircles/id6746807095" target="_blank" rel="noopener">Start filling your piggy bank</a>
+            </div>
+            <div class="phone">
+                <img src="/img/screen-piggy.jpg" alt="The FavCircles piggy bank: 338 FavCoins — 3 in the piggy bank, 323 safe on the blockchain — with a Send to wallet button and an activity feed of earnings">
+            </div>
+        </section>
+
+        <div class="grid3">
+            <div class="card">
+                <div class="icon">🐷</div>
+                <h3>1. Fill the Piggy Bank</h3>
+                <p>Saving places, likes, comments, follows, shares — everything you do drops coins (and fractions of coins) into your in-app piggy bank. Tap the ($) at Home to watch it grow.</p>
+            </div>
+            <div class="card">
+                <div class="icon">🌵</div>
+                <h3>2. Claim to the Blockchain</h3>
+                <p>When you've got whole coins, claim them. They're minted to your own wallet on the Cactus blockchain — publicly verifiable, permanently yours.</p>
+            </div>
+            <div class="card">
+                <div class="icon">💎</div>
+                <h3>3. Actually Own Them</h3>
+                <p>Once claimed, your FavCoins don't depend on us. Your wallet, your keys, your coins — that's the whole point of crypto.</p>
+            </div>
+        </div>
+
+        <div class="band">
+            <h2>What earns FavCoins?</h2>
+            <ul>
+                <li><strong>Building your world:</strong> saving places and creating circles</li>
+                <li><strong>Being a good neighbor:</strong> likes, comments, reactions, and follows — given and received</li>
+                <li><strong>Spreading the word:</strong> sharing places and inviting friends; when your share leads to a save, you earn</li>
+                <li><strong>Showing up:</strong> check-ins and store reward redemptions</li>
+            </ul>
+            <p>Small actions earn fractions of a coin; meaningful contributions earn full coins. It adds up faster than you'd think.</p>
+        </div>
+
+        <div class="band">
+            <h2>What is the Cactus blockchain?</h2>
+            <p>Cactus (CAC) is a community-run, energy-efficient blockchain built on the same proof-of-space-and-time technology as Chia — securing the network with storage instead of power-hungry mining. FavCircles mints FavCoin rewards on Cactus, so every claimed coin is a real on-chain asset you can look up in a public explorer.</p>
+            <p><strong>Do I need to understand crypto?</strong> No. The piggy bank handles everything. Crypto-curious users can claim coins to their own wallet; everyone else can just enjoy watching the balance grow until they're ready.</p>
+        </div>
+
+        <div class="band">
+            <h2>Store points vs. FavCoins</h2>
+            <p>They're teammates, not rivals:</p>
+            <ul>
+                <li><strong>Store points</strong> are per-shop loyalty — earned at and redeemed with a specific local business. <a href="/rewards.html" style="color:#667eea;">How store rewards work →</a></li>
+                <li><strong>FavCoins</strong> are earned across all of FavCircles and belong to you globally — in-app first, on-chain when you claim them.</li>
+            </ul>
+            <a class="cta2" href="https://apps.apple.com/us/app/favcircles/id6746807095" target="_blank" rel="noopener">Download FavCircles free →</a>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 FavCircles. All rights reserved.</p>
+            <p><a href="/store-owners.html">Store Owners</a> |
+               <a href="/rewards.html">Store Rewards</a> |
+               <a href="/cactus.html">Cactus Blockchain</a> |
+               <a href="/connect-claude.html">Connect to Claude</a></p>
+            <p><a href="/support.html">Support</a> |
+               <a href="/privacy.html">Privacy Policy</a> |
+               <a href="/terms.html">Terms of Service</a> |
+               <a href="/delete-data.html">Delete Your Data</a></p>
+        </div>
+    </footer>
+</body>
+</html>

@@ -3,20 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FavCircles — Your Favorite Places, Shared with Your People</title>
-    <meta name="description" content="FavCircles is a trust-based recommendation app. Save your favorite places into circles, share them with people you know, post Moments, and earn FavCoins — real crypto rewards for being part of the community.">
+    <title>FavCircles — Every Great Place Has a Story. Remember Yours.</title>
+    <meta name="description" content="FavCircles remembers the places that matter to you. Save them into circles, earn rewards at local shops, and collect FavCoins — real crypto on the Cactus blockchain.">
     <link rel="canonical" href="https://favcircles.com/">
     <link rel="icon" href="/favicon.ico">
     <meta name="apple-itunes-app" content="app-id=6746807095">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="FavCircles">
-    <meta property="og:title" content="FavCircles — Your Favorite Places, Shared with Your People">
-    <meta property="og:description" content="Save your favorite places into circles, share them with people you trust, post Moments, and earn FavCoins — real crypto rewards on the Cactus blockchain.">
+    <meta property="og:title" content="FavCircles — Every Great Place Has a Story. Remember Yours.">
+    <meta property="og:description" content="Save the places that matter, earn rewards at local shops, and collect FavCoins — real crypto on the Cactus blockchain.">
     <meta property="og:url" content="https://favcircles.com/">
     <meta property="og:image" content="https://favcircles.com/app-icon.png">
     <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="FavCircles — Your Favorite Places, Shared with Your People">
-    <meta name="twitter:description" content="Trust-based place recommendations from people you actually know. Free on the App Store.">
+    <meta name="twitter:title" content="FavCircles — Every Great Place Has a Story. Remember Yours.">
+    <meta name="twitter:description" content="Save the places that matter, earn store rewards, and collect real crypto. Free on the App Store.">
     <meta name="twitter:image" content="https://favcircles.com/app-icon.png">
     <style>
         * {
@@ -85,30 +85,48 @@
 
         .hero {
             text-align: center;
-            padding: 4.5rem 0 3rem 0;
+            padding: 2.8rem 0 1rem 0;
             color: white;
         }
 
         .hero-icon {
-            width: 96px;
-            height: 96px;
-            border-radius: 22px;
+            width: 84px;
+            height: 84px;
+            border-radius: 20px;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
-            margin-bottom: 1.5rem;
+            margin-bottom: 1.1rem;
         }
 
         .hero h1 {
-            font-size: 3.2rem;
-            margin-bottom: 1rem;
+            font-size: 2.9rem;
+            margin-bottom: 0.9rem;
             font-weight: 700;
             line-height: 1.15;
         }
 
         .hero p {
-            font-size: 1.3rem;
-            margin: 0 auto 2.2rem auto;
+            font-size: 1.2rem;
+            margin: 0 auto 1.8rem auto;
             opacity: 0.92;
-            max-width: 680px;
+            max-width: 640px;
+        }
+
+        .scroll-cue {
+            display: block;
+            margin: 1.6rem auto 0 auto;
+            width: 34px;
+            height: 34px;
+            color: white;
+            opacity: 0.85;
+            animation: cue-bounce 1.8s infinite;
+            text-decoration: none;
+            font-size: 2rem;
+            line-height: 1;
+        }
+
+        @keyframes cue-bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(9px); }
         }
 
         .store-badge {
@@ -308,14 +326,17 @@
         }
 
         @media (max-width: 768px) {
-            header { padding: 0.5rem 0; }
-            nav { flex-direction: column; gap: 0.8rem; }
+            /* Static header on phones: a fixed bar that wraps to two rows was
+               overlapping the hero icon; letting it scroll away also frees
+               screen space */
+            header { position: static; padding: 0.7rem 0; }
+            nav { flex-direction: column; gap: 0.7rem; }
             .logo { font-size: 1.5rem; }
-            .nav-links { flex-wrap: wrap; justify-content: center; gap: 0.9rem; font-size: 0.9rem; }
-            main { margin-top: 130px; }
-            .hero { padding: 2.5rem 0 2rem 0; }
-            .hero h1 { font-size: 2.2rem; }
-            .hero p { font-size: 1.1rem; }
+            .nav-links { flex-wrap: wrap; justify-content: center; gap: 0.7rem 0.95rem; font-size: 0.9rem; }
+            main { margin-top: 0; }
+            .hero { padding: 1.6rem 0 0.6rem 0; }
+            .hero h1 { font-size: 2.1rem; }
+            .hero p { font-size: 1.05rem; }
             .band { padding: 1.8rem 1.3rem; }
         }
     </style>
@@ -326,10 +347,10 @@
             <a href="/" class="logo">FavCircles</a>
             <ul class="nav-links">
                 <li><a href="/">Home</a></li>
-                <li><a href="/connect-claude.html">AI&nbsp;Connect</a></li>
+                <li><a href="/store-owners.html">Store&nbsp;Owners</a></li>
+                <li><a href="/rewards.html">Store&nbsp;Rewards</a></li>
+                <li><a href="/cactus.html">Cactus&nbsp;Blockchain</a></li>
                 <li><a href="/support.html">Support</a></li>
-                <li><a href="/privacy.html">Privacy</a></li>
-                <li><a href="/terms.html">Terms</a></li>
             </ul>
         </nav>
     </header>
@@ -337,45 +358,31 @@
     <main class="container">
         <section class="hero">
             <img src="/app-icon.png" alt="FavCircles app icon" class="hero-icon">
-            <h1>Your favorite places.<br>Shared with your people.</h1>
-            <p>FavCircles is a trust-based recommendation network. Skip the anonymous internet reviews — build circles of the places you love and discover new ones through people you actually know.</p>
+            <h1>Every great place has a story.<br>Remember yours.</h1>
+            <p>Not another social feed. FavCircles is where you keep the places that matter — and get rewarded for it.</p>
             <a href="https://apps.apple.com/us/app/favcircles/id6746807095" target="_blank" rel="noopener" class="store-badge">
                 <span class="icon">&#63743;</span>
                 <span><span class="label">Download free on the</span><br><span class="store">App Store</span></span>
             </a>
             <p class="hero-sub">Android coming soon — <a href="mailto:wesley@favcircles.com?subject=Notify%20me%20about%20FavCircles%20for%20Android">get notified</a>.</p>
+            <a class="scroll-cue" href="#why" aria-label="Scroll down">⌄</a>
         </section>
 
-        <div class="features">
+        <div class="features" id="why">
             <div class="feature">
                 <div class="feature-icon">📍</div>
-                <h3>Circles of Favorites</h3>
-                <p>Save places into curated circles — Date Night, Coffee, Weekend Trips — and choose who sees each one: public, your network, or just you.</p>
-            </div>
-            <div class="feature">
-                <div class="feature-icon">🎬</div>
-                <h3>Moments</h3>
-                <p>Share 15-second videos and photos from the places you visit, and see what your network is experiencing right now.</p>
-            </div>
-            <div class="feature">
-                <div class="feature-icon">🌵</div>
-                <h3>Earn FavCoins</h3>
-                <p>Every like, comment, and share earns FavCoins — a real crypto coin you can send to your own wallet on the Cactus blockchain.</p>
-            </div>
-            <div class="feature">
-                <div class="feature-icon">🤝</div>
-                <h3>A Network You Trust</h3>
-                <p>Connect with friends, follow tastemakers, get place suggestions made just for you, and see which spots you and your friends both love.</p>
+                <h3>Save Your Places</h3>
+                <p>Keep the restaurants, shops, and spots you love in circles that fit your life — Date Night, Coffee, Weekend Trips. Your favorites, remembered forever.</p>
             </div>
             <div class="feature">
                 <div class="feature-icon">🏪</div>
-                <h3>For Local Businesses</h3>
-                <p>Claim your venue, post specials and announcements, and reward the customers who put you in their circles.</p>
+                <h3>Earn Store Points</h3>
+                <p>Participating local shops reward you for showing up, sharing, and bringing friends — points and codes you redeem right at the store. <a href="/rewards.html" style="color:white; font-weight:600;">See how →</a></p>
             </div>
             <div class="feature">
-                <div class="feature-icon">🤖</div>
-                <h3>Works with AI</h3>
-                <p>Connect your account to Claude and ask for your friends' restaurant picks, build circles, and plan nights out — in conversation.</p>
+                <div class="feature-icon">🌵</div>
+                <h3>Collect Cactus Crypto</h3>
+                <p>Your activity fills a piggy bank with FavCoins — a real cryptocurrency on the Cactus blockchain you can send to your own wallet. <a href="/cactus.html" style="color:white; font-weight:600;">Learn more →</a></p>
             </div>
         </div>
 
@@ -403,20 +410,20 @@
         <h2 class="shots-title">See it in action</h2>
         <div class="shots">
             <div class="shot">
-                <img src="/img/screen-home.jpg" alt="FavCircles home screen: a map of your saved places with your connections above it" loading="lazy">
+                <img src="/img/screen-home.jpg" alt="FavCircles home screen: a map of your saved places, your people, and the activity feed" loading="lazy">
                 <p>All your favorites on one map</p>
             </div>
             <div class="shot">
-                <img src="/img/screen-profile.jpg" alt="A FavCircles profile showing circles like Coffee Spots and Jersey Shore" loading="lazy">
+                <img src="/img/screen-profile.jpg" alt="A FavCircles profile with Premium and Voyager badges and photo circles" loading="lazy">
                 <p>Circles that fit your life</p>
             </div>
             <div class="shot">
-                <img src="/img/screen-place.jpg" alt="A place page with photo, rating, and Add to My Circle button" loading="lazy">
+                <img src="/img/screen-place-tommys.jpg" alt="A place page with photo, saved-by row, likes, and Add to My Circle button" loading="lazy">
                 <p>Every place, with your people's take</p>
             </div>
             <div class="shot">
-                <img src="/img/screen-discover.jpg" alt="A map full of places recommended by your network" loading="lazy">
-                <p>Discover through your network</p>
+                <img src="/img/screen-moment.jpg" alt="A full-screen Moment video captured at a local bar" loading="lazy">
+                <p>Moments from the places you love</p>
             </div>
         </div>
 
@@ -428,6 +435,7 @@
                 <li>Earn per-store reward points at participating local businesses</li>
                 <li>Claim your balance to a real blockchain wallet whenever you want</li>
             </ul>
+            <a class="cta" href="/cactus.html">Explore FavCoins &amp; the Cactus blockchain →</a>
         </div>
 
         <div class="band">
@@ -438,7 +446,7 @@
                 <li><strong>Post specials and announcements</strong> that reach followers and nearby users</li>
                 <li><strong>Reward loyalty</strong> with redemption codes, points, and FavCoins</li>
             </ul>
-            <a class="cta" href="https://apps.apple.com/us/app/favcircles/id6746807095" target="_blank" rel="noopener">Get the app &amp; claim your business</a>
+            <a class="cta" href="/store-owners.html">Learn about FavCircles for Store Owners →</a>
         </div>
 
         <div class="band">
@@ -453,11 +461,14 @@
     <footer>
         <div class="container">
             <p>&copy; 2026 FavCircles. All rights reserved.</p>
+            <p><a href="/store-owners.html">Store Owners</a> |
+               <a href="/rewards.html">Store Rewards</a> |
+               <a href="/cactus.html">Cactus Blockchain</a> |
+               <a href="/connect-claude.html">Connect to Claude</a></p>
             <p><a href="/support.html">Support</a> |
                <a href="/privacy.html">Privacy Policy</a> |
                <a href="/terms.html">Terms of Service</a> |
-               <a href="/delete-data.html">Delete Your Data</a> |
-               <a href="/connect-claude.html">Connect to Claude</a></p>
+               <a href="/delete-data.html">Delete Your Data</a></p>
         </div>
     </footer>
 </body>

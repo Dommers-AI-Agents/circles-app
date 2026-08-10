@@ -1,0 +1,1 @@
+Announcements are short updates — deals, happy hours, live music. Post one with a headline, a message, and an expiry, and it shows up in three places at once: on your place page, in your followers' activity feeds, and in the Specials tab right on every customer's home screen. When an announcement expires, it hides automatically — no cleanup needed.

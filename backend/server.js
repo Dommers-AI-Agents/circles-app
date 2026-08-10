@@ -87,6 +87,8 @@ const corsOptions = {
     const allowedOrigins = [
       'https://circles-app.com',
       'https://www.circles-app.com',
+      'https://favcircles.com',
+      'https://www.favcircles.com',
       'capacitor://localhost', // iOS app
       'ionic://localhost', // iOS app alternative
       'http://localhost' // iOS app WebView
@@ -353,6 +355,7 @@ app.use('/api/sse', sseRoutes);
 app.use('/api', activityRoutes);
 app.use('/api/app', require('./routes/appRoutes'));
 app.use('/api/email', emailTestRoutes);
+app.use('/api/contact', require('./routes/contactRoutes')); // Website contact form (public)
 app.use('/api/diagnostics', require('./routes/diagnosticRoutes'));
 app.use('/api/tasks', taskRoutes);
 app.use('/api/trash', require('./routes/trashRoutes'));

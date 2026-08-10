@@ -74,7 +74,9 @@
             <a href="/" class="logo">FavCircles</a>
             <ul class="nav-links">
                 <li><a href="/">Home</a></li>
-                <li><a href="/connect-claude.html">AI&nbsp;Connect</a></li>
+                <li><a href="/store-owners.html">Store&nbsp;Owners</a></li>
+                <li><a href="/rewards.html">Store&nbsp;Rewards</a></li>
+                <li><a href="/cactus.html">Cactus&nbsp;Blockchain</a></li>
                 <li><a href="/support.html">Support</a></li>
                 <li><a href="/privacy.html">Privacy</a></li>
                 <li><a href="/terms.html">Terms</a></li>
@@ -89,9 +91,70 @@
                 <p>Answers to the most common questions about FavCircles. Can't find what you need? Email us — a real person reads every message.</p>
 
                 <div class="contact-info">
-                    <p><strong>Email:</strong> <a href="mailto:wesley@favcircles.com">wesley@favcircles.com</a></p>
-                    <p style="margin-bottom: 0;">We aim to respond within 24 hours.</p>
+                    <form id="contact-form" novalidate>
+                        <div style="display: flex; gap: 0.8rem; flex-wrap: wrap; margin-bottom: 0.8rem;">
+                            <input type="text" id="cf-name" placeholder="Your name" required maxlength="100"
+                                   style="flex: 1 1 180px; padding: 0.8rem; border: 2px solid #ddd; border-radius: 10px; font-size: 1rem;">
+                            <input type="email" id="cf-email" placeholder="Your email" required maxlength="200"
+                                   style="flex: 1 1 180px; padding: 0.8rem; border: 2px solid #ddd; border-radius: 10px; font-size: 1rem;">
+                        </div>
+                        <textarea id="cf-message" placeholder="How can we help?" required maxlength="5000" rows="4"
+                                  style="width: 100%; padding: 0.8rem; border: 2px solid #ddd; border-radius: 10px; font-size: 1rem; font-family: inherit; resize: vertical; margin-bottom: 0.8rem;"></textarea>
+                        <input type="text" id="cf-website" name="website" tabindex="-1" autocomplete="off"
+                               style="position: absolute; left: -9999px;" aria-hidden="true">
+                        <button type="submit" id="cf-send"
+                                style="background: #667eea; color: white; padding: 0.8rem 1.8rem; border: none; border-radius: 50px; font-size: 1rem; font-weight: 600; cursor: pointer;">
+                            Send Message
+                        </button>
+                        <p id="cf-status" style="margin: 0.8rem 0 0 0; display: none;"></p>
+                    </form>
+                    <p style="margin: 1rem 0 0 0;">Prefer email? <a href="mailto:wesley@favcircles.com">wesley@favcircles.com</a> — a real person reads every message, and we aim to respond within 24 hours.</p>
                 </div>
+                <script>
+                document.getElementById('contact-form').addEventListener('submit', async function (e) {
+                    e.preventDefault();
+                    var status = document.getElementById('cf-status');
+                    var btn = document.getElementById('cf-send');
+                    var name = document.getElementById('cf-name').value.trim();
+                    var email = document.getElementById('cf-email').value.trim();
+                    var message = document.getElementById('cf-message').value.trim();
+                    status.style.display = 'block';
+                    if (!name || !email || email.indexOf('@') < 1 || !message) {
+                        status.style.color = '#c0392b';
+                        status.textContent = 'Please fill in your name, email, and a message.';
+                        return;
+                    }
+                    btn.disabled = true;
+                    btn.textContent = 'Sending…';
+                    status.textContent = '';
+                    try {
+                        var resp = await fetch('https://api.favcircles.com/api/contact', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                name: document.getElementById('cf-name').value.trim(),
+                                email: email,
+                                message: message,
+                                website: document.getElementById('cf-website').value
+                            })
+                        });
+                        var data = await resp.json();
+                        if (resp.ok && data.success) {
+                            status.style.color = '#1e8e3e';
+                            status.textContent = data.message || 'Thanks — your message is on its way.';
+                            document.getElementById('contact-form').reset();
+                        } else {
+                            status.style.color = '#c0392b';
+                            status.textContent = (data && data.message) || 'Something went wrong — please email wesley@favcircles.com directly.';
+                        }
+                    } catch (err) {
+                        status.style.color = '#c0392b';
+                        status.textContent = "Couldn't send — please email wesley@favcircles.com directly.";
+                    }
+                    btn.disabled = false;
+                    btn.textContent = 'Send Message';
+                });
+                </script>
 
                 <h2>Getting started</h2>
 
@@ -110,7 +173,7 @@
                 <p>You choose per circle and per place: <strong>Public</strong> (anyone on FavCircles), <strong>My Network</strong> (your connections only), or <strong>Private</strong> (just you). Moments have the same visibility choices.</p>
 
                 <h3>What's the difference between connecting and following?</h3>
-                <p>A <strong>connection</strong> is mutual — both people agree, and both see each other's network-level content. A <strong>follow</strong> is one-way: you'll see their public activity without needing approval.</p>
+                <p>A <strong>connection</strong> is mutual — both people agree, you see each other's network-level content (circles and places set to "My Network"), and you can <strong>message each other</strong>. A <strong>follow</strong> is one-way and needs no approval: you'll see that person's <strong>public</strong> places and activity only — not their network-level content, and following doesn't let you message them. To unlock messaging and network-only content, send a connection request.</p>
 
                 <h2>FavCoins &amp; the piggy bank</h2>
 
