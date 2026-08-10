@@ -38,9 +38,17 @@ router.get('/:code', async (req, res) => {
 <div style="font-size:56px;margin-bottom:8px">&#128205;</div>
 <h1 style="margin:0 0 8px">Don't forget ${safeVenueName}!</h1>
 <p style="margin:0 0 20px;opacity:.9">Save this place on FavCircles and earn rewards<br>you can use on your next visit.</p>
-<a href="${appStoreUrl}" style="background:#fff;color:#3182CE;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">Get the App &amp; Earn Rewards</a>
+<a id="get-app" href="${appStoreUrl}" style="background:#fff;color:#3182CE;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">Get the App &amp; Earn Rewards</a>
+<p style="margin:20px 0 0;font-size:14px;opacity:.85">After installing, open FavCircles and your reward for<br>${safeVenueName} picks up right where you left off &mdash;<br>or just scan the code again.</p>
 </div>
 <script>
+  // Deferred deep link: the App Store install loses all context, so stash the
+  // sticker code on the clipboard when the visitor taps through (clipboard
+  // writes need a user gesture). The app checks the pasteboard once on first
+  // launch and resumes the venue reward flow.
+  document.getElementById('get-app').addEventListener('click', function () {
+    try { navigator.clipboard.writeText('favcircles-sticker:${code}'); } catch (e) {}
+  });
   window.location = 'circles://sticker?code=${code}';
   setTimeout(function(){ if (!document.hidden) window.location = '${appStoreUrl}'; }, 1500);
 </script>

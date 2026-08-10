@@ -1060,6 +1060,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func sceneDidBecomeActive(_ scene: UIScene) {
         // Called when the scene has moved from an inactive state to an active state.
+        captureStickerCodeFromPasteboardIfFirstLaunch()
+
         // Check for any pending notifications or updates
         if AuthService.shared.isLoggedIn {
             // Clear notification badge when user opens the app
@@ -1565,6 +1567,40 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
 
         StickerRewardCoordinator.shared.handleScannedCode(code)
+    }
+
+    /// Deferred deep link for store QR codes: the App Store install wipes any
+    /// link context, so the sticker landing page copies
+    /// "favcircles-sticker:<CODE>" to the clipboard when the visitor taps
+    /// Get the App. On the very first activation after install we check the
+    /// pasteboard once and stash the code so the normal pending-sticker
+    /// redemption picks it up after signup. One-shot by design — the paste
+    /// permission prompt must not become a recurring launch experience.
+    private func captureStickerCodeFromPasteboardIfFirstLaunch() {
+        let checkedKey = "hasCheckedPasteboardForStickerCode"
+        guard !UserDefaults.standard.bool(forKey: checkedKey) else { return }
+        UserDefaults.standard.set(true, forKey: checkedKey)
+
+        // hasStrings doesn't trigger the paste permission prompt; reading
+        // .string does — which is why this whole check is one-shot
+        guard UIPasteboard.general.hasStrings,
+              let text = UIPasteboard.general.string,
+              let match = text.range(of: #"favcircles-sticker:([A-Z0-9]{4,16})"#, options: .regularExpression) else {
+            return
+        }
+
+        let code = String(text[match].dropFirst("favcircles-sticker:".count))
+        Logger.debug("📱 SceneDelegate: Found sticker code on pasteboard from pre-install scan: \(code)")
+
+        // Consume it so a later launch (or another app) doesn't see it
+        UIPasteboard.general.items = []
+
+        RewardsService.shared.savePendingStickerCode(code)
+        if AuthService.shared.isLoggedIn {
+            redeemPendingStickerCodeIfNeeded()
+        }
+        // Not logged in: redeemPendingStickerCodeIfNeeded runs after every
+        // auth route via runPostLaunchSideEffects
     }
 
     /// Redeems a sticker code that was scanned before the user was logged in.
