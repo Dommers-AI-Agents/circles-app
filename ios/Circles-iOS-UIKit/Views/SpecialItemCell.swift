@@ -159,7 +159,9 @@ class SpecialItemCell: UITableViewCell {
         titleLabel.text = item.title
 
         var venueText = item.venue.venueName
-        if let distance = item.venue.distanceDisplay {
+        if item.venue.isVirtual == true {
+            venueText += " · Online store"
+        } else if let distance = item.venue.distanceDisplay {
             venueText += " · \(distance)"
         }
         venueLabel.text = venueText

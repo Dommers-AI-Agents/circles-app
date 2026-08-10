@@ -152,6 +152,12 @@ struct User: Codable, Identifiable {
     /// (e.g. "Also saved Café Mogador + 5 more"). Built by suggestionEngine, so
     /// the client never has to guess a reason from a bare discovery type.
     let suggestionReason: String?
+
+    /// Brand storefront: set when this account is a business (KnightATV-style
+    /// virtual store or a venue owner with a storefront). Drives the store
+    /// card on profiles and the STORE chip in people lists.
+    let isBusiness: Bool?
+    let storefront: UserStorefront?
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -160,10 +166,11 @@ struct User: Codable, Identifiable {
         case referralCode, referredBy, referralCount, referralRewards
         case isVerified, username, discoveryType, distance, mutualConnectionsCount, mutualConnectionNames, matchType
         case followsYou, suggestionReason
+        case isBusiness, storefront
     }
     
     // Convenience initializer for creating User objects directly
-    public init(id: String, email: String? = nil, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, zipcode: String? = nil, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil, connectionDirection: String? = nil, connectionId: String? = nil, followers: [String]? = nil, following: [String]? = nil, followersCount: Int? = nil, followingCount: Int? = nil, connectionsCount: Int? = nil, placesCount: Int? = nil, circlesCount: Int? = nil, pinnedPlaces: [String]? = nil, isFollowing: Bool? = nil, isFakeProfile: Bool? = nil, notificationPreferences: NotificationPreferences? = nil, subscriptionStatus: String? = nil, subscriptionExpiryDate: Date? = nil, trialStartDate: Date? = nil, trialEndDate: Date? = nil, referralCode: String? = nil, referredBy: String? = nil, referralCount: Int = 0, referralRewards: [ReferralReward]? = nil, isVerified: Bool? = nil, username: String? = nil, discoveryType: String? = nil, distance: Double? = nil, mutualConnectionsCount: Int? = nil, mutualConnectionNames: [String]? = nil, matchType: String? = nil, followsYou: Bool? = nil, suggestionReason: String? = nil) {
+    public init(id: String, email: String? = nil, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, zipcode: String? = nil, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil, connectionDirection: String? = nil, connectionId: String? = nil, followers: [String]? = nil, following: [String]? = nil, followersCount: Int? = nil, followingCount: Int? = nil, connectionsCount: Int? = nil, placesCount: Int? = nil, circlesCount: Int? = nil, pinnedPlaces: [String]? = nil, isFollowing: Bool? = nil, isFakeProfile: Bool? = nil, notificationPreferences: NotificationPreferences? = nil, subscriptionStatus: String? = nil, subscriptionExpiryDate: Date? = nil, trialStartDate: Date? = nil, trialEndDate: Date? = nil, referralCode: String? = nil, referredBy: String? = nil, referralCount: Int = 0, referralRewards: [ReferralReward]? = nil, isVerified: Bool? = nil, username: String? = nil, discoveryType: String? = nil, distance: Double? = nil, mutualConnectionsCount: Int? = nil, mutualConnectionNames: [String]? = nil, matchType: String? = nil, followsYou: Bool? = nil, suggestionReason: String? = nil, isBusiness: Bool? = nil, storefront: UserStorefront? = nil) {
         self.id = id
         self.email = email
         self.displayName = displayName
@@ -210,6 +217,8 @@ struct User: Codable, Identifiable {
         self.matchType = matchType
         self.followsYou = followsYou
         self.suggestionReason = suggestionReason
+        self.isBusiness = isBusiness
+        self.storefront = storefront
     }
     
     // Custom decoder for JSON decoding
@@ -283,6 +292,8 @@ struct User: Codable, Identifiable {
         isFollowing = try container.decodeIfPresent(Bool.self, forKey: .isFollowing)
         followsYou = try container.decodeIfPresent(Bool.self, forKey: .followsYou)
         suggestionReason = try container.decodeIfPresent(String.self, forKey: .suggestionReason)
+        isBusiness = try container.decodeIfPresent(Bool.self, forKey: .isBusiness)
+        storefront = try container.decodeIfPresent(UserStorefront.self, forKey: .storefront)
         
         // Fake profile flag
         isFakeProfile = try container.decodeIfPresent(Bool.self, forKey: .isFakeProfile)
@@ -355,4 +366,16 @@ struct User: Codable, Identifiable {
     // preferred it over the complete `copy(...)` in User+Copy.swift because the
     // non-optional Bool was the better overload match. All callers now resolve
     // to that one, which passes every property through.
+}
+
+
+/// Public presentation of a business account's storefront (see the backend's
+/// users.storefront object). All fields optional — the card renders what it has.
+struct UserStorefront: Codable {
+    let businessName: String?
+    let about: String?
+    let website: String?
+    let catalogUrl: String?
+    let contactEmail: String?
+    let findUsAtCircleId: String?
 }

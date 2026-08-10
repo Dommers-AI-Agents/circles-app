@@ -448,6 +448,18 @@ class PlaceDetailViewController: BaseViewController {
         label.isUserInteractionEnabled = true
         return label
     }()
+
+    /// The saver's personal 0–10 score ("Your rating: 8/10" / "Wes's rating:
+    /// 8/10") — distinct from the Google rating chip above
+    private let userRatingLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
+        label.textColor = Constants.Colors.primary
+        label.numberOfLines = 1
+        label.isHidden = true
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
     
     private let addressLabel: UILabel = {
         let label = UILabel()
@@ -977,6 +989,7 @@ class PlaceDetailViewController: BaseViewController {
         infoContainerView.addSubview(aboutCardView)
         aboutCardView.addSubview(aboutStackView)
         aboutStackView.addArrangedSubview(aboutTitleLabel)
+        aboutStackView.addArrangedSubview(userRatingLabel)
         aboutStackView.addArrangedSubview(descriptionLabel)
         aboutStackView.addArrangedSubview(hoursLabel)
 
@@ -1479,7 +1492,16 @@ class PlaceDetailViewController: BaseViewController {
         } else {
             descriptionLabel.isHidden = true
         }
-        
+
+        // The saver's personal 0–10 score, when they gave one
+        if let userRating = place.userRating {
+            let who = place.isAddedByCurrentUser ? "Your" : "\(place.addedByDisplayName)'s"
+            userRatingLabel.text = "★ \(who) rating: \(userRating)/10"
+            userRatingLabel.isHidden = false
+        } else {
+            userRatingLabel.isHidden = true
+        }
+
         // Rating - one meta line: rating (count) · price
         if let rating = place.rating, rating > 0 {
             var ratingText = String(format: "%.1f", rating)
@@ -1558,9 +1580,10 @@ class PlaceDetailViewController: BaseViewController {
             hoursLabel.isHidden = true
         }
 
-        // About card collapses entirely when neither description nor hours
-        // have content (hidden arranged subviews already collapse in-stack)
-        let aboutIsEmpty = descriptionLabel.isHidden && hoursLabel.isHidden
+        // About card collapses entirely when none of description, hours, or
+        // the saver's rating have content (hidden arranged subviews already
+        // collapse in-stack)
+        let aboutIsEmpty = descriptionLabel.isHidden && hoursLabel.isHidden && userRatingLabel.isHidden
         aboutTitleLabel.isHidden = aboutIsEmpty
         aboutCardView.isHidden = aboutIsEmpty
         aboutTopConstraint?.constant = aboutIsEmpty ? 0 : Constants.Spacing.medium
@@ -2244,6 +2267,24 @@ class PlaceDetailViewController: BaseViewController {
         } else {
             actions.append((title: "Flag Incorrect Info", style: .default, handler: { [weak self] in
                 self?.flagPlaceInfoTapped()
+            }))
+            // Someone else's save: their photos/notes are UGC, so it needs the
+            // report/unfollow/block path too (App Review 1.2)
+            actions.append((title: "Report Inappropriate Content", style: .destructive, handler: { [weak self] in
+                guard let self = self else { return }
+                self.presentContentModerationSheet(
+                    contentType: "place",
+                    contentId: self.place.id,
+                    ownerId: self.place.addedBy,
+                    ownerName: self.place.addedByUser?.displayName,
+                    onContentHidden: { [weak self] in
+                        if let nav = self?.navigationController, nav.viewControllers.count > 1 {
+                            nav.popViewController(animated: true)
+                        } else {
+                            self?.dismiss(animated: true)
+                        }
+                    }
+                )
             }))
         }
 

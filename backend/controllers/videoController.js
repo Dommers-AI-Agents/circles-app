@@ -834,8 +834,24 @@ exports.getVideoDetails = async (req, res) => {
     // Visibility check based on the viewer's relationship to the owner.
     // (Previously only 'private' was blocked, so network/followers moments were
     // viewable by anyone holding the id.)
+    // Moderation-hidden content: gone for everyone but the owner
+    if ((videoData.moderationStatus === 'under_review' || videoData.moderationStatus === 'removed')
+        && videoData.userId !== userId) {
+      return res.status(404).json({ success: false, message: 'Video not found' });
+    }
+
     if (videoData.userId !== userId) {
       const owner = videoData.userId;
+
+      // A block in either direction makes the content unavailable
+      if (userId) {
+        const viewerDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+        const { isBlockedEitherWay } = require('../services/moderationService');
+        if (viewerDoc.exists && isBlockedEitherWay(viewerDoc.data(), owner)) {
+          return res.status(404).json({ success: false, message: 'Video not found' });
+        }
+      }
+
       const visibility = videoData.visibility || 'private';
       let allowed = visibility === 'public';
       // A relationship-gated moment needs a known viewer. Without one (no auth)
@@ -1268,11 +1284,18 @@ exports.getReelsFeed = async (req, res) => {
         .get()
     )) : [];
 
+    // Blocked users vanish in both directions, and reported content that hit
+    // the auto-hide threshold ('under_review'/'removed') never surfaces.
+    const { excludedUserIds } = require('../services/moderationService');
+    const excluded = excludedUserIds(userDoc.data() || {});
+
     const seenVideoIds = new Set();
     const videos = [];
     snaps.flatMap(s => s.docs).forEach(doc => {
       if (seenVideoIds.has(doc.id)) return;
       const v = serializeDoc(doc);
+      if (excluded.has(v.userId)) return;
+      if (v.moderationStatus === 'under_review' || v.moderationStatus === 'removed') return;
       if (!canView(v)) return;
       seenVideoIds.add(doc.id);
       videos.push(v);
@@ -1393,11 +1416,17 @@ exports.getUserReels = async (req, res) => {
       const isConnected = !connection1.empty || !connection2.empty;
       const isFollowing = (currentUserDoc.exists ? (currentUserDoc.data().following || []) : []).includes(userId);
 
+      // A block in either direction empties the shelf entirely
+      const { isBlockedEitherWay } = require('../services/moderationService');
+      if (currentUserDoc.exists && isBlockedEitherWay(currentUserDoc.data(), userId)) {
+        return res.json({ success: true, data: [], hasMore: false });
+      }
+
       visibilityFilter = ['public'];
       if (isConnected) visibilityFilter.push('network');
       if (isFollowing) visibilityFilter.push('followers');
     }
-    
+
     const videosQuery = await db.collection(COLLECTIONS.PLACE_VIDEOS)
       .where('userId', '==', userId)
       .where('uploadStatus', '==', 'ready')
@@ -1407,8 +1436,12 @@ exports.getUserReels = async (req, res) => {
       .limit(parseInt(limit))
       .offset(parseInt(offset))
       .get();
-    
-    const videos = serializeQuerySnapshot(videosQuery);
+
+    let videos = serializeQuerySnapshot(videosQuery);
+    // Reported-and-hidden moments stay visible ONLY to their owner
+    if (currentUserId !== userId) {
+      videos = videos.filter(v => v.moderationStatus !== 'under_review' && v.moderationStatus !== 'removed');
+    }
     
     // Check which videos are liked by current user
     if (videos.length > 0) {
@@ -1532,11 +1565,19 @@ exports.getPlaceReels = async (req, res) => {
       following.forEach(id => followingUserIds.add(id));
     }
     
+    // Blocked either way, or hidden by moderation → never surfaces here
+    const { excludedUserIds } = require('../services/moderationService');
+    const excludedIds = excludedUserIds(currentUserDoc.exists ? currentUserDoc.data() : {});
+
     // Filter videos based on visibility and relationships
     const filteredVideos = allVideos.filter(video => {
+      if (excludedIds.has(video.userId)) return false;
+      if (video.moderationStatus === 'under_review' || video.moderationStatus === 'removed') {
+        return video.userId === currentUserId && video.moderationStatus === 'under_review';
+      }
       // User's own videos - always visible
       if (video.userId === currentUserId) return true;
-      
+
       // Check visibility based on relationship
       const isConnected = connectedUserIds.has(video.userId);
       const isFollowing = followingUserIds.has(video.userId);
@@ -1609,10 +1650,29 @@ exports.likeReel = async (req, res) => {
     });
     
     // Get video details and track comprehensive activity
+    let likePiggyBank = null;
     const videoDoc = await videoRef.get();
     if (videoDoc.exists) {
       const videoData = videoDoc.data();
-      
+
+      // FavCoins: the liker earns a nickel; the moment's owner earns one too
+      // (received engagement). Self-likes pay NOBODY. The liker's credit is
+      // awaited so the response can drive the coin-drop (credit() never
+      // throws); the owner's stays fire-and-forget — they're not on this call.
+      if (videoData.userId && videoData.userId !== userId) {
+        const piggyBankService = require('../services/piggyBankService');
+        likePiggyBank = await piggyBankService.credit({
+          userId,
+          eventType: 'moment_liked',
+          sourceRef: { videoId }
+        });
+        piggyBankService.credit({
+          userId: videoData.userId,
+          eventType: 'moment_like_received',
+          sourceRef: { videoId, likerUserId: userId }
+        }).catch(() => {});
+      }
+
       // Get place information for activity tracking
       let placeName = 'Unknown Place';
       if (videoData.placeId) {
@@ -1648,7 +1708,8 @@ exports.likeReel = async (req, res) => {
     
     res.json({
       success: true,
-      message: 'Video liked successfully'
+      message: 'Video liked successfully',
+      piggyBank: likePiggyBank
     });
   } catch (error) {
     console.error('Error liking reel:', error);
@@ -1974,10 +2035,18 @@ exports.getVideoComments = async (req, res) => {
       .offset(parseInt(offset))
       .get();
     
+    // Comments from blocked users (either direction) and moderation-hidden
+    // comments are invisible
+    const viewerDocForComments = await db.collection(COLLECTIONS.USERS).doc(req.user.uid).get();
+    const { excludedUserIds: excludedForComments } = require('../services/moderationService');
+    const commentExcluded = excludedForComments(viewerDocForComments.exists ? viewerDocForComments.data() : {});
+
     const comments = [];
     for (const doc of commentsQuery.docs) {
       const comment = serializeDoc(doc);
-      
+      if (commentExcluded.has(comment.userId)) continue;
+      if (comment.moderationStatus === 'under_review' || comment.moderationStatus === 'removed') continue;
+
       // Get user details
       const userDoc = await db.collection(COLLECTIONS.USERS).doc(comment.userId).get();
       if (userDoc.exists) {

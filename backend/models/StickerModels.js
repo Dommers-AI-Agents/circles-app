@@ -7,7 +7,8 @@ const rewardConfig = require('../config/rewardConfig');
 const STICKER_COLLECTIONS = {
   STICKER_VENUES: 'stickerVenues',
   REWARD_EVENTS: 'rewardEvents',
-  VENUE_CLAIM_REQUESTS: 'venueClaimRequests'
+  VENUE_CLAIM_REQUESTS: 'venueClaimRequests',
+  REDEMPTION_CODES: 'redemptionCodes'
 };
 
 const CLAIM_STATUSES = ['pending', 'approved', 'denied'];
@@ -22,7 +23,8 @@ const REWARD_EVENT_TYPES = [
   'sticker_save',
   'venue_visit',
   'share_conversion',
-  'redemption'
+  'redemption',
+  'code_redemption'
 ];
 
 // Venue with a window sticker (discovery) and a register card (purchase proof).
@@ -53,8 +55,12 @@ const createStickerVenue = (data, windowCode, registerCode) => {
     placeName: data.placeName || data.venueName,
     placeAddress: data.placeAddress || null,
     category: data.category || 'restaurant',
-    // { lat, lng } — used to sort the browsable offers list by distance
-    location: data.location || null,
+    // { lat, lng } — used to sort the browsable offers list by distance.
+    // Virtual (online-only brand) venues have no location and no Google
+    // identity — they never surface on maps or Nearby; discovery is the
+    // Specials list, the owner's profile storefront, and follows.
+    location: data.isVirtual ? null : (data.location || null),
+    isVirtual: data.isVirtual === true,
     windowCode,
     registerCode,
     // Points awarded per register-card (purchase) scan; owner-adjustable
@@ -177,7 +183,8 @@ const validateStickerVenue = (data) => {
   if (!data.venueName || !data.venueName.trim()) {
     errors.push('venueName is required');
   }
-  if (!data.googlePlaceId && !data.globalPlaceId) {
+  // Virtual (online-only) venues have no physical place to attribute saves to
+  if (!data.isVirtual && !data.googlePlaceId && !data.globalPlaceId) {
     errors.push('googlePlaceId or globalPlaceId is required so saves can be attributed');
   }
   if (data.location && (typeof data.location.lat !== 'number' || typeof data.location.lng !== 'number')) {
@@ -219,6 +226,51 @@ const createRewardEvent = (data) => {
   };
 };
 
+// Single-use redemption code (e.g. a card packed into a shipped order, or
+// handed out at a conference booth). Doc ID IS the code, so redemption can
+// claim it transactionally. Points are venue loyalty points, awarded through
+// the same rewardEvents ledger as register scans.
+const createRedemptionCode = (data) => {
+  const now = new Date().toISOString();
+  return {
+    venueId: data.venueId,
+    venueName: data.venueName || null,
+    points: data.points,
+    label: data.label || null,          // owner's batch label, e.g. "Spring orders"
+    batchId: data.batchId || null,      // groups codes created together
+    expiresAt: data.expiresAt || null,  // ISO string or null (no expiry)
+    active: true,
+    redeemedBy: null,
+    redeemedAt: null,
+    createdBy: data.createdBy,
+    createdAt: now
+  };
+};
+
+const validateRedemptionCodeBatch = (body) => {
+  const errors = [];
+  const count = body.count;
+  if (!Number.isInteger(count) || count < 1 || count > 500) {
+    errors.push('count must be an integer between 1 and 500');
+  }
+  const points = body.points;
+  if (!Number.isInteger(points) || points < 1 || points > 1000) {
+    errors.push('points must be an integer between 1 and 1000');
+  }
+  if (body.label !== undefined && body.label !== null && String(body.label).length > 60) {
+    errors.push('label must be 60 characters or fewer');
+  }
+  if (body.expiresAt !== undefined && body.expiresAt !== null) {
+    const expiry = new Date(body.expiresAt);
+    if (Number.isNaN(expiry.getTime())) {
+      errors.push('expiresAt must be an ISO date string or null');
+    } else if (expiry <= new Date()) {
+      errors.push('expiresAt must be in the future');
+    }
+  }
+  return errors;
+};
+
 // Doc IDs cannot contain '/', and '.' segments are reserved
 const sanitizeKeyPart = (part) => String(part).replace(/[/.]/g, '_');
 
@@ -234,5 +286,7 @@ module.exports = {
   validateEarnRate,
   createRewardEvent,
   createVenueClaimRequest,
+  createRedemptionCode,
+  validateRedemptionCodeBatch,
   sanitizeKeyPart
 };

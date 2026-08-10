@@ -95,6 +95,10 @@ struct Place: Codable, Identifiable {
     let subcategory: String?
     let rating: Double?
     let userRatingsTotal: Int?
+    /// The saver's own 0–10 score for this place (nil = unrated / "haven't
+    /// been yet"). Per-user data on the save record — distinct from `rating`,
+    /// which is Google's venue average.
+    var userRating: Int? = nil
     let notes: String? // Legacy field, will be migrated to publicNotes
     let privateNotes: String? // Only visible to the user who added them
     /// LEGACY (retired 2026-07-30). Public notes became comments on the venue
@@ -132,7 +136,7 @@ struct Place: Codable, Identifiable {
         case id = "_id"
         case globalPlaceId
         case name, description, address, location, website, phone, googlePlaceId
-        case photos, videos, category, customCategoryId, subcategory, rating, userRatingsTotal, notes, privateNotes, publicNotes, tags, reviews, openingHours
+        case photos, videos, category, customCategoryId, subcategory, rating, userRatingsTotal, userRating, notes, privateNotes, publicNotes, tags, reviews, openingHours
         case priceLevel, likes, likesCount, commentsCount, circleId, addedBy, addedByUser, privacy, createdAt, updatedAt, isNew, circleName
         case followersCount, isFollowing
         case city, state, stateCode, neighborhood, country, countryCode
@@ -208,6 +212,7 @@ struct Place: Codable, Identifiable {
         self.subcategory = try container.decodeIfPresent(String.self, forKey: .subcategory)
         self.rating = try container.decodeIfPresent(Double.self, forKey: .rating)
         self.userRatingsTotal = try container.decodeIfPresent(Int.self, forKey: .userRatingsTotal)
+        self.userRating = try container.decodeIfPresent(Int.self, forKey: .userRating)
         self.notes = try container.decodeIfPresent(String.self, forKey: .notes)
         self.privateNotes = try container.decodeIfPresent(String.self, forKey: .privateNotes)
         self.publicNotes = try container.decodeIfPresent(String.self, forKey: .publicNotes)
@@ -253,7 +258,8 @@ struct Place: Codable, Identifiable {
          privateNotes: String?, publicNotes: String?, tags: [String]?,
          reviews: [PlaceReview]?, openingHours: [OpeningHour]?,
          priceLevel: PriceLevel?, likes: [String]?, likesCount: Int?, commentsCount: Int?, circleId: String?, addedBy: String,
-         addedByUser: User?, privacy: PlacePrivacy, createdAt: Date, updatedAt: Date, isNew: Bool? = nil) {
+         addedByUser: User?, privacy: PlacePrivacy, createdAt: Date, updatedAt: Date, isNew: Bool? = nil,
+         userRating: Int? = nil) {
         self.id = id
         self.globalPlaceId = globalPlaceId
         self.name = name
@@ -287,6 +293,7 @@ struct Place: Codable, Identifiable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.isNew = isNew
+        self.userRating = userRating
     }
     
     // Helper computed properties

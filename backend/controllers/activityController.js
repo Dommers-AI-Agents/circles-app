@@ -83,6 +83,16 @@ exports.getNetworkActivities = async (req, res, next) => {
       });
     }
 
+    // Blocked users (either direction) contribute nothing to this feed
+    if (currentUserDoc.exists) {
+      const { excludedUserIds } = require('../services/moderationService');
+      for (const blockedId of excludedUserIds(currentUserDoc.data())) {
+        connectedUserIds.delete(blockedId);
+        connectionSet.delete(blockedId);
+        followingSet.delete(blockedId);
+      }
+    }
+
     // Add the current user to see their own activities too
     connectedUserIds.add(userId);
     

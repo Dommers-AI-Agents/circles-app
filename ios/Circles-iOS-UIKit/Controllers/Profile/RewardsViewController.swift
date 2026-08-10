@@ -58,7 +58,7 @@ class RewardsViewController: BaseViewController {
     private let balanceCaptionLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "reward points"
+        label.text = "store points → get rewards"
         label.font = UIFont.systemFont(ofSize: 16)
         label.textColor = .white.withAlphaComponent(0.9)
         label.textAlignment = .center
@@ -71,7 +71,7 @@ class RewardsViewController: BaseViewController {
         let button = UIButton(type: .detailDisclosure)
         button.tintColor = .white
         button.addTarget(self, action: #selector(rewardsInfoTapped), for: .touchUpInside)
-        button.accessibilityLabel = "About reward points"
+        button.accessibilityLabel = "About store points"
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
@@ -109,6 +109,17 @@ class RewardsViewController: BaseViewController {
 
     private var voucherBannerHeight: NSLayoutConstraint?
     private var voucherBannerTimer: Timer?
+
+    // Per-store loyalty: points are earned and spent shop by shop, so the
+    // balance card's total is display only — these rows are the real
+    // spendable buckets. Collapses to zero height until points exist.
+    private let storeBalancesStack: UIStackView = {
+        let stack = UIStackView()
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.axis = .vertical
+        stack.spacing = 8
+        return stack
+    }()
 
     private let savedOffersLabel: UILabel = {
         let label = UILabel()
@@ -164,7 +175,8 @@ class RewardsViewController: BaseViewController {
         📍 Spot a FavCircles sticker at a place you love
         📲 Scan it and save the place to a circle (+50 pts)
         🧾 Scan the register card when you buy something — each shop sets its own points
-        🔗 Share places with friends — earn +50 pts when they add one
+        🎟 Type in the code from a shop's order card or booth handout
+        🏬 Points stay with the shop: earn them at a store, spend them on that store's offers
         🎁 Redeem points for offers right at the counter
         """
         return label
@@ -234,6 +246,8 @@ class RewardsViewController: BaseViewController {
                 case .success(let data):
                     self.offersData = data
                     self.balanceLabel.text = "\(data.balance)"
+                    // Before the offer rows render — affordability reads these
+                    self.updateStoreBalances(data.venueBalances)
                     self.updateOffersUI(with: data)
                 case .failure(let error):
                     // Offers are additive — balance/history still render
@@ -251,6 +265,7 @@ class RewardsViewController: BaseViewController {
                 case .success(let data):
                     self?.balanceData = data
                     self?.balanceLabel.text = "\(data.balance)"
+                    self?.updateStoreBalances(data.venueBalances)
                     self?.updateActivityUI(with: data)
                 case .failure(let error):
                     self?.showError(error)
@@ -260,6 +275,72 @@ class RewardsViewController: BaseViewController {
     }
 
     // MARK: - Setup
+
+    /// Manual entry for single-use brand codes (order-box cards, booth
+    /// handouts). Sticker codes typed here still work — unknown codes fall
+    /// back to the scan pipeline.
+    private lazy var redeemCodeButton: UIButton = {
+        let button = UIButton(type: .system)
+        let config = UIImage.SymbolConfiguration(pointSize: 14, weight: .semibold)
+        button.setImage(UIImage(systemName: "ticket", withConfiguration: config), for: .normal)
+        button.setTitle("  Have a code? Redeem it", for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
+        button.tintColor = Constants.Colors.primary
+        button.setTitleColor(Constants.Colors.primary, for: .normal)
+        button.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.1)
+        button.layer.cornerRadius = 10
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(redeemCodeTapped), for: .touchUpInside)
+        return button
+    }()
+
+    @objc private func redeemCodeTapped() {
+        let alert = UIAlertController(
+            title: "Redeem a Code",
+            message: "Enter the code from your order card or booth handout",
+            preferredStyle: .alert
+        )
+        alert.addTextField { field in
+            field.placeholder = "CODE"
+            field.autocapitalizationType = .allCharacters
+            field.autocorrectionType = .no
+        }
+        alert.addAction(UIAlertAction(title: "Redeem", style: .default) { [weak self, weak alert] _ in
+            guard let self = self,
+                  let code = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased(),
+                  !code.isEmpty else { return }
+            self.submitRedemptionCode(code)
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
+    }
+
+    private func submitRedemptionCode(_ code: String) {
+        RewardsService.shared.redeemCode(code) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success(let data):
+                    if let awarded = data.awarded {
+                        let store = awarded.venueName ?? "the store"
+                        self.showSuccess("+\(awarded.points) points from \(store)!")
+                    } else {
+                        self.showSuccess("Code accepted")
+                    }
+                    self.loadData()
+                case .failure(let error):
+                    // Not a brand code? It may be a sticker code — same entry
+                    // point works for both
+                    let message = (error as? APIError)?.serverMessage ?? error.localizedDescription
+                    if message.localizedCaseInsensitiveContains("not found") {
+                        StickerRewardCoordinator.shared.handleScannedCode(code)
+                    } else {
+                        self.showError(message)
+                    }
+                }
+            }
+        }
+    }
 
     private func setupUI() {
         view.addSubview(scrollView)
@@ -276,6 +357,8 @@ class RewardsViewController: BaseViewController {
         activeVoucherBanner.addSubview(voucherBannerTimeLabel)
         activeVoucherBanner.addTarget(self, action: #selector(activeVoucherBannerTapped), for: .touchUpInside)
 
+        contentView.addSubview(redeemCodeButton)
+        contentView.addSubview(storeBalancesStack)
         contentView.addSubview(savedOffersLabel)
         contentView.addSubview(savedOffersStack)
         contentView.addSubview(nearbyOffersLabel)
@@ -327,7 +410,16 @@ class RewardsViewController: BaseViewController {
             voucherBannerTimeLabel.trailingAnchor.constraint(equalTo: activeVoucherBanner.trailingAnchor, constant: -14),
             voucherBannerTimeLabel.centerYAnchor.constraint(equalTo: activeVoucherBanner.centerYAnchor),
 
-            savedOffersLabel.topAnchor.constraint(equalTo: activeVoucherBanner.bottomAnchor, constant: 16),
+            redeemCodeButton.topAnchor.constraint(equalTo: activeVoucherBanner.bottomAnchor, constant: 12),
+            redeemCodeButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            redeemCodeButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            redeemCodeButton.heightAnchor.constraint(equalToConstant: 44),
+
+            storeBalancesStack.topAnchor.constraint(equalTo: redeemCodeButton.bottomAnchor, constant: 16),
+            storeBalancesStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            storeBalancesStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+
+            savedOffersLabel.topAnchor.constraint(equalTo: storeBalancesStack.bottomAnchor, constant: 16),
             savedOffersLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             savedOffersLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
 
@@ -366,6 +458,57 @@ class RewardsViewController: BaseViewController {
         voucherBannerHeight?.isActive = true
     }
 
+    // MARK: - Per-store balances
+
+    /// The spendable truth under the display total: one row per shop where
+    /// the user holds points. Fed by both the offers and balance payloads
+    /// (same data; whichever lands last wins).
+    private var latestVenueBalances: [RewardVenueBalance] = []
+
+    /// Spendable points at one shop — offer affordability is gated on this,
+    /// never on the account-wide total.
+    private func venuePoints(at venueId: String) -> Int {
+        latestVenueBalances.first(where: { $0.venueId == venueId })?.points ?? 0
+    }
+
+    private func updateStoreBalances(_ balances: [RewardVenueBalance]?) {
+        guard let balances = balances else { return }  // old server payload: keep what we had
+        latestVenueBalances = balances
+        storeBalancesStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        guard !balances.isEmpty else { return }
+
+        let header = UILabel()
+        header.text = "Your points by store"
+        header.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
+        header.textColor = .label
+        storeBalancesStack.addArrangedSubview(header)
+        storeBalancesStack.setCustomSpacing(10, after: header)
+
+        for balance in balances {
+            let row = UIStackView()
+            row.axis = .horizontal
+            row.spacing = 8
+
+            let name = UILabel()
+            name.text = "🏬 \(balance.venueName.isEmpty ? "A shop" : balance.venueName)"
+            name.font = UIFont.systemFont(ofSize: 14)
+            name.textColor = .label
+            name.numberOfLines = 1
+
+            let points = UILabel()
+            points.text = "\(balance.points) pts"
+            points.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
+            points.textColor = Constants.Colors.primary
+            points.textAlignment = .right
+            points.setContentHuggingPriority(.required, for: .horizontal)
+            points.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+            row.addArrangedSubview(name)
+            row.addArrangedSubview(points)
+            storeBalancesStack.addArrangedSubview(row)
+        }
+    }
+
     // MARK: - Active voucher banner
 
     private func updateActiveVoucherBanner() {
@@ -399,17 +542,22 @@ class RewardsViewController: BaseViewController {
 
     @objc private func rewardsInfoTapped() {
         AlertPresenter.showInfo(
-            title: "How reward points work",
+            title: "How store points work",
             message: """
-            Reward points are store loyalty points you earn at participating shops — the ones with a FavCircles sticker in the window.
+            Store points are loyalty points from the shops themselves — the places with a FavCircles sticker in the window. The shops fund the rewards; points are their way of saying thanks for coming in.
 
-            ⭐ Earn them by scanning a window sticker and saving the place (+50), scanning the register card when you buy something (each shop sets its own points per purchase), and sharing places friends go on to add (+50).
+            ⭐ Earn them by scanning a window sticker and saving the place (+50), scanning the register card when you buy something (each shop sets its own points), and redeeming the single-use codes shops pack into orders or hand out at events.
 
-            🎁 Spend them on the offers shops post here — redeeming creates a short-lived voucher you show at the counter. Your points work at any participating shop, not just where you earned them.
+            🎁 Spend them on the offers shops post here — redeeming creates a short-lived voucher you show at the counter. Points are true loyalty: they stay with the shop where you earned them, and each shop runs its own rewards.
 
-            Reward points are separate from the FavCoin in your Piggy Bank: points are for spending at stores, FavCoin is crypto you earn for building FavCircles.
+            Store points are separate from the FavCoins in your Piggy Bank: points are shop loyalty you spend on offers; FavCoin is a crypto coin you earn for building FavCircles and can send to your own 🌵 wallet on the blockchain — it isn't spent in the app.
             """,
-            from: self
+            from: self,
+            actionTitle: "FavCoins vs Store Points",
+            action: { [weak self] in
+                guard let topic = HelpContentProvider.shared.topic(withId: "favcoin-vs-store-points") else { return }
+                self?.navigationController?.pushViewController(HelpTopicViewController(topic: topic), animated: true)
+            }
         )
     }
 
@@ -466,7 +614,7 @@ class RewardsViewController: BaseViewController {
 
         if data.events.isEmpty {
             activityStack.addArrangedSubview(makeEmptyLabel(
-                "No rewards yet — scan a FavCircles sticker to get started!"
+                "No store points yet — scan a FavCircles sticker to get started!"
             ))
             return
         }
@@ -505,6 +653,8 @@ class RewardsViewController: BaseViewController {
         var details: [String] = []
         if let distance = venue.distanceDisplay { details.append(distance) }
         if let earnRate = venue.earnRate { details.append("earn \(earnRate) pts per purchase") }
+        let pointsHere = venuePoints(at: venue.venueId)
+        if pointsHere > 0 { details.append("you have \(pointsHere) pts here") }
         detailLabel.text = details.joined(separator: " · ")
         detailLabel.font = UIFont.systemFont(ofSize: 13)
         detailLabel.textColor = .secondaryLabel
@@ -644,7 +794,8 @@ class RewardsViewController: BaseViewController {
         let row = UIView()
         row.translatesAutoresizingMaskIntoConstraints = false
 
-        let balance = offersData?.balance ?? 0
+        // Per-store loyalty: only points earned at THIS shop pay for its offers
+        let balance = venuePoints(at: venue.venueId)
         let affordable = balance >= offer.pointsCost
 
         let titleLabel = UILabel()
@@ -658,7 +809,7 @@ class RewardsViewController: BaseViewController {
         costLabel.translatesAutoresizingMaskIntoConstraints = false
         costLabel.text = affordable
             ? "\(offer.pointsCost) pts"
-            : "\(offer.pointsCost) pts · \(offer.pointsCost - balance) more needed"
+            : "\(offer.pointsCost) pts · earn \(offer.pointsCost - balance) more here"
         costLabel.font = UIFont.systemFont(ofSize: 12)
         costLabel.textColor = .secondaryLabel
 

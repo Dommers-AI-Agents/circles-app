@@ -32,6 +32,7 @@ class VenueManageViewController: BaseViewController {
         case offers
         case announcements
         case registerCode
+        case codes
     }
 
     /// Free owner tier: everything else is business-tier (paywalled)
@@ -739,6 +740,9 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
         case .registerCode:
             return ("Register QR card",
                     "The QR card you keep at the register. Customers scan it after a purchase to collect their points. Rotating it invalidates the old printed card — do this if a code leaks or is being abused.")
+        case .codes:
+            return ("Loyalty codes",
+                    "Single-use codes worth loyalty points. Pack one into every shipped order or hand them out at your conference booth — customers redeem them in the app and become followers of your store.")
         }
     }
 
@@ -796,6 +800,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             return "Announcements show on your place's page to everyone — deals, happy hours, events. Expired ones hide automatically."
         case .registerCode:
             return "Generating a new QR immediately invalidates the old printed card — useful if a code leaks."
+        case .codes:
+            return "Mint a batch, share the list to your printer, and pack one code into every order."
         }
     }
 
@@ -808,6 +814,7 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
         case .offers: return offers.count + 1 // + "Add offer" row
         case .announcements: return announcements.count + 1 // + "Add announcement" row
         case .registerCode: return 1 // rotate
+        case .codes: return 1
         }
     }
 
@@ -909,6 +916,13 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             config.secondaryText = "Current code: \(registerCode)"
             config.image = UIImage(systemName: "qrcode")
             config.imageProperties.tintColor = Constants.Colors.primary
+
+        case .codes:
+            config.text = "Loyalty codes"
+            config.secondaryText = "Order-box cards & booth handouts"
+            config.image = UIImage(systemName: "ticket")
+            config.imageProperties.tintColor = Constants.Colors.primary
+            cell.accessoryType = .disclosureIndicator
         }
 
         // Business-tier tools show a lock for free owners
@@ -972,6 +986,9 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             }
         case .registerCode:
             rotateRegisterCode()
+        case .codes:
+            let codesVC = VenueCodesViewController(venueId: venueId, venueName: venueName)
+            navigationController?.pushViewController(codesVC, animated: true)
         }
     }
 }

@@ -163,6 +163,13 @@ extension CirclesHomeViewController: ActivityFeedCellDelegate {
         present(navController, animated: true)
     }
     
+    /// Reaction response: the piggyBank stub rides along (same shape as
+    /// create-place) so the coin-drop can play for the nickel earn
+    private struct ReactionResponse: Decodable {
+        let success: Bool
+        let piggyBank: PiggyBankCredit?
+    }
+
     func didTapReactionButton(activity: Activity, emoji: String) {
         // Toggle reaction - if user already has this reaction, remove it, otherwise add it
         let isRemoving = activity.userReaction == emoji
@@ -174,14 +181,19 @@ extension CirclesHomeViewController: ActivityFeedCellDelegate {
             endpoint: endpoint,
             method: .post,
             body: ["emoji": emoji]
-        ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
+        ) { [weak self] (result: Result<ReactionResponse, APIError>) in
             DispatchQueue.main.async {
                 switch result {
-                case .success:
+                case .success(let response):
                     // Update the row in place. A full fetchActivities() here
                     // would reset pagination to page one and jump the user
                     // back to the top of the feed mid-scroll.
                     self?.applyLocalReaction(activityId: activity.id, emoji: isRemoving ? nil : emoji)
+                    // First reaction on someone else's activity earns a
+                    // nickel — play the deposit (no-op when nothing credited)
+                    if !isRemoving {
+                        PiggyBankDepositView.play(credit: response.piggyBank)
+                    }
                 case .failure(let error):
                     self?.showError("Failed to update reaction: \(error.localizedDescription)")
                 }

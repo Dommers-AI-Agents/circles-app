@@ -635,7 +635,17 @@ struct RewardScanData: Codable {
     let alreadySaved: Bool?
     let alreadyEarnedToday: Bool?
     let balance: Int
+    /// Points held at the scanned venue — the spendable balance there
+    let venueBalance: Int?
     let offers: [RewardOffer]?
+}
+
+/// Per-store loyalty: one shop's slice of the user's points. Points are
+/// earned and spent per shop — the account-wide `balance` is display only.
+struct RewardVenueBalance: Codable {
+    let venueId: String
+    let venueName: String
+    let points: Int
 }
 
 struct RewardVenue: Codable {
@@ -670,10 +680,12 @@ struct RewardSaveData: Codable {
     let awarded: RewardAward?
     let alreadyAwarded: Bool?
     let balance: Int
+    let venueBalance: Int?
 }
 
 struct RewardBalanceData: Codable {
     let balance: Int
+    let venueBalances: [RewardVenueBalance]?
     let events: [RewardEventItem]
 }
 
@@ -721,6 +733,9 @@ struct RewardVoucher: Codable {
 struct RewardRedeemData: Codable {
     let voucher: RewardVoucher
     let balance: Int
+    /// Points remaining at the venue the offer was redeemed at
+    let venueBalance: Int?
+    let venueBalances: [RewardVenueBalance]?
 }
 
 // MARK: - Browse offers models
@@ -728,6 +743,12 @@ struct RewardRedeemData: Codable {
 struct RewardOffersData: Codable {
     let venues: [OfferVenue]
     let balance: Int
+    let venueBalances: [RewardVenueBalance]?
+
+    /// Spendable points at one shop (per-store loyalty)
+    func points(at venueId: String) -> Int {
+        venueBalances?.first(where: { $0.venueId == venueId })?.points ?? 0
+    }
 }
 
 struct OfferVenue: Codable {
@@ -743,8 +764,13 @@ struct OfferVenue: Codable {
     let savedByUser: Bool?
     let photoUrl: String?
     let distanceMeters: Double?
+    /// Online-only brand venue — no map presence; show "Online store" instead
+    /// of a distance
+    let isVirtual: Bool?
     let offers: [RewardOffer]
     let announcements: [VenueAnnouncement]?
+    /// Storefront reads include whether the loyalty program is currently live
+    let loyaltyLive: Bool?
 
     var distanceDisplay: String? {
         guard let meters = distanceMeters else { return nil }
@@ -763,6 +789,8 @@ struct PlaceVenueData: Codable {
     let offers: [RewardOffer]?
     let announcements: [VenueAnnouncement]?
     let balance: Int?
+    /// Points held at THIS venue — what offers here are actually paid with
+    let venueBalance: Int?
     let isOwner: Bool?
     // Present only when isOwner: whether the owner has the Business tier
     // (false drives the in-place "Upgrade to Business" teaser)
@@ -851,6 +879,8 @@ struct RewardsProfile: Codable {
     // FavCircles Business subscription (or superuser/manual override) — gates
     // owner tools client-side; the server enforces regardless
     let ownerPremium: Bool?
+    // Brand storefront configured on this account
+    let hasStorefront: Bool?
     let email: String?
 }
 
@@ -934,6 +964,8 @@ struct AdminVenue: Codable {
     // Whether the Business subscription covers THIS venue (subscriptions are
     // per-store). Present in /my-venues; optional so older shapes decode.
     let ownerPremium: Bool?
+    // Online-only brand store — no physical location, never on a map
+    let isVirtual: Bool?
 }
 
 struct AdminVenueStats: Codable {
@@ -990,4 +1022,180 @@ struct SetSuperUserData: Codable {
     let email: String
     let isSuperUser: Bool
     let message: String
+}
+
+
+// MARK: - Brand storefronts & redemption codes
+
+struct StorefrontData: Codable {
+    let storefront: StorefrontInfo?
+    let findUsAtCircle: StorefrontCircleSummary?
+    let venues: [OfferVenue]?
+    let ownerDisplayName: String?
+}
+
+struct StorefrontInfo: Codable {
+    let businessName: String?
+    let about: String?
+    let website: String?
+    let catalogUrl: String?
+    let contactEmail: String?
+}
+
+struct StorefrontCircleSummary: Codable {
+    let id: String
+    let name: String
+    let placesCount: Int?
+}
+
+struct StorefrontUpdateData: Codable {
+    let storefront: StorefrontWriteEcho?
+    struct StorefrontWriteEcho: Codable {
+        let enabled: Bool?
+        let businessName: String?
+    }
+}
+
+struct RedeemCodeData: Codable {
+    let awarded: RedeemCodeAward?
+    let duplicate: Bool?
+    let balance: RedeemCodeBalance?
+    struct RedeemCodeAward: Codable {
+        let points: Int
+        let venueName: String?
+    }
+    struct RedeemCodeBalance: Codable {
+        let rewardPoints: Int?
+    }
+}
+
+struct CreatedVirtualVenue: Codable {
+    let venueId: String
+    let venueName: String
+    let registerCode: String?
+    let registerCardUrl: String?
+}
+
+struct RedemptionCodeBatchData: Codable {
+    let batchId: String
+    let points: Int
+    let label: String?
+    let expiresAt: String?
+    let codes: [String]
+}
+
+struct RedemptionCodeListData: Codable {
+    let codes: [RedemptionCodeSummary]
+    let summary: RedemptionCodeListSummary?
+    struct RedemptionCodeListSummary: Codable {
+        let total: Int
+        let redeemed: Int
+    }
+}
+
+struct RedemptionCodeSummary: Codable {
+    let code: String
+    let points: Int
+    let label: String?
+    let active: Bool
+    let redeemedAt: String?
+    let expiresAt: String?
+}
+
+extension RewardsService {
+
+    /// Public storefront for a business account's profile card
+    func getStorefront(userId: String, completion: @escaping (Result<StorefrontData, Error>) -> Void) {
+        apiService.request(
+            endpoint: "rewards/storefront/\(userId)",
+            method: .get,
+            body: nil,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<StorefrontData>, APIError>) in
+            switch result {
+            case .success(let response): completion(.success(response.data))
+            case .failure(let error): completion(.failure(error))
+            }
+        }
+    }
+
+    /// Configure the caller's own storefront (business standing required)
+    func updateStorefront(_ fields: [String: Any], completion: @escaping (Result<Void, Error>) -> Void) {
+        apiService.request(
+            endpoint: "rewards/storefront",
+            method: .put,
+            body: fields,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<StorefrontUpdateData>, APIError>) in
+            switch result {
+            case .success: completion(.success(()))
+            case .failure(let error): completion(.failure(error))
+            }
+        }
+    }
+
+    /// Create the account's online store (virtual venue — no map presence)
+    func createVirtualVenue(name: String, completion: @escaping (Result<CreatedVirtualVenue, Error>) -> Void) {
+        apiService.request(
+            endpoint: "rewards/venues/virtual",
+            method: .post,
+            body: ["venueName": name],
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<CreatedVirtualVenue>, APIError>) in
+            switch result {
+            case .success(let response): completion(.success(response.data))
+            case .failure(let error): completion(.failure(error))
+            }
+        }
+    }
+
+    /// Redeem a single-use brand code (order-box card / booth handout)
+    func redeemCode(_ code: String, completion: @escaping (Result<RedeemCodeData, Error>) -> Void) {
+        apiService.request(
+            endpoint: "rewards/redeem-code",
+            method: .post,
+            body: ["code": code],
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<RedeemCodeData>, APIError>) in
+            switch result {
+            case .success(let response):
+                RewardsService.postBalanceChanged()
+                completion(.success(response.data))
+            case .failure(let error): completion(.failure(error))
+            }
+        }
+    }
+
+    /// Owner: mint a batch of single-use loyalty codes for a venue
+    func createRedemptionCodes(venueId: String, count: Int, points: Int, label: String?,
+                               completion: @escaping (Result<RedemptionCodeBatchData, Error>) -> Void) {
+        var body: [String: Any] = ["count": count, "points": points]
+        if let label = label, !label.isEmpty { body["label"] = label }
+        apiService.request(
+            endpoint: "rewards/venues/\(venueId)/codes",
+            method: .post,
+            body: body,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<RedemptionCodeBatchData>, APIError>) in
+            switch result {
+            case .success(let response): completion(.success(response.data))
+            case .failure(let error): completion(.failure(error))
+            }
+        }
+    }
+
+    /// Owner: list a venue's codes
+    func listRedemptionCodes(venueId: String, completion: @escaping (Result<RedemptionCodeListData, Error>) -> Void) {
+        apiService.request(
+            endpoint: "rewards/venues/\(venueId)/codes",
+            method: .get,
+            body: nil,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<RedemptionCodeListData>, APIError>) in
+            switch result {
+            case .success(let response): completion(.success(response.data))
+            case .failure(let error): completion(.failure(error))
+            }
+        }
+    }
 }

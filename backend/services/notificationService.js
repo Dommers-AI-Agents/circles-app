@@ -489,6 +489,85 @@ class NotificationService {
     });
   }
 
+  // A new paying subscriber — consumer premium or FavCircles Business — is
+  // revenue the owner wants to hear about the moment it happens. Notifies the
+  // admin account (ADMIN_NOTIFY_EMAIL) in-app + SSE + push, mirroring
+  // notifyStoreClaimSubmitted. Callers fire only on the signup TRANSITION
+  // (not on routine re-verifies), so every alert is a genuinely new sub.
+  async notifyAdminPremiumSignup({ scope, userId, userName, userEmail, productId, status, venueId }) {
+    const adminEmail = process.env.ADMIN_NOTIFY_EMAIL || 'sgroiwes@gmail.com';
+    const adminSnap = await db.collection(COLLECTIONS.USERS)
+      .where('email', '==', adminEmail).limit(1).get();
+    if (adminSnap.empty) {
+      console.error(`❌ premium_signup notification: no user found for admin email ${adminEmail}`);
+      return;
+    }
+    const adminUserId = adminSnap.docs[0].id;
+
+    // Best-effort venue name for Business subs — the alert reads better as
+    // "Business sub for Demo Cafe" than a bare venue id.
+    let venueName = null;
+    if (venueId) {
+      try {
+        const venueDoc = await db.collection('stickerVenues').doc(venueId).get();
+        if (venueDoc.exists) venueName = venueDoc.data().venueName || null;
+      } catch (e) { /* name is decoration; the alert still goes out */ }
+    }
+
+    const who = userName || userEmail || userId || 'Someone';
+    const isTrial = status === 'trial';
+    const title = scope === 'business'
+      ? `🏪 New Business subscriber${isTrial ? ' (trial)' : ''}`
+      : `⭐ New premium subscriber${isTrial ? ' (trial)' : ''}`;
+    const body = scope === 'business'
+      ? `${who} subscribed to FavCircles Business${venueName ? ` for ${venueName}` : ''}`
+      : `${who} signed up for premium`;
+
+    const notifData = {
+      scope,
+      subscriberUserId: userId || null,
+      subscriberName: who,
+      productId: productId || null,
+      status: status || null,
+      venueId: venueId || null,
+      venueName
+    };
+
+    // In-app notification doc (visible regardless of push settings)
+    const notificationData = createNotification({
+      userId: adminUserId,
+      type: 'premium_signup',
+      title,
+      body,
+      data: notifData
+    });
+    const validationErrors = validateNotification(notificationData);
+    if (validationErrors.length === 0) {
+      const notificationRef = await this.db.collection(COLLECTIONS.NOTIFICATIONS).add(notificationData);
+      sseService.notifyUser(adminUserId, 'new_notification', {
+        notificationId: notificationRef.id,
+        type: 'premium_signup',
+        title,
+        body,
+        data: notifData
+      });
+    } else {
+      console.error('❌ Validation errors for premium signup notification:', validationErrors);
+    }
+
+    // Best-effort push (FCM data values must be strings; skip nulls)
+    const pushData = { type: 'premium_signup' };
+    for (const [k, v] of Object.entries(notifData)) {
+      if (typeof v === 'string' && v) pushData[k] = v;
+    }
+    await this.sendToUser(adminUserId, {
+      type: 'premium_signup',
+      title,
+      body,
+      data: pushData
+    });
+  }
+
   // The claimant becomes a store owner the moment an admin approves — tell
   // them, or they only find out by stumbling into owner mode on their place.
   async notifyStoreClaimApproved(claim, claimId, venueId) {

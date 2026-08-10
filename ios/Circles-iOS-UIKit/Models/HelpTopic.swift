@@ -21,6 +21,8 @@ struct HelpTopic {
         case maps = "Maps & Discovery"
         case privacy = "Privacy & Settings"
         case aiAssistants = "AI Assistants"
+        case storeOwners = "For Store Owners"
+        case favCoins = "FavCoins"
         case troubleshooting = "Troubleshooting"
 
         var icon: String {
@@ -34,6 +36,8 @@ struct HelpTopic {
             case .maps: return "map.fill"
             case .privacy: return "lock.fill"
             case .aiAssistants: return "sparkles"
+            case .storeOwners: return "storefront.fill"
+            case .favCoins: return "dollarsign.circle.fill"
             case .troubleshooting: return "wrench.and.screwdriver.fill"
             }
         }
@@ -49,6 +53,8 @@ struct HelpTopic {
             case .maps: return .systemTeal
             case .privacy: return .systemGray
             case .aiAssistants: return .systemIndigo
+            case .storeOwners: return .systemOrange
+            case .favCoins: return .systemGreen
             case .troubleshooting: return .systemRed
             }
         }
@@ -65,7 +71,7 @@ class HelpContentProvider {
     var allTopics: [HelpTopic] {
         return gettingStartedTopics + circlesTopics + placesTopics + socialTopics +
                momentsTopics + quickActionsTopics + mapsTopics + privacyTopics +
-               aiAssistantsTopics + troubleshootingTopics
+               aiAssistantsTopics + storeOwnersTopics + favCoinsTopics + troubleshootingTopics
     }
     
     // MARK: - Getting Started Topics
@@ -727,6 +733,240 @@ class HelpContentProvider {
     }
     
     // MARK: - Search
+
+    // MARK: - For Store Owners
+
+    var storeOwnersTopics: [HelpTopic] {
+        return [
+            HelpTopic(
+                id: "store-rewards-program",
+                title: "How the rewards program works",
+                subtitle: "Store points, offers, and what they cost you",
+                content: """
+                FavCircles gives your store its own loyalty program — store points your customers earn with you and spend on the offers you choose to run.
+
+                **The loop:**
+                1. A customer scans the FavCircles sticker in your window and saves your place (+50 points)
+                2. After a purchase, they scan the register card at your counter — you set how many points that pays
+                3. Points add up across visits — and they stay with your store: points earned with you can only be spent on your offers, never at a competitor
+                4. They redeem points on an offer you posted — "Free coffee — 100 points"
+                5. The app shows them a 5-minute voucher; they show it at the counter, you hand over the reward
+
+                **Who pays for what:**
+                • You fund your own offers — an offer is your discount, honored at your counter
+                • FavCircles never charges you per point or per redemption
+                • You control the economics: your earn rate, your offers, your prices
+
+                **Watching it work:**
+                • The Stats & Insights dashboard tracks saves, followers, visits, QR scans, and redemptions
+                • Announcements you post reach your followers' feeds and the Specials tab
+
+                **What about FavCoins?**
+                Customers also earn FavCoins — a separate crypto coin — for using FavCircles generally. You don't fund, grant, or redeem FavCoins. Your loyalty currency is store points.
+                """,
+                category: .storeOwners,
+                relatedTopics: ["store-getting-started", "store-loyalty-codes", "favcoin-vs-store-points"],
+                videoTimestamp: nil
+            ),
+            HelpTopic(
+                id: "store-getting-started",
+                title: "Claiming and managing your store",
+                subtitle: "From claim to control panel",
+                content: """
+                **Claiming your store:**
+                1. Find your place in FavCircles (search or map)
+                2. On its page, tap Claim this business and add your contact info
+                3. FavCircles verifies you're the owner and approves the claim
+                4. You'll get a notification — your store now appears under My Venues
+
+                **Where everything lives:**
+                • On your profile, tap the storefront icon → My Venues
+                • Each store opens its own control panel: dashboard, business info, QR codes, offers, announcements, earn rate, loyalty codes
+
+                **Free for every store:**
+                • Stats dashboard headline (saves, followers, visits, scans)
+                • Business contact info and your public place page
+                • The scan-to-save window QR
+
+                **With FavCircles Business (subscription):**
+                • Offers customers redeem with points
+                • Announcements to your followers and the Specials tab
+                • Your own points-per-purchase earn rate
+                • The register QR card and single-use loyalty codes
+                • Full monthly stats history
+
+                One Business subscription covers your physical store and your online store together.
+                """,
+                category: .storeOwners,
+                relatedTopics: ["store-rewards-program", "store-online-storefront"],
+                videoTimestamp: nil
+            ),
+            HelpTopic(
+                id: "store-loyalty-codes",
+                title: "Loyalty codes, orders, and event booths",
+                subtitle: "Reward customers you never see at a register",
+                content: """
+                Single-use loyalty codes let customers earn your store points from a shipped order or a conference booth — anywhere there's no register to scan.
+
+                **Minting codes:**
+                1. My Venues → your store → Loyalty codes
+                2. Tap + and choose how many codes and how many points each is worth
+                3. Share the list straight to your printer or spreadsheet
+
+                **Where to use them:**
+                • Pack one card into every shipped order — "Scan to earn 50 points"
+                • Hand them out at events, shows, and conferences
+                • Each code works exactly once, and you can set an expiry
+
+                **Event booths:**
+                • Your register QR card travels — print it and keep it at your booth
+                • A scan after a purchase pays your points, same as at a counter
+
+                **What you get back:**
+                • Every redemption shows in your dashboard stats
+                • Customers who redeem become followers you can reach with announcements
+                """,
+                category: .storeOwners,
+                relatedTopics: ["store-rewards-program", "store-online-storefront"],
+                videoTimestamp: nil
+            ),
+            HelpTopic(
+                id: "store-online-storefront",
+                title: "Online stores and your brand storefront",
+                subtitle: "For businesses without a front door",
+                content: """
+                Sell online? Your business can live on FavCircles without a physical location.
+
+                **Your brand storefront:**
+                • A card on your profile with your business name, story, website, and catalog link
+                • Set it up from My Venues → the storefront button
+                • Pick a "Find us at" circle — your schedule of events and conference stops — and it shows right on the card
+
+                **Your online store:**
+                • Create it from My Venues → the globe button
+                • It gets everything a physical store gets: offers, announcements, loyalty codes, a register QR for your booth, and a dashboard
+                • It never appears on the map — customers find you through the Specials tab, your profile, and follows
+
+                **Circles are your content:**
+                • Create circles your customers actually want — "Places We Ride", "Conference Schedule"
+                • Every circle you share gives people a reason to follow your brand
+                • Your account shows a STORE badge across the app
+                """,
+                category: .storeOwners,
+                relatedTopics: ["store-getting-started", "store-loyalty-codes"],
+                videoTimestamp: nil
+            )
+        ]
+    }
+
+    // MARK: - FavCoins
+
+    var favCoinsTopics: [HelpTopic] {
+        return [
+            HelpTopic(
+                id: "favcoin-what-is",
+                title: "What is FavCoin?",
+                subtitle: "The crypto coin you earn for building FavCircles",
+                content: """
+                FavCoin is a real cryptocurrency on the 🌵 Cactus blockchain. You earn FavCoins by building FavCircles — adding places, creating circles, connecting with friends — and they collect in your Piggy Bank.
+
+                **The essentials:**
+                • FavCoins are yours: once claimed, they sit in a 🌵 wallet only you control
+                • Their value is whatever people choose to give them — FavCircles doesn't set a price
+                • You don't spend FavCoins in the app — they're for holding, sending, or trading outside it
+                • Shop discounts are a different thing entirely: those are store points
+
+                **Where to see yours:**
+                1. Tap the $ button, then the Piggy Bank tab
+                2. Your total shows coins in the piggy, coins clearing, and coins already on the 🌵 blockchain
+                3. "How to earn" lists what every action pays right now
+                """,
+                category: .favCoins,
+                relatedTopics: ["favcoin-earning", "favcoin-claiming", "favcoin-vs-store-points"],
+                videoTimestamp: nil
+            ),
+            HelpTopic(
+                id: "favcoin-earning",
+                title: "Earning FavCoins",
+                subtitle: "What pays, and the rules that keep it fair",
+                content: """
+                You earn FavCoins for the things that make FavCircles better — and small change for everyday engagement.
+
+                **Bigger earns (the piggy bank drop):**
+                • Adding places, creating circles, making connections
+                • Posting Moments, checking in, referring friends
+
+                **Small change (the dancing leprechaun):**
+                • Liking places and moments, reacting to activity, following people
+                • These pay fractions of a coin — being generous with hearts is welcome, but it can't out-earn creating things
+
+                **The rules that keep it fair:**
+                • First-time-only: re-liking, unfollow/refollow, or re-adding the same place never pays twice
+                • Daily limits apply to every action
+                • New coins wait up to a day in "clearing" while the action sticks — if it's undone, the coins quietly vanish
+                • Your own content pays you nothing when you like it yourself
+
+                For live values, open the Piggy Bank and check "How to earn" — the amounts come straight from the server and can change.
+                """,
+                category: .favCoins,
+                relatedTopics: ["favcoin-what-is", "favcoin-claiming"],
+                videoTimestamp: nil
+            ),
+            HelpTopic(
+                id: "favcoin-claiming",
+                title: "Claiming coins to your 🌵 wallet",
+                subtitle: "Move your FavCoins onto the 🌵 blockchain",
+                content: """
+                Claiming moves your confirmed FavCoins out of FavCircles and into a 🌵 Cactus wallet only you control. After that, they're on the 🌵 blockchain — FavCircles can't move or take them.
+
+                **Getting a wallet:**
+                • FavCircles can create one for you in a tap — the secret phrase is generated on your phone and stored in your iCloud Keychain, never on our servers
+                • Or link a 🌵 Cactus wallet you already have (a cac address)
+
+                **Claiming:**
+                1. Piggy Bank → Claim
+                2. Your entire confirmed balance moves in one claim
+                3. The transfer lands on-chain in under a minute — tap the activity row for on-chain proof
+
+                **Good to know:**
+                • Your first claim works at any amount; after that a small minimum applies
+                • Coins still "clearing" can't be claimed yet — they join the next claim
+                • Once on-chain, coins are transferable like any 🌵 Cactus asset
+                """,
+                category: .favCoins,
+                relatedTopics: ["favcoin-what-is", "favcoin-earning"],
+                videoTimestamp: nil
+            ),
+            HelpTopic(
+                id: "favcoin-vs-store-points",
+                title: "FavCoins vs Store Points",
+                subtitle: "Two currencies, two very different jobs",
+                content: """
+                FavCircles has two currencies, and they never mix. Here's the difference in one breath: store points are shop loyalty you spend on offers; FavCoin is crypto you earn and keep.
+
+                **Store points:**
+                • Come from shops — the stores fund every reward
+                • Earned by showing up: sticker scans, register scans after a purchase, order-card codes
+                • True loyalty: points stay with the shop where you earned them — each store runs its own program
+                • Spent in the app on that shop's offers, via a voucher at the counter
+                • Live on the Store Points tab of the $ screen
+
+                **FavCoins:**
+                • Come from FavCircles — earned by building the app's world
+                • Earned by contributing: places, circles, moments, connections, and small change for engagement
+                • Never spent in the app — claimed to your own crypto wallet on the 🌵 Cactus blockchain
+                • Live on the Piggy Bank tab of the $ screen
+
+                **Why both?**
+                Shops know how to say thanks for a purchase — that's points. FavCircles wants to say thanks for building the community — that's coins. Keeping them separate means shops control their own costs, and your coins stay genuinely yours.
+                """,
+                category: .favCoins,
+                relatedTopics: ["favcoin-what-is", "store-rewards-program"],
+                videoTimestamp: nil
+            )
+        ]
+    }
+
     func search(query: String) -> [HelpTopic] {
         let lowercasedQuery = query.lowercased()
         return allTopics.filter { topic in

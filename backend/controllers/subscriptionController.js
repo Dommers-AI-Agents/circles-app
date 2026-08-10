@@ -154,6 +154,35 @@ exports.verifySubscription = async (req, res) => {
                 ownerSubscriptionVenueId: venueBinding,
                 lastOwnerReceiptVerification: new Date().toISOString()
             });
+
+            // Admin alert on the signup transition only: a routine re-verify
+            // (same transaction, already active) stays silent.
+            const wasBusinessActive = ['active', 'trial'].includes(existing.ownerSubscriptionStatus);
+            if ((b.status === 'active' || b.status === 'trial') && (isNewSubscription || !wasBusinessActive)) {
+                require('../services/notificationService').notifyAdminPremiumSignup({
+                    scope: 'business',
+                    userId,
+                    userName: existing.displayName || null,
+                    userEmail: existing.email || null,
+                    productId: businessEntry.product_id,
+                    status: b.status,
+                    venueId: venueBinding
+                }).catch((e) => console.error('⚠️ Business signup admin alert failed:', e.message));
+
+                // Benefits walkthrough to the new subscriber — fire-and-forget
+                if (existing.email) {
+                    (async () => {
+                        let venueName = null;
+                        if (venueBinding) {
+                            const vDoc = await admin.firestore()
+                                .collection('stickerVenues').doc(venueBinding).get();
+                            if (vDoc.exists) venueName = vDoc.data().venueName || null;
+                        }
+                        await require('../services/emailService')
+                            .sendBusinessWelcomeEmail(existing.email, existing.displayName || null, venueName);
+                    })().catch((e) => console.error('⚠️ Business welcome email failed:', e.message));
+                }
+            }
             businessResponse = {
                 scope: 'business',
                 status: b.status,
@@ -220,6 +249,29 @@ exports.verifySubscription = async (req, res) => {
             }
 
             await userRef.update(updateData);
+
+            // Admin alert on the signup transition only (new subscriber, or a
+            // lapsed one coming back) — never on routine re-verifies.
+            const wasConsumerActive = ['active', 'trial'].includes(existingData.subscriptionStatus);
+            const isNewConsumerSub =
+                existingData.appleOriginalTransactionId !== consumerEntry.original_transaction_id;
+            if ((c.status === 'active' || c.status === 'trial') && (isNewConsumerSub || !wasConsumerActive)) {
+                require('../services/notificationService').notifyAdminPremiumSignup({
+                    scope: 'consumer',
+                    userId,
+                    userName: existingData.displayName || null,
+                    userEmail: existingData.email || null,
+                    productId: consumerEntry.product_id,
+                    status: c.status
+                }).catch((e) => console.error('⚠️ Premium signup admin alert failed:', e.message));
+
+                // Benefits walkthrough to the new subscriber — fire-and-forget
+                if (existingData.email) {
+                    require('../services/emailService')
+                        .sendPremiumWelcomeEmail(existingData.email, existingData.displayName || null, { isTrial: c.status === 'trial' })
+                        .catch((e) => console.error('⚠️ Premium welcome email failed:', e.message));
+                }
+            }
 
             const userData = (await userRef.get()).data();
             consumerResponse = {
@@ -600,6 +652,21 @@ exports.startFreeTrial = async (req, res) => {
             trialEndDate: trialEndDate.toISOString(),
             subscriptionExpiryDate: trialEndDate.toISOString()
         });
+
+        require('../services/notificationService').notifyAdminPremiumSignup({
+            scope: 'consumer',
+            userId,
+            userName: userData.displayName || null,
+            userEmail: userData.email || null,
+            productId: 'com.favcircles.circles.premium.subscription.monthly',
+            status: 'trial'
+        }).catch((e) => console.error('⚠️ Trial signup admin alert failed:', e.message));
+
+        if (userData.email) {
+            require('../services/emailService')
+                .sendPremiumWelcomeEmail(userData.email, userData.displayName || null, { isTrial: true })
+                .catch((e) => console.error('⚠️ Trial welcome email failed:', e.message));
+        }
 
         res.json({
             success: true,

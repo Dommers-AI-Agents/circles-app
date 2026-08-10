@@ -14,6 +14,7 @@ const { normalizeUserId, isSameUser } = require('../services/idService');
 const { ensureGlobalPlaceLink } = require('../services/globalPlaceResolver');
 const { indexSavedPlace, indexPlaceRemoved, indexPlaceMoved } = require('../services/circleLocationSummary');
 const { GLOBAL_COLLECTIONS, buildSearchTokens } = require('../models/GlobalPlace');
+const { sanitizeVenueDescription } = require('../utils/venueDescriptionSanitizer');
 const { googleMapsApiKey } = require('../config/config');
 const notificationService = require('../services/notificationService');
 const { trackPlaceAdded, trackPlaceView, trackPlaceLiked, markCirclePlacesViewed } = require('../services/activityService');
@@ -152,8 +153,11 @@ const anchorVenueFieldsToSource = async (placeData) => {
         const response = await googleMapsClient.placeDetails({
           params: {
             place_id: googlePlaceId,
+            // editorial_summary rides the Atmosphere SKU this call already
+            // bills for rating/price_level — no incremental API cost
             fields: ['name', 'formatted_address', 'geometry', 'website',
-                     'formatted_phone_number', 'rating', 'user_ratings_total', 'price_level'],
+                     'formatted_phone_number', 'rating', 'user_ratings_total', 'price_level',
+                     'editorial_summary'],
             key: googleMapsApiKey
           }
         });
@@ -172,6 +176,12 @@ const anchorVenueFieldsToSource = async (placeData) => {
     placeData.rating = details.rating ?? null;
     placeData.userRatingsTotal = details.user_ratings_total ?? null;
     placeData.priceLevel = details.price_level ?? null;
+    // Google's editorial summary replaces whatever the client synthesized —
+    // old app builds still send placeholder text ("A dining establishment in …")
+    if (details.editorial_summary?.overview) {
+      placeData.description = details.editorial_summary.overview;
+      placeData.descriptionSource = 'google_editorial';
+    }
     console.log(`🔒 Venue fields verified against Google Places for new venue ${googlePlaceId}`);
   } catch (error) {
     // Availability over strictness: a Google outage shouldn't block saves
@@ -185,6 +195,16 @@ const buildGlobalVenueUpdates = (updateData) => {
   VENUE_TOP_FIELDS.forEach(field => {
     if (updateData[field] !== undefined) updates[field] = updateData[field];
   });
+  // Old iOS builds echo their synthesized placeholder description ("A dining
+  // establishment in …") on every edit — scrub it, and if nothing real
+  // remains, leave the canonical description alone rather than nulling it
+  if (typeof updates.description === 'string') {
+    const sanitized = sanitizeVenueDescription(updates.description);
+    if (sanitized !== updates.description) {
+      if (sanitized) updates.description = sanitized;
+      else delete updates.description;
+    }
+  }
   VENUE_GOOGLE_FIELDS.forEach(field => {
     if (updateData[field] !== undefined) updates[`googleData.${field}`] = updateData[field];
   });
@@ -1371,12 +1391,12 @@ exports.createPlace = async (req, res, next) => {
       await trackPlaceAdded(placeRef.id, circleId, place.name, circle.name, req.user.uid);
     }
 
-    // Sticker rewards: if this add came from a shared place link, credit the sharer
+    // If this add came from a shared place link, credit the sharer. (Store
+    // points retired here 2026-08-10 — share conversions aren't tied to a
+    // shop, so under per-store loyalty the sharer earns FavCoins only.)
     if (req.body.refUserId) {
-      rewardService.awardShareConversion(req.body.refUserId, req.user.uid, place.googlePlaceId);
-
       // Piggy bank: place_adopted — the quality-aligned flagship earn. The
-      // SHARER gets the coins; fire-and-forget alongside the sticker credit.
+      // SHARER gets the coins; fire-and-forget.
       piggyBankService.credit({
         userId: req.body.refUserId,
         eventType: 'place_adopted',
@@ -1529,6 +1549,19 @@ exports.updatePlace = async (req, res, next) => {
       delete updateData.privateNotes;
     }
 
+    // userRating is the saver's personal 0-10 score — same ownership rule as
+    // privateNotes, and clamp it so bad clients can't store junk
+    if ('userRating' in updateData) {
+      if (!isPlaceAdder) {
+        delete updateData.userRating;
+      } else {
+        const num = Number(updateData.userRating);
+        updateData.userRating = (updateData.userRating === null || Number.isNaN(num))
+          ? null
+          : Math.min(10, Math.max(0, Math.round(num)));
+      }
+    }
+
     // publicNotes is retired: a note meant for others is a comment on the
     // venue. Older app builds still send the field, so drop it rather than
     // erroring — and never resurrect a note field on the save doc.
@@ -1619,8 +1652,9 @@ exports.updatePlace = async (req, res, next) => {
 
     // Piggy bank: 1 FavCoin for your first photo on this venue (dedup key is
     // per user+venue, so later photos and photo swaps pay nothing).
+    let photoPiggyBank = null;
     if (addedPhotoUrl) {
-      piggyBankService.credit({
+      photoPiggyBank = await piggyBankService.credit({
         userId: req.user.uid,
         eventType: 'place_photo',
         sourceRef: {
@@ -1628,7 +1662,7 @@ exports.updatePlace = async (req, res, next) => {
           globalPlaceId: place.globalPlaceId || null,
           photoUrl: addedPhotoUrl
         }
-      }).catch(() => {});
+      });
     }
 
     // Venue-level edits update the canonical record once, for every saver
@@ -1640,7 +1674,8 @@ exports.updatePlace = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      place: updatedPlace
+      place: updatedPlace,
+      piggyBank: photoPiggyBank
     });
   } catch (error) {
     console.error('Error updating place:', error);
@@ -2504,20 +2539,24 @@ exports.likePlace = async (req, res, next) => {
       );
     }
 
-    // Piggy bank: 1 FavCoin for your first like on this venue (not unlikes,
+    // Piggy bank: a nickel for your first like on this venue (not unlikes,
     // not your own places; per-venue dedup means a relike can't re-mint).
+    // Awaited so the response can carry the credit and the app can play the
+    // coin-drop — credit() never throws.
+    let piggyBank = null;
     if (!alreadyLiked && place.addedBy !== userId) {
-      piggyBankService.credit({
+      piggyBank = await piggyBankService.credit({
         userId,
         eventType: 'place_liked',
         sourceRef: { globalPlaceId }
-      }).catch(() => {});
+      });
     }
-    
+
     res.status(200).json({
       success: true,
       liked: !alreadyLiked,
-      place: updatedPlace
+      place: updatedPlace,
+      piggyBank
     });
     
     // Track comprehensive activity for likes (not unlikes) with connection notifications
@@ -2873,10 +2912,18 @@ exports.getPlaceComments = async (req, res, next) => {
 
     console.log(`✅ Found ${commentDocs.length} comments for place ${placeId}`);
 
+    // Blocked authors (either direction) and moderation-hidden comments are
+    // invisible to this viewer
+    const viewerDocForComments = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+    const { excludedUserIds: excludedForComments } = require('../services/moderationService');
+    const commentExcluded = excludedForComments(viewerDocForComments.exists ? viewerDocForComments.data() : {});
+
     const comments = [];
     for (const doc of commentDocs) {
       const comment = serializeDoc(doc);
-      
+      if (commentExcluded.has(comment.userId)) continue;
+      if (comment.moderationStatus === 'under_review' || comment.moderationStatus === 'removed') continue;
+
       // Only include top-level comments (no parentCommentId or parentCommentId is null/undefined)
       if (!comment.parentCommentId) {
         // Get user details
@@ -3002,9 +3049,11 @@ exports.addPlaceComment = async (req, res, next) => {
     console.log('✅ Comment saved successfully with ID:', comment.id);
 
     // Piggy bank: 1 FavCoin for your first comment on this venue (not your
-    // own places; thread-padding pays nothing — per-venue dedup).
+    // own places; thread-padding pays nothing — per-venue dedup). Awaited so
+    // the response carries the credit for the coin-drop; credit() never throws.
+    let piggyBank = null;
     if (place.addedBy !== userId) {
-      piggyBankService.credit({
+      piggyBank = await piggyBankService.credit({
         userId,
         eventType: 'place_comment',
         sourceRef: {
@@ -3012,7 +3061,7 @@ exports.addPlaceComment = async (req, res, next) => {
           globalPlaceId: commentGlobalPlaceId || null,
           placeId
         }
-      }).catch(() => {});
+      });
     }
     
     // Get user details
@@ -3034,7 +3083,8 @@ exports.addPlaceComment = async (req, res, next) => {
     
     res.status(201).json({
       success: true,
-      data: comment
+      data: comment,
+      piggyBank
     });
     
     // Track comment activity

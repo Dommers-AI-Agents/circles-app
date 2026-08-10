@@ -19,7 +19,7 @@ final class RewardsHubViewController: BaseViewController {
     private var currentChild: UIViewController?
 
     private lazy var segmentedControl: UISegmentedControl = {
-        let control = UISegmentedControl(items: ["Piggy Bank", "Store Rewards"])
+        let control = UISegmentedControl(items: ["Piggy Bank", "Store Points"])
         control.selectedSegmentIndex = 0
         control.addTarget(self, action: #selector(tabChanged), for: .valueChanged)
         control.translatesAutoresizingMaskIntoConstraints = false
@@ -38,6 +38,14 @@ final class RewardsHubViewController: BaseViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Rewards"
+
+        // The hub is exactly where two-currencies confusion starts — one tap
+        // to the FavCoins-vs-Store-Points explainer
+        let differenceButton = UIBarButtonItem(
+            image: UIImage(systemName: "questionmark.circle"),
+            style: .plain, target: self, action: #selector(differenceTapped))
+        differenceButton.accessibilityLabel = "FavCoins vs Store Points"
+        navigationItem.rightBarButtonItem = differenceButton
         view.backgroundColor = Constants.Colors.background
 
         view.addSubview(segmentedControl)
@@ -84,6 +92,13 @@ final class RewardsHubViewController: BaseViewController {
         currentChild = next
 
         // Title complements the segment instead of duplicating it.
-        title = (tab == .rewards) ? "Store Rewards" : "FavCoins"
+        title = (tab == .rewards) ? "Store Points" : "FavCoins"
+    }
+}
+
+extension RewardsHubViewController {
+    @objc func differenceTapped() {
+        guard let topic = HelpContentProvider.shared.topic(withId: "favcoin-vs-store-points") else { return }
+        navigationController?.pushViewController(HelpTopicViewController(topic: topic), animated: true)
     }
 }

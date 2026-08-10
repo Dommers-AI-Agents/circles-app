@@ -26,7 +26,13 @@ const PIGGY_EVENT_TYPES = [
   'profile_completed',
   'place_liked',
   'place_comment',
-  'user_followed'
+  'user_followed',
+  // 2026.08-b additions (fractional engagement)
+  'activity_reaction',
+  'moment_liked',
+  'moment_like_received',
+  // 2026.08-c: brand redemption codes
+  'brand_code_redeemed'
 ];
 
 // Earn statuses and claim statuses are disjoint vocabularies on the same
@@ -92,6 +98,11 @@ function derivePiggyDedupKey(eventType, parts = {}) {
     case 'suggestion_posted':
       if (!parts.userId || !parts.suggestionId) return null;
       return `suggestion:${s(parts.userId)}:${s(parts.suggestionId)}`;
+    case 'brand_code_redeemed':
+      // Keyed on the code alone: codes are single-use, so one payout ever
+      // per code no matter who races the redemption.
+      if (!parts.code) return null;
+      return `brand_code:${s(parts.code)}`;
     case 'check_in': {
       // Once per venue per UTC day — the day segment IS the repeat rule.
       const venue = parts.globalPlaceId || parts.placeId;
@@ -129,6 +140,18 @@ function derivePiggyDedupKey(eventType, parts = {}) {
       // First follow of that person ever — unfollow/refollow can't re-mint.
       if (!parts.userId || !parts.followedUserId) return null;
       return `user_followed:${s(parts.userId)}:${s(parts.followedUserId)}`;
+    case 'activity_reaction':
+      // One per activity ever — swapping the emoji can't re-mint.
+      if (!parts.userId || !parts.activityId) return null;
+      return `activity_reaction:${s(parts.userId)}:${s(parts.activityId)}`;
+    case 'moment_liked':
+      // One per moment ever — unlike/relike can't re-mint.
+      if (!parts.userId || !parts.videoId) return null;
+      return `moment_liked:${s(parts.userId)}:${s(parts.videoId)}`;
+    case 'moment_like_received':
+      // Owner earns once per distinct liker per moment.
+      if (!parts.userId || !parts.videoId || !parts.likerUserId) return null;
+      return `moment_like_recv:${s(parts.userId)}:${s(parts.videoId)}:${s(parts.likerUserId)}`;
     case 'claim':
       // seq comes from bank.claimCount + 1, read inside the claim transaction:
       // two concurrent claims compute the same seq and the loser's create()

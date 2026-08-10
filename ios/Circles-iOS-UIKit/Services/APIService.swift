@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 // MARK: - API Errors
 /**
@@ -567,6 +568,11 @@ class APIService {
         // value to "network" on the wire so older app builds (whose
         // VideoVisibility enum lacks the case) can still decode moment feeds.
         request.addValue("1", forHTTPHeaderField: "X-FC-Moments-Followers")
+
+        // Advertise decimal FavCoin support: without this, the piggy-bank API
+        // floors every coin value to an integer so old builds (whose models
+        // decode Int) keep working.
+        request.addValue("1", forHTTPHeaderField: "X-FC-Decimal-Coins")
         
         // Add cache control headers to prevent 304 responses
         if method == .get {
@@ -1120,6 +1126,8 @@ class APIService {
         ) { (result: Result<APIResponse<CheckIn>, APIError>) in
             switch result {
             case .success(let response):
+                // A check-in earns a coin (once per venue per day)
+                PiggyBankDepositView.play(credit: response.piggyBank)
                 completion(.success(response.data))
             case .failure(let error):
                 completion(.failure(error))

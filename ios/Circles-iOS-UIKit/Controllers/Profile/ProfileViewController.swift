@@ -443,6 +443,12 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }()
     
     // MARK: - Notification Settings (for connected users)
+    // Brand storefront card (business accounts) — sits between the profile
+    // header and the circles area; pinned to zero height on normal profiles
+    let storefrontCard = StorefrontCardView()
+    var storefrontCardCollapsedConstraint: NSLayoutConstraint?
+    var loadedStorefrontUserId: String?
+
     let notificationsSectionContainer: UIView = {
         let view = UIView()
         view.isHidden = true
@@ -1071,6 +1077,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         buttonsContainer.addSubview(followButton)
         buttonsContainer.addSubview(connectButton)
         
+        contentView.addSubview(storefrontCard)
+
         // Add notification settings section
         contentView.addSubview(notificationsSectionContainer)
         notificationsSectionContainer.addSubview(notificationsSectionLabel)
@@ -1256,8 +1264,13 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             connectButton.bottomAnchor.constraint(equalTo: buttonsContainer.bottomAnchor),
             connectButton.widthAnchor.constraint(equalTo: buttonsContainer.widthAnchor, multiplier: 0.48),
             
+            // Storefront card: zero-height until a business profile loads
+            storefrontCard.topAnchor.constraint(equalTo: profileHeaderView.bottomAnchor),
+            storefrontCard.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            storefrontCard.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+
             // Notification settings section
-            notificationsSectionContainer.topAnchor.constraint(equalTo: profileHeaderView.bottomAnchor, constant: Constants.Spacing.medium),
+            notificationsSectionContainer.topAnchor.constraint(equalTo: storefrontCard.bottomAnchor, constant: Constants.Spacing.medium),
             notificationsSectionContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             notificationsSectionContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             
@@ -1462,10 +1475,16 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         )
         
         // Create dynamic constraints for separator line positioning
+        // Anchored below the storefront card, which sits flush with the
+        // profile header at zero height on non-business profiles — so this
+        // stays byte-identical to the old profileHeaderView anchor there
         separatorLineTopToProfileConstraint = separatorLine.topAnchor.constraint(
-            equalTo: profileHeaderView.bottomAnchor, 
+            equalTo: storefrontCard.bottomAnchor,
             constant: Constants.Spacing.medium
         )
+        storefrontCardCollapsedConstraint = storefrontCard.heightAnchor.constraint(equalToConstant: 0)
+        storefrontCardCollapsedConstraint?.isActive = true
+        storefrontCard.isHidden = true
         separatorLineTopToNotificationConstraint = separatorLine.topAnchor.constraint(
             equalTo: notificationsSectionContainer.bottomAnchor, 
             constant: Constants.Spacing.medium
@@ -1642,6 +1661,22 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         )
         activityVC.popoverPresentationController?.barButtonItem = navigationItem.rightBarButtonItems?.first
         present(activityVC, animated: true)
+    }
+
+    @objc func viewedProfileModerationTapped() {
+        guard let user = user else { return }
+        presentUserModerationSheet(
+            userId: user.id,
+            userName: user.displayName,
+            onBlocked: { [weak self] in
+                // Blocked from their profile — nothing left to look at here
+                if let nav = self?.navigationController, nav.viewControllers.count > 1 {
+                    nav.popViewController(animated: true)
+                } else {
+                    self?.dismiss(animated: true)
+                }
+            }
+        )
     }
 
     @objc func shareProfileButtonTapped() {
@@ -2324,9 +2359,11 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                 guard let self = self else { return }
                 
                 switch result {
-                case .success:
+                case .success(let response):
                     Logger.debug("✅ Successfully \(action)ed user: \(user.displayName)")
-                    
+                    // First-ever follow earns a dime (nil on unfollow)
+                    PiggyBankDepositView.play(credit: response.piggyBank)
+
                     // Re-enable button after successful action
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         self.followButton.isEnabled = true
@@ -3171,6 +3208,89 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         }
     }
     
+    // MARK: - Storefront card (brand accounts)
+
+    /// Loads the profile user's public storefront and expands the card when
+    /// one exists. Non-business accounts return storefront: null and the card
+    /// stays collapsed — one cheap call per profile view.
+    func refreshStorefrontCard() {
+        let profileUserId = user?.id ?? AuthService.shared.getUserId()
+        guard let userId = profileUserId else { return }
+        // Same profile already loaded — don't flicker on every displayUser pass
+        if loadedStorefrontUserId == userId, storefrontCard.isHidden == false { return }
+
+        RewardsService.shared.getStorefront(userId: userId) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                // Profile may have been reconfigured while the read was in flight
+                let currentId = self.user?.id ?? AuthService.shared.getUserId()
+                guard currentId == userId else { return }
+                self.loadedStorefrontUserId = userId
+
+                guard case .success(let data) = result, let storefront = data.storefront else {
+                    self.setStorefrontCardVisible(false)
+                    return
+                }
+                let isOwn = self.user == nil || IDNormalizer.isSameUser(userId, AuthService.shared.getUserId() ?? "")
+                self.storefrontCard.configure(
+                    storefront: storefront,
+                    findUsAtCircle: data.findUsAtCircle,
+                    venues: data.venues,
+                    isOwnProfile: isOwn
+                )
+                self.wireStorefrontCardActions(storefront: storefront, findUsAtCircle: data.findUsAtCircle)
+                self.setStorefrontCardVisible(true)
+            }
+        }
+    }
+
+    private func setStorefrontCardVisible(_ visible: Bool) {
+        storefrontCard.isHidden = !visible
+        storefrontCardCollapsedConstraint?.isActive = !visible
+        view.layoutIfNeeded()
+    }
+
+    private func wireStorefrontCardActions(storefront: StorefrontInfo, findUsAtCircle: StorefrontCircleSummary?) {
+        storefrontCard.onWebsite = { [weak self] in
+            self?.openStorefrontLink(storefront.website)
+        }
+        storefrontCard.onCatalog = { [weak self] in
+            self?.openStorefrontLink(storefront.catalogUrl)
+        }
+        storefrontCard.onFindUsAt = { [weak self] in
+            guard let self = self, let circleId = findUsAtCircle?.id else { return }
+            CircleService.shared.fetchCircleById(id: circleId) { result in
+                DispatchQueue.main.async {
+                    guard case .success(let circle) = result else { return }
+                    let detailVC = CircleDetailViewController(circle: circle)
+                    self.navigationController?.pushViewController(detailVC, animated: true)
+                }
+            }
+        }
+        storefrontCard.onOffers = { [weak self] in
+            // Store offers live in the rewards hub
+            let hub = RewardsHubViewController()
+            hub.initialTab = .rewards
+            self?.navigationController?.pushViewController(hub, animated: true)
+        }
+        storefrontCard.onEdit = { [weak self] in
+            guard let self = self else { return }
+            let editor = StorefrontEditViewController()
+            editor.initialStorefront = storefront
+            editor.initialFindUsAtCircleId = findUsAtCircle?.id
+            editor.onSaved = { [weak self] in
+                self?.loadedStorefrontUserId = nil
+                self?.refreshStorefrontCard()
+            }
+            self.navigationController?.pushViewController(editor, animated: true)
+        }
+    }
+
+    private func openStorefrontLink(_ urlString: String?) {
+        guard let urlString = urlString, let url = URL(string: urlString) else { return }
+        UIApplication.shared.open(url)
+    }
+
     func displayUser(_ user: User) {
         // Debug logging
         Logger.debug("🔍 ProfileViewController - Displaying user data:")
@@ -3307,7 +3427,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             navigationItem.rightBarButtonItems = [settingsButton, videoButton, checkInButton, rewardsButton]
             addStorefrontButtonIfEligible()
         } else {
-            // Other user - just a share button (profile universal link)
+            // Other user - share button (profile universal link) plus the
+            // report/block "⋯" menu (App Review 1.2: abusive users must be
+            // reportable and blockable from their profile)
             let shareButton = UIBarButtonItem(
                 image: UIImage(systemName: "square.and.arrow.up"),
                 style: .plain,
@@ -3315,7 +3437,14 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                 action: #selector(shareViewedProfileTapped)
             )
             shareButton.accessibilityLabel = "Share profile"
-            navigationItem.rightBarButtonItems = [shareButton]
+            let moderationButton = UIBarButtonItem(
+                image: UIImage(systemName: "ellipsis.circle"),
+                style: .plain,
+                target: self,
+                action: #selector(viewedProfileModerationTapped)
+            )
+            moderationButton.accessibilityLabel = "Report or block"
+            navigationItem.rightBarButtonItems = [moderationButton, shareButton]
         }
         
         // For other users, check connection status and follow status
@@ -3334,6 +3463,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         
         // Configure drag and drop based on whether this is the current user
         configureDragAndDrop()
+
+        refreshStorefrontCard()
     }
     
     var lastKnownPlaceCount = 0

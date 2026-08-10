@@ -679,7 +679,9 @@ extension SettingsViewController {
                 
                 switch row {
                 case .version:
-                    config.secondaryText = "1.0.0"
+                    let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+                    let buildNumber = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+                    config.secondaryText = "\(appVersion) (\(buildNumber))"
                     config.secondaryTextProperties.color = .secondaryLabel
                     cell.contentConfiguration = config
                     cell.selectionStyle = .none

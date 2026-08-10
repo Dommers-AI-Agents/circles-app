@@ -74,7 +74,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     // Search container for visual emphasis
     let searchContainer: UIView = {
         let view = UIView()
-        view.backgroundColor = .white
+        view.backgroundColor = Constants.Colors.secondaryBackground
         view.layer.cornerRadius = 16
         view.layer.shadowColor = UIColor.black.cgColor
         view.layer.shadowOpacity = 0.1
@@ -87,16 +87,31 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     // Search bar at the top
     let searchBar: UISearchBar = {
         let searchBar = UISearchBar()
-        searchBar.placeholder = "🔍 Search address or place name"
+        // No emoji in the placeholder — the .minimal style already draws a
+        // magnifier, so an emoji produced a double icon
+        searchBar.placeholder = "Search address or place name"
         searchBar.searchBarStyle = .minimal
         searchBar.searchTextField.backgroundColor = .clear
-        searchBar.searchTextField.textColor = .darkGray
+        searchBar.searchTextField.textColor = Constants.Colors.label
         searchBar.searchTextField.font = UIFont.systemFont(ofSize: 16, weight: .medium)
         searchBar.tintColor = UIColor.systemBlue
         searchBar.translatesAutoresizingMaskIntoConstraints = false
         return searchBar
     }()
     
+    /// Sticky footer holding the save button — always visible so the user
+    /// never has to scroll to find how to finish
+    let saveFooterBar: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.background
+        view.layer.shadowColor = UIColor.black.cgColor
+        view.layer.shadowOpacity = 0.08
+        view.layer.shadowOffset = CGSize(width: 0, height: -2)
+        view.layer.shadowRadius = 6
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+
     // Map container for rounded corners
     let mapContainer: UIView = {
         let view = UIView()
@@ -352,6 +367,30 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     // Public notes are gone: anything you want others to read about a venue is
     // a comment on the venue itself (visible to everyone who opens it, not just
     // people browsing your circle). Only the private note lives on your save.
+    // The Review/Comment field below feeds exactly that: it posts as a venue
+    // comment right after the place saves.
+
+    let reviewCommentLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Review/Comment"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
+        label.textColor = .darkGray
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    let reviewCommentTextView: UITextView = {
+        let textView = UITextView()
+        textView.font = UIFont.systemFont(ofSize: 16)
+        textView.backgroundColor = .white
+        textView.textColor = .darkGray
+        textView.layer.cornerRadius = 8
+        textView.layer.borderWidth = 1
+        textView.layer.borderColor = UIColor.systemBlue.withAlphaComponent(0.3).cgColor
+        textView.textContainerInset = UIEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+        textView.translatesAutoresizingMaskIntoConstraints = false
+        return textView
+    }()
 
     let addressLabel: UILabel = {
         let label = UILabel()
@@ -489,6 +528,11 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     var hasSearchedCategory = false
     var hasPerformedInitialSearch = false
     var isFillingForm = false
+    /// The saver's 0–10 score picked in the rating sheet (nil = skipped)
+    var userRating: Int?
+    /// Review typed in the rating sheet; posted as a venue comment after the
+    /// place saves (public notes were retired in favor of comments)
+    var pendingReviewText: String?
     
     // MARK: - Lifecycle
     
@@ -601,6 +645,23 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     /// it only ever appears once.
     func showAddPlaceMapHintBubble() {
         guard OnboardingManager.shared.shouldShowAddPlaceMapHint() else { return }
+
+        // The "shown once" flag is device-local, so a fresh install or
+        // re-login re-arms it for long-time users. If this account already
+        // has places anywhere, they don't need a how-to — retire the hint
+        // without showing it. Circles still loading → decide on a later open
+        // instead of guessing.
+        guard !userCircles.isEmpty else { return }
+        let hasExistingPlaces = userCircles.contains { ($0.placesCount ?? $0.places?.count ?? 0) > 0 }
+        if hasExistingPlaces {
+            OnboardingManager.shared.markAddPlaceMapHintShown()
+            return
+        }
+
+        // The hint explains how to pick a place — skip it when one is already
+        // in the form (prefilled from a POI, check-in, or another screen)
+        guard !isFillingForm, (nameTextField.text ?? "").isEmpty else { return }
+
         OnboardingManager.shared.markAddPlaceMapHintShown()
 
         let bubble = BubbleView()
@@ -618,6 +679,62 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         view.addSubview(bubble)
         bubble.pointTo(searchBar, in: view)
         bubble.show()
+    }
+
+    // MARK: - Rating Prompt (on Save)
+
+    /// When true (default), tapping Save first pops a quick prompt: rate the
+    /// place 0–10 (skippable), optionally leave a comment, hit Continue —
+    /// then the save pipeline runs. Swiping the prompt away cancels the save.
+    var showsRatingPromptOnSave = true
+
+    /// Set once the prompt has run for this save, so the re-entrant
+    /// addPlaceButtonTapped() call (and any retry after a failure) goes
+    /// straight through instead of prompting again.
+    var hasCollectedRating = false
+
+    /// A new place selection invalidates anything collected for the previous
+    /// one (matters after a failed save followed by picking another place)
+    func resetRatingCollection() {
+        hasCollectedRating = false
+        userRating = nil
+        pendingReviewText = nil
+    }
+
+    func presentRatingPromptBeforeSave() {
+        let name = nameTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "this place"
+        let sheet = PlaceRatingSheetViewController(placeName: name)
+        sheet.onContinue = { [weak self] rating in
+            guard let self = self else { return }
+            self.userRating = rating
+            self.hasCollectedRating = true
+            // Re-enter the save: same pipeline as before — duplicate check,
+            // subscription limits, piggy bank — all of it
+            self.addPlaceButtonTapped()
+        }
+        sheet.modalPresentationStyle = .pageSheet
+        if let sheetController = sheet.sheetPresentationController {
+            // Compact: title + pill row + skip, nothing else
+            if #available(iOS 16.0, *) {
+                sheetController.detents = [.custom { _ in 240 }]
+            } else {
+                sheetController.detents = [.medium()]
+            }
+            sheetController.prefersGrabberVisible = true
+        }
+        present(sheet, animated: true)
+    }
+
+    /// The sheet's review becomes a comment on the venue (public notes were
+    /// retired in favor of comments). Fire-and-forget after the save.
+    func postPendingReviewIfNeeded(for place: Place) {
+        guard let review = pendingReviewText, !review.isEmpty else { return }
+        pendingReviewText = nil
+        PlaceService.shared.addPlaceComment(placeId: place.id, text: review) { result in
+            if case .failure(let error) = result {
+                Logger.debug("⚠️ Review comment failed to post: \(error)")
+            }
+        }
     }
 
     func checkLocationAuthorizationOnAppear() {
@@ -676,7 +793,8 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         mapContainer.addSubview(zoomToMeButton)
         contentView.addSubview(manualEntryButton)
         contentView.addSubview(formContainer)
-        contentView.addSubview(addPlaceButton)
+        view.addSubview(saveFooterBar)
+        saveFooterBar.addSubview(addPlaceButton)
         
         // Add search results overlay on top
         view.addSubview(searchResultsTableView)
@@ -697,6 +815,8 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         formContainer.addSubview(descriptionTextView)
         formContainer.addSubview(privateNotesLabel)
         formContainer.addSubview(privateNotesTextView)
+        formContainer.addSubview(reviewCommentLabel)
+        formContainer.addSubview(reviewCommentTextView)
         formContainer.addSubview(addressLabel)
         formContainer.addSubview(addressTextView)
         formContainer.addSubview(privacyLabel)
@@ -708,7 +828,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: saveFooterBar.topAnchor),
             
             // Content view
             contentView.topAnchor.constraint(equalTo: scrollView.topAnchor),
@@ -836,7 +956,15 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             privateNotesTextView.trailingAnchor.constraint(equalTo: formContainer.trailingAnchor, constant: -Constants.Spacing.large),
             privateNotesTextView.heightAnchor.constraint(equalToConstant: 60),
             
-            addressLabel.topAnchor.constraint(equalTo: privateNotesTextView.bottomAnchor, constant: Constants.Spacing.medium),
+            reviewCommentLabel.topAnchor.constraint(equalTo: privateNotesTextView.bottomAnchor, constant: Constants.Spacing.medium),
+            reviewCommentLabel.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
+
+            reviewCommentTextView.topAnchor.constraint(equalTo: reviewCommentLabel.bottomAnchor, constant: Constants.Spacing.small),
+            reviewCommentTextView.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
+            reviewCommentTextView.trailingAnchor.constraint(equalTo: formContainer.trailingAnchor, constant: -Constants.Spacing.large),
+            reviewCommentTextView.heightAnchor.constraint(equalToConstant: 60),
+
+            addressLabel.topAnchor.constraint(equalTo: reviewCommentTextView.bottomAnchor, constant: Constants.Spacing.medium),
             addressLabel.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
             
             addressTextView.topAnchor.constraint(equalTo: addressLabel.bottomAnchor, constant: Constants.Spacing.small),
@@ -853,12 +981,20 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             
             privacySegmentedControl.bottomAnchor.constraint(equalTo: formContainer.bottomAnchor),
             
-            // Add place button
-            addPlaceButton.topAnchor.constraint(equalTo: formContainer.bottomAnchor, constant: Constants.Spacing.large),
-            addPlaceButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            addPlaceButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            // Scroll content ends at the form — the save button lives in the
+            // sticky footer below
+            formContainer.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large),
+
+            // Sticky save footer
+            saveFooterBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            saveFooterBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            saveFooterBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
+            addPlaceButton.topAnchor.constraint(equalTo: saveFooterBar.topAnchor, constant: Constants.Spacing.small),
+            addPlaceButton.leadingAnchor.constraint(equalTo: saveFooterBar.leadingAnchor, constant: Constants.Spacing.large),
+            addPlaceButton.trailingAnchor.constraint(equalTo: saveFooterBar.trailingAnchor, constant: -Constants.Spacing.large),
             addPlaceButton.heightAnchor.constraint(equalToConstant: 50),
-            addPlaceButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large),
+            addPlaceButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -Constants.Spacing.small),
             
             // Search results overlay
             searchResultsTableView.topAnchor.constraint(equalTo: searchContainer.bottomAnchor, constant: 4),
@@ -1076,17 +1212,15 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             DispatchQueue.main.async {
                 // Enable manual entry
                 self.enableManualEntry()
-                
-                // Clear form for manual entry
-                self.nameTextField.text = ""
-                self.descriptionTextView.text = ""
-                self.autoGeneratedDescription = ""
-                self.privateNotesTextView.text = ""
-                
+
                 // Clear any Google Place details since this is manual
                 self.selectedGooglePlaceDetails = nil
-                
-                // Fill in address
+
+                // NEVER bulldoze what the user already typed. This used to
+                // clear the whole form and overwrite the address with the
+                // pin's reverse-geocode — someone who typed "3212 Shafto Rd"
+                // then tapped the map watched their entry become their
+                // current location's address. Geocode fills EMPTY fields only.
                 let address = [
                     placemark.subThoroughfare,
                     placemark.thoroughfare,
@@ -1095,8 +1229,10 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                     placemark.postalCode,
                     placemark.country
                 ].compactMap { $0 }.joined(separator: ", ")
-                
-                self.addressTextView.text = address
+
+                if (self.addressTextView.text ?? "").isEmpty {
+                    self.addressTextView.text = address
+                }
                 self.selectedLocation = coordinate
                 
                 // Add a pin to show the selected location
@@ -1447,8 +1583,21 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             return
         }
         
+        // The rating prompt runs once, at the moment of commitment: tap a
+        // 0–10 pill (or Skip) and the save re-enters this method with
+        // hasCollectedRating set. Swiping the prompt away cancels the save.
+        if showsRatingPromptOnSave && !hasCollectedRating {
+            presentRatingPromptBeforeSave()
+            return
+        }
+
+        // The form's Review/Comment field posts as a venue comment (visible
+        // to anyone who opens the place) right after the save succeeds
+        let reviewText = reviewCommentTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        pendingReviewText = reviewText.isEmpty ? nil : reviewText
+
         let category = selectedCategory
-        
+
         // Get custom category if "Other" is selected
         let customCategory: String? = (category == .other && selectedSubcategory != nil) ? selectedSubcategory : nil
         let subcategory: String? = (category != .other) ? selectedSubcategory : nil
@@ -1824,7 +1973,9 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                                 object: nil,
                                 userInfo: ["circleId": self?.selectedCircleId ?? "", "place": place]
                             )
-                            
+
+                            self?.postPendingReviewIfNeeded(for: place)
+
                             // No success popup — the piggy-bank coin drop IS
                             // the success feedback; an alert here covered it up
                             self?.navigateToCircleDetail()
@@ -1937,6 +2088,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             privateNotes: privateNotes.isEmpty ? nil : privateNotes,
             neighborhood: selectedNeighborhood,
             applePoiCategory: selectedApplePoiCategory,
+            userRating: userRating,
             force: force
         ) { [weak self] result in
             DispatchQueue.main.async {
@@ -1962,7 +2114,9 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                             object: nil,
                             userInfo: ["circleId": self?.selectedCircleId ?? "", "place": place]
                         )
-                        
+
+                        self?.postPendingReviewIfNeeded(for: place)
+
                         // No success popup — the piggy-bank coin drop IS the
                         // success feedback; an alert here covered it up
                         self?.navigateToCircleDetail()
@@ -1975,7 +2129,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             }
         }
     }
-    
+
     func createPlaceWithGoogleDetails(googleDetails: GooglePlaceDetails,
                                             name: String,
                                             address: String,
@@ -2006,6 +2160,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             preUploadedPhotoUrls: self.uploadedPhotoUrls.isEmpty ? nil : self.uploadedPhotoUrls,
             rating: googleDetails.rating,
             userRatingsTotal: googleDetails.userRatingsTotal,
+            userRating: userRating,
             force: force
         ) { [weak self] result in
             DispatchQueue.main.async {
@@ -2033,7 +2188,9 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                             object: nil,
                             userInfo: ["circleId": self?.selectedCircleId ?? "", "place": place]
                         )
-                        
+
+                        self?.postPendingReviewIfNeeded(for: place)
+
                         // No success popup — the piggy-bank coin drop IS the
                         // success feedback; an alert here covered it up
                         self?.navigateToCircleDetail()
@@ -2352,6 +2509,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         
         // Set flag to prevent auto-search while filling form
         isFillingForm = true
+        resetRatingCollection()
         
         selectedMapItem = mapItem
         selectedGooglePlaceDetails = nil // Clear Google details
@@ -2851,7 +3009,8 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             guard let placemark = placemarks?.first else { return }
             
             DispatchQueue.main.async {
-                // Fill in address
+                // Fill the address only when the user hasn't typed one —
+                // same no-bulldozing rule as handleManualLocationTap
                 let address = [
                     placemark.subThoroughfare,
                     placemark.thoroughfare,
@@ -2860,8 +3019,10 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                     placemark.postalCode,
                     placemark.country
                 ].compactMap { $0 }.joined(separator: ", ")
-                
-                self.addressTextView.text = address
+
+                if (self.addressTextView.text ?? "").isEmpty {
+                    self.addressTextView.text = address
+                }
                 self.selectedLocation = coordinate
                 self.addSelectedLocationPin(at: coordinate)
                 self.enableManualEntry()
@@ -3054,7 +3215,8 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         // Add a small delay to ensure the form is visible before populating
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            
+            self.resetRatingCollection()
+
             // Fill name
             self.nameTextField.text = placeDetails.name
             
@@ -3126,7 +3288,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             // Scroll to form
             let formRect = self.formContainer.convert(self.formContainer.bounds, to: self.scrollView)
             self.scrollView.scrollRectToVisible(formRect, animated: true)
-            
+
             // Force UI refresh
             self.view.setNeedsLayout()
             self.view.layoutIfNeeded()
@@ -3458,7 +3620,10 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         Logger.debug("📍 Description: \(placeData["description"] ?? "No description")")
         
         var enrichedPlaceData = placeData
-        
+        if let userRating = userRating {
+            enrichedPlaceData["userRating"] = userRating
+        }
+
         // Try to get Apple Look Around image if location is available
         if let location = placeData["location"] as? [String: Any],
            let coordinates = location["coordinates"] as? [Double],
@@ -3538,7 +3703,9 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                         Logger.debug("✅ Name: \(newPlace.name)")
                         Logger.debug("✅ Photos: \(newPlace.photos ?? [])")
                         Logger.debug("✅ Description: \(newPlace.description ?? "nil")")
-                        
+
+                        self.postPendingReviewIfNeeded(for: newPlace)
+
                         // No success popup — the piggy-bank coin drop IS the
                         // success feedback; an alert here covered it up
                         self.navigateToCircleDetail()

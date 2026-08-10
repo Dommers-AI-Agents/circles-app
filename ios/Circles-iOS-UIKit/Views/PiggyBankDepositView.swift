@@ -1,4 +1,5 @@
 import UIKit
+import AVFoundation
 
 /// The coin-into-the-piggy-bank deposit moment. A window-level celebration
 /// card, centered on screen (~3s, non-blocking, survives navigation): a
@@ -8,6 +9,12 @@ import UIKit
 final class PiggyBankDepositView: UIView {
 
     private static var activeView: PiggyBankDepositView?
+
+    // Fractional ("nickel") deposits play the dancing-leprechaun clip
+    // (HEVC-with-alpha, composited over the card) instead of the coin drop.
+    private var leprechaunPlayer: AVPlayer?
+    private var leprechaunLayer: AVPlayerLayer?
+    private var isLeprechaunMode = false
 
     /// How long the celebration owns the screen. Anything else that wants to
     /// pop (milestone celebrations) should wait this long when play() returns
@@ -24,7 +31,7 @@ final class PiggyBankDepositView: UIView {
         return true
     }
 
-    private static func show(coins: Int) {
+    private static func show(coins: Double) {
         guard let window = UIApplication.shared.connectedScenes
             .compactMap({ ($0 as? UIWindowScene)?.keyWindow }).first else { return }
 
@@ -69,7 +76,7 @@ final class PiggyBankDepositView: UIView {
         return label
     }()
 
-    private init(coins: Int) {
+    private init(coins: Double) {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         backgroundColor = Constants.Colors.background
@@ -82,7 +89,28 @@ final class PiggyBankDepositView: UIView {
         // is doing next.
         isUserInteractionEnabled = false
 
-        amountLabel.text = "+\(coins) \(PiggyBankFormatting.coinUnit(coins))"
+        amountLabel.text = "+\(PiggyBankFormatting.amount(coins)) \(PiggyBankFormatting.coinUnit(coins))"
+        // Fractional earns are "nickels": a smaller silver coin and a silver
+        // amount, so pocket change reads differently from a full gold coin.
+        // (The dancing-leprechaun sprite drops into this same slot in Phase C.)
+        if coins < 1 {
+            coinLabel.text = "⚪️"
+            coinLabel.font = .systemFont(ofSize: 34)
+            amountLabel.textColor = .systemGray
+            if let url = Bundle.main.url(forResource: "LeprechaunDeposit", withExtension: "mov") {
+                isLeprechaunMode = true
+                piggyLabel.alpha = 0
+                coinLabel.alpha = 0
+                let player = AVPlayer(url: url)
+                player.isMuted = true
+                let layer = AVPlayerLayer(player: player)
+                layer.videoGravity = .resizeAspect
+                layer.pixelBufferAttributes = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+                self.layer.addSublayer(layer)
+                leprechaunPlayer = player
+                leprechaunLayer = layer
+            }
+        }
         addSubview(piggyLabel)
         addSubview(amountLabel)
         addSubview(coinLabel)
@@ -105,6 +133,12 @@ final class PiggyBankDepositView: UIView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // 4:3 clip pinned to the card's top, full width
+        leprechaunLayer?.frame = CGRect(x: 8, y: 6, width: bounds.width - 16, height: (bounds.width - 16) * 0.75)
+    }
+
     private func animateIn() {
         alpha = 0
         transform = CGAffineTransform(scaleX: 0.7, y: 0.7)
@@ -118,6 +152,23 @@ final class PiggyBankDepositView: UIView {
             self.alpha = 1
             self.transform = .identity
         })
+
+        if isLeprechaunMode {
+            leprechaunPlayer?.play()
+            UIView.animate(withDuration: 0.4, delay: 2.7, usingSpringWithDamping: 0.6,
+                           initialSpringVelocity: 0.6, options: [], animations: {
+                self.amountLabel.alpha = 1
+                self.amountLabel.transform = .identity
+            })
+            UIView.animate(withDuration: 0.45, delay: 3.8, options: [.curveEaseIn], animations: {
+                self.alpha = 0
+                self.transform = CGAffineTransform(translationX: 0, y: -24).scaledBy(x: 0.9, y: 0.9)
+            }, completion: { _ in
+                self.removeFromSuperview()
+                if PiggyBankDepositView.activeView === self { PiggyBankDepositView.activeView = nil }
+            })
+            return
+        }
 
         // Coin drop: appear high, fall into the piggy, vanish behind it
         UIView.animateKeyframes(withDuration: 1.1, delay: 0.3, options: []) {

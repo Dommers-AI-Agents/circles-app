@@ -523,7 +523,9 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
             body: [:]
         ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
             switch result {
-            case .success:
+            case .success(let response):
+                // First-ever follow of this person earns a dime
+                PiggyBankDepositView.play(credit: response.piggyBank)
                 // Send connection request
                 NetworkManager.shared.sendConnectionRequest(to: user.id) { error in
                     if error == nil {

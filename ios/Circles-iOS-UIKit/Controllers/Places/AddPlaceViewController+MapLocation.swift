@@ -147,6 +147,7 @@ extension AddPlaceViewController: MKMapViewDelegate {
         let poiName = featureAnnotation.title ?? "Unknown Place"
         let poiSubtitle = featureAnnotation.subtitle ?? ""
         let coordinate = featureAnnotation.coordinate
+        resetRatingCollection()
 
         // Dedup: the same selection can arrive via both didSelect variants
         if lastHandledPOIName == poiName,
@@ -202,7 +203,7 @@ extension AddPlaceViewController: MKMapViewDelegate {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         self?.scrollToFormTop()
                     }
-                    
+
                     // Attach googlePlaceId + photos — our own database first,
                     // Google only for venues nobody has saved yet
                     let placeName = poiData.name
@@ -243,7 +244,7 @@ extension AddPlaceViewController: MKMapViewDelegate {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         self?.scrollToFormTop()
                     }
-                    
+
                     // Attach googlePlaceId + photos even in the fallback case
                     if !poiName.isEmpty {
                         self?.fetchPlaceAssets(

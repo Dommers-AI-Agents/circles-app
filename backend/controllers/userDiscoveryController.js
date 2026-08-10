@@ -86,11 +86,15 @@ const getDiscoverUsers = async (req, res) => {
       };
     };
 
-    // Every suggestion surface excludes the same three groups. Previously only
+    // Blocked users (either direction) never appear on any people surface
+    const { excludedUserIds } = require('../services/moderationService');
+    const blockedSet = excludedUserIds(currentUserData);
+
+    // Every suggestion surface excludes the same groups. Previously only
     // the 'discover' branch filtered out people you already follow, so Popular
     // and Nearby kept offering you people you'd followed weeks ago.
     const isSuggestable = (id) =>
-      id !== userId && !dismissed.has(id) && !following.has(id);
+      id !== userId && !dismissed.has(id) && !following.has(id) && !blockedSet.has(id);
 
     let users = [];
 
@@ -181,7 +185,7 @@ const getDiscoverUsers = async (req, res) => {
       // of their collection. Watching people you know climb is the fun.
       const snap = await db.collection(COLLECTIONS.USERS).limit(500).get();
       users = snap.docs
-        .filter((d) => d.id !== userId && !dismissed.has(d.id))
+        .filter((d) => d.id !== userId && !dismissed.has(d.id) && !blockedSet.has(d.id))
         .map((d) => shape(d, 'leaderboard'))
         .filter((u) => u.placesCount > 0)
         .sort((a, b) => (b.placesCount - a.placesCount) || ((b.followersCount || 0) - (a.followersCount || 0)));

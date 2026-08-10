@@ -5,10 +5,10 @@ import Foundation
 
 /// Materialized balance for the current user.
 struct PiggyBank: Decodable {
-    let pendingCoins: Int
-    let confirmedCoins: Int
-    let lifetimeCoins: Int
-    let settledOnChain: Int
+    let pendingCoins: Double
+    let confirmedCoins: Double
+    let lifetimeCoins: Double
+    let settledOnChain: Double
     let walletAddress: String?   // linked self-custody Cactus address (Phase 4)
 }
 
@@ -16,9 +16,9 @@ struct PiggyBank: Decodable {
 struct PiggyActiveClaim: Decodable {
     let id: String
     let status: String       // claim_pending | claim_sending | claim_sent | settled | claim_failed
-    let coins: Int
-    let feeCoins: Int?
-    let netCoins: Int?
+    let coins: Double
+    let feeCoins: Double?
+    let netCoins: Double?
     let catAmount: Int?
     let address: String
     let txId: String?
@@ -29,7 +29,7 @@ struct PiggyActiveClaim: Decodable {
 struct PiggyLedgerEvent: Decodable {
     let id: String
     let eventType: String
-    let coins: Int
+    let coins: Double
     let status: String        // earn: pending|confirmed|reversed|held · claim: claim_*|settled
     let createdAt: String
     let clearAt: String?
@@ -64,7 +64,11 @@ struct PiggyLedgerEvent: Decodable {
         case "place_liked": return "Liked a place"
         case "place_comment": return "Commented on a place"
         case "user_followed": return "Followed someone"
-        case "claim": return "Sent to your wallet"
+        case "activity_reaction": return "Reacted to activity"
+        case "moment_liked": return "Liked a Moment"
+        case "moment_like_received": return "Your Moment got liked"
+        case "claim": return "Sent to your 🌵 wallet"
+        case "share_points_converted": return "Store points converted to FavCoins"
         default: return eventType.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }
@@ -76,7 +80,7 @@ struct PiggyLedgerEvent: Decodable {
 
 /// Display config the backend ships so the client never hardcodes the economy.
 struct PiggyBankConfigPayload: Decodable {
-    let coinValues: [String: Int]
+    let coinValues: [String: Double]
     let clearingWindowHours: Int?
     let minConfirmedToClaim: Int?
     let claimFeeCoins: Int?
@@ -110,9 +114,9 @@ struct PiggyBankHistoryResponse: Decodable {
 /// The credit stub riding on the create-place response — drives the deposit
 /// animation. Optional everywhere: an old server or a failed credit must
 /// never break place creation.
-struct PiggyBankCredit: Decodable {
+struct PiggyBankCredit: Codable {
     let credited: Bool
-    let coins: Int?
+    let coins: Double?
 }
 
 extension ISO8601DateFormatter {
@@ -135,12 +139,20 @@ extension ISO8601DateFormatter {
 /// ("FavCoin is a crypto coin"), while a count of units takes the plural
 /// ("+5 FavCoins"). One place decides, so "1 FavCoins" can't slip into the UI.
 enum PiggyBankFormatting {
-    static func coinUnit(_ count: Int) -> String {
+    static func coinUnit(_ count: Double) -> String {
         count == 1 ? "FavCoin" : "FavCoins"
     }
 
-    /// "1 FavCoin" / "12 FavCoins"
-    static func coins(_ count: Int) -> String {
-        "\(count) \(coinUnit(count))"
+    /// "3" for whole amounts, "0.05" for fractional (max 2 decimals)
+    static func amount(_ value: Double) -> String {
+        if value == value.rounded() && abs(value) >= 1 || value == 0 {
+            return String(Int(value))
+        }
+        return String(format: "%.2f", value)
+    }
+
+    /// "1 FavCoin" / "12 FavCoins" / "0.05 FavCoins"
+    static func coins(_ count: Double) -> String {
+        "\(amount(count)) \(coinUnit(count))"
     }
 }

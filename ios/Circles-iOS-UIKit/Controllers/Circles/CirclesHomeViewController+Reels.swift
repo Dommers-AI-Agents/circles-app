@@ -553,6 +553,25 @@ extension CirclesHomeViewController: VideoReelCellDelegate {
         guard let indexPath = reelsCollectionView.indexPath(for: cell) else { return }
         let reel = reels[indexPath.item]
         pauseAllVideos()
+
+        // Someone else's moment: report / unfollow / block instead of the
+        // owner's delete-and-privacy menu
+        if reel.userId != AuthService.shared.currentUser?.id {
+            presentContentModerationSheet(
+                contentType: "moment",
+                contentId: reel.id,
+                ownerId: reel.userId,
+                ownerName: reel.user?.displayName,
+                sourceView: cell,
+                onContentHidden: { [weak self] in
+                    guard let self = self, let idx = self.reels.firstIndex(where: { $0.id == reel.id }) else { return }
+                    self.reels.remove(at: idx)
+                    self.reelsCollectionView.reloadData()
+                }
+            )
+            return
+        }
+
         presentMomentOwnerMenu(
             for: reel,
             sourceView: cell,

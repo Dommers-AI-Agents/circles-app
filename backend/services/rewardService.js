@@ -258,11 +258,44 @@ class RewardService {
       throw error;
     }
 
-    await this.db.collection(COLLECTIONS.USERS).doc(userId).update({
-      rewardPoints: FieldValue.increment(points)
-    });
+    // Per-store loyalty: the venue bucket is the spendable balance — points
+    // earned at a shop are only good at that shop. The flat rewardPoints
+    // counter stays as the display total (kept equal to the sum of buckets).
+    // venueName rides along denormalized so balance reads need no venue fetch.
+    const userUpdate = { rewardPoints: FieldValue.increment(points) };
+    if (venueId) {
+      userUpdate[`rewardPointsByVenue.${venueId}.points`] = FieldValue.increment(points);
+      if (venueName) {
+        userUpdate[`rewardPointsByVenue.${venueId}.venueName`] = venueName;
+      }
+    } else {
+      // Every live award type is venue-stamped; a venue-less award would mint
+      // points spendable nowhere. Loud so a future caller gets caught in dev.
+      console.warn(`⚠️ awardPoints without venueId (type=${type}) — points have no shop to be spent at`);
+    }
+    await this.db.collection(COLLECTIONS.USERS).doc(userId).update(userUpdate);
 
     return { awarded: true, type, points };
+  }
+
+  // { venueId, venueName, points } for every shop where the user holds
+  // points, richest first.
+  venueBalancesFrom(userData) {
+    const byVenue = (userData && userData.rewardPointsByVenue) || {};
+    return Object.entries(byVenue)
+      .map(([venueId, bucket]) => ({
+        venueId,
+        venueName: (bucket && bucket.venueName) || '',
+        points: (bucket && bucket.points) || 0
+      }))
+      .filter((v) => v.points > 0)
+      .sort((a, b) => b.points - a.points);
+  }
+
+  venuePointsFrom(userData, venueId) {
+    const bucket = userData && userData.rewardPointsByVenue
+      && userData.rewardPointsByVenue[venueId];
+    return (bucket && bucket.points) || 0;
   }
 
   // Which of these googlePlaceIds has the user saved? Same semantics as the
@@ -292,7 +325,9 @@ class RewardService {
 
   async getBalance(userId) {
     const userDoc = await this.db.collection(COLLECTIONS.USERS).doc(userId).get();
-    const rewardPoints = (userDoc.exists && userDoc.data().rewardPoints) || 0;
+    const userData = userDoc.exists ? userDoc.data() : {};
+    const rewardPoints = userData.rewardPoints || 0;
+    const venueBalances = this.venueBalancesFrom(userData);
 
     let events = [];
     try {
@@ -308,7 +343,7 @@ class RewardService {
       console.error('⚠️ Failed to load reward history:', error.message);
     }
 
-    return { rewardPoints, events };
+    return { rewardPoints, venueBalances, events };
   }
 
   // ---------- Earning rules ----------
@@ -390,26 +425,11 @@ class RewardService {
     return result;
   }
 
-  // Fire-and-forget hook called from place creation when a refUserId is present.
-  async awardShareConversion(sharerUserId, adderUserId, googlePlaceId) {
-    try {
-      if (!sharerUserId || !adderUserId || sharerUserId === adderUserId) return;
-      const placeKey = sanitizeKeyPart(googlePlaceId || 'manual');
-      const sharerDoc = await this.db.collection(COLLECTIONS.USERS).doc(sharerUserId).get();
-      if (!sharerDoc.exists) return;
-
-      await this.awardPoints({
-        userId: sharerUserId,
-        type: 'share_conversion',
-        points: rewardConfig.POINTS.SHARE_CONVERSION,
-        idempotencyKey: `share:${sharerUserId}:${adderUserId}:${placeKey}`,
-        googlePlaceId: googlePlaceId || null,
-        sourceUserId: adderUserId
-      });
-    } catch (error) {
-      console.error('⚠️ Share conversion award failed:', error.message);
-    }
-  }
+  // (Share conversions no longer pay store points — they aren't tied to any
+  // shop, so under per-store loyalty they had nowhere to be spent. The same
+  // trigger already pays the sharer FavCoins via the piggy bank's
+  // place_adopted earn; historical share_conversion points were converted to
+  // FavCoins by scripts/backfill-per-venue-points.js. Retired 2026-08-10.)
 
   // ---------- Redemption ----------
 
@@ -453,19 +473,31 @@ class RewardService {
       status: 'issued'
     });
 
+    // True per-store loyalty: an offer is paid for with points earned at THAT
+    // shop — the venue bucket, not the account-wide total, is what's checked
+    // and spent.
+    let shortBy = 0;
     try {
       await this.db.runTransaction(async (transaction) => {
         const userDoc = await transaction.get(userRef);
-        const balance = (userDoc.exists && userDoc.data().rewardPoints) || 0;
-        if (balance < offer.pointsCost) {
+        const balanceHere = this.venuePointsFrom(userDoc.exists ? userDoc.data() : {}, venueId);
+        if (balanceHere < offer.pointsCost) {
+          shortBy = offer.pointsCost - balanceHere;
           throw new Error('INSUFFICIENT_POINTS');
         }
-        transaction.update(userRef, { rewardPoints: FieldValue.increment(-offer.pointsCost) });
+        transaction.update(userRef, {
+          rewardPoints: FieldValue.increment(-offer.pointsCost),
+          [`rewardPointsByVenue.${venueId}.points`]: FieldValue.increment(-offer.pointsCost),
+          [`rewardPointsByVenue.${venueId}.venueName`]: venue.venueName
+        });
         transaction.set(eventRef, event);
       });
     } catch (error) {
       if (error.message === 'INSUFFICIENT_POINTS') {
-        return { success: false, error: 'Not enough points for this offer' };
+        return {
+          success: false,
+          error: `Not enough points at ${venue.venueName} — you need ${shortBy} more. Points are earned and spent per shop.`
+        };
       }
       throw error;
     }

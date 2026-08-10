@@ -173,6 +173,14 @@ const createCircleGroup = (groupData, ownerId) => {
 };
 
 // Place model structure
+// Clamp the saver's personal score to an integer 0-10; anything unparseable
+// becomes null rather than an error (older clients never send it)
+const sanitizeUserRating = (value) => {
+  const num = Number(value);
+  if (value === null || value === undefined || Number.isNaN(num)) return null;
+  return Math.min(10, Math.max(0, Math.round(num)));
+};
+
 const createPlace = (placeData, circleId, addedBy) => {
   const now = new Date().toISOString();
   
@@ -229,6 +237,11 @@ const createPlace = (placeData, circleId, addedBy) => {
     // scripts/migrate-public-notes-to-comments.js. privateNotes stay per-save
     // and are stripped from every read for anyone but the saver.
     privateNotes: placeData.privateNotes || null, // Notes only visible to the user who added them
+    // Saver's own 0-10 score for the venue. Per-user opinion, so it lives on
+    // the save record — NOT on globalPlaces, and deliberately not named
+    // `rating` (that's the Google venue field, stripped/propagated by
+    // globalPlaceResolver). Null = unrated / "haven't been yet".
+    userRating: sanitizeUserRating(placeData.userRating),
     tags: placeData.tags || [],
     reviews: placeData.reviews || [],
     openingHours: placeData.openingHours || null,
@@ -840,7 +853,8 @@ const validateNotification = (notificationData) => {
     'new_suggestion',
     'circle_invite',
     'store_claim',
-    'store_claim_approved'
+    'store_claim_approved',
+    'premium_signup'
   ];
   
   if (!notificationData.type || !validTypes.includes(notificationData.type)) {

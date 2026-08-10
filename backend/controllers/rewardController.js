@@ -11,6 +11,8 @@ const {
   validateAnnouncementInput,
   validateEarnRate,
   createVenueClaimRequest,
+  createRedemptionCode,
+  validateRedemptionCodeBatch,
   sanitizeKeyPart,
   STICKER_COLLECTIONS,
   MAX_ANNOUNCEMENTS
@@ -52,7 +54,9 @@ const publicVenueInfo = (venue) => ({
   category: venue.category || 'restaurant',
   googlePlaceId: venue.googlePlaceId,
   globalPlaceId: venue.globalPlaceId,
-  location: venue.location || null
+  location: venue.location || null,
+  // Online-only brand venue: never on a map; Specials/profile/follow only
+  isVirtual: venue.isVirtual === true
 });
 
 const activeOffers = (venue) => (venue.offers || []).filter((o) => o.active !== false);
@@ -119,7 +123,7 @@ exports.scan = async (req, res) => {
       rewardService.incrementVenueStats(venue.venueId, 'scans');
       const signupResult = await rewardService.awardStickerSignup(userId, venue);
       const alreadySaved = await userHasSavedVenuePlace(userId, venue);
-      const { rewardPoints } = await rewardService.getBalance(userId);
+      const { rewardPoints, venueBalances } = await rewardService.getBalance(userId);
 
       return res.json({
         success: true,
@@ -130,7 +134,8 @@ exports.scan = async (req, res) => {
             ? { type: 'sticker_signup', points: signupResult.points }
             : null,
           alreadySaved,
-          balance: rewardPoints
+          balance: rewardPoints,
+          venueBalance: (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0
         }
       });
     }
@@ -142,7 +147,7 @@ exports.scan = async (req, res) => {
     const loyalty = await venueLoyaltyStatus(venue);
     if (!loyalty.active) {
       console.warn(`[loyalty-integrity] register scan paused venue=${venue.venueId} reason=${loyalty.reason}`);
-      const { rewardPoints } = await rewardService.getBalance(userId);
+      const { rewardPoints, venueBalances } = await rewardService.getBalance(userId);
       return res.json({
         success: true,
         data: {
@@ -151,6 +156,7 @@ exports.scan = async (req, res) => {
           awarded: null,
           loyaltyPaused: true,
           balance: rewardPoints,
+          venueBalance: (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0,
           offers: []
         }
       });
@@ -163,7 +169,7 @@ exports.scan = async (req, res) => {
 
     const visitResult = await rewardService.awardVenueVisit(userId, venue);
 
-    const { rewardPoints } = await rewardService.getBalance(userId);
+    const { rewardPoints, venueBalances } = await rewardService.getBalance(userId);
     return res.json({
       success: true,
       data: {
@@ -174,6 +180,7 @@ exports.scan = async (req, res) => {
           : null,
         alreadyEarnedToday: visitResult.reason === 'already_today',
         balance: rewardPoints,
+        venueBalance: (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0,
         offers: activeOffers(venue)
       }
     });
@@ -209,14 +216,15 @@ exports.confirmStickerSave = async (req, res) => {
     }
 
     const result = await rewardService.awardStickerSave(userId, venue);
-    const { rewardPoints } = await rewardService.getBalance(userId);
+    const { rewardPoints, venueBalances } = await rewardService.getBalance(userId);
 
     res.json({
       success: true,
       data: {
         awarded: result.awarded ? { type: 'sticker_save', points: result.points } : null,
         alreadyAwarded: !!result.duplicate,
-        balance: rewardPoints
+        balance: rewardPoints,
+        venueBalance: (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0
       }
     });
   } catch (error) {
@@ -230,8 +238,8 @@ exports.confirmStickerSave = async (req, res) => {
 // @access  Private
 exports.getBalance = async (req, res) => {
   try {
-    const { rewardPoints, events } = await rewardService.getBalance(req.user.uid);
-    res.json({ success: true, data: { balance: rewardPoints, events } });
+    const { rewardPoints, venueBalances, events } = await rewardService.getBalance(req.user.uid);
+    res.json({ success: true, data: { balance: rewardPoints, venueBalances, events } });
   } catch (error) {
     console.error('❌ Failed to load reward balance:', error);
     res.status(500).json({ success: false, error: 'Failed to load balance' });
@@ -258,8 +266,16 @@ exports.redeemOffer = async (req, res) => {
       return res.status(400).json({ success: false, error: result.error });
     }
 
-    const { rewardPoints } = await rewardService.getBalance(req.user.uid);
-    res.json({ success: true, data: { voucher: result.voucher, balance: rewardPoints } });
+    const { rewardPoints, venueBalances } = await rewardService.getBalance(req.user.uid);
+    res.json({
+      success: true,
+      data: {
+        voucher: result.voucher,
+        balance: rewardPoints,
+        venueBalances,
+        venueBalance: (venueBalances.find((v) => v.venueId === venueId) || {}).points || 0
+      }
+    });
   } catch (error) {
     console.error('❌ Offer redemption failed:', error);
     res.status(500).json({ success: false, error: 'Failed to redeem offer' });
@@ -301,7 +317,7 @@ exports.getOffers = async (req, res) => {
     // and invisibly). Comp keeps hands-on pilot venues working. The owner's
     // subscription only covers the venue it was purchased for.
     const loyaltyLive = (venue) =>
-      isCompActive(venue) || isOwnerPremiumForVenue(ownerUsers.get(venue.ownerUserId), venue.venueId);
+      isCompActive(venue) || isOwnerPremiumForVenue(ownerUsers.get(venue.ownerUserId), venue.venueId, venue);
 
     // A venue belongs in the browse list only while its loyalty is live and it
     // has something to show — a redeemable offer or an announcement. A lapsed
@@ -347,13 +363,16 @@ exports.getOffers = async (req, res) => {
     });
 
     // Balance rides along so the home-screen badge and the rewards screen can
-    // render from this one request (skip getBalance — no need for the history)
+    // render from this one request (skip getBalance — no need for the history).
+    // venueBalances lets the offers UI gate affordability per shop.
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
-    const balance = (userDoc.exists && userDoc.data().rewardPoints) || 0;
+    const userData = userDoc.exists ? userDoc.data() : {};
+    const balance = userData.rewardPoints || 0;
+    const venueBalances = rewardService.venueBalancesFrom(userData);
 
     res.json({
       success: true,
-      data: { venues: venues.slice(0, rewardConfig.NEARBY_MAX_VENUES), balance }
+      data: { venues: venues.slice(0, rewardConfig.NEARBY_MAX_VENUES), balance, venueBalances }
     });
   } catch (error) {
     console.error('❌ Failed to load offers:', error);
@@ -427,7 +446,10 @@ exports.getVenueByPlace = async (req, res) => {
     }
 
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
-    const balance = (userDoc.exists && userDoc.data().rewardPoints) || 0;
+    const userData = userDoc.exists ? userDoc.data() : {};
+    const balance = userData.rewardPoints || 0;
+    // Per-store loyalty: what the caller can actually spend HERE
+    const venueBalance = rewardService.venuePointsFrom(userData, venue.venueId);
 
     // While the owner's business subscription is lapsed (and the venue isn't
     // comped), both offers AND announcements hide — a lapsed owner shouldn't
@@ -446,10 +468,11 @@ exports.getVenueByPlace = async (req, res) => {
         })),
         announcements: venueLoyaltyLive ? rewardService.activeAnnouncements(venue) : [],
         balance,
+        venueBalance,
         isOwner,
         // For the owner viewing their own place: drives the in-place
         // "Upgrade to Business" teaser when they can't post announcements yet
-        ownerPremium: isOwner ? isOwnerPremiumForVenue(req.user, venue.venueId) : undefined,
+        ownerPremium: isOwner ? isOwnerPremiumForVenue(req.user, venue.venueId, venue) : undefined,
         claim
       }
     });
@@ -493,6 +516,9 @@ exports.getMe = async (req, res) => {
       // gating comes from each venue's own ownerPremium flag
       ownerPremium: isOwnerPremiumUser(req.user),
       ownerPremiumVenueId: req.user.ownerSubscriptionVenueId || null,
+      // Brand storefront configured on this account (drives the profile card
+      // + edit entry in the app)
+      hasStorefront: !!(req.user.storefront && req.user.storefront.enabled),
       email: req.user.email || null
     }
   });
@@ -640,6 +666,7 @@ const ownerVenueInfo = (venue) => ({
   googlePlaceId: venue.googlePlaceId,
   globalPlaceId: venue.globalPlaceId,
   location: venue.location || null,
+  isVirtual: venue.isVirtual === true,
   windowCode: venue.windowCode,
   registerCode: venue.registerCode,
   // Exact URL encoded in the printed window sticker, so the in-app QR
@@ -701,7 +728,7 @@ exports.getMyVenues = async (req, res) => {
     // subscription only covers one venue, so premium is stamped per venue.
     const venueInfos = venues.map(ownerVenueInfo);
     venueInfos.forEach((info, i) => {
-      info.ownerPremium = isOwnerPremiumForVenue(req.user, venues[i].venueId);
+      info.ownerPremium = isOwnerPremiumForVenue(req.user, venues[i].venueId, venues[i]);
     });
     await Promise.all(venueInfos.map(async (info, i) => {
       const globalPlaceId = await venueGlobalPlaceId(venues[i]);
@@ -789,7 +816,7 @@ const emitVenueActivity = (venue, type, message) => {
 exports.getVenueDashboard = async (req, res) => {
   try {
     const venue = req.venue;
-    const premiumActive = isOwnerPremiumForVenue(req.user, venue.venueId);
+    const premiumActive = isOwnerPremiumForVenue(req.user, venue.venueId, venue);
     const globalPlaceId = await venueGlobalPlaceId(venue);
 
     // Followers live on the canonical globalPlaces record
@@ -820,7 +847,8 @@ exports.getVenueDashboard = async (req, res) => {
       visits: stats.visits || 0,
       scans: stats.scans || 0,
       signups: stats.signups || 0,
-      redemptions: stats.redemptions || 0
+      redemptions: stats.redemptions || 0,
+      codeRedemptions: stats.codeRedemptions || 0
     };
 
     let detail = null;
@@ -1508,6 +1536,15 @@ exports.approveClaim = async (req, res) => {
         console.error('⚠️ Claim-approved notification failed:', notifyError.message);
       }
 
+      // And by email — the durable record, plus the Business-tier walkthrough
+      if (ownerEmail) {
+        emailService.sendClaimApprovedEmail(
+          ownerEmail,
+          claim.contactName || claim.userDisplayName || null,
+          claim.placeName || claim.venueName || null
+        ).catch((e) => console.error('⚠️ Claim-approved email failed:', e.message));
+      }
+
       // Best-effort: close out competing pending claims for the same place
       try {
         const placeKey = claim.globalPlaceId || claim.googlePlaceId;
@@ -1574,6 +1611,16 @@ exports.approveClaim = async (req, res) => {
       await notificationService.notifyStoreClaimApproved(claim, claimRef.id, claim.venueId);
     } catch (notifyError) {
       console.error('⚠️ Claim-approved notification failed:', notifyError.message);
+    }
+
+    // And by email — the durable record, plus the Business-tier walkthrough
+    const approvedEmail = claim.contactEmail || claim.userEmail;
+    if (approvedEmail) {
+      emailService.sendClaimApprovedEmail(
+        approvedEmail,
+        claim.contactName || claim.userDisplayName || null,
+        claim.venueName || claim.placeName || null
+      ).catch((e) => console.error('⚠️ Claim-approved email failed:', e.message));
     }
 
     // Best-effort: close out competing pending claims for the same venue
@@ -1689,5 +1736,447 @@ exports.listVenues = async (req, res) => {
   } catch (error) {
     console.error('❌ Venue listing failed:', error);
     res.status(500).json({ success: false, error: 'Failed to list venues' });
+  }
+};
+
+
+// ============================================================
+// Brand accounts (virtual stores) — account-anchored businesses
+// ============================================================
+// A "virtual" venue is a stickerVenues doc with isVirtual: true and no
+// location/Google identity: it inherits offers, announcements, premium
+// gating, the dashboard, and the register-QR loyalty scan, but can never
+// surface on a map or in Nearby (those read globalPlaces, not stickerVenues).
+// The user doc carries the brand's presentation (storefront{}).
+
+const piggyBankService = require('../services/piggyBankService');
+
+const STOREFRONT_URL_FIELDS = ['website', 'catalogUrl'];
+
+const sanitizeStorefrontInput = (body) => {
+  const errors = [];
+  const out = {};
+
+  if (body.enabled !== undefined) out.enabled = body.enabled === true;
+
+  if (body.businessName !== undefined) {
+    const name = String(body.businessName || '').trim();
+    if (!name) errors.push('businessName must not be empty');
+    if (name.length > 60) errors.push('businessName must be 60 characters or fewer');
+    out.businessName = name;
+  }
+
+  if (body.about !== undefined) {
+    const about = String(body.about || '').trim();
+    if (about.length > 1000) errors.push('about must be 1000 characters or fewer');
+    out.about = about || null;
+  }
+
+  STOREFRONT_URL_FIELDS.forEach((field) => {
+    if (body[field] === undefined) return;
+    const raw = String(body[field] || '').trim();
+    if (!raw) { out[field] = null; return; }
+    if (raw.length > 300) errors.push(`${field} must be 300 characters or fewer`);
+    out[field] = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  });
+
+  if (body.contactEmail !== undefined) {
+    const email = String(body.contactEmail || '').trim().toLowerCase();
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      errors.push('contactEmail must be a valid email address');
+    }
+    out.contactEmail = email || null;
+  }
+
+  if (body.findUsAtCircleId !== undefined) {
+    out.findUsAtCircleId = body.findUsAtCircleId ? String(body.findUsAtCircleId) : null;
+  }
+
+  return { errors, out };
+};
+
+// @desc    Configure the caller's brand storefront (profile card content)
+// @route   PUT /api/rewards/storefront
+// @access  Business standing (active owner subscription, manual verify, or super user)
+exports.updateStorefront = async (req, res) => {
+  try {
+    if (!isOwnerPremiumUser(req.user)) {
+      return res.status(403).json({
+        success: false,
+        upgradeRequired: true,
+        error: 'FavCircles Business is required to set up a storefront'
+      });
+    }
+
+    const { errors, out } = sanitizeStorefrontInput(req.body);
+    if (errors.length > 0) {
+      return res.status(400).json({ success: false, error: errors.join('. ') });
+    }
+
+    // The "Find us at" circle must be one of the caller's own circles —
+    // circles key ownership on `owner`
+    if (out.findUsAtCircleId) {
+      const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(out.findUsAtCircleId).get();
+      const circleOwner = circleDoc.exists ? circleDoc.data().owner : null;
+      if (!circleDoc.exists || String(circleOwner) !== String(req.user.uid)) {
+        return res.status(400).json({ success: false, error: 'findUsAtCircleId must be one of your own circles' });
+      }
+    }
+
+    const existing = (req.user.storefront && typeof req.user.storefront === 'object')
+      ? req.user.storefront : {};
+    const storefront = {
+      enabled: existing.enabled === true,
+      businessName: existing.businessName || null,
+      about: existing.about || null,
+      website: existing.website || null,
+      catalogUrl: existing.catalogUrl || null,
+      contactEmail: existing.contactEmail || null,
+      findUsAtCircleId: existing.findUsAtCircleId || null,
+      ...out,
+      updatedAt: new Date().toISOString()
+    };
+
+    if (storefront.enabled && !storefront.businessName) {
+      return res.status(400).json({ success: false, error: 'businessName is required to enable the storefront' });
+    }
+
+    await db.collection(COLLECTIONS.USERS).doc(req.user.uid).update({ storefront });
+    res.json({ success: true, data: { storefront } });
+  } catch (error) {
+    console.error('❌ Storefront update failed:', error);
+    res.status(500).json({ success: false, error: 'Failed to update storefront' });
+  }
+};
+
+// @desc    Public storefront for a business account: presentation + the
+//          account's live venues (offers/announcements) + Find-us-at circle
+// @route   GET /api/rewards/storefront/:userId
+// @access  Private (any signed-in user)
+exports.getStorefront = async (req, res) => {
+  try {
+    const userDoc = await db.collection(COLLECTIONS.USERS).doc(req.params.userId).get();
+    if (!userDoc.exists) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+    const owner = userDoc.data();
+    const storefront = owner.storefront;
+    if (!storefront || storefront.enabled !== true) {
+      return res.json({ success: true, data: { storefront: null } });
+    }
+
+    // The account's venues (physical and virtual), with live offer content
+    const venuesSnap = await db.collection(STICKER_COLLECTIONS.STICKER_VENUES)
+      .where('ownerUserId', '==', userDoc.id)
+      .limit(20)
+      .get();
+    const venues = venuesSnap.docs
+      .map((doc) => ({ venueId: doc.id, ...doc.data() }))
+      .filter((venue) => venue.active !== false)
+      .map((venue) => {
+        const live = isCompActive(venue) || isOwnerPremiumForVenue(owner, venue.venueId, venue);
+        return {
+          ...publicVenueInfo(venue),
+          loyaltyLive: live,
+          offers: live
+            ? activeOffers(venue).map(({ offerId, title, pointsCost }) => ({ offerId, title, pointsCost }))
+            : [],
+          announcements: live ? rewardService.activeAnnouncements(venue) : []
+        };
+      });
+
+    // Find-us-at circle summary (conference schedule etc.)
+    let findUsAtCircle = null;
+    if (storefront.findUsAtCircleId) {
+      const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(storefront.findUsAtCircleId).get();
+      if (circleDoc.exists && !circleDoc.data().deletedAt) {
+        const circle = circleDoc.data();
+        findUsAtCircle = {
+          id: circleDoc.id,
+          name: circle.name,
+          placesCount: circle.placesCount || (circle.places || []).length || 0
+        };
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        storefront: {
+          businessName: storefront.businessName,
+          about: storefront.about || null,
+          website: storefront.website || null,
+          catalogUrl: storefront.catalogUrl || null,
+          contactEmail: storefront.contactEmail || null
+        },
+        findUsAtCircle,
+        venues,
+        ownerDisplayName: owner.displayName || null
+      }
+    });
+  } catch (error) {
+    console.error('❌ Storefront read failed:', error);
+    res.status(500).json({ success: false, error: 'Failed to load storefront' });
+  }
+};
+
+// @desc    Self-service creation of the account's online store (virtual venue)
+// @route   POST /api/rewards/venues/virtual
+// @access  Business standing
+exports.createVirtualVenue = async (req, res) => {
+  try {
+    if (!isOwnerPremiumUser(req.user)) {
+      return res.status(403).json({
+        success: false,
+        upgradeRequired: true,
+        error: 'FavCircles Business is required to create an online store'
+      });
+    }
+
+    const venueName = String(req.body.venueName || '').trim();
+    if (!venueName) {
+      return res.status(400).json({ success: false, error: 'venueName is required' });
+    }
+
+    // One online store per account — a brand IS the account
+    const existing = await db.collection(STICKER_COLLECTIONS.STICKER_VENUES)
+      .where('ownerUserId', '==', req.user.uid)
+      .where('isVirtual', '==', true)
+      .limit(1)
+      .get();
+    if (!existing.empty) {
+      return res.status(400).json({
+        success: false,
+        error: 'This account already has an online store',
+        venueId: existing.docs[0].id
+      });
+    }
+
+    const venue = await rewardService.createVenue({
+      venueName,
+      isVirtual: true,
+      category: req.body.category || 'retail',
+      ownerUserId: req.user.uid,
+      contactEmail: req.body.contactEmail || req.user.email || null,
+      contactName: req.user.displayName || null
+    });
+
+    // Bind an unbound business subscription to this venue (same rule as
+    // receipt verification: never silently move an existing binding)
+    if (!req.user.ownerSubscriptionVenueId && req.user.ownerSubscriptionStatus) {
+      await db.collection(COLLECTIONS.USERS).doc(req.user.uid)
+        .update({ ownerSubscriptionVenueId: venue.venueId })
+        .catch((error) => console.error('⚠️ Subscription binding failed:', error.message));
+    }
+
+    res.status(201).json({
+      success: true,
+      data: {
+        venueId: venue.venueId,
+        venueName: venue.venueName,
+        isVirtual: true,
+        windowCode: venue.windowCode,
+        registerCode: venue.registerCode,
+        windowStickerUrl: rewardService.stickerUrl(venue.windowCode),
+        registerCardUrl: rewardService.stickerUrl(venue.registerCode)
+      }
+    });
+  } catch (error) {
+    console.error('❌ Virtual venue creation failed:', error);
+    res.status(500).json({ success: false, error: 'Failed to create online store' });
+  }
+};
+
+// ---------- Redemption codes (order-box cards / booth handouts) ----------
+
+const REDEMPTION_CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const REDEMPTION_CODE_LENGTH = 8;
+
+const randomRedemptionCode = () => {
+  let code = '';
+  for (let i = 0; i < REDEMPTION_CODE_LENGTH; i++) {
+    code += REDEMPTION_CODE_CHARS.charAt(Math.floor(Math.random() * REDEMPTION_CODE_CHARS.length));
+  }
+  return code;
+};
+
+// @desc    Create a batch of single-use loyalty codes for a venue
+// @route   POST /api/rewards/venues/:venueId/codes
+// @access  Venue owner + Business tier
+exports.createRedemptionCodes = async (req, res) => {
+  try {
+    const errors = validateRedemptionCodeBatch(req.body);
+    if (errors.length > 0) {
+      return res.status(400).json({ success: false, error: errors.join('. ') });
+    }
+
+    const venue = req.venue;
+    const batchId = `batch_${Date.now()}`;
+    const codes = [];
+    const codesRef = db.collection(STICKER_COLLECTIONS.REDEMPTION_CODES);
+
+    for (let i = 0; i < req.body.count; i++) {
+      // Doc ID IS the code; create() collisions regenerate
+      let created = false;
+      for (let attempt = 0; attempt < 5 && !created; attempt++) {
+        const code = randomRedemptionCode();
+        const doc = createRedemptionCode({
+          venueId: venue.venueId,
+          venueName: venue.venueName,
+          points: req.body.points,
+          label: req.body.label || null,
+          batchId,
+          expiresAt: req.body.expiresAt || null,
+          createdBy: req.user.uid
+        });
+        try {
+          await codesRef.doc(code).create(doc);
+          codes.push(code);
+          created = true;
+        } catch (error) {
+          if (!(error.code === 6 || /already exists/i.test(error.message || ''))) throw error;
+        }
+      }
+      if (!created) {
+        return res.status(500).json({ success: false, error: 'Code generation collided repeatedly; try again' });
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      data: { batchId, points: req.body.points, label: req.body.label || null, expiresAt: req.body.expiresAt || null, codes }
+    });
+  } catch (error) {
+    console.error('❌ Redemption code creation failed:', error);
+    res.status(500).json({ success: false, error: 'Failed to create codes' });
+  }
+};
+
+// @desc    List a venue's redemption codes (owner management view)
+// @route   GET /api/rewards/venues/:venueId/codes
+// @access  Venue owner
+exports.listRedemptionCodes = async (req, res) => {
+  try {
+    const snapshot = await db.collection(STICKER_COLLECTIONS.REDEMPTION_CODES)
+      .where('venueId', '==', req.venue.venueId)
+      .limit(1000)
+      .get();
+    const codes = snapshot.docs
+      .map((doc) => {
+        const data = doc.data();
+        return {
+          code: doc.id,
+          points: data.points,
+          label: data.label,
+          batchId: data.batchId,
+          active: data.active !== false,
+          redeemedBy: data.redeemedBy || null,
+          redeemedAt: data.redeemedAt || null,
+          expiresAt: data.expiresAt || null,
+          createdAt: data.createdAt
+        };
+      })
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+    const summary = {
+      total: codes.length,
+      redeemed: codes.filter((c) => !c.active).length
+    };
+    res.json({ success: true, data: { codes, summary } });
+  } catch (error) {
+    console.error('❌ Redemption code listing failed:', error);
+    res.status(500).json({ success: false, error: 'Failed to list codes' });
+  }
+};
+
+// @desc    Redeem a single-use code for venue loyalty points (+ FavCoins)
+// @route   POST /api/rewards/redeem-code
+// @access  Private
+exports.redeemCode = async (req, res) => {
+  try {
+    const code = String(req.body.code || '').trim().toUpperCase();
+    if (!code) {
+      return res.status(400).json({ success: false, error: 'code is required' });
+    }
+
+    const codeRef = db.collection(STICKER_COLLECTIONS.REDEMPTION_CODES).doc(code);
+    const codeDoc = await codeRef.get();
+    if (!codeDoc.exists) {
+      return res.status(404).json({ success: false, error: 'Code not found' });
+    }
+    const codeData = codeDoc.data();
+    if (codeData.active === false) {
+      return res.status(400).json({ success: false, error: 'This code has already been redeemed' });
+    }
+    if (codeData.expiresAt && new Date(codeData.expiresAt) <= new Date()) {
+      return res.status(400).json({ success: false, error: 'This code has expired' });
+    }
+
+    // Loyalty must be live at the issuing venue (same pause rule as scans)
+    const venueDoc = await db.collection(STICKER_COLLECTIONS.STICKER_VENUES).doc(codeData.venueId).get();
+    if (!venueDoc.exists) {
+      return res.status(400).json({ success: false, error: 'This code is no longer valid' });
+    }
+    const venue = { venueId: venueDoc.id, ...venueDoc.data() };
+    let live = isCompActive(venue);
+    if (!live && venue.ownerUserId) {
+      const ownerDoc = await db.collection(COLLECTIONS.USERS).doc(venue.ownerUserId).get();
+      live = ownerDoc.exists && isOwnerPremiumForVenue(ownerDoc.data(), venue.venueId, venue);
+    }
+    if (!live) {
+      console.warn(`[loyalty-integrity] code redemption paused venue=${venue.venueId} code=${code}`);
+      return res.status(400).json({ success: false, error: 'Loyalty is paused at this business' });
+    }
+
+    // Claim the code transactionally — first writer wins
+    const userId = req.user.uid;
+    try {
+      await db.runTransaction(async (tx) => {
+        const fresh = await tx.get(codeRef);
+        if (!fresh.exists || fresh.data().active === false) {
+          throw new Error('CODE_TAKEN');
+        }
+        tx.update(codeRef, {
+          active: false,
+          redeemedBy: userId,
+          redeemedAt: new Date().toISOString()
+        });
+      });
+    } catch (error) {
+      if (error.message === 'CODE_TAKEN') {
+        return res.status(400).json({ success: false, error: 'This code has already been redeemed' });
+      }
+      throw error;
+    }
+
+    const award = await rewardService.awardPoints({
+      userId,
+      type: 'code_redemption',
+      points: codeData.points,
+      venueId: venue.venueId,
+      venueName: venue.venueName,
+      code,
+      idempotencyKey: `code:${code}`
+    });
+
+    rewardService.incrementVenueStats(venue.venueId, 'codeRedemptions').catch(() => {});
+    piggyBankService.credit({
+      userId,
+      eventType: 'brand_code_redeemed',
+      sourceRef: { code, venueId: venue.venueId }
+    }).catch(() => {});
+
+    const balance = await rewardService.getBalance(userId);
+    res.json({
+      success: true,
+      data: {
+        awarded: award.duplicate ? null : { points: codeData.points, venueName: venue.venueName },
+        duplicate: award.duplicate === true,
+        balance
+      }
+    });
+  } catch (error) {
+    console.error('❌ Code redemption failed:', error);
+    res.status(500).json({ success: false, error: 'Failed to redeem code' });
   }
 };

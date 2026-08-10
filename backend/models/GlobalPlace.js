@@ -2,6 +2,7 @@
 // Global place model for normalized place data architecture
 
 const { getFirestore } = require('../config/firebase');
+const { sanitizeVenueDescription } = require('../utils/venueDescriptionSanitizer');
 
 // Word-prefix tokens for search: every prefix of every word in the name, so
 // an array-contains query matches "pizza" or "colv" anywhere in the name.
@@ -34,10 +35,14 @@ const createGlobalPlace = (placeData) => {
     location: placeData.location, // GeoPoint { type: 'Point', coordinates: [lng, lat] }
     category: placeData.category,
     subcategory: placeData.subcategory || null,
-    // Venue description — Google's editorial summary when the client had one,
-    // else the client-synthesized text. Was silently dropped before 2026-07,
-    // which is why older records are empty (backfill: scripts/backfill-editorial-summaries.js).
-    description: placeData.description || null,
+    // Venue description — Google's editorial summary when available. Older iOS
+    // builds send a synthesized placeholder ("A dining establishment in …");
+    // the sanitizer drops that so it can't block the editorial-summary
+    // backfill, which only fills EMPTY descriptions
+    // (scripts/backfill-editorial-summaries.js). Contact lines survive.
+    description: sanitizeVenueDescription(placeData.description),
+    // 'google_editorial' | 'none' (looked up, Google had nothing) | null
+    descriptionSource: placeData.descriptionSource || null,
 
     // Raw category signals kept so the category can be re-derived later without
     // re-fetching from Google/Apple. Populated when the client/import forwards

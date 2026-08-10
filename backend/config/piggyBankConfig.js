@@ -9,7 +9,15 @@ module.exports = {
   // 2026.08-a: dollar-denomination rescale (Wesley) — values read like $1/$2/$5
   // so 100 FavCoins feels like $100. Old rows keep their 2026.07-a pricing;
   // existing balances deliberately untouched (founding-user head start).
-  RULE_VERSION: '2026.08-a',
+  // 2026.08-b: lightweight engagement moved to fractional coins ("nickels") —
+  // a like is 1/20th of a coin, so tapping hearts can't out-earn creating
+  // content. Comments stay a full coin (real feedback), capped. New: activity
+  // reactions, moment likes, and the first received-engagement hook (your
+  // moment getting liked pays YOU too). Old ledger rows keep their old
+  // pricing via ruleVersion.
+  // 2026.08-c: brand redemption codes (order-box cards / booth handouts) —
+  // a real-world purchase touchpoint, priced like posting a moment.
+  RULE_VERSION: '2026.08-c',
   CLEARING_WINDOW_HOURS: 24,
   COINS: {
     ADD_PLACE: 3,
@@ -23,9 +31,13 @@ module.exports = {
     PLACE_PHOTO: 1,
     MOMENT_POSTED: 2,
     PROFILE_COMPLETED: 5,
-    PLACE_LIKED: 1,
-    PLACE_COMMENT: 1,
-    USER_FOLLOWED: 1
+    PLACE_LIKED: 0.05,          // a nickel
+    PLACE_COMMENT: 1,           // real feedback — full coin, capped below
+    USER_FOLLOWED: 0.10,        // a dime
+    ACTIVITY_REACTION: 0.05,
+    MOMENT_LIKED: 0.05,
+    MOMENT_LIKE_RECEIVED: 0.05, // paid to the moment's OWNER
+    BRAND_CODE_REDEEMED: 2      // scanning the card that shipped in an order
   },
   DAILY_CAPS: {              // earns past the cap: action still succeeds, pays 0
     ADD_PLACE: 20,
@@ -39,10 +51,15 @@ module.exports = {
     PLACE_PHOTO: 5,
     MOMENT_POSTED: 3,
     PROFILE_COMPLETED: 1,
-    // Cheapest actions, tightest caps — these are the spam vectors
-    PLACE_LIKED: 3,
-    PLACE_COMMENT: 3,
-    USER_FOLLOWED: 5
+    // Fractional actions: generous counts, tiny value — 40 likes/day is
+    // still only 2 coins
+    PLACE_LIKED: 40,
+    PLACE_COMMENT: 10,
+    USER_FOLLOWED: 20,
+    ACTIVITY_REACTION: 40,
+    MOMENT_LIKED: 40,
+    MOMENT_LIKE_RECEIVED: 100,  // passive — capped loosely
+    BRAND_CODE_REDEEMED: 5
   },
   CREATE_CIRCLE_MIN_PLACES: 3,   // enforced at CLEARING time, not earn time
   CLAIM: {

@@ -348,7 +348,9 @@ class DiscoverUsersViewController: BaseViewController {
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 switch result {
-                case .success:
+                case .success(let response):
+                    // First-ever follow of this person earns a dime
+                    PiggyBankDepositView.play(credit: response.piggyBank)
                     self.sendConnectionRequest(to: user)
                 case .failure(let error):
                     self.setFollowing(false, forUserId: user.id)

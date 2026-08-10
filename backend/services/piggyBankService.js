@@ -134,12 +134,15 @@ class PiggyBankService {
       }
     }
 
+    // Balances accrue via float increments (0.05 nickels); round at the read
+    // boundary so accumulated binary-float dust never reaches a client.
+    const round2 = (n) => Math.round((n || 0) * 100) / 100;
     return {
       bank: {
-        pendingCoins: bank.pendingCoins || 0,
-        confirmedCoins: bank.confirmedCoins || 0,
-        lifetimeCoins: bank.lifetimeCoins || 0,
-        settledOnChain: bank.settledOnChain || 0,
+        pendingCoins: round2(bank.pendingCoins),
+        confirmedCoins: round2(bank.confirmedCoins),
+        lifetimeCoins: round2(bank.lifetimeCoins),
+        settledOnChain: round2(bank.settledOnChain),
         walletAddress: bank.walletAddress || null
       },
       activeClaim,
@@ -298,6 +301,32 @@ class PiggyBankService {
           return following.includes(ref.followedUserId)
             ? { valid: true }
             : { valid: false, reason: 'unfollowed' };
+        }
+        case 'activity_reaction': {
+          // Reaction doc id is `${activityId}_${userId}` — removing the
+          // reaction inside the window reverses the earn.
+          if (!ref.activityId) return { valid: false, reason: 'missing_activity_ref' };
+          const doc = await this.db.collection(COLLECTIONS.ACTIVITY_REACTIONS)
+            .doc(`${ref.activityId}_${entry.userId}`).get();
+          return doc.exists ? { valid: true } : { valid: false, reason: 'reaction_removed' };
+        }
+        case 'moment_liked': {
+          // Like doc id is `${userId}_${videoId}`; unlike reverses the earn.
+          if (!ref.videoId) return { valid: false, reason: 'missing_video_ref' };
+          const doc = await this.db.collection(COLLECTIONS.VIDEO_LIKES)
+            .doc(`${entry.userId}_${ref.videoId}`).get();
+          return doc.exists ? { valid: true } : { valid: false, reason: 'like_removed' };
+        }
+        case 'moment_like_received': {
+          // Owner-side mirror: valid while the LIKER's like still stands and
+          // the moment itself survives.
+          if (!ref.videoId || !ref.likerUserId) return { valid: false, reason: 'missing_like_ref' };
+          const [likeDoc, videoDoc] = await Promise.all([
+            this.db.collection(COLLECTIONS.VIDEO_LIKES).doc(`${ref.likerUserId}_${ref.videoId}`).get(),
+            this.db.collection(COLLECTIONS.PLACE_VIDEOS).doc(ref.videoId).get()
+          ]);
+          if (!videoDoc.exists || videoDoc.data().deletedAt) return { valid: false, reason: 'moment_deleted' };
+          return likeDoc.exists ? { valid: true } : { valid: false, reason: 'like_removed' };
         }
         default:
           return { valid: false, reason: 'unknown_event_type' };
@@ -511,7 +540,13 @@ class PiggyBankService {
               activeClaimId: null,
               updatedAt: stamp
             });
-          if (did) summary.settled++; else summary.skipped++;
+          if (did) {
+            summary.settled++;
+            this.notifyClaimSettled(doc.id, row).catch((e) =>
+              console.error(`🐷 [claims] settled push failed for ${doc.id}:`, e.message));
+          } else {
+            summary.skipped++;
+          }
         } else if (row.sentAt
             && nowMs - Date.parse(row.sentAt) > C.SENT_TIMEOUT_HOURS * 3600000
             && !row.needsReview) {
@@ -621,6 +656,24 @@ class PiggyBankService {
     }
 
     return summary;
+  }
+
+  // "Your claim settled" push — the payoff moment, so the user hears about it
+  // even with the app closed. Push-only (no in-app notification row: the piggy
+  // bank's own activity list is the in-app record). Never throws to the
+  // settlement pass; a lost push is a shrug, the claim is already settled.
+  // 🌵 pairs with blockchain/wallet per the app-wide Cactus branding.
+  async notifyClaimSettled(claimId, row) {
+    const coins = row.netCoins ?? row.coins;
+    const amount = Number.isInteger(coins) ? String(coins) : coins.toFixed(2);
+    const unit = coins === 1 ? 'FavCoin' : 'FavCoins';
+    const notificationService = require('./notificationService');
+    await notificationService.sendToUser(row.userId, {
+      type: 'favcoin_claim_settled',
+      title: '🌵 Your claim settled',
+      body: `${amount} ${unit} landed in your 🌵 Cactus Wallet — yours alone now. Open your Piggy Bank for the on-chain proof.`,
+      data: { claimId: String(claimId) }  // FCM data values must be strings
+    });
   }
 
   // T8: human verdict on a quarantined/stuck claim, via the admin task route.

@@ -6,9 +6,11 @@ module.exports = {
   POINTS: {
     STICKER_SIGNUP: 100,   // new user signed up after scanning a window sticker
     STICKER_SAVE: 50,      // user saved the sticker venue's place to a circle
-    VENUE_VISIT: 25,       // default points per register-code (purchase) scan;
+    VENUE_VISIT: 25        // default points per register-code (purchase) scan;
                            // venues override with their own earnRate
-    SHARE_CONVERSION: 50   // a place the user shared was added by someone else
+    // SHARE_CONVERSION retired 2026-08-10: not tied to a shop, so it has no
+    // home under per-store loyalty. The sharer earns FavCoins instead
+    // (piggyBankConfig COINS.PLACE_ADOPTED, same trigger).
   },
 
   // A sticker scan only counts as a "signup" if the account is this new

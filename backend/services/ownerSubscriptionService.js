@@ -44,12 +44,19 @@ const isOwnerPremiumUser = (user) => {
 // stamped at purchase) — an owner with several stores subscribes per store.
 // Super users and manually-verified owners keep account-wide access; those are
 // admin grants, not App Store purchases.
-const isOwnerPremiumForVenue = (user, venueId) => {
+//
+// Exception: the account's own ONLINE STORE (virtual venue) rides the same
+// subscription. A virtual venue IS the account (one per account), so the
+// per-venue binding that stops premium hopping between physical stores
+// doesn't apply. Callers always pass the venue OWNER's user doc, so
+// ownership is already established; pass the venue doc to enable this.
+const isOwnerPremiumForVenue = (user, venueId, venue = null) => {
   if (!user || !venueId) return false;
   if (user.isSuperUser === true) return true;
   if (user.ownerManuallyVerified === true) return true;
   if (!hasActiveOwnerSubscription(user)) return false;
-  return user.ownerSubscriptionVenueId === venueId;
+  if (user.ownerSubscriptionVenueId === venueId) return true;
+  return venue ? venue.isVirtual === true : false;
 };
 
 // Per-instance cache of the last KNOWN owner-premium result (true OR false),
@@ -62,12 +69,12 @@ const premiumCache = new Map(); // `${userId}:${venueId}` -> { value, at: epochM
 // status during a customer's register scan). Fails to last-known on a
 // Firestore error (defaulting to false when the pair has never been seen) —
 // never blanket-true, which used to leak the paid program to lapsed venues.
-const isOwnerPremiumById = async (userId, venueId) => {
+const isOwnerPremiumById = async (userId, venueId, venue = null) => {
   if (!userId || !venueId) return false;
   const cacheKey = `${userId}:${venueId}`;
   try {
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
-    const value = userDoc.exists && isOwnerPremiumForVenue(userDoc.data(), venueId);
+    const value = userDoc.exists && isOwnerPremiumForVenue(userDoc.data(), venueId, venue);
     premiumCache.set(cacheKey, { value, at: Date.now() });
     return value;
   } catch (error) {
@@ -98,7 +105,7 @@ const venueLoyaltyStatus = async (venue) => {
   if (!venue) return { active: false, reason: 'none' };
   if (isCompActive(venue)) return { active: true, reason: 'comp' };
   if (!venue.ownerUserId) return { active: false, reason: 'no_owner' };
-  const premium = await isOwnerPremiumById(venue.ownerUserId, venue.venueId || venue.id);
+  const premium = await isOwnerPremiumById(venue.ownerUserId, venue.venueId || venue.id, venue);
   return { active: premium, reason: premium ? 'owner_premium' : 'lapsed' };
 };
 

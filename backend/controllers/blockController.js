@@ -63,7 +63,7 @@ const blockUser = async (req, res) => {
       .get();
 
     const batch = db.batch();
-    
+
     // Update any existing connections to blocked status
     [...connectionQuery1.docs, ...connectionQuery2.docs].forEach(doc => {
       batch.update(doc.ref, {
@@ -73,7 +73,39 @@ const blockUser = async (req, res) => {
       });
     });
 
+    // Denormalize block state onto both user docs — this is what every feed
+    // filters on (blockedUsers on the blocker, blockedBy on the blocked) —
+    // and sever the follow relationship in BOTH directions: a block means
+    // "we never see each other again", not "we stay followers".
+    batch.update(db.collection(COLLECTIONS.USERS).doc(blockerId), {
+      blockedUsers: admin.firestore.FieldValue.arrayUnion(blockedUserId),
+      following: admin.firestore.FieldValue.arrayRemove(blockedUserId),
+      followers: admin.firestore.FieldValue.arrayRemove(blockedUserId),
+      updatedAt: new Date().toISOString()
+    });
+    batch.update(db.collection(COLLECTIONS.USERS).doc(blockedUserId), {
+      blockedBy: admin.firestore.FieldValue.arrayUnion(blockerId),
+      following: admin.firestore.FieldValue.arrayRemove(blockerId),
+      followers: admin.firestore.FieldValue.arrayRemove(blockerId),
+      updatedAt: new Date().toISOString()
+    });
+
     await batch.commit();
+
+    // Follower counts drift if left to increments — recompute both from the
+    // arrays we just rewrote (array length is the source of truth).
+    try {
+      const [a, b] = await Promise.all([
+        db.collection(COLLECTIONS.USERS).doc(blockerId).get(),
+        db.collection(COLLECTIONS.USERS).doc(blockedUserId).get()
+      ]);
+      await Promise.all([a, b].map(doc => doc.ref.update({
+        followersCount: (doc.data().followers || []).length,
+        followingCount: (doc.data().following || []).length
+      })));
+    } catch (countError) {
+      console.warn('Block follower-count resync failed:', countError.message);
+    }
 
     res.status(201).json({
       success: true,
@@ -133,6 +165,17 @@ const unblockUser = async (req, res) => {
     // Remove the blocked status from connections (disconnect them)
     [...connectionQuery1.docs, ...connectionQuery2.docs].forEach(doc => {
       batch.delete(doc.ref);
+    });
+
+    // Clear the denormalized block state. Follows stay severed — unblocking
+    // makes someone visible again, it doesn't resurrect the relationship.
+    batch.update(db.collection(COLLECTIONS.USERS).doc(blockerId), {
+      blockedUsers: admin.firestore.FieldValue.arrayRemove(blockedUserId),
+      updatedAt: new Date().toISOString()
+    });
+    batch.update(db.collection(COLLECTIONS.USERS).doc(blockedUserId), {
+      blockedBy: admin.firestore.FieldValue.arrayRemove(blockerId),
+      updatedAt: new Date().toISOString()
     });
 
     await batch.commit();

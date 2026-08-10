@@ -52,7 +52,9 @@ extension User {
         mutualConnectionsCount: Int? = nil,
         mutualConnectionNames: [String]? = nil,
         matchType: String? = nil,
-        suggestionReason: String? = nil
+        suggestionReason: String? = nil,
+        isBusiness: Bool? = nil,
+        storefront: UserStorefront? = nil
     ) -> User {
         return User(
             id: id ?? self.id,
@@ -100,7 +102,9 @@ extension User {
             mutualConnectionNames: mutualConnectionNames ?? self.mutualConnectionNames,
             matchType: matchType ?? self.matchType,
             followsYou: followsYou ?? self.followsYou,
-            suggestionReason: suggestionReason ?? self.suggestionReason
+            suggestionReason: suggestionReason ?? self.suggestionReason,
+            isBusiness: isBusiness ?? self.isBusiness,
+            storefront: storefront ?? self.storefront
         )
     }
     

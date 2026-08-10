@@ -1550,7 +1550,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
             let alert = UIAlertController(
                 title: "Rewards Waiting! 🎁",
-                message: "Sign up for FavCircles to save this place and earn reward points you can use on your next visit.",
+                message: "Sign up for FavCircles to save this place and earn store points you can use on your next visit.",
                 preferredStyle: .alert
             )
             alert.addAction(UIAlertAction(title: "Sign Up", style: .default) { _ in

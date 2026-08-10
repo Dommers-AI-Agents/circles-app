@@ -8,6 +8,10 @@ import UIKit
 /// the earlier "valueless collectible" framing is retired. On-chain claiming
 /// is still a future phase; the copy says "coming soon" and the claim button
 /// stays inert until Phase 4 ships.
+///
+/// Branding (owner decision, 2026-08-10): 🌵 is THE icon for the Cactus
+/// blockchain. Pair it with "blockchain"/"wallet" wherever they appear in
+/// user-facing copy, app-wide — it replaces 🔒/🔗/⛓ on chain-related rows.
 final class PiggyBankViewController: BaseViewController {
 
     override var enablesPullToRefresh: Bool { true }
@@ -112,7 +116,7 @@ final class PiggyBankViewController: BaseViewController {
     }()
 
     private lazy var claimButton: UIButton = {
-        let button = UIButton.secondaryButton(title: "Send to blockchain — coming soon")
+        let button = UIButton.secondaryButton(title: "Send to the 🌵 blockchain — coming soon")
         // The header card is Colors.primary — the factory's primary-on-primary
         // styling vanishes against it, so this button goes white-on-blue.
         button.setTitleColor(.white, for: .normal)
@@ -245,14 +249,19 @@ final class PiggyBankViewController: BaseViewController {
             2️⃣ Clear — new coins wait up to \(hours) hours while we make sure the action sticks (the place you added is still there, for example). Then they land in your piggy bank automatically. If something is undone before it clears, those coins quietly vanish.
 
             3️⃣ Claim — \(claimsEnabled
-                ? "once you have \(threshold), tap Claim to move your coins to your own Cactus Wallet. That puts them on the Cactus blockchain, where they're yours alone — FavCircles can't move or take them."
-                : "moving your coins to your own Cactus Wallet is coming soon.")
+                ? "once you have \(threshold), tap Claim to move your coins to your own 🌵 Cactus Wallet. That puts them on the 🌵 Cactus blockchain, where they're yours alone — FavCircles can't move or take them."
+                : "moving your coins to your own 🌵 Cactus Wallet is coming soon.")
 
-            FavCoin is a real crypto coin. Its value is whatever people choose to give it — store owners may offer prizes for them, and what you do with yours is up to you.\(lifetime)
+            FavCoin is a real crypto coin on the 🌵 Cactus blockchain. Its value is whatever people choose to give it. You don't spend FavCoins in the app — they're yours to hold, send, or trade once claimed. (Looking for shop discounts? Those are Store Points, on the other tab.)\(lifetime)
             """,
             from: self,
             linkTitle: "Learn more at cactus-network.net",
-            linkURL: URL(string: "https://cactus-network.net")
+            linkURL: URL(string: "https://cactus-network.net"),
+            actionTitle: "Read the full guide",
+            action: { [weak self] in
+                guard let topic = HelpContentProvider.shared.topic(withId: "favcoin-what-is") else { return }
+                self?.navigationController?.pushViewController(HelpTopicViewController(topic: topic), animated: true)
+            }
         )
     }
 
@@ -299,7 +308,7 @@ final class PiggyBankViewController: BaseViewController {
         // worst possible message right after the feature's proudest moment.
         let inFlight = activeClaim?.coins ?? 0
         let total = bank.confirmedCoins + bank.pendingCoins + bank.settledOnChain + inFlight
-        confirmedLabel.text = "\(total)"
+        confirmedLabel.text = PiggyBankFormatting.amount(total)
         // FavCoin follows the Bitcoin convention: the currency's name is
         // singular, a count of units takes the plural.
         confirmedCaptionLabel.text = "You have \(PiggyBankFormatting.coins(total))"
@@ -309,16 +318,16 @@ final class PiggyBankViewController: BaseViewController {
         breakdownStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         if bank.confirmedCoins > 0 {
             breakdownStack.addArrangedSubview(
-                makeBreakdownRow("🐷 \(bank.confirmedCoins) in your piggy bank", emphasized: true))
+                makeBreakdownRow("🐷 \(PiggyBankFormatting.amount(bank.confirmedCoins)) in your piggy bank", emphasized: true))
         }
         if bank.settledOnChain > 0 {
-            let row = makeBreakdownRow("🔒 \(bank.settledOnChain) sent to the blockchain", tappable: true)
+            let row = makeBreakdownRow("🌵 \(PiggyBankFormatting.amount(bank.settledOnChain)) safe on the blockchain", tappable: true)
             row.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(onChainRowTapped)))
             breakdownStack.addArrangedSubview(row)
         }
         if bank.pendingCoins > 0 {
             breakdownStack.addArrangedSubview(makeBreakdownRow(
-                "🕐 \(bank.pendingCoins) clearing — in your piggy within \(payloadConfig?.clearingWindowHours ?? 48)h"))
+                "🕐 \(PiggyBankFormatting.amount(bank.pendingCoins)) clearing — in your piggy within \(payloadConfig?.clearingWindowHours ?? 48)h"))
         }
 
         renderClaimControls(bank: bank)
@@ -328,17 +337,17 @@ final class PiggyBankViewController: BaseViewController {
     }
 
     private func renderClaimControls(bank: PiggyBank) {
-        let threshold = payloadConfig?.minConfirmedToClaim ?? 500
+        let threshold = Double(payloadConfig?.minConfirmedToClaim ?? 500)
 
         guard claimsEnabled else {
             // Phase 4 not switched on server-side: keep the inert affordance.
             walletButton.isHidden = true
             claimButton.isEnabled = false
             if bank.confirmedCoins >= threshold {
-                claimButton.setTitle("Send to blockchain — coming soon", for: .normal)
+                claimButton.setTitle("Send to the 🌵 blockchain — coming soon", for: .normal)
                 claimButton.alpha = 0.8
             } else {
-                claimButton.setTitle("Send to blockchain unlocks at \(threshold) \(PiggyBankFormatting.coinUnit(threshold))", for: .normal)
+                claimButton.setTitle("Send to 🌵 blockchain unlocks at \(PiggyBankFormatting.amount(threshold)) \(PiggyBankFormatting.coinUnit(threshold))", for: .normal)
                 claimButton.alpha = 0.6
             }
             return
@@ -346,21 +355,21 @@ final class PiggyBankViewController: BaseViewController {
 
         walletButton.isHidden = false
         if let address = bank.walletAddress {
-            walletButton.setTitle("🔗 \(Self.truncateAddress(address)) · change", for: .normal)
+            walletButton.setTitle("🌵 \(Self.truncateAddress(address)) · change", for: .normal)
         } else {
-            walletButton.setTitle("🔗 Link your Cactus Wallet", for: .normal)
+            walletButton.setTitle("🌵 Link your Cactus Wallet", for: .normal)
         }
 
         if let claim = activeClaim {
-            claimButton.setTitle("🚀 \(PiggyBankFormatting.coins(claim.coins)) on the way to your wallet", for: .normal)
+            claimButton.setTitle("🚀 \(PiggyBankFormatting.coins(claim.coins)) on the way to your 🌵 wallet", for: .normal)
             claimButton.isEnabled = false
             claimButton.alpha = 0.8
         } else if bank.confirmedCoins >= threshold {
-            claimButton.setTitle("Send \(PiggyBankFormatting.coins(bank.confirmedCoins)) to the blockchain", for: .normal)
+            claimButton.setTitle("Send \(PiggyBankFormatting.coins(bank.confirmedCoins)) to the 🌵 blockchain", for: .normal)
             claimButton.isEnabled = true
             claimButton.alpha = 1.0
         } else {
-            claimButton.setTitle("Send to blockchain unlocks at \(threshold) \(PiggyBankFormatting.coinUnit(threshold))", for: .normal)
+            claimButton.setTitle("Send to 🌵 blockchain unlocks at \(PiggyBankFormatting.amount(threshold)) \(PiggyBankFormatting.coinUnit(threshold))", for: .normal)
             claimButton.isEnabled = false
             claimButton.alpha = 0.6
         }
@@ -374,12 +383,29 @@ final class PiggyBankViewController: BaseViewController {
 
     // MARK: - Claim flow
 
+    /// Server-configurable explorer root; also used by the on-chain proof
+    /// links further down
+    private var explorerBase: String {
+        payloadConfig?.explorerBaseUrl ?? "https://explorer.cactus-network.net/#/"
+    }
+
     @objc private func walletButtonTapped() {
-        guard bank?.walletAddress != nil else {
+        guard let address = bank?.walletAddress else {
             offerWalletSetup(thenClaim: false)
             return
         }
         var actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = []
+        actions.append((title: "Copy address", style: .default, handler: { [weak self] in
+            UIPasteboard.general.string = address
+            self?.showSuccess("Address copied to clipboard")
+        }))
+        // "Address", never "wallet": a wallet holds many receive addresses —
+        // this is just the one linked here
+        actions.append((title: "View this address on chain", style: .default, handler: { [weak self] in
+            guard let self = self,
+                  let url = URL(string: "\(self.explorerBase)address/\(address)") else { return }
+            UIApplication.shared.open(url)
+        }))
         if let userId = AuthService.shared.getUserId(),
            let phrase = WalletPhraseStore.load(account: userId) {
             actions.append((title: "View my secret phrase", style: .default, handler: { [weak self] in
@@ -389,7 +415,12 @@ final class PiggyBankViewController: BaseViewController {
         actions.append((title: "Change address", style: .default, handler: { [weak self] in
             self?.promptLinkWallet()
         }))
-        AlertPresenter.showActionSheet(title: "Your Cactus Wallet", actions: actions, from: self)
+        AlertPresenter.showActionSheet(
+            title: "Your 🌵 Cactus Wallet",
+            message: "Linked receive address:\n\(address)",
+            actions: actions,
+            from: self
+        )
     }
 
     /// No wallet linked yet: three paths, easiest first — one-tap on-device
@@ -398,8 +429,8 @@ final class PiggyBankViewController: BaseViewController {
     /// or the manual how-to.
     private func offerWalletSetup(thenClaim: Bool) {
         AlertPresenter.showActionSheet(
-            title: "Your coins need a Cactus Wallet",
-            message: "FavCoins are sent to a wallet only you control. We can create one for you right now — the secret phrase is made on this phone and stored in your iCloud Keychain, never on our servers.",
+            title: "Your coins need a 🌵 Cactus Wallet",
+            message: "FavCoins are sent to a 🌵 wallet only you control. We can create one for you right now — the secret phrase is made on this phone and stored in your iCloud Keychain, never on our servers.",
             actions: [
                 (title: "Create a wallet for me", style: .default, handler: { [weak self] in
                     self?.createWalletOnDevice(thenClaim: thenClaim)
@@ -444,9 +475,9 @@ final class PiggyBankViewController: BaseViewController {
     /// The phrase moment — shown right after creation (intro: true) and any
     /// time later from the wallet row.
     private func showSecretPhrase(_ mnemonic: String, intro: Bool, completion: (() -> Void)? = nil) {
-        let title = intro ? "Your wallet is ready 🎉" : "Your secret phrase"
+        let title = intro ? "Your 🌵 wallet is ready 🎉" : "Your secret phrase"
         let message = (intro
-            ? "Your new Cactus Wallet is linked. Its secret phrase is saved in your iCloud Keychain — and it's worth writing down on paper too:\n\n"
+            ? "Your new 🌵 Cactus Wallet is linked. Its secret phrase is saved in your iCloud Keychain — and it's worth writing down on paper too:\n\n"
             : "Saved in your iCloud Keychain. Anyone with these words controls the wallet — never share them:\n\n")
             + mnemonic
             + "\n\nAnyone with these 24 words controls the coins. FavCircles never sees them."
@@ -456,8 +487,9 @@ final class PiggyBankViewController: BaseViewController {
             confirmTitle: "Copy phrase",
             cancelTitle: "Done",
             from: self,
-            onConfirm: {
+            onConfirm: { [weak self] in
                 UIPasteboard.general.string = mnemonic
+                self?.showSuccess("Phrase copied to clipboard")
                 completion?()
             },
             onCancel: { completion?() }
@@ -466,7 +498,7 @@ final class PiggyBankViewController: BaseViewController {
 
     private func showWalletHowTo() {
         AlertPresenter.showInfo(
-            title: "Get a Cactus Wallet",
+            title: "Get a 🌵 Cactus Wallet",
             message: """
             1. On your computer, download the Cactus app from cactus-network.net (Mac, Windows or Linux).
 
@@ -474,7 +506,7 @@ final class PiggyBankViewController: BaseViewController {
 
             3. Choose Receive to see your address — it starts with cac1.
 
-            4. Come back here, tap the 🔗 link and paste that address. From then on your FavCoins can be sent to it.
+            4. Come back here, tap the 🌵 link and paste that address. From then on your FavCoins can be sent to it.
             """,
             from: self,
             linkTitle: "Download at cactus-network.net",
@@ -484,8 +516,8 @@ final class PiggyBankViewController: BaseViewController {
 
     private func promptLinkWallet(thenClaim: Bool = false) {
         AlertPresenter.showTextInput(
-            title: "Link your Cactus Wallet",
-            message: "Paste your wallet's receive address (starts with cac1). Coins claimed there belong to you alone — FavCircles can't move or recover them.",
+            title: "Link your 🌵 Cactus Wallet",
+            message: "Paste your 🌵 wallet's receive address (starts with cac1). Coins claimed there belong to you alone — FavCircles can't move or recover them.",
             placeholder: "cac1…",
             from: self
         ) { [weak self] input in
@@ -499,7 +531,7 @@ final class PiggyBankViewController: BaseViewController {
                         if thenClaim {
                             self.loadData { self.confirmAndClaim() }
                         } else {
-                            self.showSuccess("Wallet linked")
+                            self.showSuccess("🌵 Wallet linked")
                             self.loadData()
                         }
                     case .failure(let error):
@@ -521,12 +553,12 @@ final class PiggyBankViewController: BaseViewController {
 
     private func confirmAndClaim() {
         guard let bank = bank, let address = bank.walletAddress else { return }
-        let fee = payloadConfig?.claimFeeCoins ?? 0
-        var message = "Send \(PiggyBankFormatting.coins(bank.confirmedCoins)) to your Cactus Wallet:\n\(Self.truncateAddress(address))"
+        let fee = Double(payloadConfig?.claimFeeCoins ?? 0)
+        var message = "Send \(PiggyBankFormatting.coins(bank.confirmedCoins)) to your 🌵 Cactus Wallet:\n\(Self.truncateAddress(address))"
         if fee > 0 { message += "\n\nNetwork fee: \(PiggyBankFormatting.coins(fee)) (deducted from the claim)" }
         message += "\n\nOn-chain transfers can't be reversed."
         AlertPresenter.showConfirmation(
-            title: "Send to the blockchain?",
+            title: "Send to the 🌵 blockchain?",
             message: message,
             confirmTitle: "Send",
             from: self,
@@ -575,7 +607,7 @@ final class PiggyBankViewController: BaseViewController {
         let sheet = OnChainCoinsViewController(
             claims: settled,
             totalCoins: bank?.settledOnChain ?? 0,
-            explorerBaseUrl: payloadConfig?.explorerBaseUrl ?? "https://explorer.cactus-network.net/#/")
+            explorerBaseUrl: explorerBase)
         if let presentation = sheet.sheetPresentationController {
             presentation.detents = [.medium(), .large()]
             presentation.prefersGrabberVisible = true
@@ -589,13 +621,13 @@ final class PiggyBankViewController: BaseViewController {
         // The explorer's address page shows the FavCoin token record (name,
         // FAV balance, every coin) — the friendly proof. Older rows without a
         // snapshotted address fall back to the raw coin page.
-        let base = payloadConfig?.explorerBaseUrl ?? "https://explorer.cactus-network.net/#/"
+        let base = explorerBase
         let link = event.address.map { "\(base)address/\($0)" }
             ?? event.explorerUrl
             ?? base
         AlertPresenter.showInfo(
-            title: "On-chain transfer",
-            message: "\(PiggyBankFormatting.coins(event.coins)) were sent to your Cactus Wallet.\(event.txId != nil ? "\n\nTransaction: \(event.txId!)" : "")",
+            title: "🌵 On-chain transfer",
+            message: "\(PiggyBankFormatting.coins(event.coins)) were sent to your 🌵 Cactus Wallet.\(event.txId != nil ? "\n\nTransaction: \(event.txId!)" : "")",
             from: self,
             linkTitle: "See your FavCoins on the explorer",
             linkURL: URL(string: link)
@@ -623,8 +655,8 @@ final class PiggyBankViewController: BaseViewController {
         if event.isPending { parts.append("clearing") }
         if event.isReversed { parts.append("reversed") }
         if event.isClaim {
-            if event.isClaimInFlight { parts.append("on the way to your wallet") }
-            if event.isSettled { parts.append("✓ in your wallet · tap for proof") }
+            if event.isClaimInFlight { parts.append("on the way to your 🌵 wallet") }
+            if event.isSettled { parts.append("✓ in your 🌵 wallet · tap for proof") }
             if event.isClaimFailed { parts.append("didn't go through — coins returned") }
         }
         subtitle.text = parts.joined(separator: " · ")
@@ -635,11 +667,11 @@ final class PiggyBankViewController: BaseViewController {
         let coins = UILabel()
         if event.isClaim {
             // Coins leaving the in-app balance for the user's own wallet.
-            coins.text = event.isClaimFailed ? "—" : "→⛓ \(event.coins)"
+            coins.text = event.isClaimFailed ? "—" : "→🌵 \(PiggyBankFormatting.amount(event.coins))"
             coins.font = .systemFont(ofSize: 15, weight: .bold)
             coins.textColor = event.isSettled ? Constants.Colors.primary : Constants.Colors.secondaryLabel
         } else {
-            coins.text = event.isReversed ? "—" : "+\(event.coins)"
+            coins.text = event.isReversed ? "—" : "+\(PiggyBankFormatting.amount(event.coins))"
             coins.font = .systemFont(ofSize: 15, weight: .bold)
             coins.textColor = event.isPending
                 ? Constants.Colors.secondaryLabel     // muted while clearing
@@ -724,10 +756,10 @@ final class OnChainCoinsViewController: BaseViewController, UITableViewDataSourc
     override var loadsDataOnViewDidLoad: Bool { false }
 
     private let claims: [PiggyLedgerEvent]
-    private let totalCoins: Int
+    private let totalCoins: Double
     private let explorerBaseUrl: String
 
-    init(claims: [PiggyLedgerEvent], totalCoins: Int, explorerBaseUrl: String) {
+    init(claims: [PiggyLedgerEvent], totalCoins: Double, explorerBaseUrl: String) {
         self.claims = claims
         self.totalCoins = totalCoins
         self.explorerBaseUrl = explorerBaseUrl
@@ -749,7 +781,7 @@ final class OnChainCoinsViewController: BaseViewController, UITableViewDataSourc
         view.backgroundColor = Constants.Colors.background
 
         let header = UILabel()
-        header.text = "🔒 \(totalCoins) FavCoins on the Cactus blockchain"
+        header.text = "🌵 \(PiggyBankFormatting.amount(totalCoins)) FavCoins on the Cactus blockchain"
         header.font = .systemFont(ofSize: 17, weight: .bold)
         header.textAlignment = .center
         header.numberOfLines = 0
@@ -819,6 +851,6 @@ final class OnChainCoinsViewController: BaseViewController, UITableViewDataSourc
     }
 
     func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-        "These coins live in your own Cactus Wallet — FavCircles can't move or take them. Tap a transfer to see your FavCoins at your address on the public explorer."
+        "These coins live in your own 🌵 Cactus Wallet — FavCircles can't move or take them. Tap a transfer to see your FavCoins at your address on the public explorer."
     }
 }

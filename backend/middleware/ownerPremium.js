@@ -7,7 +7,7 @@ const { isOwnerPremiumForVenue } = require('../services/ownerSubscriptionService
 
 const requireOwnerPremium = (req, res, next) => {
   const venueId = req.params.venueId || req.venue?.venueId;
-  if (isOwnerPremiumForVenue(req.user, venueId)) {
+  if (isOwnerPremiumForVenue(req.user, venueId, req.venue || null)) {
     return next();
   }
   res.status(403).json({

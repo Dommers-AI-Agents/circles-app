@@ -61,12 +61,21 @@ class AlertPresenter {
         message: String,
         from viewController: UIViewController,
         linkTitle: String? = nil,
-        linkURL: URL? = nil
+        linkURL: URL? = nil,
+        actionTitle: String? = nil,
+        action: (() -> Void)? = nil
     ) {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         if let linkTitle = linkTitle, let linkURL = linkURL {
             alert.addAction(UIAlertAction(title: linkTitle, style: .default) { _ in
                 UIApplication.shared.open(linkURL)
+            })
+        }
+        // In-app follow-up (e.g. push a Help Center guide) — distinct from
+        // linkURL, which leaves the app
+        if let actionTitle = actionTitle, let action = action {
+            alert.addAction(UIAlertAction(title: actionTitle, style: .default) { _ in
+                action()
             })
         }
         alert.addAction(UIAlertAction(title: "OK", style: .default))

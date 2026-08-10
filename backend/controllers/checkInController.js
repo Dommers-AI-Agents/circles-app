@@ -210,14 +210,15 @@ exports.createCheckIn = async (req, res) => {
 
     // Piggy bank: 1 FavCoin per venue per day for showing up. Venue identity
     // falls back to name+address for check-ins at places without a saved doc.
-    require('../services/piggyBankService').credit({
+    // Awaited for the coin-drop; credit() never throws.
+    const piggyBank = await require('../services/piggyBankService').credit({
       userId,
       eventType: 'check_in',
       sourceRef: {
         checkInId,
         placeId: checkIn.placeId || `${checkIn.placeName}:${checkIn.placeAddress || ''}`
       }
-    }).catch(() => {});
+    });
     
     // Send notifications to selected groups
     for (const groupId of checkIn.notifiedGroups) {
@@ -444,7 +445,8 @@ exports.createCheckIn = async (req, res) => {
     
     res.status(201).json({
       success: true,
-      data: serializeDoc(checkInDoc)
+      data: serializeDoc(checkInDoc),
+      piggyBank
     });
   } catch (error) {
     console.error('Error creating check-in:', error);

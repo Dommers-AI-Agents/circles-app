@@ -29,6 +29,12 @@ router.post('/sticker-save', rewardController.confirmStickerSave);
 router.get('/balance', rewardController.getBalance);
 router.get('/offers', rewardController.getOffers);
 router.post('/redeem-offer', rewardController.redeemOffer);
+// Single-use brand loyalty codes (order-box cards, booth handouts)
+router.post('/redeem-code', rewardController.redeemCode);
+// Brand storefronts (account-anchored businesses / virtual stores)
+router.put('/storefront', rewardController.updateStorefront);
+router.get('/storefront/:userId', rewardController.getStorefront);
+router.post('/venues/virtual', rewardController.createVirtualVenue);
 // `by-place` is a literal segment, so this can't shadow /venues/:venueId/* routes
 router.get('/venues/by-place/:placeId', rewardController.getVenueByPlace);
 router.post('/venues/:venueId/claim', rewardController.claimVenue);
@@ -67,5 +73,7 @@ router.put('/venues/:venueId/announcements/:announcementId', rewardController.re
 router.delete('/venues/:venueId/announcements/:announcementId', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.deleteAnnouncement);
 router.patch('/venues/:venueId', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.updateVenueSettings);
 router.post('/venues/:venueId/register-code', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.rotateRegisterCode);
+router.post('/venues/:venueId/codes', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.createRedemptionCodes);
+router.get('/venues/:venueId/codes', rewardController.requireVenueOwner, rewardController.listRedemptionCodes);
 
 module.exports = router;

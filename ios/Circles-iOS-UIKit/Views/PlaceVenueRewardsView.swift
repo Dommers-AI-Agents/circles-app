@@ -106,7 +106,9 @@ class PlaceVenueRewardsView: UIView {
         }
         offers.forEach { offer in
             containerStack.addArrangedSubview(
-                makeOfferRow(offer, venue: venue, balance: data.balance ?? 0, isOwner: isOwner)
+                // Per-store loyalty: offers here are paid with points earned
+                // HERE (venueBalance); the account total is display only.
+                makeOfferRow(offer, venue: venue, balance: data.venueBalance ?? data.balance ?? 0, isOwner: isOwner)
             )
         }
 

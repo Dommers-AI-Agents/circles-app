@@ -365,7 +365,10 @@ class DiscoveryListViewController: BaseViewController {
         ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                if case .failure(let error) = result {
+                if case .success(let response) = result {
+                    // First-ever follow of this person earns a dime
+                    PiggyBankDepositView.play(credit: response.piggyBank)
+                } else if case .failure(let error) = result {
                     self.setFollowing(false, forUserId: user.id)
                     self.showError(error)
                 }

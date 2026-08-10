@@ -229,8 +229,15 @@ class BubbleView: UIView {
             arrowY = targetFrame.midY - arrowSize.width / 2
         }
         
-        // Ensure bubble stays within parent bounds
-        let parentBounds = parentView.bounds.inset(by: UIEdgeInsets(top: 20, left: 16, bottom: 20, right: 16))
+        // Ensure bubble stays within parent bounds, below the status bar /
+        // notch and above the home indicator
+        let safeInsets = parentView.safeAreaInsets
+        let parentBounds = parentView.bounds.inset(by: UIEdgeInsets(
+            top: safeInsets.top + 8,
+            left: max(16, safeInsets.left),
+            bottom: safeInsets.bottom + 8,
+            right: max(16, safeInsets.right)
+        ))
         bubbleX = max(parentBounds.minX, min(bubbleX, parentBounds.maxX - bubbleSize.width))
         bubbleY = max(parentBounds.minY, min(bubbleY, parentBounds.maxY - bubbleSize.height))
         

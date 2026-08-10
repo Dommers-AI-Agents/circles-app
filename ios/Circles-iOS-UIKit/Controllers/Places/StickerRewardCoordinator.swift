@@ -62,7 +62,7 @@ final class StickerRewardCoordinator: NSObject {
 
         var message = ""
         if let awarded = scan.awarded {
-            message += "You earned \(awarded.points) points for joining! 🎉\n\n"
+            message += "You earned \(awarded.points) store points for joining! 🎉\n\n"
         }
 
         if scan.alreadySaved == true {
@@ -71,7 +71,7 @@ final class StickerRewardCoordinator: NSObject {
             return
         }
 
-        message += "Save \(scan.venue.venueName) to one of your circles so you don't forget it — and earn 50 more points."
+        message += "Save \(scan.venue.venueName) to one of your circles so you don't forget it — and earn 50 more store points."
 
         AlertPresenter.showConfirmation(
             title: "Don't forget \(scan.venue.venueName)!",
@@ -140,8 +140,8 @@ final class StickerRewardCoordinator: NSObject {
                     case .success(let save):
                         if let awarded = save.awarded {
                             AlertPresenter.showSuccess(
-                                title: "Place saved! +\(awarded.points) points",
-                                message: "You now have \(save.balance) points. Scan the register card with a purchase next time you visit to earn more.",
+                                title: "Place saved! +\(awarded.points) store points",
+                                message: "You now have \(save.venueBalance ?? save.balance) points at this shop. Scan the register card with a purchase next time you visit to earn more.",
                                 from: presenter
                             )
                         } else {
@@ -164,19 +164,23 @@ final class StickerRewardCoordinator: NSObject {
         var title = scan.venue.venueName
         var message = ""
 
+        // Per-store loyalty: points earned here spend here — every number in
+        // this flow is the balance AT this shop (fallback: old-server payload)
+        let balanceHere = scan.venueBalance ?? scan.balance
+
         if let awarded = scan.awarded {
-            title = "+\(awarded.points) points at \(scan.venue.venueName)!"
-            message = "Thanks for coming back. You now have \(scan.balance) points."
+            title = "+\(awarded.points) store points at \(scan.venue.venueName)!"
+            message = "Thanks for coming back. You now have \(balanceHere) points here."
         } else if scan.alreadyEarnedToday == true {
             title = "Already earned today"
-            message = "You've collected today's visit points at \(scan.venue.venueName). You have \(scan.balance) points."
+            message = "You've collected today's visit points at \(scan.venue.venueName). You have \(balanceHere) points here."
         }
 
-        let affordableOffers = (scan.offers ?? []).filter { $0.pointsCost <= scan.balance }
+        let affordableOffers = (scan.offers ?? []).filter { $0.pointsCost <= balanceHere }
 
         guard !affordableOffers.isEmpty else {
             if let cheapest = (scan.offers ?? []).map({ $0.pointsCost }).min() {
-                message += "\n\nEarn \(cheapest - scan.balance > 0 ? "\(cheapest - scan.balance) more points" : "more points") to unlock a reward here."
+                message += "\n\nEarn \(cheapest - balanceHere > 0 ? "\(cheapest - balanceHere) more points here" : "more points") to unlock a reward."
             }
             AlertPresenter.showSuccess(title: title, message: message, from: presenter)
             return

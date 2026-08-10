@@ -301,10 +301,16 @@ class AllUsersCell: UITableViewCell {
         let tier = RelationshipTier(user: user)
         applyTier(tier)
 
-        // Place-milestone tier chip — the same badges as the profile page and
+        // Business accounts read as stores everywhere; otherwise the
+        // place-milestone tier chip — the same badges as the profile page and
         // Discover, so a power user reads the same everywhere.
         let placesTotal = user.placesCount ?? 0
-        if let badge = PlaceMilestones.badge(for: placesTotal) {
+        if user.isBusiness == true {
+            tierChip.isHidden = false
+            tierChip.backgroundColor = Constants.Colors.primary
+            tierChipIcon.image = UIImage(systemName: "storefront.fill")
+            tierChipLabel.text = "STORE"
+        } else if let badge = PlaceMilestones.badge(for: placesTotal) {
             tierChip.isHidden = false
             tierChip.backgroundColor = badge.color
             tierChipIcon.image = UIImage(systemName: badge.iconName)

@@ -41,6 +41,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     private let locationManager = CLLocationManager()
     private var pendingPOIAnnotation: Any? // MKMapFeatureAnnotation for iOS 16+
     private var pendingPOINotes: String? // Temporary storage for notes when creating new circle
+    private var pendingAddPlaceAfterCircleCreation = false // "+" chip flow paused on circle creation
+    private var awaitingPlaceAddedFromMap = false // An add-place flow launched from this map is in flight
     private var currentCirclePicker: CirclePickerSliderView? // Reference to current circle picker
     private var isAdjustingRegion = false // Prevent concurrent region adjustments
     private var hasInitiallyZoomed = false // Track if we've done the initial zoom
@@ -640,6 +642,21 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         return button
     }()
 
+    /// Blue "+" chip under the list/map toggle — launches the standard
+    /// add-place flow so a place can be added without leaving the map
+    private lazy var addPlaceChipButton: UIButton = {
+        let button = UIButton(type: .system)
+        let config = UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold)
+        button.setImage(UIImage(systemName: "plus", withConfiguration: config), for: .normal)
+        button.tintColor = .white
+        button.backgroundColor = Constants.Colors.primary
+        button.layer.cornerRadius = 18
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.accessibilityLabel = "Add a place"
+        button.addTarget(self, action: #selector(addPlaceChipTapped), for: .touchUpInside)
+        return button
+    }()
+
     private let overlayChipStack: UIStackView = {
         let stack = UIStackView()
         stack.axis = .horizontal
@@ -882,6 +899,17 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         refreshFilterChips()
         applyFilter()
 
+        // Drop the new pin as soon as an add launched from the "+" chip saves
+        // (the presenter's own refresh reconciles later)
+        if isPresentedModally && showFilters {
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handlePlaceAddedFromMap(_:)),
+                name: Notification.Name("PlaceAddedToCircle"),
+                object: nil
+            )
+        }
+
         // Kick off the Near me anchor. When the fix lands the chip row gains
         // its leading chip; selection and state order are untouched, so the
         // rebuild is invisible unless the new chip is the thing you wanted.
@@ -961,6 +989,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                     overlayChipStack.addArrangedSubview(myPlacesChipButton)
                 }
                 overlayChipStack.addArrangedSubview(listChipButton)
+                overlayChipStack.addArrangedSubview(addPlaceChipButton)
                 updateConnectionAvatarChip()
             }
             // Header mode adds no ☰/Me row — the dropdowns cover both, so the
@@ -975,6 +1004,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                 view.addSubview(filterChipsContainer)
                 view.addSubview(listChipButton)
                 listChipButton.translatesAutoresizingMaskIntoConstraints = false
+                view.addSubview(addPlaceChipButton)
             }
 
             // Legacy avatar row only in hamburger mode — the Connection
@@ -1063,7 +1093,12 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                     listChipButton.topAnchor.constraint(equalTo: closeButton.bottomAnchor, constant: 8),
                     listChipButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
                     listChipButton.widthAnchor.constraint(equalToConstant: 36),
-                    listChipButton.heightAnchor.constraint(equalToConstant: 36)
+                    listChipButton.heightAnchor.constraint(equalToConstant: 36),
+
+                    addPlaceChipButton.topAnchor.constraint(equalTo: listChipButton.bottomAnchor, constant: 8),
+                    addPlaceChipButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+                    addPlaceChipButton.widthAnchor.constraint(equalToConstant: 36),
+                    addPlaceChipButton.heightAnchor.constraint(equalToConstant: 36)
                 ])
             } else {
                 NSLayoutConstraint.activate([
@@ -1072,6 +1107,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                     overlayChipStack.heightAnchor.constraint(equalToConstant: 36),
                     menuChipButton.widthAnchor.constraint(equalToConstant: 36),
                     listChipButton.widthAnchor.constraint(equalToConstant: 36),
+                    addPlaceChipButton.widthAnchor.constraint(equalToConstant: 36),
                     connectionAvatarChip.widthAnchor.constraint(equalToConstant: 36),
                     connectionAvatarChip.heightAnchor.constraint(equalToConstant: 36)
                 ])
@@ -1881,6 +1917,95 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         userListView?.isHidden = isShowingPlacesList
     }
 
+    // MARK: - Add Place from Map
+
+    /// Same circle-selection rules as the home quick-add button: one circle or
+    /// a remembered last-used circle goes straight to the add screen,
+    /// otherwise the circle picker.
+    @objc private func addPlaceChipTapped() {
+        CircleService.shared.fetchUserCircles { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success(let circles) where !circles.isEmpty:
+                    if circles.count == 1 {
+                        self.presentAddPlace(circleId: circles[0].id, circles: circles)
+                    } else if let lastUsedId = UserDefaults.standard.string(forKey: AddPlaceViewController.lastUsedCircleKey),
+                              circles.contains(where: { $0.id == lastUsedId }) {
+                        self.presentAddPlace(circleId: lastUsedId, circles: circles)
+                    } else {
+                        self.presentCirclePickerForAddPlace(circles: circles)
+                    }
+                case .success:
+                    self.presentCreateCircleThenAddPlace()
+                case .failure(let error):
+                    AlertPresenter.showError(error, from: self)
+                }
+            }
+        }
+    }
+
+    /// The map has no navigation stack of its own (home presents it bare), so
+    /// the add screen goes up modally in its own nav controller — on save it
+    /// dismisses itself and the user lands back on the map.
+    private func presentAddPlace(circleId: String, circles: [Circle]? = nil) {
+        let addPlaceVC = AddPlaceViewController(circleId: circleId, circles: circles)
+        let navController = UINavigationController(rootViewController: addPlaceVC)
+        navController.modalPresentationStyle = .fullScreen
+        awaitingPlaceAddedFromMap = true
+        present(navController, animated: true)
+    }
+
+    private func presentCirclePickerForAddPlace(circles: [Circle]) {
+        let sortedCircles = circles.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        let circlePickerVC = CirclePickerViewController(circles: sortedCircles)
+        circlePickerVC.onCircleSelected = { [weak self] circle in
+            self?.presentAddPlace(circleId: circle.id, circles: sortedCircles)
+        }
+        circlePickerVC.onCreateNewCircle = { [weak self] in
+            self?.presentCreateCircleThenAddPlace()
+        }
+
+        let navController = UINavigationController(rootViewController: circlePickerVC)
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            navController.modalPresentationStyle = .formSheet
+            navController.preferredContentSize = CGSize(width: 400, height: 600)
+        } else {
+            navController.modalPresentationStyle = .pageSheet
+            if let sheet = navController.sheetPresentationController {
+                sheet.detents = [.medium(), .large()]
+                sheet.prefersGrabberVisible = true
+            }
+        }
+        present(navController, animated: true)
+    }
+
+    private func presentCreateCircleThenAddPlace() {
+        pendingAddPlaceAfterCircleCreation = true
+        let createCircleVC = CreateCircleViewController()
+        createCircleVC.delegate = self
+        let navController = UINavigationController(rootViewController: createCircleVC)
+        navController.modalPresentationStyle = .pageSheet
+        present(navController, animated: true)
+    }
+
+    /// Drops the freshly saved place onto the map right away; the presenter's
+    /// own data refresh reconciles the full set later.
+    @objc private func handlePlaceAddedFromMap(_ notification: Notification) {
+        guard awaitingPlaceAddedFromMap else { return }
+        guard let place = notification.userInfo?["place"] as? Place else { return }
+        awaitingPlaceAddedFromMap = false
+        guard !places.contains(where: { $0.id == place.id }) else { return }
+        // A circle-mode map shows a single circle — only reflect adds that
+        // actually went to it (the add screen's dropdown can switch circles)
+        if viewMode == .circle,
+           let shownCircleId = places.first?.circleId,
+           place.circleId != shownCircleId {
+            return
+        }
+        updatePlaces(places + [place], adjustRegion: false)
+    }
+
     /// Rebuilds the distance-sorted data source for the places list from the
     /// currently filtered places. Places without a location sort last.
     private func rebuildDistanceSortedPlaces() {
@@ -2078,6 +2203,17 @@ extension FullScreenMapViewController {
 // MARK: - CreateCircleDelegate
 extension FullScreenMapViewController: CreateCircleDelegate {
     func didCreateCircle(_ circle: Circle) {
+        // "+" chip flow paused on circle creation: CreateCircle dismisses
+        // itself right after this callback, so wait for the sheet to clear
+        // before presenting the add screen
+        if pendingAddPlaceAfterCircleCreation {
+            pendingAddPlaceAfterCircleCreation = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                self?.presentAddPlace(circleId: circle.id)
+            }
+            return
+        }
+
         // If we have a pending POI annotation, navigate to AddPlaceViewController
         if #available(iOS 16.0, *) {
             if let pendingPOI = pendingPOIAnnotation as? MKMapFeatureAnnotation {

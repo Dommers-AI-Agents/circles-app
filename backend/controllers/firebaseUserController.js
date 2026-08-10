@@ -95,6 +95,20 @@ exports.getUser = async (req, res, next) => {
       followingCount: user.followingCount || 0
     };
 
+    // Brand storefront is public presentation — any viewer's profile screen
+    // renders the store card and lists show the store chip off these fields
+    if (user.storefront && user.storefront.enabled === true) {
+      profileData.isBusiness = true;
+      profileData.storefront = {
+        businessName: user.storefront.businessName,
+        about: user.storefront.about || null,
+        website: user.storefront.website || null,
+        catalogUrl: user.storefront.catalogUrl || null,
+        contactEmail: user.storefront.contactEmail || null,
+        findUsAtCircleId: user.storefront.findUsAtCircleId || null
+      };
+    }
+
     // Include private data only for own profile
     if (isOwnProfile) {
       profileData.email = user.email;
@@ -1226,18 +1240,20 @@ exports.followUser = async (req, res, next) => {
       updatedAt: new Date().toISOString()
     });
     
+    let followPiggyBank = null;
     try {
       await batch.commit();
       console.log('✅ Follow batch committed successfully');
 
-      // Piggy bank: 1 FavCoin for your first follow of this person, ever —
+      // Piggy bank: a dime for your first follow of this person, ever —
       // the already-following guard above plus the per-pair dedup key means
-      // unfollow/refollow churn can't re-mint.
-      require('../services/piggyBankService').credit({
+      // unfollow/refollow churn can't re-mint. Awaited for the coin-drop;
+      // credit() never throws.
+      followPiggyBank = await require('../services/piggyBankService').credit({
         userId: currentUserId,
         eventType: 'user_followed',
         sourceRef: { followedUserId: targetUserId }
-      }).catch(() => {});
+      });
     } catch (batchError) {
       console.error('❌ Follow batch failed, attempting rollback:', batchError);
       
@@ -1413,7 +1429,8 @@ exports.followUser = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: 'Successfully followed user',
-      user: responseUserData
+      user: responseUserData,
+      piggyBank: followPiggyBank
     });
     
   } catch (error) {

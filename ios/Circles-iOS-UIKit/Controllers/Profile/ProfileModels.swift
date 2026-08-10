@@ -19,6 +19,7 @@ struct FollowResponse: Codable {
     let success: Bool
     let message: String
     let user: User?
+    let piggyBank: PiggyBankCredit?
 }
 
 // MARK: - FollowListType

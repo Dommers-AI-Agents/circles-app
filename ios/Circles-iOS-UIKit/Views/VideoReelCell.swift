@@ -598,8 +598,9 @@ class VideoReelCell: UICollectionViewCell {
         // Update follow button visibility (hidden on your own moment)
         let isOwnMoment = reel.userId == AuthService.shared.currentUser?.id
         followButton.isHidden = isOwnMoment
-        // The "..." owner menu is the inverse: shown only on your own moment
-        moreButton.isHidden = !isOwnMoment
+        // The "..." menu shows on EVERY moment: owners get delete/privacy,
+        // everyone else gets report/unfollow/block (App Review 1.2)
+        moreButton.isHidden = false
     }
     
     override func layoutSubviews() {

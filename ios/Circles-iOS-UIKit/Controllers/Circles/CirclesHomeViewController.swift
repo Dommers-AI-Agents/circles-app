@@ -4400,6 +4400,31 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             name: Notification.Name("MomentDeleted"),
             object: nil
         )
+
+        // A block anywhere in the app must scrub that user from the home
+        // feeds immediately — the server filters on the next fetch, so just
+        // refetch
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleUserBlocked(_:)),
+            name: .userBlocked,
+            object: nil
+        )
+    }
+
+    @objc func handleUserBlocked(_ notification: Notification) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            if let blockedId = notification.userInfo?["userId"] as? String {
+                // Drop their content locally right away, then refetch for truth
+                self.reels.removeAll { $0.userId == blockedId }
+                self.activities.removeAll { $0.actorId == blockedId }
+                self.reelsCollectionView.reloadData()
+                self.activityTableView.reloadData()
+            }
+            self.fetchActivities()
+            self.fetchReels()
+        }
     }
     
     @objc func handleCircleDeleted(_ notification: Notification) {

@@ -322,6 +322,175 @@ That's it. Everything else builds from there.
     }
   }
 
+  // Sent once on the premium signup transition (new sub or trial start) —
+  // the moment they pay is the moment to show them everything they unlocked.
+  async sendPremiumWelcomeEmail(toEmail, name = null, { isTrial = false } = {}) {
+    try {
+      const greeting = name ? `Hi ${name},` : 'Hi there,';
+      const subject = isTrial
+        ? 'Your FavCircles Premium trial has started 🎉'
+        : 'Welcome to FavCircles Premium 🎉';
+      const opener = isTrial
+        ? 'Your free trial of FavCircles Premium is live — everything below is unlocked right now.'
+        : 'Thanks for subscribing to FavCircles Premium — here\'s everything you just unlocked.';
+
+      const htmlContent = `
+        <div style="font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1a202c;">
+          <h1 style="font-size: 22px;">${isTrial ? 'Your Premium trial has started 🎉' : 'Welcome to Premium 🎉'}</h1>
+          <p style="font-size: 15px; line-height: 1.6;">${greeting}</p>
+          <p style="font-size: 15px; line-height: 1.6;">${opener}</p>
+          <ul style="font-size: 15px; line-height: 1.9; padding-left: 20px;">
+            <li><strong>Unlimited circles and places</strong> — the free caps (6 circles, 15 places each) are gone. Build as big as your world is.</li>
+            <li><strong>Import your places</strong> — bring everything over from Google Maps, Mapstr, or Swarm in one go (Profile → Settings → Import).</li>
+            <li><strong>Export anytime</strong> — your places are yours; take a copy whenever you like.</li>
+            <li><strong>Share without watermarks</strong> — circles you share look clean.</li>
+            <li><strong>Circle Advisor</strong> — AI suggestions that help round out your circles with places you'll actually like.</li>
+          </ul>
+          <p style="font-size: 15px; line-height: 1.6;">
+            A good first move: import your saved places from another app — a full map on day one makes everything else better.
+          </p>
+          <p style="font-size: 15px; line-height: 1.6;">— Wesley &amp; the FavCircles team</p>
+        </div>`;
+
+      const textContent = `${isTrial ? 'Your Premium trial has started 🎉' : 'Welcome to FavCircles Premium 🎉'}
+
+${greeting}
+
+${opener}
+
+• Unlimited circles and places — the free caps (6 circles, 15 places each) are gone.
+• Import your places — bring everything over from Google Maps, Mapstr, or Swarm (Profile → Settings → Import).
+• Export anytime — your places are yours.
+• Share without watermarks.
+• Circle Advisor — AI suggestions for rounding out your circles.
+
+A good first move: import your saved places from another app — a full map on day one makes everything else better.
+
+— Wesley & the FavCircles team`;
+
+      await this.sendEmail({ to: toEmail, subject, html: htmlContent, text: textContent });
+      console.log(`✅ Premium welcome email sent to ${toEmail}`);
+      return { success: true };
+    } catch (error) {
+      console.error('❌ Error sending premium welcome email:', error);
+      throw error;
+    }
+  }
+
+  // Sent once on the FavCircles Business signup transition — a store owner
+  // just paid; walk them through turning that into foot traffic.
+  async sendBusinessWelcomeEmail(toEmail, name = null, venueName = null) {
+    try {
+      const greeting = name ? `Hi ${name},` : 'Hi there,';
+      const forVenue = venueName ? ` for ${venueName}` : '';
+      const subject = `Welcome to FavCircles Business${forVenue} 🏪`;
+
+      const htmlContent = `
+        <div style="font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1a202c;">
+          <h1 style="font-size: 22px;">Welcome to FavCircles Business 🏪</h1>
+          <p style="font-size: 15px; line-height: 1.6;">${greeting}</p>
+          <p style="font-size: 15px; line-height: 1.6;">
+            Your Business subscription${forVenue} is active. Everything below is live now — all of it managed from your place page in the app (Profile → My Venues).
+          </p>
+          <ul style="font-size: 15px; line-height: 1.9; padding-left: 20px;">
+            <li><strong>Your loyalty program is on</strong> — customers earn points scanning your window sticker and your register card, and you set how many points a purchase pays. Points earned at your store can only be spent at your store — never at a competitor.</li>
+            <li><strong>Post offers</strong> — "Free coffee — 100 points" style rewards customers redeem with a short-lived voucher at your counter. You choose the offers and the prices.</li>
+            <li><strong>Announcements</strong> — reach your followers' feeds and the app's Specials tab whenever you have news, an event, or a special.</li>
+            <li><strong>Stats &amp; Insights</strong> — saves, followers, visits, scans, and redemptions, live on your dashboard, plus a monthly report by email.</li>
+            <li><strong>Redemption codes</strong> — single-use codes to pack into orders or hand out at events; each one pays points when redeemed.</li>
+          </ul>
+          <p style="font-size: 15px; line-height: 1.6;">
+            A good first move: post one offer worth walking in for, and put the window sticker where people can see it. Reply to this email if you need stickers or help getting set up — happy to help personally.
+          </p>
+          <p style="font-size: 15px; line-height: 1.6;">— Wesley &amp; the FavCircles team</p>
+        </div>`;
+
+      const textContent = `Welcome to FavCircles Business 🏪
+
+${greeting}
+
+Your Business subscription${forVenue} is active. Everything below is live now — all managed from your place page in the app (Profile → My Venues).
+
+• Your loyalty program is on — customers earn points scanning your window sticker and register card; you set how many points a purchase pays. Points earned at your store can only be spent at your store.
+• Post offers — rewards customers redeem with a short-lived voucher at your counter.
+• Announcements — reach your followers' feeds and the app's Specials tab.
+• Stats & Insights — saves, followers, visits, scans, and redemptions, plus a monthly report by email.
+• Redemption codes — single-use codes for orders or events.
+
+A good first move: post one offer worth walking in for, and put the window sticker where people can see it. Reply to this email if you need stickers or help getting set up.
+
+— Wesley & the FavCircles team`;
+
+      await this.sendEmail({ to: toEmail, subject, html: htmlContent, text: textContent });
+      console.log(`✅ Business welcome email sent to ${toEmail}`);
+      return { success: true };
+    } catch (error) {
+      console.error('❌ Error sending business welcome email:', error);
+      throw error;
+    }
+  }
+
+  // Sent when an ownership claim is approved — the push can be missed; this
+  // is the durable "you now manage this business" record plus the pitch for
+  // what Business unlocks.
+  async sendClaimApprovedEmail(toEmail, name = null, businessName = null) {
+    try {
+      const greeting = name ? `Hi ${name},` : 'Hi there,';
+      const business = businessName || 'your business';
+      const subject = `You now manage ${business} on FavCircles ✅`;
+
+      const htmlContent = `
+        <div style="font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1a202c;">
+          <h1 style="font-size: 22px;">Your claim was approved ✅</h1>
+          <p style="font-size: 15px; line-height: 1.6;">${greeting}</p>
+          <p style="font-size: 15px; line-height: 1.6;">
+            You're verified as the owner of <strong>${business}</strong> on FavCircles. Your store now appears under <strong>Profile → My Venues</strong> in the app, and its place page shows you the owner tools.
+          </p>
+          <p style="font-size: 15px; line-height: 1.6;"><strong>What you can do right away (free):</strong></p>
+          <ul style="font-size: 15px; line-height: 1.9; padding-left: 20px;">
+            <li>Keep your business details accurate — your edits are the ones customers see</li>
+            <li>Watch your Stats &amp; Insights — who's saving, following, and visiting</li>
+          </ul>
+          <p style="font-size: 15px; line-height: 1.6;"><strong>With a FavCircles Business subscription you also get:</strong></p>
+          <ul style="font-size: 15px; line-height: 1.9; padding-left: 20px;">
+            <li>A loyalty program at your counter — customers earn points with you that can only be spent at your store</li>
+            <li>Offers customers redeem in person, at prices you set</li>
+            <li>Announcements that reach your followers' feeds and the app's Specials tab</li>
+          </ul>
+          <p style="font-size: 15px; line-height: 1.6;">
+            The upgrade lives on your place page in the app. Questions, or need a window sticker? Just reply to this email — happy to help personally.
+          </p>
+          <p style="font-size: 15px; line-height: 1.6;">— Wesley &amp; the FavCircles team</p>
+        </div>`;
+
+      const textContent = `Your claim was approved ✅
+
+${greeting}
+
+You're verified as the owner of ${business} on FavCircles. Your store now appears under Profile → My Venues in the app, and its place page shows you the owner tools.
+
+What you can do right away (free):
+• Keep your business details accurate — your edits are the ones customers see
+• Watch your Stats & Insights — who's saving, following, and visiting
+
+With a FavCircles Business subscription you also get:
+• A loyalty program at your counter — customers earn points with you that can only be spent at your store
+• Offers customers redeem in person, at prices you set
+• Announcements that reach your followers' feeds and the app's Specials tab
+
+The upgrade lives on your place page in the app. Questions, or need a window sticker? Just reply to this email.
+
+— Wesley & the FavCircles team`;
+
+      await this.sendEmail({ to: toEmail, subject, html: htmlContent, text: textContent });
+      console.log(`✅ Claim-approved email sent to ${toEmail}`);
+      return { success: true };
+    } catch (error) {
+      console.error('❌ Error sending claim-approved email:', error);
+      throw error;
+    }
+  }
+
   async sendAppInvitation(toEmail, inviterName, recipientName = null, inviteLink = null) {
     try {
       // The connect link opens the app and auto-connects when installed,

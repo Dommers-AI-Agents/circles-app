@@ -28,11 +28,47 @@ function normalizeCactusAddress(input) {
   }
 }
 
+// Builds shipped before 2026.08-b decode every coin field as an INTEGER —
+// one fractional value anywhere in the payload breaks their piggy screen.
+// New builds advertise decimal support with X-FC-Decimal-Coins: 1; everyone
+// else gets integers (floors — fractional rows show as 0 rather than lying).
+const wantsDecimals = (req) => req.headers['x-fc-decimal-coins'] === '1';
+const intify = (n) => Math.floor(n || 0);
+const intifyEvent = (e) => ({ ...e, coins: intify(e.coins) });
+function intifyPayload(payload) {
+  return {
+    ...payload,
+    bank: {
+      ...payload.bank,
+      pendingCoins: intify(payload.bank.pendingCoins),
+      confirmedCoins: intify(payload.bank.confirmedCoins),
+      lifetimeCoins: intify(payload.bank.lifetimeCoins),
+      settledOnChain: intify(payload.bank.settledOnChain)
+    },
+    activeClaim: payload.activeClaim ? {
+      ...payload.activeClaim,
+      coins: intify(payload.activeClaim.coins),
+      feeCoins: intify(payload.activeClaim.feeCoins),
+      netCoins: intify(payload.activeClaim.netCoins)
+    } : null,
+    events: (payload.events || []).map(intifyEvent),
+    config: {
+      ...payload.config,
+      coinValues: Object.fromEntries(
+        Object.entries(payload.config.coinValues).map(([k, v]) => [k, intify(v)])
+      )
+    }
+  };
+}
+
 // GET /api/piggy-bank — bank + recent events + display config
 router.get('/', async (req, res) => {
   try {
     const payload = await piggyBankService.getPiggyBank(req.user.uid);
-    res.status(200).json({ success: true, ...payload });
+    res.status(200).json({
+      success: true,
+      ...(wantsDecimals(req) ? payload : intifyPayload(payload))
+    });
   } catch (error) {
     console.error('🐷 getPiggyBank failed:', error.message);
     res.status(500).json({ success: false, message: 'Failed to load piggy bank' });
@@ -43,7 +79,10 @@ router.get('/', async (req, res) => {
 router.get('/history', async (req, res) => {
   try {
     const events = await piggyBankService.getHistory(req.user.uid, req.query.before || null);
-    res.status(200).json({ success: true, events });
+    res.status(200).json({
+      success: true,
+      events: wantsDecimals(req) ? events : events.map(intifyEvent)
+    });
   } catch (error) {
     console.error('🐷 piggy history failed:', error.message);
     res.status(500).json({ success: false, message: 'Failed to load history' });

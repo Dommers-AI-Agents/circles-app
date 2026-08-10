@@ -261,10 +261,16 @@ class DiscoverUserCell: UITableViewCell {
         }
         verifiedBadge.isHidden = !(user.isVerified ?? false)
 
-        // Place-milestone tier chip — same tiers as the profile badge, so a
+        // Business accounts read as stores everywhere; otherwise the
+        // place-milestone tier chip — same tiers as the profile badge, so a
         // power user is recognizable before you ever open their profile.
         let placesTotal = user.placesCount ?? 0
-        if let tier = PlaceMilestones.badge(for: placesTotal) {
+        if user.isBusiness == true {
+            tierChip.isHidden = false
+            tierChip.backgroundColor = Constants.Colors.primary
+            tierChipIcon.image = UIImage(systemName: "storefront.fill")
+            tierChipLabel.text = "STORE"
+        } else if let tier = PlaceMilestones.badge(for: placesTotal) {
             tierChip.isHidden = false
             tierChip.backgroundColor = tier.color
             tierChipIcon.image = UIImage(systemName: tier.iconName)

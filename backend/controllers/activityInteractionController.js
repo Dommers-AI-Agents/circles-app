@@ -68,6 +68,7 @@ exports.addReaction = async (req, res) => {
     
     const reaction = createActivityReaction(reactionData);
     
+    let piggyBank = null;
     if (existingReaction.exists) {
       // Update existing reaction
       await existingReactionRef.update({
@@ -77,12 +78,25 @@ exports.addReaction = async (req, res) => {
     } else {
       // Create new reaction
       await existingReactionRef.set(reaction);
-      
+
       // Update activity reaction count
       await db.collection(COLLECTIONS.ACTIVITIES).doc(activityId).update({
         reactionCount: FieldValue.increment(1),
         updatedAt: new Date().toISOString()
       });
+
+      // FavCoins: a nickel for reacting — but not to your own activity, and
+      // only on first reaction (emoji swaps hit the update branch above).
+      // Awaited so the response can carry the credit and the app can play
+      // the coin-drop — credit() never throws (piggy hiccups return
+      // {credited:false}), so the reaction still can't fail on it.
+      if (activity.actorId !== userId) {
+        piggyBank = await require('../services/piggyBankService').credit({
+          userId,
+          eventType: 'activity_reaction',
+          sourceRef: { activityId }
+        });
+      }
       
       // Send notification to activity owner if different from reactor
       if (activity.actorId !== userId) {
@@ -141,7 +155,10 @@ exports.addReaction = async (req, res) => {
     
     res.json({
       success: true,
-      data: { reactionId, emoji }
+      data: { reactionId, emoji },
+      // Same shape as createPlace's piggyBank so the app reuses the
+      // coin-drop animation path
+      piggyBank
     });
   } catch (error) {
     console.error('Error adding reaction:', error);

@@ -68,6 +68,12 @@ exports.protect = async (req, res, next) => {
       if (req.method === 'GET') {
         const cached = userCache.get(decoded.uid);
         if (cached && cached.expires > Date.now()) {
+          if (cached.userData.banned === true) {
+            return res.status(403).json({
+              success: false, code: 'account_banned',
+              message: 'This account has been suspended for violating our community guidelines. Contact support@favcircles.com to appeal.'
+            });
+          }
           req.user = buildReqUser(decoded, cached.userData, cached.finalUserId);
           stampLastActive(cached.finalUserId);
           return next();
@@ -118,6 +124,14 @@ exports.protect = async (req, res, next) => {
       // Add user to request object with normalized ID
       const userData = serializeDoc(userDoc);
       const finalUserId = normalizeUserId(actualUserId); // Ensure we always use normalized ID
+
+      // Banned accounts are locked out everywhere, with an appeal path
+      if (userData.banned === true) {
+        return res.status(403).json({
+          success: false, code: 'account_banned',
+          message: 'This account has been suspended for violating our community guidelines. Contact support@favcircles.com to appeal.'
+        });
+      }
 
       userCache.set(decoded.uid, { userData, finalUserId, expires: Date.now() + USER_CACHE_TTL_MS });
       req.user = buildReqUser(decoded, userData, finalUserId);
