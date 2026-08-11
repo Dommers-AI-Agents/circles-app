@@ -64,6 +64,13 @@ router.post('/claims/:claimId/deny', requireSuperUser, rewardController.denyClai
 // the register QR — the loyalty program.
 router.get('/my-venues', rewardController.getMyVenues);
 router.get('/venues/:venueId/dashboard', rewardController.requireVenueOwner, rewardController.getVenueDashboard);
+// Stat drill-downs (who follows / who saved / the scan ledger) are Business-
+// tier detail, like the dashboard's monthly history
+router.get('/venues/:venueId/followers', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.getVenueFollowers);
+router.get('/venues/:venueId/savers', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.getVenueSavers);
+router.get('/venues/:venueId/activity', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.getVenueActivity);
+// Cover photo is basic storefront presence — free owner tier
+router.put('/venues/:venueId/cover-photo', rewardController.requireVenueOwner, rewardController.setVenueCoverPhoto);
 router.post('/venues/:venueId/email-qr', rewardController.requireVenueOwner, rewardController.emailVenueQR);
 router.patch('/venues/:venueId/info', rewardController.requireVenueOwner, rewardController.updateVenueInfo);
 router.post('/venues/:venueId/offers', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.addOffer);

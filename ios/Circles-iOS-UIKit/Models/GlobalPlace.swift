@@ -17,6 +17,8 @@ struct GlobalPlace: Codable, Identifiable {
     // Unified media with attribution
     let photos: [AttributedPhoto]?
     let videos: [AttributedVideo]?
+    /// Owner-curated cover — when set, the carousel leads with this photo
+    let coverPhotoUrl: String?
     
     // Public content shared across platform
     let publicReviews: [PublicReview]?
@@ -42,7 +44,7 @@ struct GlobalPlace: Codable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id = "_id"
         case googlePlaceId, deduplicationKey, legacyPlaceIds, name, address, location, category, subcategory
-        case photos, videos, publicReviews, userContributions, googleData
+        case photos, videos, coverPhotoUrl, publicReviews, userContributions, googleData
         case totalCircleReferences, totalUserReferences, lastActivityAt
         case dataCompleteness, qualityScore
         case createdAt, updatedAt, deletedAt

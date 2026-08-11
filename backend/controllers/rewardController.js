@@ -25,6 +25,7 @@ const { GLOBAL_COLLECTIONS } = require('../models/GlobalPlace');
 const { isOwnerPremiumUser, isOwnerPremiumForVenue, isVenueLoyaltyActive, isCompActive, venueLoyaltyStatus } = require('../services/ownerSubscriptionService');
 const { createActivity } = require('./activityController');
 const sseService = require('../services/sseService');
+const { normalizeUserId, isSameUser } = require('../services/idService');
 
 const db = getFirestore();
 
@@ -65,6 +66,8 @@ const activeOffers = (venue) => (venue.offers || []).filter((o) => o.active !== 
 // photo URL (photos are stored as {url} objects or bare strings). Venues
 // missing a stamped globalPlaceId fall back to a googlePlaceId lookup.
 const firstPhotoUrl = (globalPlaceData) => {
+  // Owner-curated cover wins over positional first photo
+  if (globalPlaceData.coverPhotoUrl) return globalPlaceData.coverPhotoUrl;
   const first = (globalPlaceData.photos || [])[0];
   return typeof first === 'string' ? first : (first && first.url) || null;
 };
@@ -473,6 +476,13 @@ exports.getVenueByPlace = async (req, res) => {
         // For the owner viewing their own place: drives the in-place
         // "Upgrade to Business" teaser when they can't post announcements yet
         ownerPremium: isOwner ? isOwnerPremiumForVenue(req.user, venue.venueId, venue) : undefined,
+        // Inline stat strip on the owner's place page (headline counters only)
+        ownerStats: isOwner ? {
+          saves: (venue.stats || {}).saves || 0,
+          visits: (venue.stats || {}).visits || 0,
+          scans: (venue.stats || {}).scans || 0,
+          redemptions: (venue.stats || {}).redemptions || 0
+        } : undefined,
         claim
       }
     });
@@ -883,6 +893,231 @@ exports.getVenueDashboard = async (req, res) => {
   } catch (error) {
     console.error('❌ Failed to load venue dashboard:', error);
     res.status(500).json({ success: false, error: 'Failed to load venue dashboard' });
+  }
+};
+
+// Batch-load user docs in getAll-sized chunks and project the public card
+// fields. Never leaks email; these lists render inside the owner dashboard.
+const loadUserCards = async (userIds) => {
+  const cards = new Map();
+  const ids = [...new Set(userIds)].filter(Boolean);
+  for (let i = 0; i < ids.length; i += 100) {
+    const refs = ids.slice(i, i + 100).map((id) => db.collection(COLLECTIONS.USERS).doc(id));
+    const docs = await db.getAll(...refs);
+    docs.forEach((doc) => {
+      if (!doc.exists) return;
+      const u = doc.data();
+      cards.set(doc.id, {
+        id: doc.id,
+        displayName: u.displayName || 'FavCircles user',
+        username: u.username || null,
+        profilePicture: u.profilePicture || null
+      });
+    });
+  }
+  return cards;
+};
+
+// @desc    Who follows this venue's place. Following a store is a directed
+//          act toward the business, so the full list is visible to the owner.
+// @route   GET /api/rewards/venues/:venueId/followers
+// @access  Venue owner + business tier
+exports.getVenueFollowers = async (req, res) => {
+  try {
+    const venue = req.venue;
+    const globalPlaceId = await venueGlobalPlaceId(venue);
+    let followerIds = [];
+    if (globalPlaceId) {
+      const gpDoc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(globalPlaceId).get();
+      followerIds = (gpDoc.exists && gpDoc.data().followers) || [];
+    }
+    const cards = await loadUserCards(followerIds);
+    res.json({
+      success: true,
+      data: {
+        count: followerIds.length,
+        followers: followerIds.map((id) => cards.get(id)).filter(Boolean)
+      }
+    });
+  } catch (error) {
+    console.error('❌ Failed to load venue followers:', error);
+    res.status(500).json({ success: false, error: 'Failed to load venue followers' });
+  }
+};
+
+// @desc    Who saved this venue's place. The COUNT includes everyone; the
+//          identity list includes only savers whose save would already be
+//          visible to the owner browsing as a regular user — public circles,
+//          shared-with, or myNetwork circles of a connection — and never a
+//          save marked place-private. Saving is the user organizing their own
+//          places, not a message to the store, so private stays private.
+// @route   GET /api/rewards/venues/:venueId/savers
+// @access  Venue owner + business tier
+exports.getVenueSavers = async (req, res) => {
+  try {
+    const venue = req.venue;
+    const ownerId = req.user.uid;
+    const globalPlaceId = await venueGlobalPlaceId(venue);
+    if (!globalPlaceId) {
+      return res.json({ success: true, data: { totalCount: 0, count: 0, savers: [] } });
+    }
+
+    const snapshot = await db.collection(COLLECTIONS.PLACES)
+      .where('globalPlaceId', '==', globalPlaceId)
+      .where('deletedAt', '==', null)
+      .select('addedBy', 'circleId', 'privacy', 'createdAt')
+      .get();
+
+    // Group saves by saver: circles their copies live in, earliest save date,
+    // and whether ANY copy escapes place-private
+    const bySaver = new Map();
+    snapshot.docs.forEach((doc) => {
+      const data = doc.data();
+      const saverId = normalizeUserId(data.addedBy);
+      if (!saverId) return;
+      const entry = bySaver.get(saverId) || { circleIds: new Set(), savedAt: null, hasNonPrivate: false };
+      if (data.circleId) entry.circleIds.add(data.circleId);
+      if (data.privacy !== 'private') entry.hasNonPrivate = true;
+      if (data.createdAt && (!entry.savedAt || data.createdAt < entry.savedAt)) entry.savedAt = data.createdAt;
+      bySaver.set(saverId, entry);
+    });
+
+    const totalCount = bySaver.size;
+    if (totalCount === 0) {
+      return res.json({ success: true, data: { totalCount: 0, count: 0, savers: [] } });
+    }
+
+    // Circle visibility from the OWNER's viewpoint (same rules as the
+    // consumer savers list in firebasePlaceController.getPlaceSavers)
+    const circleIds = [...new Set([...bySaver.values()].flatMap((e) => [...e.circleIds]))];
+    const circlesById = new Map();
+    for (let i = 0; i < circleIds.length; i += 100) {
+      const refs = circleIds.slice(i, i + 100).map((id) => db.collection(COLLECTIONS.CIRCLES).doc(id));
+      const docs = await db.getAll(...refs);
+      docs.forEach((doc) => { if (doc.exists) circlesById.set(doc.id, doc.data()); });
+    }
+
+    const [outgoing, incomingAccepted] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', ownerId)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', ownerId)
+        .where('status', '==', 'accepted')
+        .get()
+    ]);
+    const connectedIds = new Set();
+    outgoing.forEach((doc) => connectedIds.add(normalizeUserId(doc.data().connectedUserId)));
+    incomingAccepted.forEach((doc) => connectedIds.add(normalizeUserId(doc.data().userId)));
+
+    const isCircleVisibleToOwner = (circle, saverId) => {
+      if (!circle) return false;
+      if (isSameUser(saverId, ownerId) || isSameUser(circle.owner, ownerId)) return true;
+      if (circle.privacy === 'public') return true;
+      if (circle.sharedWith && circle.sharedWith.includes(ownerId)) return true;
+      if (circle.privacy === 'myNetwork' && connectedIds.has(normalizeUserId(circle.owner))) return true;
+      return false;
+    };
+
+    const visible = [...bySaver.entries()].filter(([saverId, entry]) =>
+      entry.hasNonPrivate &&
+      [...entry.circleIds].some((circleId) => isCircleVisibleToOwner(circlesById.get(circleId), saverId)));
+
+    const cards = await loadUserCards(visible.map(([id]) => id));
+    const savers = visible
+      .map(([id, entry]) => {
+        const card = cards.get(id);
+        return card ? { ...card, savedAt: entry.savedAt } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || ''));
+
+    res.json({
+      success: true,
+      data: { totalCount, count: savers.length, savers }
+    });
+  } catch (error) {
+    console.error('❌ Failed to load venue savers:', error);
+    res.status(500).json({ success: false, error: 'Failed to load venue savers' });
+  }
+};
+
+// @desc    The venue's loyalty ledger: scans, sign-ups, saves, redemptions —
+//          each with who and when. Scanning the store's QR is a physical
+//          interaction with the business (a digital punch card), so the owner
+//          sees their own ledger. Client renders histograms from timestamps.
+// @route   GET /api/rewards/venues/:venueId/activity?limit=&before=
+// @access  Venue owner + business tier
+exports.getVenueActivity = async (req, res) => {
+  try {
+    const venue = req.venue;
+    const limit = Math.min(parseInt(req.query.limit, 10) || 200, 500);
+
+    let query = db.collection(STICKER_COLLECTIONS.REWARD_EVENTS)
+      .where('venueId', '==', venue.venueId)
+      .orderBy('createdAt', 'desc')
+      .limit(limit);
+    if (req.query.before) {
+      query = query.startAfter(String(req.query.before));
+    }
+    const snapshot = await query.get();
+
+    const cards = await loadUserCards(snapshot.docs.map((d) => d.data().userId));
+    const events = snapshot.docs.map((doc) => {
+      const e = doc.data();
+      return {
+        id: doc.id,
+        type: e.type,
+        points: e.points || 0,
+        createdAt: e.createdAt,
+        offerTitle: e.offerTitle || null,
+        user: cards.get(e.userId) || null
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        events,
+        nextBefore: events.length === limit ? events[events.length - 1].createdAt : null
+      }
+    });
+  } catch (error) {
+    console.error('❌ Failed to load venue activity:', error);
+    res.status(500).json({ success: false, error: 'Failed to load venue activity' });
+  }
+};
+
+// @desc    Set (or clear) the venue's cover photo. The URL must be one of the
+//          canonical place's existing photos — the owner curates, they don't
+//          bypass the media pipeline. Stored on the globalPlaces doc so every
+//          surface (place page carousel, offers list) can honor it.
+// @route   PUT /api/rewards/venues/:venueId/cover-photo   body: { url|null }
+// @access  Venue owner (or super user)
+exports.setVenueCoverPhoto = async (req, res) => {
+  try {
+    const venue = req.venue;
+    const url = req.body.url === null || req.body.url === undefined
+      ? null : String(req.body.url);
+    const globalPlaceId = await venueGlobalPlaceId(venue);
+    if (!globalPlaceId) {
+      return res.status(400).json({ success: false, error: 'This venue has no linked place record' });
+    }
+    const gpRef = db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(globalPlaceId);
+    if (url) {
+      const gpDoc = await gpRef.get();
+      const photos = (gpDoc.exists && gpDoc.data().photos) || [];
+      const known = photos.some((p) => (typeof p === 'string' ? p : p && p.url) === url);
+      if (!known) {
+        return res.status(400).json({ success: false, error: 'Cover photo must be one of the place\'s photos' });
+      }
+    }
+    await gpRef.set({ coverPhotoUrl: url, updatedAt: new Date().toISOString() }, { merge: true });
+    res.json({ success: true, data: { coverPhotoUrl: url } });
+  } catch (error) {
+    console.error('❌ Failed to set venue cover photo:', error);
+    res.status(500).json({ success: false, error: 'Failed to set cover photo' });
   }
 };
 

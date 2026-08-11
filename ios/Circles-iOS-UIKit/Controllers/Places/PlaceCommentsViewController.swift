@@ -487,8 +487,25 @@ class CommentCell: UITableViewCell {
     
     func configure(with comment: PlaceComment, canDelete: Bool = false) {
         self.comment = comment
-        nameLabel.text = comment.user?.displayName ?? "Unknown User"
         commentLabel.text = comment.text
+
+        // The venue's verified owner comments as the store — badge the name
+        let name = comment.user?.displayName ?? "Unknown User"
+        if comment.isVenueOwner == true {
+            let attributed = NSMutableAttributedString(string: name)
+            attributed.append(NSAttributedString(
+                string: "  OWNER",
+                attributes: [
+                    .font: UIFont.systemFont(ofSize: 10, weight: .bold),
+                    .foregroundColor: Constants.Colors.primary,
+                    .baselineOffset: 1
+                ]
+            ))
+            nameLabel.attributedText = attributed
+        } else {
+            nameLabel.attributedText = nil
+            nameLabel.text = name
+        }
         
         // Format time
         let formatter = RelativeDateTimeFormatter()

@@ -306,7 +306,8 @@ extension ActivityEngagementViewController: UITableViewDataSource {
                 parentCommentId: comment.parentCommentId,
                 replyCount: 0,
                 createdAt: comment.createdAt,
-                user: commentUser
+                user: commentUser,
+                isVenueOwner: nil
             )
             cell.configure(with: placeComment)
             return cell

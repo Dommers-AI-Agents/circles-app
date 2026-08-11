@@ -383,6 +383,50 @@ class RewardsService {
         }
     }
 
+    func getVenueFollowers(venueId: String, completion: @escaping (Result<VenueFollowersData, Error>) -> Void) {
+        apiService.request(
+            endpoint: "rewards/venues/\(venueId)/followers",
+            method: .get,
+            body: nil,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<VenueFollowersData>, APIError>) in
+            completion(result.map { $0.data }.mapError { $0 as Error })
+        }
+    }
+
+    func getVenueSavers(venueId: String, completion: @escaping (Result<VenueSaversData, Error>) -> Void) {
+        apiService.request(
+            endpoint: "rewards/venues/\(venueId)/savers",
+            method: .get,
+            body: nil,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<VenueSaversData>, APIError>) in
+            completion(result.map { $0.data }.mapError { $0 as Error })
+        }
+    }
+
+    func getVenueActivity(venueId: String, completion: @escaping (Result<VenueActivityData, Error>) -> Void) {
+        apiService.request(
+            endpoint: "rewards/venues/\(venueId)/activity",
+            method: .get,
+            body: nil,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<VenueActivityData>, APIError>) in
+            completion(result.map { $0.data }.mapError { $0 as Error })
+        }
+    }
+
+    func setVenueCoverPhoto(venueId: String, url: String?, completion: @escaping (Result<String?, Error>) -> Void) {
+        apiService.request(
+            endpoint: "rewards/venues/\(venueId)/cover-photo",
+            method: .put,
+            body: ["url": url ?? NSNull()],
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<VenueCoverPhotoData>, APIError>) in
+            completion(result.map { $0.data.coverPhotoUrl }.mapError { $0 as Error })
+        }
+    }
+
     func addOffer(venueId: String, title: String, pointsCost: Int, completion: @escaping (Result<[RewardOffer], Error>) -> Void) {
         let body: [String: Any] = ["title": title, "pointsCost": pointsCost]
 
@@ -795,7 +839,16 @@ struct PlaceVenueData: Codable {
     // Present only when isOwner: whether the owner has the Business tier
     // (false drives the in-place "Upgrade to Business" teaser)
     let ownerPremium: Bool?
+    /// Present only when isOwner: headline counters for the inline stat strip
+    let ownerStats: VenueOwnerStats?
     let claim: PlaceVenueClaim?
+}
+
+struct VenueOwnerStats: Codable {
+    let saves: Int
+    let visits: Int
+    let scans: Int
+    let redemptions: Int
 }
 
 struct PlaceVenue: Codable {
@@ -1012,6 +1065,47 @@ struct VenueDashboardMonth: Codable {
     let saves: Int?
     let visits: Int?
     let redemptions: Int?
+}
+
+// MARK: - Owner stat drill-downs
+
+struct VenueUserCard: Codable {
+    let id: String
+    let displayName: String
+    let username: String?
+    let profilePicture: String?
+    let savedAt: Date?
+}
+
+struct VenueFollowersData: Codable {
+    let count: Int
+    let followers: [VenueUserCard]
+}
+
+/// `totalCount` includes every saver; `savers` only those whose save is
+/// already visible to the owner under its privacy level.
+struct VenueSaversData: Codable {
+    let totalCount: Int
+    let count: Int
+    let savers: [VenueUserCard]
+}
+
+struct VenueActivityEvent: Codable {
+    let id: String
+    let type: String
+    let points: Double
+    let createdAt: Date?
+    let offerTitle: String?
+    let user: VenueUserCard?
+}
+
+struct VenueActivityData: Codable {
+    let events: [VenueActivityEvent]
+    let nextBefore: Date?
+}
+
+struct VenueCoverPhotoData: Codable {
+    let coverPhotoUrl: String?
 }
 
 struct EmailQRData: Codable {

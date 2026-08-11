@@ -135,23 +135,24 @@ class VenueDashboardViewController: BaseViewController {
         }
 
         let headline = dashboard.headline
-        let stats: [(String, Int)] = [
-            ("Saved by", headline.saves),
-            ("Followers", headline.followers),
-            ("Visits", headline.visits),
-            ("QR Scans", headline.scans),
-            ("Sign-ups", headline.signups),
-            ("Redemptions", headline.redemptions)
+        let stats: [(String, Int, StatDrillDown)] = [
+            ("Saved by", headline.saves, .savers),
+            ("Followers", headline.followers, .followers),
+            ("Visits", headline.visits, .activity),
+            ("QR Scans", headline.scans, .activity),
+            ("Sign-ups", headline.signups, .activity),
+            ("Redemptions", headline.redemptions, .activity)
         ]
 
-        // 2 stat cards per row
+        // 2 stat cards per row; every tile taps through to the people/ledger
+        // behind the number (Business detail — free tier routes to the paywall)
         for pair in stride(from: 0, to: stats.count, by: 2) {
             let row = UIStackView()
             row.axis = .horizontal
             row.distribution = .fillEqually
             row.spacing = Constants.Spacing.medium
-            for (title, number) in stats[pair..<min(pair + 2, stats.count)] {
-                row.addArrangedSubview(makeStatCard(number: number, title: title))
+            for (title, number, drillDown) in stats[pair..<min(pair + 2, stats.count)] {
+                row.addArrangedSubview(makeStatCard(number: number, title: title, drillDown: drillDown))
             }
             statsGrid.addArrangedSubview(row)
         }
@@ -163,7 +164,11 @@ class VenueDashboardViewController: BaseViewController {
         }
     }
 
-    private func makeStatCard(number: Int, title: String) -> UIView {
+    private enum StatDrillDown: Int {
+        case savers, followers, activity
+    }
+
+    private func makeStatCard(number: Int, title: String, drillDown: StatDrillDown) -> UIView {
         let card = UIView()
         card.backgroundColor = Constants.Colors.secondaryBackground
         card.layer.cornerRadius = 12
@@ -172,13 +177,47 @@ class VenueDashboardViewController: BaseViewController {
         stat.translatesAutoresizingMaskIntoConstraints = false
         stat.configure(number: "\(number)", title: title)
 
+        let chevron = UIImageView(image: UIImage(systemName: "chevron.right"))
+        chevron.tintColor = .tertiaryLabel
+        chevron.translatesAutoresizingMaskIntoConstraints = false
+
         card.addSubview(stat)
+        card.addSubview(chevron)
         NSLayoutConstraint.activate([
             stat.centerXAnchor.constraint(equalTo: card.centerXAnchor),
             stat.centerYAnchor.constraint(equalTo: card.centerYAnchor),
+            chevron.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -10),
+            chevron.centerYAnchor.constraint(equalTo: card.centerYAnchor),
+            chevron.widthAnchor.constraint(equalToConstant: 12),
             card.heightAnchor.constraint(equalToConstant: 84)
         ])
+
+        card.tag = drillDown.rawValue
+        card.isAccessibilityElement = true
+        card.accessibilityLabel = "\(number) \(title)"
+        card.accessibilityTraits = .button
+        card.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(statCardTapped(_:))))
         return card
+    }
+
+    @objc private func statCardTapped(_ gesture: UITapGestureRecognizer) {
+        guard let drillDown = gesture.view.flatMap({ StatDrillDown(rawValue: $0.tag) }) else { return }
+        // The drill-down endpoints are Business-tier; send free owners to the
+        // paywall instead of a 403 alert
+        guard dashboard?.premium.active == true else {
+            upgradeTapped()
+            return
+        }
+        let destination: UIViewController
+        switch drillDown {
+        case .savers:
+            destination = VenueAudienceViewController(venueId: venueId, mode: .savers)
+        case .followers:
+            destination = VenueAudienceViewController(venueId: venueId, mode: .followers)
+        case .activity:
+            destination = VenueActivityViewController(venueId: venueId)
+        }
+        navigationController?.pushViewController(destination, animated: true)
     }
 
     private func renderDetail(_ detail: VenueDashboardDetail) {

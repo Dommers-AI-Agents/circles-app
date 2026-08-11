@@ -8,7 +8,17 @@ class VenueManageViewController: BaseViewController {
 
     // MARK: - Properties
 
-    private let venueId: String
+    // Internal: the place page pops back to an existing manage screen for the
+    // same venue instead of pushing a duplicate
+    let venueId: String
+
+    /// Compose flow to fire as soon as the screen appears — set by the place
+    /// page's inline "📣 Announcement" / "🎁 New Offer" quick actions
+    enum QuickAction {
+        case addAnnouncement
+        case addOffer
+    }
+    var pendingQuickAction: QuickAction?
     private let venueName: String
     private var offers: [RewardOffer]
     private var announcements: [VenueAnnouncement]
@@ -76,6 +86,17 @@ class VenueManageViewController: BaseViewController {
     }
 
     // MARK: - Lifecycle
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        if let action = pendingQuickAction {
+            pendingQuickAction = nil
+            switch action {
+            case .addAnnouncement: addAnnouncement()
+            case .addOffer: addOffer()
+            }
+        }
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()

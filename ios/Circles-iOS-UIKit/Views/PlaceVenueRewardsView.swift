@@ -5,6 +5,8 @@ protocol PlaceVenueRewardsViewDelegate: AnyObject {
     func placeVenueViewDidTapClaim(_ view: PlaceVenueRewardsView)
     func placeVenueViewDidTapManage(_ view: PlaceVenueRewardsView, venue: PlaceVenue)
     func placeVenueViewDidTapUpgrade(_ view: PlaceVenueRewardsView)
+    func placeVenueViewDidTapStats(_ view: PlaceVenueRewardsView, venue: PlaceVenue)
+    func placeVenueView(_ view: PlaceVenueRewardsView, didTapQuickAction action: PlaceVenueRewardsView.QuickAction, venue: PlaceVenue)
 }
 
 /// The rewards section of a place page: the venue's announcements and offers,
@@ -12,7 +14,16 @@ protocol PlaceVenueRewardsViewDelegate: AnyObject {
 /// height when the place has no enrolled venue.
 class PlaceVenueRewardsView: UIView {
 
+    enum QuickAction {
+        case announcement
+        case offer
+    }
+
     weak var delegate: PlaceVenueRewardsViewDelegate?
+
+    /// Owner previewing their own page as a customer sees it — suppresses all
+    /// owner chrome for this render. Caller re-configures after toggling.
+    var viewAsCustomer = false
 
     private var data: PlaceVenueData?
 
@@ -77,13 +88,21 @@ class PlaceVenueRewardsView: UIView {
 
         // The owner's own store is visually unmistakable: primary border,
         // "Your Store" header, and a prominent Manage CTA up top
-        let isOwner = data.isOwner == true
+        let isOwner = data.isOwner == true && !viewAsCustomer
         layer.borderWidth = isOwner ? 1.5 : 0
         layer.borderColor = isOwner ? Constants.Colors.primary.withAlphaComponent(0.35).cgColor : nil
 
         containerStack.addArrangedSubview(makeHeader(venue, isOwner: isOwner))
         if isOwner {
+            if let stats = data.ownerStats {
+                containerStack.addArrangedSubview(makeOwnerStatsStrip(stats, venue: venue))
+            }
             containerStack.addArrangedSubview(makeManageStoreButton(venue))
+            // Announcements/offers are the paid tier; free owners get the
+            // teaser row below instead of dead-end quick actions
+            if data.ownerPremium == true {
+                containerStack.addArrangedSubview(makeQuickActionsRow(venue))
+            }
         }
 
         // Server filters expired announcements; re-filter as a stale-cache defense
@@ -229,6 +248,70 @@ class PlaceVenueRewardsView: UIView {
             expiryLabel.bottomAnchor.constraint(equalTo: row.bottomAnchor)
         ])
 
+        return row
+    }
+
+    /// Inline headline counters on the owner's own page, tapping through to
+    /// the full Stats & Insights dashboard
+    private func makeOwnerStatsStrip(_ stats: VenueOwnerStats, venue: PlaceVenue) -> UIView {
+        let row = UIView()
+        row.translatesAutoresizingMaskIntoConstraints = false
+
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.text = "\(stats.saves) saves · \(stats.visits) visits · \(stats.scans) scans"
+        label.font = UIFont.systemFont(ofSize: 13, weight: .medium)
+        label.textColor = .secondaryLabel
+        label.adjustsFontSizeToFitWidth = true
+
+        let statsLink = UILabel()
+        statsLink.translatesAutoresizingMaskIntoConstraints = false
+        statsLink.text = "View stats ›"
+        statsLink.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
+        statsLink.textColor = Constants.Colors.primary
+        statsLink.setContentHuggingPriority(.required, for: .horizontal)
+        statsLink.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        row.addSubview(label)
+        row.addSubview(statsLink)
+        NSLayoutConstraint.activate([
+            label.topAnchor.constraint(equalTo: row.topAnchor),
+            label.leadingAnchor.constraint(equalTo: row.leadingAnchor),
+            label.bottomAnchor.constraint(equalTo: row.bottomAnchor),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: statsLink.leadingAnchor, constant: -8),
+            statsLink.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            statsLink.trailingAnchor.constraint(equalTo: row.trailingAnchor)
+        ])
+
+        row.isUserInteractionEnabled = true
+        row.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(statsStripTapped)))
+        return row
+    }
+
+    @objc private func statsStripTapped() {
+        guard let venue = data?.venue else { return }
+        delegate?.placeVenueViewDidTapStats(self, venue: venue)
+    }
+
+    /// One-tap compose from the page itself — the page is where the owner
+    /// talks to followers, not a separate buried flow
+    private func makeQuickActionsRow(_ venue: PlaceVenue) -> UIView {
+        let announceButton = UIButton.smallActionButton(title: "📣 Announcement", style: .secondary)
+        announceButton.addAction(UIAction { [weak self] _ in
+            guard let self = self else { return }
+            self.delegate?.placeVenueView(self, didTapQuickAction: .announcement, venue: venue)
+        }, for: .touchUpInside)
+
+        let offerButton = UIButton.smallActionButton(title: "🎁 New Offer", style: .secondary)
+        offerButton.addAction(UIAction { [weak self] _ in
+            guard let self = self else { return }
+            self.delegate?.placeVenueView(self, didTapQuickAction: .offer, venue: venue)
+        }, for: .touchUpInside)
+
+        let row = UIStackView(arrangedSubviews: [announceButton, offerButton])
+        row.axis = .horizontal
+        row.distribution = .fillEqually
+        row.spacing = 8
         return row
     }
 

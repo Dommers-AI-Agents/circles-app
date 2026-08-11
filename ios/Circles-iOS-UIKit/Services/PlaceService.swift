@@ -1837,10 +1837,13 @@ struct PlaceComment: Codable, Identifiable {
     let replyCount: Int? // Number of replies to this comment
     let createdAt: Date
     let user: User? // Populated when fetching comments
-    
+    /// True when the author is the venue's verified owner — renders the
+    /// "Owner" badge so replies read as the store speaking
+    let isVenueOwner: Bool?
+
     enum CodingKeys: String, CodingKey {
         case id = "_id"
-        case placeId, userId, text, likes, likesCount, parentCommentId, replyCount, createdAt, user
+        case placeId, userId, text, likes, likesCount, parentCommentId, replyCount, createdAt, user, isVenueOwner
     }
     
     // Helper properties

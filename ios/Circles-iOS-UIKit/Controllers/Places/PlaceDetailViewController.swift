@@ -64,7 +64,13 @@ class PlaceDetailViewController: BaseViewController {
         // doc had any photos at all.
         var seenUrls = Set<String>()
 
-        if let attributedPhotos = globalPlace?.photos {
+        if var attributedPhotos = globalPlace?.photos {
+            // Owner-curated cover photo leads the carousel
+            if let coverUrl = globalPlace?.coverPhotoUrl,
+               let coverIndex = attributedPhotos.firstIndex(where: { $0.url == coverUrl }),
+               coverIndex != 0 {
+                attributedPhotos.insert(attributedPhotos.remove(at: coverIndex), at: 0)
+            }
             Logger.debug("📸 [PlaceDetailViewController] GlobalPlace attributed photos: \(attributedPhotos.count)")
             for attributedPhoto in attributedPhotos {
                 mediaItems.append(.attributedPhoto(photo: attributedPhoto))
@@ -293,6 +299,8 @@ class PlaceDetailViewController: BaseViewController {
     // otherwise-dimmed venue controls for them.
     private var isVenueOwner = false
     private var placeVenueData: PlaceVenueData?
+    // Owner preview mode: render the page exactly as a customer sees it
+    private var viewingAsCustomer = false
 
     // Practical actions row: Directions / Website / Call / Edit
     private let practicalButtonsStackView: UIStackView = {
@@ -2288,6 +2296,15 @@ class PlaceDetailViewController: BaseViewController {
             }))
         }
 
+        if isVenueOwner {
+            actions.append((title: "Set Cover Photo", style: .default, handler: { [weak self] in
+                self?.presentCoverPhotoPicker()
+            }))
+            actions.append((title: viewingAsCustomer ? "Back to Owner View" : "View as Customer", style: .default, handler: { [weak self] in
+                self?.toggleViewAsCustomer()
+            }))
+        }
+
         AlertPresenter.showActionSheet(
             actions: actions,
             from: self,
@@ -3734,10 +3751,25 @@ extension PlaceDetailViewController {
         nameTimeStack.spacing = 2
         
         let nameLabel = UILabel()
-        nameLabel.text = comment.user?.displayName ?? "Unknown User"
         nameLabel.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
         nameLabel.textColor = Constants.Colors.label
-        
+        let commentAuthorName = comment.user?.displayName ?? "Unknown User"
+        if comment.isVenueOwner == true {
+            // The store speaking on its own page — badge the name
+            let attributed = NSMutableAttributedString(string: commentAuthorName)
+            attributed.append(NSAttributedString(
+                string: "  OWNER",
+                attributes: [
+                    .font: UIFont.systemFont(ofSize: 10, weight: .bold),
+                    .foregroundColor: Constants.Colors.primary,
+                    .baselineOffset: 1
+                ]
+            ))
+            nameLabel.attributedText = attributed
+        } else {
+            nameLabel.text = commentAuthorName
+        }
+
         let timeLabel = UILabel()
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
@@ -3918,6 +3950,19 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
         openVenueManagement(venue)
     }
 
+    func placeVenueViewDidTapStats(_ view: PlaceVenueRewardsView, venue: PlaceVenue) {
+        let dashboardVC = VenueDashboardViewController(venueId: venue.venueId, venueName: venue.venueName)
+        navigationController?.pushViewController(dashboardVC, animated: true)
+    }
+
+    func placeVenueView(_ view: PlaceVenueRewardsView, didTapQuickAction action: PlaceVenueRewardsView.QuickAction, venue: PlaceVenue) {
+        // The compose flows live on the manage screen; deep-link and fire the
+        // composer as soon as it appears
+        let quickAction: VenueManageViewController.QuickAction =
+            action == .announcement ? .addAnnouncement : .addOffer
+        openVenueManagement(venue, quickAction: quickAction)
+    }
+
     func placeVenueViewDidTapUpgrade(_ view: PlaceVenueRewardsView) {
         let paywallVC = OwnerPaywallViewController()
         paywallVC.venueId = placeVenueData?.venue?.venueId
@@ -3971,7 +4016,17 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
         navigationItem.rightBarButtonItems = (navigationItem.rightBarButtonItems ?? []) + [editButton]
     }
 
-    private func openVenueManagement(_ venue: PlaceVenue) {
+    private func openVenueManagement(_ venue: PlaceVenue, quickAction: VenueManageViewController.QuickAction? = nil) {
+        // The owner usually got HERE from the manage screen ("Your place
+        // page"). Pushing another copy grows the stack in a loop — pop back
+        // to the existing one instead (carrying any quick action with us).
+        if let stack = navigationController?.viewControllers,
+           let existing = stack.compactMap({ $0 as? VenueManageViewController })
+               .last(where: { $0.venueId == venue.venueId }) {
+            existing.pendingQuickAction = quickAction
+            navigationController?.popToViewController(existing, animated: true)
+            return
+        }
         let loading = AlertPresenter.showLoading(message: "Loading...", from: self)
         RewardsService.shared.getMyVenues { [weak self] result in
             DispatchQueue.main.async {
@@ -3981,6 +4036,7 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
                     case .success(let venues):
                         if let match = venues.first(where: { $0.venueId == venue.venueId }) {
                             let manageVC = VenueManageViewController(venue: match)
+                            manageVC.pendingQuickAction = quickAction
                             self.navigationController?.pushViewController(manageVC, animated: true)
                         } else {
                             // Super-users manage venues they don't own — fall back to the full list
@@ -4011,5 +4067,67 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
                 }
             }
         }
+    }
+
+    // MARK: - Owner: view as customer
+
+    /// Flip the whole page between owner chrome and the exact customer view.
+    /// Owner nav buttons disappear too — "what does the public see" has to
+    /// mean ALL of it.
+    func toggleViewAsCustomer() {
+        viewingAsCustomer.toggle()
+        venueRewardsView.viewAsCustomer = viewingAsCustomer
+        venueRewardsView.configure(with: placeVenueData)
+
+        if viewingAsCustomer {
+            navigationItem.rightBarButtonItems = navigationItem.rightBarButtonItems?.filter {
+                $0.accessibilityLabel != "Manage Store" && $0.accessibilityLabel != "Edit Store Details"
+            }
+            AlertPresenter.showSuccess(
+                title: "Customer View",
+                message: "You're seeing this page as customers do. Use the ⋯ menu to switch back.",
+                from: self
+            )
+        } else if placeVenueData?.venue != nil {
+            addStorefrontNavButtonIfNeeded()
+            addOwnerEditNavButtonIfNeeded()
+        }
+    }
+
+    // MARK: - Owner: cover photo
+
+    func presentCoverPhotoPicker() {
+        let photos = globalPlace?.photos ?? []
+        guard !photos.isEmpty else {
+            AlertPresenter.showError(
+                title: "No Photos Yet",
+                message: "Add photos to this place first — then pick which one leads the page.",
+                from: self
+            )
+            return
+        }
+        guard let venueId = placeVenueData?.venue?.venueId else { return }
+
+        let picker = CoverPhotoPickerViewController(
+            photoUrls: photos.map { $0.url },
+            currentCoverUrl: globalPlace?.coverPhotoUrl
+        )
+        picker.onSelect = { [weak self] url in
+            guard let self = self else { return }
+            RewardsService.shared.setVenueCoverPhoto(venueId: venueId, url: url) { result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success:
+                        // Re-fetch so the carousel reorders with the new cover
+                        self.loadGlobalPlaceData()
+                        self.showSuccess("Cover photo updated")
+                    case .failure(let error):
+                        self.showError(error)
+                    }
+                }
+            }
+        }
+        let nav = UINavigationController(rootViewController: picker)
+        present(nav, animated: true)
     }
 }

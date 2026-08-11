@@ -2941,12 +2941,27 @@ exports.getPlaceComments = async (req, res, next) => {
       }
     }
     
+    // Owner badge: comments written by the venue's verified owner render as
+    // the store speaking (one venue lookup per request)
+    try {
+      const placeData = placeDoc.data();
+      const venue = await rewardService.findVenueByPlace(
+        globalPlaceId || placeId, placeData.googlePlaceId || null);
+      if (venue && venue.ownerUserId) {
+        comments.forEach((c) => {
+          if (isSameUser(c.userId, venue.ownerUserId)) c.isVenueOwner = true;
+        });
+      }
+    } catch (badgeError) {
+      console.error('⚠️ Owner-badge decoration failed (non-fatal):', badgeError.message);
+    }
+
     console.log(`📤 Returning ${comments.length} comments with user details`);
     res.status(200).json({
       success: true,
       comments: comments
     });
-    
+
   } catch (error) {
     console.error('Error getting place comments:', error);
     next(error);
@@ -3858,12 +3873,28 @@ exports.getPlaceCommentReplies = async (req, res, next) => {
     }
     
     console.log(`✅ Found ${replies.length} replies for comment ${commentId}`);
-    
+
     // Log details of replies for debugging
     replies.forEach((reply, index) => {
       console.log(`  Reply ${index + 1}: id=${reply.id}, userId=${reply.userId}, text="${reply.text?.substring(0, 50)}..."`);
     });
-    
+
+    // Owner badge, mirroring getPlaceComments — replies inherit the parent's
+    // globalPlaceId, so resolve the venue from the first reply
+    try {
+      if (replies.length > 0) {
+        const venue = await rewardService.findVenueByPlace(
+          replies[0].globalPlaceId || req.params.id, null);
+        if (venue && venue.ownerUserId) {
+          replies.forEach((r) => {
+            if (isSameUser(r.userId, venue.ownerUserId)) r.isVenueOwner = true;
+          });
+        }
+      }
+    } catch (badgeError) {
+      console.error('⚠️ Owner-badge decoration failed (non-fatal):', badgeError.message);
+    }
+
     res.status(200).json({
       success: true,
       comments: replies
