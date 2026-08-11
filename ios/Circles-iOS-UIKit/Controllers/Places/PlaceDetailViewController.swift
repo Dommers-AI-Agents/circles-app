@@ -301,6 +301,11 @@ class PlaceDetailViewController: BaseViewController {
     private var placeVenueData: PlaceVenueData?
     // Owner preview mode: render the page exactly as a customer sees it
     private var viewingAsCustomer = false
+    // Owner tap-to-edit: gestures installed once; the ✎ affordances and the
+    // owner-only contact row come and go with customer preview
+    private var ownerEditDecorated = false
+    private var ownerContactEditRow: UILabel?
+    private var ownerDescriptionEditor: UITextView?
 
     // Practical actions row: Directions / Website / Call / Edit
     private let practicalButtonsStackView: UIStackView = {
@@ -1984,6 +1989,8 @@ class PlaceDetailViewController: BaseViewController {
                     self.isVenueOwner = data.isOwner == true
                     if hasVenue && data.isOwner == true {
                         self.addOwnerPreviewNavButtonIfNeeded()
+                        // The page IS the owner's editor: arm the fields
+                        self.decorateOwnerEditableFields()
                     }
                 case .failure:
                     // Additive section — a failed lookup just leaves it collapsed
@@ -2259,11 +2266,8 @@ class PlaceDetailViewController: BaseViewController {
                 }))
             }
         } else if isVenueOwner {
-            // Verified owner viewing a save they didn't create: the venue's
-            // details are theirs to correct directly — no flag flow needed.
-            actions.append((title: "Edit Store Details", style: .default, handler: { [weak self] in
-                self?.editButtonTapped()
-            }))
+            // Verified owner: the page's fields are tap-to-edit directly, so
+            // no menu entry needed — their extras append below.
         } else {
             actions.append((title: "Flag Incorrect Info", style: .default, handler: { [weak self] in
                 self?.flagPlaceInfoTapped()
@@ -3949,8 +3953,6 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
 
     func placeVenueView(_ view: PlaceVenueRewardsView, didTapQuickAction action: PlaceVenueRewardsView.QuickAction, venue: PlaceVenue) {
         switch action {
-        case .editDetails:
-            editButtonTapped()
         case .announcement:
             // The compose flows live on the manage screen; deep-link and fire
             // the composer as soon as it appears
@@ -4060,6 +4062,7 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
         venueRewardsView.viewAsCustomer = viewingAsCustomer
         venueRewardsView.configure(with: placeVenueData)
         ownerPreviewNavButton?.image = UIImage(systemName: viewingAsCustomer ? "eye.slash" : "eye")
+        refreshOwnerEditAffordances()
     }
 
     // MARK: - Owner: cover photo
@@ -4097,5 +4100,230 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
         }
         let nav = UINavigationController(rootViewController: picker)
         present(nav, animated: true)
+    }
+}
+
+// MARK: - Owner tap-to-edit
+// The owner's place page IS the editor: tap a field to arm it, commit to
+// save. Every save goes through the owner-unlocked updatePlace path, so
+// propagateVenueUpdates fans the change out to every saver's copy.
+extension PlaceDetailViewController {
+
+    func decorateOwnerEditableFields() {
+        guard isVenueOwner, !ownerEditDecorated else { return }
+        ownerEditDecorated = true
+
+        nameLabel.isUserInteractionEnabled = true
+        nameLabel.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(ownerEditNameTapped)))
+
+        // Address is the one deliberate flow — a typo silently moves the pin,
+        // so it reuses the map-confirmed update sheet
+        addressLabel.isUserInteractionEnabled = true
+        addressLabel.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(ownerEditAddressTapped)))
+
+        categoryLabel.isUserInteractionEnabled = true
+        categoryLabel.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(ownerEditCategoryTapped)))
+
+        // The description's link-tap gesture is for customers tapping the
+        // Phone/Website lines; the owner tapping their own description means
+        // "edit it"
+        descriptionLabel.gestureRecognizers?.forEach { descriptionLabel.removeGestureRecognizer($0) }
+        descriptionLabel.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(ownerEditDescriptionTapped)))
+        aboutTitleLabel.isUserInteractionEnabled = true
+        aboutTitleLabel.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(ownerEditDescriptionTapped)))
+
+        refreshOwnerEditAffordances()
+    }
+
+    /// ✎ affordances (and the owner-only contact row) appear in owner mode
+    /// and disappear in customer preview. Idempotent — safe after re-renders.
+    func refreshOwnerEditAffordances() {
+        guard ownerEditDecorated else { return }
+        let editing = !viewingAsCustomer
+
+        nameLabel.text = editing ? "\(place.name) ✎" : place.name
+        addressLabel.text = editing ? "\(place.address) ✎" : place.address
+
+        // Empty description: give the owner somewhere to tap
+        let hasDescription = !(place.description ?? "").isEmpty
+        if !hasDescription {
+            descriptionLabel.attributedText = nil
+            descriptionLabel.text = editing ? "Add a public description ✎" : nil
+            descriptionLabel.textColor = Constants.Colors.primary
+            descriptionLabel.isHidden = !editing
+        }
+
+        // Owner-only phone/website row (customers use the action chips)
+        if editing {
+            let row = ownerContactEditRow ?? {
+                let label = UILabel()
+                label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
+                label.textColor = Constants.Colors.primary
+                label.numberOfLines = 0
+                label.isUserInteractionEnabled = true
+                label.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(ownerEditContactTapped)))
+                aboutStackView.addArrangedSubview(label)
+                ownerContactEditRow = label
+                return label
+            }()
+            let phoneText = (place.phone ?? "").isEmpty ? "Add phone" : place.phone!
+            let webText = (place.website ?? "").isEmpty ? "Add website" : place.website!
+            row.text = "📞 \(phoneText) · 🌐 \(webText) ✎"
+            row.isHidden = false
+        } else {
+            ownerContactEditRow?.isHidden = true
+        }
+
+        // The About card may have been collapsed for lack of content — the
+        // owner's edit affordances count as content
+        let aboutIsEmpty = descriptionLabel.isHidden && hoursLabel.isHidden
+            && userRatingLabel.isHidden && (ownerContactEditRow?.isHidden ?? true)
+        aboutTitleLabel.isHidden = aboutIsEmpty
+        aboutCardView.isHidden = aboutIsEmpty
+        aboutTopConstraint?.constant = aboutIsEmpty ? 0 : Constants.Spacing.medium
+        aboutHeightConstraint?.isActive = aboutIsEmpty
+    }
+
+    // MARK: Field editors
+
+    @objc private func ownerEditNameTapped() {
+        guard isVenueOwner, !viewingAsCustomer else { return }
+        promptOwnerText(title: "Store Name", initial: place.name, keyboard: .default) { [weak self] value in
+            guard !value.isEmpty else { return }
+            self?.saveOwnerField(name: value)
+        }
+    }
+
+    @objc private func ownerEditAddressTapped() {
+        guard isVenueOwner, !viewingAsCustomer else { return }
+        updateAddressButtonTapped()
+    }
+
+    @objc private func ownerEditCategoryTapped() {
+        guard isVenueOwner, !viewingAsCustomer else { return }
+        let categories: [PlaceCategory] = [.restaurant, .cafe, .bar, .hotel, .retail, .service, .attraction, .other]
+        let actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = categories.map { category in
+            (title: category.displayName, style: .default, handler: { [weak self] in
+                self?.saveOwnerField(category: category)
+            })
+        }
+        AlertPresenter.showActionSheet(title: "Category", actions: actions, from: self)
+    }
+
+    @objc private func ownerEditDescriptionTapped() {
+        guard isVenueOwner, !viewingAsCustomer, ownerDescriptionEditor == nil else { return }
+        guard let index = aboutStackView.arrangedSubviews.firstIndex(of: descriptionLabel) else { return }
+
+        let editor = UITextView()
+        editor.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
+        editor.backgroundColor = Constants.Colors.background
+        editor.layer.cornerRadius = 8
+        editor.text = place.description ?? ""
+        editor.heightAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
+
+        let toolbar = UIToolbar()
+        toolbar.sizeToFit()
+        toolbar.items = [
+            UIBarButtonItem(barButtonSystemItem: .cancel, target: self, action: #selector(ownerDescriptionCancelTapped)),
+            UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil),
+            UIBarButtonItem(barButtonSystemItem: .save, target: self, action: #selector(ownerDescriptionSaveTapped))
+        ]
+        editor.inputAccessoryView = toolbar
+
+        aboutStackView.insertArrangedSubview(editor, at: index)
+        descriptionLabel.isHidden = true
+        ownerDescriptionEditor = editor
+        editor.becomeFirstResponder()
+    }
+
+    @objc private func ownerDescriptionCancelTapped() {
+        dismissOwnerDescriptionEditor()
+        refreshOwnerEditAffordances()
+        if !(place.description ?? "").isEmpty {
+            descriptionLabel.isHidden = false
+        }
+    }
+
+    @objc private func ownerDescriptionSaveTapped() {
+        guard let editor = ownerDescriptionEditor else { return }
+        let text = editor.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        dismissOwnerDescriptionEditor()
+        saveOwnerField(description: text)
+    }
+
+    private func dismissOwnerDescriptionEditor() {
+        ownerDescriptionEditor?.resignFirstResponder()
+        ownerDescriptionEditor?.removeFromSuperview()
+        ownerDescriptionEditor = nil
+    }
+
+    @objc private func ownerEditContactTapped() {
+        guard isVenueOwner, !viewingAsCustomer else { return }
+        let alert = UIAlertController(title: "Contact Info", message: nil, preferredStyle: .alert)
+        alert.addTextField { field in
+            field.placeholder = "Phone"
+            field.keyboardType = .phonePad
+            field.text = self.place.phone
+        }
+        alert.addTextField { field in
+            field.placeholder = "Website"
+            field.keyboardType = .URL
+            field.autocapitalizationType = .none
+            field.text = self.place.website
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Save", style: .default) { [weak self, weak alert] _ in
+            let phone = alert?.textFields?[0].text?.trimmingCharacters(in: .whitespaces) ?? ""
+            let website = alert?.textFields?[1].text?.trimmingCharacters(in: .whitespaces) ?? ""
+            self?.saveOwnerField(website: website, phone: phone)
+        })
+        present(alert, animated: true)
+    }
+
+    private func promptOwnerText(title: String, initial: String?, keyboard: UIKeyboardType, onSave: @escaping (String) -> Void) {
+        let alert = UIAlertController(title: title, message: nil, preferredStyle: .alert)
+        alert.addTextField { field in
+            field.text = initial
+            field.keyboardType = keyboard
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Save", style: .default) { [weak alert] _ in
+            onSave(alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "")
+        })
+        present(alert, animated: true)
+    }
+
+    // MARK: Save
+
+    private func saveOwnerField(
+        name: String? = nil,
+        description: String? = nil,
+        category: PlaceCategory? = nil,
+        website: String? = nil,
+        phone: String? = nil
+    ) {
+        let loading = AlertPresenter.showLoading(message: "Saving...", from: self)
+        PlaceService.shared.updatePlace(
+            id: place.id,
+            name: name,
+            description: description,
+            category: category,
+            website: website,
+            phone: phone
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: true) {
+                    guard let self = self else { return }
+                    switch result {
+                    case .success(let updated):
+                        self.place = updated
+                        self.configureUI()
+                        self.refreshOwnerEditAffordances()
+                    case .failure(let error):
+                        self.showError(error)
+                    }
+                }
+            }
+        }
     }
 }
