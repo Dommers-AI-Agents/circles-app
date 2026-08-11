@@ -17,6 +17,7 @@ class PlaceVenueRewardsView: UIView {
     enum QuickAction {
         case announcement
         case offer
+        case editDetails
     }
 
     weak var delegate: PlaceVenueRewardsViewDelegate?
@@ -98,11 +99,7 @@ class PlaceVenueRewardsView: UIView {
                 containerStack.addArrangedSubview(makeOwnerStatsStrip(stats, venue: venue))
             }
             containerStack.addArrangedSubview(makeManageStoreButton(venue))
-            // Announcements/offers are the paid tier; free owners get the
-            // teaser row below instead of dead-end quick actions
-            if data.ownerPremium == true {
-                containerStack.addArrangedSubview(makeQuickActionsRow(venue))
-            }
+            containerStack.addArrangedSubview(makeQuickActionsRow(venue, premium: data.ownerPremium == true))
         }
 
         // Server filters expired announcements; re-filter as a stale-cache defense
@@ -293,22 +290,37 @@ class PlaceVenueRewardsView: UIView {
         delegate?.placeVenueViewDidTapStats(self, venue: venue)
     }
 
-    /// One-tap compose from the page itself — the page is where the owner
-    /// talks to followers, not a separate buried flow
-    private func makeQuickActionsRow(_ venue: PlaceVenue) -> UIView {
-        let announceButton = UIButton.smallActionButton(title: "📣 Announcement", style: .secondary)
-        announceButton.addAction(UIAction { [weak self] _ in
-            guard let self = self else { return }
-            self.delegate?.placeVenueView(self, didTapQuickAction: .announcement, venue: venue)
-        }, for: .touchUpInside)
+    /// One-tap actions from the page itself — the page is where the owner
+    /// edits their store and talks to followers, not a separate buried flow.
+    /// Edit is free tier; announcements/offers are the paid tier (free owners
+    /// get the upgrade teaser row instead).
+    private func makeQuickActionsRow(_ venue: PlaceVenue, premium: Bool) -> UIView {
+        var buttons: [UIView] = []
 
-        let offerButton = UIButton.smallActionButton(title: "🎁 New Offer", style: .secondary)
-        offerButton.addAction(UIAction { [weak self] _ in
+        let editButton = UIButton.smallActionButton(title: "✏️ Edit Details", style: .secondary)
+        editButton.addAction(UIAction { [weak self] _ in
             guard let self = self else { return }
-            self.delegate?.placeVenueView(self, didTapQuickAction: .offer, venue: venue)
+            self.delegate?.placeVenueView(self, didTapQuickAction: .editDetails, venue: venue)
         }, for: .touchUpInside)
+        buttons.append(editButton)
 
-        let row = UIStackView(arrangedSubviews: [announceButton, offerButton])
+        if premium {
+            let announceButton = UIButton.smallActionButton(title: "📣 Announce", style: .secondary)
+            announceButton.addAction(UIAction { [weak self] _ in
+                guard let self = self else { return }
+                self.delegate?.placeVenueView(self, didTapQuickAction: .announcement, venue: venue)
+            }, for: .touchUpInside)
+            buttons.append(announceButton)
+
+            let offerButton = UIButton.smallActionButton(title: "🎁 Offer", style: .secondary)
+            offerButton.addAction(UIAction { [weak self] _ in
+                guard let self = self else { return }
+                self.delegate?.placeVenueView(self, didTapQuickAction: .offer, venue: venue)
+            }, for: .touchUpInside)
+            buttons.append(offerButton)
+        }
+
+        let row = UIStackView(arrangedSubviews: buttons)
         row.axis = .horizontal
         row.distribution = .fillEqually
         row.spacing = 8

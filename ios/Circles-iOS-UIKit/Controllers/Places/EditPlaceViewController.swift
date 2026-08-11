@@ -41,6 +41,14 @@ class EditPlaceViewController: BaseViewController {
     private var place: Place
     private let locationManager = CLLocationManager()
     private var selectedLocation: CLLocationCoordinate2D?
+    // Only fill the address from GPS after the user explicitly asks — the
+    // authorization callback fires on delegate assignment, and an
+    // unconditional startUpdatingLocation there overwrote the store's real
+    // address with wherever the editor happened to be standing
+    private var wantsCurrentLocation = false
+    // Venue owner editing their store (not organizing a save): privacy/circle
+    // controls hidden; the listing stays public
+    private var isVenueOwnerUnlocked = false
     weak var delegate: EditPlaceDelegate?
     
     // MARK: - Configuration
@@ -441,6 +449,18 @@ class EditPlaceViewController: BaseViewController {
             self?.addressLabel.text = "Address"
         }
 
+        // The venue owner is editing THE STORE, not organizing a personal
+        // save: privacy and circle controls make no sense (a store's listing
+        // is always public), so they disappear along with the unlock.
+        let enterStoreOwnerMode: () -> Void = { [weak self] in
+            guard let self = self else { return }
+            self.isVenueOwnerUnlocked = true
+            self.title = "Edit Store Details"
+            [self.privacyLabel, self.privacySegmentedControl, self.moveToCircleButton].forEach {
+                $0.isHidden = true
+            }
+        }
+
         RewardsService.shared.getRewardsProfile { result in
             DispatchQueue.main.async {
                 guard case .success(let profile) = result, profile.isSuperUser else { return }
@@ -452,6 +472,7 @@ class EditPlaceViewController: BaseViewController {
             DispatchQueue.main.async {
                 guard case .success(let data) = result, data.isOwner == true else { return }
                 unlockVenueControls()
+                enterStoreOwnerMode()
             }
         }
     }
@@ -859,10 +880,11 @@ class EditPlaceViewController: BaseViewController {
             tags = tagsText.split(separator: ",").map { String($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
         }
         
-        // Get privacy setting
+        // Get privacy setting. A store owner's listing is always public —
+        // the privacy control is hidden for them.
         let privacyIndex = privacySegmentedControl.selectedSegmentIndex
         let privacyOptions = [PlacePrivacy.followCirclePrivacy, .public, .myNetwork, .private]
-        let privacy = privacyOptions[privacyIndex]
+        let privacy = isVenueOwnerUnlocked ? .public : privacyOptions[privacyIndex]
         
         // Guard against a second tap while the update is in flight
         isSaving = true
@@ -890,6 +912,7 @@ class EditPlaceViewController: BaseViewController {
     }
     
     @objc private func useCurrentLocationButtonTapped() {
+        wantsCurrentLocation = true
         // Request location authorization if not already granted
         switch locationManager.authorizationStatus {
         case .notDetermined:
@@ -1469,6 +1492,9 @@ extension EditPlaceViewController: CLLocationManagerDelegate {
     }
     
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        // This fires on delegate assignment at screen open — only act when
+        // the user actually tapped "Use Current Location"
+        guard wantsCurrentLocation else { return }
         switch manager.authorizationStatus {
         case .authorizedWhenInUse, .authorizedAlways:
             manager.startUpdatingLocation()

@@ -798,9 +798,8 @@ class PlaceDetailViewController: BaseViewController {
         updateMediaCarousel()
         mediaCarouselView.delegate = self
         
-        // Check street view availability and auto-load if no photos
-        checkStreetViewAvailability()
-        autoLoadStreetView()
+        // Look Around button removed 2026-08-11: its toggle only relabeled
+        // itself — updateMediaCarousel never rendered the street-view image
         
         // Mark place as viewed if it was marked as new
         if place.isNew == true {
@@ -979,7 +978,6 @@ class PlaceDetailViewController: BaseViewController {
         contentView.addSubview(mediaCarouselView)
         
         // Add photo control buttons on top of image view
-        mediaCarouselView.addSubview(streetViewToggleButton)
         mediaCarouselView.addSubview(editImageButton)
         // mediaCarouselView.addSubview(updateInfoButton) // Commented - automatic migration handles this
         mediaCarouselView.isUserInteractionEnabled = true
@@ -1094,9 +1092,6 @@ class PlaceDetailViewController: BaseViewController {
         circleInfoView.addSubview(circleButton)
         circleButton.addTarget(self, action: #selector(circleButtonTapped), for: .touchUpInside)
         
-        // Add target for street view toggle
-        streetViewToggleButton.addTarget(self, action: #selector(streetViewToggleButtonTapped), for: .touchUpInside)
-        
         // Add target for update info button
         // updateInfoButton.addTarget(self, action: #selector(updateInfoButtonTapped), for: .touchUpInside) // Commented - automatic migration
         
@@ -1145,12 +1140,6 @@ class PlaceDetailViewController: BaseViewController {
             mediaCarouselView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             mediaCarouselView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             mediaCarouselView.heightAnchor.constraint(equalToConstant: 300),
-            
-            // Street View toggle button - positioned within imageView
-            streetViewToggleButton.topAnchor.constraint(equalTo: mediaCarouselView.topAnchor, constant: 20),
-            streetViewToggleButton.trailingAnchor.constraint(equalTo: mediaCarouselView.trailingAnchor, constant: -16),
-            streetViewToggleButton.heightAnchor.constraint(equalToConstant: 32),
-            streetViewToggleButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 100),
             
             // Edit Image button - positioned within imageView
             editImageButton.bottomAnchor.constraint(equalTo: mediaCarouselView.bottomAnchor, constant: -16),
@@ -1400,7 +1389,6 @@ class PlaceDetailViewController: BaseViewController {
         }
         
         // Ensure all buttons on imageView are interactive
-        mediaCarouselView.bringSubviewToFront(streetViewToggleButton)
         mediaCarouselView.bringSubviewToFront(editImageButton)
         // mediaCarouselView.bringSubviewToFront(updateInfoButton) // Commented - automatic migration
         
@@ -1988,12 +1976,14 @@ class PlaceDetailViewController: BaseViewController {
                     self.venueRewardsTopConstraint?.constant = showCard ? Constants.Spacing.small : 0
                     self.view.layoutIfNeeded()
 
-                    // Owners get a storefront button in the nav bar - the same
-                    // icon as the profile entry, one consistent visual language
+                    // Owners get ONE nav affordance: the eye that previews the
+                    // page as customers see it. Managing and editing live on
+                    // the Your Store card itself — the page IS the owner's
+                    // surface, so a toolbar of duplicate entry points just
+                    // read as clutter.
                     self.isVenueOwner = data.isOwner == true
                     if hasVenue && data.isOwner == true {
-                        self.addStorefrontNavButtonIfNeeded()
-                        self.addOwnerEditNavButtonIfNeeded()
+                        self.addOwnerPreviewNavButtonIfNeeded()
                     }
                 case .failure:
                     // Additive section — a failed lookup just leaves it collapsed
@@ -2254,7 +2244,9 @@ class PlaceDetailViewController: BaseViewController {
         // Edit/move/update-address all operate on the viewer's own save doc —
         // someone else's place isn't editable from here (venue corrections go
         // through the flag flow; owners manage venue data via the storefront)
-        if place.isAddedByCurrentUser {
+        // A venue owner is here to run their STORE, not organize a personal
+        // save — circle moves and save-level editing don't belong in their menu
+        if place.isAddedByCurrentUser && !isVenueOwner {
             actions.append((title: "Edit Place", style: .default, handler: { [weak self] in
                 self?.editButtonTapped()
             }))
@@ -3956,11 +3948,16 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
     }
 
     func placeVenueView(_ view: PlaceVenueRewardsView, didTapQuickAction action: PlaceVenueRewardsView.QuickAction, venue: PlaceVenue) {
-        // The compose flows live on the manage screen; deep-link and fire the
-        // composer as soon as it appears
-        let quickAction: VenueManageViewController.QuickAction =
-            action == .announcement ? .addAnnouncement : .addOffer
-        openVenueManagement(venue, quickAction: quickAction)
+        switch action {
+        case .editDetails:
+            editButtonTapped()
+        case .announcement:
+            // The compose flows live on the manage screen; deep-link and fire
+            // the composer as soon as it appears
+            openVenueManagement(venue, quickAction: .addAnnouncement)
+        case .offer:
+            openVenueManagement(venue, quickAction: .addOffer)
+        }
     }
 
     func placeVenueViewDidTapUpgrade(_ view: PlaceVenueRewardsView) {
@@ -3974,46 +3971,30 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
         navigationController?.pushViewController(paywallVC, animated: true)
     }
 
-    /// Storefront nav-bar button (owners only) — same destination as the
-    /// card's Manage Store button
-    @objc func storefrontNavButtonTapped() {
-        guard let venue = placeVenueData?.venue else { return }
-        openVenueManagement(venue)
+    /// The owner's single nav affordance: preview the page as a customer.
+    /// Toggles with the same button (eye ⇄ eye.slash).
+    @objc func ownerPreviewNavButtonTapped() {
+        toggleViewAsCustomer()
     }
 
-    private func addStorefrontNavButtonIfNeeded() {
+    private func addOwnerPreviewNavButtonIfNeeded() {
         let alreadyAdded = navigationItem.rightBarButtonItems?.contains {
-            $0.accessibilityLabel == "Manage Store"
+            $0.accessibilityLabel == "View as Customer"
         } ?? false
         guard !alreadyAdded else { return }
 
-        let storefrontButton = UIBarButtonItem(
-            image: UIImage(systemName: "storefront.fill"),
+        let previewButton = UIBarButtonItem(
+            image: UIImage(systemName: "eye"),
             style: .plain,
             target: self,
-            action: #selector(storefrontNavButtonTapped)
+            action: #selector(ownerPreviewNavButtonTapped)
         )
-        storefrontButton.accessibilityLabel = "Manage Store"
-        navigationItem.rightBarButtonItems = (navigationItem.rightBarButtonItems ?? []) + [storefrontButton]
+        previewButton.accessibilityLabel = "View as Customer"
+        navigationItem.rightBarButtonItems = (navigationItem.rightBarButtonItems ?? []) + [previewButton]
     }
 
-    /// Owners asked "where do I fix my store's details?" — a visible pencil
-    /// answers it. Opens the same edit screen, which unlocks venue fields
-    /// for verified owners.
-    private func addOwnerEditNavButtonIfNeeded() {
-        let alreadyAdded = navigationItem.rightBarButtonItems?.contains {
-            $0.accessibilityLabel == "Edit Store Details"
-        } ?? false
-        guard !alreadyAdded else { return }
-
-        let editButton = UIBarButtonItem(
-            image: UIImage(systemName: "square.and.pencil"),
-            style: .plain,
-            target: self,
-            action: #selector(editButtonTapped)
-        )
-        editButton.accessibilityLabel = "Edit Store Details"
-        navigationItem.rightBarButtonItems = (navigationItem.rightBarButtonItems ?? []) + [editButton]
+    private var ownerPreviewNavButton: UIBarButtonItem? {
+        navigationItem.rightBarButtonItems?.first { $0.accessibilityLabel == "View as Customer" }
     }
 
     private func openVenueManagement(_ venue: PlaceVenue, quickAction: VenueManageViewController.QuickAction? = nil) {
@@ -4072,26 +4053,13 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
     // MARK: - Owner: view as customer
 
     /// Flip the whole page between owner chrome and the exact customer view.
-    /// Owner nav buttons disappear too — "what does the public see" has to
-    /// mean ALL of it.
+    /// The eye button itself flips (eye ⇄ eye.slash) so the way back is
+    /// always visible.
     func toggleViewAsCustomer() {
         viewingAsCustomer.toggle()
         venueRewardsView.viewAsCustomer = viewingAsCustomer
         venueRewardsView.configure(with: placeVenueData)
-
-        if viewingAsCustomer {
-            navigationItem.rightBarButtonItems = navigationItem.rightBarButtonItems?.filter {
-                $0.accessibilityLabel != "Manage Store" && $0.accessibilityLabel != "Edit Store Details"
-            }
-            AlertPresenter.showSuccess(
-                title: "Customer View",
-                message: "You're seeing this page as customers do. Use the ⋯ menu to switch back.",
-                from: self
-            )
-        } else if placeVenueData?.venue != nil {
-            addStorefrontNavButtonIfNeeded()
-            addOwnerEditNavButtonIfNeeded()
-        }
+        ownerPreviewNavButton?.image = UIImage(systemName: viewingAsCustomer ? "eye.slash" : "eye")
     }
 
     // MARK: - Owner: cover photo
